@@ -113,9 +113,8 @@ class PointerController:
         meta-parametro che controlla l'interpretazione degli altri, non un
         valore sintetizzabile.
         """
-        # gestisce sia params=None che params senza 'loop_start'
-        if params is None or 'loop_start' not in params:
-            return params if params is not None else {}
+        if params is None:
+            return {}
 
         loop_unit = params.get('loop_unit') or self._config.time_mode
         if loop_unit != 'normalized':
@@ -125,9 +124,16 @@ class PointerController:
 
         # Copia superficiale: non modificare il dizionario originale
         scaled = dict(params)
+
+        # Scala start (indipendente dalla presenza di loop_start)
+        if 'start' in scaled and scaled['start'] is not None:
+            scaled['start'] = self._scale_value(scaled['start'], scale)
+
+        # Scala i parametri loop
         for key in ('loop_start', 'loop_end', 'loop_dur'):
             if key in scaled and scaled[key] is not None:
                 scaled[key] = self._scale_value(scaled[key], scale)
+
         return scaled
 
 

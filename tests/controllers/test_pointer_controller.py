@@ -1430,7 +1430,60 @@ class TestPreNormalization:
 
         assert pointer.has_loop is True
 
+    def test_start_normalized_scales_with_sample_dur(self, mock_config):
+        """
+        RED: con time_mode='normalized', il valore di 'start' deve essere
+        moltiplicato per sample_dur_sec.
+        BUG ATTUALE: _pre_normalize_loop_params scala solo i parametri loop,
+        non 'start'. Il metodo scalera' start solo dopo il fix.
+        """
+        mock_config.time_mode = 'normalized'
+        mock_config.context.sample_dur_sec = 10.0
 
+        real = _build_real_params(start=0.0)
+        pointer = _make_pointer(mock_config, real, {})
+
+        result = pointer._pre_normalize_loop_params({'start': 0.5})
+
+        assert result['start'] == pytest.approx(5.0)
+
+
+    def test_start_absolute_mode_no_scaling(self, mock_config):
+        """
+        Con time_mode='absolute', 'start' NON deve essere scalato.
+        Questo test deve rimanere GREEN sia prima che dopo il fix:
+        verifica che la modalita' assoluta non introduca regressioni.
+        """
+        mock_config.time_mode = 'absolute'
+        mock_config.context.sample_dur_sec = 10.0
+
+        real = _build_real_params(start=0.0)
+        pointer = _make_pointer(mock_config, real, {})
+
+        result = pointer._pre_normalize_loop_params({'start': 2.0})
+
+        assert result['start'] == pytest.approx(2.0)
+
+
+    def test_start_normalized_without_loop_params(self, mock_config):
+        """
+        RED: con time_mode='normalized' e nessun 'loop_start' nel dict,
+        'start' deve essere comunque scalato.
+        BUG ATTUALE: il return anticipato su 'loop_start' not in params
+        blocca tutta la normalizzazione prima ancora di arrivare a 'start'.
+        Questo e' il caso piu' comune: start senza loop.
+        """
+        mock_config.time_mode = 'normalized'
+        mock_config.context.sample_dur_sec = 8.0
+
+        real = _build_real_params(start=0.0)
+        pointer = _make_pointer(mock_config, real, {})
+
+        # Nessun 'loop_start' nel dict: il bug si manifesta qui
+        result = pointer._pre_normalize_loop_params({'start': 0.25})
+
+        assert result['start'] == pytest.approx(2.0)  # 0.25 * 8.0 = 2.0
+        
 # =============================================================================
 # GRUPPO 11: DEVIATION SCALING
 # =============================================================================

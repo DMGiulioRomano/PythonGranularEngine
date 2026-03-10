@@ -233,7 +233,7 @@ class Stream:
         # === 2. POINTER ===
         # Base + Voice Offset + Jitter Voce
         pointer_pos = self._pointer.calculate(elapsed_time,grain_dur,grain_reverse)
-                                
+
         volume = self.volume.get_value(elapsed_time)
         pan = self.pan.get_value(elapsed_time)        
         # === 6. ONSET ===
@@ -348,20 +348,10 @@ class Stream:
         return self._pitch.range
         
     @property
-    def voice_pitch_offset(self):
+    def num_voices(self):
         """Espone voice_pitch_offset per ScoreVisualizer."""
-        return self._voice_manager.voice_pitch_offset_value
-    
-    @property
-    def voice_pointer_offset(self):
-        """Espone voice_pointer_offset per ScoreVisualizer."""
-        return self._voice_manager.voice_pointer_offset_value
-    
-    @property
-    def voice_pointer_range(self):
-        """Espone voice_pointer_range per ScoreVisualizer."""
-        return self._voice_manager.voice_pointer_range_value
-        
+        return 1
+            
     # =========================================================================
     # REPR
     # =========================================================================

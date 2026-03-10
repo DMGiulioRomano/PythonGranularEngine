@@ -956,26 +956,6 @@ class TestStreamProperties:
 
         assert s.pitch_range == 2.0
 
-    def test_voice_pitch_offset_property(self, stream_factory):
-        """voice_pitch_offset dal VoiceManager."""
-        s = stream_factory()
-        s._voice_manager.voice_pitch_offset_value = 3.0
-
-        assert s.voice_pitch_offset == 3.0
-
-    def test_voice_pointer_offset_property(self, stream_factory):
-        """voice_pointer_offset dal VoiceManager."""
-        s = stream_factory()
-        s._voice_manager.voice_pointer_offset_value = 0.1
-
-        assert s.voice_pointer_offset == 0.1
-
-    def test_voice_pointer_range_property(self, stream_factory):
-        """voice_pointer_range dal VoiceManager."""
-        s = stream_factory()
-        s._voice_manager.voice_pointer_range_value = 0.05
-
-        assert s.voice_pointer_range == 0.05
 
 
 # =============================================================================
