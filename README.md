@@ -31,6 +31,14 @@ sudo apt install -y python3.12 python3.12-venv sox csound
 
 > **Note on Csound on Linux:** the version available via `apt` may be older than the one available on the [Csound website](https://csound.com/download.html). If you need a recent version, download the `.deb` package directly from the official releases.
 
+### For tired Manjaro Users (and Arch Linux based)
+
+```bash
+curl -fsSL https://pyenv.run | bash
+pyenv install 3.12
+pyenv local 3.12
+```
+
 ### Verify installation
 
 ```bash
