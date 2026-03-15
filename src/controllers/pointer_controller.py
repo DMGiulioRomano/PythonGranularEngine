@@ -73,7 +73,7 @@ class PointerController:
             setattr(self, attr_name, param_obj)
 
         # 4. has_loop dipende solo dalla presenza di loop_start
-        self.has_loop = self.loop_start is not None
+        self.has_loop = 'loop_start' in params
         if self.has_loop and self.loop_end is None and self.loop_dur is None:
             self.loop_end = self._orchestrator.create_constant_parameter(
     'loop_end', self._sample_dur_sec
