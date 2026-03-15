@@ -18,6 +18,7 @@ streams:
     pointer:
       loop_unit: normalized
       loop_start: .5
+      start: .5
     grain:
       duration: .05
     pitch:

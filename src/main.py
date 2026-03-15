@@ -14,13 +14,6 @@ from shared.logger import configure_clip_logger, get_clip_log_path
 from engine.generator import Generator
 from rendering.score_visualizer import ScoreVisualizer
 
-# Configura PRIMA di creare stream
-configure_clip_logger(
-    console_enabled=False,   # NO terminale
-    file_enabled=True,       # SI file
-    log_dir='./logs',
-    log_transformations=False
-)
 
 
 def main():
@@ -42,7 +35,8 @@ def main():
         console_enabled=False,
         file_enabled=True,
         log_dir='./logs',
-        yaml_name=yaml_basename
+        yaml_name=yaml_basename,
+        log_transformations=False
     )
 
     try:

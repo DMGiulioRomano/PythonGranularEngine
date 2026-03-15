@@ -988,3 +988,66 @@ class TestEnvelopeBuilderMissingLines:
 
             all_calls = [str(c) for c in mock_logger.info.call_args_list]
             assert any('exponential' in c for c in all_calls)
+
+# =============================================================================
+# TEST log_transformations FLAG
+# =============================================================================
+
+class TestLogTransformationsFlag:
+    """Il flag log_transformations=False sopprime i log di envelope."""
+
+    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': False})
+    @patch('shared.logger.get_clip_logger')
+    def test_final_envelope_silent_when_flag_false(self, mock_get_logger):
+        """_log_final_envelope non chiama logger se log_transformations=False."""
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        raw = [[0, 0], [1, 1]]
+        expanded = [[0, 0], [1, 1]]
+        EnvelopeBuilder._log_final_envelope(raw, expanded)
+
+        mock_logger.info.assert_not_called()
+
+    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': False})
+    @patch('shared.logger.get_clip_logger')
+    def test_compact_transformation_silent_when_flag_false(self, mock_get_logger):
+        """_log_compact_transformation non chiama logger se log_transformations=False."""
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        compact = [[[0, 0], [100, 1]], 0.4, 4]
+        expanded = [[0.0, 0], [0.1, 1]]
+        EnvelopeBuilder._log_compact_transformation(
+            compact, expanded, 0.0, 0.4, None
+        )
+
+        mock_logger.info.assert_not_called()
+
+    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': True})
+    @patch('shared.logger.get_clip_logger')
+    def test_final_envelope_active_when_flag_true(self, mock_get_logger):
+        """_log_final_envelope chiama logger se log_transformations=True."""
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        raw = [[0, 0], [1, 1]]
+        expanded = [[0, 0], [1, 1]]
+        EnvelopeBuilder._log_final_envelope(raw, expanded)
+
+        assert mock_logger.info.called
+
+    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': True})
+    @patch('shared.logger.get_clip_logger')
+    def test_compact_transformation_active_when_flag_true(self, mock_get_logger):
+        """_log_compact_transformation chiama logger se log_transformations=True."""
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        compact = [[[0, 0], [100, 1]], 0.4, 4]
+        expanded = [[0.0, 0], [0.1, 1]]
+        EnvelopeBuilder._log_compact_transformation(
+            compact, expanded, 0.0, 0.4, None
+        )
+
+        assert mock_logger.info.called

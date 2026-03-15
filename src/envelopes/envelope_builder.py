@@ -292,8 +292,11 @@ class EnvelopeBuilder:
             distributor: TimeDistributionStrategy usata (opzionale)
         """
         # Importa logger locale per evitare circular imports
-        from shared.logger import get_clip_logger
+        from shared.logger import get_clip_logger, CLIP_LOG_CONFIG
         
+        if not CLIP_LOG_CONFIG.get('log_transformations', True):
+            return
+
         logger = get_clip_logger()
         if logger is None:
             return
@@ -380,8 +383,11 @@ class EnvelopeBuilder:
             raw_input: Input originale (può essere misto, compatto, legacy)
             expanded: Lista finale espansa di breakpoints
         """
-        from shared.logger import get_clip_logger
-        
+        from shared.logger import get_clip_logger, CLIP_LOG_CONFIG
+
+        if not CLIP_LOG_CONFIG.get('log_transformations', True):
+            return
+
         logger = get_clip_logger()
         if logger is None:
             return
