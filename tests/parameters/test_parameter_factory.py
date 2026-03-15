@@ -18,299 +18,36 @@ Coverage:
 
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-import sys
-sys.path.insert(0, '/home/claude')
 
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-
+# Import reali per test su create_constant_parameter
+from shared.probability_gate import ProbabilityGate
+from core.stream_config import StreamConfig, StreamContext
+from parameters.parameter import Parameter
+from parameters.parameter_schema import ParameterSpec
+from parameters.exclusive_selector import ExclusiveGroupSelector
+from parameters.parser import GranularParser
+from parameters.parameter_factory import ParameterFactory
+from parameters.parameter_orchestrator import ParameterOrchestrator
 # =============================================================================
 # MOCK CLASSES E STRUCTURES
 # =============================================================================
 
-@dataclass(frozen=True)
-class ParameterSpec:
-    """Mock ParameterSpec."""
-    name: str
-    yaml_path: str
-    default: Any
-    range_path: Optional[str] = None
-    dephase_key: Optional[str] = None
-    is_smart: bool = True
-    exclusive_group: Optional[str] = None
-    group_priority: int = 99
-
-
-class Parameter:
-    """Mock Parameter."""
-    def __init__(self, name, value, bounds, mod_range=None, 
-                 owner_id="unknown", distribution_mode='uniform'):
-        self.name = name
-        self.value = value
-        self.bounds = bounds
-        self.mod_range = mod_range
-        self.owner_id = owner_id
-        self._probability_gate = None
-    
-    def set_probability_gate(self, gate):
-        self._probability_gate = gate
-
-
-class ParameterBounds:
-    """Mock ParameterBounds."""
-    def __init__(self, min_val=0.0, max_val=100.0):
-        self.min_val = min_val
-        self.max_val = max_val
-        self.variation_mode = 'additive'
-
-
-class ProbabilityGate:
-    """Mock ProbabilityGate."""
-    def should_apply(self, time: float) -> bool:
-        return True
-
-
-class StreamConfig:
-    """Mock StreamConfig."""
-    class Context:
-        def __init__(self):
-            self.stream_id = "test_stream"
-            self.duration = 10.0
-            self.sample_dur_sec = 5.0
-    
-    def __init__(self):
-        self.context = self.Context()
-        self.time_mode = 'absolute'
-        self.distribution_mode = 'uniform'
-        self.dephase = {}
-        self.range_always_active = False
-
+def make_config() -> StreamConfig:
+    context = StreamContext(
+        stream_id='test_stream',
+        onset=0.0,
+        duration=10.0,
+        sample='test.wav',
+        sample_dur_sec=5.0,
+    )
+    return StreamConfig(context=context)
 
 # Mock functions
 def get_parameter_definition(name):
     """Mock get_parameter_definition."""
     return ParameterBounds()
-
-
-# =============================================================================
-# GRANULAR PARSER (simplified mock)
-# =============================================================================
-
-class GranularParser:
-    """Simplified mock GranularParser."""
-    def __init__(self, config):
-        self.stream_id = config.context.stream_id
-        self.duration = config.context.duration
-        self.time_mode = config.time_mode
-        self.distribution_mode = config.distribution_mode
-    
-    def parse_parameter(self, name, value_raw, range_raw=None, prob_raw=None):
-        """Create Parameter from raw values."""
-        bounds = get_parameter_definition(name)
-        return Parameter(
-            name=name,
-            value=value_raw if not isinstance(value_raw, list) else value_raw,
-            bounds=bounds,
-            mod_range=range_raw,
-            owner_id=self.stream_id,
-            distribution_mode=self.distribution_mode
-        )
-
-
-# =============================================================================
-# EXCLUSIVE GROUP SELECTOR
-# =============================================================================
-
-class ExclusiveGroupSelector:
-    """Selector for mutually exclusive parameters."""
-    
-    @staticmethod
-    def select_parameters(schema: List[ParameterSpec], 
-                         yaml_data: dict) -> tuple:
-        """Select parameters handling exclusive groups."""
-        groups = {}
-        selected_specs = {}
-        group_members = {}
-        
-        # Group specs by exclusive_group
-        for spec in schema:
-            if spec.exclusive_group:
-                if spec.exclusive_group not in groups:
-                    groups[spec.exclusive_group] = []
-                    group_members[spec.exclusive_group] = []
-                groups[spec.exclusive_group].append(spec)
-                group_members[spec.exclusive_group].append(spec)
-            else:
-                selected_specs[spec.name] = spec
-        
-        # Select one from each group
-        for group_name, group_specs in groups.items():
-            # Sort by priority
-            sorted_specs = sorted(group_specs, key=lambda s: s.group_priority)
-            
-            # Find first present in YAML
-            winner = None
-            for spec in sorted_specs:
-                value = ExclusiveGroupSelector._get_nested(yaml_data, spec.yaml_path)
-                if value is not None:
-                    winner = spec
-                    break
-            
-            # If none present, use highest priority with default
-            if winner is None:
-                winner = sorted_specs[0]
-            
-            selected_specs[winner.name] = winner
-        
-        return selected_specs, group_members
-    
-    @staticmethod
-    def _get_nested(data: dict, path: str) -> Any:
-        """Get nested value from dict."""
-        keys = path.split('.')
-        current = data
-        
-        for key in keys:
-            if not isinstance(current, dict):
-                return None
-            current = current.get(key)
-            if current is None:
-                return None
-        
-        return current
-
-
-# =============================================================================
-# GATE FACTORY
-# =============================================================================
-
-class GateFactory:
-    """Factory for ProbabilityGate."""
-    
-    @staticmethod
-    def create_gate(dephase, param_key, default_prob, has_explicit_range,
-                   range_always_active, duration, time_mode):
-        """Create a ProbabilityGate."""
-        return ProbabilityGate()
-
-
-# =============================================================================
-# PARAMETER FACTORY
-# =============================================================================
-
-class ParameterFactory:
-    """Factory for creating Parameter objects."""
-    
-    def __init__(self, config):
-        self._parser = GranularParser(config)
-        self._stream_id = config.context.stream_id
-    
-    def create_smart_parameter(self, spec: ParameterSpec, 
-                              yaml_data: dict) -> Parameter:
-        """Create smart Parameter from spec."""
-        # 1. Get value from YAML
-        value = self._get_nested(yaml_data, spec.yaml_path, spec.default)
-        
-        # 2. Get range if defined
-        range_val = None
-        if spec.range_path:
-            range_val = self._get_nested(yaml_data, spec.range_path, None)
-        
-        # 3. Use parser to create Parameter
-        return self._parser.parse_parameter(
-            name=spec.name,
-            value_raw=value,
-            range_raw=range_val
-        )
-    
-    def create_raw_parameter(self, spec: ParameterSpec, 
-                            yaml_data: dict) -> Any:
-        """Extract raw value from YAML."""
-        return self._get_nested(yaml_data, spec.yaml_path, spec.default)
-    
-    @staticmethod
-    def _get_nested(data: dict, path: str, default: Any) -> Any:
-        """Navigate dict with dot notation."""
-        if path.startswith('_'):  # Internal marker
-            return default
-        
-        keys = path.split('.')
-        current = data
-        
-        for key in keys:
-            if not isinstance(current, dict):
-                return default
-            current = current.get(key)
-            if current is None:
-                return default
-        
-        return current
-
-
-# =============================================================================
-# PARAMETER ORCHESTRATOR
-# =============================================================================
-
-class ParameterOrchestrator:
-    """Orchestrates ParameterFactory and GateFactory."""
-    
-    def __init__(self, config: StreamConfig):
-        self._param_factory = ParameterFactory(config)
-        self._config = config
-    
-    def create_all_parameters(self, yaml_data: dict, 
-                            schema: List[ParameterSpec]) -> Dict[str, Parameter]:
-        """Create all parameters from schema."""
-        # 1. Select parameters (handle exclusive groups)
-        selected_specs, group_members = ExclusiveGroupSelector.select_parameters(
-            schema, yaml_data
-        )
-        
-        result = {}
-        
-        # 2. Create parameters
-        for spec_name, spec in selected_specs.items():
-            if spec.is_smart:
-                param = self.create_parameter_with_gate(yaml_data, spec)
-                result[spec_name] = param
-            else:
-                result[spec_name] = self._param_factory.create_raw_parameter(
-                    spec, yaml_data
-                )
-        
-        # 3. Set losers to None
-        for group_specs in group_members.values():
-            for spec in group_specs:
-                if spec.name not in result:
-                    result[spec.name] = None
-        
-        return result
-    
-    def create_parameter_with_gate(self, yaml_data: dict,
-                                  param_spec: ParameterSpec) -> Parameter:
-        """Create Parameter with ProbabilityGate injection."""
-        # 1. Create base Parameter
-        param = self._param_factory.create_smart_parameter(param_spec, yaml_data)
-        
-        # 2. Check explicit range
-        has_explicit_range = param.mod_range is not None
-        
-        # 3. Create gate
-        gate = GateFactory.create_gate(
-            dephase=self._config.dephase,
-            param_key=param_spec.dephase_key,
-            default_prob=75.0,  # Mock default
-            has_explicit_range=has_explicit_range,
-            range_always_active=self._config.range_always_active,
-            duration=self._config.context.duration,
-            time_mode=self._config.time_mode
-        )
-        
-        # 4. Inject gate
-        param.set_probability_gate(gate)
-        
-        return param
-
 
 # =============================================================================
 # 1. TEST PARAMETER FACTORY - INITIALIZATION
@@ -321,7 +58,7 @@ class TestParameterFactoryInitialization:
     
     def test_create_factory_with_config(self):
         """Create factory with StreamConfig."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         assert factory._stream_id == "test_stream"
@@ -329,7 +66,7 @@ class TestParameterFactoryInitialization:
     
     def test_factory_creates_parser(self):
         """Factory creates GranularParser internally."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         assert hasattr(factory, '_parser')
@@ -409,7 +146,7 @@ class TestCreateSmartParameter:
     
     def test_create_parameter_from_simple_value(self):
         """Create Parameter from simple value."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -426,7 +163,7 @@ class TestCreateSmartParameter:
     
     def test_create_parameter_with_default(self):
         """Create Parameter using default value."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -442,7 +179,7 @@ class TestCreateSmartParameter:
     
     def test_create_parameter_with_range(self):
         """Create Parameter with range."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -453,14 +190,14 @@ class TestCreateSmartParameter:
         )
         yaml_data = {'volume': -12.0, 'volume_range': 3.0}
         
-        param = factory.create_smart_parameter(spec, yaml_data)
+        params = factory.create_smart_parameter(spec, yaml_data)
         
-        assert param.value == -12.0
-        assert param.mod_range == 3.0
+        assert params.value == -12.0
+        assert params._mod_range == 3.0
     
     def test_create_parameter_nested_path(self):
         """Create Parameter from nested YAML path."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -476,6 +213,41 @@ class TestCreateSmartParameter:
 
 
 # =============================================================================
+# 3b. TEST CREATE_CONSTANT_PARAMETER
+# =============================================================================
+
+class TestCreateConstantParameter:
+    """Test ParameterFactory.create_constant_parameter — usa la classe reale."""
+
+    def test_restituisce_un_parameter(self):
+        factory = ParameterFactory(make_config())
+        result = factory.create_constant_parameter('loop_end', 8.0)
+        assert isinstance(result, Parameter)
+
+    def test_valore_corretto(self):
+        factory = ParameterFactory(make_config())
+        result = factory.create_constant_parameter('loop_end', 5.0)
+        assert result.value == 5.0
+
+    def test_get_value_restituisce_il_valore(self):
+        factory = ParameterFactory(make_config())
+        result = factory.create_constant_parameter('loop_end', 3.5)
+        assert result.get_value(0.0) == pytest.approx(3.5)
+        assert result.get_value(99.0) == pytest.approx(3.5)
+
+    def test_nome_corretto(self):
+        factory = ParameterFactory(make_config())
+        result = factory.create_constant_parameter('loop_end', 1.0)
+        assert result.name == 'loop_end'
+
+    def test_funziona_con_qualsiasi_nome_parametro(self):
+        factory = ParameterFactory(make_config())
+        result = factory.create_constant_parameter('loop_dur', 2.0)
+        assert result.value == 2.0
+        assert result.name == 'loop_dur'
+
+
+# =============================================================================
 # 4. TEST CREATE_RAW_PARAMETER
 # =============================================================================
 
@@ -484,7 +256,7 @@ class TestCreateRawParameter:
     
     def test_create_raw_string(self):
         """Create raw string value."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -501,7 +273,7 @@ class TestCreateRawParameter:
     
     def test_create_raw_number(self):
         """Create raw number value."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -518,7 +290,7 @@ class TestCreateRawParameter:
     
     def test_create_raw_uses_default(self):
         """Create raw parameter uses default if missing."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
@@ -543,7 +315,7 @@ class TestParameterOrchestrator:
     
     def test_create_orchestrator(self):
         """Create orchestrator with config."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         assert hasattr(orchestrator, '_param_factory')
@@ -551,7 +323,7 @@ class TestParameterOrchestrator:
     
     def test_create_all_parameters_simple(self):
         """Create all parameters from simple schema."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
@@ -569,7 +341,7 @@ class TestParameterOrchestrator:
     
     def test_create_all_parameters_sets_none_for_missing(self):
         """Missing exclusive group members set to None."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
@@ -585,7 +357,16 @@ class TestParameterOrchestrator:
         assert params['pitch_semitones'] is not None
         assert params['pitch_ratio'] is None  # Loser set to None
 
+    def test_create_constant_parameter_restituisce_parameter(self):
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_end', 8.0)
+        assert isinstance(result, Parameter)
 
+    def test_create_constant_parameter_delega_alla_factory(self):
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_end', 4.0)
+        assert result.value == 4.0
+        assert result.get_value(0.0) == pytest.approx(4.0)
 # =============================================================================
 # 6. TEST CREATE_PARAMETER_WITH_GATE
 # =============================================================================
@@ -595,7 +376,7 @@ class TestCreateParameterWithGate:
     
     def test_creates_parameter_with_gate(self):
         """Creates Parameter and injects gate."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         spec = ParameterSpec(
@@ -613,11 +394,11 @@ class TestCreateParameterWithGate:
     
     def test_gate_created_with_explicit_range(self):
         """Gate creation detects explicit range."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         spec = ParameterSpec(
-            name='pitch',
+            name='pitch_ratio',
             yaml_path='ratio',
             default=1.0,
             range_path='range',
@@ -627,7 +408,7 @@ class TestCreateParameterWithGate:
         
         param = orchestrator.create_parameter_with_gate(yaml_data, spec)
         
-        assert param.mod_range == 0.1
+        assert param._mod_range == 0.1
         assert param._probability_gate is not None
 
 
@@ -740,7 +521,7 @@ class TestFactoryOrchestratorIntegration:
     
     def test_complete_workflow_simple(self):
         """Complete workflow: YAML → Parameters."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
@@ -758,13 +539,13 @@ class TestFactoryOrchestratorIntegration:
         params = orchestrator.create_all_parameters(yaml_data, schema)
         
         assert params['volume'].value == -12.0
-        assert params['volume'].mod_range == 3.0
+        assert params['volume']._mod_range == 3.0
         assert params['pan'].value == 0.5
         assert params['volume']._probability_gate is not None
     
     def test_complete_workflow_exclusive_groups(self):
         """Complete workflow with exclusive groups."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
@@ -783,7 +564,7 @@ class TestFactoryOrchestratorIntegration:
     
     def test_mixed_smart_and_raw_parameters(self):
         """Mix of smart and raw parameters."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
@@ -807,21 +588,20 @@ class TestFactoryOrchestratorErrors:
     
     def test_nested_path_on_primitive_value(self):
         """Nested path on primitive returns default."""
-        config = StreamConfig()
+        config = make_config()
         factory = ParameterFactory(config)
         
         spec = ParameterSpec(
-            name='test',
+            name='volume',
             yaml_path='grain.duration',
-            default=0.05
+            default=-6.0
         )
-        yaml_data = {'grain': 42}  # Not a dict
+        yaml_data = {'grain': 42}
         
         param = factory.create_smart_parameter(spec, yaml_data)
         
         # Should use default
-        assert param.value == 0.05
-
+        assert param.value == -6.0
 
 # =============================================================================
 # 10. TEST EDGE CASES
@@ -832,7 +612,7 @@ class TestFactoryOrchestratorEdgeCases:
     
     def test_empty_yaml_uses_all_defaults(self):
         """Empty YAML uses all defaults."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
@@ -848,7 +628,7 @@ class TestFactoryOrchestratorEdgeCases:
     
     def test_empty_schema_returns_empty_dict(self):
         """Empty schema returns empty dict."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
         
         schema = []
@@ -909,17 +689,17 @@ class TestFactoryOrchestratorParametrized:
     @pytest.mark.parametrize("is_smart", [True, False])
     def test_create_both_parameter_types(self, is_smart):
         """Test creating both smart and raw parameters."""
-        config = StreamConfig()
+        config = make_config()
         orchestrator = ParameterOrchestrator(config)
-        
+
         schema = [
-            ParameterSpec('test', 'value', 10, is_smart=is_smart)
+            ParameterSpec('volume', 'value', -6.0, is_smart=is_smart)
         ]
-        yaml_data = {'value': 20}
-        
+        yaml_data = {'value': -12.0}        
+
         params = orchestrator.create_all_parameters(yaml_data, schema)
         
         if is_smart:
-            assert isinstance(params['test'], Parameter)
+            assert isinstance(params['volume'], Parameter)
         else:
-            assert params['test'] == 20
+            assert params['volume'] == -12.0

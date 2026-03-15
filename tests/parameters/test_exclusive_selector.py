@@ -259,8 +259,9 @@ class TestSelectParametersDefaultFallback:
         assert 'opt_b' in selected
         assert 'opt_a' not in selected
 
-    def test_tutti_default_none_usa_primo_per_priorita(self):
-        """Se tutti i default sono None, usa il primo in ordine di priorita'."""
+    def test_tutti_default_none_nessun_vincitore(self):
+        """Se tutti i default sono None e nessuno e' nel YAML,
+        il gruppo non produce nessun vincitore (nessuna chiave inserita)."""
         schema = [
             make_spec('opt_a', 'a', default=None, exclusive_group='grp', group_priority=1),
             make_spec('opt_b', 'b', default=None, exclusive_group='grp', group_priority=2),
@@ -269,9 +270,35 @@ class TestSelectParametersDefaultFallback:
 
         selected, _ = ExclusiveGroupSelector.select_parameters(schema, yaml_data)
 
-        # Fallback finale: primo elemento sorted (priority 1)
-        assert 'opt_a' in selected
+        assert 'opt_a' not in selected
         assert 'opt_b' not in selected
+
+    def test_tutti_default_none_ma_uno_specificato_vince(self):
+        """Se tutti i default sono None ma uno e' nel YAML, quello vince."""
+        schema = [
+            make_spec('opt_a', 'a', default=None, exclusive_group='grp', group_priority=1),
+            make_spec('opt_b', 'b', default=None, exclusive_group='grp', group_priority=2),
+        ]
+        yaml_data = {'b': 3.0}
+
+        selected, _ = ExclusiveGroupSelector.select_parameters(schema, yaml_data)
+
+        assert 'opt_b' in selected
+        assert 'opt_a' not in selected
+
+    def test_pointer_solo_loop_start_loop_bounds_nessun_vincitore(self):
+        """Caso reale: YAML con solo loop_start -> loop_bounds non produce vincitore,
+        loop_end e loop_dur assenti dal selected."""
+        yaml_data = {'loop_start': 0.5}
+
+        selected, _ = ExclusiveGroupSelector.select_parameters(
+            POINTER_PARAMETER_SCHEMA, yaml_data
+        )
+
+        assert 'loop_end' not in selected
+        assert 'loop_dur' not in selected
+        # loop_start e' non-esclusivo, deve essere presente
+        assert 'loop_start' in selected
 
     def test_yaml_ha_chiavi_irrilevanti_usa_default(self):
         """YAML con chiavi non pertinenti -> fallback a default."""
@@ -539,12 +566,14 @@ class TestIntegrationWithRealSchemas:
         assert 'loop_end' in selected
         assert 'loop_dur' not in selected
 
-    def test_pointer_yaml_vuoto_loop_bounds_fallback(self):
-        """YAML vuoto: entrambi hanno default=None -> usa il primo per priorita' (loop_end priority 1)."""
+    def test_pointer_yaml_vuoto_loop_bounds_nessun_vincitore(self):
+        """YAML vuoto: loop_end e loop_dur hanno entrambi default=None ->
+        il gruppo loop_bounds non produce nessun vincitore."""
         yaml_data = {}
-        selected, _ = ExclusiveGroupSelector.select_parameters(POINTER_PARAMETER_SCHEMA, yaml_data)
-        # loop_end ha priority 1, loop_dur ha priority 99 (default)
-        assert 'loop_end' in selected
+        selected, _ = ExclusiveGroupSelector.select_parameters(
+            POINTER_PARAMETER_SCHEMA, yaml_data
+        )
+        assert 'loop_end' not in selected
         assert 'loop_dur' not in selected
 
     def test_pointer_parametri_non_esclusivi_sempre_presenti(self):

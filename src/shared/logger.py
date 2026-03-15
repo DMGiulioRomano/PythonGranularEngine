@@ -312,3 +312,54 @@ def log_loop_dynamic_mode(stream_id: str, loop_start_initial: float,
         f"loop_end(0)={loop_end_initial:.4f}s"
         f"{override_note}"
     )
+
+def log_loop_init(
+    stream_id: str,
+    loop_start: float,
+    loop_end: float,
+    loop_dur: float,
+    sample_dur_sec: float
+):
+    """
+    Logga la regione loop risolta al momento dell'inizializzazione del
+    PointerController (modalita' statica).
+
+    Emessa UNA SOLA VOLTA per stream, subito dopo _init_params.
+    Serve a diagnosticare configurazioni errate come regioni invertite
+    (loop_end < loop_start) prodotte da fallback su Parameter(value=None).
+
+    Args:
+        stream_id:      ID dello stream
+        loop_start:     valore risolto di loop_start (secondi)
+        loop_end:       valore risolto di loop_end (secondi), None se si usa loop_dur
+        loop_dur:       valore risolto di loop_dur (secondi), None se si usa loop_end
+        sample_dur_sec: durata totale del sample in secondi
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    if loop_dur is not None:
+        resolved_end = loop_start + loop_dur
+        mode_str = f"loop_dur={loop_dur:.4f}s"
+    else:
+        resolved_end = loop_end if loop_end is not None else 0.0
+        mode_str = f"loop_end={resolved_end:.4f}s"
+
+    loop_length = resolved_end - loop_start
+
+    inverted_note = " *** INVERTED REGION — loop non attivo ***" if loop_length <= 0 else ""
+    fallback_note = " [FALLBACK: loop_end = sample_dur]" if (
+        loop_end is not None and abs(loop_end - sample_dur_sec) < 1e-9
+    ) else ""
+
+    logger.warning(
+        f"[LOOP_INIT] [{stream_id}] "
+        f"loop_start={loop_start:.4f}s | "
+        f"{mode_str} | "
+        f"resolved=[{loop_start:.4f}, {resolved_end:.4f}]s | "
+        f"length={loop_length:.4f}s | "
+        f"sample_dur={sample_dur_sec:.4f}s"
+        f"{fallback_note}"
+        f"{inverted_note}"
+    )

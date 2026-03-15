@@ -70,11 +70,7 @@ class ExclusiveGroupSelector:
                     if spec.default is not None:
                         chosen_spec = spec
                         break
-            
-            # Se ancora nessuno, prendi il primo (anche se default è None)
-            if chosen_spec is None and sorted_specs:
-                chosen_spec = sorted_specs[0]
-            
+                        
             if chosen_spec:
                 selected_specs[chosen_spec.name] = chosen_spec
         

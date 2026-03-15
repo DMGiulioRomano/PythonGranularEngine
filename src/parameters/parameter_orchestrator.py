@@ -86,3 +86,11 @@ class ParameterOrchestrator:
         param.set_probability_gate(gate)
         
         return param
+    
+    def create_constant_parameter(self, name: str, value: float) -> Parameter:
+        """
+        Thin wrapper su ParameterFactory.create_constant_parameter.
+
+        Il controller parla solo con l'orchestrator, mai con la factory diretta.
+        """
+        return self._param_factory.create_constant_parameter(name, value)

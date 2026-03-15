@@ -15,7 +15,9 @@ from shared.logger import (
     log_config_warning,
     log_loop_drift_warning,
     log_loop_dynamic_mode,
+    log_loop_init,
     CLIP_LOG_CONFIG,
+
 )
 
 
@@ -834,6 +836,145 @@ class TestLogLoopDynamicMode:
             log_loop_dynamic_mode('s1', 1.2345, 2.0, False, 0.0)
         assert '1.2345' in captured[0]
 
+# =============================================================================
+# TEST: log_loop_init
+# =============================================================================
+
+class TestLogLoopInit:
+
+    def test_does_not_raise_when_logger_none(self):
+        configure_clip_logger(enabled=False)
+        get_clip_logger()
+        log_loop_init('s1', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+
+    def test_calls_logger_warning(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinit'
+        )
+        l = get_clip_logger()
+        with patch.object(l, 'warning') as mock_warn:
+            log_loop_init('s1', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+            mock_warn.assert_called_once()
+
+    def test_message_contains_loop_init_tag(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinittag'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('s1', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+        assert '[LOOP_INIT]' in captured[0]
+
+    def test_message_contains_stream_id(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinitsid'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('MY_STREAM', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+        assert 'MY_STREAM' in captured[0]
+
+    def test_message_contains_loop_start(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinitstartval'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('s1', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+        assert '0.5' in captured[0]
+
+    def test_message_contains_loop_end(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinitenval'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('s1', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+        assert '2.0' in captured[0] or '2.0000' in captured[0]
+
+    def test_message_contains_loop_length(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinitten'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('s1', loop_start=0.5, loop_end=2.0, loop_dur=None, sample_dur_sec=4.0)
+        # loop_length = 2.0 - 0.5 = 1.5
+        assert '1.5' in captured[0] or '1.5000' in captured[0]
+
+    def test_message_contains_loop_dur_mode_when_provided(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinitur'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('s1', loop_start=0.5, loop_end=None, loop_dur=1.5, sample_dur_sec=4.0)
+        assert 'loop_dur' in captured[0]
+
+    def test_message_contains_inverted_warning_when_loop_length_negative(self, tmp_path):
+        """loop_end < loop_start produce loop_length negativa: il log deve segnalarlo."""
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopinitneg'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            # loop_end=0.0, loop_start=0.5 -> loop_length=-0.5 (il nostro bug)
+            log_loop_init('s1', loop_start=0.5, loop_end=0.0, loop_dur=None, sample_dur_sec=4.0)
+        assert 'INVERTED' in captured[0] or 'invertit' in captured[0].lower()
+
+    def test_message_contains_fallback_note_when_loop_end_equals_sample_dur(self, tmp_path):
+        """Quando loop_end == sample_dur_sec segnala che e' il valore di fallback."""
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopiniflbk'
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_loop_init('s1', loop_start=0.5, loop_end=4.0, loop_dur=None, sample_dur_sec=4.0)
+        assert 'fallback' in captured[0].lower() or 'FALLBACK' in captured[0]
 
 # =============================================================================
 # TEST: integration
@@ -927,3 +1068,4 @@ class TestIntegration:
         log_file = tmp_path / 'envelope_clips_cfgintegration.log'
         content = log_file.read_text()
         assert '[CONFIG]' in content
+

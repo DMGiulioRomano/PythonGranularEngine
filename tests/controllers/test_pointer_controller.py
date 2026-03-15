@@ -432,7 +432,7 @@ class TestDirectionAwareReset:
             param = Mock()
             param.value = 2.0
             # Prima restituisce 2.0, poi 4.0 (bounds cambiano!)
-            param.get_value = Mock(side_effect=[2.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+            param.get_value = Mock(side_effect=[2.0, 2.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0])
             mock_params['loop_start'] = param
             
             # loop_end
@@ -506,7 +506,7 @@ class TestDirectionAwareReset:
             param.value = 2.0
             # Prima 2.0, poi 3.0 (bounds cambiano!)
             # Aggiungiamo valori ripetuti per coprire tutte le chiamate successive
-            param.get_value = Mock(side_effect=[2.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0])
+            param.get_value = Mock(side_effect=[2.0,2.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0])
             mock_params['loop_start'] = param
             
             # loop_end
@@ -1282,6 +1282,13 @@ def _make_pointer(mock_config, real_params, raw_params):
     with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
         mock_orch = MockOrch.return_value
         mock_orch.create_all_parameters.return_value = real_params
+        # Configura create_constant_parameter per restituire un mock valido
+        sample_dur = getattr(mock_config.context, 'sample_dur_sec', 10.0)
+        const_param = Mock()
+        const_param.get_value = Mock(return_value=sample_dur)
+        const_param.value = sample_dur
+        mock_orch.create_constant_parameter.return_value = const_param
+
         return PointerController(raw_params, mock_config)
 
 
@@ -1696,7 +1703,7 @@ class TestHasLoopProperty:
         assert pointer.has_loop is True
 
     def test_loop_start_only(self, mock_config):
-        """Solo loop_start -> has_loop=True, loop_end diventa sample_dur."""
+        """Solo loop_start -> has_loop=True, loop_end diventa Parameter con sample_dur."""
         mock_config.context.sample_dur_sec = 10.0
         real = _build_real_params(loop_start=2.0)
         pointer = _make_pointer(
@@ -1705,8 +1712,8 @@ class TestHasLoopProperty:
         )
 
         assert pointer.has_loop is True
-        # Il codice imposta loop_end = sample_dur_sec quando manca
-        assert pointer.loop_end == 10.0
+        assert hasattr(pointer.loop_end, 'get_value')
+        assert pointer.loop_end.get_value(0.0) == pytest.approx(10.0)
 
     def test_loop_end_only_no_start(self, mock_config):
         """Solo loop_end senza loop_start -> has_loop=False."""
@@ -2074,7 +2081,7 @@ class TestLoopEndFallback:
     """Test che loop_end venga impostato a sample_dur_sec quando mancante."""
 
     def test_loop_start_only_sets_loop_end_to_sample_dur(self, mock_config):
-        """Solo loop_start: loop_end diventa sample_dur_sec."""
+        """Solo loop_start: loop_end diventa Parameter con valore sample_dur_sec."""
         mock_config.context.sample_dur_sec = 8.0
         real = _build_real_params(
             start=1.0, speed=1.0,
@@ -2087,7 +2094,8 @@ class TestLoopEndFallback:
         )
 
         assert pointer.has_loop is True
-        assert pointer.loop_end == 8.0
+        assert hasattr(pointer.loop_end, 'get_value')
+        assert pointer.loop_end.get_value(0.0) == pytest.approx(8.0)
 
     def test_loop_start_with_loop_dur_no_fallback(self, mock_config):
         """Con loop_dur presente, loop_end resta None."""
@@ -2122,15 +2130,11 @@ class TestLoopEndFallback:
         assert pointer.has_loop is True
         assert pointer.loop_end.value == 6.0  # Non sovrascritto
 
-    def test_fallback_loop_end_is_float_not_parameter(self, mock_config):
-        """BUG NOTO: fallback assegna float, non Parameter.
-        
-        Quando solo loop_start e' presente, il codice fa:
-            self.loop_end = self._sample_dur_sec  (float)
-        Ma _apply_loop chiama self.loop_end.get_value() -> AttributeError.
-        
-        Questo test DOCUMENTA il bug. In pratica non si manifesta
-        perche' lo YAML fornisce sempre loop_end o loop_dur espliciti.
+    def test_fallback_loop_end_e_un_parameter(self, mock_config):
+        """Dopo il fix: fallback assegna un Parameter, non un float nudo.
+
+        Quando solo loop_start e' presente, loop_end deve diventare
+        un Parameter con get_value() che ritorna sample_dur_sec.
         """
         mock_config.context.sample_dur_sec = 5.0
         real = _build_real_params(
@@ -2144,12 +2148,25 @@ class TestLoopEndFallback:
         )
 
         assert pointer.has_loop is True
-        assert pointer.loop_end == 5.0  # float, NON Parameter
-        assert isinstance(pointer.loop_end, float)  # conferma il tipo
+        assert hasattr(pointer.loop_end, 'get_value')
+        assert pointer.loop_end.get_value(0.0) == pytest.approx(5.0)
 
-        # Verifico che calculate() fallisce con il bug
-        with pytest.raises(AttributeError, match="has no attribute 'get_value'"):
-            pointer.calculate(0.0)
+    def test_fallback_loop_end_calculate_non_crasha(self, mock_config):
+        """Dopo il fix: calculate() funziona senza AttributeError."""
+        mock_config.context.sample_dur_sec = 5.0
+        real = _build_real_params(
+            start=2.0, speed=1.0,
+            loop_start=2.0
+        )
+
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 2.0, 'speed_ratio': 1.0, 'loop_start': 2.0}
+        )
+
+        # Non deve sollevare AttributeError
+        pos = pointer.calculate(0.0)
+        assert 0.0 <= pos < 5.0
 
     def test_fallback_loop_wraps_at_sample_end(self, mock_config):
         """Loop fino a fine sample wrappa correttamente (con loop_end esplicito)."""
@@ -2201,7 +2218,7 @@ class TestLoopResetLogging:
         real['loop_start'] = Mock()
         real['loop_start'].value = 2.0
         real['loop_start'].get_value = Mock(
-            side_effect=[2.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0]
+            side_effect=[2.0,2.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0]
         )
 
         pointer = _make_pointer(

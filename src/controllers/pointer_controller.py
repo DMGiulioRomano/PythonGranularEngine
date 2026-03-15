@@ -15,7 +15,7 @@ from envelopes.envelope import Envelope
 from parameters.parameter_schema import POINTER_PARAMETER_SCHEMA
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from core.stream_config import StreamConfig
-from shared.logger import log_config_warning, log_loop_drift_warning, log_loop_dynamic_mode
+from shared.logger import log_config_warning, log_loop_drift_warning, log_loop_dynamic_mode, log_loop_init
 class PointerController:
     """
     Gestisce il posizionamento della testina di lettura nel sample.
@@ -75,8 +75,9 @@ class PointerController:
         # 4. has_loop dipende solo dalla presenza di loop_start
         self.has_loop = self.loop_start is not None
         if self.has_loop and self.loop_end is None and self.loop_dur is None:
-            self.loop_end = self._sample_dur_sec
-
+            self.loop_end = self._orchestrator.create_constant_parameter(
+    'loop_end', self._sample_dur_sec
+)
         # 5. Rileva se il loop e' dinamico (loop_start e' un Envelope).
         #    In modalita' dinamica il pointer entra immediatamente nel loop
         #    a elapsed=0, senza attendere che la posizione lineare
@@ -100,6 +101,29 @@ class PointerController:
                     start_overridden=start_overridden,
                     original_start=self.start
                 )
+            else:
+                loop_start_val = self.loop_start.get_value(0.0)
+
+                if self.loop_dur is not None:
+                    loop_dur_val  = self.loop_dur.get_value(0.0)
+                    loop_end_val  = None
+                else:
+                    loop_dur_val  = None
+                    if hasattr(self.loop_end, 'get_value'):
+                        loop_end_val = self.loop_end.get_value(0.0)  # None -> 0.0 qui
+                    elif self.loop_end is not None:
+                        loop_end_val = float(self.loop_end)           # float dal fallback
+                    else:
+                        loop_end_val = None
+
+                log_loop_init(
+                    stream_id      = self._config.context.stream_id,
+                    loop_start     = loop_start_val,
+                    loop_end       = loop_end_val,
+                    loop_dur       = loop_dur_val,
+                    sample_dur_sec = self._sample_dur_sec
+                )
+
 
     def _pre_normalize_loop_params(self, params: dict) -> dict:
         """

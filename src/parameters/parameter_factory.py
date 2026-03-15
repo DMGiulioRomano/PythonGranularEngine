@@ -77,6 +77,19 @@ class ParameterFactory:
             range_raw=range_val,
         )
     
+    def create_constant_parameter(self, name: str, value: float) -> Parameter:
+        """
+        Crea un Parameter costante da un valore scalare, senza YAML.
+
+        Usato per fallback interni (es. loop_end = sample_dur_sec)
+        dove il valore e' gia' noto ma serve un Parameter con get_value().
+        """
+        return self._parser.parse_parameter(
+            name=name,
+            value_raw=value,
+            range_raw=None,
+        )
+
     def create_raw_parameter(self, spec: ParameterSpec, yaml_data: dict) -> Any:
         """
         Estrae un valore raw (non Parameter) dal YAML.

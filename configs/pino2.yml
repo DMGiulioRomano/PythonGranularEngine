@@ -16,6 +16,7 @@ streams:
     #time_scale: .3
     sample: "pino2.wav"
     pointer:
+      loop_unit: normalized
       loop_start: .5
     grain:
       duration: .05
