@@ -39,6 +39,11 @@ ifeq ($(STEMS), true)
 # --- Pipeline STEMS: 1 yml → N sco → N aif ---
 PYFLAGS += --show-static
 
+ifeq ($(CACHE), true)
+PYFLAGS += --cache --cache-dir $(CACHEDIR) --aif-dir $(SFDIR)
+PRECLEAN := false
+endif
+
 .PHONY: all
 all: $(ALL_PRE) stems-build
 

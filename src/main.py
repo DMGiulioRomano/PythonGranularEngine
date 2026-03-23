@@ -6,10 +6,6 @@
 # COSTANTI E LIMITI DI SICUREZZA
 # =============================================================================
 
-MAX_GRAINS_PER_SECOND = 4000  # Limite assoluto di density
-MIN_INTER_ONSET = 0.0001      # Minimo 0.1ms tra grani
-MIN_GRAIN_DURATION = 0.001    # Minimo 1ms di durata grano
-MAX_GRAIN_DURATION = 10.0     # Massimo 10s di durata grano
 from shared.logger import configure_clip_logger, get_clip_log_path
 from engine.generator import Generator
 from rendering.score_visualizer import ScoreVisualizer
@@ -29,6 +25,21 @@ def main():
     do_visualize = '--visualize' in sys.argv or '-v' in sys.argv
     show_static = '--show-static' in sys.argv or '-s' in sys.argv
     per_stream = '--per-stream' in sys.argv or '-p' in sys.argv
+    use_cache = '--cache' in sys.argv
+
+    # --cache-dir DIR (default: cache/)
+    cache_dir = 'cache'
+    if '--cache-dir' in sys.argv:
+        idx = sys.argv.index('--cache-dir')
+        if idx + 1 < len(sys.argv):
+            cache_dir = sys.argv[idx + 1]
+
+    # --aif-dir DIR (default: None, il check sul file viene ignorato)
+    aif_dir = None
+    if '--aif-dir' in sys.argv:
+        idx = sys.argv.index('--aif-dir')
+        if idx + 1 < len(sys.argv):
+            aif_dir = sys.argv[idx + 1]
 
     yaml_basename = os.path.splitext(os.path.basename(yaml_file))[0]
     configure_clip_logger(
@@ -51,10 +62,20 @@ def main():
         if per_stream:
             output_dir = os.path.dirname(output_file) or '.'
             base_name = os.path.splitext(os.path.basename(output_file))[0]
+
+            cache_manager = None
+            if use_cache:
+                from rendering.stream_cache_manager import StreamCacheManager
+                cache_path = os.path.join(cache_dir, f"{yaml_basename}.json")
+                cache_manager = StreamCacheManager(cache_path=cache_path)
+                print(f"[CACHE] Manifest: {cache_path}")
+
             print(f"Scrittura score per-stream in '{output_dir}' con prefisso '{base_name}'...")
             generated = generator.generate_score_files_per_stream(
                 output_dir=output_dir,
-                base_name=base_name
+                base_name=base_name,
+                cache_manager=cache_manager,
+                aif_dir=aif_dir,
             )
             print(f"\n Generazione completata! {len(generated)} file generati:")
             for path in generated:

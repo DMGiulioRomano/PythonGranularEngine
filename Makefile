@@ -29,7 +29,8 @@ CSDIR  := csound
 SFDIR  := output
 SSDIR  := refs
 YMLDIR := configs
-
+CACHE ?= false
+CACHEDIR := cache
 # --- Flags configurabili ---
 AUTOKILL ?= true
 AUTOPEN ?= true

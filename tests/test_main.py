@@ -110,37 +110,6 @@ def run_main(mocks, argv_list):
 
 
 # =============================================================================
-# TEST COSTANTI DI SICUREZZA
-# Validano che i limiti assoluti siano definiti correttamente nel modulo
-# =============================================================================
-
-class TestModuleConstants:
-    """Verifica le costanti di sicurezza esposte a livello modulo."""
-
-    def test_max_grains_per_second(self, mocks):
-        assert mocks['main'].MAX_GRAINS_PER_SECOND == 4000
-
-    def test_min_inter_onset(self, mocks):
-        assert mocks['main'].MIN_INTER_ONSET == 0.0001
-
-    def test_min_grain_duration(self, mocks):
-        assert mocks['main'].MIN_GRAIN_DURATION == 0.001
-
-    def test_max_grain_duration(self, mocks):
-        assert mocks['main'].MAX_GRAIN_DURATION == 10.0
-
-    def test_constants_are_numeric(self, mocks):
-        m = mocks['main']
-        for const in [
-            m.MAX_GRAINS_PER_SECOND,
-            m.MIN_INTER_ONSET,
-            m.MIN_GRAIN_DURATION,
-            m.MAX_GRAIN_DURATION,
-        ]:
-            assert isinstance(const, (int, float))
-
-
-# =============================================================================
 # TEST ARGOMENTI INSUFFICIENTI
 # =============================================================================
 
