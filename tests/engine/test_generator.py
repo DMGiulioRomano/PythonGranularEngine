@@ -1426,3 +1426,232 @@ class TestGenerateScoreFilesPerStream:
         result = gen.generate_score_files_per_stream()
         # Il path deve essere relativo alla dir corrente
         assert os.path.dirname(result[0]) == '.'
+        
+# =============================================================================
+# 11. TEST _stream_data_map
+# =============================================================================
+
+class TestStreamDataMap:
+    """
+    _create_streams() deve popolare self._stream_data_map
+    con i dict YAML raw indicizzati per stream_id.
+    """
+
+    def test_stream_data_map_initialized_empty(self, gen):
+        """_stream_data_map e' un dict vuoto dopo __init__."""
+        assert gen._stream_data_map == {}
+
+    def test_stream_data_map_populated_after_create_streams(self, gen):
+        """_create_streams popola _stream_data_map con i raw dict."""
+        stream_data = [
+            {'stream_id': 's1', 'onset': 0.0, 'sample': 'a.wav'},
+        ]
+        with patch('engine.generator.Stream') as MockStream, \
+             patch('engine.generator.WindowController'):
+            mock_stream = Mock()
+            mock_stream.stream_id = 's1'
+            mock_stream.sample = 'a.wav'
+            mock_stream.window_table_map = {}
+            MockStream.return_value = mock_stream
+            gen.ftable_manager.register_sample = Mock(return_value=1)
+            gen._create_streams(stream_data)
+
+        assert 's1' in gen._stream_data_map
+        assert gen._stream_data_map['s1'] == stream_data[0]
+
+    def test_stream_data_map_stores_raw_dict_not_stream_object(self, gen):
+        """_stream_data_map contiene il dict originale, non l'oggetto Stream."""
+        stream_data = [
+            {'stream_id': 's1', 'onset': 0.0, 'sample': 'a.wav'},
+        ]
+        with patch('engine.generator.Stream') as MockStream, \
+             patch('engine.generator.WindowController'):
+            mock_stream = Mock()
+            mock_stream.stream_id = 's1'
+            mock_stream.sample = 'a.wav'
+            mock_stream.window_table_map = {}
+            MockStream.return_value = mock_stream
+            gen.ftable_manager.register_sample = Mock(return_value=1)
+            gen._create_streams(stream_data)
+
+        stored = gen._stream_data_map['s1']
+        assert isinstance(stored, dict)
+
+    def test_stream_data_map_multiple_streams(self, gen):
+        """_stream_data_map viene popolato per tutti gli stream."""
+        stream_data = [
+            {'stream_id': 's1', 'onset': 0.0, 'sample': 'a.wav'},
+            {'stream_id': 's2', 'onset': 5.0, 'sample': 'b.wav'},
+        ]
+        with patch('engine.generator.Stream') as MockStream, \
+             patch('engine.generator.WindowController'):
+            def make_stream(d):
+                m = Mock()
+                m.stream_id = d['stream_id']
+                m.sample = d['sample']
+                m.window_table_map = {}
+                return m
+            MockStream.side_effect = make_stream
+            gen.ftable_manager.register_sample = Mock(return_value=1)
+            gen._create_streams(stream_data)
+
+        assert 's1' in gen._stream_data_map
+        assert 's2' in gen._stream_data_map
+
+
+# =============================================================================
+# 12. TEST generate_score_files_per_stream() WITH CACHE
+# =============================================================================
+
+class TestGenerateScoreFilesPerStreamWithCache:
+    """
+    generate_score_files_per_stream() con cache_manager opzionale.
+
+    Behavioral contract:
+    - Senza cache_manager: comportamento invariato (backward compat)
+    - Con cache_manager: stream clean saltano write_score
+    - Con cache_manager: stream dirty ricevono write_score
+    - update_after_build() viene chiamato dopo la scrittura degli stream dirty
+    - aif_dir viene passato a get_dirty_stream_dicts
+    """
+
+    def _make_stream(self, stream_id):
+        s = Mock()
+        s.stream_id = stream_id
+        return s
+
+    def _make_cache_manager(self, dirty_ids=None):
+        """
+        Costruisce un mock StreamCacheManager.
+        dirty_ids: set di stream_id considerati dirty. Se None, tutti dirty.
+        """
+        from unittest.mock import MagicMock
+        cm = MagicMock()
+        if dirty_ids is None:
+            cm.get_dirty_stream_dicts.side_effect = lambda dicts, aif_dir: dicts
+        else:
+            def filter_dirty(dicts, aif_dir):
+                return [d for d in dicts if d.get('stream_id') in dirty_ids]
+            cm.get_dirty_stream_dicts.side_effect = filter_dirty
+        return cm
+
+    def test_without_cache_manager_writes_all_streams(self, gen):
+        """Senza cache_manager tutti gli stream producono write_score."""
+        gen.streams = [self._make_stream('s1'), self._make_stream('s2')]
+        gen.cartridges = []
+
+        gen.generate_score_files_per_stream()
+
+        assert gen.score_writer.write_score.call_count == 2
+
+    def test_with_cache_manager_all_dirty_writes_all(self, gen):
+        """Con cache_manager, stream tutti dirty: write_score chiamato per ognuno."""
+        s1 = self._make_stream('s1')
+        s2 = self._make_stream('s2')
+        gen.streams = [s1, s2]
+        gen.cartridges = []
+        gen._stream_data_map = {
+            's1': {'stream_id': 's1'},
+            's2': {'stream_id': 's2'},
+        }
+
+        cm = self._make_cache_manager(dirty_ids={'s1', 's2'})
+        gen.generate_score_files_per_stream(cache_manager=cm)
+
+        assert gen.score_writer.write_score.call_count == 2
+
+    def test_with_cache_manager_all_clean_skips_all(self, gen):
+        """Con cache_manager, stream tutti clean: write_score mai chiamato."""
+        s1 = self._make_stream('s1')
+        s2 = self._make_stream('s2')
+        gen.streams = [s1, s2]
+        gen.cartridges = []
+        gen._stream_data_map = {
+            's1': {'stream_id': 's1'},
+            's2': {'stream_id': 's2'},
+        }
+
+        cm = self._make_cache_manager(dirty_ids=set())
+        gen.generate_score_files_per_stream(cache_manager=cm)
+
+        gen.score_writer.write_score.assert_not_called()
+
+    def test_with_cache_manager_mixed_writes_only_dirty(self, gen):
+        """Con cache_manager, solo lo stream dirty riceve write_score."""
+        s1 = self._make_stream('s1')
+        s2 = self._make_stream('s2')
+        gen.streams = [s1, s2]
+        gen.cartridges = []
+        gen._stream_data_map = {
+            's1': {'stream_id': 's1'},
+            's2': {'stream_id': 's2'},
+        }
+
+        cm = self._make_cache_manager(dirty_ids={'s2'})
+        gen.generate_score_files_per_stream(cache_manager=cm)
+
+        assert gen.score_writer.write_score.call_count == 1
+        written_streams = gen.score_writer.write_score.call_args.kwargs['streams']
+        assert written_streams == [s2]
+
+    def test_update_after_build_called_with_dirty_dicts(self, gen):
+        """update_after_build viene chiamato con i dict degli stream scritti."""
+        s1 = self._make_stream('s1')
+        gen.streams = [s1]
+        gen.cartridges = []
+        raw = {'stream_id': 's1', 'volume': -6.0}
+        gen._stream_data_map = {'s1': raw}
+
+        cm = self._make_cache_manager(dirty_ids={'s1'})
+        gen.generate_score_files_per_stream(cache_manager=cm)
+
+        cm.update_after_build.assert_called_once_with([raw])
+
+    def test_update_after_build_not_called_when_nothing_dirty(self, gen):
+        """update_after_build non viene chiamato se nessuno stream e' dirty."""
+        s1 = self._make_stream('s1')
+        gen.streams = [s1]
+        gen.cartridges = []
+        gen._stream_data_map = {'s1': {'stream_id': 's1'}}
+
+        cm = self._make_cache_manager(dirty_ids=set())
+        gen.generate_score_files_per_stream(cache_manager=cm)
+
+        cm.update_after_build.assert_not_called()
+
+    def test_aif_dir_passed_to_get_dirty_stream_dicts(self, gen):
+        """aif_dir viene inoltrato a cache_manager.get_dirty_stream_dicts."""
+        s1 = self._make_stream('s1')
+        gen.streams = [s1]
+        gen.cartridges = []
+        gen._stream_data_map = {'s1': {'stream_id': 's1'}}
+
+        cm = self._make_cache_manager(dirty_ids=set())
+        gen.generate_score_files_per_stream(
+            cache_manager=cm, aif_dir='/output/stems'
+        )
+
+        call_kwargs = cm.get_dirty_stream_dicts.call_args
+        assert call_kwargs.kwargs['aif_dir'] == '/output/stems'
+
+    def test_cartridges_not_filtered_by_cache(self, gen):
+        """Le cartridges non passano dal cache manager e vengono sempre scritte."""
+        c1 = Mock()
+        c1.cartridge_id = 'c1'
+        gen.streams = []
+        gen.cartridges = [c1]
+        gen._stream_data_map = {}
+
+        cm = self._make_cache_manager(dirty_ids=set())
+        gen.generate_score_files_per_stream(cache_manager=cm)
+
+        assert gen.score_writer.write_score.call_count == 1
+
+    def test_without_cache_manager_update_never_called(self, gen):
+        """Senza cache_manager non viene chiamato nessun update."""
+        gen.streams = [self._make_stream('s1')]
+        gen.cartridges = []
+
+        # Nessun cache_manager passato: nessun AttributeError atteso
+        gen.generate_score_files_per_stream()
+        # Se arriviamo qui senza eccezioni, il test passa

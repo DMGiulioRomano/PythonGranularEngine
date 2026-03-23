@@ -59,7 +59,7 @@ class Generator:
         # Delegati specializzati
         self.ftable_manager = FtableManager(start_num=1)
         self.score_writer = ScoreWriter(self.ftable_manager)
-    
+        self._stream_data_map: Dict[str, dict] = {}
     # =========================================================================
     # PUBLIC API
     # =========================================================================
@@ -132,7 +132,9 @@ class Generator:
     def generate_score_files_per_stream(
         self,
         output_dir: str = '.',
-        base_name: str = None
+        base_name: str = None,
+        cache_manager=None,
+        aif_dir: str = None,
     ) -> List[str]:
         """
         Genera un file .sco separato per ogni stream e per ogni cartridge.
@@ -141,18 +143,40 @@ class Generator:
         Se base_name e' fornito: {base_name}_{id}.sco
         Altrimenti: {id}.sco
 
+        Se cache_manager e' fornito, vengono scritti solo gli stream dirty.
+        Le cartridges non sono soggette al filtro cache.
+
         Args:
             output_dir: directory di output
             base_name: prefisso opzionale per i nomi file
+            cache_manager: StreamCacheManager opzionale per build incrementale
+            aif_dir: directory dei .aif, passata a cache_manager per check esistenza
 
         Returns:
-            Lista dei path file generati
+            Lista dei path file .sco generati
         """
         import os
         os.makedirs(output_dir, exist_ok=True)
         generated = []
 
-        for stream in self.streams:
+        # --- Determina quali stream scrivere ---
+        if cache_manager is not None:
+            raw_dicts = [
+                self._stream_data_map[s.stream_id]
+                for s in self.streams
+                if s.stream_id in self._stream_data_map
+            ]
+            dirty_dicts = cache_manager.get_dirty_stream_dicts(
+                raw_dicts, aif_dir=aif_dir
+            )
+            dirty_ids = {d['stream_id'] for d in dirty_dicts}
+            streams_to_write = [s for s in self.streams if s.stream_id in dirty_ids]
+        else:
+            streams_to_write = self.streams
+            dirty_dicts = None
+
+        # --- Scrivi stream ---
+        for stream in streams_to_write:
             filename = (
                 f"{base_name}_{stream.stream_id}.sco"
                 if base_name
@@ -168,6 +192,11 @@ class Generator:
             )
             generated.append(filepath)
 
+        # --- Aggiorna cache dopo scrittura ---
+        if cache_manager is not None and dirty_dicts:
+            cache_manager.update_after_build(dirty_dicts)
+
+        # --- Scrivi cartridges (sempre, non filtrate dalla cache) ---
         for cartridge in self.cartridges:
             filename = (
                 f"{base_name}_{cartridge.cartridge_id}.sco"
@@ -202,7 +231,7 @@ class Generator:
         for stream_data in stream_data_list:
             # 1. Crea stream
             stream = Stream(stream_data)
-            
+            self._stream_data_map[stream_data['stream_id']] = stream_data
             # 2. Registra ftable sample
             stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
             
