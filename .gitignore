@@ -735,4 +735,6 @@ $RECYCLE.BIN/
 *.aif
 *.sco
 
-cache/
+cache
+generated 
+output
