@@ -2,7 +2,7 @@ composition:
   title: "il mondo dorme"
 
 streams:
-  - stream_id: "texture1"
+  - stream_id: "stream1"
     time_mode: normalized
     onset: 0.0
     duration: 30
@@ -28,7 +28,7 @@ streams:
       type: 'cubic'
       points: [[0,50],[.5,0],[1,30]]
   - stream_id: "stream2"
-    onset: 30.0
+    onset: 40.0
     duration: 10.0
     sample: "pino.wav"
   - stream_id: "stream3"

@@ -55,11 +55,13 @@ endif
 all: $(ALL_PRE) stems-build
 
 .PHONY: stems-build
+
 stems-build: venv-setup $(CACHEDIR)
 	@echo "[STEMS] Pulizia score intermedi..."
 	rm -f $(GENDIR)/*.sco
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(GENDIR)/$(FILE).sco $(PYFLAGS)
 	@for sco in $(GENDIR)/*.sco; do \
+		[ -f "$$sco" ] || continue; \
 		stem=$$(basename $$sco .sco); \
 		csound \
 			--env:INCDIR+=$(PWD_DIR)/$(INCDIR) \
