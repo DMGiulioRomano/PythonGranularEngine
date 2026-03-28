@@ -1,0 +1,49 @@
+{
+  "description": "Python Granular Synthesis Engine",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ]; then echo 'BLOCCATO: sei sul branch main. Apri un feature branch prima di modificare file.'; exit 2; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "if": "Edit(*.py)|Write(*.py)|MultiEdit(*.py)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '--- Test suite automatica ---' && cd $(git rev-parse --show-toplevel 2>/dev/null || pwd) && make tests 2>&1 | tail -30",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== easy - Granular Synthesis Engine ===' && echo \"Branch: $(git branch --show-current 2>/dev/null)\" && echo \"Ultimo tag: $(git describe --tags --abbrev=0 2>/dev/null || echo 'nessun tag')\" && echo \"Test: $(cd $(git rev-parse --show-toplevel 2>/dev/null || pwd) && python -m pytest --co -q 2>/dev/null | tail -1)\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git reset --hard HEAD~*)",
+      "Bash(rm -rf *)"
+    ]
+  }
+}
