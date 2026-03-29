@@ -72,34 +72,29 @@ stems-build: venv-setup $(SFDIR)
 
 else
 
-# --- STEMS + RENDERER=csound (comportamento IDENTICO all'originale) ---
+# --- STEMS + RENDERER=csound (one-step: Python invoca csound internamente) ---
 PYFLAGS += --show-static
 PYFLAGS += --per-stream
 
+CSOUND_FLAGS := \
+	--orc-path $(CSDIR)/main.orc \
+	--incdir $(PWD_DIR)/$(INCDIR) \
+	--ssdir $(PWD_DIR)/$(SSDIR) \
+	--sfdir $(PWD_DIR)/$(SFDIR) \
+	--log-dir $(LOGDIR)
+
 ifeq ($(CACHE), true)
-PYFLAGS += --cache --cache-dir $(CACHEDIR) --aif-dir $(SFDIR)
+PYFLAGS += --cache --cache-dir $(CACHEDIR)
 endif
 
 .PHONY: all
 all: $(ALL_PRE) stems-build
 
 .PHONY: stems-build
-stems-build: venv-setup $(CACHEDIR)
-	@echo "[STEMS] Pulizia score intermedi..."
-	rm -f $(GENDIR)/*.sco
-	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(GENDIR)/$(FILE).sco $(PYFLAGS)
-	@for sco in $(GENDIR)/*.sco; do \
-		[ -f "$$sco" ] || continue; \
-		stem=$$(basename $$sco .sco); \
-		csound \
-			--env:INCDIR+=$(PWD_DIR)/$(INCDIR) \
-			--env:SSDIR+=$(PWD_DIR)/$(SSDIR) \
-			--env:SFDIR=$(PWD_DIR)/$(SFDIR) \
-			-m 134 \
-			$(CSDIR)/main.orc $$sco \
-			--logfile=$(LOGDIR)/$$stem.log \
-			-o $(SFDIR)/$$stem.aif; \
-	done
+stems-build: venv-setup $(SFDIR) $(LOGDIR) $(CACHEDIR)
+	@echo "[CSOUND][STEMS] Rendering YAML → AIF (Python invoca csound)..."
+	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif \
+		--renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
 	@if [ "$(AUTOPEN)" = "true" ]; then \
 		for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
 	fi
@@ -138,7 +133,14 @@ $(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setu
 
 else
 
-# --- Normale + RENDERER=csound (comportamento IDENTICO all'originale) ---
+# --- Normale + RENDERER=csound (one-step: Python invoca csound internamente) ---
+
+CSOUND_FLAGS := \
+	--orc-path $(CSDIR)/main.orc \
+	--incdir $(PWD_DIR)/$(INCDIR) \
+	--ssdir $(PWD_DIR)/$(SSDIR) \
+	--sfdir $(PWD_DIR)/$(SFDIR) \
+	--log-dir $(LOGDIR)
 
 .PHONY: all
 ifeq ($(TEST), true)
@@ -147,20 +149,9 @@ else
 all: $(ALL_PRE) $(SFDIR)/$(FILE).aif
 endif
 
-# YAML → SCO (Python)
-$(GENDIR)/%.sco: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(GENDIR) venv-setup
-	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ $(PYFLAGS)
-
-# SCO → AIF (Csound)
-$(SFDIR)/%.aif: $(GENDIR)/%.sco $(YMLDIR)/%.yml | $(SFDIR) $(LOGDIR)
-	csound \
-		--env:INCDIR+=$(PWD_DIR)/$(INCDIR) \
-		--env:SSDIR+=$(PWD_DIR)/$(SSDIR) \
-		--env:SFDIR=$(PWD_DIR)/$(SFDIR) \
-		-m 134 \
-		$(CSDIR)/main.orc $< \
-		--logfile=$(LOGDIR)/$*.log \
-		-o $@
+# YAML → AIF (Python, una sola fase: Python invoca csound internamente)
+$(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
+	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
 	@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
 		$(OPEN_CMD) "$@"; \
 	fi
