@@ -1,31 +1,24 @@
 # src/rendering/numpy_audio_renderer.py
 """
-NumpyAudioRenderer - Rendering audio con NumPy overlap-add.
+NumpyAudioRenderer - Rendering audio atomico con NumPy overlap-add.
 
-Implementazione concreta di AudioRenderer che sostituisce la pipeline
-Csound (SCO -> subprocess csound -> AIF) con rendering NumPy puro.
+Implementazione concreta di AudioRenderer (ATOMIC INTERFACE).
+Sostituisce pipeline Csound con rendering NumPy puro.
 
-Template Method interno:
-  1. Alloca buffer stereo float64 (duration * output_sr, 2)
-  2. Per ogni voce, per ogni grano:
-     a. Risolve table_num -> nome sample/window via table_map
-     b. Chiama GrainRenderer.render() per ottenere buffer grano stereo
-     c. Overlap-add: buffer[onset:onset+len] += grain_buffer
-  3. Clamp a [-1.0, 1.0] per evitare clipping
+Refactored per Strategy Composition Architecture:
+- render_single_stream(): UN stream, onset relativi (STEMS mode)
+- render_merged_streams(): PIÙ stream, onset assoluti (MIX mode)
+
+Template Method interno (comune):
+  1. Alloca buffer stereo float64
+  2. Overlap-add grani (relativi o assoluti)
+  3. Clamp a [-1.0, 1.0]
   4. Scrivi .aif con soundfile
-
-Equivalenze con la pipeline Csound:
-  - FtableManager.tables  -> table_map (mapping table_num -> nome)
-  - GEN01 + ftsr()         -> SampleRegistry.load()
-  - GEN20/GEN16            -> NumpyWindowRegistry.get()
-  - instr Grain            -> GrainRenderer.render()
-  - overlap nell'output    -> np sum nel buffer
-  - csound -o file.aif     -> sf.write()
 """
 
 import numpy as np
 import soundfile as sf
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 from rendering.audio_renderer import AudioRenderer
 from rendering.grain_renderer import GrainRenderer
@@ -35,13 +28,16 @@ from rendering.numpy_window_registry import NumpyWindowRegistry
 
 class NumpyAudioRenderer(AudioRenderer):
     """
-    Renderer audio NumPy con overlap-add.
+    Renderer audio NumPy atomico con overlap-add.
+
+    Implementa AudioRenderer ABC con due metodi atomici:
+    - render_single_stream(): offset relativi (per STEMS)
+    - render_merged_streams(): offset assoluti (per MIX)
 
     Args:
         sample_registry: registry dei sample audio
         window_registry: registry delle finestre grano
         table_map: mapping {table_num: ('sample'|'window', name)}
-                   ottenuto da FtableManager.get_all_tables()
         output_sr: sample rate di output (default: 48000)
     """
 
@@ -64,56 +60,82 @@ class NumpyAudioRenderer(AudioRenderer):
         )
 
     # =========================================================================
-    # AudioRenderer ABC
+    # AudioRenderer ABC - ATOMIC INTERFACE
     # =========================================================================
 
-    def render_stream(self, stream, output_path: str) -> str:
+    def render_single_stream(self, stream, output_path: str) -> str:
         """
-        Renderizza uno stream granulare in un file .aif.
+        Renderizza UN stream in UN file (onset relativi).
 
-        Template Method:
-        1. Alloca buffer stereo
-        2. Overlap-add di tutti i grani
-        3. Scrivi file
+        Usato per: STEMS mode (ogni stream in file separato)
+
+        Comportamento:
+        - Buffer dimensionato per stream.duration
+        - Onset grani RELATIVI: sottrae stream.onset
+        - Output parte da tempo 0
 
         Args:
-            stream: oggetto Stream con voices e grains
+            stream: Stream con voices e grains
             output_path: percorso file .aif di output
 
         Returns:
-            Il percorso del file prodotto
+            Path del file prodotto
         """
-        # 1. Alloca buffer stereo
+        # 1. Alloca buffer (solo per duration, ignora onset)
         n_total = int(stream.duration * self.output_sr)
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
-        # 2. Overlap-add per ogni voce, per ogni grano
-        stream_onset = stream.onset
-
+        # 2. Overlap-add con onset RELATIVI
         for voice_grains in stream.voices:
             for grain in voice_grains:
-                self._add_grain_to_buffer(buffer, grain, stream_onset, n_total)
+                self._add_grain_relative(buffer, grain, stream.onset, n_total)
 
-        # 3. Clamp a [-1.0, 1.0]
+        # 3. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
-
-        # 4. Scrivi file .aif
         sf.write(output_path, buffer, self.output_sr, format='AIFF')
 
         return output_path
 
-    def render_cartridge(self, cartridge, output_path: str) -> str:
-        """Placeholder: cartridge rendering non ancora implementato."""
-        raise NotImplementedError(
-            "render_cartridge() non ancora implementato in NumpyAudioRenderer. "
-            "Usare CsoundRenderer per le cartridges."
-        )
+    def render_merged_streams(self, streams: List, output_path: str) -> str:
+        """
+        Renderizza PIÙ stream in UN file (onset assoluti).
+
+        Usato per: MIX mode (tutti gli stream in un file)
+
+        Comportamento:
+        - Buffer dimensionato per max(stream.onset + stream.duration)
+        - Onset grani ASSOLUTI: rispetta stream.onset
+        - Tutti gli stream posizionati correttamente
+
+        Args:
+            streams: lista Stream da mixare
+            output_path: percorso file .aif di output
+
+        Returns:
+            Path del file prodotto
+        """
+        # 1. Calcola durata totale buffer
+        max_end_time = max(s.onset + s.duration for s in streams)
+        n_total = int(max_end_time * self.output_sr)
+        buffer = np.zeros((n_total, 2), dtype=np.float64)
+
+        # 2. Overlap-add con onset ASSOLUTI
+        for stream in streams:
+            for voice_grains in stream.voices:
+                for grain in voice_grains:
+                    self._add_grain_absolute(buffer, grain, n_total)
+
+        # 3. Clamp + scrivi
+        np.clip(buffer, -1.0, 1.0, out=buffer)
+        sf.write(output_path, buffer, self.output_sr, format='AIFF')
+
+        return output_path
 
     # =========================================================================
-    # INTERNAL
+    # INTERNAL - Overlap-add helpers
     # =========================================================================
 
-    def _add_grain_to_buffer(
+    def _add_grain_relative(
         self,
         buffer: np.ndarray,
         grain,
@@ -121,40 +143,84 @@ class NumpyAudioRenderer(AudioRenderer):
         n_total: int,
     ):
         """
-        Renderizza un grano e lo somma nel buffer (overlap-add).
+        Aggiunge grano al buffer con onset RELATIVO.
+
+        Usato da: render_single_stream() (STEMS mode)
+
+        Onset calculation: onset_sample = (grain.onset - stream_onset) * sr
+        → grano posizionato relativamente allo stream (parte da 0)
+        """
+        # Calcola onset RELATIVO (sottrae stream.onset)
+        onset_sample = int((grain.onset - stream_onset) * self.output_sr)
+        self._add_grain_at_position(buffer, grain, onset_sample, n_total)
+
+    def _add_grain_absolute(
+        self,
+        buffer: np.ndarray,
+        grain,
+        n_total: int,
+    ):
+        """
+        Aggiunge grano al buffer con onset ASSOLUTO.
+
+        Usato da: render_merged_streams() (MIX mode)
+
+        Onset calculation: onset_sample = grain.onset * sr
+        → grano posizionato assolutamente (rispetta stream.onset)
+        """
+        # Calcola onset ASSOLUTO (usa grain.onset direttamente)
+        onset_sample = int(grain.onset * self.output_sr)
+        self._add_grain_at_position(buffer, grain, onset_sample, n_total)
+
+    def _add_grain_at_position(
+        self,
+        buffer: np.ndarray,
+        grain,
+        onset_sample: int,
+        n_total: int,
+    ):
+        """
+        Template method: renderizza grano e somma nel buffer (overlap-add).
+
+        Gestisce:
+        - Rendering grano (sample + window)
+        - Clamping ai bordi buffer
+        - Overlap-add
 
         Args:
-            buffer: buffer stereo di output (n_total, 2)
+            buffer: buffer stereo output (n_total, 2)
             grain: oggetto Grain
-            stream_onset: onset dello stream (per calcolare offset relativo)
-            n_total: lunghezza totale del buffer
+            onset_sample: posizione nel buffer (in samples)
+            n_total: lunghezza buffer
         """
-        # Risolvi nomi da table_map
+        # Risolvi sample + window
         sample_name = self._resolve_sample_name(grain.sample_table)
         window_name = self._resolve_window_name(grain.envelope_table)
 
-        # Renderizza il grano
+        # Renderizza grano
         grain_buffer = self._grain_renderer.render(grain, sample_name, window_name)
         grain_len = grain_buffer.shape[0]
 
-        # Calcola posizione nel buffer (onset relativo allo stream)
-        onset_sample = int((grain.onset - stream_onset) * self.output_sr)
-
-        # Clamp ai bordi del buffer
+        # Clamp ai bordi buffer
         if onset_sample < 0:
-            # Grano inizia prima dello stream: taglia l'inizio
+            # Grano inizia prima del buffer: taglia inizio
             grain_buffer = grain_buffer[-onset_sample:]
             grain_len = grain_buffer.shape[0]
             onset_sample = 0
 
         end_sample = onset_sample + grain_len
         if end_sample > n_total:
-            # Grano sfora la fine: taglia la fine
+            # Grano sfora fine buffer: taglia fine
             grain_buffer = grain_buffer[:n_total - onset_sample]
             end_sample = n_total
 
+        # Overlap-add
         if onset_sample < n_total and grain_buffer.shape[0] > 0:
             buffer[onset_sample:end_sample] += grain_buffer
+
+    # =========================================================================
+    # INTERNAL - Table resolution
+    # =========================================================================
 
     def _resolve_sample_name(self, table_num: int) -> str:
         """Risolve table_num -> sample name dal table_map."""

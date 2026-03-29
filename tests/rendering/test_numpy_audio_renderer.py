@@ -19,7 +19,6 @@ Coverage:
 4. TestTableMapping              - risoluzione table_num -> nome
 5. TestRenderStreamOutput        - contenuto audio non-silente
 6. TestEdgeCases                 - stream vuoto, grano singolo
-7. TestRenderCartridge           - placeholder (non implementato ora)
 """
 
 import os
@@ -168,20 +167,20 @@ class TestNumpyAudioRendererInit:
 # =============================================================================
 
 class TestRenderStreamBasic:
-    """Test per il funzionamento base di render_stream()."""
+    """Test per il funzionamento base di render_single_stream()."""
 
     def test_creates_output_file(self, renderer, tmp_path):
-        """render_stream crea il file .aif."""
+        """render_single_stream crea il file .aif."""
         stream = make_mock_stream()
         output_path = str(tmp_path / 'test.aif')
-        result = renderer.render_stream(stream, output_path)
+        result = renderer.render_single_stream(stream, output_path)
         assert os.path.exists(output_path)
 
     def test_returns_output_path(self, renderer, tmp_path):
-        """render_stream ritorna il path del file prodotto."""
+        """render_single_stream ritorna il path del file prodotto."""
         stream = make_mock_stream()
         output_path = str(tmp_path / 'test.aif')
-        result = renderer.render_stream(stream, output_path)
+        result = renderer.render_single_stream(stream, output_path)
         assert result == output_path
 
     def test_output_file_is_readable(self, renderer, tmp_path):
@@ -189,7 +188,7 @@ class TestRenderStreamBasic:
         import soundfile as sf
         stream = make_mock_stream(duration=0.5)
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, sr = sf.read(output_path)
         assert sr == OUTPUT_SR
@@ -199,7 +198,7 @@ class TestRenderStreamBasic:
         import soundfile as sf
         stream = make_mock_stream(duration=0.5)
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, sr = sf.read(output_path)
         assert data.ndim == 2
@@ -210,7 +209,7 @@ class TestRenderStreamBasic:
         import soundfile as sf
         stream = make_mock_stream(duration=0.5)
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, sr = sf.read(output_path)
         actual_duration = len(data) / sr
@@ -241,8 +240,8 @@ class TestOverlapAdd:
 
         p1 = str(tmp_path / 'single.aif')
         p2 = str(tmp_path / 'double.aif')
-        renderer.render_stream(stream_single, p1)
-        renderer.render_stream(stream_double, p2)
+        renderer.render_single_stream(stream_single, p1)
+        renderer.render_single_stream(stream_double, p2)
 
         d1, _ = sf.read(p1)
         d2, _ = sf.read(p2)
@@ -262,7 +261,7 @@ class TestOverlapAdd:
         stream = make_mock_stream(duration=1.0, grains=grains)
 
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, _ = sf.read(output_path)
 
@@ -325,7 +324,7 @@ class TestRenderStreamOutput:
         stream = make_mock_stream(duration=0.5, grains=grains)
 
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, _ = sf.read(output_path)
         assert np.max(np.abs(data)) > 0.001
@@ -339,7 +338,7 @@ class TestRenderStreamOutput:
         stream = make_mock_stream(duration=0.5, voices=[voice_0, voice_1])
 
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, _ = sf.read(output_path)
         # Due voci sovrapposte = piu' energia
@@ -359,7 +358,7 @@ class TestEdgeCases:
         import soundfile as sf
         stream = make_mock_stream(duration=0.5, grains=[])
         output_path = str(tmp_path / 'silent.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, _ = sf.read(output_path)
         assert np.max(np.abs(data)) < 1e-10
@@ -371,7 +370,7 @@ class TestEdgeCases:
         stream = make_mock_stream(duration=0.5, grains=grains)
 
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, _ = sf.read(output_path)
         assert np.max(np.abs(data)) > 0
@@ -381,21 +380,8 @@ class TestEdgeCases:
         import soundfile as sf
         stream = make_mock_stream(duration=0.5, voices=[])
         output_path = str(tmp_path / 'test.aif')
-        renderer.render_stream(stream, output_path)
+        renderer.render_single_stream(stream, output_path)
 
         data, _ = sf.read(output_path)
         assert np.max(np.abs(data)) < 1e-10
 
-
-# =============================================================================
-# 7. TEST RENDER CARTRIDGE (PLACEHOLDER)
-# =============================================================================
-
-class TestRenderCartridge:
-    """render_cartridge e' un placeholder per ora."""
-
-    def test_render_cartridge_raises_not_implemented(self, renderer):
-        """render_cartridge solleva NotImplementedError."""
-        cartridge = MagicMock()
-        with pytest.raises(NotImplementedError):
-            renderer.render_cartridge(cartridge, '/tmp/out.aif')

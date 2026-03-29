@@ -1,5 +1,7 @@
 {
   "description": "Python Granular Synthesis Engine",
+  "model": "claude-sonnet-4-6",
+  "effortLevel": "medium",
   "hooks": {
     "PreToolUse": [
       {
