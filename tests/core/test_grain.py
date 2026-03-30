@@ -406,3 +406,82 @@ class TestGrainValidationBoolAsInt:
         sample_grain_data['envelope_table'] = False
         with pytest.raises(TypeError, match="envelope_table"):
             Grain(**sample_grain_data)
+
+
+# =============================================================================
+# TEST to_score_line CON onset_offset (RED - fix problema 1)
+# =============================================================================
+
+class TestGrainToScoreLineWithOnsetOffset:
+    """Test per to_score_line(onset_offset=...) - onset relativo per STEMS mode."""
+
+    def test_default_onset_offset_zero_unchanged(self):
+        """onset_offset=0.0 (default) produce lo stesso output di prima."""
+        grain = Grain(
+            onset=5.0, duration=0.1, pointer_pos=0.0,
+            pitch_ratio=1.0, volume=0.0, pan=0.0,
+            sample_table=1, envelope_table=2,
+        )
+        result_no_offset = grain.to_score_line()
+        result_zero_offset = grain.to_score_line(onset_offset=0.0)
+        assert result_no_offset == result_zero_offset
+
+    def test_onset_offset_subtracts_from_onset(self):
+        """onset_offset=stream.onset produce onset relativo (parte da 0)."""
+        grain = Grain(
+            onset=5.123456, duration=0.1, pointer_pos=0.0,
+            pitch_ratio=1.0, volume=0.0, pan=0.0,
+            sample_table=1, envelope_table=2,
+        )
+        result = grain.to_score_line(onset_offset=5.0)
+        assert '0.123456' in result
+        assert '5.123456' not in result
+
+    def test_onset_offset_stream_onset_gives_zero_start(self):
+        """onset == stream.onset → onset relativo = 0.0."""
+        grain = Grain(
+            onset=10.0, duration=0.05, pointer_pos=0.0,
+            pitch_ratio=1.0, volume=0.0, pan=0.0,
+            sample_table=1, envelope_table=2,
+        )
+        result = grain.to_score_line(onset_offset=10.0)
+        assert '0.000000' in result
+
+    def test_onset_offset_does_not_affect_other_fields(self):
+        """onset_offset modifica solo il campo onset, non duration/pointer/etc."""
+        grain = Grain(
+            onset=5.0, duration=0.07, pointer_pos=2.5,
+            pitch_ratio=1.5, volume=-6.0, pan=0.3,
+            sample_table=3, envelope_table=4,
+        )
+        result = grain.to_score_line(onset_offset=5.0)
+        assert '0.070000' in result   # duration invariata
+        assert '2.500000' in result   # pointer_pos invariato
+        assert '1.500000' in result   # pitch_ratio invariato
+        assert '-6.00' in result      # volume invariato
+        assert '0.300' in result      # pan invariato
+        assert '3' in result          # sample_table invariato
+        assert '4' in result          # envelope_table invariato
+
+    def test_onset_offset_partial_subtraction(self):
+        """onset_offset parziale produce onset parzialmente ridotto."""
+        grain = Grain(
+            onset=8.0, duration=0.05, pointer_pos=0.0,
+            pitch_ratio=1.0, volume=0.0, pan=0.0,
+            sample_table=1, envelope_table=2,
+        )
+        result = grain.to_score_line(onset_offset=3.0)
+        assert '5.000000' in result
+
+    def test_score_line_format_preserved_with_offset(self):
+        """Il formato della riga rimane corretto anche con onset_offset."""
+        grain = Grain(
+            onset=5.0, duration=0.1, pointer_pos=1.0,
+            pitch_ratio=1.0, volume=-6.0, pan=0.5,
+            sample_table=1, envelope_table=2,
+        )
+        result = grain.to_score_line(onset_offset=5.0)
+        assert result.startswith('i "Grain"')
+        assert result.endswith('\n')
+        parts = result.strip().split()
+        assert len(parts) == 10

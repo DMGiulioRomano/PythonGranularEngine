@@ -31,11 +31,12 @@ class ScoreWriter:
         self.ftable_manager = ftable_manager
     
     def write_score(
-        self, 
-        filepath: str, 
-        streams: List[Stream], 
+        self,
+        filepath: str,
+        streams: List[Stream],
         cartridges: List[Cartridge],
-        yaml_source: str = None
+        yaml_source: str = None,
+        per_stream: bool = False,
     ):
         """
         Scrive score completo su file.
@@ -45,11 +46,12 @@ class ScoreWriter:
             streams: lista stream granulari
             cartridges: lista cartridges tape recorder
             yaml_source: path file YAML sorgente (per header)
+            per_stream: se True, onset dei grani relativo a stream.onset (STEMS mode)
         """
         with open(filepath, 'w') as f:
             self._write_header(f, yaml_source)
             self.ftable_manager.write_to_file(f)
-            self._write_events(f, streams, cartridges)
+            self._write_events(f, streams, cartridges, per_stream=per_stream)
             self._write_footer(f)
         
         self._print_generation_summary(filepath, streams, cartridges)
@@ -66,11 +68,11 @@ class ScoreWriter:
             f.write(f"; Generated from: {yaml_source}\n")
         f.write("; " + "="*77 + "\n\n")
     
-    def _write_events(self, f, streams: List[Stream], cartridges: List[Cartridge]):
+    def _write_events(self, f, streams: List[Stream], cartridges: List[Cartridge], per_stream: bool = False):
         """Scrive tutti gli eventi (grani + cartridges)."""
         if streams:
-            self._write_granular_streams(f, streams)
-        
+            self._write_granular_streams(f, streams, per_stream=per_stream)
+
         if cartridges:
             self._write_tape_recorder_cartridges(f, cartridges)
     
@@ -85,10 +87,10 @@ class ScoreWriter:
     # GRANULAR STREAMS
     # =========================================================================
     
-    def _write_granular_streams(self, f, streams: List[Stream]):
+    def _write_granular_streams(self, f, streams: List[Stream], per_stream: bool = False):
         """
         Scrive sezione stream granulari.
-        
+
         Per ogni stream:
         - Intestazione con metadati
         - Eventi grani organizzati per voice
@@ -96,26 +98,31 @@ class ScoreWriter:
         f.write("; " + "="*77 + "\n")
         f.write("; GRANULAR STREAMS\n")
         f.write("; " + "="*77 + "\n\n")
-        
+
         for stream in streams:
-            self._write_stream_section(f, stream)
+            onset_offset = stream.onset if per_stream else 0.0
+            self._write_stream_section(f, stream, onset_offset=onset_offset)
     
-    def _write_stream_section(self, f, stream: Stream):
-        """Scrive sezione completa di uno stream."""
+    def _write_stream_section(self, f, stream: Stream, onset_offset: float = 0.0):
+        """Scrive sezione completa di uno stream.
+
+        Args:
+            onset_offset: sottratto dall'onset di ogni grain (STEMS mode).
+        """
         # Header stream
         f.write(f'; Stream: {stream.stream_id}\n')
         self._write_stream_metadata(f, stream)
-        
+
         # Eventi grani per voice
         for voice_index, voice_grains in enumerate(stream.voices):
             if voice_grains:  # Solo se la voice ha grani
                 f.write(f';   Voice {voice_index} ({len(voice_grains)} grains)\n')
-                
+
                 for grain in voice_grains:
-                    f.write(grain.to_score_line())
-                
+                    f.write(grain.to_score_line(onset_offset=onset_offset))
+
                 f.write('\n')  # Separatore tra voices
-        
+
         f.write('\n')  # Separatore tra streams
     
     def _write_stream_metadata(self, f, stream: Stream):

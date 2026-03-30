@@ -615,3 +615,45 @@ class TestRendererFactoryCreateNewKwargs:
             stream_data_map=sdm,
         )
         assert renderer.stream_data_map == sdm
+
+
+# =============================================================================
+# 12. TEST render_single_stream PASSA per_stream=True (RED - fix problema 1)
+# =============================================================================
+
+class TestCsoundRendererPerStream:
+    """render_single_stream deve passare per_stream=True a score_writer.write_score."""
+
+    @patch('rendering.csound_renderer.subprocess.run')
+    def test_render_single_stream_passes_per_stream_true(
+        self, mock_run, mock_score_writer, csound_config
+    ):
+        """render_single_stream: write_score viene chiamato con per_stream=True."""
+        mock_run.return_value = MagicMock(returncode=0)
+        renderer = CsoundRenderer(
+            score_writer=mock_score_writer,
+            csound_config=csound_config,
+        )
+        stream = MagicMock()
+        stream.stream_id = 'test_stream'
+
+        renderer.render_single_stream(stream, '/out/stem.aif')
+
+        call_kwargs = mock_score_writer.write_score.call_args.kwargs
+        assert call_kwargs.get('per_stream') is True
+
+    @patch('rendering.csound_renderer.subprocess.run')
+    def test_render_merged_streams_does_not_pass_per_stream(
+        self, mock_run, mock_score_writer, csound_config
+    ):
+        """render_merged_streams: write_score NON viene chiamato con per_stream=True."""
+        mock_run.return_value = MagicMock(returncode=0)
+        renderer = CsoundRenderer(
+            score_writer=mock_score_writer,
+            csound_config=csound_config,
+        )
+
+        renderer.render_merged_streams([MagicMock()], '/out/mix.aif')
+
+        call_kwargs = mock_score_writer.write_score.call_args.kwargs
+        assert call_kwargs.get('per_stream') is not True

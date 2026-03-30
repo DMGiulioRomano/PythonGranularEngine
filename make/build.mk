@@ -32,8 +32,18 @@ ifeq ($(SHOWSTATIC), true)
 PYFLAGS += --show-static
 endif
 
+# 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
+ifeq ($(REAPER), true)
+PYFLAGS += --reaper
+ifdef REAPER_PATH
+PYFLAGS += --reaper-path $(REAPER_PATH)
+endif
+endif
+
 ifeq ($(AUTOKILL), true)
+ifneq ($(REAPER), true)
 ALL_PRE += rx-stop
+endif
 endif
 
 ifeq ($(PRECLEAN), true)
@@ -67,7 +77,11 @@ stems-build: venv-setup $(SFDIR)
 	@echo "[NUMPY][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif --renderer numpy $(PYFLAGS)
 	@if [ "$(AUTOPEN)" = "true" ]; then \
-		for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
+		if [ "$(REAPER)" = "true" ]; then \
+			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		else \
+			for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
+		fi; \
 	fi
 
 else
@@ -96,7 +110,11 @@ stems-build: venv-setup $(SFDIR) $(LOGDIR) $(CACHEDIR)
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif \
 		--renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
 	@if [ "$(AUTOPEN)" = "true" ]; then \
-		for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
+		if [ "$(REAPER)" = "true" ]; then \
+			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		else \
+			for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
+		fi; \
 	fi
 
 endif
@@ -128,7 +146,11 @@ endif
 $(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
 	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer numpy $(PYFLAGS)
 	@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
-		$(OPEN_CMD) "$@"; \
+		if [ "$(REAPER)" = "true" ]; then \
+			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		else \
+			$(OPEN_CMD) "$@"; \
+		fi; \
 	fi
 
 else
@@ -153,7 +175,11 @@ endif
 $(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
 	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
 	@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
-		$(OPEN_CMD) "$@"; \
+		if [ "$(REAPER)" = "true" ]; then \
+			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		else \
+			$(OPEN_CMD) "$@"; \
+		fi; \
 	fi
 
 endif

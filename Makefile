@@ -3,21 +3,24 @@
 OS := $(shell uname -s)
 
 ifeq ($(OS), Darwin)
-    OPEN_CMD     := open
-    PYTHON_CMD   := python3.12
-    HAS_RX11     := $(shell [ -d "/Applications/iZotope RX 11 Audio Editor.app" ] && echo "true" || echo "false")
-    KILL_RX_CMD  := osascript -e 'tell application "iZotope RX 11 Audio Editor" to quit'
+    OPEN_CMD        := open
+    OPEN_REAPER_CMD := open -a "REAPER"
+    PYTHON_CMD      := python3.12
+    HAS_RX11        := $(shell [ -d "/Applications/iZotope RX 11 Audio Editor.app" ] && echo "true" || echo "false")
+    KILL_RX_CMD     := osascript -e 'tell application "iZotope RX 11 Audio Editor" to quit'
 else ifeq ($(OS), Linux)
-    OPEN_CMD     := xdg-open
-    PYTHON_CMD   := python3.12
-    HAS_RX11     := false
-    KILL_RX_CMD  := true
+    OPEN_CMD        := xdg-open
+    OPEN_REAPER_CMD := xdg-open
+    PYTHON_CMD      := python3.12
+    HAS_RX11        := false
+    KILL_RX_CMD     := true
 else
     # Fallback / Windows con WSL o altri sistemi
-    OPEN_CMD     := echo "Apertura automatica non supportata su questo OS:"
-    PYTHON_CMD   := python3
-    HAS_RX11     := false
-    KILL_RX_CMD  := true
+    OPEN_CMD        := echo "Apertura automatica non supportata su questo OS:"
+    OPEN_REAPER_CMD := echo "Apertura automatica non supportata su questo OS:"
+    PYTHON_CMD      := python3
+    HAS_RX11        := false
+    KILL_RX_CMD     := true
 endif
 
 # --- Configurazione directory ---
@@ -41,7 +44,8 @@ TEST ?= false
 PRECLEAN ?=true
 STEMS ?= true
 RENDERER ?= csound
-
+REAPER ?= false
+REAPER_PATH ?= Project.rpp
 # Include moduli
 include make/test.mk
 include make/utils.mk
@@ -98,6 +102,8 @@ help:
 	@echo "  AUTOPEN=true/false   - Auto-apri file generati"
 	@echo "  AUTOVISUAL=true/false- Genera visualizzazioni PDF"
 	@echo "  TEST=true/false      - Build tutti i file o solo FILE"
+	@echo "  REAPER=true/false    - Esporta progetto Reaper .rpp"
+	@echo "  REAPER_PATH=file.rpp - Path output .rpp (default: FILE.rpp)"
 
 .PHONY: install-system-deps check-system-deps
 

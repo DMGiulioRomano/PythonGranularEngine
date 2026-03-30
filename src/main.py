@@ -96,7 +96,8 @@ def main():
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
-            "[--cache] [--cache-dir DIR]"
+            "[--cache] [--cache-dir DIR] "
+            "[--reaper] [--reaper-path FILE]"
         )
         sys.exit(1)
 
@@ -112,6 +113,14 @@ def main():
     show_static = '--show-static' in sys.argv or '-s' in sys.argv
     per_stream = '--per-stream' in sys.argv or '-p' in sys.argv
     use_cache = '--cache' in sys.argv
+    reaper_export = '--reaper' in sys.argv
+
+    # --reaper-path PATH (default: {yaml_basename}.rpp)
+    reaper_path = None
+    if '--reaper-path' in sys.argv:
+        idx = sys.argv.index('--reaper-path')
+        if idx + 1 < len(sys.argv):
+            reaper_path = sys.argv[idx + 1]
 
     # --renderer (default: csound)
     renderer_type = 'csound'
@@ -236,6 +245,16 @@ def main():
         print(f"\n Generazione completata! {len(generated)} file generati:")
         for path in generated:
             print(f"    {path}")
+
+        if reaper_export:
+            from export.reaper_project_writer import ReaperProjectWriter
+            rpp_out = reaper_path if reaper_path else f"{yaml_basename}.rpp"
+            ReaperProjectWriter().write(
+                streams=generator.streams,
+                aif_paths=generated,
+                output_path=rpp_out,
+            )
+            print(f"Reaper project: {rpp_out}")
 
         if do_visualize:
             print("\nGenerazione partitura grafica...")

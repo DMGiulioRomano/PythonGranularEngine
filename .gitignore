@@ -734,6 +734,7 @@ $RECYCLE.BIN/
 *.wav
 *.aif
 *.sco
+*.rpp
 
 cache
 generated 

@@ -87,7 +87,7 @@ class CsoundRenderer(AudioRenderer):
                 if not dirty:
                     return output_path
 
-        sco_path = self._write_score(streams=[stream], cartridges=[], output_path=output_path)
+        sco_path = self._write_score(streams=[stream], cartridges=[], output_path=output_path, per_stream=True)
         self._run_csound(sco_path, output_path)
 
         # Cleanup file temporaneo se non in modalita' keep-sco
@@ -134,7 +134,7 @@ class CsoundRenderer(AudioRenderer):
     # INTERNAL
     # =========================================================================
 
-    def _write_score(self, streams, cartridges, output_path: str) -> str:
+    def _write_score(self, streams, cartridges, output_path: str, per_stream: bool = False) -> str:
         """
         Scrive il file .sco via ScoreWriter.
 
@@ -161,6 +161,7 @@ class CsoundRenderer(AudioRenderer):
             filepath=sco_path,
             streams=streams,
             cartridges=cartridges,
+            per_stream=per_stream,
         )
 
         return sco_path
