@@ -50,6 +50,36 @@ ifeq ($(PRECLEAN), true)
 ALL_PRE += clean
 endif
 
+# =============================================================================
+# MACRO AUTOPEN
+# Evita la duplicazione della logica di apertura file post-build.
+#
+# autopen_stems: apre tutti i .aif in SFDIR (STEMS mode, nessun target $@)
+# autopen_single: apre il singolo file $@ (pipeline normale)
+#
+# In entrambi i casi, se REAPER=true apre il .rpp con OPEN_REAPER_CMD
+# invece dei .aif con OPEN_CMD.
+# =============================================================================
+
+define autopen_stems
+@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
+	if [ "$(REAPER)" = "true" ]; then \
+		$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+	else \
+		for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
+	fi; \
+fi
+endef
+
+define autopen_single
+@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
+	if [ "$(REAPER)" = "true" ]; then \
+		$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+	else \
+		$(OPEN_CMD) "$@"; \
+	fi; \
+fi
+endef
 
 # =============================================================================
 # MODIFICA 2: branch STEMS
@@ -76,13 +106,7 @@ all: $(ALL_PRE) stems-build
 stems-build: venv-setup $(SFDIR)
 	@echo "[NUMPY][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif --renderer numpy $(PYFLAGS)
-	@if [ "$(AUTOPEN)" = "true" ]; then \
-		if [ "$(REAPER)" = "true" ]; then \
-			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
-		else \
-			for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
-		fi; \
-	fi
+	$(autopen_stems)
 
 else
 
@@ -109,13 +133,7 @@ stems-build: venv-setup $(SFDIR) $(LOGDIR) $(CACHEDIR)
 	@echo "[CSOUND][STEMS] Rendering YAML → AIF (Python invoca csound)..."
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif \
 		--renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
-	@if [ "$(AUTOPEN)" = "true" ]; then \
-		if [ "$(REAPER)" = "true" ]; then \
-			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
-		else \
-			for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
-		fi; \
-	fi
+	$(autopen_stems)
 
 endif
 # fine ifeq RENDERER (dentro STEMS)
@@ -145,13 +163,7 @@ endif
 # YAML → AIF (Python, una sola fase)
 $(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
 	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer numpy $(PYFLAGS)
-	@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
-		if [ "$(REAPER)" = "true" ]; then \
-			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
-		else \
-			$(OPEN_CMD) "$@"; \
-		fi; \
-	fi
+	$(autopen_single)
 
 else
 
@@ -174,13 +186,7 @@ endif
 # YAML → AIF (Python, una sola fase: Python invoca csound internamente)
 $(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
 	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
-	@if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
-		if [ "$(REAPER)" = "true" ]; then \
-			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
-		else \
-			$(OPEN_CMD) "$@"; \
-		fi; \
-	fi
+	$(autopen_single)
 
 endif
 # fine ifeq RENDERER (dentro STEMS=false)
