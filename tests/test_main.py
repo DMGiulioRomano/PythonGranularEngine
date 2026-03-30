@@ -1117,24 +1117,31 @@ class TestCacheGarbageCollectionInMain:
         call_kwargs = cm.garbage_collect.call_args.kwargs
         assert call_kwargs['aif_prefix'] == 'PGE_test'
 
-    def test_gc_receives_sfdir(self, mocks):
-        """GC riceve il valore di sfdir come aif_dir."""
-        cm = self._run_with_gc_mock(
-            mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif',
-             '--per-stream', '--cache', '--sfdir', '/custom/output'],
-            stream_ids=['s1'],
-        )
-        call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert call_kwargs['aif_dir'] == '/custom/output'
+    def test_gc_receives_output_file_directory(self, mocks):
+        """GC riceve la directory del file di output come aif_dir.
 
-    def test_gc_receives_default_sfdir(self, mocks):
-        """Senza --sfdir, GC riceve il default 'output'."""
+        Usa os.path.dirname(os.path.abspath(output_file)) invece di --sfdir
+        per garantire il path corretto indipendentemente da come --sfdir
+        viene costruito dal Makefile (es. con PWD_DIR prefisso).
+        """
+        import os
         cm = self._run_with_gc_mock(
             mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+            ['main.py', 'configs/PGE_test.yml', '/custom/output/mix.aif',
              '--per-stream', '--cache'],
             stream_ids=['s1'],
         )
         call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert call_kwargs['aif_dir'] == 'output'
+        assert call_kwargs['aif_dir'] == os.path.abspath('/custom/output')
+
+    def test_gc_aif_dir_derived_from_output_file_not_sfdir(self, mocks):
+        """aif_dir viene da output_file, non da --sfdir (anche se diversi)."""
+        import os
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', '/actual/out/mix.aif',
+             '--per-stream', '--cache', '--sfdir', '/ignored/sfdir'],
+            stream_ids=['s1'],
+        )
+        call_kwargs = cm.garbage_collect.call_args.kwargs
+        assert call_kwargs['aif_dir'] == os.path.abspath('/actual/out')

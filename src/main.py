@@ -219,7 +219,7 @@ def main():
                 current_ids = [s.stream_id for s in generator.streams]
                 removed = cache_manager.garbage_collect(
                     current_stream_ids=current_ids,
-                    aif_dir=sfdir,
+                    aif_dir=os.path.dirname(os.path.abspath(output_file)),
                     aif_prefix=yaml_basename,
                 )
                 if removed:
