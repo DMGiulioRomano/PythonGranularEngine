@@ -33,7 +33,6 @@ PYFLAGS += --show-static
 endif
 
 # 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
-REAPER ?= false
 ifeq ($(REAPER), true)
 PYFLAGS += --reaper
 ifdef REAPER_PATH

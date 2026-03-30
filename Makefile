@@ -41,6 +41,7 @@ TEST ?= false
 PRECLEAN ?=true
 STEMS ?= true
 RENDERER ?= csound
+REAPER ?= false
 
 # Include moduli
 include make/test.mk
@@ -98,6 +99,8 @@ help:
 	@echo "  AUTOPEN=true/false   - Auto-apri file generati"
 	@echo "  AUTOVISUAL=true/false- Genera visualizzazioni PDF"
 	@echo "  TEST=true/false      - Build tutti i file o solo FILE"
+	@echo "  REAPER=true/false    - Esporta progetto Reaper .rpp"
+	@echo "  REAPER_PATH=file.rpp - Path output .rpp (default: FILE.rpp)"
 
 .PHONY: install-system-deps check-system-deps
 
