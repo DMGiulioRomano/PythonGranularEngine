@@ -6,6 +6,34 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v2.1.0] — "Reaper Gate" — 2026-03-30
+
+### Aggiunto
+- **ReaperProjectWriter** (`src/export/reaper_project_writer.py`): esportazione
+  dei stream granulari in progetto Reaper `.rpp` (27 test TDD)
+- Flag `REAPER=true` e `REAPER_PATH` nel Makefile per attivare l'export `.rpp`
+- `--reaper` e `--reaper-path` come argomenti CLI di `main.py`
+
+### Corretto
+- **Onset silence in Csound STEMS**: `grain.to_score_line(onset_offset=0.0)` —
+  in STEMS mode il renderer Csound ora sottrae `stream.onset` dagli onset dei
+  grani (comportamento identico al renderer NumPy con `_add_grain_relative`)
+  - `ScoreWriter.write_score(per_stream=True)` propaga l'offset attraverso
+    `_write_stream_section` fino a `grain.to_score_line`
+  - `CsoundRenderer.render_single_stream` ora passa `per_stream=True`
+- **AUTOKILL/AUTOPEN con `REAPER=true`**: quando `REAPER=true`, il Makefile
+  non chiude più iZotope RX prima della build (`rx-stop` saltato) e apre il
+  file `.rpp` con REAPER invece dei `.aif` con iZotope dopo la build
+  - Nuova variabile `OPEN_REAPER_CMD` (`open -a "REAPER"` su macOS,
+    `xdg-open` su Linux) nella sezione rilevazione OS del Makefile
+
+### Test
+- +28 test TDD: `TestGrainToScoreLineWithOnsetOffset` (6),
+  `TestWriteStreamSectionOnsetOffset` (3), `TestWriteScorePerStream` (4),
+  `TestCsoundRendererPerStream` (2), `ReaperProjectWriter` (27)
+
+---
+
 ## [v2.0.0] — "Granular Overlap" — 2026-03-30
 
 ### Aggiunto

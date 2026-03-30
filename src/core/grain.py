@@ -37,9 +37,13 @@ class Grain:
                     f"got {type(value).__name__}"
                 )
 
-    def to_score_line(self) -> str:
-        """Genera la linea di score Csound."""
-        return (f'i "Grain" {self.onset:.6f} {self.duration:.6f} '
+    def to_score_line(self, onset_offset: float = 0.0) -> str:
+        """Genera la linea di score Csound.
+
+        Args:
+            onset_offset: sottratto dall'onset (usato in STEMS mode per onset relativi).
+        """
+        return (f'i "Grain" {self.onset - onset_offset:.6f} {self.duration:.6f} '
                 f'{self.pointer_pos:.6f} {self.pitch_ratio:.6f} '
                 f'{self.volume:.2f} {self.pan:.3f} '
                 f'{self.sample_table} {self.envelope_table}\n')

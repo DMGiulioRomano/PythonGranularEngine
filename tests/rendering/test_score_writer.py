@@ -1156,3 +1156,104 @@ class TestFormatParamParametrized:
         """Valori speciali (None, stringhe)."""
         result = writer._format_param(param)
         assert result == expected
+
+
+# =============================================================================
+# 16. TEST _write_stream_section CON onset_offset (RED - fix problema 1)
+# =============================================================================
+
+class TestWriteStreamSectionOnsetOffset:
+    """Test per _write_stream_section(onset_offset=...) - onset relativo STEMS."""
+
+    def test_default_onset_offset_zero_calls_grain_without_offset(
+        self, writer, string_file
+    ):
+        """onset_offset=0.0 (default): grain.to_score_line chiamato con onset_offset=0.0."""
+        grain = make_mock_grain(onset=5.0)
+        stream = make_mock_stream(voices=[[grain]])
+
+        writer._write_stream_section(string_file, stream)
+
+        grain.to_score_line.assert_called_once_with(onset_offset=0.0)
+
+    def test_onset_offset_passed_to_grain_to_score_line(self, writer, string_file):
+        """onset_offset=5.0 viene passato a ogni grain.to_score_line."""
+        grain_a = make_mock_grain(onset=5.0)
+        grain_b = make_mock_grain(onset=5.1)
+        stream = make_mock_stream(voices=[[grain_a, grain_b]])
+
+        writer._write_stream_section(string_file, stream, onset_offset=5.0)
+
+        grain_a.to_score_line.assert_called_once_with(onset_offset=5.0)
+        grain_b.to_score_line.assert_called_once_with(onset_offset=5.0)
+
+    def test_onset_offset_applied_to_all_voices(self, writer, string_file):
+        """onset_offset viene passato ai grani di tutte le voices."""
+        grain_v0 = make_mock_grain(onset=3.0)
+        grain_v1 = make_mock_grain(onset=3.05)
+        stream = make_mock_stream(voices=[[grain_v0], [grain_v1]])
+
+        writer._write_stream_section(string_file, stream, onset_offset=3.0)
+
+        grain_v0.to_score_line.assert_called_once_with(onset_offset=3.0)
+        grain_v1.to_score_line.assert_called_once_with(onset_offset=3.0)
+
+
+# =============================================================================
+# 17. TEST write_score CON per_stream=True (RED - fix problema 1)
+# =============================================================================
+
+class TestWriteScorePerStream:
+    """Test per write_score(per_stream=True) - passa onset_offset=stream.onset."""
+
+    def test_write_score_per_stream_false_by_default(self, writer, tmp_path):
+        """per_stream=False e' il default: onset_offset=0.0 per ogni stream."""
+        stream = make_mock_stream(voices=[[make_mock_grain(onset=0.0)]])
+        stream.onset = 0.0
+
+        filepath = str(tmp_path / 'test.sco')
+        writer.write_score(filepath, [stream], [])
+
+        # Nessuna eccezione, il file viene scritto
+        assert os.path.exists(filepath)
+
+    def test_write_score_per_stream_true_uses_stream_onset_as_offset(
+        self, writer, tmp_path
+    ):
+        """per_stream=True: _write_stream_section riceve onset_offset=stream.onset."""
+        grain = make_mock_grain(onset=5.0)
+        stream = make_mock_stream(voices=[[grain]])
+        stream.onset = 5.0
+
+        filepath = str(tmp_path / 'test_per_stream.sco')
+        writer.write_score(filepath, [stream], [], per_stream=True)
+
+        grain.to_score_line.assert_called_once_with(onset_offset=5.0)
+
+    def test_write_score_per_stream_true_multiple_streams_each_uses_own_onset(
+        self, writer, tmp_path
+    ):
+        """Con piu' stream e per_stream=True, ogni stream usa il proprio onset."""
+        grain_a = make_mock_grain(onset=3.0)
+        grain_b = make_mock_grain(onset=7.0)
+        stream_a = make_mock_stream(stream_id='s1', voices=[[grain_a]])
+        stream_a.onset = 3.0
+        stream_b = make_mock_stream(stream_id='s2', voices=[[grain_b]])
+        stream_b.onset = 7.0
+
+        filepath = str(tmp_path / 'multi.sco')
+        writer.write_score(filepath, [stream_a, stream_b], [], per_stream=True)
+
+        grain_a.to_score_line.assert_called_once_with(onset_offset=3.0)
+        grain_b.to_score_line.assert_called_once_with(onset_offset=7.0)
+
+    def test_write_score_per_stream_false_uses_zero_offset(self, writer, tmp_path):
+        """per_stream=False: onset_offset=0.0 (onset assoluto, comportamento pre-fix)."""
+        grain = make_mock_grain(onset=5.0)
+        stream = make_mock_stream(voices=[[grain]])
+        stream.onset = 5.0
+
+        filepath = str(tmp_path / 'abs.sco')
+        writer.write_score(filepath, [stream], [], per_stream=False)
+
+        grain.to_score_line.assert_called_once_with(onset_offset=0.0)
