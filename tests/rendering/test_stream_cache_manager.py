@@ -375,3 +375,148 @@ class TestCacheUpdate:
         assert 's2' in loaded
         for d in two_stream_dicts:
             assert loaded[d['stream_id']] == manager.compute_fingerprint(d)
+
+
+# =============================================================================
+# 6. GARBAGE COLLECTION
+# =============================================================================
+
+class TestGarbageCollection:
+    """
+    Test garbage_collect(): rimuove dal manifest le entry di stream non piu'
+    presenti nel YAML corrente, e cancella i file .aif orfani.
+
+    Casi estremi coperti:
+    - Stream rimosso dal YAML (entry stale + .aif orfano)
+    - Stream rinominato (vecchio id orfano, nuovo id non tocca)
+    - Nessun orfano: nessuna modifica
+    - aif_dir=None: rimuove entry manifest ma NON tocca il filesystem
+    - Prefisso FILE nei nomi .aif (es. PGE_test_stream1.aif)
+    - Manifest vuoto: noop silenzioso
+    - Tutti gli stream rimossi: manifest azzerato, tutti .aif cancellati
+    """
+
+    def test_gc_removes_stale_manifest_entry(self, manager, two_stream_dicts):
+        """Stream non piu' presente nel YAML corrente: entry rimossa dal manifest."""
+        s1, s2 = two_stream_dicts
+        manager.update_after_build(two_stream_dicts)
+
+        # Ora il YAML ha solo s1
+        removed = manager.garbage_collect(current_stream_ids=['s1'], aif_dir=None)
+
+        loaded = manager.load()
+        assert 's2' not in loaded
+        assert 's1' in loaded
+        assert removed == ['s2']
+
+    def test_gc_no_orphans_leaves_manifest_intact(self, manager, two_stream_dicts):
+        """Nessun orfano: manifest invariato, ritorna lista vuota."""
+        manager.update_after_build(two_stream_dicts)
+
+        removed = manager.garbage_collect(
+            current_stream_ids=['s1', 's2'], aif_dir=None
+        )
+
+        loaded = manager.load()
+        assert 's1' in loaded
+        assert 's2' in loaded
+        assert removed == []
+
+    def test_gc_deletes_orphan_aif_file(self, manager, two_stream_dicts, tmp_path):
+        """File .aif orfano viene cancellato dal filesystem."""
+        s1, s2 = two_stream_dicts
+        manager.update_after_build(two_stream_dicts)
+
+        # Crea i .aif in output
+        aif_s1 = tmp_path / 's1.aif'
+        aif_s2 = tmp_path / 's2.aif'
+        aif_s1.touch()
+        aif_s2.touch()
+
+        manager.garbage_collect(current_stream_ids=['s1'], aif_dir=str(tmp_path))
+
+        assert aif_s1.exists()   # s1 corrente: non toccato
+        assert not aif_s2.exists()  # s2 orfano: cancellato
+
+    def test_gc_aif_dir_none_does_not_touch_filesystem(
+        self, manager, two_stream_dicts, tmp_path
+    ):
+        """Con aif_dir=None, i file .aif NON vengono cancellati anche se orfani."""
+        manager.update_after_build(two_stream_dicts)
+
+        aif_s2 = tmp_path / 's2.aif'
+        aif_s2.touch()
+
+        manager.garbage_collect(current_stream_ids=['s1'], aif_dir=None)
+
+        assert aif_s2.exists()  # non tocca il filesystem
+
+    def test_gc_with_aif_prefix(self, manager, two_stream_dicts, tmp_path):
+        """Con aif_prefix='PGE_test', cancella PGE_test_s2.aif (non s2.aif)."""
+        manager.update_after_build(two_stream_dicts)
+
+        aif_prefixed = tmp_path / 'PGE_test_s2.aif'
+        aif_plain = tmp_path / 's2.aif'
+        aif_prefixed.touch()
+        aif_plain.touch()
+
+        manager.garbage_collect(
+            current_stream_ids=['s1'],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+        )
+
+        assert not aif_prefixed.exists()  # questo viene cancellato
+        assert aif_plain.exists()         # naming senza prefisso non tocca
+
+    def test_gc_empty_manifest_is_noop(self, manager):
+        """Manifest vuoto: nessun orfano, ritorna lista vuota."""
+        removed = manager.garbage_collect(
+            current_stream_ids=['s1', 's2'], aif_dir=None
+        )
+        assert removed == []
+
+    def test_gc_all_streams_removed(self, manager, two_stream_dicts, tmp_path):
+        """Tutti gli stream rimossi: manifest azzerato, tutti i .aif cancellati."""
+        manager.update_after_build(two_stream_dicts)
+
+        for sid in ['s1', 's2']:
+            (tmp_path / f'{sid}.aif').touch()
+
+        removed = manager.garbage_collect(
+            current_stream_ids=[], aif_dir=str(tmp_path)
+        )
+
+        assert manager.load() == {}
+        assert not (tmp_path / 's1.aif').exists()
+        assert not (tmp_path / 's2.aif').exists()
+        assert set(removed) == {'s1', 's2'}
+
+    def test_gc_renamed_stream_removes_old_id(self, manager, tmp_path):
+        """stream_id rinominato: il vecchio id viene rimosso, il nuovo non e' toccato."""
+        old = {'stream_id': 'stream_old', 'sample': 'a.wav'}
+        manager.update_after_build([old])
+
+        aif_old = tmp_path / 'stream_old.aif'
+        aif_old.touch()
+
+        # Ora il YAML ha 'stream_new' invece di 'stream_old'
+        removed = manager.garbage_collect(
+            current_stream_ids=['stream_new'], aif_dir=str(tmp_path)
+        )
+
+        assert not aif_old.exists()
+        assert removed == ['stream_old']
+        assert 'stream_old' not in manager.load()
+
+    def test_gc_missing_aif_does_not_raise(self, manager, two_stream_dicts, tmp_path):
+        """Orfano senza .aif su disco: nessun errore, entry rimossa dal manifest."""
+        manager.update_after_build(two_stream_dicts)
+        # NON creiamo s2.aif
+
+        removed = manager.garbage_collect(
+            current_stream_ids=['s1'], aif_dir=str(tmp_path)
+        )
+
+        assert removed == ['s2']
+        assert 's2' not in manager.load()

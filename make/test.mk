@@ -69,6 +69,11 @@ tests: venv-setup
 	@echo "🧪 [TEST] Running pytest..."
 	$(PYTEST_VENV) $(TEST_FILE)
 
+# Test end-to-end: invocano make e richiedono csound installato
+e2e-tests: venv-setup
+	@echo "🔗 [E2E] Running end-to-end tests (richiede csound)..."
+	$(PYTEST_VENV) tests/e2e/ -m e2e -v
+
 # Pulisce l'ambiente virtuale
 venv-clean:
 	@echo "🧹 [CLEAN] Rimozione Virtual Environment..."

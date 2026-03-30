@@ -40,6 +40,7 @@ FILE ?= PGE_test
 TEST ?= false
 PRECLEAN ?=true
 STEMS ?= true
+RENDERER ?= csound
 
 # Include moduli
 include make/test.mk
@@ -102,10 +103,11 @@ help:
 
 check-system-deps:
 	@echo "[CHECK] Verifica dipendenze di sistema..."
-	@command -v csound >/dev/null 2>&1 || { echo "ERRORE: csound non trovato. Esegui: make install-system-deps"; exit 1; }
-	@command -v sox >/dev/null 2>&1 || { echo "ERRORE: sox non trovato. Esegui: make install-system-deps"; exit 1; }
 	@command -v python3.12 >/dev/null 2>&1 || { echo "ERRORE: python3.12 non trovato. Esegui: make install-system-deps"; exit 1; }
-	@echo "[CHECK] Tutte le dipendenze di sistema trovate."
+	@if [ "$(RENDERER)" = "csound" ]; then \
+		command -v csound >/dev/null 2>&1 || { echo "ERRORE: csound non trovato."; exit 1; }; \
+	fi
+	@command -v sox >/dev/null 2>&1 || { echo "ERRORE: sox non trovato."; exit 1; }
 
 install-system-deps:
 ifeq ($(OS), Darwin)

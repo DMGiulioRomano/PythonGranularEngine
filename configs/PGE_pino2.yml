@@ -2,28 +2,114 @@ composition:
   title: "il mondo dorme"
 
 streams:
-  - stream_id: "texture1"
-    time_mode: normalized
-    onset: 0.0
-    duration: 3
-    #time_scale: .3
-    sample: "pino2.wav"
-
   - stream_id: "texture2"
     time_mode: normalized
-    onset: 10.0
-    duration: 10
+    onset: 0.0
+    duration: 300
     #time_scale: .3
-    sample: "pino2.wav"
+    sample: "001-0_0-3_0.wav"
     pointer:
+      speed_ratio: 
+        - [[[0, -1.0], [100, 2.0]],
+           1.0, 15, "cubic",
+           {type: geometric, ratio: 1.5}]
       loop_unit: normalized
-      loop_start: .5
-      start: .5
+      loop_start: 
+        type: cubic
+        points:
+          - [0.0, 0.9]
+          - [1.0, 1.0]
+      offset_range: 
+        type: cubic
+        points:
+          - [0.0, 0.0]
+          - [1.0, 1.0]
     grain:
       duration: .05
     pitch:
     dephase:
     density: 
-      - [[[0, 10], [100, 50]],
-         1.0, 5, "linear",
+      - [[[0, 400], [100, 1000]],
+         1.0, 10, "linear",
          {type: power, exponent: 2.0}]
+    volume: -20
+    pan_range: 
+      type: cubic
+      points:
+        - [0.0, 0.0]
+        - [0.5, 360.0]
+        - [0.75, 0]
+        - [1.0, 180.0]
+  - stream_id: "texture3"
+    time_mode: normalized
+    onset: 0.0
+    duration: 300
+    #time_scale: .3
+    sample: "001-29_5-7_5.wav"
+    pointer:
+      speed_ratio: 
+        - [[[0, -1.0], [100, .3]],
+           1.0, 2, "linear",
+           {type: geometric, ratio: 4}]
+      loop_unit: normalized
+      loop_start: 
+        type: cubic
+        points:
+          - [0.0, 0.9]
+          - [1.0, 1.0]
+      offset_range: 
+        type: cubic
+        points:
+          - [0.0, 0.0]
+          - [1.0, 1.0]
+    grain:
+      duration: .05
+    pitch:
+    dephase:
+    density: 
+      - [[[0, 400], [100, 1000]],
+         1.0, 10, "linear",
+         {type: power, exponent: 2.0}]
+    volume: -20
+
+  - stream_id: "stream4"
+    onset: 0.0
+    duration: 60.0
+    sample: "001-0_0-3_0.wav"
+    time_mode: normalized
+    pointer:
+      speed_ratio: .01
+      loop_start: 
+        type: cubic
+        points:
+          - [0.0, 2.4]
+          - [0.5, 1.0]
+          - [1.0, 0.0]
+      loop_end: 2.99
+    pan_range: 170
+    density: 200
+    #pitch:
+      #ratio: .3
+    dephase: 50
+    pan: 70
+    volume: -20
+
+  - stream_id: "stream5"
+    onset: 0.0
+    duration: 200.0
+    sample: "001-8_5-4_5.wav"
+    time_mode: normalized
+    pointer:
+      speed_ratio: .01
+    grain:
+      duration_range: .2
+    pan_range: 30
+    pitch:
+      range: .1
+      ratio: .5
+    dephase: 
+      duration: 90
+      pan: 50
+      reverse: 70
+    pan: 70
+    volume: -10

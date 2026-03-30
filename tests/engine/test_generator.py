@@ -1439,7 +1439,7 @@ class TestStreamDataMap:
 
     def test_stream_data_map_initialized_empty(self, gen):
         """_stream_data_map e' un dict vuoto dopo __init__."""
-        assert gen._stream_data_map == {}
+        assert gen.stream_data_map == {}
 
     def test_stream_data_map_populated_after_create_streams(self, gen):
         """_create_streams popola _stream_data_map con i raw dict."""
@@ -1456,8 +1456,8 @@ class TestStreamDataMap:
             gen.ftable_manager.register_sample = Mock(return_value=1)
             gen._create_streams(stream_data)
 
-        assert 's1' in gen._stream_data_map
-        assert gen._stream_data_map['s1'] == stream_data[0]
+        assert 's1' in gen.stream_data_map
+        assert gen.stream_data_map['s1'] == stream_data[0]
 
     def test_stream_data_map_stores_raw_dict_not_stream_object(self, gen):
         """_stream_data_map contiene il dict originale, non l'oggetto Stream."""
@@ -1474,7 +1474,7 @@ class TestStreamDataMap:
             gen.ftable_manager.register_sample = Mock(return_value=1)
             gen._create_streams(stream_data)
 
-        stored = gen._stream_data_map['s1']
+        stored = gen.stream_data_map['s1']
         assert isinstance(stored, dict)
 
     def test_stream_data_map_multiple_streams(self, gen):
@@ -1495,8 +1495,8 @@ class TestStreamDataMap:
             gen.ftable_manager.register_sample = Mock(return_value=1)
             gen._create_streams(stream_data)
 
-        assert 's1' in gen._stream_data_map
-        assert 's2' in gen._stream_data_map
+        assert 's1' in gen.stream_data_map
+        assert 's2' in gen.stream_data_map
 
 
 # =============================================================================
@@ -1550,7 +1550,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
         gen.cartridges = []
-        gen._stream_data_map = {
+        gen.stream_data_map = {
             's1': {'stream_id': 's1'},
             's2': {'stream_id': 's2'},
         }
@@ -1566,7 +1566,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
         gen.cartridges = []
-        gen._stream_data_map = {
+        gen.stream_data_map = {
             's1': {'stream_id': 's1'},
             's2': {'stream_id': 's2'},
         }
@@ -1582,7 +1582,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
         gen.cartridges = []
-        gen._stream_data_map = {
+        gen.stream_data_map = {
             's1': {'stream_id': 's1'},
             's2': {'stream_id': 's2'},
         }
@@ -1600,7 +1600,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         gen.streams = [s1]
         gen.cartridges = []
         raw = {'stream_id': 's1', 'volume': -6.0}
-        gen._stream_data_map = {'s1': raw}
+        gen.stream_data_map = {'s1': raw}
 
         cm = self._make_cache_manager(dirty_ids={'s1'})
         gen.generate_score_files_per_stream(cache_manager=cm)
@@ -1612,7 +1612,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s1 = self._make_stream('s1')
         gen.streams = [s1]
         gen.cartridges = []
-        gen._stream_data_map = {'s1': {'stream_id': 's1'}}
+        gen.stream_data_map = {'s1': {'stream_id': 's1'}}
 
         cm = self._make_cache_manager(dirty_ids=set())
         gen.generate_score_files_per_stream(cache_manager=cm)
@@ -1624,7 +1624,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s1 = self._make_stream('s1')
         gen.streams = [s1]
         gen.cartridges = []
-        gen._stream_data_map = {'s1': {'stream_id': 's1'}}
+        gen.stream_data_map = {'s1': {'stream_id': 's1'}}
 
         cm = self._make_cache_manager(dirty_ids=set())
         gen.generate_score_files_per_stream(
@@ -1640,7 +1640,7 @@ class TestGenerateScoreFilesPerStreamWithCache:
         c1.cartridge_id = 'c1'
         gen.streams = []
         gen.cartridges = [c1]
-        gen._stream_data_map = {}
+        gen.stream_data_map = {}
 
         cm = self._make_cache_manager(dirty_ids=set())
         gen.generate_score_files_per_stream(cache_manager=cm)

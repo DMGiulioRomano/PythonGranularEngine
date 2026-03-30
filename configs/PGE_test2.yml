@@ -1,0 +1,19 @@
+composition:
+  title: "il mondo dorme"
+
+streams:
+  - stream_id: "stream1"
+    onset: 0.0
+    duration: 10.0
+    sample: "001.wav"
+    density: 10
+  - stream_id: "stream2"
+    onset: 20.0
+    duration: 10.0
+    sample: "002.wav"
+  - stream_id: "stream3"
+    onset: 40.0
+    duration: 10.0
+    sample: "003.wav"
+    
+    

@@ -59,7 +59,7 @@ class Generator:
         # Delegati specializzati
         self.ftable_manager = FtableManager(start_num=1)
         self.score_writer = ScoreWriter(self.ftable_manager)
-        self._stream_data_map: Dict[str, dict] = {}
+        self.stream_data_map: Dict[str, dict] = {}
     # =========================================================================
     # PUBLIC API
     # =========================================================================
@@ -163,9 +163,9 @@ class Generator:
         # --- Determina quali stream scrivere ---
         if cache_manager is not None:
             raw_dicts = [
-                self._stream_data_map[s.stream_id]
+                self.stream_data_map[s.stream_id]
                 for s in self.streams
-                if s.stream_id in self._stream_data_map
+                if s.stream_id in self.stream_data_map
             ]
             dirty_dicts = cache_manager.get_dirty_stream_dicts(
                 raw_dicts,
@@ -239,7 +239,7 @@ class Generator:
 
             stream = Stream(stream_data)
             #print(f"[DEBUG] DOPO  Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
-            self._stream_data_map[stream_data['stream_id']] = stream_data
+            self.stream_data_map[stream_data['stream_id']] = stream_data
             # 2. Registra ftable sample
             stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
             

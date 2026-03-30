@@ -145,6 +145,41 @@ class StreamCacheManager:
     # AGGIORNAMENTO POST-BUILD
     # =========================================================================
 
+    def garbage_collect(
+        self,
+        current_stream_ids: List[str],
+        aif_dir: Optional[str] = None,
+        aif_prefix: Optional[str] = None,
+    ) -> List[str]:
+        """
+        Rimuove dal manifest le entry di stream non piu' presenti nel YAML corrente.
+        Cancella i file .aif orfani se aif_dir e' specificato.
+
+        Args:
+            current_stream_ids: lista degli stream_id attualmente nel YAML
+            aif_dir: directory dove cercare i file .aif (None = non toccare filesystem)
+            aif_prefix: prefisso del nome file (es. 'PGE_test' → 'PGE_test_{sid}.aif')
+
+        Returns:
+            Lista degli stream_id rimossi (orfani)
+        """
+        manifest = self.load()
+        current_ids = set(current_stream_ids)
+        stale_ids = [sid for sid in manifest if sid not in current_ids]
+
+        for sid in stale_ids:
+            if aif_dir is not None:
+                filename = f"{aif_prefix}_{sid}.aif" if aif_prefix else f"{sid}.aif"
+                aif_path = os.path.join(aif_dir, filename)
+                if os.path.exists(aif_path):
+                    os.unlink(aif_path)
+            del manifest[sid]
+
+        if stale_ids:
+            self.save(manifest)
+
+        return stale_ids
+
     def update_after_build(self, stream_dicts: List[dict]) -> None:
         """
         Aggiorna il manifest con i fingerprint correnti degli stream buildati.
