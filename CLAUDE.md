@@ -21,7 +21,23 @@ Ad ogni refactoring o nuova funzionalità, valuta sempre se applicare TDD. Prima
 
 **Non generare mai codice di produzione senza aver prima discusso e approvato il design con l'utente.**
 
-Questo progetto ha 176 test con copertura estensiva. Mantieni questo standard di qualità per ogni nuova funzionalità.
+**CRITICAL: Test Gate prima di commit, PR e tag**
+
+Prima di eseguire qualsiasi operazione git significativa (commit, push, PR, tag, release):
+
+1. Esegui `make tests` e verifica che tutti i test passino (exit code 0)
+2. Se un test fallisce, **non procedere** — analizza la causa e correggi prima
+3. Per i tag di release, esegui anche `make e2e-tests` se disponibile
+
+```bash
+make tests        # OBBLIGATORIO prima di ogni commit/PR/tag
+make e2e-tests    # OBBLIGATORIO prima di ogni tag di release
+```
+
+Questo vale anche per refactoring, fix al Makefile e modifiche alla documentazione
+che toccano file importati dai test.
+
+Questo progetto ha copertura test estensiva. Mantieni questo standard di qualità per ogni nuova funzionalità.
 
 ## Build Commands
 
