@@ -249,9 +249,13 @@ def main():
         if reaper_export:
             from export.reaper_project_writer import ReaperProjectWriter
             rpp_out = reaper_path if reaper_path else f"{yaml_basename}.rpp"
+            # In MIX mode generated contiene 1 solo file per N stream:
+            # ogni TRACK punta al mix con onset/duration del proprio stream.
+            n = len(generator.streams)
+            aif_paths = generated if len(generated) == n else [generated[0]] * n
             ReaperProjectWriter().write(
                 streams=generator.streams,
-                aif_paths=generated,
+                aif_paths=aif_paths,
                 output_path=rpp_out,
             )
             print(f"Reaper project: {rpp_out}")

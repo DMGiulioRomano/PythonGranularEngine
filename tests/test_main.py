@@ -1212,8 +1212,11 @@ class TestReaperExport:
         assert call_args.kwargs['streams'] == streams or call_args.args[0] == streams
 
     def test_reaper_write_receives_generated_paths(self, mocks):
-        """write() riceve i path .aif prodotti dal render."""
+        """write() riceve i path .aif prodotti dal render (STEMS mode: 1 path per stream)."""
+        from unittest.mock import MagicMock
         generated = ['/out/s1.aif', '/out/s2.aif']
+        # Allinea streams e generated: STEMS mode (1 aif per stream)
+        mocks['generator_instance'].streams = [MagicMock(), MagicMock()]
         writer = self._run_with_reaper_mock(
             mocks,
             ['main.py', 'configs/PGE_test.yml', 'out.aif', '--reaper'],
