@@ -1145,3 +1145,100 @@ class TestCacheGarbageCollectionInMain:
         )
         call_kwargs = cm.garbage_collect.call_args.kwargs
         assert call_kwargs['aif_dir'] == os.path.abspath('/actual/out')
+
+
+# =============================================================================
+# REAPER EXPORT
+# =============================================================================
+
+class TestReaperExport:
+    """
+    Test per l'integrazione di ReaperProjectWriter in main().
+
+    Con --reaper, dopo il render viene chiamato ReaperProjectWriter.write()
+    con streams, aif_paths generati e il path del file .rpp.
+    """
+
+    def _run_with_reaper_mock(self, mocks, argv, generated_files=None):
+        """
+        Esegue main() con ReaperProjectWriter mockato.
+
+        Returns:
+            MagicMock dell'istanza di ReaperProjectWriter
+        """
+        if generated_files is None:
+            generated_files = ['/out/test.aif']
+
+        mocks['engine_instance'].render.return_value = generated_files
+
+        writer_instance = MagicMock(name='reaper_writer_instance')
+        writer_cls = MagicMock(name='ReaperProjectWriter', return_value=writer_instance)
+
+        reaper_mod = types.ModuleType('export.reaper_project_writer')
+        reaper_mod.ReaperProjectWriter = writer_cls
+
+        with patch.dict(sys.modules, {'export.reaper_project_writer': reaper_mod}):
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
+
+        return writer_instance
+
+    def test_reaper_write_called_with_flag(self, mocks):
+        """Con --reaper, ReaperProjectWriter.write() viene chiamata."""
+        writer = self._run_with_reaper_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--reaper'],
+        )
+        writer.write.assert_called_once()
+
+    def test_reaper_write_not_called_without_flag(self, mocks):
+        """Senza --reaper, ReaperProjectWriter.write() NON viene chiamata."""
+        writer = self._run_with_reaper_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif'],
+        )
+        writer.write.assert_not_called()
+
+    def test_reaper_write_receives_streams(self, mocks):
+        """write() riceve generator.streams come primo argomento."""
+        streams = [MagicMock(), MagicMock()]
+        mocks['generator_instance'].streams = streams
+
+        writer = self._run_with_reaper_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--reaper'],
+        )
+        call_args = writer.write.call_args
+        assert call_args.kwargs['streams'] == streams or call_args.args[0] == streams
+
+    def test_reaper_write_receives_generated_paths(self, mocks):
+        """write() riceve i path .aif prodotti dal render."""
+        generated = ['/out/s1.aif', '/out/s2.aif']
+        writer = self._run_with_reaper_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--reaper'],
+            generated_files=generated,
+        )
+        call_args = writer.write.call_args
+        assert call_args.kwargs.get('aif_paths') == generated or generated in call_args.args
+
+    def test_reaper_default_output_path(self, mocks):
+        """Senza --reaper-path, il file .rpp si chiama come lo yaml basename."""
+        writer = self._run_with_reaper_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--reaper'],
+        )
+        call_args = writer.write.call_args
+        rpp_path = call_args.kwargs.get('output_path') or call_args.args[2]
+        assert rpp_path == 'PGE_test.rpp'
+
+    def test_reaper_custom_output_path(self, mocks):
+        """Con --reaper-path, il file .rpp usa il path specificato."""
+        writer = self._run_with_reaper_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--reaper', '--reaper-path', '/custom/project.rpp'],
+        )
+        call_args = writer.write.call_args
+        rpp_path = call_args.kwargs.get('output_path') or call_args.args[2]
+        assert rpp_path == '/custom/project.rpp'
