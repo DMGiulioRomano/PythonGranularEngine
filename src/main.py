@@ -211,6 +211,20 @@ def main():
             sco_dir=sco_dir,
         )
 
+        # Garbage collection: rimuove stream orfani (rimossi/rinominati nel YAML)
+        # Solo in STEMS+CACHE mode: è l'unico caso con build incrementale per stream.
+        if per_stream and use_cache:
+            cache_manager = getattr(renderer, 'cache_manager', None)
+            if cache_manager is not None:
+                current_ids = [s.stream_id for s in generator.streams]
+                removed = cache_manager.garbage_collect(
+                    current_stream_ids=current_ids,
+                    aif_dir=sfdir,
+                    aif_prefix=yaml_basename,
+                )
+                if removed:
+                    print(f"[CACHE] GC: rimossi {len(removed)} stream orfani: {removed}")
+
         engine = RenderingEngine(renderer)
         mode = StemsRenderMode() if per_stream else MixRenderMode()
         generated = engine.render(

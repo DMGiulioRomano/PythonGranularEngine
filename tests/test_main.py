@@ -1015,3 +1015,126 @@ class TestCsoundArgs:
 
         call_args = factory_cls.create.call_args
         assert 'csound_config' not in (call_args.kwargs or {})
+
+
+# =============================================================================
+# TEST GARBAGE COLLECTION IN MAIN
+# =============================================================================
+
+class TestCacheGarbageCollectionInMain:
+    """
+    Verifica che garbage_collect() venga invocato correttamente da main()
+    solo in modalita' STEMS+CACHE (--per-stream --cache).
+
+    Casi estremi:
+    - STEMS+CACHE: GC chiamata con stream_ids corretti, sfdir, yaml_basename
+    - STEMS senza CACHE: GC NON chiamata
+    - CACHE senza STEMS: GC NON chiamata
+    - Senza ne' STEMS ne' CACHE: GC NON chiamata
+    - GC riceve gli stream_id estratti da generator.streams
+    - GC riceve sfdir custom da --sfdir
+    - GC riceve yaml_basename come aif_prefix (es. 'PGE_test')
+    """
+
+    def _run_with_gc_mock(self, mocks, argv, stream_ids=None):
+        """
+        Helper: esegue main() con cache_manager mockato.
+        Restituisce il mock del cache_manager per assert sulle chiamate.
+        """
+        cache_manager_mock = MagicMock(name='cache_manager')
+        cache_manager_mock.garbage_collect.return_value = []
+        mocks['renderer_instance'].cache_manager = cache_manager_mock
+
+        if stream_ids is not None:
+            streams = []
+            for sid in stream_ids:
+                s = MagicMock()
+                s.stream_id = sid
+                streams.append(s)
+            mocks['generator_instance'].streams = streams
+
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+
+        return cache_manager_mock
+
+    def test_gc_called_in_stems_and_cache_mode(self, mocks):
+        """Con --per-stream --cache, garbage_collect() viene chiamata."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache', '--cache-dir', 'cache'],
+            stream_ids=['s1', 's2'],
+        )
+        cm.garbage_collect.assert_called_once()
+
+    def test_gc_not_called_without_cache(self, mocks):
+        """Senza --cache, garbage_collect() NON viene chiamata."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--per-stream'],
+            stream_ids=['s1'],
+        )
+        cm.garbage_collect.assert_not_called()
+
+    def test_gc_not_called_without_per_stream(self, mocks):
+        """Senza --per-stream (MIX mode), garbage_collect() NON viene chiamata."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--cache'],
+            stream_ids=['s1'],
+        )
+        cm.garbage_collect.assert_not_called()
+
+    def test_gc_not_called_without_stems_nor_cache(self, mocks):
+        """Senza ne' --per-stream ne' --cache, garbage_collect() NON viene chiamata."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif'],
+            stream_ids=['s1'],
+        )
+        cm.garbage_collect.assert_not_called()
+
+    def test_gc_receives_correct_stream_ids(self, mocks):
+        """GC riceve gli stream_id estratti da generator.streams."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'],
+            stream_ids=['stream1', 'stream2', 'stream3'],
+        )
+        call_kwargs = cm.garbage_collect.call_args.kwargs
+        assert set(call_kwargs['current_stream_ids']) == {'stream1', 'stream2', 'stream3'}
+
+    def test_gc_receives_yaml_basename_as_prefix(self, mocks):
+        """GC riceve yaml_basename ('PGE_test') come aif_prefix."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'],
+            stream_ids=['s1'],
+        )
+        call_kwargs = cm.garbage_collect.call_args.kwargs
+        assert call_kwargs['aif_prefix'] == 'PGE_test'
+
+    def test_gc_receives_sfdir(self, mocks):
+        """GC riceve il valore di sfdir come aif_dir."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache', '--sfdir', '/custom/output'],
+            stream_ids=['s1'],
+        )
+        call_kwargs = cm.garbage_collect.call_args.kwargs
+        assert call_kwargs['aif_dir'] == '/custom/output'
+
+    def test_gc_receives_default_sfdir(self, mocks):
+        """Senza --sfdir, GC riceve il default 'output'."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'],
+            stream_ids=['s1'],
+        )
+        call_kwargs = cm.garbage_collect.call_args.kwargs
+        assert call_kwargs['aif_dir'] == 'output'

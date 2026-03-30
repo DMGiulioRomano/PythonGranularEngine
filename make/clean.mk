@@ -1,7 +1,7 @@
 # make/clean.mk
 # Pulizia directory generate
 
-.PHONY: clean clean-all clean-generated clean-output clean-logs clean-test-cache clean-cache
+.PHONY: clean clean-all clean-generated clean-output clean-logs clean-test-cache clean-cache clean-file
 
 
 clean:
@@ -24,6 +24,11 @@ clean-logs:
 clean-cache:
 	@echo "[CLEAN] Removing stream cache..."
 	rm -rf $(CACHEDIR)
+
+clean-file:
+	@echo "[CLEAN] Rimozione files per $(FILE)..."
+	rm -f $(SFDIR)/$(FILE).aif $(SFDIR)/$(FILE)_*.aif
+	rm -f $(CACHEDIR)/$(FILE).json
 
 clean-test-cache:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

@@ -80,8 +80,12 @@ class CsoundRenderer(AudioRenderer):
         # Cache check: skip se stream e' clean
         if self.cache_manager:
             stream_dict = self.stream_data_map.get(stream.stream_id)
-            if stream_dict and not self.cache_manager.is_dirty(stream_dict, output_path):
-                return output_path
+            if stream_dict:
+                dirty = self.cache_manager.is_dirty(stream_dict, output_path)
+                status = "DIRTY" if dirty else "clean"
+                print(f"[CACHE] {stream.stream_id}: {status}", flush=True)
+                if not dirty:
+                    return output_path
 
         sco_path = self._write_score(streams=[stream], cartridges=[], output_path=output_path)
         self._run_csound(sco_path, output_path)

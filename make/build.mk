@@ -51,13 +51,13 @@ endif
 ifeq ($(STEMS), true)
 
 # --- STEMS + RENDERER=numpy ---
-# Python produce N .aif direttamente in SFDIR.
+# Python produce N .aif direttamente in SFDIR (uno per stream).
 # Non c'e' file .sco intermedio, non c'e' invocazione di csound.
-# Non si passa --per-stream: il renderer numpy gestisce tutti gli stream
-# internamente, producendo {FILE}_{stream_id}.aif per ciascuno.
+# Comportamento identico a STEMS+csound: --per-stream attiva StemsRenderMode.
 ifeq ($(RENDERER), numpy)
 
 PYFLAGS += --show-static
+PYFLAGS += --per-stream
 
 .PHONY: all
 all: $(ALL_PRE) stems-build
