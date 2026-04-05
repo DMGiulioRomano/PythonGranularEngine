@@ -1,0 +1,322 @@
+composition:
+  title: "test voices"
+
+streams:
+
+  # ==========================================================================
+  # SEZIONE 1 — STRATEGIE SINGOLE
+  # ==========================================================================
+
+  # --- PITCH ---
+
+  - stream_id: "pitch_step"
+    onset: 0.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+
+  - stream_id: "pitch_range"
+    onset: 8.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: range
+        semitone_range: 12.0
+
+  - stream_id: "pitch_chord_dom7"
+    onset: 16.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+
+  - stream_id: "pitch_stochastic"
+    onset: 24.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+
+  # --- ONSET ---
+
+  - stream_id: "onset_linear"
+    onset: 32.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.08
+
+  - stream_id: "onset_geometric"
+    onset: 40.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: geometric
+        step: 0.05
+        base: 2.0
+
+  - stream_id: "onset_stochastic"
+    onset: 48.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.2
+
+  # --- POINTER ---
+
+  - stream_id: "pointer_linear"
+    onset: 56.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: linear
+        step: 0.05
+
+  - stream_id: "pointer_stochastic"
+    onset: 64.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+
+  # --- PAN ---
+
+  - stream_id: "pan_linear"
+    onset: 72.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ==========================================================================
+  # SEZIONE 2 — COPPIE DI STRATEGIE
+  # ==========================================================================
+
+  # --- pitch_step + onset_linear ---
+  - stream_id: "step_onset"
+    onset: 82.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.08
+
+  # --- pitch_chord + onset_stochastic ---
+  - stream_id: "chord_onset_stoch"
+    onset: 90.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.15
+
+  # --- pitch_step + pointer_linear ---
+  - stream_id: "step_pointer"
+    onset: 98.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 4.0
+      pointer:
+        strategy: linear
+        step: 0.05
+
+  # --- pitch_chord + pointer_stochastic ---
+  - stream_id: "chord_pointer_stoch"
+    onset: 106.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+
+  # --- pitch_step + pan_linear ---
+  - stream_id: "step_pan"
+    onset: 114.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # --- onset_linear + pointer_linear ---
+  - stream_id: "onset_pointer"
+    onset: 122.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.08
+      pointer:
+        strategy: linear
+        step: 0.05
+
+  # --- onset_stochastic + pan_linear ---
+  - stream_id: "onset_stoch_pan"
+    onset: 130.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.15
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # --- pointer_linear + pan_linear ---
+  - stream_id: "pointer_pan"
+    onset: 138.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # --- pitch_range + onset_geometric ---
+  - stream_id: "range_geometric"
+    onset: 146.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: range
+        semitone_range: 12.0
+      onset_offset:
+        strategy: geometric
+        step: 0.05
+        base: 2.0
+
+  # --- pitch_stochastic + pan_linear ---
+  - stream_id: "stoch_pitch_pan"
+    onset: 154.0
+    duration: 6.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 60.0

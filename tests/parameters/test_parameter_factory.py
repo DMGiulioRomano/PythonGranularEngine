@@ -221,7 +221,7 @@ class TestCreateConstantParameter:
 
     def test_restituisce_un_parameter(self):
         factory = ParameterFactory(make_config())
-        result = factory.create_constant_parameter('loop_end', 8.0)
+        result = factory.create_constant_parameter('loop_end', 4.0)
         assert isinstance(result, Parameter)
 
     def test_valore_corretto(self):
@@ -359,7 +359,7 @@ class TestParameterOrchestrator:
 
     def test_create_constant_parameter_restituisce_parameter(self):
         orchestrator = ParameterOrchestrator(make_config())
-        result = orchestrator.create_constant_parameter('loop_end', 8.0)
+        result = orchestrator.create_constant_parameter('loop_end', 4.0)
         assert isinstance(result, Parameter)
 
     def test_create_constant_parameter_delega_alla_factory(self):
@@ -695,11 +695,90 @@ class TestFactoryOrchestratorParametrized:
         schema = [
             ParameterSpec('volume', 'value', -6.0, is_smart=is_smart)
         ]
-        yaml_data = {'value': -12.0}        
+        yaml_data = {'value': -12.0}
 
         params = orchestrator.create_all_parameters(yaml_data, schema)
-        
+
         if is_smart:
             assert isinstance(params['volume'], Parameter)
         else:
             assert params['volume'] == -12.0
+
+
+def make_config_with_sample_dur(sample_dur_sec: float) -> StreamConfig:
+    """Crea StreamConfig con sample_dur_sec specifico per test loop bounds."""
+    context = StreamContext(
+        stream_id='test_stream',
+        onset=0.0,
+        duration=10.0,
+        sample='test.wav',
+        sample_dur_sec=sample_dur_sec,
+    )
+    return StreamConfig(context=context)
+
+
+# =============================================================================
+# TEST INTEGRAZIONE — PARSER LOOP BOUNDS DINAMICI
+# =============================================================================
+
+class TestParserDynamicLoopBounds:
+    """
+    GranularParser deve validare loop_end, loop_start, loop_dur
+    usando sample_dur_sec come max_val effettivo.
+    """
+
+    def test_parser_stores_sample_dur_sec(self):
+        """GranularParser memorizza sample_dur_sec dal config."""
+        config = make_config_with_sample_dur(8.0)
+        parser = GranularParser(config)
+        assert parser.sample_dur_sec == 8.0
+
+    def test_loop_end_within_sample_dur_is_valid(self):
+        """loop_end <= sample_dur_sec deve essere accettato."""
+        config = make_config_with_sample_dur(10.0)
+        parser = GranularParser(config)
+        param = parser.parse_parameter('loop_end', 8.0)
+        assert param.get_value(0) == pytest.approx(8.0)
+
+    def test_loop_end_exceeds_sample_dur_raises(self):
+        """loop_end > sample_dur_sec deve sollevare ValueError in strict mode."""
+        config = make_config_with_sample_dur(10.0)
+        parser = GranularParser(config)
+        with pytest.raises(ValueError):
+            parser.parse_parameter('loop_end', 15.0)
+
+    def test_loop_start_within_sample_dur_is_valid(self):
+        """loop_start <= sample_dur_sec deve essere accettato."""
+        config = make_config_with_sample_dur(10.0)
+        parser = GranularParser(config)
+        param = parser.parse_parameter('loop_start', 3.0)
+        assert param.get_value(0) == pytest.approx(3.0)
+
+    def test_loop_start_exceeds_sample_dur_raises(self):
+        """loop_start > sample_dur_sec deve sollevare ValueError."""
+        config = make_config_with_sample_dur(10.0)
+        parser = GranularParser(config)
+        with pytest.raises(ValueError):
+            parser.parse_parameter('loop_start', 12.0)
+
+    def test_loop_dur_within_sample_dur_is_valid(self):
+        """loop_dur <= sample_dur_sec deve essere accettato."""
+        config = make_config_with_sample_dur(10.0)
+        parser = GranularParser(config)
+        param = parser.parse_parameter('loop_dur', 5.0)
+        assert param.get_value(0) == pytest.approx(5.0)
+
+    def test_loop_dur_exceeds_sample_dur_raises(self):
+        """loop_dur > sample_dur_sec deve sollevare ValueError."""
+        config = make_config_with_sample_dur(10.0)
+        parser = GranularParser(config)
+        with pytest.raises(ValueError):
+            parser.parse_parameter('loop_dur', 20.0)
+
+    def test_loop_bound_uses_actual_sample_duration(self):
+        """Il bound effettivo dipende da sample_dur_sec, non da una costante fissa."""
+        # Con sample di 200 secondi, loop_end=150 deve essere valido
+        config = make_config_with_sample_dur(200.0)
+        parser = GranularParser(config)
+        param = parser.parse_parameter('loop_end', 150.0)
+        assert param.get_value(0) == pytest.approx(150.0)

@@ -34,6 +34,7 @@ class GranularParser:
         """
         self.stream_id = config.context.stream_id
         self.duration = config.context.duration
+        self.sample_dur_sec = config.context.sample_dur_sec
         self.time_mode = config.time_mode
         self.distribution_mode = config.distribution_mode
 
@@ -56,9 +57,9 @@ class GranularParser:
         Returns:
             Un'istanza configurata di Parameter.
         """
-        # 1. Recupera la definizione (Bounds & Rules) dal Registry
-        # Se il nome non esiste, get_parameter_definition solleva KeyError (Fail Fast)
-        bounds = get_parameter_definition(name)
+        # 1. Recupera la definizione (Bounds & Rules) dal Registry.
+        # Per loop_dur/loop_start/loop_end il bound massimo è la durata del file audio.
+        bounds = get_parameter_definition(name, sample_dur_sec=self.sample_dur_sec)
 
         # 2. Converte i dati grezzi in formati utilizzabili (float o Envelope)
         # Qui avviene la normalizzazione temporale se necessaria

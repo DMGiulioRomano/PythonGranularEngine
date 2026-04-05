@@ -37,14 +37,14 @@ CACHEDIR := cache
 # --- Flags configurabili ---
 AUTOKILL ?= true
 AUTOPEN ?= true
-AUTOVISUAL ?= true
+AUTOVISUAL ?= false
 SHOWSTATIC ?= true
 FILE ?= PGE_test
 TEST ?= false
 PRECLEAN ?=true
 STEMS ?= true
-RENDERER ?= csound
-REAPER ?= false
+RENDERER ?= numpy
+REAPER ?= true
 REAPER_PATH ?= Project.rpp
 # Include moduli
 include make/test.mk
