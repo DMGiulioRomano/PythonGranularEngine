@@ -39,12 +39,24 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             if ftype == 'sample':
                 sample_reg.load(name)
 
+        cache_manager = None
+        if kwargs.get('use_cache'):
+            import os as _os
+            from rendering.stream_cache_manager import StreamCacheManager
+            yaml_basename = kwargs['yaml_basename']
+            cache_dir = kwargs.get('cache_dir', 'cache')
+            cache_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
+            cache_manager = StreamCacheManager(cache_path=cache_path)
+            print(f"[CACHE] Manifest: {cache_path}")
+
         return RendererFactory.create(
             'numpy',
             sample_registry=sample_reg,
             window_registry=window_reg,
             table_map=table_map,
             output_sr=kwargs.get('output_sr', 48000),
+            cache_manager=cache_manager,
+            stream_data_map=generator.stream_data_map,
         )
 
     if renderer_type == 'csound':

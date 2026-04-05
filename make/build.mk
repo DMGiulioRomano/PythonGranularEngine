@@ -99,11 +99,15 @@ ifeq ($(RENDERER), numpy)
 PYFLAGS += --show-static
 PYFLAGS += --per-stream
 
+ifeq ($(CACHE), true)
+PYFLAGS += --cache --cache-dir $(CACHEDIR)
+endif
+
 .PHONY: all
 all: $(ALL_PRE) stems-build
 
 .PHONY: stems-build
-stems-build: venv-setup $(SFDIR)
+stems-build: venv-setup $(SFDIR) $(CACHEDIR)
 	@echo "[NUMPY][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif --renderer numpy $(PYFLAGS)
 	$(autopen_stems)

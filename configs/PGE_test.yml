@@ -7,7 +7,7 @@ streams:
     onset: 0.0
     duration: 5
     #time_scale: .3
-    sample: "pino2.wav"
+    sample: 
     #range_always_active:
     distribution_mode: 'gaussian'
     #fill_factor: [[0,.3],[.1,4], cycle]
@@ -39,4 +39,19 @@ streams:
     onset: 20.0
     duration: 5.0
     sample: "pino.wav"
-    
+  - stream_id: "stream5"
+    onset: 0.0
+    duration: 10.0
+    sample: "001-0-27_9.wav"
+    density: 3
+    distribution: 
+      type: cubic
+      points:
+        - [0.0, 0.0]
+        - [5.0, 1.0]
+        - [10.0, 0.0]
+    distribution_mode: "gaussian"
+    pan: 
+      - [[[0, -3600.0], [100, 3600.0]], 10.0, 4]
+    time_mode: "normalized"
+    pitch:      

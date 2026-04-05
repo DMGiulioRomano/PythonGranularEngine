@@ -63,6 +63,8 @@ class RendererFactory:
                 window_registry=kwargs['window_registry'],
                 table_map=kwargs['table_map'],
                 output_sr=kwargs.get('output_sr', 48000),
+                cache_manager=kwargs.get('cache_manager'),
+                stream_data_map=kwargs.get('stream_data_map'),
             )
 
         if renderer_type == 'csound':

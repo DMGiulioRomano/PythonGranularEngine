@@ -18,7 +18,7 @@ Template Method interno (comune):
 
 import numpy as np
 import soundfile as sf
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 from rendering.audio_renderer import AudioRenderer
 from rendering.grain_renderer import GrainRenderer
@@ -39,6 +39,8 @@ class NumpyAudioRenderer(AudioRenderer):
         window_registry: registry delle finestre grano
         table_map: mapping {table_num: ('sample'|'window', name)}
         output_sr: sample rate di output (default: 48000)
+        cache_manager: StreamCacheManager opzionale per skip stream invariati
+        stream_data_map: dict {stream_id: yaml_dict} per fingerprint cache
     """
 
     def __init__(
@@ -47,11 +49,15 @@ class NumpyAudioRenderer(AudioRenderer):
         window_registry: NumpyWindowRegistry,
         table_map: Dict[int, Tuple[str, str]],
         output_sr: int = 48000,
+        cache_manager=None,
+        stream_data_map: Optional[Dict[str, dict]] = None,
     ):
         self.sample_registry = sample_registry
         self.window_registry = window_registry
         self.table_map = table_map
         self.output_sr = output_sr
+        self.cache_manager = cache_manager
+        self.stream_data_map = dict(stream_data_map) if stream_data_map is not None else {}
 
         self._grain_renderer = GrainRenderer(
             sample_registry=sample_registry,
@@ -81,6 +87,16 @@ class NumpyAudioRenderer(AudioRenderer):
         Returns:
             Path del file prodotto
         """
+        # Cache check: skip se stream e' clean
+        if self.cache_manager:
+            stream_dict = self.stream_data_map.get(stream.stream_id)
+            if stream_dict:
+                dirty = self.cache_manager.is_dirty(stream_dict, output_path)
+                status = "DIRTY" if dirty else "clean"
+                print(f"[CACHE] {stream.stream_id}: {status}", flush=True)
+                if not dirty:
+                    return output_path
+
         # 1. Alloca buffer (solo per duration, ignora onset)
         n_total = int(stream.duration * self.output_sr)
         buffer = np.zeros((n_total, 2), dtype=np.float64)
@@ -93,6 +109,12 @@ class NumpyAudioRenderer(AudioRenderer):
         # 3. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
         sf.write(output_path, buffer, self.output_sr, format='AIFF')
+
+        # Aggiorna cache dopo build riuscita
+        if self.cache_manager:
+            stream_dict = self.stream_data_map.get(stream.stream_id)
+            if stream_dict:
+                self.cache_manager.update_after_build([stream_dict])
 
         return output_path
 

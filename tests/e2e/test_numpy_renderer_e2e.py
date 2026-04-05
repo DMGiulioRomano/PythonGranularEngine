@@ -6,13 +6,9 @@ Invoca `make all RENDERER=numpy` come subprocess e verifica
 che la pipeline YAML → NumPy → .aif produca i file corretti.
 
 Scenari:
-1. TestNumpyStems - STEMS=true: un .aif per stream, naming corretto
-2. TestNumpyMix   - STEMS=false: un .aif unico con tutti gli stream
-
-Differenze rispetto ai test Csound E2E:
-- Nessun cache/manifest (StreamCacheManager non è usato da NumPy)
-- Nessun subprocess csound: tutto in-process Python
-- Ogni build ri-renderizza sempre tutto (no incremental)
+1. TestNumpyStems      - STEMS=true: un .aif per stream, naming corretto
+2. TestNumpyMix        - STEMS=false: un .aif unico con tutti gli stream
+3. TestNumpyStemsCache - STEMS=true CACHE=true: dirty/clean incrementale
 
 Requisiti:
   - sox nel PATH (per audio trimming)
@@ -83,16 +79,29 @@ def _write_yaml(tmp_path, content: str):
     (configs_dir / "e2e_numpy_test.yml").write_text(content)
 
 
-def _make_build_stems(tmp_path):
+def _load_manifest(tmp_path) -> dict:
+    """Carica il manifest JSON dalla cache temporanea."""
+    import json
+    manifest_path = tmp_path / "cache" / "e2e_numpy_test.json"
+    if not manifest_path.exists():
+        return {}
+    return json.loads(manifest_path.read_text())
+
+
+def _make_build_stems(tmp_path, cache=True):
     """
     Invoca `make all STEMS=true RENDERER=numpy` con directory temporanee.
+
+    Args:
+        cache: se True passa CACHE=true (abilita manifest incrementale)
 
     Returns:
         tuple (CompletedProcess, str) — processo e output combinato
     """
-    sfdir  = tmp_path / "output"
-    logdir = tmp_path / "logs"
-    ymldir = tmp_path / "configs"
+    sfdir    = tmp_path / "output"
+    cachedir = tmp_path / "cache"
+    logdir   = tmp_path / "logs"
+    ymldir   = tmp_path / "configs"
 
     for d in (sfdir, logdir, ymldir):
         d.mkdir(exist_ok=True)
@@ -102,12 +111,14 @@ def _make_build_stems(tmp_path):
         'FILE=e2e_numpy_test',
         'STEMS=true',
         'RENDERER=numpy',
+        f'CACHE={"true" if cache else "false"}',
         'AUTOKILL=false',
         'AUTOPEN=false',
         'AUTOVISUAL=false',
         'SHOWSTATIC=false',
         'PRECLEAN=false',
         f'SFDIR={sfdir}',
+        f'CACHEDIR={cachedir}',
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
     ]
@@ -201,16 +212,16 @@ class TestNumpyStems:
         assert len(aif_files) == 3, \
             f"attesi 3 file .aif, trovati {len(aif_files)}: {aif_files}"
 
-    def test_no_cache_manifest_created(self, tmp_path):
-        """NumPy non usa StreamCacheManager: nessun manifest JSON creato."""
+    def test_no_cache_manifest_without_cache_flag(self, tmp_path):
+        """Senza CACHE=true non viene creato alcun manifest JSON."""
         _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_stems(tmp_path)
+        result, output = _make_build_stems(tmp_path, cache=False)
 
         assert result.returncode == 0, f"make fallito:\n{output}"
 
         cache_dir = tmp_path / "cache"
         assert not cache_dir.exists() or not list(cache_dir.glob("*.json")), \
-            "manifest JSON creato per errore da renderer NumPy"
+            "manifest JSON creato per errore senza CACHE=true"
 
 
 # =============================================================================
@@ -242,3 +253,72 @@ class TestNumpyMix:
         per_stream_files = list(sfdir.glob("e2e_numpy_test_*.aif"))
         assert len(per_stream_files) == 0, \
             f"file per-stream creati per errore in MIX mode: {per_stream_files}"
+
+
+# =============================================================================
+# 3. STEMS + CACHE (numpy incrementale)
+# =============================================================================
+
+_YAML_S1_MODIFIED = """\
+composition:
+  title: "e2e numpy test"
+
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1.5
+    sample: "pino.wav"
+  - stream_id: "s2"
+    onset: 1.0
+    duration: 1.0
+    sample: "pino.wav"
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyStemsCache:
+    """STEMS=true RENDERER=numpy CACHE=true: build incrementale."""
+
+    def test_first_build_both_dirty(self, tmp_path):
+        """Prima build: entrambi gli stream DIRTY."""
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        result, output = _make_build_stems(tmp_path, cache=True)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert "[CACHE] s1: DIRTY" in output
+        assert "[CACHE] s2: DIRTY" in output
+
+    def test_manifest_created_after_first_build(self, tmp_path):
+        """Prima build: manifest JSON creato con fingerprint per s1 e s2."""
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        result, output = _make_build_stems(tmp_path, cache=True)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+
+        manifest = _load_manifest(tmp_path)
+        assert "s1" in manifest
+        assert "s2" in manifest
+
+    def test_second_build_both_clean(self, tmp_path):
+        """Seconda build invariata: entrambi gli stream clean."""
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        r1, _ = _make_build_stems(tmp_path, cache=True)
+        assert r1.returncode == 0
+
+        r2, output2 = _make_build_stems(tmp_path, cache=True)
+        assert r2.returncode == 0
+        assert "[CACHE] s1: clean" in output2
+        assert "[CACHE] s2: clean" in output2
+
+    def test_partial_rebuild_only_modified_stream_dirty(self, tmp_path):
+        """Modifica s1: solo s1 DIRTY, s2 clean."""
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        r1, _ = _make_build_stems(tmp_path, cache=True)
+        assert r1.returncode == 0
+
+        _write_yaml(tmp_path, _YAML_S1_MODIFIED)
+        r2, output2 = _make_build_stems(tmp_path, cache=True)
+        assert r2.returncode == 0
+
+        assert "[CACHE] s1: DIRTY" in output2
+        assert "[CACHE] s2: clean" in output2

@@ -385,3 +385,126 @@ class TestEdgeCases:
         data, _ = sf.read(output_path)
         assert np.max(np.abs(data)) < 1e-10
 
+
+# =============================================================================
+# 7. TEST CACHE
+# =============================================================================
+
+class TestNumpyAudioRendererCache:
+    """Cache incrementale: stesso comportamento di CsoundRenderer."""
+
+    def _make_renderer_with_cache(self, cache_path, sample_registry, window_registry, table_map, stream_data_map=None):
+        from rendering.stream_cache_manager import StreamCacheManager
+        cm = StreamCacheManager(cache_path=str(cache_path))
+        return NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+            cache_manager=cm,
+            stream_data_map=stream_data_map or {'s1': {'stream_id': 's1', 'duration': 1.0}},
+        )
+
+    def test_cache_manager_none_by_default(self, sample_registry, window_registry, table_map):
+        """cache_manager e' None per default: comportamento invariato."""
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+        )
+        assert r.cache_manager is None
+
+    def test_dirty_stream_is_rendered(self, sample_registry, window_registry, table_map, tmp_path):
+        """Stream dirty (non in manifest): file viene scritto."""
+        cache_path = tmp_path / 'cache.json'
+        r = self._make_renderer_with_cache(cache_path, sample_registry, window_registry, table_map)
+        stream = make_mock_stream(stream_id='s1', duration=0.2)
+        output_path = str(tmp_path / 's1.aif')
+
+        r.render_single_stream(stream, output_path)
+
+        assert os.path.exists(output_path)
+
+    def test_clean_stream_is_skipped(self, sample_registry, window_registry, table_map, tmp_path):
+        """Stream clean (fingerprint invariato, .aif esiste): non viene riscritto."""
+        import soundfile as sf
+        cache_path = tmp_path / 'cache.json'
+        r = self._make_renderer_with_cache(cache_path, sample_registry, window_registry, table_map)
+        stream = make_mock_stream(stream_id='s1', duration=0.2)
+        output_path = str(tmp_path / 's1.aif')
+
+        # Prima build: crea il file
+        r.render_single_stream(stream, output_path)
+        mtime_first = os.path.getmtime(output_path)
+
+        import time
+        time.sleep(0.05)
+
+        # Seconda build: stream clean → file non riscritto
+        r.render_single_stream(stream, output_path)
+        mtime_second = os.path.getmtime(output_path)
+
+        assert mtime_first == mtime_second
+
+    def test_dirty_stream_logs_dirty(self, sample_registry, window_registry, table_map, tmp_path, capsys):
+        """Stream dirty stampa '[CACHE] s1: DIRTY'."""
+        cache_path = tmp_path / 'cache.json'
+        r = self._make_renderer_with_cache(cache_path, sample_registry, window_registry, table_map)
+        stream = make_mock_stream(stream_id='s1', duration=0.2)
+        output_path = str(tmp_path / 's1.aif')
+
+        r.render_single_stream(stream, output_path)
+
+        captured = capsys.readouterr()
+        assert '[CACHE] s1: DIRTY' in captured.out
+
+    def test_clean_stream_logs_clean(self, sample_registry, window_registry, table_map, tmp_path, capsys):
+        """Stream clean stampa '[CACHE] s1: clean'."""
+        cache_path = tmp_path / 'cache.json'
+        r = self._make_renderer_with_cache(cache_path, sample_registry, window_registry, table_map)
+        stream = make_mock_stream(stream_id='s1', duration=0.2)
+        output_path = str(tmp_path / 's1.aif')
+
+        r.render_single_stream(stream, output_path)  # prima build → dirty
+        capsys.readouterr()  # svuota
+
+        r.render_single_stream(stream, output_path)  # seconda build → clean
+        captured = capsys.readouterr()
+        assert '[CACHE] s1: clean' in captured.out
+
+    def test_manifest_updated_after_build(self, sample_registry, window_registry, table_map, tmp_path):
+        """Il manifest viene aggiornato con il fingerprint dopo la build."""
+        import json
+        from rendering.stream_cache_manager import StreamCacheManager
+        cache_path = tmp_path / 'cache.json'
+        stream_dict = {'stream_id': 's1', 'duration': 1.0}
+        r = self._make_renderer_with_cache(
+            cache_path, sample_registry, window_registry, table_map,
+            stream_data_map={'s1': stream_dict},
+        )
+        stream = make_mock_stream(stream_id='s1', duration=0.2)
+        output_path = str(tmp_path / 's1.aif')
+
+        r.render_single_stream(stream, output_path)
+
+        manifest = json.loads(cache_path.read_text())
+        assert 's1' in manifest
+        expected_fp = StreamCacheManager(str(cache_path)).compute_fingerprint(stream_dict)
+        assert manifest['s1'] == expected_fp
+
+    def test_no_cache_manager_no_skip(self, renderer, tmp_path):
+        """Senza cache_manager, ogni chiamata renderizza sempre."""
+        stream = make_mock_stream(stream_id='s1', duration=0.2)
+        output_path = str(tmp_path / 's1.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        mtime_first = os.path.getmtime(output_path)
+
+        import time
+        time.sleep(0.05)
+
+        renderer.render_single_stream(stream, output_path)
+        mtime_second = os.path.getmtime(output_path)
+
+        assert mtime_second > mtime_first
+
