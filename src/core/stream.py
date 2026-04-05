@@ -175,15 +175,17 @@ class Stream:
 
         raw_num_voices = v.get('num_voices', 1)
 
+        # Parsa num_voices come Parameter (supporta Envelope time-varying, incluso formato dict).
+        self._num_voices = parser.parse_parameter('num_voices', raw_num_voices)
+
         # Estrae max_voices per pre-computare tutti i VoiceConfig all'init.
         # Se num_voices è un Envelope, max_voices = picco dei breakpoints.
-        if isinstance(raw_num_voices, list):
-            max_voices = int(max(bp[1] for bp in raw_num_voices))
+        from envelopes.envelope import Envelope
+        param_val = self._num_voices.value
+        if isinstance(param_val, Envelope):
+            max_voices = int(max(bp[1] for bp in param_val.breakpoints))
         else:
-            max_voices = int(raw_num_voices)
-
-        # Parsa num_voices e scatter come Parameter (supportano Envelope time-varying).
-        self._num_voices = parser.parse_parameter('num_voices', raw_num_voices)
+            max_voices = int(param_val)
         self._scatter = parser.parse_parameter('scatter', v.get('scatter', 0.0))
 
         # --- PITCH ---
