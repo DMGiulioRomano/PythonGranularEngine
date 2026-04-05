@@ -1,0 +1,2427 @@
+# =============================================================================
+# PGE_12min.yml — "Strati" — brano acusmatico 12 minuti
+# =============================================================================
+#
+# 9 SEZIONI, ~135 stream sovrapposti
+#
+# MATERIALE per sezione (sezioni adiacenti contrastanti):
+#   S1  SPARSE (1-4)      → 001 family (tagli lunghi)        001 = grana lenta
+#   S2  DENSE  (6-16)     → 002 family (tagli medi/lunghi)   CONTRASTO S1↔S2
+#   S3  SPARSE (1-4)      → 003, 004, 005                    CONTRASTO S2↔S3
+#   S4  MEDIUM (2-7)      → 008 family (tagli corti)         timbre diverso
+#   S5  DENSE  (6-16)     → 006, 007, 009, 010               CONTRASTO S4↔S5
+#   S6  MAXIMUM (≥20)     → 002 family (TUTTI i tagli corti) CLIMAX
+#   S7  MEDIUM (2-7)      → 011, 012, 013                    DISCONTINUITÀ POST-CLIMAX
+#   S8  DENSE  (6-16)     → 014, 015, 016 family             ricostruzione
+#   S9  MEDIUM→SPARSE     → 001.wav, 002.wav (originali)     ritorno alle sorgenti
+#
+# "INVILUPPO VOCI": num_voices non supporta envelope →
+#   simulato per strati: mono → 2v → 4v entrano in sequenza dentro ogni sezione
+#
+# PARAMETRI SPECIALI USATI:
+#   duration_range: [[t0,v0],[t1,v1]] — variazione grano evolve nel tempo
+#   pan_range: [[t0,v0],[t1,v1]]       — allargamento stereo progressivo
+#   offset_range: [[t0,v0],[t1,v1]]    — jitter pointer cresce
+#   volume: envelope                    — fade in/out naturali
+#   distribution: 1                    — distribuzione Truax (irregolare)
+#
+# DENSITY=0.6 usato in S7 → IOT=1.67s, quasi silenzio tra i grani
+#
+# DISCONTINUITÀ PERCETTIVE principali:
+#   S1→S2 : esplosione di densità (sparse→6-16), cambio materiale 001→002
+#   S2→S3 : crollo a quasi-silenzio, 002 denso → 003-005 sparso
+#   S6→S7 : dopo climax massimo, riduzione radicale + nuovo materiale
+# =============================================================================
+
+composition:
+  title: "Strati"
+
+streams:
+
+  # ===========================================================================
+  # SEZIONE 1 — "Origine" (0–82s)
+  # MAX 4 stream simultanei. 001 family (tagli lunghi). Grani grandi.
+  # Texture: quasi-silenzio → respiro → prime coppie di voci.
+  # grain: 0.15-0.4s  density: 2-8  speed: 0.001-0.004
+  # INVILUPPO VOCI: solo mono → poi 2v step=1 (appena percettibile)
+  # ===========================================================================
+
+  # — 1A: Primo soffio (0-30s) — 1 stream —
+
+  - stream_id: "S1_01_primo_atomo"
+    onset: 0.0
+    duration: 38.0
+    sample: "001-0-27_9.wav"
+    density: 2
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.05
+    grain:
+      duration: 0.4
+      duration_range: [[0,0.0],[0.4,0.08],[1,0.02]]
+    volume: [[0,-38],[0.25,-16],[0.9,-16],[1,-22]]
+    distribution: 1
+
+  - stream_id: "S1_02_eco_lontano"
+    onset: 14.0
+    duration: 30.0
+    sample: "001-47_0-15_0.wav"
+    density: 3
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.3
+    grain:
+      duration: 0.3
+      duration_range: [[0,0.005],[1,0.06]]
+    volume: -18
+    distribution: 1
+
+  # — 1B: Due voci appaiono (28-58s) — max 3 simultanei —
+
+  - stream_id: "S1_03_coppia_unisono"
+    onset: 28.0
+    duration: 26.0
+    sample: "001.wav"
+    density: 4
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.12
+    grain:
+      duration: 0.25
+      duration_range: [[0,0.003],[0.6,0.05],[1,0.01]]
+    volume: -16
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 1.0
+      pan:
+        strategy: linear
+        spread: 22.0
+
+  - stream_id: "S1_04_fondo_solo"
+    onset: 36.0
+    duration: 24.0
+    sample: "001-29_5-7_5.wav"
+    density: 5
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.5
+    grain:
+      duration: 0.2
+      duration_range: 0.03
+    volume: -18
+
+  # — 1C: Tre-quattro strati (50-82s) — max 4 simultanei —
+
+  - stream_id: "S1_05_terzo_strato"
+    onset: 50.0
+    duration: 22.0
+    sample: "001-0-27_9.wav"
+    density: 6
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.65
+    grain:
+      duration: 0.18
+      duration_range: [[0,0.005],[1,0.04]]
+    volume: -14
+    pan_range: [[0,5],[1,30]]
+
+  - stream_id: "S1_06_voce_2_entra"
+    onset: 57.0
+    duration: 20.0
+    sample: "001.wav"
+    density: 7
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.4
+    grain:
+      duration: 0.15
+      duration_range: 0.025
+    volume: -14
+    voices:
+      num_voices: 2
+      onset_offset:
+        strategy: linear
+        step: 0.08
+      pan:
+        strategy: linear
+        spread: 35.0
+
+  - stream_id: "S1_07_bridge_s2"
+    onset: 66.0
+    duration: 20.0
+    sample: "001-47_0-15_0.wav"
+    density: 8
+    pointer:
+      speed_ratio: [[0,0.003],[1,0.008]]
+      loop_start: 0.2
+    grain:
+      duration: 0.15
+      duration_range: [[0,0.01],[1,0.05]]
+    volume: [[0,-16],[1,-10]]
+    pan_range: [[0,10],[1,45]]
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  # ===========================================================================
+  # SEZIONE 2 — "Irruzione" (77–180s)  ← DISCONTINUITÀ FORTE con S1
+  # 6-16 stream simultanei. 002 family (tagli medi/lunghi). Grani piccoli.
+  # ESPLOSIONE: a onset=77 entrano subito 6+ stream di colpo.
+  # grain: 0.01-0.03s  density: 80-220  speed: 0.015-0.05
+  # INVILUPPO VOCI: S2A no voci → S2B 4v → S2C combo
+  # ===========================================================================
+
+  # — 2A: Esplosione d'entrata (77-105s) — 6-10 simultanei —
+
+  - stream_id: "S2_01_002_blast_a"
+    onset: 77.0
+    duration: 27.0
+    sample: "002-0-15.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.1
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: [[0,-10],[0.15,-4],[1,-4]]
+    pan_range: [[0,10],[1,60]]
+    distribution: 1
+
+  - stream_id: "S2_02_002_blast_b"
+    onset: 77.0
+    duration: 26.0
+    sample: "002-15-5_5.wav"
+    density: 120
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.4
+    grain:
+      duration: 0.015
+      duration_range: 0.003
+    volume: -5
+
+  - stream_id: "S2_03_002_blast_c"
+    onset: 78.0
+    duration: 26.0
+    sample: "002-28_718-3_625.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.2
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: -6
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S2_04_002_blast_d"
+    onset: 78.0
+    duration: 26.0
+    sample: "002-34_468-3_219.wav"
+    density: 140
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.5
+    grain:
+      duration: 0.012
+      duration_range: 0.003
+    volume: -5
+
+  - stream_id: "S2_05_002_blast_e"
+    onset: 79.0
+    duration: 25.0
+    sample: "002-41_0-3_46.wav"
+    density: 120
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.3
+    grain:
+      duration: 0.015
+      duration_range: 0.003
+    volume: -5
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "S2_06_002_blast_f"
+    onset: 80.0
+    duration: 25.0
+    sample: "002-48_0-5_25.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.022
+      loop_start: 0.15
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: -6
+
+  - stream_id: "S2_07_002_blast_g"
+    onset: 81.0
+    duration: 25.0
+    sample: "002-66_625-5_187.wav"
+    density: 120
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.6
+    grain:
+      duration: 0.015
+      duration_range: 0.003
+    volume: -5
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "S2_08_002_blast_h"
+    onset: 82.0
+    duration: 25.0
+    sample: "002-91_093-3_657.wav"
+    density: 140
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.35
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -5
+
+  # — 2B: Picco (95-140s) — 10-14 simultanei — 4v dominante —
+
+  - stream_id: "S2_09_picco_a"
+    onset: 95.0
+    duration: 25.0
+    sample: "002-0-15.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.5
+    grain:
+      duration: 0.01
+      duration_range: [[0,0.001],[0.5,0.008],[1,0.001]]
+    volume: -3
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.025
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "S2_10_picco_b"
+    onset: 98.0
+    duration: 24.0
+    sample: "002-28_718-3_625.wav"
+    density: 180
+    pointer:
+      speed_ratio: 0.035
+      loop_start: 0.25
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -3
+
+  - stream_id: "S2_11_picco_c"
+    onset: 101.0
+    duration: 24.0
+    sample: "002-34_468-3_219.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.7
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "S2_12_picco_d"
+    onset: 104.0
+    duration: 24.0
+    sample: "002-48_0-5_25.wav"
+    density: 180
+    pointer:
+      speed_ratio: 0.035
+      loop_start: 0.4
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S2_13_picco_e"
+    onset: 107.0
+    duration: 24.0
+    sample: "002-66_625-5_187.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.15
+    grain:
+      duration: 0.01
+      duration_range: 0.001
+    volume: -2
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 7.0
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "S2_14_picco_f"
+    onset: 110.0
+    duration: 24.0
+    sample: "002-91_093-3_657.wav"
+    density: 180
+    pointer:
+      speed_ratio: 0.038
+      loop_start: 0.55
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  # — 2C: Ritirata (130-180s) — 6-10 simultanei, densità scende —
+
+  - stream_id: "S2_15_ritiro_a"
+    onset: 130.0
+    duration: 25.0
+    sample: "002-0-15.wav"
+    density: [[0,180],[1,60]]
+    pointer:
+      speed_ratio: [[0,0.04],[1,0.015]]
+      loop_start: 0.2
+    grain:
+      duration: [[0,0.01],[1,0.03]]
+      duration_range: [[0,0.002],[1,0.01]]
+    volume: [[0,-3],[1,-8]]
+    pan_range: [[0,60],[1,30]]
+
+  - stream_id: "S2_16_ritiro_b"
+    onset: 135.0
+    duration: 25.0
+    sample: "002-28_718-3_625.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.45
+    grain:
+      duration: 0.02
+      duration_range: 0.005
+    volume: -6
+
+  - stream_id: "S2_17_ritiro_c"
+    onset: 140.0
+    duration: 22.0
+    sample: "002-48_0-5_25.wav"
+    density: 80
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.65
+    grain:
+      duration: 0.025
+      duration_range: 0.006
+    volume: -7
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S2_18_ritiro_d"
+    onset: 147.0
+    duration: 20.0
+    sample: "002-91_093-3_657.wav"
+    density: 60
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.3
+    grain:
+      duration: 0.03
+      duration_range: 0.008
+    volume: -8
+
+  - stream_id: "S2_19_ritiro_e"
+    onset: 153.0
+    duration: 20.0
+    sample: "002-34_468-3_219.wav"
+    density: 50
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.55
+    grain:
+      duration: 0.035
+      duration_range: 0.008
+    volume: -8
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  - stream_id: "S2_20_ritiro_f"
+    onset: 159.0
+    duration: 18.0
+    sample: "002-66_625-5_187.wav"
+    density: 40
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.1
+    grain:
+      duration: 0.04
+      duration_range: 0.01
+    volume: -10
+
+  - stream_id: "S2_21_ritiro_g"
+    onset: 164.0
+    duration: 18.0
+    sample: "002-0-15.wav"
+    density: 30
+    pointer:
+      speed_ratio: 0.008
+      loop_start: 0.75
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -12
+
+  - stream_id: "S2_22_coda"
+    onset: 170.0
+    duration: 15.0
+    sample: "002-15-5_5.wav"
+    density: 20
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.5
+    grain:
+      duration: 0.06
+      duration_range: 0.012
+    volume: [[0,-12],[1,-20]]
+
+  # ===========================================================================
+  # SEZIONE 3 — "Vuoto" (172–262s)  ← DISCONTINUITÀ FORTE con S2
+  # MAX 4 stream simultanei. 003, 004, 005.wav. Timbro radicalmente diverso.
+  # GRANI GRANDI (0.12-0.35s), density 2-10, speed lentissima.
+  # INVILUPPO VOCI: entra con 1v → 2v → 4v nel finale
+  # ===========================================================================
+
+  # — 3A: Comparsa solitaria (172-200s) — 1-2 simultanei —
+
+  - stream_id: "S3_01_solo_003"
+    onset: 172.0
+    duration: 32.0
+    sample: "003.wav"
+    density: 2
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.1
+    grain:
+      duration: 0.35
+      duration_range: [[0,0.0],[0.5,0.08],[1,0.02]]
+    volume: [[0,-38],[0.2,-14],[0.9,-14],[1,-18]]
+    distribution: 1
+
+  - stream_id: "S3_02_eco_004"
+    onset: 184.0
+    duration: 28.0
+    sample: "004.wav"
+    density: 3
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.4
+    grain:
+      duration: 0.28
+      duration_range: 0.04
+    volume: -16
+
+  # — 3B: Due/tre strati (200-232s) — 2-3 simultanei —
+
+  - stream_id: "S3_03_005_appare"
+    onset: 200.0
+    duration: 26.0
+    sample: "005.wav"
+    density: 5
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.6
+    grain:
+      duration: 0.22
+      duration_range: 0.035
+    volume: -14
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 1.5
+      pan:
+        strategy: linear
+        spread: 28.0
+
+  - stream_id: "S3_04_003_secondo"
+    onset: 207.0
+    duration: 24.0
+    sample: "003.wav"
+    density: 6
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.35
+    grain:
+      duration: 0.18
+      duration_range: 0.03
+    volume: -14
+
+  - stream_id: "S3_05_004_secondo"
+    onset: 215.0
+    duration: 22.0
+    sample: "004.wav"
+    density: 7
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.7
+    grain:
+      duration: 0.15
+      duration_range: 0.025
+    volume: -12
+    voices:
+      num_voices: 2
+      onset_offset:
+        strategy: linear
+        step: 0.07
+      pan:
+        strategy: linear
+        spread: 35.0
+
+  # — 3C: Quattro strati verso fine (228-262s) — 3-4 simultanei —
+
+  - stream_id: "S3_06_densifica_a"
+    onset: 228.0
+    duration: 22.0
+    sample: "005.wav"
+    density: 8
+    pointer:
+      speed_ratio: 0.005
+      loop_start: 0.2
+    grain:
+      duration: 0.12
+      duration_range: [[0,0.01],[1,0.05]]
+    volume: -12
+    pan_range: [[0,15],[1,50]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 55.0
+
+  - stream_id: "S3_07_densifica_b"
+    onset: 236.0
+    duration: 22.0
+    sample: "003.wav"
+    density: 9
+    pointer:
+      speed_ratio: 0.005
+      loop_start: 0.55
+    grain:
+      duration: 0.1
+      duration_range: 0.02
+    volume: -12
+
+  - stream_id: "S3_08_bridge_s4"
+    onset: 244.0
+    duration: 22.0
+    sample: "004.wav"
+    density: 10
+    pointer:
+      speed_ratio: [[0,0.005],[1,0.01]]
+      loop_start: 0.15
+    grain:
+      duration: 0.1
+      duration_range: [[0,0.01],[1,0.04]]
+    volume: [[0,-12],[1,-8]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  # ===========================================================================
+  # SEZIONE 4 — "Tessitura" (252–365s)
+  # 2-7 stream simultanei. 008 family (tagli corti 0.5-2.3s).
+  # Timbro percussivo/dettagliato. Grani medi.
+  # grain: 0.03-0.08s  density: 20-80  speed: 0.005-0.02
+  # INVILUPPO VOCI: 2v → 4v passo a passo
+  # ===========================================================================
+
+  # — 4A: Base sottile (252-285s) — 2-3 simultanei —
+
+  - stream_id: "S4_01_008_base_a"
+    onset: 252.0
+    duration: 26.0
+    sample: "008-1_778-2_338.wav"
+    density: 22
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.15
+    grain:
+      duration: 0.08
+      duration_range: [[0,0.003],[1,0.025]]
+    volume: -12
+
+  - stream_id: "S4_02_008_base_b"
+    onset: 260.0
+    duration: 24.0
+    sample: "008-7_3-1_6.wav"
+    density: 28
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.5
+    grain:
+      duration: 0.07
+      duration_range: 0.015
+    volume: -12
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  - stream_id: "S4_03_008_base_c"
+    onset: 268.0
+    duration: 22.0
+    sample: "008-10_0-1_88.wav"
+    density: 32
+    pointer:
+      speed_ratio: 0.008
+      loop_start: 0.3
+    grain:
+      duration: 0.06
+      duration_range: 0.012
+    volume: -12
+
+  # — 4B: Accumulo (282-318s) — 4-6 simultanei —
+
+  - stream_id: "S4_04_008_strato_a"
+    onset: 282.0
+    duration: 24.0
+    sample: "008.wav"
+    density: 40
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.2
+    grain:
+      duration: 0.05
+      duration_range: [[0,0.005],[0.5,0.02],[1,0.005]]
+    volume: -10
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S4_05_008_strato_b"
+    onset: 288.0
+    duration: 24.0
+    sample: "008-1_778-2_338.wav"
+    density: 42
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.65
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -10
+
+  - stream_id: "S4_06_008_strato_c"
+    onset: 294.0
+    duration: 22.0
+    sample: "008-6_1-1_19.wav"
+    density: 50
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.4
+    grain:
+      duration: 0.04
+      duration_range: 0.009
+    volume: -8
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "S4_07_008_strato_d"
+    onset: 300.0
+    duration: 22.0
+    sample: "008-4_5-1_02.wav"
+    density: 50
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.1
+    grain:
+      duration: 0.04
+      duration_range: 0.008
+    volume: -10
+
+  # — 4C: Crescita verso S5 (316-365s) — 5-7 simultanei —
+
+  - stream_id: "S4_08_crescita_a"
+    onset: 316.0
+    duration: 24.0
+    sample: "008.wav"
+    density: 60
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.45
+    grain:
+      duration: 0.03
+      duration_range: [[0,0.004],[1,0.015]]
+    volume: -8
+    pan_range: [[0,20],[1,60]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 72.0
+
+  - stream_id: "S4_09_crescita_b"
+    onset: 322.0
+    duration: 24.0
+    sample: "008-1_778-2_338.wav"
+    density: 64
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.7
+    grain:
+      duration: 0.03
+      duration_range: 0.007
+    volume: -8
+
+  - stream_id: "S4_10_crescita_c"
+    onset: 329.0
+    duration: 22.0
+    sample: "008-7_3-1_6.wav"
+    density: 70
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.25
+    grain:
+      duration: 0.025
+      duration_range: 0.006
+    volume: -7
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 72.0
+
+  - stream_id: "S4_11_crescita_d"
+    onset: 336.0
+    duration: 22.0
+    sample: "008-10_0-1_88.wav"
+    density: 75
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.55
+    grain:
+      duration: 0.025
+      duration_range: 0.005
+    volume: -7
+
+  - stream_id: "S4_12_crescita_e"
+    onset: 342.0
+    duration: 20.0
+    sample: "008.wav"
+    density: 80
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.1
+    grain:
+      duration: 0.02
+      duration_range: [[0,0.002],[1,0.01]]
+    volume: -7
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "S4_13_crescita_f"
+    onset: 348.0
+    duration: 20.0
+    sample: "008-6_1-1_19.wav"
+    density: 80
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.6
+    grain:
+      duration: 0.02
+      duration_range: 0.005
+    volume: -7
+
+  - stream_id: "S4_14_bridge_s5"
+    onset: 356.0
+    duration: 18.0
+    sample: "008-4_5-1_02.wav"
+    density: [[0,80],[1,120]]
+    pointer:
+      speed_ratio: [[0,0.02],[1,0.03]]
+      loop_start: 0.35
+    grain:
+      duration: [[0,0.02],[1,0.015]]
+      duration_range: [[0,0.003],[1,0.008]]
+    volume: [[0,-7],[1,-5]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  # ===========================================================================
+  # SEZIONE 5 — "Accumulo" (356–450s)
+  # 6-16 stream simultanei. 006, 007, 009, 010.wav. Timbri nuovi.
+  # INVILUPPO su duration_range e pan_range molto esplicito.
+  # grain: 0.015-0.06s  density: 50-200  speed: 0.01-0.05
+  # ===========================================================================
+
+  # — 5A: Apertura (356-388s) — 6-9 simultanei —
+
+  - stream_id: "S5_01_006_a"
+    onset: 356.0
+    duration: 25.0
+    sample: "006.wav"
+    density: 55
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.2
+    grain:
+      duration: 0.05
+      duration_range: [[0,0.002],[0.6,0.03],[1,0.005]]
+    volume: -8
+    pan_range: [[0,10],[1,55]]
+
+  - stream_id: "S5_02_007_a"
+    onset: 359.0
+    duration: 24.0
+    sample: "007.wav"
+    density: 65
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.5
+    grain:
+      duration: 0.04
+      duration_range: 0.009
+    volume: -8
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S5_03_009_a"
+    onset: 363.0
+    duration: 24.0
+    sample: "009.wav"
+    density: 70
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.35
+    grain:
+      duration: 0.04
+      duration_range: [[0,0.003],[1,0.02]]
+    volume: -7
+    pan_range: [[0,15],[1,60]]
+
+  - stream_id: "S5_04_010_a"
+    onset: 367.0
+    duration: 24.0
+    sample: "010.wav"
+    density: 60
+    pointer:
+      speed_ratio: 0.013
+      loop_start: 0.65
+    grain:
+      duration: 0.045
+      duration_range: 0.01
+    volume: -8
+
+  - stream_id: "S5_05_006_b"
+    onset: 372.0
+    duration: 22.0
+    sample: "006.wav"
+    density: 85
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.1
+    grain:
+      duration: 0.03
+      duration_range: 0.007
+    volume: -6
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "S5_06_007_b"
+    onset: 376.0
+    duration: 22.0
+    sample: "007.wav"
+    density: 90
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.4
+    grain:
+      duration: 0.025
+      duration_range: [[0,0.002],[0.5,0.015],[1,0.003]]
+    volume: -6
+    pan_range: [[0,20],[1,65]]
+
+  - stream_id: "S5_07_009_b"
+    onset: 381.0
+    duration: 22.0
+    sample: "009.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.022
+      loop_start: 0.7
+    grain:
+      duration: 0.02
+      duration_range: 0.005
+    volume: -5
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  # — 5B: Densificazione (387-420s) — 10-14 simultanei —
+
+  - stream_id: "S5_08_010_b"
+    onset: 387.0
+    duration: 22.0
+    sample: "010.wav"
+    density: 120
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.25
+    grain:
+      duration: 0.02
+      duration_range: [[0,0.001],[0.5,0.012],[1,0.002]]
+    volume: -4
+    pan_range: [[0,25],[1,70]]
+
+  - stream_id: "S5_09_006_c"
+    onset: 391.0
+    duration: 22.0
+    sample: "006.wav"
+    density: 130
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.55
+    grain:
+      duration: 0.018
+      duration_range: 0.004
+    volume: -3
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "S5_10_007_c"
+    onset: 395.0
+    duration: 22.0
+    sample: "007.wav"
+    density: 140
+    pointer:
+      speed_ratio: 0.032
+      loop_start: 0.1
+    grain:
+      duration: 0.015
+      duration_range: 0.003
+    volume: -3
+
+  - stream_id: "S5_11_009_c"
+    onset: 399.0
+    duration: 22.0
+    sample: "009.wav"
+    density: 150
+    pointer:
+      speed_ratio: 0.035
+      loop_start: 0.45
+    grain:
+      duration: 0.015
+      duration_range: [[0,0.001],[0.5,0.01],[1,0.002]]
+    volume: -2
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 8.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "S5_12_010_c"
+    onset: 403.0
+    duration: 22.0
+    sample: "010.wav"
+    density: 150
+    pointer:
+      speed_ratio: 0.035
+      loop_start: 0.75
+    grain:
+      duration: 0.015
+      duration_range: 0.003
+    volume: -2
+
+  # — 5C: Spinta finale verso S6 (418-450s) — 12-16 simultanei —
+
+  - stream_id: "S5_13_push_a"
+    onset: 418.0
+    duration: 22.0
+    sample: "006.wav"
+    density: 180
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.3
+    grain:
+      duration: 0.012
+      duration_range: 0.003
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.025
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.07
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "S5_14_push_b"
+    onset: 421.0
+    duration: 22.0
+    sample: "007.wav"
+    density: 180
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.6
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -1
+
+  - stream_id: "S5_15_push_c"
+    onset: 424.0
+    duration: 22.0
+    sample: "009.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.045
+      loop_start: 0.15
+    grain:
+      duration: 0.01
+      duration_range: [[0,0.001],[0.5,0.008],[1,0.001]]
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "S5_16_push_d"
+    onset: 427.0
+    duration: 22.0
+    sample: "010.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.045
+      loop_start: 0.5
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -1
+
+  - stream_id: "S5_17_push_e"
+    onset: 430.0
+    duration: 20.0
+    sample: "006.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.8
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "S5_18_push_f"
+    onset: 433.0
+    duration: 20.0
+    sample: "007.wav"
+    density: 200
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.25
+    grain:
+      duration: 0.01
+      duration_range: 0.001
+    volume: -1
+
+  # ===========================================================================
+  # SEZIONE 6 — "Vortice" (440–528s)  ← CLIMAX, ≥20 simultanei
+  # 002 family: TUTTI i tagli corti (< 4s). Micro-grani. Velocità max.
+  # 22 stream entrano in 22 secondi (440-462) → 22 simultanei garantiti.
+  # grain: 0.008-0.015s  density: 250-350  speed: 0.04-0.06
+  # ===========================================================================
+
+  # — 6A: Pile-up (440-462s) — ramp a 20+ simultanei —
+  # 22 stream, uno al secondo, tutti durano 26s → 22 attivi a onset=462
+
+  - stream_id: "S6_01_002s_23"
+    onset: 440.0
+    duration: 26.0
+    sample: "002-23_5-1_375.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.02
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "S6_02_002s_26"
+    onset: 441.0
+    duration: 26.0
+    sample: "002-26_156-1_250.wav"
+    density: 320
+    pointer:
+      speed_ratio: 0.048
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_03_002s_27"
+    onset: 442.0
+    duration: 26.0
+    sample: "002-27_406-1_312.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 9.0
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "S6_04_002s_32"
+    onset: 443.0
+    duration: 26.0
+    sample: "002-32_343-2_125.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.045
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_05_002s_37a"
+    onset: 444.0
+    duration: 26.0
+    sample: "002-37_687-1_563.wav"
+    density: 320
+    pointer:
+      speed_ratio: 0.055
+    grain:
+      duration: 0.008
+      duration_range: 0.001
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_06_002s_44"
+    onset: 445.0
+    duration: 26.0
+    sample: "002-44_46-3_54.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_07_002s_53"
+    onset: 446.0
+    duration: 26.0
+    sample: "002-53_25-3_562.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.048
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.02
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "S6_08_002s_56"
+    onset: 447.0
+    duration: 26.0
+    sample: "002-56_812-2_813.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_09_002s_59"
+    onset: 448.0
+    duration: 26.0
+    sample: "002-59_625-3_531.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.045
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 12.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_10_002s_63"
+    onset: 449.0
+    duration: 26.0
+    sample: "002-63_156-3_469.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_11_002s_71"
+    onset: 450.0
+    duration: 26.0
+    sample: "002-71_812-2_875.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.055
+    grain:
+      duration: 0.008
+      duration_range: 0.001
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_12_002s_74"
+    onset: 451.0
+    duration: 26.0
+    sample: "002-74_687-3_188.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_13_002s_77"
+    onset: 452.0
+    duration: 26.0
+    sample: "002-77_875-2_375.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.048
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 10.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_14_002s_80"
+    onset: 453.0
+    duration: 26.0
+    sample: "002-80_25-2_343.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_15_002s_82"
+    onset: 454.0
+    duration: 26.0
+    sample: "002-82_593-1_750.wav"
+    density: 320
+    pointer:
+      speed_ratio: 0.055
+    grain:
+      duration: 0.008
+      duration_range: 0.001
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.02
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_16_002s_84"
+    onset: 455.0
+    duration: 26.0
+    sample: "002-84_343-_907.wav"
+    density: 350
+    pointer:
+      speed_ratio: 0.06
+    grain:
+      duration: 0.008
+      duration_range: 0.001
+    volume: -1
+
+  - stream_id: "S6_17_002s_85"
+    onset: 456.0
+    duration: 26.0
+    sample: "002-85_250-1_375.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_18_002s_86"
+    onset: 457.0
+    duration: 26.0
+    sample: "002-86_625-2_531.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.048
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_19_002s_89"
+    onset: 458.0
+    duration: 26.0
+    sample: "002-89_156-1_937.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.02
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "S6_20_002s_37b"
+    onset: 459.0
+    duration: 26.0
+    sample: "002-37_687-3_313.wav"
+    density: 280
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.012
+      duration_range: 0.002
+    volume: -2
+
+  - stream_id: "S6_21_001_62"
+    onset: 460.0
+    duration: 26.0
+    sample: "001-62-2.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.055
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 8.0
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "S6_22_001_65"
+    onset: 461.0
+    duration: 26.0
+    sample: "001-65-2.wav"
+    density: 300
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.01
+      duration_range: 0.002
+    volume: -2
+
+  # — 6B: Picco assoluto (462-486s) — ancora 20+ attivi, poi inizio dissolvenza —
+
+  - stream_id: "S6_23_climax_stoch"
+    onset: 464.0
+    duration: 22.0
+    sample: "002-41_0-3_46.wav"
+    density: [[0,320],[1,150]]
+    pointer:
+      speed_ratio: [[0,0.06],[1,0.03]]
+    grain:
+      duration: [[0,0.008],[1,0.02]]
+      duration_range: [[0,0.001],[1,0.008]]
+    volume: [[0,-1],[0.6,0],[1,-5]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.025
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.09
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # — 6C: Scivolamento verso S7 (484-528s) — 6→3 stream, velocità scende —
+
+  - stream_id: "S6_24_slide_a"
+    onset: 484.0
+    duration: 24.0
+    sample: "002-0-15.wav"
+    density: [[0,200],[1,50]]
+    pointer:
+      speed_ratio: [[0,0.04],[1,0.01]]
+      loop_start: 0.3
+    grain:
+      duration: [[0,0.015],[1,0.06]]
+      duration_range: [[0,0.003],[1,0.015]]
+    volume: [[0,-4],[1,-12]]
+    pan_range: [[0,60],[1,20]]
+
+  - stream_id: "S6_25_slide_b"
+    onset: 491.0
+    duration: 22.0
+    sample: "002-48_0-5_25.wav"
+    density: 80
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.55
+    grain:
+      duration: 0.04
+      duration_range: 0.01
+    volume: -10
+
+  - stream_id: "S6_26_slide_c"
+    onset: 498.0
+    duration: 22.0
+    sample: "002-66_625-5_187.wav"
+    density: 50
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.2
+    grain:
+      duration: 0.06
+      duration_range: 0.012
+    volume: -12
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  - stream_id: "S6_27_slide_d"
+    onset: 506.0
+    duration: 22.0
+    sample: "002-28_718-3_625.wav"
+    density: 30
+    pointer:
+      speed_ratio: 0.008
+      loop_start: 0.7
+    grain:
+      duration: 0.08
+      duration_range: 0.015
+    volume: [[0,-12],[1,-20]]
+
+  # ===========================================================================
+  # SEZIONE 7 — "Frattura" (512–608s)  ← DISCONTINUITÀ MASSIMA post-climax
+  # 2-7 stream simultanei. 011, 012, 013.wav. Materiale radicalmente diverso.
+  # GRANI GRANDISSIMI (0.2-0.6s). DENSITY BASSISSIMA (0.6-5).
+  # Quasi silenzio. Distanza. Riflessione.
+  # ===========================================================================
+
+  # — 7A: Dopo il silenzio (512-545s) — 1-2 simultanei —
+
+  - stream_id: "S7_01_011_solo"
+    onset: 512.0
+    duration: 35.0
+    sample: "011.wav"
+    density: 0.6
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.1
+    grain:
+      duration: 0.6
+      duration_range: [[0,0.0],[0.3,0.1],[0.8,0.08],[1,0.0]]
+    volume: [[0,-38],[0.15,-14],[0.9,-14],[1,-18]]
+    distribution: 1
+
+  - stream_id: "S7_02_012_appare"
+    onset: 525.0
+    duration: 32.0
+    sample: "012.wav"
+    density: 1.0
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.4
+    grain:
+      duration: 0.5
+      duration_range: 0.08
+    volume: -14
+
+  # — 7B: Tre-cinque strati (540-572s) — 3-5 simultanei —
+
+  - stream_id: "S7_03_013_entra"
+    onset: 540.0
+    duration: 28.0
+    sample: "013.wav"
+    density: 1.5
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.6
+    grain:
+      duration: 0.4
+      duration_range: [[0,0.02],[0.6,0.12],[1,0.02]]
+    volume: -12
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 1.0
+      pan:
+        strategy: linear
+        spread: 25.0
+
+  - stream_id: "S7_04_011_secondo"
+    onset: 547.0
+    duration: 28.0
+    sample: "011.wav"
+    density: 2
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.3
+    grain:
+      duration: 0.35
+      duration_range: 0.06
+    volume: -12
+
+  - stream_id: "S7_05_012_secondo"
+    onset: 554.0
+    duration: 26.0
+    sample: "012.wav"
+    density: 3
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.7
+    grain:
+      duration: 0.28
+      duration_range: [[0,0.01],[1,0.09]]
+    volume: -10
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 55.0
+
+  - stream_id: "S7_06_013_secondo"
+    onset: 561.0
+    duration: 26.0
+    sample: "013.wav"
+    density: 3
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.2
+    grain:
+      duration: 0.25
+      duration_range: 0.05
+    volume: -10
+
+  # — 7C: Densità verso 5-7 (572-608s) — 5-7 simultanei —
+
+  - stream_id: "S7_07_011_terzo"
+    onset: 572.0
+    duration: 24.0
+    sample: "011.wav"
+    density: 4
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.5
+    grain:
+      duration: 0.2
+      duration_range: [[0,0.015],[0.5,0.07],[1,0.015]]
+    volume: -8
+    pan_range: [[0,15],[1,55]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  - stream_id: "S7_08_012_terzo"
+    onset: 578.0
+    duration: 24.0
+    sample: "012.wav"
+    density: 5
+    pointer:
+      speed_ratio: 0.005
+      loop_start: 0.15
+    grain:
+      duration: 0.18
+      duration_range: 0.035
+    volume: -8
+
+  - stream_id: "S7_09_013_terzo"
+    onset: 584.0
+    duration: 22.0
+    sample: "013.wav"
+    density: 6
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.65
+    grain:
+      duration: 0.15
+      duration_range: [[0,0.01],[1,0.05]]
+    volume: -7
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.06
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S7_10_011_quarto"
+    onset: 590.0
+    duration: 22.0
+    sample: "011.wav"
+    density: 8
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.35
+    grain:
+      duration: 0.12
+      duration_range: 0.025
+    volume: -7
+
+  - stream_id: "S7_11_012_quarto"
+    onset: 595.0
+    duration: 20.0
+    sample: "012.wav"
+    density: 10
+    pointer:
+      speed_ratio: [[0,0.007],[1,0.012]]
+      loop_start: 0.55
+    grain:
+      duration: [[0,0.12],[1,0.07]]
+      duration_range: [[0,0.02],[1,0.03]]
+    volume: [[0,-7],[1,-5]]
+    pan_range: [[0,25],[1,60]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S7_12_bridge_s8"
+    onset: 601.0
+    duration: 20.0
+    sample: "013.wav"
+    density: [[0,10],[1,30]]
+    pointer:
+      speed_ratio: [[0,0.008],[1,0.015]]
+      loop_start: 0.1
+    grain:
+      duration: [[0,0.1],[1,0.05]]
+      duration_range: [[0,0.015],[1,0.01]]
+    volume: [[0,-6],[1,-4]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 68.0
+
+  # ===========================================================================
+  # SEZIONE 8 — "Risonanza" (600–695s)
+  # 6-16 stream simultanei. 014, 015, 016, 016-39_8-2_2.wav.
+  # Ricostruzione. Materiale nuovo. Grani medi.
+  # INVILUPPO VOCI: 2v → 4v → combo completi
+  # pan_range e duration_range evoluti
+  # ===========================================================================
+
+  # — 8A: Apertura (600-636s) — 6-9 simultanei —
+
+  - stream_id: "S8_01_014_a"
+    onset: 600.0
+    duration: 30.0
+    sample: "014.wav"
+    density: 35
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.2
+    grain:
+      duration: 0.08
+      duration_range: [[0,0.002],[0.5,0.03],[1,0.01]]
+    volume: -10
+    pan_range: [[0,10],[1,50]]
+
+  - stream_id: "S8_02_015_a"
+    onset: 603.0
+    duration: 30.0
+    sample: "015.wav"
+    density: 40
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.5
+    grain:
+      duration: 0.07
+      duration_range: 0.014
+    volume: -10
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 45.0
+
+  - stream_id: "S8_03_016_a"
+    onset: 607.0
+    duration: 28.0
+    sample: "016.wav"
+    density: 45
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.35
+    grain:
+      duration: 0.06
+      duration_range: [[0,0.004],[1,0.025]]
+    volume: -9
+    pan_range: [[0,15],[1,58]]
+
+  - stream_id: "S8_04_016cut_a"
+    onset: 611.0
+    duration: 28.0
+    sample: "016-39_8-2_2.wav"
+    density: 50
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -8
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 68.0
+
+  - stream_id: "S8_05_014_b"
+    onset: 615.0
+    duration: 28.0
+    sample: "014.wav"
+    density: 60
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.65
+    grain:
+      duration: 0.04
+      duration_range: 0.009
+    volume: -8
+
+  - stream_id: "S8_06_015_b"
+    onset: 619.0
+    duration: 28.0
+    sample: "015.wav"
+    density: 65
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.4
+    grain:
+      duration: 0.04
+      duration_range: [[0,0.003],[0.5,0.02],[1,0.005]]
+    volume: -7
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 72.0
+
+  # — 8B: Picco (632-662s) — 10-14 simultanei —
+
+  - stream_id: "S8_07_016_b"
+    onset: 632.0
+    duration: 28.0
+    sample: "016.wav"
+    density: 80
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.25
+    grain:
+      duration: 0.03
+      duration_range: [[0,0.002],[0.5,0.015],[1,0.003]]
+    volume: -6
+    pan_range: [[0,30],[1,70]]
+
+  - stream_id: "S8_08_014_c"
+    onset: 635.0
+    duration: 28.0
+    sample: "014.wav"
+    density: 90
+    pointer:
+      speed_ratio: 0.022
+      loop_start: 0.6
+    grain:
+      duration: 0.025
+      duration_range: 0.006
+    volume: -5
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "S8_09_015_c"
+    onset: 638.0
+    duration: 26.0
+    sample: "015.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.1
+    grain:
+      duration: 0.02
+      duration_range: [[0,0.002],[0.5,0.012],[1,0.002]]
+    volume: -4
+    pan_range: [[0,35],[1,75]]
+
+  - stream_id: "S8_10_016cut_b"
+    onset: 641.0
+    duration: 26.0
+    sample: "016-39_8-2_2.wav"
+    density: 100
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.5
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: -4
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "S8_11_016_c"
+    onset: 644.0
+    duration: 26.0
+    sample: "016.wav"
+    density: 110
+    pointer:
+      speed_ratio: 0.028
+      loop_start: 0.75
+    grain:
+      duration: 0.018
+      duration_range: 0.004
+    volume: -4
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "S8_12_014_d"
+    onset: 647.0
+    duration: 26.0
+    sample: "014.wav"
+    density: 110
+    pointer:
+      speed_ratio: 0.028
+      loop_start: 0.35
+    grain:
+      duration: 0.018
+      duration_range: 0.003
+    volume: -4
+
+  # — 8C: Decrescita (660-695s) — 7-10 → 4-6 simultanei —
+
+  - stream_id: "S8_13_015_d"
+    onset: 660.0
+    duration: 25.0
+    sample: "015.wav"
+    density: [[0,100],[1,40]]
+    pointer:
+      speed_ratio: [[0,0.025],[1,0.01]]
+      loop_start: 0.2
+    grain:
+      duration: [[0,0.02],[1,0.06]]
+      duration_range: [[0,0.003],[1,0.012]]
+    volume: [[0,-4],[1,-10]]
+    pan_range: [[0,70],[1,30]]
+
+  - stream_id: "S8_14_016_d"
+    onset: 664.0
+    duration: 24.0
+    sample: "016.wav"
+    density: 60
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.55
+    grain:
+      duration: 0.04
+      duration_range: 0.01
+    volume: -8
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "S8_15_014_e"
+    onset: 668.0
+    duration: 22.0
+    sample: "014.wav"
+    density: 45
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.1
+    grain:
+      duration: 0.06
+      duration_range: [[0,0.008],[1,0.02]]
+    volume: -10
+
+  - stream_id: "S8_16_bridge_s9"
+    onset: 673.0
+    duration: 22.0
+    sample: "015.wav"
+    density: [[0,40],[1,8]]
+    pointer:
+      speed_ratio: [[0,0.01],[1,0.003]]
+      loop_start: 0.45
+    grain:
+      duration: [[0,0.06],[1,0.2]]
+      duration_range: [[0,0.01],[1,0.04]]
+    volume: [[0,-10],[1,-16]]
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  # ===========================================================================
+  # SEZIONE 9 — "Congedo" (680–720s)
+  # MEDIUM→SPARSE. 001.wav e 002.wav (originali completi). Ritorno alle sorgenti.
+  # density: 5→0.6  grain: 0.1-0.5s  speed: 0.001-0.004
+  # ===========================================================================
+
+  # — 9A: Ritorno al materiale originale (680-702s) — 4-6 simultanei —
+
+  - stream_id: "S9_01_001_ritorno"
+    onset: 680.0
+    duration: 25.0
+    sample: "001.wav"
+    density: 5
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.08
+    grain:
+      duration: 0.12
+      duration_range: [[0,0.01],[0.5,0.05],[1,0.02]]
+    volume: -12
+    pan_range: [[0,30],[1,10]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 50.0
+
+  - stream_id: "S9_02_002_ritorno"
+    onset: 683.0
+    duration: 24.0
+    sample: "002.wav"
+    density: 4
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.3
+    grain:
+      duration: 0.15
+      duration_range: 0.03
+    volume: -12
+
+  - stream_id: "S9_03_001_largo"
+    onset: 688.0
+    duration: 22.0
+    sample: "001.wav"
+    density: 3
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.6
+    grain:
+      duration: 0.2
+      duration_range: [[0,0.02],[0.5,0.07],[1,0.01]]
+    volume: -14
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 1.0
+      pan:
+        strategy: linear
+        spread: 25.0
+
+  # — 9B: Rarefazione (695-715s) — 2-4 simultanei —
+
+  - stream_id: "S9_04_002_largo"
+    onset: 695.0
+    duration: 20.0
+    sample: "002.wav"
+    density: 2
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.55
+    grain:
+      duration: 0.25
+      duration_range: 0.04
+    volume: -16
+    distribution: 1
+
+  - stream_id: "S9_05_001_sparse"
+    onset: 700.0
+    duration: 18.0
+    sample: "001.wav"
+    density: 1.5
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.2
+    grain:
+      duration: 0.3
+      duration_range: [[0,0.01],[0.5,0.1],[1,0.01]]
+    volume: -18
+    distribution: 1
+
+  - stream_id: "S9_06_002_rarefatto"
+    onset: 705.0
+    duration: 15.0
+    sample: "002.wav"
+    density: 1.0
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.7
+    grain:
+      duration: 0.35
+      duration_range: 0.06
+    volume: -18
+
+  # — 9C: Dissoluzione finale (710-720s) — 1-2 simultanei —
+
+  - stream_id: "S9_07_001_dissolvenza"
+    onset: 710.0
+    duration: 12.0
+    sample: "001.wav"
+    density: 0.6
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.45
+    grain:
+      duration: 0.45
+      duration_range: [[0,0.02],[0.5,0.12],[1,0.0]]
+    volume: [[0,-20],[0.5,-20],[1,-40]]
+    distribution: 1
+
+  - stream_id: "S9_08_002_ultimo"
+    onset: 714.0
+    duration: 7.0
+    sample: "002.wav"
+    density: 0.6
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.1
+    grain:
+      duration: 0.5
+      duration_range: 0.0
+    volume: [[0,-24],[0.4,-24],[1,-50]]

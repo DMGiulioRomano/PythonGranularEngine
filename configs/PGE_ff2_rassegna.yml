@@ -1,0 +1,2114 @@
+# =============================================================================
+# PGE_ff2_rassegna.yml
+# Rassegna sistematica: fill_factor=2, speed_ratio 0.002→0.3
+# =============================================================================
+#
+# STRUTTURA: matrice 10×10 = 100 stream
+#
+#   ASSE ORIZZONTALE — speed_ratio (10 livelli):
+#     G0=0.002  G1=0.005  G2=0.01  G3=0.02  G4=0.05
+#     G5=0.1    G6=0.15   G7=0.2   G8=0.25  G9=0.3
+#
+#   ASSE VERTICALE — configurazione voce (10 config per gruppo):
+#     01 novoice              — baseline mono
+#     02 pitch:step=2         — cluster stretto
+#     03 pitch:step=5         — cluster largo
+#     04 pitch:chord=maj7     — accordo maggiore settima
+#     05 pitch:chord=dom7     — accordo dominante
+#     06 pitch:stochastic±6st — voci random
+#     07 onset:linear 0.05s   — canone micro
+#     08 pointer:stochastic   — dispersione sample
+#     09 pitch:step + onset   — combo 2D
+#     10 full combo           — tutti i parametri voce
+#
+# COSTANTI:
+#   sample:        "001-0_0-3_0.wav"
+#   fill_factor:   2.0   → density = 2 / grain_dur
+#   grain_dur:     0.05s → density = 40 grain/s
+#   duration:      15.0s
+#   slot:          17.0s (15s + 2s gap)
+#   volume:        -18
+#   pan spread:    70° (dove presente)
+#
+# DENSITY / OVERLAP REFERENCE (grain_dur=0.05, ff=2):
+#   IOT = 1/density = 0.025s → ogni grano inizia a metà del precedente
+#
+# SPEED_RATIO REFERENCE:
+#   0.002 → pointer avanza 0.03  (3%)  del sample in 15s  ← quasi-freeze
+#   0.005 → 0.075 (7.5%)
+#   0.01  → 0.15  (15%)
+#   0.02  → 0.30  (30%)
+#   0.05  → 0.75  (75%)  ← quasi tutto il sample in 15s
+#   0.1   → supera il sample (~1.5x) → entra il loop
+#   0.15  → 2.25x
+#   0.2   → 3.0x
+#   0.25  → 3.75x
+#   0.3   → 4.5x  ← lettura molto veloce, texture timbrica
+#
+# onset = stream_global_index * 17
+# =============================================================================
+
+composition:
+  title: "Fill Factor 2 — Rassegna 100 stream (speed_ratio 0.002→0.3)"
+
+streams:
+
+  # ===========================================================================
+  # GRUPPO 0 — speed_ratio: 0.002 (quasi-freeze)
+  # In 15s il pointer si sposta del 3% del sample
+  # ===========================================================================
+
+  - stream_id: "01_spd002_novoice"
+    onset: 0.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "02_spd002_pitch_step2"
+    onset: 17.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "03_spd002_pitch_step5"
+    onset: 34.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "04_spd002_chord_maj7"
+    onset: 51.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "05_spd002_chord_dom7"
+    onset: 68.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "06_spd002_pitch_stoch"
+    onset: 85.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "07_spd002_onset_linear"
+    onset: 102.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "08_spd002_ptr_stoch"
+    onset: 119.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "09_spd002_pitch_onset"
+    onset: 136.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "10_spd002_full"
+    onset: 153.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.002
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 1 — speed_ratio: 0.005 (molto lento)
+  # In 15s il pointer si sposta del 7.5% del sample
+  # ===========================================================================
+
+  - stream_id: "11_spd005_novoice"
+    onset: 170.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "12_spd005_pitch_step2"
+    onset: 187.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "13_spd005_pitch_step5"
+    onset: 204.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "14_spd005_chord_maj7"
+    onset: 221.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "15_spd005_chord_dom7"
+    onset: 238.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "16_spd005_pitch_stoch"
+    onset: 255.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "17_spd005_onset_linear"
+    onset: 272.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "18_spd005_ptr_stoch"
+    onset: 289.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "19_spd005_pitch_onset"
+    onset: 306.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "20_spd005_full"
+    onset: 323.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 2 — speed_ratio: 0.01 (lento)
+  # In 15s il pointer si sposta del 15% del sample
+  # ===========================================================================
+
+  - stream_id: "21_spd010_novoice"
+    onset: 340.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "22_spd010_pitch_step2"
+    onset: 357.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "23_spd010_pitch_step5"
+    onset: 374.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "24_spd010_chord_maj7"
+    onset: 391.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "25_spd010_chord_dom7"
+    onset: 408.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "26_spd010_pitch_stoch"
+    onset: 425.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "27_spd010_onset_linear"
+    onset: 442.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "28_spd010_ptr_stoch"
+    onset: 459.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "29_spd010_pitch_onset"
+    onset: 476.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "30_spd010_full"
+    onset: 493.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 3 — speed_ratio: 0.02
+  # In 15s il pointer si sposta del 30% del sample
+  # ===========================================================================
+
+  - stream_id: "31_spd020_novoice"
+    onset: 510.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "32_spd020_pitch_step2"
+    onset: 527.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "33_spd020_pitch_step5"
+    onset: 544.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "34_spd020_chord_maj7"
+    onset: 561.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "35_spd020_chord_dom7"
+    onset: 578.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "36_spd020_pitch_stoch"
+    onset: 595.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "37_spd020_onset_linear"
+    onset: 612.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "38_spd020_ptr_stoch"
+    onset: 629.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "39_spd020_pitch_onset"
+    onset: 646.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "40_spd020_full"
+    onset: 663.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 4 — speed_ratio: 0.05
+  # In 15s il pointer percorre il 75% del sample
+  # ===========================================================================
+
+  - stream_id: "41_spd050_novoice"
+    onset: 680.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "42_spd050_pitch_step2"
+    onset: 697.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "43_spd050_pitch_step5"
+    onset: 714.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "44_spd050_chord_maj7"
+    onset: 731.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "45_spd050_chord_dom7"
+    onset: 748.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "46_spd050_pitch_stoch"
+    onset: 765.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "47_spd050_onset_linear"
+    onset: 782.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "48_spd050_ptr_stoch"
+    onset: 799.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "49_spd050_pitch_onset"
+    onset: 816.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "50_spd050_full"
+    onset: 833.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 5 — speed_ratio: 0.1
+  # Pointer percorre 1.5x il sample in 15s → entra in loop
+  # ===========================================================================
+
+  - stream_id: "51_spd100_novoice"
+    onset: 850.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "52_spd100_pitch_step2"
+    onset: 867.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "53_spd100_pitch_step5"
+    onset: 884.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "54_spd100_chord_maj7"
+    onset: 901.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "55_spd100_chord_dom7"
+    onset: 918.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "56_spd100_pitch_stoch"
+    onset: 935.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "57_spd100_onset_linear"
+    onset: 952.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "58_spd100_ptr_stoch"
+    onset: 969.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "59_spd100_pitch_onset"
+    onset: 986.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "60_spd100_full"
+    onset: 1003.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 6 — speed_ratio: 0.15
+  # Pointer percorre 2.25x il sample in 15s
+  # ===========================================================================
+
+  - stream_id: "61_spd150_novoice"
+    onset: 1020.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "62_spd150_pitch_step2"
+    onset: 1037.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "63_spd150_pitch_step5"
+    onset: 1054.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "64_spd150_chord_maj7"
+    onset: 1071.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "65_spd150_chord_dom7"
+    onset: 1088.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "66_spd150_pitch_stoch"
+    onset: 1105.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "67_spd150_onset_linear"
+    onset: 1122.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "68_spd150_ptr_stoch"
+    onset: 1139.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "69_spd150_pitch_onset"
+    onset: 1156.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "70_spd150_full"
+    onset: 1173.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 7 — speed_ratio: 0.2
+  # Pointer percorre 3x il sample in 15s
+  # ===========================================================================
+
+  - stream_id: "71_spd200_novoice"
+    onset: 1190.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "72_spd200_pitch_step2"
+    onset: 1207.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "73_spd200_pitch_step5"
+    onset: 1224.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "74_spd200_chord_maj7"
+    onset: 1241.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "75_spd200_chord_dom7"
+    onset: 1258.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "76_spd200_pitch_stoch"
+    onset: 1275.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "77_spd200_onset_linear"
+    onset: 1292.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "78_spd200_ptr_stoch"
+    onset: 1309.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "79_spd200_pitch_onset"
+    onset: 1326.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "80_spd200_full"
+    onset: 1343.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.2
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 8 — speed_ratio: 0.25
+  # Pointer percorre 3.75x il sample in 15s
+  # ===========================================================================
+
+  - stream_id: "81_spd250_novoice"
+    onset: 1360.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "82_spd250_pitch_step2"
+    onset: 1377.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "83_spd250_pitch_step5"
+    onset: 1394.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "84_spd250_chord_maj7"
+    onset: 1411.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "85_spd250_chord_dom7"
+    onset: 1428.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "86_spd250_pitch_stoch"
+    onset: 1445.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "87_spd250_onset_linear"
+    onset: 1462.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "88_spd250_ptr_stoch"
+    onset: 1479.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "89_spd250_pitch_onset"
+    onset: 1496.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "90_spd250_full"
+    onset: 1513.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.25
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # GRUPPO 9 — speed_ratio: 0.3
+  # Pointer percorre 4.5x il sample in 15s — lettura veloce, texture timbrica
+  # ===========================================================================
+
+  - stream_id: "91_spd300_novoice"
+    onset: 1530.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+
+  - stream_id: "92_spd300_pitch_step2"
+    onset: 1547.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "93_spd300_pitch_step5"
+    onset: 1564.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "94_spd300_chord_maj7"
+    onset: 1581.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "95_spd300_chord_dom7"
+    onset: 1598.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "96_spd300_pitch_stoch"
+    onset: 1615.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "97_spd300_onset_linear"
+    onset: 1632.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "98_spd300_ptr_stoch"
+    onset: 1649.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "99_spd300_pitch_onset"
+    onset: 1666.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "100_spd300_full"
+    onset: 1683.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.3
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0

@@ -1,0 +1,2073 @@
+# =============================================================================
+# PGE_brano_8min.yml
+# "Dalla nebula al temporale" — brano acusmatico ~8 minuti
+# =============================================================================
+#
+# FORMA IN 6 SEZIONI (100 stream sovrapposti):
+#
+#  I.   NEBULA          (0–65s)    — 8 stream
+#       Grani isolati, quasi impercettibili. Materia primordiale.
+#       grain_dur: 0.15–0.3s, ff: 0.8–1.5, speed: 0.001–0.003
+#       Nessuna voce o 2 voci con intervalli microtonali.
+#
+#  II.  PRIME NUVOLE    (62–158s)  — 15 stream
+#       Le prime aggregazioni. Distanza tra gli eventi. Apertura stereo.
+#       grain_dur: 0.06–0.12s, ff: 1.5–2.0, speed: 0.002–0.008
+#       2–4 voci con pitch emergente.
+#
+#  III. ADDENSAMENTO    (148–252s) — 20 stream
+#       Le nuvole si intersecano. La materia si organizza.
+#       grain_dur: 0.04–0.08s, ff: 2.0, speed: 0.005–0.015
+#       4 voci, accordi, onset-offset come micro-canone.
+#
+#  IV.  TEMPORALE       (242–375s) — 30 stream
+#       Massima densità. Deflagrazione timbrica.
+#       grain_dur: 0.02–0.05s, ff: 2.0–2.5, speed: 0.015–0.06
+#       Combo completi, spread stereo massimo.
+#
+#  V.   DISSOLUZIONE    (362–448s) — 15 stream
+#       Il temporale si ritira. I parametri invertono il percorso.
+#       grain_dur: 0.05–0.12s, ff: 1.5–2.0, speed: 0.005–0.03
+#
+#  VI.  SILENZIO        (440–482s) — 12 stream
+#       Ritorno alla nebula. Grani sempre più radi e lunghi.
+#       grain_dur: 0.15–0.5s, ff: 0.3–1.2, speed: 0.001–0.003
+#
+# NOTE COMPOSITIVE:
+#   - stream sovrapposti: la "densità" del brano emerge dalla
+#     somma degli stream attivi simultaneamente
+#   - loop_start diversi: ogni stream legge una zona diversa del sample
+#   - volume come envelope su alcuni stream per fade naturali
+#   - speed_ratio come envelope in punti di transizione
+#   - fill_factor < 1 nelle sezioni I e VI = grani con silenzio tra loro
+# =============================================================================
+
+composition:
+  title: "Dalla nebula al temporale"
+
+streams:
+
+  # ===========================================================================
+  # I. NEBULA (0–65s)
+  # 8 stream. Materia prima. Un singolo grano ogni pochi secondi.
+  # ===========================================================================
+
+  # Il primo atomo — sale dal silenzio
+  - stream_id: "I_01_primo_atomo"
+    onset: 0.0
+    duration: 28.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.8
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.1
+    grain:
+      duration: 0.25
+      duration_range: 0.05
+    volume: [[0,-48],[0.3,-28],[0.8,-28],[1,-36]]
+
+  # Secondo respiro — più in profondità nel sample
+  - stream_id: "I_02_secondo_respiro"
+    onset: 9.0
+    duration: 24.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.9
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.35
+    grain:
+      duration: 0.2
+      duration_range: 0.04
+    volume: -30
+
+  # Eco — stesso gesto, zona diversa
+  - stream_id: "I_03_eco"
+    onset: 18.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.0
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.55
+    grain:
+      duration: 0.2
+      duration_range: 0.04
+    volume: -30
+
+  # Prima coppia: 2 voci a semitono (quasi unisono)
+  - stream_id: "I_04_primo_intervallo"
+    onset: 28.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.1
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.2
+    grain:
+      duration: 0.18
+      duration_range: 0.03
+    volume: -28
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 1.0
+      pan:
+        strategy: linear
+        spread: 30.0
+
+  # Gesto più corposo — il sample si allarga
+  - stream_id: "I_05_corpo"
+    onset: 36.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.2
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.65
+    grain:
+      duration: 0.15
+      duration_range: 0.03
+    volume: -28
+
+  # Frammento in moto lento
+  - stream_id: "I_06_frammento"
+    onset: 44.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.3
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.42
+    grain:
+      duration: 0.12
+      duration_range: 0.025
+    volume: -26
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 35.0
+
+  # Strato sottile — emerge da sotto
+  - stream_id: "I_07_strato_sotto"
+    onset: 51.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.4
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.12
+    grain:
+      duration: 0.12
+      duration_range: 0.02
+    volume: -28
+
+  # Chiusura nebula / apertura nuvole — bridge
+  - stream_id: "I_08_bridge_nebula"
+    onset: 57.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.5
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.75
+    grain:
+      duration: 0.1
+      duration_range: 0.02
+    volume: [[0,-30],[0.6,-22],[1,-22]]
+    voices:
+      num_voices: 2
+      onset_offset:
+        strategy: linear
+        step: 0.06
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  # ===========================================================================
+  # II. PRIME NUVOLE (62–158s)
+  # 15 stream. Le nuvole si formano, isolate, poi cominciano ad avvicinarsi.
+  # ===========================================================================
+
+  # Prima nuvola a 4 voci — accordo maggiore settima, lontano
+  - stream_id: "II_09_nuvola_maj7"
+    onset: 62.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.8
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.3
+    grain:
+      duration: 0.1
+      duration_range: 0.015
+    volume: -24
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  # Corrente di fondo — senza voci, muove più veloce
+  - stream_id: "II_10_corrente"
+    onset: 68.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.8
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.52
+    grain:
+      duration: 0.08
+      duration_range: 0.015
+    volume: -26
+
+  # Nuvola per terze minori — intervallo caldo
+  - stream_id: "II_11_terze_minori"
+    onset: 73.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.18
+    grain:
+      duration: 0.08
+      duration_range: 0.012
+    volume: -24
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # Silenzio relativo — pochissimo, respiro tra le nuvole
+  - stream_id: "II_12_respiro"
+    onset: 81.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.8
+    pointer:
+      speed_ratio: 0.005
+      loop_start: 0.6
+    grain:
+      duration: 0.07
+      duration_range: 0.01
+    volume: -28
+
+  # Dom7 — tensione armonica emerge
+  - stream_id: "II_13_tensione_dom7"
+    onset: 86.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.4
+    grain:
+      duration: 0.08
+      duration_range: 0.01
+    volume: -24
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # Micro-canone — onset stagger tra voci
+  - stream_id: "II_14_microcanone"
+    onset: 93.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.005
+      loop_start: 0.25
+    grain:
+      duration: 0.06
+      duration_range: 0.01
+    volume: -22
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  # Quinta giusta — spazio armonico stabile
+  - stream_id: "II_15_quinte"
+    onset: 99.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.7
+    grain:
+      duration: 0.06
+      duration_range: 0.01
+    volume: -22
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  # Fondo che si muove — no voci, più veloce
+  - stream_id: "II_16_fondo_mobile"
+    onset: 105.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.004],[1,0.008]]
+      loop_start: 0.15
+    grain:
+      duration: 0.07
+      duration_range: 0.012
+    volume: -24
+
+  # Dispersione del pointer — voci leggono zone diverse
+  - stream_id: "II_17_dispersione"
+    onset: 110.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.48
+    grain:
+      duration: 0.06
+      duration_range: 0.01
+    volume: -22
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # Nuvola dom7 + micro-canone — primo incrocio
+  - stream_id: "II_18_incrocio_dom7_canone"
+    onset: 116.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.33
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -22
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # Pitch stochastic — prima irregolarità armonica
+  - stream_id: "II_19_stoch_primo"
+    onset: 122.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.58
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -22
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # Sottofondo neutro
+  - stream_id: "II_20_neutro"
+    onset: 128.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.008
+      loop_start: 0.08
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -26
+
+  # Maj7 con ottave — apertura verticale
+  - stream_id: "II_21_ottave_maj7"
+    onset: 134.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.44
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -20
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  # Pointer lineare tra voci — tessitura sempre più ricca
+  - stream_id: "II_22_ptr_lineare"
+    onset: 140.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.62
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+    volume: -22
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # Grano piccolo + pitch step — transizione verso addensamento
+  - stream_id: "II_23_preaddensamento"
+    onset: 146.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.007],[1,0.01]]
+      loop_start: 0.28
+    grain:
+      duration: 0.04
+      duration_range: 0.008
+    volume: [[0,-24],[1,-20]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  # ===========================================================================
+  # III. ADDENSAMENTO (148–252s)
+  # 20 stream. Le nuvole si sovrappongono. La materia si organizza.
+  # ===========================================================================
+
+  - stream_id: "III_24_strato_a"
+    onset: 150.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.32
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -20
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "III_25_strato_b"
+    onset: 152.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.009
+      loop_start: 0.5
+    grain:
+      duration: 0.04
+      duration_range: 0.008
+    volume: -20
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "III_26_fondo_neutro"
+    onset: 155.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.15
+    grain:
+      duration: 0.06
+      duration_range: 0.01
+    volume: -22
+
+  - stream_id: "III_27_canone_onset"
+    onset: 158.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.4
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -20
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "III_28_quarta_aum"
+    onset: 163.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.67
+    grain:
+      duration: 0.04
+      duration_range: 0.008
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "III_29_jitter_ptr"
+    onset: 168.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.008
+      loop_start: 0.22
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -20
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "III_30_dom7_canone"
+    onset: 173.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.55
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "III_31_full_primo"
+    onset: 178.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.38
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "III_32_stoch_harmony"
+    onset: 182.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.009
+      loop_start: 0.7
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -20
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "III_33_soffio"
+    onset: 186.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.1
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -22
+
+  - stream_id: "III_34_pitch_onset"
+    onset: 190.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.011
+      loop_start: 0.45
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "III_35_maj7_dense"
+    onset: 194.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.013
+      loop_start: 0.6
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "III_36_step3"
+    onset: 198.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.28
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -20
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "III_37_ptr_lin_onset"
+    onset: 204.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.5
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: linear
+        step: 0.04
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.06
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "III_38_stoch_accel"
+    onset: 208.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.01],[1,0.015]]
+      loop_start: 0.2
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 7.0
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "III_39_vuoto"
+    onset: 213.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.011
+      loop_start: 0.75
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -22
+
+  - stream_id: "III_40_full_b"
+    onset: 218.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.014
+      loop_start: 0.35
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "III_41_dom7_finale"
+    onset: 224.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.013
+      loop_start: 0.55
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "III_42_step5_dense"
+    onset: 230.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.12
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -17
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  # Pre-climax — accelera tutto
+  - stream_id: "III_43_pre_climax"
+    onset: 236.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.013],[1,0.02]]
+      loop_start: 0.45
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: [[0,-20],[1,-16]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # ===========================================================================
+  # IV. TEMPORALE (242–375s)
+  # 30 stream simultanei. Deflagrazione. Velocità e densità al massimo.
+  # ===========================================================================
+
+  - stream_id: "IV_44_fulmine_a"
+    onset: 242.0
+    duration: 26.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.22
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -15
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_45_fulmine_b"
+    onset: 244.0
+    duration: 24.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.5
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -15
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_46_settima_acuta"
+    onset: 246.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.35
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -15
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_47_canone_veloce"
+    onset: 248.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.022
+      loop_start: 0.65
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -15
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "IV_48_fondo_neutro"
+    onset: 250.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.1
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -18
+
+  - stream_id: "IV_49_dom7_rapido"
+    onset: 252.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.42
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -14
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "IV_50_jitter_forte"
+    onset: 255.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.58
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -14
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_51_quinta_rapida"
+    onset: 258.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.028
+      loop_start: 0.25
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -14
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_52_full_forza"
+    onset: 261.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.48
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.07
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "IV_53_stoch_max"
+    onset: 265.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.72
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -13
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 8.0
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "IV_54_maj7_turbo"
+    onset: 269.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.032
+      loop_start: 0.18
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "IV_55_canone_forte"
+    onset: 273.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: 0.035
+      loop_start: 0.4
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: geometric
+        step: 0.03
+        base: 1.5
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "IV_56_pitch_ptr"
+    onset: 277.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.62
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "IV_57_dom7_esplosione"
+    onset: 281.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.3
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -11
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "IV_58_microsuono"
+    onset: 285.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: 0.038
+      loop_start: 0.08
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: -14
+
+  - stream_id: "IV_59_picco_a"
+    onset: 289.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.52
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: -11
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "IV_60_ottave_veloci"
+    onset: 293.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.38
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -11
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 12.0
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "IV_61_stoch_climax"
+    onset: 297.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: 0.045
+      loop_start: 0.7
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -11
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 10.0
+      pan:
+        strategy: linear
+        spread: 88.0
+
+  - stream_id: "IV_62_picco_b"
+    onset: 301.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.25
+    grain:
+      duration: 0.02
+      duration_range: 0.003
+    volume: -11
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.09
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "IV_63_full_max"
+    onset: 305.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.45
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -11
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.09
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  - stream_id: "IV_64_step5_micro"
+    onset: 309.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.15
+    grain:
+      duration: 0.02
+      duration_range: 0.003
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "IV_65_ptr_wide"
+    onset: 313.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.05
+      loop_start: 0.6
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "IV_66_canone_fine"
+    onset: 317.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.045
+      loop_start: 0.35
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.03
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_67_dom7_lento_rit"
+    onset: 322.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.05],[1,0.04]]
+      loop_start: 0.55
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 82.0
+
+  - stream_id: "IV_68_full_lento_rit"
+    onset: 327.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.5
+    pointer:
+      speed_ratio: [[0,0.05],[1,0.035]]
+      loop_start: 0.2
+    grain:
+      duration: 0.03
+      duration_range: 0.005
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 85.0
+
+  - stream_id: "IV_69_step7_rit"
+    onset: 333.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.68
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: -13
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "IV_70_maj7_decrescendo"
+    onset: 338.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.035
+      loop_start: 0.42
+    grain:
+      duration: 0.04
+      duration_range: 0.006
+    volume: [[0,-13],[1,-16]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "IV_71_jitter_decr"
+    onset: 344.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.032
+      loop_start: 0.12
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -14
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "IV_72_bridge_v"
+    onset: 350.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.04],[1,0.025]]
+      loop_start: 0.5
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: [[0,-14],[1,-16]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.07
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # Ultimo picco — poi dissoluzione
+  - stream_id: "IV_73_ultimo_lampo"
+    onset: 356.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.05],[0.4,0.05],[1,0.02]]
+      loop_start: 0.3
+    grain:
+      duration: 0.02
+      duration_range: 0.004
+    volume: [[0,-12],[0.4,-11],[1,-16]]
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: 9.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # ===========================================================================
+  # V. DISSOLUZIONE (362–448s)
+  # 15 stream. Il temporale si ritira. I parametri invertono la traiettoria.
+  # ===========================================================================
+
+  - stream_id: "V_74_ritiro_a"
+    onset: 362.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.04
+      loop_start: 0.38
+    grain:
+      duration: 0.04
+      duration_range: 0.007
+    volume: -15
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.04
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  - stream_id: "V_75_maj7_largo"
+    onset: 368.0
+    duration: 22.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.03
+      loop_start: 0.6
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -16
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 78.0
+
+  - stream_id: "V_76_step5_lento"
+    onset: 374.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.025
+      loop_start: 0.15
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "V_77_ptr_largo"
+    onset: 380.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.02
+      loop_start: 0.48
+    grain:
+      duration: 0.05
+      duration_range: 0.008
+    volume: -18
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.06
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  - stream_id: "V_78_dom7_allontana"
+    onset: 386.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.018
+      loop_start: 0.7
+    grain:
+      duration: 0.06
+      duration_range: 0.01
+    volume: -18
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 72.0
+
+  - stream_id: "V_79_canone_largo"
+    onset: 392.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.015
+      loop_start: 0.28
+    grain:
+      duration: 0.06
+      duration_range: 0.01
+    volume: -20
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  - stream_id: "V_80_step3_rallenta"
+    onset: 398.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: [[0,0.015],[1,0.008]]
+      loop_start: 0.52
+    grain:
+      duration: 0.07
+      duration_range: 0.012
+    volume: -20
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "V_81_soffio_largo"
+    onset: 404.0
+    duration: 20.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 2.0
+    pointer:
+      speed_ratio: 0.012
+      loop_start: 0.1
+    grain:
+      duration: 0.08
+      duration_range: 0.012
+    volume: -22
+
+  - stream_id: "V_82_maj7_lontano"
+    onset: 410.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.8
+    pointer:
+      speed_ratio: 0.01
+      loop_start: 0.4
+    grain:
+      duration: 0.08
+      duration_range: 0.012
+    volume: -22
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 65.0
+
+  - stream_id: "V_83_ptr_stoch_largo"
+    onset: 416.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.8
+    pointer:
+      speed_ratio: 0.008
+      loop_start: 0.65
+    grain:
+      duration: 0.1
+      duration_range: 0.015
+    volume: -22
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  - stream_id: "V_84_dom7_distante"
+    onset: 421.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.8
+    pointer:
+      speed_ratio: 0.007
+      loop_start: 0.25
+    grain:
+      duration: 0.1
+      duration_range: 0.015
+    volume: -24
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 58.0
+
+  - stream_id: "V_85_nuvola_sola"
+    onset: 426.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.5
+    pointer:
+      speed_ratio: 0.006
+      loop_start: 0.55
+    grain:
+      duration: 0.1
+      duration_range: 0.015
+    volume: -24
+
+  - stream_id: "V_86_step2_delicato"
+    onset: 430.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.5
+    pointer:
+      speed_ratio: 0.005
+      loop_start: 0.18
+    grain:
+      duration: 0.12
+      duration_range: 0.02
+    volume: -26
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 50.0
+
+  - stream_id: "V_87_neutro_fine"
+    onset: 434.0
+    duration: 14.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.5
+    pointer:
+      speed_ratio: 0.004
+      loop_start: 0.7
+    grain:
+      duration: 0.12
+      duration_range: 0.02
+    volume: -26
+
+  # Ultimo stream di dissoluzione — ponte verso silenzio
+  - stream_id: "V_88_esile_bridge"
+    onset: 438.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.3
+    pointer:
+      speed_ratio: [[0,0.005],[1,0.002]]
+      loop_start: 0.38
+    grain:
+      duration: 0.12
+      duration_range: 0.02
+    volume: [[0,-26],[1,-30]]
+    voices:
+      num_voices: 2
+      onset_offset:
+        strategy: linear
+        step: 0.06
+      pan:
+        strategy: linear
+        spread: 40.0
+
+  # ===========================================================================
+  # VI. SILENZIO GRANULARE (440–482s)
+  # 12 stream. Ritorno alla nebula. Grani sempre più radi.
+  # ===========================================================================
+
+  # Prima stella dell'epilogo — quasi inudibile
+  - stream_id: "VI_89_eco_finale_a"
+    onset: 440.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.2
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.42
+    grain:
+      duration: 0.15
+      duration_range: 0.025
+    volume: -28
+    voices:
+      num_voices: 2
+      pitch:
+        strategy: step
+        step: 1.0
+      pan:
+        strategy: linear
+        spread: 30.0
+
+  - stream_id: "VI_90_nebula_b"
+    onset: 444.0
+    duration: 18.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.2
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.62
+    grain:
+      duration: 0.18
+      duration_range: 0.03
+    volume: -28
+
+  - stream_id: "VI_91_atomo_b"
+    onset: 449.0
+    duration: 16.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.0
+    pointer:
+      speed_ratio: 0.003
+      loop_start: 0.2
+    grain:
+      duration: 0.18
+      duration_range: 0.03
+    volume: -30
+
+  - stream_id: "VI_92_solo_quieto"
+    onset: 454.0
+    duration: 15.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 1.0
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.5
+    grain:
+      duration: 0.22
+      duration_range: 0.03
+    volume: -30
+
+  - stream_id: "VI_93_grano_lento"
+    onset: 458.0
+    duration: 13.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.9
+    pointer:
+      speed_ratio: 0.002
+      loop_start: 0.35
+    grain:
+      duration: 0.25
+      duration_range: 0.04
+    volume: -32
+
+  - stream_id: "VI_94_quasi_silenzio"
+    onset: 462.0
+    duration: 12.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.8
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.72
+    grain:
+      duration: 0.28
+      duration_range: 0.04
+    volume: -32
+
+  - stream_id: "VI_95_polvere_a"
+    onset: 465.0
+    duration: 11.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.7
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.15
+    grain:
+      duration: 0.3
+      duration_range: 0.05
+    volume: -34
+
+  - stream_id: "VI_96_polvere_b"
+    onset: 468.0
+    duration: 10.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.6
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.48
+    grain:
+      duration: 0.33
+      duration_range: 0.05
+    volume: -34
+
+  - stream_id: "VI_97_ultimo_fiato"
+    onset: 471.0
+    duration: 9.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.5
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.8
+    grain:
+      duration: 0.38
+      duration_range: 0.06
+    volume: -36
+
+  - stream_id: "VI_98_particella"
+    onset: 474.0
+    duration: 7.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.4
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.25
+    grain:
+      duration: 0.42
+      duration_range: 0.07
+    volume: -38
+
+  - stream_id: "VI_99_frammento_finale"
+    onset: 477.0
+    duration: 5.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.3
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.55
+    grain:
+      duration: 0.48
+      duration_range: 0.08
+    volume: -40
+
+  # L'ultimo grano — poi silenzio
+  - stream_id: "VI_100_ultimo_grano"
+    onset: 479.0
+    duration: 3.0
+    sample: "001-0_0-3_0.wav"
+    fill_factor: 0.2
+    pointer:
+      speed_ratio: 0.001
+      loop_start: 0.38
+    grain:
+      duration: 0.6
+      duration_range: 0.1
+    volume: [[0,-42],[0.5,-44],[1,-54]]

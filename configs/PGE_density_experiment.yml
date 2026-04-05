@@ -1,0 +1,947 @@
+# =============================================================================
+# PGE_density_experiment.yml
+# Esperimento scientifico: comportamento del sistema multi-voice
+# al variare di density e fill_factor
+# =============================================================================
+#
+# DOMANDA DI RICERCA:
+#   Come si comporta il modello multi-voice al variare di density?
+#   Density è condivisa tra le voci: density=D con N voci → D×N grani/s totali.
+#   fill_factor (sezione A/B) è anch'esso per-stream (non per-voce).
+#
+# STRUTTURA DELL'ESPERIMENTO:
+#
+#   SEZIONE A — fill_factor=1.0, nessuna voce (baseline)
+#     Grain duration varia: 0.1s→0.003s → density implicita 10→333
+#     Osservazione: grains edge-to-edge, come cambia la texture?
+#
+#   SEZIONE B — fill_factor=1.0, 4 voci, grain=0.01s (≈density 100)
+#     Strategie singole e combo completo
+#     Osservazione: voci con fill_factor=1 generano overlap intra-voce?
+#
+#   SEZIONE C — density ladder: pitch:step
+#     density: 10 → 50 → 100 → 200 → 300
+#     grain_duration: fissa a 0.01s (overlap ratio cresce con density)
+#     step semitoni: cresce proporzionalmente con density
+#
+#   SEZIONE D — density ladder: onset_offset:linear
+#     step temporale: cresce con density (esprime frazione di IOT)
+#
+#   SEZIONE E — density ladder: pointer:stochastic
+#     pointer_range: cresce con density
+#
+#   SEZIONE F — density ladder: pitch:chord (fixed chord, density varia)
+#     chord: dom7 fisso — osservazione: come cambia la densità armonica?
+#
+#   SEZIONE G — density ladder: pitch + onset (combo 2D)
+#     Entrambi crescono con density
+#
+#   SEZIONE H — density ladder: combo completo (pitch + onset + pointer + pan)
+#     Tutti i parametri crescono con density
+#
+# COSTANTI:
+#   stream_duration: 8.0s
+#   slot: 9.0s (8s stream + 1s gap)
+#   sample: "pino2.wav"
+#   num_voices (dove presente): 4
+#
+# TABELLA DENSITY LADDER (sezioni C-H):
+#   Livello | density | grain_dur | IOT medio | fill_factor equiv | pitch_step
+#   --------|---------|-----------|-----------|-------------------|----------
+#   1       | 10      | 0.01s     | 100ms     | 0.10              | 1.5 st
+#   2       | 50      | 0.01s     | 20ms      | 0.50              | 3.0 st
+#   3       | 100     | 0.01s     | 10ms      | 1.00 ← edge-edge  | 5.0 st
+#   4       | 200     | 0.01s     | 5ms       | 2.00 (overlap)    | 7.0 st
+#   5       | 300     | 0.01s     | 3.3ms     | 3.03 (overlap)    | 12.0 st
+# =============================================================================
+
+composition:
+  title: "Density Experiment — Multi-Voice Scientific Study"
+
+streams:
+
+  # ===========================================================================
+  # SEZIONE A — FILL_FACTOR = 1.0, NESSUNA VOCE (baseline mono)
+  # Grain edge-to-edge: density = fill_factor / grain_duration
+  # Variabile: grain_duration (densità implicita indicata nel commento)
+  # ===========================================================================
+
+  # A1: grain=0.1s → density≈10 — texture sparsa, grani percettibili
+  - stream_id: "A1_ff1_d10equiv_novoice"
+    onset: 0.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.1
+
+  # A2: grain=0.02s → density≈50 — texture semi-continua
+  - stream_id: "A2_ff1_d50equiv_novoice"
+    onset: 9.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.02
+
+  # A3: grain=0.01s → density≈100 — soglia fusione percettiva
+  - stream_id: "A3_ff1_d100equiv_novoice"
+    onset: 18.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+
+  # A4: grain=0.005s → density≈200 — texture fusa
+  - stream_id: "A4_ff1_d200equiv_novoice"
+    onset: 27.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.005
+
+  # A5: grain=0.003s → density≈333 — microsuono estremo
+  - stream_id: "A5_ff1_d333equiv_novoice"
+    onset: 36.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.003
+
+  # ===========================================================================
+  # SEZIONE B — FILL_FACTOR = 1.0, 4 VOCI, grain=0.01s (≈density 100)
+  # Grains edge-to-edge per voce. Osservazione: overlap tra voci diverso?
+  # ===========================================================================
+
+  # B1: solo pitch:step — 4 voci armonia per terze minori
+  - stream_id: "B1_ff1_4v_pitch_step3"
+    onset: 45.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # B2: solo onset_offset:linear — canone temporale micro
+  - stream_id: "B2_ff1_4v_onset_linear"
+    onset: 54.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.003
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # B3: solo pointer:linear — voci lette in posizioni diverse del sample
+  - stream_id: "B3_ff1_4v_pointer_linear"
+    onset: 63.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # B4: solo pointer:stochastic — texture con dispersione casuale per voce
+  - stream_id: "B4_ff1_4v_pointer_stoch"
+    onset: 72.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # B5: pitch:chord + onset:linear — accordo maj7 con canone micro
+  - stream_id: "B5_ff1_4v_chord_onset"
+    onset: 81.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.003
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # B6: COMBO COMPLETO fill_factor=1.0 — tutti i parametri voce
+  - stream_id: "B6_ff1_4v_full_combo"
+    onset: 90.0
+    duration: 8.0
+    sample: "pino2.wav"
+    fill_factor: 1.0
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: linear
+        step: 0.003
+      pointer:
+        strategy: linear
+        step: 0.03
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE C — DENSITY LADDER: PITCH:STEP
+  # grain_duration: fissa 0.01s (overlap ratio = density × 0.01)
+  # step semitoni: cresce con density per amplificare il contrasto armonico
+  #
+  # Ipotesi: ad alta density i semitoni aggiuntivi diventano inudibili
+  # o creano battimenti percepibili?
+  # ===========================================================================
+
+  # C1: density=10 — IOT=100ms, step=1.5st (semitono e mezzo)
+  - stream_id: "C1_d10_4v_pitch_step1.5"
+    onset: 99.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 1.5
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # C2: density=50 — IOT=20ms, step=3st (terza minore)
+  - stream_id: "C2_d50_4v_pitch_step3"
+    onset: 108.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # C3: density=100 — IOT=10ms, step=5st (quarta aumentata) ← punto di fusione
+  - stream_id: "C3_d100_4v_pitch_step5"
+    onset: 117.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # C4: density=200 — IOT=5ms, step=7st (quinta giusta)
+  - stream_id: "C4_d200_4v_pitch_step7"
+    onset: 126.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # C5: density=300 — IOT=3.3ms, step=12st (ottava)
+  - stream_id: "C5_d300_4v_pitch_step12"
+    onset: 135.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 12.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE D — DENSITY LADDER: ONSET_OFFSET:LINEAR
+  # step = frazione crescente dell'IOT medio (canone micro → macro)
+  #
+  # step_ratio = onset_step / IOT:
+  #   D1: 0.02 / 0.10 = 0.20 IOT  (voci sfasate del 20% del periodo)
+  #   D2: 0.05 / 0.02 = 2.50 IOT  (voci molto sfasate rispetto a IOT)
+  #   D3: 0.10 / 0.01 = 10.0 IOT  (sfasamento >> IOT)
+  #   D4: 0.20 / 0.005 = 40 IOT
+  #   D5: 0.40 / 0.0033 = 121 IOT
+  #
+  # Ipotesi: a density alta lo sfasamento relativo diventa enorme,
+  # le voci appaiono quasi indipendenti nel tempo.
+  # ===========================================================================
+
+  # D1: density=10, onset_step=0.02s (20% IOT)
+  - stream_id: "D1_d10_4v_onset_step0.02"
+    onset: 144.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.02
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # D2: density=50, onset_step=0.05s (250% IOT)
+  - stream_id: "D2_d50_4v_onset_step0.05"
+    onset: 153.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # D3: density=100, onset_step=0.1s
+  - stream_id: "D3_d100_4v_onset_step0.1"
+    onset: 162.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.1
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # D4: density=200, onset_step=0.2s
+  - stream_id: "D4_d200_4v_onset_step0.2"
+    onset: 171.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.2
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # D5: density=300, onset_step=0.4s
+  - stream_id: "D5_d300_4v_onset_step0.4"
+    onset: 180.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: 0.4
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE E — DENSITY LADDER: POINTER:STOCHASTIC
+  # pointer_range cresce con density
+  #
+  # Ipotesi: a densità alta la dispersione casuale del pointer crea
+  # texture spettrali sempre più ricche (scrambling del sample).
+  # ===========================================================================
+
+  # E1: density=10, pointer_range=0.01 (1% del sample)
+  - stream_id: "E1_d10_4v_ptr_stoch0.01"
+    onset: 189.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.01
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # E2: density=50, pointer_range=0.05 (5% del sample)
+  - stream_id: "E2_d50_4v_ptr_stoch0.05"
+    onset: 198.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # E3: density=100, pointer_range=0.1 (10% del sample)
+  - stream_id: "E3_d100_4v_ptr_stoch0.1"
+    onset: 207.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # E4: density=200, pointer_range=0.2 (20% del sample)
+  - stream_id: "E4_d200_4v_ptr_stoch0.2"
+    onset: 216.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.2
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # E5: density=300, pointer_range=0.4 (40% del sample)
+  - stream_id: "E5_d300_4v_ptr_stoch0.4"
+    onset: 225.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.4
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE F — DENSITY LADDER: PITCH:CHORD (accordo fisso, density varia)
+  # Chord fisso: dom7 [0, 4, 7, 10] — 4 voci = accordo completo
+  #
+  # Ipotesi: l'accordo rimane stabile al crescere della density?
+  # Confronto con sezione C (step variabile).
+  # ===========================================================================
+
+  # F1: density=10, chord=dom7
+  - stream_id: "F1_d10_4v_chord_dom7"
+    onset: 234.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # F2: density=50, chord=dom7
+  - stream_id: "F2_d50_4v_chord_dom7"
+    onset: 243.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # F3: density=100, chord=dom7
+  - stream_id: "F3_d100_4v_chord_dom7"
+    onset: 252.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # F4: density=200, chord=dom7
+  - stream_id: "F4_d200_4v_chord_dom7"
+    onset: 261.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # F5: density=300, chord=dom7
+  - stream_id: "F5_d300_4v_chord_dom7"
+    onset: 270.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE G — DENSITY LADDER: PITCH:STEP + ONSET:LINEAR (combo 2D)
+  # Entrambi i parametri crescono con density
+  #
+  # Ipotesi: l'interazione pitch/canone crea pattern ritmico-armonico
+  # che si "fonde" ad alta density?
+  # ===========================================================================
+
+  # G1: density=10, step=1.5st, onset_step=0.02s
+  - stream_id: "G1_d10_4v_pitch_onset"
+    onset: 279.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 1.5
+      onset_offset:
+        strategy: linear
+        step: 0.02
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # G2: density=50, step=3st, onset_step=0.05s
+  - stream_id: "G2_d50_4v_pitch_onset"
+    onset: 288.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # G3: density=100, step=5st, onset_step=0.1s
+  - stream_id: "G3_d100_4v_pitch_onset"
+    onset: 297.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      onset_offset:
+        strategy: linear
+        step: 0.1
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # G4: density=200, step=7st, onset_step=0.2s
+  - stream_id: "G4_d200_4v_pitch_onset"
+    onset: 306.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      onset_offset:
+        strategy: linear
+        step: 0.2
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # G5: density=300, step=12st, onset_step=0.4s
+  - stream_id: "G5_d300_4v_pitch_onset"
+    onset: 315.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 12.0
+      onset_offset:
+        strategy: linear
+        step: 0.4
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE H — DENSITY LADDER: PITCH:STEP + POINTER:STOCHASTIC (combo 2D)
+  # Pitch crescente + pointer dispersione crescente
+  #
+  # Ipotesi: a density alta, pitch+pointer generano "nuvole" spectrali
+  # non più localizzate nel campione sorgente?
+  # ===========================================================================
+
+  # H1: density=10, step=1.5st, pointer_range=0.01
+  - stream_id: "H1_d10_4v_pitch_pointer"
+    onset: 324.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 1.5
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.01
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # H2: density=50, step=3st, pointer_range=0.05
+  - stream_id: "H2_d50_4v_pitch_pointer"
+    onset: 333.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # H3: density=100, step=5st, pointer_range=0.1
+  - stream_id: "H3_d100_4v_pitch_pointer"
+    onset: 342.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # H4: density=200, step=7st, pointer_range=0.2
+  - stream_id: "H4_d200_4v_pitch_pointer"
+    onset: 351.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.2
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # H5: density=300, step=12st, pointer_range=0.4
+  - stream_id: "H5_d300_4v_pitch_pointer"
+    onset: 360.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 12.0
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.4
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE I — DENSITY LADDER: COMBO COMPLETO (pitch + onset + pointer + pan)
+  # Tutti i parametri crescono con density — esperimento finale
+  #
+  # Ipotesi: il sistema raggiunge una soglia di saturazione dove
+  # i parametri aggiuntivi diventano irrilevanti?
+  # ===========================================================================
+
+  # I1: density=10 — tutti i parametri al minimo
+  - stream_id: "I1_d10_4v_full"
+    onset: 369.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 1.5
+      onset_offset:
+        strategy: linear
+        step: 0.02
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.01
+      pan:
+        strategy: linear
+        spread: 30.0
+
+  # I2: density=50 — parametri medi-bassi
+  - stream_id: "I2_d50_4v_full"
+    onset: 378.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 50
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.05
+      pan:
+        strategy: linear
+        spread: 45.0
+
+  # I3: density=100 — parametri medi (punto di fusione grain_dur=IOT)
+  - stream_id: "I3_d100_4v_full"
+    onset: 387.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 100
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 5.0
+      onset_offset:
+        strategy: linear
+        step: 0.1
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # I4: density=200 — parametri alti (grains si sovrappongono)
+  - stream_id: "I4_d200_4v_full"
+    onset: 396.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 200
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+      onset_offset:
+        strategy: linear
+        step: 0.2
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.2
+      pan:
+        strategy: linear
+        spread: 75.0
+
+  # I5: density=300 — tutti i parametri al massimo
+  - stream_id: "I5_d300_4v_full"
+    onset: 405.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 300
+    grain:
+      duration: 0.01
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 12.0
+      onset_offset:
+        strategy: linear
+        step: 0.4
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.4
+      pan:
+        strategy: linear
+        spread: 90.0

@@ -1,0 +1,855 @@
+composition:
+  title: "scatter × distribution experiments"
+
+# =============================================================================
+# FILE DI PROVA: scatter × distribution × density
+# Ogni stream è isolato (onset sequenziale) per confronto diretto.
+# Campione di riferimento: pino.wav (corto, buono per loop granulare)
+#
+# MATRICE DEGLI ESPERIMENTI:
+#   S1-S4   — scatter fisso × distribution fisso (4 angoli della matrice)
+#   S5-S8   — scatter fisso × distribution come envelope
+#   S9-S12  — scatter come envelope × distribution fisso
+#   S13-S16 — entrambi come envelope (comportamenti composti)
+#   S17-S20 — density bassa (6-15) × scatter/distribution variabili
+#   S21-S24 — density alta (100-300) × scatter/distribution variabili
+#   S25-S28 — num_voices time-varying + scatter
+#   S29-S32 — combinazioni full: pitch + pointer + scatter + distribution envelope
+# =============================================================================
+
+streams:
+
+  # ===========================================================================
+  # SEZIONE 1 — 4 ANGOLI DELLA MATRICE (scatter fisso × distribution fisso)
+  # ===========================================================================
+
+  # S1: cluster equidistante — distribution=0, scatter=0
+  # Le voci avanzano all'unisono, inter-onset fisso. Suono: pulsazione netta.
+  - stream_id: "s01_cluster_equidistant"
+    onset: 0.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 0.0
+    grain:
+      duration: .03
+    voices:
+      num_voices: 4
+        #- [0.0, 1]
+        #- [15.0, 10.0]
+        #- [30.0, 1]
+      scatter: 0.0
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+  - stream_id: "s01_cluster_equidistant1"
+    onset: 0.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 0.0
+    grain:
+      duration: .2
+    voices:
+      num_voices: 4
+        #- [0.0, 1]
+        #- [15.0, 10.0]
+        #- [30.0, 1]
+      scatter: 0.0
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S2: cluster Truax — distribution=1, scatter=0
+  # Le voci avanzano all'unisono ma con iot distribuito (Truax).
+  # Suono: cluster stocastico compatto.
+  - stream_id: "s02_cluster_truax"
+    onset: 32.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 1.0
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      scatter: 0.0
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S3: scatter totale, distribution=0 — scatter=1, distribution=0
+  # Scatter inerte: distribution=0 → tutti gli iot uguali.
+  # Comportamento identico a S1 (dimostrazione matematica).
+  - stream_id: "s03_scatter_inert"
+    onset: 64.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 0.0
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      scatter: 1.0
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S4: scatter totale + Truax — distribution=1, scatter=1
+  # Ogni voce ha il proprio iot calcolato indipendentemente con distribuzione Truax.
+  # Suono: nuvola granulare — voci completamente desincronizzate.
+  - stream_id: "s04_fully_independent"
+    onset: 96.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 1.0
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      scatter: 1.0
+      pitch:
+        strategy: step
+        step: 3.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  - stream_id: "s04_fully_independent1"
+    onset: 96.0
+    duration: 30.0
+    sample: "pino.wav"
+    time_mode: "normalized"
+    density: [[0,3],[.5,3],[1,40]]
+    distribution: [[0,0],[.5,1],[0,0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0,.1],[.5,.1],[1,.02]]
+    voices:
+      num_voices: 
+        type: step
+        points:
+          - [0.0, 1]
+          - [0.2, 2]
+          - [0.4, 3]
+          - [0.6, 6]
+          - [0.8, 12]
+          - [1,   18]
+      scatter: 
+        type: step
+        points:
+          - [0.0, 0]
+          - [0.25, 0.25]
+          - [0.5, 0.5]
+          - [0.75, 0.75]
+          - [1, 1]
+      pitch:
+        strategy: step
+        step: 1.0
+      pan:
+        strategy: linear
+        spread: 60.0
+    pointer:
+      speed_ratio: 
+        - [0.0, 1.0]
+        - [1.0, 0.0]
+      loop_unit: absolute
+      offset_range: 
+        type: cubic
+        points:
+          - [0.0, 0.0]
+          - [0.5, 1.0]
+          - [1.0, 0.0]
+      loop_start: 
+        type: cubic
+        points:
+          - [0.0, 0.0]
+          - [.5, 1.644]
+  # ===========================================================================
+  # SEZIONE 2 — SCATTER FISSO, DISTRIBUTION COME ENVELOPE
+  # ===========================================================================
+
+  # S5: scatter=0, distribution 0→1→0 (respiro del cluster)
+  # Il cluster inizia compatto, si allarga stocasticamente, torna compatto.
+  - stream_id: "s05_scatter0_dist_breath"
+    onset: 128.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 15
+    distribution: [[0, 0.0], [15, 1.0], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+      duration_range: 0.02
+    voices:
+      num_voices: 3
+      scatter: 0.0
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 45.0
+
+  # S6: scatter=0.5, distribution 0→1
+  # Blend fisso a metà, ma distribution cresce: sincronizzazione parziale con
+  # progressiva iniezione di stocasticità.
+  - stream_id: "s06_scatter_half_dist_grow"
+    onset: 160.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 9
+    distribution: [[0, 0.0], [30, 1.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.05], [30, 0.12]]
+      duration_range: 0.015
+    voices:
+      num_voices: 4
+      scatter: 0.5
+      pitch:
+        strategy: range
+        semitone_range: 7.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S7: scatter=1, distribution 0→1 (scatter non inerte perché distribution cresce)
+  # Inizia sincronizzato (distribution=0 → scatter inerte), poi le voci divergono
+  # progressivamente man mano che distribution sale.
+  - stream_id: "s07_scatter1_dist_grow"
+    onset: 192.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: [[0, 0.0], [10, 0.0], [30, 1.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      scatter: 1.0
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.06
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # S8: scatter=1, distribution oscillante (ciclo 0→1→0 ripetuto)
+  - stream_id: "s08_scatter1_dist_cycle"
+    onset: 224.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 10
+    distribution:
+      type: cubic
+      points: [[0, 0.0], [7.5, 1.0], [15, 0.0], [22.5, 1.0], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.07
+      duration_range: 0.01
+    voices:
+      num_voices: 3
+      scatter: 1.0
+      pitch:
+        strategy: stochastic
+        semitone_range: 5.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE 3 — SCATTER COME ENVELOPE, DISTRIBUTION FISSO
+  # ===========================================================================
+
+  # S9: scatter 0→1, distribution=0.7 fisso
+  # Si parte cluster (scatter=0) con una certa stocasticità Truax, poi le voci
+  # iniziano a divergere sempre più.
+  - stream_id: "s09_scatter_grow_dist_fixed"
+    onset: 256.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 0.7
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.09
+      duration_range: 0.02
+    voices:
+      num_voices: 4
+      scatter: [[0, 0.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S10: scatter 0→1→0, distribution=1 (pulsazione di coesione)
+  # Le voci prima si disperdono, poi ritornano all'unisono.
+  - stream_id: "s10_scatter_arc_dist1"
+    onset: 288.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 15
+    distribution: 1.0
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.05], [15, 0.12], [30, 0.05]]
+    voices:
+      num_voices: 5
+      scatter: [[0, 0.0], [15, 1.0], [30, 0.0]]
+      pitch:
+        strategy: range
+        semitone_range: 12.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # S11: scatter con forma a gradini, distribution=0.5
+  - stream_id: "s11_scatter_steps_dist_half"
+    onset: 320.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 10
+    distribution: 0.5
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      scatter:
+        type: cubic
+        points: [[0, 0.0], [10, 0.0], [10.1, 0.5], [20, 0.5], [20.1, 1.0], [30, 1.0]]
+      pitch:
+        strategy: step
+        step: 2.0
+      onset_offset:
+        strategy: geometric
+        step: 0.05
+        base: 2.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S12: scatter oscillante, distribution=0.8
+  - stream_id: "s12_scatter_osc_dist08"
+    onset: 352.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 9
+    distribution: 0.8
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.1
+      duration_range: 0.03
+    voices:
+      num_voices: 3
+      scatter:
+        type: cubic
+        points: [[0, 0.0], [7.5, 1.0], [15, 0.0], [22.5, 1.0], [30, 0.0]]
+      pitch:
+        strategy: chord
+        chord: "min7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # ===========================================================================
+  # SEZIONE 4 — ENTRAMBI COME ENVELOPE (COMPORTAMENTI COMPOSTI)
+  # ===========================================================================
+
+  # S13: scatter 0→1, distribution 0→1 (doppia crescita progressiva)
+  # Da cluster perfetto a nuvola granulare totalmente libera.
+  - stream_id: "s13_both_grow"
+    onset: 384.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: [[0, 0.0], [30, 1.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.04], [30, 0.15]]
+      duration_range: 0.02
+    voices:
+      num_voices: 4
+      scatter: [[0, 0.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # S14: scatter 1→0, distribution 1→0 (tutto converge verso cluster ordinato)
+  - stream_id: "s14_both_shrink"
+    onset: 416.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: [[0, 1.0], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.15], [30, 0.04]]
+    voices:
+      num_voices: 20
+      scatter: [[0, 1.0], [30, 0.0]]
+      pitch:
+        strategy: range
+        semitone_range: 12.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # S15: scatter cresce, distribution decresce (incrocio)
+  # Le voci iniziano stocasticamente sincronizzate (distribution alta),
+  # poi la stocasticità cala ma le voci iniziano a divergere (scatter sale).
+  - stream_id: "s15_cross_scatter_grow_dist_shrink"
+    onset: 448.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 10
+    distribution: [[0, 1.0], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+      duration_range: 0.02
+    voices:
+      num_voices: 4
+      scatter: [[0, 0.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.1
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S16: scatter e distribution entrambi oscillanti in controfase
+  - stream_id: "s16_antiphase_scatter_dist"
+    onset: 480.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution:
+      type: cubic
+      points: [[0, 0.0], [10, 1.0], [20, 0.0], [30, 1.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.07
+    voices:
+      num_voices: 4
+      scatter:
+        type: cubic
+        points: [[0, 1.0], [10, 0.0], [20, 1.0], [30, 0.0]]
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # ===========================================================================
+  # SEZIONE 5 — DENSITY BASSA (6-15)
+  # ===========================================================================
+
+  # S17: density=6, scatter=0 — pulsazione lenta compatta
+  - stream_id: "s17_low_density_cluster"
+    onset: 512.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 6
+    distribution: 0.3
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.1
+      duration_range: 0.03
+    voices:
+      num_voices: 3
+      scatter: 0.0
+      pitch:
+        strategy: step
+        step: 5.0
+      pan:
+        strategy: linear
+        spread: 45.0
+
+  # S18: density=9, scatter=1, distribution alta — grani sparsi nello spazio
+  - stream_id: "s18_low_density_scatter"
+    onset: 544.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 9
+    distribution: 0.9
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.12
+      duration_range: 0.04
+    voices:
+      num_voices: 4
+      scatter: 1.0
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.15
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # S19: density=6→15 (crescente), scatter=0.5 fisso
+  - stream_id: "s19_density_grow_scatter_half"
+    onset: 576.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: [[0, 6], [30, 15]]
+    distribution: 0.6
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.09
+    voices:
+      num_voices: 3
+      scatter: 0.5
+      pitch:
+        strategy: range
+        semitone_range: 7.0
+      pan:
+        strategy: linear
+        spread: 60.0
+
+  # S20: density=15, scatter envelope 0→1, grain_dur lungo
+  - stream_id: "s20_low_density_scatter_grow"
+    onset: 608.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 15
+    distribution: [[0, 0.0], [15, 1.0], [30, 0.5]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.15], [30, 0.06]]
+      duration_range: 0.03
+    voices:
+      num_voices: 5
+      scatter: [[0, 0.0], [20, 1.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "min7"
+      pointer:
+        strategy: linear
+        step: 0.04
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # ===========================================================================
+  # SEZIONE 6 — DENSITY ALTA (100-300)
+  # ===========================================================================
+
+  # S21: density=100, scatter=0 — texture densa compatta
+  - stream_id: "s21_high_density_cluster"
+    onset: 640.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 100
+    distribution: 0.0
+    grain:
+      duration: 0.03
+    voices:
+      num_voices: 4
+      scatter: 0.0
+      pitch:
+        strategy: step
+        step: 2.0
+      pan:
+        strategy: linear
+        spread: 50.0
+
+  # S22: density=200, scatter=1, distribution=1 — texture continua diffusa
+  - stream_id: "s22_high_density_scatter"
+    onset: 672.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 200
+    distribution: 1.0
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.025
+      duration_range: 0.005
+    voices:
+      num_voices: 4
+      scatter: 1.0
+      pitch:
+        strategy: range
+        semitone_range: 5.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # S23: density=50→300 (crescente), scatter 0→1
+  - stream_id: "s23_density_explode_scatter_grow"
+    onset: 704.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: [[0, 50], [30, 300]]
+    distribution: [[0, 0.0], [30, 1.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.05], [30, 0.02]]
+    voices:
+      num_voices: 4
+      scatter: [[0, 0.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # S24: density=300→6 (decrescente), scatter 1→0 — da nuvola a pulsazione
+  - stream_id: "s24_density_collapse_scatter_shrink"
+    onset: 736.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: [[0, 300], [30, 6]]
+    distribution: [[0, 1.0], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.02], [30, 0.12]]
+      duration_range: 0.01
+    voices:
+      num_voices: 4
+      scatter: [[0, 1.0], [30, 0.0]]
+      pitch:
+        strategy: range
+        semitone_range: 10.0
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # ===========================================================================
+  # SEZIONE 7 — NUM_VOICES TIME-VARYING + SCATTER
+  # ===========================================================================
+
+  # S25: num_voices 1→4, scatter=0 (cluster che si espande in voci)
+  - stream_id: "s25_voices_grow_cluster"
+    onset: 768.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: 0.4
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.08
+      duration_range: 0.01
+    voices:
+      num_voices: [[0, 1], [30, 4]]
+      scatter: 0.0
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # S26: num_voices 1→5, scatter 0→1 (entrata progressiva + desincronizzazione)
+  - stream_id: "s26_voices_grow_scatter_grow"
+    onset: 800.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 10
+    distribution: 0.7
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.06], [30, 0.10]]
+    voices:
+      num_voices: [[0, 1], [15, 3], [30, 5]]
+      scatter: [[0, 0.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.1
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # S27: num_voices 4→1 (convergenza), scatter 1→0
+  - stream_id: "s27_voices_shrink_scatter_shrink"
+    onset: 832.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 12
+    distribution: [[0, 1.0], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.10], [30, 0.05]]
+    voices:
+      num_voices: [[0, 4], [30, 1]]
+      scatter: [[0, 1.0], [30, 0.0]]
+      pitch:
+        strategy: range
+        semitone_range: 12.0
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # S28: num_voices 2→6→2, scatter oscillante
+  - stream_id: "s28_voices_arc_scatter_pulse"
+    onset: 864.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 9
+    distribution: 0.8
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.09
+      duration_range: 0.02
+    voices:
+      num_voices: [[0, 2], [15, 6], [30, 2]]
+      scatter:
+        type: cubic
+        points: [[0, 0.0], [10, 1.0], [20, 0.0], [30, 1.0]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      onset_offset:
+        strategy: stochastic
+        max_offset: 0.1
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # ===========================================================================
+  # SEZIONE 8 — COMBINAZIONI FULL (pitch + pointer + scatter + distribution)
+  # ===========================================================================
+
+  # S29: Full combo — density envelope + scatter + chord + pointer stochastic
+  - stream_id: "s29_full_combo_texture"
+    onset: 896.0
+    duration: 30.0
+    sample: "pino.wav"
+    density:
+      type: cubic
+      points: [[0, 8], [10, 80], [20, 150], [30, 30]]
+    distribution: [[0, 0.0], [10, 0.0], [20, 1.0], [30, 0.6]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.12], [15, 0.04], [30, 0.08]]
+      duration_range: 0.02
+    voices:
+      num_voices: [[0, 2], [10, 4], [30, 4]]
+      scatter: [[0, 0.0], [10, 0.0], [20, 0.8], [30, 0.3]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.12
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # S30: Full combo — density alta + scatter oscillante + range pitch + pointer linear
+  - stream_id: "s30_full_combo_dense"
+    onset: 928.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: [[0, 100], [15, 300], [30, 50]]
+    distribution: [[0, 0.5], [15, 1.0], [30, 0.3]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.03], [15, 0.015], [30, 0.06]]
+    voices:
+      num_voices: 4
+      scatter:
+        type: cubic
+        points: [[0, 0.0], [10, 1.0], [20, 0.5], [30, 0.0]]
+      pitch:
+        strategy: range
+        semitone_range: 7.0
+      pointer:
+        strategy: linear
+        step: 0.03
+      pan:
+        strategy: linear
+        spread: 70.0
+
+  # S31: Bassa density, tanti grani lunghi, scatter e distribution come envelope
+  # Suono target: accordo granulare che respira con voci che si allontanano lentamente
+  - stream_id: "s31_breath_chord_scatter"
+    onset: 960.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: [[0, 6], [10, 12], [20, 9], [30, 6]]
+    distribution: [[0, 0.0], [10, 0.5], [20, 0.8], [30, 0.2]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: [[0, 0.18], [15, 0.10], [30, 0.20]]
+      duration_range: 0.04
+    voices:
+      num_voices: [[0, 2], [10, 5], [25, 3], [30, 2]]
+      scatter: [[0, 0.0], [10, 0.0], [20, 0.9], [30, 0.4]]
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      pointer:
+        strategy: stochastic
+        pointer_range: 0.08
+      onset_offset:
+        strategy: linear
+        step: 0.07
+      pan:
+        strategy: linear
+        spread: 90.0
+
+  # S32: Micro-variazione controllata — scatter e distribution minimi, focus su pitch
+  # Test di percezione: quanto incide un piccolo scatter?
+  - stream_id: "s32_micro_scatter_perception"
+    onset: 992.0
+    duration: 30.0
+    sample: "pino.wav"
+    density: 20
+    distribution: [[0, 0.0], [15, 0.2], [30, 0.0]]
+    distribution_mode: "gaussian"
+    grain:
+      duration: 0.06
+      duration_range: 0.005
+    voices:
+      num_voices: 4
+      scatter: [[0, 0.0], [10, 0.0], [20, 0.15], [30, 0.05]]
+      pitch:
+        strategy: chord
+        chord: "dom7"
+      pan:
+        strategy: linear
+        spread: 60.0
