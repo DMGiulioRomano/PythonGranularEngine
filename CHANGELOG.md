@@ -6,6 +6,52 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v3.0.0] — "Stimmung" — 2026-04-05
+
+### Aggiunto
+
+- **Sistema multi-voice** (`src/controllers/voice_manager.py`, `src/strategies/voice_*_strategy.py`):
+  ogni `Stream` può generare N voci parallele con offset indipendenti su quattro dimensioni
+  - `VoiceManager`: orchestratore che pre-computa `VoiceConfig` per ogni voce all'init (O(1) in sintesi)
+  - `VoicePitchStrategy`: `step`, `range`, `chord` (11 accordi), `stochastic`
+  - `VoiceOnsetStrategy`: `linear`, `geometric`, `stochastic`
+  - `VoicePointerStrategy`: `linear`, `stochastic`
+  - `VoicePanStrategy`: già presente — `linear`, `additive`, `random`
+  - `num_voices` e `spread` supportano `Parameter` (statico o envelope)
+  - Voce 0 è sempre il riferimento immutabile (`VoiceConfig(0, 0, 0, 0)`)
+  - Backward compatibility: `stream.grains` rimane flat e ordinato per onset
+- **Nuovi parametri YAML**: `num_voices`, `voice_spread`, `voice_pitch_strategy`,
+  `voice_pointer_strategy`, `voice_onset_strategy`
+- **Cache incrementale per NumPy** (`src/rendering/numpy_audio_renderer.py`):
+  `NumpyAudioRenderer` ora usa `StreamCacheManager` — log dirty/clean e skip stream
+  invariati disponibili anche con `RENDERER=numpy STEMS=true CACHE=true`
+- **Documentazione** `docs/multi-voice.md`: architettura, strategie, esempi YAML,
+  invarianti di design, tabella test coverage
+- **+322 test** (3787 totali vs 3465 di v2.1.0):
+  - `test_voice_manager.py` (373 test)
+  - `test_voice_pitch_strategy.py` (474 test)
+  - `test_voice_onset_strategy.py` (380 test)
+  - `test_voice_pointer_strategy.py` (305 test)
+  - `test_stream_multivoice.py` (669 test)
+  - `test_stream_voices_yaml.py` (492 test)
+  - `TestNumpyAudioRendererCache` (7 test unit)
+  - `TestNumpyStemsCache` (4 test E2E)
+
+### Corretto
+
+- **Cache numpy+stems**: `make/build.mk` non passava `--cache --cache-dir` al branch
+  `STEMS=true RENDERER=numpy` — ogni build ri-renderizzava tutti gli stream senza log
+- **Test E2E numpy** `test_no_cache_manifest_created`: asserzione errata rimossa —
+  il test affermava che NumPy non usa mai la cache (ora la usa con `CACHE=true`)
+
+### Modificato
+
+- `src/core/stream.py`: integrazione `VoiceManager`, output `self.voices: List[List[Grain]]`
+- `src/rendering/renderer_factory.py`: forward `cache_manager`/`stream_data_map` al renderer numpy
+- `src/main.py`: crea `StreamCacheManager` anche per `renderer_type == 'numpy'`
+
+---
+
 ## [v2.1.0] — "Reaper Gate" — 2026-03-30
 
 ### Aggiunto
