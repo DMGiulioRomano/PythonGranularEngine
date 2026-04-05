@@ -146,7 +146,7 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
     
     'loop_dur': ParameterBounds(
         min_val=0.005,
-        max_val=100.0 
+        max_val=1000.0 
     ),
 
     'loop_start': ParameterBounds(
@@ -156,7 +156,7 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
 
     'loop_end': ParameterBounds(
         min_val=0.0,
-        max_val=100.0 
+        max_val=1000.0 
     ),
 
 
@@ -202,21 +202,49 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         min_val=0.0,
         max_val=1.0
     ),
+
+    'scatter': ParameterBounds(
+        min_val=0.0,
+        max_val=1.0,
+        variation_mode='additive',
+    ),
 }
 
-def get_parameter_definition(param_name: str) -> ParameterBounds:
+_LOOP_PARAMS = frozenset({'loop_dur', 'loop_start', 'loop_end'})
+
+
+def get_parameter_definition(
+    param_name: str,
+    sample_dur_sec: float | None = None,
+) -> ParameterBounds:
     """
     Recupera la definizione di un parametro dal registro.
-    
+
+    Per loop_dur, loop_start e loop_end, se sample_dur_sec è fornito,
+    restituisce un nuovo ParameterBounds con max_val = sample_dur_sec.
+    Tutti gli altri campi (min_val, min_range, ...) rimangono invariati.
+
     Args:
         param_name: Il nome del parametro (es. 'density')
-        
+        sample_dur_sec: Durata del file audio in secondi (opzionale).
+            Se fornito, sovrascrive max_val per i parametri loop.
+
     Returns:
         ParameterBounds: L'oggetto configurazione.
-        
+
     Raises:
         KeyError: Se il parametro non esiste nel registro.
     """
     if param_name not in GRANULAR_PARAMETERS:
         raise KeyError(f"Parametro '{param_name}' non definito in parameter_definitions.py")
-    return GRANULAR_PARAMETERS[param_name]
+    bounds = GRANULAR_PARAMETERS[param_name]
+    if sample_dur_sec is not None and param_name in _LOOP_PARAMS:
+        return ParameterBounds(
+            min_val=bounds.min_val,
+            max_val=sample_dur_sec,
+            min_range=bounds.min_range,
+            max_range=bounds.max_range,
+            default_jitter=bounds.default_jitter,
+            variation_mode=bounds.variation_mode,
+        )
+    return bounds

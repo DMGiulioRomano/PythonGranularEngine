@@ -54,7 +54,7 @@ EXPECTED_PARAMETERS = {
     'volume', 'pan',
     # Voices
     'num_voices', 'voice_pitch_offset', 'voice_pointer_offset',
-    'voice_pointer_range',
+    'voice_pointer_range', 'scatter',
 }
 
 # Variation modes validi nel sistema
@@ -479,7 +479,7 @@ class TestPointerBounds:
     def test_loop_dur_bounds(self):
         b = GRANULAR_PARAMETERS['loop_dur']
         assert b.min_val == 0.005
-        assert b.max_val == 100.0
+        # max_val statico è un fallback permissivo: il bound reale è sample_dur_sec
 
     def test_loop_dur_min_positive(self):
         assert GRANULAR_PARAMETERS['loop_dur'].min_val > 0
@@ -487,18 +487,18 @@ class TestPointerBounds:
     def test_loop_start_bounds(self):
         b = GRANULAR_PARAMETERS['loop_start']
         assert b.min_val == 0
-        assert b.max_val == 100.0
+        # max_val statico è un fallback permissivo: il bound reale è sample_dur_sec
 
     def test_loop_end_bounds(self):
         b = GRANULAR_PARAMETERS['loop_end']
         assert b.min_val == 0.0
-        assert b.max_val == 100.0
+        # max_val statico è un fallback permissivo: il bound reale è sample_dur_sec
 
     def test_loop_start_end_same_max(self):
-        """loop_start e loop_end hanno lo stesso max_val."""
-        s = GRANULAR_PARAMETERS['loop_start']
-        e = GRANULAR_PARAMETERS['loop_end']
-        assert s.max_val == e.max_val
+        """Con sample_dur_sec, loop_start e loop_end hanno lo stesso max_val dinamico."""
+        s = get_parameter_definition('loop_start', sample_dur_sec=30.0)
+        e = get_parameter_definition('loop_end', sample_dur_sec=30.0)
+        assert s.max_val == e.max_val == 30.0
 
 
 # =============================================================================
@@ -590,6 +590,17 @@ class TestVoicesBounds:
     def test_voice_pointer_range_non_negative(self):
         """voice_pointer_range >= 0 (e' un range, non puo' essere negativo)."""
         assert GRANULAR_PARAMETERS['voice_pointer_range'].min_val >= 0
+
+    def test_scatter_present_in_registry(self):
+        assert 'scatter' in GRANULAR_PARAMETERS
+
+    def test_scatter_bounds(self):
+        b = GRANULAR_PARAMETERS['scatter']
+        assert b.min_val == 0.0
+        assert b.max_val == 1.0
+
+    def test_scatter_variation_mode_additive(self):
+        assert GRANULAR_PARAMETERS['scatter'].variation_mode == 'additive'
 
 
 # =============================================================================
@@ -907,3 +918,72 @@ class TestEdgeCases:
         """Passare un intero solleva errore."""
         with pytest.raises((KeyError, TypeError)):
             get_parameter_definition(42)
+
+
+# =============================================================================
+# 14. BOUNDS DINAMICI PER PARAMETRI LOOP (sample_dur_sec)
+# =============================================================================
+
+LOOP_PARAMS = ['loop_dur', 'loop_start', 'loop_end']
+
+
+class TestGetParameterDefinitionDynamic:
+    """
+    get_parameter_definition(name, sample_dur_sec=X) deve restituire bounds
+    con max_val = sample_dur_sec per i parametri loop_dur, loop_start, loop_end.
+    Per tutti gli altri parametri il comportamento rimane invariato.
+    """
+
+    @pytest.mark.parametrize("name", LOOP_PARAMS)
+    def test_loop_param_uses_sample_dur_as_max(self, name):
+        """sample_dur_sec diventa max_val per i parametri loop."""
+        bounds = get_parameter_definition(name, sample_dur_sec=45.0)
+        assert bounds.max_val == 45.0
+
+    @pytest.mark.parametrize("name", LOOP_PARAMS)
+    def test_min_val_preserved_with_sample_dur(self, name):
+        """min_val del registry statico è preservato anche con sample_dur_sec."""
+        original = GRANULAR_PARAMETERS[name]
+        bounds = get_parameter_definition(name, sample_dur_sec=45.0)
+        assert bounds.min_val == original.min_val
+
+    @pytest.mark.parametrize("name", LOOP_PARAMS)
+    def test_other_fields_preserved_with_sample_dur(self, name):
+        """min_range, max_range, variation_mode sono preservati."""
+        original = GRANULAR_PARAMETERS[name]
+        bounds = get_parameter_definition(name, sample_dur_sec=45.0)
+        assert bounds.min_range == original.min_range
+        assert bounds.max_range == original.max_range
+        assert bounds.variation_mode == original.variation_mode
+
+    @pytest.mark.parametrize("name", LOOP_PARAMS)
+    def test_returns_new_bounds_object_not_mutate_registry(self, name):
+        """Con sample_dur_sec restituisce un NUOVO oggetto, non muta il registry."""
+        original_max = GRANULAR_PARAMETERS[name].max_val
+        bounds = get_parameter_definition(name, sample_dur_sec=99.0)
+        assert bounds is not GRANULAR_PARAMETERS[name]
+        assert GRANULAR_PARAMETERS[name].max_val == original_max  # immutato
+
+    def test_loop_start_end_same_max_with_sample_dur(self):
+        """loop_start e loop_end hanno lo stesso max_val quando sample_dur_sec è dato."""
+        s = get_parameter_definition('loop_start', sample_dur_sec=30.0)
+        e = get_parameter_definition('loop_end', sample_dur_sec=30.0)
+        assert s.max_val == e.max_val == 30.0
+
+    def test_without_sample_dur_returns_static_object(self):
+        """Senza sample_dur_sec, restituisce il bounds statico invariato."""
+        for name in LOOP_PARAMS:
+            result = get_parameter_definition(name)
+            assert result is GRANULAR_PARAMETERS[name]
+
+    def test_non_loop_param_unaffected_by_sample_dur(self):
+        """Parametri non-loop ignorano sample_dur_sec."""
+        bounds_with = get_parameter_definition('density', sample_dur_sec=45.0)
+        bounds_without = get_parameter_definition('density')
+        assert bounds_with is bounds_without
+
+    @pytest.mark.parametrize("dur", [1.0, 10.5, 60.0, 300.0, 3600.0])
+    def test_various_sample_durations(self, dur):
+        """Il bound dinamico funziona per qualsiasi durata positiva."""
+        bounds = get_parameter_definition('loop_end', sample_dur_sec=dur)
+        assert bounds.max_val == dur

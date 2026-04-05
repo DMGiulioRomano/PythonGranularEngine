@@ -87,17 +87,13 @@ def _make_mock_density(inter_onset=0.1):
 
 
 def _make_mock_voice_manager(max_voices=1):
-    """Crea un mock VoiceManager."""
+    """Crea un mock VoiceManager compatibile con la nuova interfaccia VoiceConfig."""
+    from controllers.voice_manager import VoiceConfig
     vm = Mock()
     vm.max_voices = max_voices
-    vm.is_voice_active = Mock(return_value=True)
-    vm.get_voice_pitch_multiplier = Mock(return_value=1.0)
-    vm.get_voice_pointer_offset = Mock(return_value=0.0)
-    vm.get_voice_pointer_range = Mock(return_value=0.0)
-    vm.num_voices_value = max_voices
-    vm.voice_pitch_offset_value = 0.0
-    vm.voice_pointer_offset_value = 0.0
-    vm.voice_pointer_range_value = 0.0
+    # get_voice_config(i) → VoiceConfig(0,0,0,0) per tutti (voce 0 = riferimento)
+    vm.get_voice_config = Mock(return_value=VoiceConfig(0.0, 0.0, 0.0, 0.0))
+    vm.voice_configs = [VoiceConfig(0.0, 0.0, 0.0, 0.0)] * max_voices
     return vm
 
 
@@ -186,6 +182,16 @@ def stream_factory():
         s._density = _make_mock_density(inter_onset)
         s._voice_manager = _make_mock_voice_manager(max_voices)
         s._window_controller = _make_mock_window_controller()
+
+        # num_voices: mock Parameter che restituisce max_voices per ogni t
+        _nv = Mock()
+        _nv.get_value = Mock(return_value=float(max_voices))
+        s._num_voices = _nv
+
+        # scatter: mock Parameter che restituisce 0.0 (comportamento cluster)
+        _sc = Mock()
+        _sc.get_value = Mock(return_value=0.0)
+        s._scatter = _sc
 
         # Csound references
         s.sample_table_num = 1
@@ -1184,9 +1190,9 @@ class TestStreamParametrized:
 
     @pytest.mark.parametrize("max_voices", [1, 2, 5, 10])
     def test_voice_count(self, stream_factory, max_voices):
-        """Single voice stream: voices contiene sempre esattamente 1 lista."""
+        """voices contiene esattamente max_voices liste (una per voce)."""
         s = stream_factory(max_voices=max_voices, duration=0.3, inter_onset=0.1)
 
         s.generate_grains()
 
-        assert len(s.voices) == 1
+        assert len(s.voices) == max_voices
