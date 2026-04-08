@@ -311,6 +311,13 @@ class TestWindowControllerInit:
         ctrl = WindowController(params, config=default_config)
         assert ctrl._windows == ['hanning']
 
+    def test_legacy_envelope_range_key_is_silently_ignored(self, default_config):
+        ctrl = WindowController(
+            {'envelope': 'hanning', 'envelope_range': 1.0},
+            config=default_config
+        )
+        assert ctrl._windows == ['hanning']
+
 
 # =============================================================================
 # 7. TEST __init__ - GATE CREATION LOGIC
@@ -382,6 +389,11 @@ class TestWindowControllerGateCreation:
         )
         assert isinstance(ctrl._gate, RandomGate)
         assert ctrl._gate.get_probability_value(0.0) == DEFAULT_PROB
+
+    def test_single_element_list_behaves_like_string(self, config_dephase_disabled):
+        ctrl = WindowController({'envelope': ['hanning']}, config=config_dephase_disabled)
+        assert isinstance(ctrl._gate, NeverGate)
+        assert ctrl.select_window(0.0) == 'hanning'
 
 
 # =============================================================================
