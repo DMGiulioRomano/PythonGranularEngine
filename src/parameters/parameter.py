@@ -142,7 +142,8 @@ class Parameter:
 
     def _clamp(self, value: float, time: float) -> float:
         """Applica i limiti di sicurezza (Min/Max) e logga se taglia."""
-        clamped = max(self._bounds.min_val, min(self._bounds.max_val, value))
+        max_val = self._bounds.max_val
+        clamped = max(self._bounds.min_val, value) if max_val is None else max(self._bounds.min_val, min(max_val, value))
         
         if clamped != value:
             # Logga il warning usando il logger configurato

@@ -782,3 +782,11 @@ class TestParserDynamicLoopBounds:
         parser = GranularParser(config)
         param = parser.parse_parameter('loop_end', 150.0)
         assert param.get_value(0) == pytest.approx(150.0)
+
+    @pytest.mark.parametrize("name", ['loop_end', 'loop_start', 'loop_dur'])
+    def test_loop_param_without_sample_dur_accepts_large_value(self, name):
+        """Senza sample_dur_sec (max_val=None), qualsiasi valore >= min è valido."""
+        config = make_config_with_sample_dur(None)
+        parser = GranularParser(config)
+        param = parser.parse_parameter(name, 9999.0)
+        assert param.get_value(0) == pytest.approx(9999.0)

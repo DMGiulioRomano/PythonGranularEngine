@@ -74,6 +74,10 @@ class PointerController:
 
         # 4. has_loop dipende solo dalla presenza di loop_start
         self.has_loop = 'loop_start' in params
+        # Se loop_start è presente ma start non è esplicito nello YAML,
+        # il pointer parte direttamente da loop_start(t=0) invece di 0.
+        if self.has_loop and 'start' not in params:
+            self.start = self.loop_start.get_value(0.0)
         if self.has_loop and self.loop_end is None and self.loop_dur is None:
             self.loop_end = self._orchestrator.create_constant_parameter(
     'loop_end', self._sample_dur_sec

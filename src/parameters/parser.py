@@ -134,7 +134,7 @@ class GranularParser:
         self,
         param: Optional[ParamInput],
         min_bound: float,
-        max_bound: float,
+        max_bound: Optional[float],
         param_name: str,
         value_type: str
     ) -> Optional[ParamInput]:
@@ -164,8 +164,8 @@ class GranularParser:
         # Caso 1: Numero scalare
         if isinstance(param, (int, float)):
             clean = float(param)
-            clipped = max(min_bound, min(max_bound, clean))
-            
+            clipped = max(min_bound, clean) if max_bound is None else max(min_bound, min(max_bound, clean))
+
             if clipped != clean:
                 # Calcola messaggio di errore
                 bound_type = "MIN" if clean < min_bound else "MAX"
@@ -205,8 +205,8 @@ class GranularParser:
             fixed_points = []
             
             for t, y in param.breakpoints:
-                clipped_y = max(min_bound, min(max_bound, y))
-                
+                clipped_y = max(min_bound, y) if max_bound is None else max(min_bound, min(max_bound, y))
+
                 if clipped_y != y:
                     needs_fixing = True
                     bound_type = "MIN" if y < min_bound else "MAX"
@@ -232,7 +232,7 @@ class GranularParser:
                 else:
                     # Log ogni violazione
                     for t, y in param.breakpoints:
-                        clipped_y = max(min_bound, min(max_bound, y))
+                        clipped_y = max(min_bound, y) if max_bound is None else max(min_bound, min(max_bound, y))
                         if clipped_y != y:
                             log_config_warning(
                                 stream_id=self.stream_id,

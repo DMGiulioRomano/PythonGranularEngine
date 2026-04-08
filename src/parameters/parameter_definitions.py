@@ -34,7 +34,7 @@ class ParameterBounds:
                           Es. Reverse (non usa range additivo, usa probabilità).
     """
     min_val: float
-    max_val: float
+    max_val: float | None
     min_range: float = 0.0
     max_range: float = 0.0
     default_jitter: float = 0.0
@@ -146,17 +146,17 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
     
     'loop_dur': ParameterBounds(
         min_val=0.005,
-        max_val=1000.0 
+        max_val=None  # bound reale = sample_dur_sec, passato dinamicamente
     ),
 
     'loop_start': ParameterBounds(
         min_val=0,
-        max_val=100.0 
+        max_val=None  # bound reale = sample_dur_sec, passato dinamicamente
     ),
 
     'loop_end': ParameterBounds(
         min_val=0.0,
-        max_val=1000.0 
+        max_val=None  # bound reale = sample_dur_sec, passato dinamicamente
     ),
 
 
