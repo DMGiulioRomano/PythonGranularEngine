@@ -5,9 +5,9 @@ Suite di test completa per controllers/window_controller.py.
 
 Coverage:
 1. parse_window_list - default, stringa singola, lista, 'all'/True, alias, errori
-2. __init__ - parsing params, range semantico, gate creation
-3. select_window - guard range==0, gate closed, gate open, elapsed_time, statistica
-4. Integrazione - workflow YAML->selezione, tabella decisionale range/gate
+2. __init__ - parsing params, gate creation (stringa vs lista)
+3. select_window - singola finestra, gate closed, gate open, elapsed_time, statistica
+4. Integrazione - workflow YAML->selezione, tabella decisionale envelope/gate
 """
 
 import pytest
@@ -277,24 +277,6 @@ class TestWindowControllerInit:
         ctrl = WindowController({'envelope': 'all'}, config=default_config)
         assert len(ctrl._windows) == len(WindowRegistry.WINDOWS)
 
-    def test_range_default_is_zero(self, default_config):
-        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
-        assert ctrl._range == 0
-
-    def test_range_read_from_params(self, default_config):
-        ctrl = WindowController(
-            {'envelope': 'hanning', 'envelope_range': 1.0},
-            config=default_config
-        )
-        assert ctrl._range == 1.0
-
-    def test_range_fractional(self, default_config):
-        ctrl = WindowController(
-            {'envelope': 'hanning', 'envelope_range': 0.5},
-            config=default_config
-        )
-        assert ctrl._range == 0.5
-
     def test_init_uses_stream_id_from_context(self, config_with_stream_id):
         with pytest.raises(ValueError, match="my_stream_42"):
             WindowController({'envelope': 'NONEXISTENT'}, config=config_with_stream_id)
@@ -325,11 +307,9 @@ class TestWindowControllerInit:
             'duration': 0.05,
             'duration_range': 0.01,
             'envelope': 'hanning',
-            'envelope_range': 0.5,
         }
         ctrl = WindowController(params, config=default_config)
         assert ctrl._windows == ['hanning']
-        assert ctrl._range == 0.5
 
 
 # =============================================================================
@@ -338,49 +318,49 @@ class TestWindowControllerInit:
 
 class TestWindowControllerGateCreation:
 
-    def test_range_zero_dephase_false_creates_never_gate(self, config_dephase_disabled):
+    def test_single_string_dephase_false_creates_never_gate(self, config_dephase_disabled):
         ctrl = WindowController({'envelope': 'hanning'}, config=config_dephase_disabled)
         assert isinstance(ctrl._gate, NeverGate)
 
-    def test_range_positive_dephase_false_creates_always_gate(self, config_dephase_disabled):
+    def test_list_dephase_false_creates_always_gate(self, config_dephase_disabled):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config_dephase_disabled
         )
         assert isinstance(ctrl._gate, AlwaysGate)
 
-    def test_range_positive_dephase_none_creates_random_gate(self, config_dephase_implicit):
+    def test_list_dephase_none_creates_random_gate(self, config_dephase_implicit):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config_dephase_implicit
         )
         assert isinstance(ctrl._gate, RandomGate)
 
-    def test_range_positive_dephase_none_uses_default_prob(self, config_dephase_implicit):
+    def test_list_dephase_none_uses_default_prob(self, config_dephase_implicit):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config_dephase_implicit
         )
         assert ctrl._gate.get_probability_value(0.0) == DEFAULT_PROB
 
-    def test_range_positive_dephase_50_creates_random_gate(self, config_dephase_global):
+    def test_list_dephase_50_creates_random_gate(self, config_dephase_global):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config_dephase_global
         )
         assert isinstance(ctrl._gate, RandomGate)
         assert ctrl._gate.get_probability_value(0.0) == 50.0
 
-    def test_range_positive_dephase_100_creates_always_gate(self, config_dephase_100):
+    def test_list_dephase_100_creates_always_gate(self, config_dephase_100):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config_dephase_100
         )
         assert isinstance(ctrl._gate, AlwaysGate)
 
-    def test_range_positive_dephase_0_creates_never_gate(self, config_dephase_0):
+    def test_list_dephase_0_creates_never_gate(self, config_dephase_0):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config_dephase_0
         )
         assert isinstance(ctrl._gate, NeverGate)
@@ -388,7 +368,7 @@ class TestWindowControllerGateCreation:
     def test_dephase_specific_key_pc_rand_envelope(self):
         config = make_config(dephase={'pc_rand_envelope': 80.0})
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config
         )
         assert isinstance(ctrl._gate, RandomGate)
@@ -397,7 +377,7 @@ class TestWindowControllerGateCreation:
     def test_dephase_specific_key_missing_uses_default_prob(self):
         config = make_config(dephase={'altro_parametro': 80.0})
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=config
         )
         assert isinstance(ctrl._gate, RandomGate)
@@ -405,41 +385,17 @@ class TestWindowControllerGateCreation:
 
 
 # =============================================================================
-# 8. TEST select_window - GUARD RANGE == 0
+# 8. TEST select_window - SINGOLA FINESTRA
 # =============================================================================
 
-class TestSelectWindowRangeZero:
+class TestSelectWindowSingle:
 
-    def test_range_zero_returns_first_window(self, default_config):
-        ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec', 'gaussian']},
-            config=default_config
-        )
-        assert ctrl._range == 0
-        for _ in range(50):
-            assert ctrl.select_window(0.0) == 'hanning'
-
-    def test_range_zero_single_window(self, default_config):
+    def test_single_window_always_returns_it(self, default_config):
         ctrl = WindowController({'envelope': 'bartlett'}, config=default_config)
-        assert ctrl.select_window(5.0) == 'bartlett'
+        for _ in range(50):
+            assert ctrl.select_window(5.0) == 'bartlett'
 
-    def test_range_zero_ignores_gate(self, default_config):
-        ctrl = WindowController(
-            {'envelope': ['hanning', 'gaussian']},
-            config=default_config
-        )
-        ctrl._gate = AlwaysGate()
-        assert ctrl.select_window(0.0) == 'hanning'
-
-    def test_range_zero_stable_across_times(self, default_config):
-        ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec']},
-            config=default_config
-        )
-        for t in [0.0, 1.0, 5.0, 9.99, 100.0]:
-            assert ctrl.select_window(t) == 'hanning'
-
-    def test_range_zero_gate_never_consulted(self, default_config):
+    def test_single_window_gate_never_consulted(self, default_config):
         ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
         mock_gate = Mock(spec=ProbabilityGate)
         ctrl._gate = mock_gate
@@ -455,7 +411,7 @@ class TestSelectWindowGateClosed:
 
     def test_never_gate_returns_first_window(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=default_config
         )
         ctrl._gate = NeverGate()
@@ -464,7 +420,7 @@ class TestSelectWindowGateClosed:
 
     def test_never_gate_stable_across_times(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['gaussian', 'blackman'], 'envelope_range': 1.0},
+            {'envelope': ['gaussian', 'blackman']},
             config=default_config
         )
         ctrl._gate = NeverGate()
@@ -480,7 +436,7 @@ class TestSelectWindowGateOpen:
 
     def test_always_gate_single_window_always_returns_it(self, default_config):
         ctrl = WindowController(
-            {'envelope': 'hanning', 'envelope_range': 1.0},
+            {'envelope': 'hanning'},
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -490,7 +446,7 @@ class TestSelectWindowGateOpen:
     def test_always_gate_list_covers_all_windows(self, default_config):
         windows = ['hanning', 'expodec', 'gaussian', 'blackman']
         ctrl = WindowController(
-            {'envelope': windows, 'envelope_range': 1.0},
+            {'envelope': windows},
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -500,7 +456,7 @@ class TestSelectWindowGateOpen:
     def test_always_gate_results_are_valid(self, default_config):
         windows = ['hanning', 'expodec', 'gaussian']
         ctrl = WindowController(
-            {'envelope': windows, 'envelope_range': 1.0},
+            {'envelope': windows},
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -510,7 +466,7 @@ class TestSelectWindowGateOpen:
     def test_always_gate_statistical_uniformity(self, default_config):
         windows = ['hanning', 'expodec']
         ctrl = WindowController(
-            {'envelope': windows, 'envelope_range': 1.0},
+            {'envelope': windows},
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -529,7 +485,7 @@ class TestElapsedTimePropagation:
 
     def test_elapsed_time_passed_to_gate(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=default_config
         )
         mock_gate = Mock(spec=ProbabilityGate)
@@ -541,7 +497,7 @@ class TestElapsedTimePropagation:
 
     def test_elapsed_time_default_is_zero(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=default_config
         )
         mock_gate = Mock(spec=ProbabilityGate)
@@ -553,7 +509,7 @@ class TestElapsedTimePropagation:
 
     def test_various_elapsed_times_passed_correctly(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=default_config
         )
         mock_gate = Mock(spec=ProbabilityGate)
@@ -567,7 +523,7 @@ class TestElapsedTimePropagation:
         called_with = [c.args[0] for c in mock_gate.should_apply.call_args_list]
         assert called_with == times
 
-    def test_elapsed_time_not_passed_when_range_zero(self, default_config):
+    def test_elapsed_time_not_passed_when_single_window(self, default_config):
         ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
         mock_gate = Mock(spec=ProbabilityGate)
         ctrl._gate = mock_gate
@@ -579,36 +535,36 @@ class TestElapsedTimePropagation:
 # 12. TEST select_window - TABELLA DECISIONALE RANGE/GATE
 # =============================================================================
 
-class TestRangeGateDecisionMatrix:
+class TestEnvelopeGateDecisionMatrix:
     """
-    | range | gate       | risultato              |
-    |-------|------------|------------------------|
-    | 0     | qualsiasi  | prima finestra (guard) |
-    | >0    | NeverGate  | prima finestra         |
-    | >0    | AlwaysGate | random.choice          |
+    | envelope   | gate       | risultato              |
+    |------------|------------|------------------------|
+    | stringa    | qualsiasi  | prima finestra (guard) |
+    | lista      | NeverGate  | prima finestra         |
+    | lista      | AlwaysGate | random.choice          |
     """
 
-    def test_range_zero_any_gate_returns_first(self, default_config):
+    def test_single_string_any_gate_returns_first(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec']},
+            {'envelope': 'hanning'},
             config=default_config
         )
         for gate in [NeverGate(), AlwaysGate(), RandomGate(50.0)]:
             ctrl._gate = gate
             assert ctrl.select_window(5.0) == 'hanning'
 
-    def test_range_positive_never_gate_returns_first(self, default_config):
+    def test_list_never_gate_returns_first(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=default_config
         )
         ctrl._gate = NeverGate()
         for _ in range(50):
             assert ctrl.select_window(5.0) == 'hanning'
 
-    def test_range_positive_always_gate_selects_randomly(self, default_config):
+    def test_list_always_gate_selects_randomly(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec']},
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -624,7 +580,7 @@ class TestDeterminism:
 
     def test_same_seed_same_sequence(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec', 'gaussian'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec', 'gaussian'], },
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -639,7 +595,7 @@ class TestDeterminism:
 
     def test_different_seeds_different_sequences(self, default_config):
         ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec', 'gaussian'], 'envelope_range': 1.0},
+            {'envelope': ['hanning', 'expodec', 'gaussian'], },
             config=default_config
         )
         ctrl._gate = AlwaysGate()
@@ -664,29 +620,18 @@ class TestIntegration:
             'duration': 0.05,
             'duration_range': 0.01,
             'envelope': ['hanning', 'expodec', 'gaussian'],
-            'envelope_range': 1.0,
         }
         ctrl = WindowController(grain_yaml, config=default_config)
         assert len(ctrl._windows) == 3
-        assert ctrl._range == 1.0
 
     def test_workflow_yaml_no_envelope_uses_default(self, default_config):
         grain_yaml = {'duration': 0.05}
         ctrl = WindowController(grain_yaml, config=default_config)
         assert ctrl._windows == ['hanning']
-        assert ctrl._range == 0
-
-    def test_range_zero_overrides_even_with_dephase_100(self, config_dephase_100):
-        ctrl = WindowController(
-            {'envelope': ['hanning', 'expodec', 'gaussian']},
-            config=config_dephase_100
-        )
-        for _ in range(100):
-            assert ctrl.select_window(5.0) == 'hanning'
 
     def test_all_windows_with_always_gate_covers_registry(self, config_dephase_disabled):
         ctrl = WindowController(
-            {'envelope': 'all', 'envelope_range': 1.0},
+            {'envelope': 'all'},
             config=config_dephase_disabled
         )
         results = set(ctrl.select_window(0.0) for _ in range(5000))
@@ -700,10 +645,3 @@ class TestIntegration:
         windows = ['hanning', 'bartlett', 'kaiser']
         ctrl = WindowController({'envelope': windows}, config=default_config)
         assert ctrl._windows == windows
-
-    def test_state_consistency_range_matches_params(self, default_config):
-        ctrl = WindowController(
-            {'envelope': 'hanning', 'envelope_range': 0.7},
-            config=default_config
-        )
-        assert ctrl._range == 0.7
