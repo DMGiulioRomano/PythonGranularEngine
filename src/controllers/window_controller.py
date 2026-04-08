@@ -74,13 +74,12 @@ class WindowController:
         """        
         # Riusa metodo statico per parsing
         self._windows = self.parse_window_list(params, config.context.stream_id)
-        
-        # Range: guard semantico. Se 0, nessuna variazione richiesta.
-        self._range = params.get('envelope_range', 0)
+
+        # Se envelope è lista o 'all', la variazione è implicita.
+        has_explicit_range = len(self._windows) > 1
 
         # Gate: delega la decisione probabilistica al sistema unificato.
         # Supporta DISABLED, IMPLICIT, GLOBAL, SPECIFIC e EnvelopeGate.
-        has_explicit_range = self._range > 0
         self._gate = GateFactory.create_gate(
             dephase=config.dephase,
             param_key='pc_rand_envelope',
@@ -99,12 +98,10 @@ class WindowController:
             elapsed_time: tempo corrente nello stream, necessario per
                           gate con probabilità variabile nel tempo (EnvelopeGate).
         """
-        # Guard semantico: se range è 0, nessuna variazione richiesta.
-        # Questo è indipendente dal gate: anche se il gate direbbe "applica",
-        # non c'è niente da variare.
-        if self._range == 0:
+        # Con una sola finestra non c'è niente da variare.
+        if len(self._windows) == 1:
             return self._windows[0]
-        
+
         # Delega la decisione probabilistica al gate.
         if not self._gate.should_apply(elapsed_time):
             return self._windows[0]

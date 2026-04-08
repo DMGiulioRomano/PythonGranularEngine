@@ -90,9 +90,8 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
         name='grain_envelope',
         yaml_path='grain.envelope',
         default='hanning',
-        range_path='grain.envelope_range',  
-        dephase_key='envelope',  
-        is_smart=False 
+        dephase_key='envelope',
+        is_smart=False
     ),    
     # =========================================================================
     # REVERSE (caso speciale: variation_mode='invert')
