@@ -9,7 +9,7 @@ open:
 	$(OPEN_CMD) $(SFDIR)/*.aif
 
 pdf:
-	$(OPEN_CMD) $(GENDIR)/*.pdf
+	$(OPEN_CMD) $(SFDIR)/*.pdf
 
 sync:
 	git add .

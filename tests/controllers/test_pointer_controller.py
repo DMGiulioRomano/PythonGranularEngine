@@ -2385,3 +2385,63 @@ class TestPointerControllerMissingLines:
             assert pointer._drift_log_interval == pytest.approx(5.0)
             assert pointer._drift_last_logged == pytest.approx(-999.0)
             assert pointer._drift_first_warning_emitted is False
+
+
+# =============================================================================
+# GRUPPO 10: START IMPLICITO DA LOOP_START
+# =============================================================================
+
+class TestStartImplicitFromLoopStart:
+    """
+    Se 'start' non è presente nello YAML ma 'loop_start' sì,
+    self.start deve essere sovrascritto con loop_start.get_value(0.0).
+    Se 'start' è esplicito, rimane invariato.
+    """
+
+    def test_start_defaults_to_loop_start_when_absent(self, pointer_factory):
+        """Senza 'start' nello YAML, start = loop_start(t=0)."""
+        pointer = pointer_factory({'loop_start': 3.0, 'loop_end': 6.0})
+        assert pointer.start == pytest.approx(3.0)
+
+    def test_start_explicit_is_not_overridden(self, pointer_factory):
+        """Con 'start' esplicito, rimane invariato anche se loop_start è diverso."""
+        pointer = pointer_factory({'start': 1.0, 'loop_start': 3.0, 'loop_end': 6.0})
+        assert pointer.start == pytest.approx(1.0)
+
+    def test_start_explicit_zero_is_not_overridden(self, pointer_factory):
+        """'start: 0.0' esplicito non deve essere sovrascritto (non è un default)."""
+        pointer = pointer_factory({'start': 0.0, 'loop_start': 3.0, 'loop_end': 6.0})
+        assert pointer.start == pytest.approx(0.0)
+
+    def test_start_defaults_to_loop_start_envelope_initial_value(self, mock_config):
+        """Con loop_start Envelope, start = loop_start.get_value(0.0)."""
+        from envelopes.envelope import Envelope
+
+        env = Envelope([[0.0, 2.5], [1.0, 5.0]])
+
+        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+            mock_orch = MockOrch.return_value
+            mock_config.context.sample_dur_sec = 10.0
+
+            loop_start_param = Mock()
+            loop_start_param._value = env
+            loop_start_param.get_value = Mock(return_value=env.evaluate(0.0))
+
+            mock_orch.create_all_parameters.return_value = {
+                'pointer_start': 0.0,
+                'pointer_speed_ratio': Mock(value=1.0, get_value=Mock(return_value=1.0)),
+                'pointer_deviation': Mock(value=0.0, get_value=Mock(return_value=0.0)),
+                'loop_start': loop_start_param,
+                'loop_end': Mock(value=8.0, get_value=Mock(return_value=8.0)),
+                'loop_dur': None,
+            }
+
+            params = {'loop_start': [[0.0, 2.5], [1.0, 5.0]], 'loop_end': 8.0}
+            pointer = PointerController(params, mock_config)
+
+            assert pointer.start == pytest.approx(env.evaluate(0.0))
+
+    def test_no_loop_start_start_remains_zero(self, pointer_factory):
+        """Senza loop, start rimane al default 0.0."""
+        pointer = pointer_factory({'speed_ratio': 1.0})
+        assert pointer.start == pytest.approx(0.0)
