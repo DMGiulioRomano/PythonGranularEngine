@@ -53,7 +53,14 @@ class Stream:
             params: dizionario parametri dallo YAML
         """
         # === 3. CONFIGURATION ===
-        config = StreamConfig.from_yaml(params,StreamContext.from_yaml(params, sample_dur_sec=get_sample_duration(params['sample'])))
+        sample = params.get('sample')
+        stream_id = params.get('stream_id', 'unknown')
+        if not sample:
+            raise ValueError(
+                f"Stream '{stream_id}': campo 'sample' mancante o null — "
+                "specificare il nome del file wav (es. sample: mio_file.wav)"
+            )
+        config = StreamConfig.from_yaml(params, StreamContext.from_yaml(params, sample_dur_sec=get_sample_duration(sample)))
         self._init_stream_context(params)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)

@@ -544,6 +544,29 @@ class TestStreamInit:
             assert s.generated is False
             assert s.sample_table_num is None
             assert s.envelope_table_num is None
+
+    def test_missing_sample_raises_value_error(self):
+        """Stream senza 'sample' -> ValueError leggibile."""
+        params = _minimal_yaml_params()
+        del params['sample']
+        with pytest.raises(ValueError, match="sample"):
+            Stream(params)
+
+    def test_null_sample_raises_value_error(self):
+        """Stream con sample: null -> ValueError leggibile."""
+        params = _minimal_yaml_params()
+        params['sample'] = None
+        with pytest.raises(ValueError, match="sample"):
+            Stream(params)
+
+    def test_error_message_contains_stream_id(self):
+        """Il messaggio di errore include lo stream_id per facilitare il debug."""
+        params = _minimal_yaml_params()
+        params['stream_id'] = 'stream_problematico'
+        params['sample'] = None
+        with pytest.raises(ValueError, match="stream_problematico"):
+            Stream(params)
+
 # =============================================================================
 # 6. TEST generate_grains - LOOP PRINCIPALE (1 VOCE)
 # =============================================================================
