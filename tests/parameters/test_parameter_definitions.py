@@ -668,8 +668,10 @@ class TestCrossRegistryInvariants:
 
     @pytest.mark.parametrize("param_name", sorted(EXPECTED_PARAMETERS))
     def test_min_val_less_than_or_equal_max_val(self, param_name):
-        """min_val <= max_val per ogni parametro."""
+        """min_val <= max_val per ogni parametro (None = nessun upper bound)."""
         b = GRANULAR_PARAMETERS[param_name]
+        if b.max_val is None:
+            return  # nessun upper bound statico: invariante non applicabile
         assert b.min_val <= b.max_val, (
             f"'{param_name}': min_val={b.min_val} > max_val={b.max_val}"
         )
@@ -875,8 +877,8 @@ class TestEdgeCases:
             assert isinstance(bounds.min_val, (int, float)), (
                 f"'{name}' min_val non numerico: {type(bounds.min_val)}"
             )
-            assert isinstance(bounds.max_val, (int, float)), (
-                f"'{name}' max_val non numerico: {type(bounds.max_val)}"
+            assert bounds.max_val is None or isinstance(bounds.max_val, (int, float)), (
+                f"'{name}' max_val deve essere numero o None: {type(bounds.max_val)}"
             )
             assert isinstance(bounds.min_range, (int, float)), (
                 f"'{name}' min_range non numerico"
@@ -896,12 +898,14 @@ class TestEdgeCases:
             )
 
     def test_no_nan_or_inf_in_bounds(self):
-        """Nessun NaN o Inf nei bounds."""
+        """Nessun NaN o Inf nei bounds (None = nessun bound, non è NaN/Inf)."""
         import math
         for name, bounds in GRANULAR_PARAMETERS.items():
             for field_name in ('min_val', 'max_val', 'min_range',
                                'max_range', 'default_jitter'):
                 val = getattr(bounds, field_name)
+                if val is None:
+                    continue  # None è upper bound assente, non un valore non valido
                 assert not math.isnan(val), (
                     f"'{name}'.{field_name} e' NaN"
                 )
@@ -987,3 +991,35 @@ class TestGetParameterDefinitionDynamic:
         """Il bound dinamico funziona per qualsiasi durata positiva."""
         bounds = get_parameter_definition('loop_end', sample_dur_sec=dur)
         assert bounds.max_val == dur
+
+
+# =============================================================================
+# 15. PARAMETERBOUNDS CON max_val=None (PARAMETRI LOOP SENZA CAMPIONE NOTO)
+# =============================================================================
+
+class TestLoopParamsNoneMaxVal:
+    """
+    loop_dur, loop_start, loop_end non devono avere un upper bound statico
+    arbitrario nel registry. Il bound reale è sempre sample_dur_sec, passato
+    dinamicamente. Senza di esso, max_val deve essere None (nessun limite).
+    """
+
+    @pytest.mark.parametrize("name", LOOP_PARAMS)
+    def test_loop_params_static_max_val_is_none(self, name):
+        """Nel registry statico, i parametri loop hanno max_val=None."""
+        assert GRANULAR_PARAMETERS[name].max_val is None, (
+            f"'{name}' dovrebbe avere max_val=None nel registry, "
+            f"trovato: {GRANULAR_PARAMETERS[name].max_val}"
+        )
+
+    @pytest.mark.parametrize("name", LOOP_PARAMS)
+    def test_get_parameter_definition_without_sample_dur_returns_none_max(self, name):
+        """Senza sample_dur_sec, get_parameter_definition ritorna max_val=None."""
+        bounds = get_parameter_definition(name)
+        assert bounds.max_val is None
+
+    def test_parameter_bounds_accepts_none_max_val(self):
+        """ParameterBounds con max_val=None è costruibile senza errori."""
+        bounds = ParameterBounds(min_val=0.0, max_val=None)
+        assert bounds.max_val is None
+        assert bounds.min_val == 0.0
