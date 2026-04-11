@@ -657,3 +657,160 @@ class TestIntegration:
         windows = ['hanning', 'bartlett', 'kaiser']
         ctrl = WindowController({'envelope': windows}, config=default_config)
         assert ctrl._windows == windows
+
+
+# =============================================================================
+# 15. TEST parse_window_list - TRANSITION DICT FORMAT
+# =============================================================================
+
+class TestParseWindowListTransitionDict:
+    """parse_window_list deve estrarre [from, to] da un dict di transizione."""
+
+    def test_transition_dict_returns_from_and_to(self):
+        spec = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [1, 1]]}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'bartlett']
+
+    def test_transition_dict_without_curve_returns_from_and_to(self):
+        """curve è opzionale in parse_window_list (serve solo all'istanza)."""
+        spec = {'envelope': {'from': 'hanning', 'to': 'expodec'}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'expodec']
+
+    def test_transition_dict_validates_from_window(self):
+        spec = {'envelope': {'from': 'INVALID', 'to': 'hanning'}}
+        with pytest.raises(ValueError, match="non trovata"):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_dict_validates_to_window(self):
+        spec = {'envelope': {'from': 'hanning', 'to': 'INVALID'}}
+        with pytest.raises(ValueError, match="non trovata"):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_dict_without_from_key_raises(self):
+        """Un dict senza 'from' non è un transition spec valido."""
+        spec = {'envelope': {'to': 'hanning', 'curve': [[0, 0], [1, 1]]}}
+        with pytest.raises(ValueError):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_dict_without_to_key_raises(self):
+        """Un dict senza 'to' non è un transition spec valido."""
+        spec = {'envelope': {'from': 'hanning', 'curve': [[0, 0], [1, 1]]}}
+        with pytest.raises(ValueError):
+            WindowController.parse_window_list(spec)
+
+    def test_dict_without_from_to_still_raises_format_error(self):
+        """Un dict arbitrario senza from/to → errore formato."""
+        spec = {'envelope': {'type': 'hanning'}}
+        with pytest.raises(ValueError, match="Formato envelope non valido"):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_with_alias_in_from(self):
+        spec = {'envelope': {'from': 'triangle', 'to': 'hanning'}}
+        result = WindowController.parse_window_list(spec)
+        assert 'triangle' in result
+
+    def test_transition_same_window_from_and_to(self):
+        """Caso degenere: from == to è valido (transizione noop)."""
+        spec = {'envelope': {'from': 'hanning', 'to': 'hanning'}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'hanning']
+
+
+# =============================================================================
+# 16. TEST WindowController INIT - TRANSITION MODE
+# =============================================================================
+
+class TestWindowControllerTransitionInit:
+
+    def test_transition_init_sets_windows(self, default_config):
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(params, config=default_config)
+        assert ctrl._windows == ['hanning', 'bartlett']
+
+    def test_transition_init_sets_strategy(self, default_config):
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(params, config=default_config)
+        assert isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+    def test_non_transition_strategy_is_none_or_not_transition(self, default_config):
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
+        assert not isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+    def test_transition_init_without_curve_uses_default(self, default_config):
+        """curve assente → default [[0,0],[1,1]] (linear 0→1 con time normalizzato)."""
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett'}}
+        ctrl = WindowController(params, config=default_config)
+        assert isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+
+# =============================================================================
+# 17. TEST select_window - TRANSITION BEHAVIOR
+# =============================================================================
+
+class TestSelectWindowTransition:
+
+    def _make_transition_ctrl(self, from_w, to_w, curve_pts, duration=10.0,
+                               time_mode=None):
+        """Helper: crea controller in modalità transizione."""
+        from core.stream_config import StreamContext, StreamConfig
+        ctx = StreamContext(
+            stream_id='t_stream',
+            onset=0.0,
+            duration=duration,
+            sample='test.wav',
+            sample_dur_sec=5.0,
+        )
+        config = StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+        params = {'envelope': {'from': from_w, 'to': to_w, 'curve': curve_pts}}
+        return WindowController(params, config=config)
+
+    def test_at_t0_linear_curve_returns_from(self):
+        """curve [[0,0],[10,1]] a t=0 → blend=0 → 100% hanning."""
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        results = [ctrl.select_window(0.0) for _ in range(200)]
+        assert all(r == 'hanning' for r in results)
+
+    def test_at_end_linear_curve_returns_to(self):
+        """curve [[0,0],[10,1]] a t=10 → blend=1 → 100% bartlett."""
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        results = [ctrl.select_window(10.0) for _ in range(200)]
+        assert all(r == 'bartlett' for r in results)
+
+    def test_at_midpoint_is_50_50(self):
+        """curve [[0,0],[10,1]] a t=5 → blend=0.5 → ~50/50."""
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        counts = {'hanning': 0, 'bartlett': 0}
+        for _ in range(2000):
+            counts[ctrl.select_window(5.0)] += 1
+        ratio = counts['bartlett'] / 2000
+        assert 0.44 <= ratio <= 0.56, f"ratio bartlett: {ratio}"
+
+    def test_result_always_from_or_to(self):
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        for t in [0.0, 2.5, 5.0, 7.5, 10.0]:
+            for _ in range(20):
+                assert ctrl.select_window(t) in ('hanning', 'bartlett')
+
+    def test_normalized_time_mode(self):
+        """Con time_mode='normalized' la curve usa 0-1 come asse temporale."""
+        ctrl = self._make_transition_ctrl(
+            'hanning', 'bartlett', [[0, 0], [1, 1]],
+            duration=30.0, time_mode='normalized'
+        )
+        # elapsed=30 → t_norm=1 → blend=1 → 100% bartlett
+        results = [ctrl.select_window(30.0) for _ in range(200)]
+        assert all(r == 'bartlett' for r in results)
+
+    def test_non_transition_mode_unaffected(self, default_config):
+        """Il comportamento attuale (lista finestre) non è alterato."""
+        ctrl = WindowController(
+            {'envelope': ['hanning', 'expodec']},
+            config=default_config
+        )
+        ctrl._gate = AlwaysGate()
+        results = set(ctrl.select_window(0.0) for _ in range(500))
+        assert results == {'hanning', 'expodec'}
