@@ -1,0 +1,51 @@
+composition:
+  title: "il mondo dorme"
+
+streams:
+  - stream_id: "texture1"
+    time_mode: "normalized"
+    onset: 0.0
+    duration: 60
+    #range_always_active:
+    sample: "001-0_0-3_0.wav"
+    pointer:
+      #loop_unite: absolute
+      #loop_start: [[[0,.6],[100,.1]],1,5]
+      #loop_dur: [[[0,.6],[100,.1]],1,3]
+      speed_ratio: .3
+      offset_range: [[[0,1],[100,.1]],1,2]
+      #speed_ratio: [[[0,-1],[25,0.1],[75,.4],[100,1]],1.0,3]
+    density: 200
+    distribution: 1
+    grain:
+      duration: [[0,.01],[.5,.1],[1,0.05]]
+      duration_range: .04
+      reverse:
+    volume: -30
+    dephase: [[0,1],[.5,100],[1,0]]
+    pan: [[0,40],[.6,-30],[1,-70]]
+    pitch:
+      range:  {type: cubic, points: [[0.0, 0.0], [0.5, 2.0], [1.0, 0.0]]}
+
+  - stream_id: "texture1"
+    time_mode: "normalized"
+    onset: 0
+    duration: 70
+    #range_always_active:
+    sample: "002-34_468-3_219.wav"
+    pointer:
+      #loop_unite: absolute
+      speed_ratio: -.03
+      offset_range: [[[0,.02], [100,.6]],1,5]
+      start: .6
+      #speed_ratio: [[[0,-1],[25,0.1],[75,.4],[100,1]],1.0,3]
+    density: 300
+    distribution: 1
+    grain:
+      duration: .05
+      duration_range: .02
+      reverse:
+    #volume: -20
+    pan_range: [[0,60],[1,100]]
+    dephase: [[0,1],[.5,100],[1,0]]
+

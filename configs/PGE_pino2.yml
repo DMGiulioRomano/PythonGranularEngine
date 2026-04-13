@@ -79,13 +79,6 @@ streams:
     time_mode: normalized
     pointer:
       speed_ratio: .01
-      loop_start: 
-        type: cubic
-        points:
-          - [0.0, 2.4]
-          - [0.5, 1.0]
-          - [1.0, 0.0]
-      loop_end: 2.99
     pan_range: 170
     density: 200
     #pitch:
