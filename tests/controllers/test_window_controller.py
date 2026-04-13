@@ -657,3 +657,530 @@ class TestIntegration:
         windows = ['hanning', 'bartlett', 'kaiser']
         ctrl = WindowController({'envelope': windows}, config=default_config)
         assert ctrl._windows == windows
+
+
+# =============================================================================
+# 15. TEST parse_window_list - TRANSITION DICT FORMAT
+# =============================================================================
+
+class TestParseWindowListTransitionDict:
+    """parse_window_list deve estrarre [from, to] da un dict di transizione."""
+
+    def test_transition_dict_returns_from_and_to(self):
+        spec = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [1, 1]]}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'bartlett']
+
+    def test_transition_dict_without_curve_returns_from_and_to(self):
+        """curve è opzionale in parse_window_list (serve solo all'istanza)."""
+        spec = {'envelope': {'from': 'hanning', 'to': 'expodec'}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'expodec']
+
+    def test_transition_dict_validates_from_window(self):
+        spec = {'envelope': {'from': 'INVALID', 'to': 'hanning'}}
+        with pytest.raises(ValueError, match="non trovata"):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_dict_validates_to_window(self):
+        spec = {'envelope': {'from': 'hanning', 'to': 'INVALID'}}
+        with pytest.raises(ValueError, match="non trovata"):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_dict_without_from_key_raises(self):
+        """Un dict senza 'from' non è un transition spec valido."""
+        spec = {'envelope': {'to': 'hanning', 'curve': [[0, 0], [1, 1]]}}
+        with pytest.raises(ValueError):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_dict_without_to_key_raises(self):
+        """Un dict senza 'to' non è un transition spec valido."""
+        spec = {'envelope': {'from': 'hanning', 'curve': [[0, 0], [1, 1]]}}
+        with pytest.raises(ValueError):
+            WindowController.parse_window_list(spec)
+
+    def test_dict_without_from_to_still_raises_format_error(self):
+        """Un dict arbitrario senza from/to → errore formato."""
+        spec = {'envelope': {'type': 'hanning'}}
+        with pytest.raises(ValueError, match="Formato envelope non valido"):
+            WindowController.parse_window_list(spec)
+
+    def test_transition_with_alias_in_from(self):
+        spec = {'envelope': {'from': 'triangle', 'to': 'hanning'}}
+        result = WindowController.parse_window_list(spec)
+        assert 'triangle' in result
+
+    def test_transition_same_window_from_and_to(self):
+        """Caso degenere: from == to è valido (transizione noop)."""
+        spec = {'envelope': {'from': 'hanning', 'to': 'hanning'}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'hanning']
+
+
+# =============================================================================
+# 16. TEST WindowController INIT - TRANSITION MODE
+# =============================================================================
+
+class TestWindowControllerTransitionInit:
+
+    def test_transition_init_sets_windows(self, default_config):
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(params, config=default_config)
+        assert ctrl._windows == ['hanning', 'bartlett']
+
+    def test_transition_init_sets_strategy(self, default_config):
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(params, config=default_config)
+        assert isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+    def test_non_transition_strategy_is_none_or_not_transition(self, default_config):
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
+        assert not isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+    def test_transition_init_without_curve_uses_default(self, default_config):
+        """curve assente → default [[0,0],[1,1]] (linear 0→1 con time normalizzato)."""
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett'}}
+        ctrl = WindowController(params, config=default_config)
+        assert isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+
+# =============================================================================
+# 17. TEST select_window - TRANSITION BEHAVIOR
+# =============================================================================
+
+class TestSelectWindowTransition:
+
+    def _make_transition_ctrl(self, from_w, to_w, curve_pts, duration=10.0,
+                               time_mode=None):
+        """Helper: crea controller in modalità transizione."""
+        from core.stream_config import StreamContext, StreamConfig
+        ctx = StreamContext(
+            stream_id='t_stream',
+            onset=0.0,
+            duration=duration,
+            sample='test.wav',
+            sample_dur_sec=5.0,
+        )
+        config = StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+        params = {'envelope': {'from': from_w, 'to': to_w, 'curve': curve_pts}}
+        return WindowController(params, config=config)
+
+    def test_at_t0_linear_curve_returns_from(self):
+        """curve [[0,0],[10,1]] a t=0 → blend=0 → 100% hanning."""
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        results = [ctrl.select_window(0.0) for _ in range(200)]
+        assert all(r == 'hanning' for r in results)
+
+    def test_at_end_linear_curve_returns_to(self):
+        """curve [[0,0],[10,1]] a t=10 → blend=1 → 100% bartlett."""
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        results = [ctrl.select_window(10.0) for _ in range(200)]
+        assert all(r == 'bartlett' for r in results)
+
+    def test_at_midpoint_is_50_50(self):
+        """curve [[0,0],[10,1]] a t=5 → blend=0.5 → ~50/50."""
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        counts = {'hanning': 0, 'bartlett': 0}
+        for _ in range(2000):
+            counts[ctrl.select_window(5.0)] += 1
+        ratio = counts['bartlett'] / 2000
+        assert 0.44 <= ratio <= 0.56, f"ratio bartlett: {ratio}"
+
+    def test_result_always_from_or_to(self):
+        ctrl = self._make_transition_ctrl('hanning', 'bartlett', [[0, 0], [10, 1]])
+        for t in [0.0, 2.5, 5.0, 7.5, 10.0]:
+            for _ in range(20):
+                assert ctrl.select_window(t) in ('hanning', 'bartlett')
+
+    def test_normalized_time_mode(self):
+        """Con time_mode='normalized' la curve usa 0-1 come asse temporale."""
+        ctrl = self._make_transition_ctrl(
+            'hanning', 'bartlett', [[0, 0], [1, 1]],
+            duration=30.0, time_mode='normalized'
+        )
+        # elapsed=30 → t_norm=1 → blend=1 → 100% bartlett
+        results = [ctrl.select_window(30.0) for _ in range(200)]
+        assert all(r == 'bartlett' for r in results)
+
+    def test_non_transition_mode_unaffected(self, default_config):
+        """Il comportamento attuale (lista finestre) non è alterato."""
+        ctrl = WindowController(
+            {'envelope': ['hanning', 'expodec']},
+            config=default_config
+        )
+        ctrl._gate = AlwaysGate()
+        results = set(ctrl.select_window(0.0) for _ in range(500))
+        assert results == {'hanning', 'expodec'}
+
+
+# =============================================================================
+# 18. TEST parse_window_list - MULTI-STATE FORMAT
+# =============================================================================
+
+class TestParseWindowListMultiState:
+    """parse_window_list deve estrarre tutti i nomi finestra da un dict states."""
+
+    def test_states_returns_all_window_names(self):
+        spec = {'envelope': {'states': [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']]}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'expodec', 'gaussian']
+
+    def test_states_two_elements(self):
+        """Due stati: equivalente a from/to."""
+        spec = {'envelope': {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'bartlett']
+
+    def test_states_validates_invalid_window(self):
+        spec = {'envelope': {'states': [[0.0, 'hanning'], [1.0, 'INVALID']]}}
+        with pytest.raises(ValueError, match="non trovata"):
+            WindowController.parse_window_list(spec)
+
+    def test_states_empty_list_raises(self):
+        spec = {'envelope': {'states': []}}
+        with pytest.raises(ValueError):
+            WindowController.parse_window_list(spec)
+
+    def test_states_single_element_raises(self):
+        spec = {'envelope': {'states': [[0.0, 'hanning']]}}
+        with pytest.raises(ValueError):
+            WindowController.parse_window_list(spec)
+
+    def test_states_with_alias(self):
+        spec = {'envelope': {'states': [[0.0, 'triangle'], [1.0, 'hanning']]}}
+        result = WindowController.parse_window_list(spec)
+        assert 'triangle' in result
+
+    def test_states_four_windows(self):
+        spec = {'envelope': {'states': [
+            [0.0, 'hanning'],
+            [0.3, 'bartlett'],
+            [0.7, 'expodec'],
+            [1.0, 'gaussian'],
+        ]}}
+        result = WindowController.parse_window_list(spec)
+        assert result == ['hanning', 'bartlett', 'expodec', 'gaussian']
+
+
+# =============================================================================
+# 19. TEST WindowController INIT - MULTI-STATE MODE
+# =============================================================================
+
+class TestWindowControllerMultiStateInit:
+
+    def _make_config(self, duration=10.0, time_mode=None):
+        ctx = StreamContext(
+            stream_id='ms_stream', onset=0.0, duration=duration,
+            sample='test.wav', sample_dur_sec=5.0,
+        )
+        return StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+
+    def test_multistate_init_sets_strategy(self):
+        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        params = {'envelope': {'states': [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']]}}
+        ctrl = WindowController(params, config=self._make_config())
+        assert isinstance(ctrl._strategy, MultiStateWindowStrategy)
+
+    def test_multistate_init_sets_windows(self):
+        params = {'envelope': {'states': [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']]}}
+        ctrl = WindowController(params, config=self._make_config())
+        assert ctrl._windows == ['hanning', 'expodec', 'gaussian']
+
+    def test_multistate_without_curve_uses_default(self):
+        """curve assente → default [[0,0],[1,1]]."""
+        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        params = {'envelope': {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}}
+        ctrl = WindowController(params, config=self._make_config())
+        assert isinstance(ctrl._strategy, MultiStateWindowStrategy)
+
+    def test_multistate_is_not_transition(self):
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        params = {'envelope': {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}}
+        ctrl = WindowController(params, config=self._make_config())
+        assert not isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+    def test_transition_dict_still_works(self, default_config):
+        """from/to rimane invariato (backward compat)."""
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        params = {'envelope': {'from': 'hanning', 'to': 'bartlett'}}
+        ctrl = WindowController(params, config=default_config)
+        assert isinstance(ctrl._strategy, TransitionWindowStrategy)
+
+
+# =============================================================================
+# 20. TEST select_window - MULTI-STATE BEHAVIOR
+# =============================================================================
+
+class TestSelectWindowMultiState:
+
+    def _make_ctrl(self, states, curve_pts=None, duration=10.0, time_mode=None):
+        ctx = StreamContext(
+            stream_id='ms_stream', onset=0.0, duration=duration,
+            sample='test.wav', sample_dur_sec=5.0,
+        )
+        config = StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+        envelope_spec = {'states': states}
+        if curve_pts is not None:
+            envelope_spec['curve'] = curve_pts
+        return WindowController({'envelope': envelope_spec}, config=config)
+
+    def test_v_zero_returns_first_window(self):
+        """Curve a 0 → solo prima finestra."""
+        # curve piatta a 0: blend=0 per tutto il tempo
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0], [10, 0]],
+        )
+        results = [ctrl.select_window(5.0) for _ in range(200)]
+        assert all(r == 'hanning' for r in results)
+
+    def test_v_one_returns_last_window(self):
+        """Curve a 1 → solo ultima finestra."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 1], [10, 1]],
+        )
+        results = [ctrl.select_window(5.0) for _ in range(200)]
+        assert all(r == 'gaussian' for r in results)
+
+    def test_v_at_state_boundary_returns_that_window(self):
+        """Curve esattamente a 0.5 (confine stato) → solo expodec."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0.5], [10, 0.5]],
+        )
+        results = [ctrl.select_window(5.0) for _ in range(200)]
+        assert all(r in ('hanning', 'expodec') for r in results)
+
+    def test_v_between_first_two_states_only_those_two(self):
+        """Blend in [0, 0.5] → seleziona solo tra hanning e expodec, mai gaussian."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0.25], [10, 0.25]],
+        )
+        results = [ctrl.select_window(5.0) for _ in range(500)]
+        assert 'gaussian' not in results
+        assert all(r in ('hanning', 'expodec') for r in results)
+
+    def test_v_between_last_two_states_only_those_two(self):
+        """Blend in [0.5, 1.0] → seleziona solo tra expodec e gaussian, mai hanning."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0.75], [10, 0.75]],
+        )
+        results = [ctrl.select_window(5.0) for _ in range(500)]
+        assert 'hanning' not in results
+        assert all(r in ('expodec', 'gaussian') for r in results)
+
+    def test_blend_50_50_at_midpoint_of_segment(self):
+        """v=0.25 (metà tra 0.0 e 0.5) → ~50/50 hanning/expodec."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0.25], [10, 0.25]],
+        )
+        counts = {'hanning': 0, 'expodec': 0}
+        for _ in range(2000):
+            counts[ctrl.select_window(5.0)] += 1
+        ratio = counts['expodec'] / 2000
+        assert 0.44 <= ratio <= 0.56, f"ratio expodec: {ratio}"
+
+    def test_linear_curve_traverses_all_states(self):
+        """Curve lineare 0→1: hanning a t=0, gaussian a t=10."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0], [10, 1]],
+        )
+        results_start = [ctrl.select_window(0.0) for _ in range(200)]
+        results_end = [ctrl.select_window(10.0) for _ in range(200)]
+        assert all(r == 'hanning' for r in results_start)
+        assert all(r == 'gaussian' for r in results_end)
+
+    def test_result_always_one_of_states(self):
+        """Risultato sempre in {hanning, expodec, gaussian}."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0], [10, 1]],
+        )
+        valid = {'hanning', 'expodec', 'gaussian'}
+        for t in [0.0, 2.5, 5.0, 7.5, 10.0]:
+            for _ in range(50):
+                assert ctrl.select_window(t) in valid
+
+    def test_normalized_time_mode(self):
+        """Con time_mode='normalized', t=duration → blend=1 → ultima finestra."""
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0], [1, 1]],
+            duration=30.0,
+            time_mode='normalized',
+        )
+        results = [ctrl.select_window(30.0) for _ in range(200)]
+        assert all(r == 'gaussian' for r in results)
+
+    def test_non_linear_curve_stays_at_state(self):
+        """Curve piatta nel mezzo: blend fisso → stessa finestra per lungo periodo."""
+        # curve: 0→0 fino a t=5, poi 0.5→0.5 da t=5 a t=10
+        ctrl = self._make_ctrl(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0], [5, 0], [5, 0.5], [10, 0.5]],
+        )
+        # a t=2 (curve=0) → solo hanning
+        results = [ctrl.select_window(2.0) for _ in range(200)]
+        assert all(r == 'hanning' for r in results)
+
+
+# =============================================================================
+# 21. TEST MultiStateWindowStrategy - UNIT (strategia isolata)
+# =============================================================================
+
+class TestMultiStateWindowStrategyUnit:
+    """Test unitari sulla strategia isolata, senza WindowController."""
+
+    def _make_strategy(self, states, curve_pts=None, duration=1.0, time_mode=None):
+        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        from envelopes.envelope import Envelope
+        curve = Envelope(curve_pts or [[0, 0], [1, 1]])
+        return MultiStateWindowStrategy(
+            states=states,
+            curve=curve,
+            duration=duration,
+            time_mode=time_mode,
+        )
+
+    def test_two_states_at_v0_returns_first(self):
+        s = self._make_strategy([[0.0, 'hanning'], [1.0, 'bartlett']],
+                                  curve_pts=[[0, 0], [1, 0]])
+        results = [s.select(0.5) for _ in range(200)]
+        assert all(r == 'hanning' for r in results)
+
+    def test_two_states_at_v1_returns_second(self):
+        s = self._make_strategy([[0.0, 'hanning'], [1.0, 'bartlett']],
+                                  curve_pts=[[0, 1], [1, 1]])
+        results = [s.select(0.5) for _ in range(200)]
+        assert all(r == 'bartlett' for r in results)
+
+    def test_three_states_v_in_first_segment(self):
+        s = self._make_strategy(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0.1], [1, 0.1]],
+        )
+        results = [s.select(0.5) for _ in range(500)]
+        assert 'gaussian' not in results
+
+    def test_three_states_v_in_second_segment(self):
+        s = self._make_strategy(
+            [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']],
+            curve_pts=[[0, 0.9], [1, 0.9]],
+        )
+        results = [s.select(0.5) for _ in range(500)]
+        assert 'hanning' not in results
+
+    def test_less_than_two_states_raises(self):
+        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        from envelopes.envelope import Envelope
+        with pytest.raises(ValueError):
+            MultiStateWindowStrategy(
+                states=[[0.0, 'hanning']],
+                curve=Envelope([[0, 0], [1, 1]]),
+            )
+
+    def test_states_not_sorted_raises(self):
+        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        from envelopes.envelope import Envelope
+        with pytest.raises(ValueError):
+            MultiStateWindowStrategy(
+                states=[[1.0, 'hanning'], [0.0, 'bartlett']],
+                curve=Envelope([[0, 0], [1, 1]]),
+            )
+
+
+# =============================================================================
+# 22. TEST curve range validation (Error / Warning)
+# =============================================================================
+
+class TestCurveRangeValidation:
+    """
+    Valida che le strategy sollevano ValueError quando la curve eccede il range
+    valido, e loggano un warning quando la curve finisce prima della fine.
+    Testato su entrambe: TransitionWindowStrategy e MultiStateWindowStrategy.
+    """
+
+    def _make_transition(self, curve_pts, duration=10.0, time_mode=None):
+        from controllers.window_selection_strategy import TransitionWindowStrategy
+        from envelopes.envelope import Envelope
+        return TransitionWindowStrategy(
+            from_window='hanning',
+            to_window='bartlett',
+            curve=Envelope(curve_pts),
+            duration=duration,
+            time_mode=time_mode,
+        )
+
+    def _make_multistate(self, curve_pts, duration=10.0, time_mode=None):
+        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        from envelopes.envelope import Envelope
+        return MultiStateWindowStrategy(
+            states=[[0.0, 'hanning'], [1.0, 'bartlett']],
+            curve=Envelope(curve_pts),
+            duration=duration,
+            time_mode=time_mode,
+        )
+
+    # --- ERROR: curve oltre il range ---
+
+    def test_transition_normalized_curve_exceeds_one_raises(self):
+        """time_mode=normalized, curve va a t=10 > 1.0 → ValueError."""
+        with pytest.raises(ValueError, match="supera il range valido"):
+            self._make_transition([[0, 0], [10, 1]], time_mode='normalized')
+
+    def test_multistate_normalized_curve_exceeds_one_raises(self):
+        """time_mode=normalized, curve va a t=6 > 1.0 → ValueError."""
+        with pytest.raises(ValueError, match="supera il range valido"):
+            self._make_multistate([[0, 0], [6, 0.3], [9, 0.7], [10, 1]],
+                                   time_mode='normalized')
+
+    def test_transition_absolute_curve_exceeds_duration_raises(self):
+        """time_mode=absolute, duration=10, curve va a t=15 → ValueError."""
+        with pytest.raises(ValueError, match="supera il range valido"):
+            self._make_transition([[0, 0], [15, 1]], duration=10.0)
+
+    def test_multistate_absolute_curve_exceeds_duration_raises(self):
+        """time_mode=absolute, duration=10, curve va a t=12 → ValueError."""
+        with pytest.raises(ValueError, match="supera il range valido"):
+            self._make_multistate([[0, 0], [12, 1]], duration=10.0)
+
+    def test_transition_normalized_curve_exactly_one_ok(self):
+        """Curve esattamente a t=1.0 con time_mode=normalized → nessun errore."""
+        strategy = self._make_transition([[0, 0], [1, 1]], time_mode='normalized')
+        assert strategy is not None
+
+    def test_transition_absolute_curve_exactly_duration_ok(self):
+        """Curve esattamente a t=duration con time_mode=absolute → nessun errore."""
+        strategy = self._make_transition([[0, 0], [10, 1]], duration=10.0)
+        assert strategy is not None
+
+    # --- WARNING: curve finisce prima ---
+
+    def test_transition_normalized_curve_ends_early_warns(self):
+        """Curve finisce a t=0.5 < 1.0 → warning loggato."""
+        from unittest.mock import patch
+        with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
+            self._make_transition([[0, 0], [0.5, 1]], time_mode='normalized')
+            mock_warn.assert_called_once()
+
+    def test_multistate_absolute_curve_ends_early_warns(self):
+        """Curve finisce a t=5 < duration=10 → warning loggato."""
+        from unittest.mock import patch
+        with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
+            self._make_multistate([[0, 0], [5, 1]], duration=10.0)
+            mock_warn.assert_called_once()
+
+    def test_transition_no_warning_when_curve_covers_full_range(self):
+        """Curve che copre esattamente il range → nessun warning."""
+        from unittest.mock import patch
+        with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
+            self._make_transition([[0, 0], [10, 1]], duration=10.0)
+            mock_warn.assert_not_called()

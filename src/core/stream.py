@@ -393,7 +393,7 @@ class Stream:
         absolute_onset = self.onset + elapsed_time + voice_config.onset_offset
 
         # === 6. WINDOW ===
-        window_name = self._window_controller.select_window()
+        window_name = self._window_controller.select_window(elapsed_time)
         window_table_num = self.window_table_map[window_name]
 
         return Grain(

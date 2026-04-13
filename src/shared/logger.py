@@ -313,6 +313,36 @@ def log_loop_dynamic_mode(stream_id: str, loop_start_initial: float,
         f"{override_note}"
     )
 
+def log_window_curve_warning(
+    stream_id: str,
+    curve_max_t: float,
+    valid_max_t: float,
+    last_value: float,
+    time_mode: str,
+):
+    """
+    Logga un warning quando la curve di window transition finisce prima
+    della fine del range valido. L'ultimo valore viene tenuto fino alla fine.
+
+    Args:
+        stream_id:    ID dello stream
+        curve_max_t:  tempo massimo della curve
+        valid_max_t:  tempo massimo valido (1.0 se normalized, duration se absolute)
+        last_value:   valore dell'ultimo breakpoint della curve
+        time_mode:    'normalized' o 'absolute'
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    logger.warning(
+        f"[WINDOW_CURVE] [{stream_id}] "
+        f"curve termina a t={curve_max_t} < range valido t={valid_max_t} "
+        f"(time_mode='{time_mode}'). "
+        f"L'ultimo valore ({last_value:.4f}) sarà tenuto fino alla fine."
+    )
+
+
 def log_loop_init(
     stream_id: str,
     loop_start: float,
