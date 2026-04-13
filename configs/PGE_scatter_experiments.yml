@@ -138,63 +138,62 @@ streams:
 #      pan:
 #        strategy: linear
 #        spread: 60.0
+  - stream_id: "s04_fully_independent1-"
+    onset: 107.0
+    duration: 30.0
+    sample: "001-37_0-4_5.wav"
+    time_mode: "normalized"
+    density: 5
+    grain:
+      duration: .1
+      envelope:                                                                                                                   
+        states:                                                                                                                     
+          - [0.0, hanning]                                                                         
+          - [0.3, bartlett]                                                                                                         
+          - [0.7, expodec]                                                                                                        
+          - [1.0, blackman]                                                                                                         
+        curve: [[0, 0], [.2,.3],[.5,.7],[1,1]]
+    pointer: 
+      speed_ratio:
+        time_unit: absolute
+        points: [[0.0, 0.04], [0.5, 0.006], [1.0, 0.006]]
+    solo:
+    voices:
+      num_voices: 5
+      pointer: {strategy: linear, step: .2}
+      pan: {strategy: additive, spread: 80}
+      pitch: {strategy: chord, chord: sus4}
+      onset_offset: {strategy: linear, step: .3}
+    pitch:
+      semitones: -7
 
   - stream_id: "s04_fully_independent1"
     onset: 96.0
     duration: 30.0
-    sample: "pino2.wav"
+    sample: "001-13_0-5_0.wav"
     time_mode: "normalized"
-    density: [[0,3],[.5,3],[1,40]]
-    pan:  [[0.0, -3600.0], [1.0, 3600.0]]
-    distribution: [[0,0],[.5,1],[0,0]]
-    distribution_mode: "gaussian"
+    density: 5
     grain:
-      duration: [[0,.1],[.5,.1],[1,.02]]
-    voices:
-      num_voices: 
-        type: step
-        points:
-          - [0.0, 1]
-          - [0.2, 2]
-          - [0.4, 3]
-          - [0.6, 6]
-          - [0.8, 12]
-          - [1,   18]
-      scatter: 
-        type: step
-        points:
-          - [0.0, 0]
-          - [0.25, 0.25]
-          - [0.5, 0.5]
-          - [0.75, 0.75]
-          - [1, 1]
-      pitch:
-        strategy: step
-        step: 1.0
-      pan:
-        strategy: linear
-        spread: 60.0
+      duration: .1
+      envelope:                                                                                                                   
+        states:                                                                                                                     
+          - [0.0, hanning]                                                                         
+          - [0.3, bartlett]                                                                                                         
+          - [0.7, expodec]                                                                                                        
+          - [1.0, blackman]                                                                                                         
+        curve: [[0, 0], [.2,.3],[.5,.7],[1,1]]
     pointer: 
       speed_ratio: 
-        - [0.0, 1.0]
-        - [1.0, 0.0]
-      loop_unit: absolute
-      loop_dur:  3
-      loop_end: 
-        type: cubic
-        points:
-          - [0.0, 0.0]
-          - [0.5, 1.0]
-          - [1.0, 0.0]
-      loop_start: 
-        time_unit: absolute
-        type: cubic
-        points:
-          - [0.0, .6]
-          - [.5, 1.644]
+        - [0.0, .02]
+        - [.5, 0.006]
     solo:
-    pitch:
-      ratio: 
+    voices:
+      num_voices: 5
+      pointer: {strategy: linear, step: .2}
+      pan: {strategy: additive, spread: 80}
+      pitch: {strategy: chord, chord: sus4}
+      onset_offset: {strategy: linear, step: .3}
+    dephase: 50
   # ===========================================================================
   # SEZIONE 2 — SCATTER FISSO, DISTRIBUTION COME ENVELOPE
   # ===========================================================================

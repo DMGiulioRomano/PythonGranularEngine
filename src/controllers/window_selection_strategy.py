@@ -14,9 +14,47 @@ Design:
 """
 import random
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from shared.probability_gate import ProbabilityGate
+from shared.logger import log_window_curve_warning
+
+
+def _validate_curve_range(curve, duration: float, time_mode: Optional[str],
+                           stream_id: str = 'unknown') -> None:
+    """
+    Valida che il range temporale della curve sia compatibile con il time_mode.
+
+    - time_mode='normalized' → range valido [0, 1]
+    - time_mode=altro        → range valido [0, duration]
+
+    Raises:
+        ValueError: se la curve ha breakpoint oltre il range valido.
+    Logs warning: se la curve finisce prima della fine del range valido.
+    """
+    valid_max_t = 1.0 if time_mode == 'normalized' else duration
+    curve_max_t = curve.breakpoints[-1][0]
+    last_value = curve.breakpoints[-1][1]
+    eps = 1e-9
+
+    if curve_max_t > valid_max_t + eps:
+        mode_label = time_mode or 'absolute'
+        raise ValueError(
+            f"Stream '{stream_id}': curve window transition ha breakpoint a "
+            f"t={curve_max_t} che supera il range valido t={valid_max_t} "
+            f"per time_mode='{mode_label}' (duration={duration}s). "
+            f"Converti i breakpoint o cambia time_mode."
+        )
+
+    if curve_max_t < valid_max_t - eps:
+        mode_label = time_mode or 'absolute'
+        log_window_curve_warning(
+            stream_id=stream_id,
+            curve_max_t=curve_max_t,
+            valid_max_t=valid_max_t,
+            last_value=float(last_value),
+            time_mode=mode_label,
+        )
 
 
 class WindowSelectionStrategy(ABC):
@@ -106,7 +144,9 @@ class TransitionWindowStrategy(WindowSelectionStrategy):
         curve,  # Envelope
         duration: float = 1.0,
         time_mode: Optional[str] = None,
+        stream_id: str = 'unknown',
     ):
+        _validate_curve_range(curve, duration, time_mode, stream_id)
         self._from = from_window
         self._to = to_window
         self._curve = curve
@@ -118,3 +158,82 @@ class TransitionWindowStrategy(WindowSelectionStrategy):
         blend = float(self._curve.evaluate(t))
         blend = max(0.0, min(1.0, blend))  # clamp per sicurezza
         return self._to if random.random() < blend else self._from
+
+
+class MultiStateWindowStrategy(WindowSelectionStrategy):
+    """
+    Transizione probabilistica attraverso N stati di finestra.
+
+    `states` definisce breakpoint sullo spazio dei valori [0, 1]:
+      - ogni stato è (valore, nome_finestra)
+      - quando la curve è a valore 0.0 → 100% primo stato
+      - quando la curve è a valore 1.0 → 100% ultimo stato
+      - tra due stati consecutivi → blend probabilistico in base alla posizione relativa
+
+    `curve` è un Envelope che mappa tempo → valore [0, 1]: guida il percorso negli stati.
+
+    La separazione tra spazio del valore (states) e spazio del tempo (curve) permette
+    di riutilizzare la stessa sequenza di stati con diversi profili temporali.
+
+    Esempio YAML:
+        grain:
+          envelope:
+            states:
+              - [0.0, hanning]
+              - [0.3, bartlett]
+              - [0.7, expodec]
+              - [1.0, gaussian]
+            curve: [[0, 0], [30, 1]]
+
+    Args:
+        states:    lista di (valore, nome_finestra), valori in [0,1] ordinati crescenti
+        curve:     Envelope che mappa tempo → valore blend
+        duration:  durata totale dello stream (per normalizzazione time_mode)
+        time_mode: se 'normalized', elapsed_time viene diviso per duration
+    """
+
+    def __init__(
+        self,
+        states: List[Tuple[float, str]],
+        curve,  # Envelope
+        duration: float = 1.0,
+        time_mode: Optional[str] = None,
+        stream_id: str = 'unknown',
+    ):
+        if len(states) < 2:
+            raise ValueError(
+                f"MultiStateWindowStrategy richiede almeno 2 stati, ricevuti {len(states)}"
+            )
+        values = [v for v, _ in states]
+        if values != sorted(values):
+            raise ValueError(
+                f"I valori degli stati devono essere in ordine crescente, ricevuti: {values}"
+            )
+        _validate_curve_range(curve, duration, time_mode, stream_id)
+        self._states = states
+        self._curve = curve
+        self._duration = duration
+        self._time_mode = time_mode
+
+    def select(self, elapsed_time: float) -> str:
+        t = (elapsed_time / self._duration) if self._time_mode == 'normalized' else elapsed_time
+        v = float(self._curve.evaluate(t))
+        v = max(0.0, min(1.0, v))  # clamp
+
+        # Estremo sinistro
+        if v <= self._states[0][0]:
+            return self._states[0][1]
+        # Estremo destro
+        if v >= self._states[-1][0]:
+            return self._states[-1][1]
+
+        # Trova il segmento che contiene v
+        for i in range(len(self._states) - 1):
+            v_lo, w_lo = self._states[i]
+            v_hi, w_hi = self._states[i + 1]
+            if v_lo <= v < v_hi:
+                blend = (v - v_lo) / (v_hi - v_lo)
+                return w_hi if random.random() < blend else w_lo
+
+        # Fallback (non raggiungibile se states è ordinato e v è clamped)
+        return self._states[-1][1]

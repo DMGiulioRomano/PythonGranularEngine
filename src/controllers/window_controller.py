@@ -6,6 +6,7 @@ from controllers.window_selection_strategy import (
     SingleWindowStrategy,
     RandomWindowStrategy,
     TransitionWindowStrategy,
+    MultiStateWindowStrategy,
 )
 import random
 from core.stream_config import StreamConfig
@@ -20,6 +21,11 @@ def _is_transition_spec(envelope_spec) -> bool:
         and 'from' in envelope_spec
         and 'to' in envelope_spec
     )
+
+
+def _is_multistate_spec(envelope_spec) -> bool:
+    """True se envelope_spec è un dict con la chiave 'states'."""
+    return isinstance(envelope_spec, dict) and 'states' in envelope_spec
 
 
 class WindowController:
@@ -60,8 +66,17 @@ class WindowController:
         if envelope_spec == 'all' or envelope_spec is True:
             return list(WindowRegistry.WINDOWS.keys())
 
+        # Multi-state dict: {'states': [[v, window], ...], 'curve': ...}
+        if _is_multistate_spec(envelope_spec):
+            raw_states = envelope_spec['states']
+            if len(raw_states) < 2:
+                raise ValueError(
+                    f"Stream '{stream_id}': 'states' richiede almeno 2 elementi"
+                )
+            windows = [w for _, w in raw_states]
+
         # Transition dict: {'from': 'hanning', 'to': 'bartlett', 'curve': ...}
-        if _is_transition_spec(envelope_spec):
+        elif _is_transition_spec(envelope_spec):
             windows = [envelope_spec['from'], envelope_spec['to']]
         # Stringa singola
         elif isinstance(envelope_spec, str):
@@ -104,8 +119,31 @@ class WindowController:
         """
         envelope_spec = params.get('envelope', 'hanning')
 
+        # --- Modalità MULTI-STATE ---
+        if _is_multistate_spec(envelope_spec):
+            self._windows = self.parse_window_list(params, config.context.stream_id)
+            self._gate = GateFactory.create_gate(
+                dephase=False,
+                param_key='pc_rand_envelope',
+                default_prob=DEFAULT_PROB,
+                has_explicit_range=False,
+                range_always_active=config.range_always_active,
+                duration=config.context.duration,
+                time_mode=config.time_mode,
+            )
+            from envelopes.envelope import Envelope
+            raw_states = envelope_spec['states']
+            curve_data = envelope_spec.get('curve', [[0, 0], [1, 1]])
+            self._strategy: WindowSelectionStrategy = MultiStateWindowStrategy(
+                states=[(float(v), w) for v, w in raw_states],
+                curve=Envelope(curve_data),
+                duration=config.context.duration,
+                time_mode=config.time_mode,
+                stream_id=config.context.stream_id,
+            )
+
         # --- Modalità TRANSITION ---
-        if _is_transition_spec(envelope_spec):
+        elif _is_transition_spec(envelope_spec):
             self._windows = self.parse_window_list(params, config.context.stream_id)
             # _gate è placeholder (non usato da TransitionWindowStrategy)
             self._gate = GateFactory.create_gate(
@@ -125,6 +163,7 @@ class WindowController:
                 curve=Envelope(curve_data),
                 duration=config.context.duration,
                 time_mode=config.time_mode,
+                stream_id=config.context.stream_id,
             )
 
         # --- Modalità RANDOM / SINGLE ---
@@ -157,8 +196,8 @@ class WindowController:
                           gate con probabilità variabile nel tempo (EnvelopeGate)
                           e per TransitionWindowStrategy.
         """
-        # Transition: delega completamente alla strategy
-        if isinstance(self._strategy, TransitionWindowStrategy):
+        # Transition / MultiState: delega completamente alla strategy
+        if isinstance(self._strategy, (TransitionWindowStrategy, MultiStateWindowStrategy)):
             return self._strategy.select(elapsed_time)
 
         # Single window: guard clause (non consulta il gate)
