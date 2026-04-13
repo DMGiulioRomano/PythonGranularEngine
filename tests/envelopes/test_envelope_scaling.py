@@ -350,3 +350,135 @@ class TestScaleRawValuesY:
 
         assert result[0] == [5.0, 10]    # tempo scalato
         assert result[1] == "marker"     # invariato
+
+
+# =============================================================================
+# TEST time_unit + formato compatto (issue #16)
+# =============================================================================
+
+class TestTimeUnitWithCompactFormat:
+    """
+    Combinazione tra time_unit locale (override in dict envelope) e formato
+    compatto dentro 'points'. Entrambe le feature esistono, ma la loro
+    combinazione non era coperta da test.
+
+    Entry point: create_scaled_envelope(raw_data, duration, time_mode)
+    """
+
+    # -------------------------------------------------------------------------
+    # 1a. time_unit: normalized + solo breakpoint normali (baseline dict)
+    # -------------------------------------------------------------------------
+
+    def test_normalized_time_unit_with_standard_breakpoints(self):
+        """
+        Dict con time_unit='normalized' e soli breakpoint [t, v]:
+        i tempi devono essere scalati per duration.
+        """
+        raw_data = {
+            'type': 'linear',
+            'time_unit': 'normalized',
+            'points': [[0.0, 0], [0.5, 1], [1.0, 0]],
+        }
+        duration = 20.0
+
+        env = create_scaled_envelope(raw_data, duration, time_mode='absolute')
+
+        assert env.breakpoints[0][0] == pytest.approx(0.0)
+        assert env.breakpoints[1][0] == pytest.approx(10.0)   # 0.5 * 20
+        assert env.breakpoints[2][0] == pytest.approx(20.0)   # 1.0 * 20
+
+    # -------------------------------------------------------------------------
+    # 1b. time_unit: normalized + solo formato compatto in points
+    # -------------------------------------------------------------------------
+
+    def test_normalized_time_unit_with_compact_only(self):
+        """
+        Dict con time_unit='normalized' e un unico blocco compatto in points:
+        end_time del compatto deve essere scalato per duration.
+        """
+        raw_data = {
+            'type': 'linear',
+            'time_unit': 'normalized',
+            'points': [
+                [[[0, 0], [100, 1]], 1.0, 2],   # end_time=1.0 → scalato a duration
+            ],
+        }
+        duration = 8.0
+
+        env = create_scaled_envelope(raw_data, duration, time_mode='absolute')
+
+        # Il compatto espanso deve coprire [0, duration]
+        last_t = env.breakpoints[-1][0]
+        assert last_t == pytest.approx(duration)
+
+    # -------------------------------------------------------------------------
+    # 1c. time_unit: normalized + mix breakpoint e compatto
+    # -------------------------------------------------------------------------
+
+    def test_normalized_time_unit_with_mixed_bp_and_compact(self):
+        """
+        Dict con time_unit='normalized', points contiene sia [t, v] che un
+        blocco compatto: entrambi devono essere scalati correttamente.
+        """
+        raw_data = {
+            'type': 'linear',
+            'time_unit': 'normalized',
+            'points': [
+                [0.0, 0],                          # breakpoint normale: t=0
+                [[[0, 0], [100, 1]], 0.5, 1],      # compatto: end_time=0.5 → 0.5*D
+                [1.0, 0],                          # breakpoint normale: t=1.0 → D
+            ],
+        }
+        duration = 10.0
+
+        env = create_scaled_envelope(raw_data, duration, time_mode='absolute')
+
+        # Primo breakpoint a t=0
+        assert env.breakpoints[0][0] == pytest.approx(0.0)
+        # Ultimo breakpoint a t=duration
+        assert env.breakpoints[-1][0] == pytest.approx(duration)
+
+    # -------------------------------------------------------------------------
+    # 1d. time_unit: absolute con stream time_mode: normalized (override inverso)
+    # -------------------------------------------------------------------------
+
+    def test_absolute_time_unit_overrides_normalized_stream(self):
+        """
+        Dict con time_unit='absolute' mentre il time_mode dello stream è
+        'normalized': i tempi NON devono essere scalati.
+        """
+        raw_data = {
+            'type': 'linear',
+            'time_unit': 'absolute',
+            'points': [[0.0, 0], [5.0, 1], [10.0, 0]],
+        }
+        duration = 100.0
+
+        env = create_scaled_envelope(raw_data, duration, time_mode='normalized')
+
+        # I tempi rimangono invariati (non scalati per duration=100)
+        assert env.breakpoints[0][0] == pytest.approx(0.0)
+        assert env.breakpoints[1][0] == pytest.approx(5.0)
+        assert env.breakpoints[2][0] == pytest.approx(10.0)
+
+    # -------------------------------------------------------------------------
+    # 1e. time_unit assente — fallback su time_mode dello stream
+    # -------------------------------------------------------------------------
+
+    def test_missing_time_unit_falls_back_to_stream_time_mode(self):
+        """
+        Dict senza time_unit con stream time_mode='normalized':
+        deve scalare i tempi usando time_mode come fallback.
+        """
+        raw_data = {
+            'type': 'linear',
+            'points': [[0.0, 0], [0.25, 1], [1.0, 0]],
+            # nessuna chiave 'time_unit'
+        }
+        duration = 40.0
+
+        env = create_scaled_envelope(raw_data, duration, time_mode='normalized')
+
+        assert env.breakpoints[0][0] == pytest.approx(0.0)
+        assert env.breakpoints[1][0] == pytest.approx(10.0)   # 0.25 * 40
+        assert env.breakpoints[2][0] == pytest.approx(40.0)   # 1.0 * 40
