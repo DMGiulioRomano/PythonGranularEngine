@@ -1184,3 +1184,358 @@ class TestCurveRangeValidation:
         with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
             self._make_transition([[0, 0], [10, 1]], duration=10.0)
             mock_warn.assert_not_called()
+
+
+# =============================================================================
+# 23. TEST SingleWindowStrategy — _gate attribute
+# =============================================================================
+
+class TestSingleWindowStrategyGate:
+    """
+    SingleWindowStrategy deve accettare un gate nel costruttore e memorizzarlo,
+    ma non consultarlo mai durante select().
+    """
+
+    def _make(self, gate=None):
+        from controllers.window_selection_strategy import SingleWindowStrategy
+        from shared.probability_gate import NeverGate
+        return SingleWindowStrategy(window='hanning', gate=gate or NeverGate())
+
+    def test_single_strategy_has_gate_attribute(self):
+        s = self._make()
+        assert hasattr(s, '_gate')
+
+    def test_single_strategy_gate_is_the_one_passed_in(self):
+        from shared.probability_gate import AlwaysGate
+        g = AlwaysGate()
+        s = self._make(gate=g)
+        assert s._gate is g
+
+    def test_single_strategy_select_never_calls_gate(self):
+        mock_gate = Mock(spec=ProbabilityGate)
+        from controllers.window_selection_strategy import SingleWindowStrategy
+        s = SingleWindowStrategy(window='hanning', gate=mock_gate)
+        s.select(0.0)
+        s.select(5.0)
+        mock_gate.should_apply.assert_not_called()
+
+    def test_single_strategy_select_returns_window_regardless_of_gate(self):
+        from controllers.window_selection_strategy import SingleWindowStrategy
+        from shared.probability_gate import NeverGate, AlwaysGate
+        for gate in [NeverGate(), AlwaysGate()]:
+            s = SingleWindowStrategy(window='bartlett', gate=gate)
+            assert s.select(0.0) == 'bartlett'
+
+
+# =============================================================================
+# 24. TEST WindowStrategyRegistry
+# =============================================================================
+
+class TestWindowStrategyRegistry:
+    """
+    WINDOW_STRATEGY_REGISTRY deve esistere con le quattro strategy di default.
+    register_window_strategy() deve permettere l'aggiunta di nuove entry.
+    """
+
+    def test_registry_exists(self):
+        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY
+        assert isinstance(WINDOW_STRATEGY_REGISTRY, dict)
+
+    def test_registry_contains_single(self):
+        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, SingleWindowStrategy
+        assert 'single' in WINDOW_STRATEGY_REGISTRY
+        assert WINDOW_STRATEGY_REGISTRY['single'] is SingleWindowStrategy
+
+    def test_registry_contains_random(self):
+        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, RandomWindowStrategy
+        assert 'random' in WINDOW_STRATEGY_REGISTRY
+        assert WINDOW_STRATEGY_REGISTRY['random'] is RandomWindowStrategy
+
+    def test_registry_contains_transition(self):
+        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, TransitionWindowStrategy
+        assert 'transition' in WINDOW_STRATEGY_REGISTRY
+        assert WINDOW_STRATEGY_REGISTRY['transition'] is TransitionWindowStrategy
+
+    def test_registry_contains_multistate(self):
+        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, MultiStateWindowStrategy
+        assert 'multistate' in WINDOW_STRATEGY_REGISTRY
+        assert WINDOW_STRATEGY_REGISTRY['multistate'] is MultiStateWindowStrategy
+
+    def test_register_window_strategy_adds_entry(self):
+        from controllers.window_selection_strategy import (
+            WINDOW_STRATEGY_REGISTRY, register_window_strategy, WindowSelectionStrategy,
+        )
+
+        class DummyStrategy(WindowSelectionStrategy):
+            def select(self, elapsed_time):
+                return 'hanning'
+
+        register_window_strategy('dummy_test', DummyStrategy)
+        assert 'dummy_test' in WINDOW_STRATEGY_REGISTRY
+        assert WINDOW_STRATEGY_REGISTRY['dummy_test'] is DummyStrategy
+        # cleanup
+        del WINDOW_STRATEGY_REGISTRY['dummy_test']
+
+    def test_register_window_strategy_overwrites_existing(self):
+        from controllers.window_selection_strategy import (
+            WINDOW_STRATEGY_REGISTRY, register_window_strategy, WindowSelectionStrategy,
+            SingleWindowStrategy,
+        )
+
+        class AltSingle(WindowSelectionStrategy):
+            def select(self, elapsed_time):
+                return 'gaussian'
+
+        original = WINDOW_STRATEGY_REGISTRY['single']
+        register_window_strategy('single', AltSingle)
+        assert WINDOW_STRATEGY_REGISTRY['single'] is AltSingle
+        # restore
+        register_window_strategy('single', original)
+
+
+# =============================================================================
+# 25. TEST WindowStrategyFactory.create()
+# =============================================================================
+
+class TestWindowStrategyFactoryCreate:
+    """
+    WindowStrategyFactory.create(name, **kwargs) deve istanziare la strategy
+    corretta dal registry passando i kwargs al costruttore.
+    """
+
+    def test_create_single_returns_single_strategy(self):
+        from controllers.window_selection_strategy import WindowStrategyFactory, SingleWindowStrategy
+        from shared.probability_gate import NeverGate
+        s = WindowStrategyFactory.create('single', window='hanning', gate=NeverGate())
+        assert isinstance(s, SingleWindowStrategy)
+
+    def test_create_single_window_is_correct(self):
+        from controllers.window_selection_strategy import WindowStrategyFactory
+        from shared.probability_gate import NeverGate
+        s = WindowStrategyFactory.create('single', window='bartlett', gate=NeverGate())
+        assert s.select(0.0) == 'bartlett'
+
+    def test_create_random_returns_random_strategy(self):
+        from controllers.window_selection_strategy import WindowStrategyFactory, RandomWindowStrategy
+        from shared.probability_gate import AlwaysGate
+        s = WindowStrategyFactory.create('random', windows=['hanning', 'expodec'], gate=AlwaysGate())
+        assert isinstance(s, RandomWindowStrategy)
+
+    def test_create_transition_returns_transition_strategy(self):
+        from controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
+        from envelopes.envelope import Envelope
+        s = WindowStrategyFactory.create(
+            'transition',
+            from_window='hanning', to_window='bartlett',
+            curve=Envelope([[0, 0], [10, 1]]),
+            duration=10.0,
+        )
+        assert isinstance(s, TransitionWindowStrategy)
+
+    def test_create_multistate_returns_multistate_strategy(self):
+        from controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
+        from envelopes.envelope import Envelope
+        s = WindowStrategyFactory.create(
+            'multistate',
+            states=[(0.0, 'hanning'), (1.0, 'bartlett')],
+            curve=Envelope([[0, 0], [10, 1]]),
+            duration=10.0,
+        )
+        assert isinstance(s, MultiStateWindowStrategy)
+
+    def test_create_unknown_name_raises_key_error(self):
+        from controllers.window_selection_strategy import WindowStrategyFactory
+        with pytest.raises(KeyError, match="non trovata"):
+            WindowStrategyFactory.create('nonexistent_strategy')
+
+
+# =============================================================================
+# 26. TEST WindowStrategyFactory.from_spec()
+# =============================================================================
+
+class TestWindowStrategyFactoryFromSpec:
+    """
+    WindowStrategyFactory.from_spec(envelope_spec, config, windows, gate) deve
+    costruire la strategy corretta per ogni formato di spec YAML.
+    """
+
+    def _make_gate(self):
+        from shared.probability_gate import NeverGate
+        return NeverGate()
+
+    def test_from_spec_single_string_returns_single_strategy(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory, SingleWindowStrategy
+        s = WindowStrategyFactory.from_spec('hanning', default_config, ['hanning'], self._make_gate())
+        assert isinstance(s, SingleWindowStrategy)
+
+    def test_from_spec_list_returns_random_strategy(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory, RandomWindowStrategy
+        from shared.probability_gate import AlwaysGate
+        s = WindowStrategyFactory.from_spec(
+            ['hanning', 'expodec'], default_config, ['hanning', 'expodec'], AlwaysGate()
+        )
+        assert isinstance(s, RandomWindowStrategy)
+
+    def test_from_spec_transition_dict_returns_transition_strategy(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
+        spec = {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}
+        s = WindowStrategyFactory.from_spec(spec, default_config, ['hanning', 'bartlett'], self._make_gate())
+        assert isinstance(s, TransitionWindowStrategy)
+
+    def test_from_spec_multistate_dict_returns_multistate_strategy(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
+        spec = {
+            'states': [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'bartlett']],
+            'curve': [[0, 0], [10, 1]],
+        }
+        s = WindowStrategyFactory.from_spec(
+            spec, default_config, ['hanning', 'expodec', 'bartlett'], self._make_gate()
+        )
+        assert isinstance(s, MultiStateWindowStrategy)
+
+    def test_from_spec_single_gate_passed_to_strategy(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory
+        from shared.probability_gate import AlwaysGate
+        gate = AlwaysGate()
+        s = WindowStrategyFactory.from_spec('hanning', default_config, ['hanning'], gate)
+        assert s._gate is gate
+
+    def test_from_spec_random_gate_passed_to_strategy(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory
+        from shared.probability_gate import AlwaysGate
+        gate = AlwaysGate()
+        s = WindowStrategyFactory.from_spec(
+            ['hanning', 'expodec'], default_config, ['hanning', 'expodec'], gate
+        )
+        assert s._gate is gate
+
+    def test_from_spec_transition_default_curve_used_when_absent(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
+        spec = {'from': 'hanning', 'to': 'bartlett'}  # no 'curve' key
+        s = WindowStrategyFactory.from_spec(spec, default_config, ['hanning', 'bartlett'], self._make_gate())
+        assert isinstance(s, TransitionWindowStrategy)
+
+    def test_from_spec_multistate_default_curve_used_when_absent(self, default_config):
+        from controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
+        spec = {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}  # no 'curve' key
+        s = WindowStrategyFactory.from_spec(
+            spec, default_config, ['hanning', 'bartlett'], self._make_gate()
+        )
+        assert isinstance(s, MultiStateWindowStrategy)
+
+
+# =============================================================================
+# 27. TEST WindowController — _gate come property proxy
+# =============================================================================
+
+class TestWindowControllerGateProxy:
+    """
+    ctrl._gate deve essere una property che legge/scrive su strategy._gate.
+    Per strategy senza _gate (Transition, MultiState) ritorna None e
+    l'assegnazione è un no-op.
+    """
+
+    def test_gate_proxy_reads_from_single_strategy(self, default_config):
+        from shared.probability_gate import NeverGate
+        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
+        assert ctrl._gate is ctrl._strategy._gate
+
+    def test_gate_proxy_reads_from_random_strategy(self, default_config):
+        from shared.probability_gate import AlwaysGate
+        ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
+        assert ctrl._gate is ctrl._strategy._gate
+
+    def test_gate_proxy_write_updates_strategy_gate(self, default_config):
+        from shared.probability_gate import AlwaysGate, NeverGate
+        ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
+        new_gate = NeverGate()
+        ctrl._gate = new_gate
+        assert ctrl._strategy._gate is new_gate
+
+    def test_gate_proxy_write_read_roundtrip(self, default_config):
+        from shared.probability_gate import AlwaysGate
+        ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
+        g = AlwaysGate()
+        ctrl._gate = g
+        assert ctrl._gate is g
+
+    def test_gate_proxy_transition_returns_none(self, default_config):
+        spec = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(spec, config=default_config)
+        assert ctrl._gate is None
+
+    def test_gate_proxy_multistate_returns_none(self, default_config):
+        spec = {'envelope': {
+            'states': [[0.0, 'hanning'], [1.0, 'bartlett']],
+            'curve': [[0, 0], [10, 1]],
+        }}
+        ctrl = WindowController(spec, config=default_config)
+        assert ctrl._gate is None
+
+    def test_gate_proxy_transition_write_is_noop(self, default_config):
+        """Assegnare _gate su una transition strategy non deve sollevare eccezioni."""
+        from shared.probability_gate import AlwaysGate
+        spec = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(spec, config=default_config)
+        ctrl._gate = AlwaysGate()  # no exception
+
+
+# =============================================================================
+# 28. TEST WindowController — select_window() pura delega
+# =============================================================================
+
+class TestSelectWindowPureDelegation:
+    """
+    select_window() deve delegare interamente a self._strategy.select(elapsed_time)
+    senza contenere logica propria (nessun isinstance, nessun if/else).
+    """
+
+    def test_select_window_calls_strategy_select(self, default_config):
+        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
+        ctrl._strategy = Mock()
+        ctrl._strategy.select.return_value = 'gaussian'
+        result = ctrl.select_window(3.0)
+        ctrl._strategy.select.assert_called_once_with(3.0)
+        assert result == 'gaussian'
+
+    def test_select_window_passes_elapsed_time_to_strategy(self, default_config):
+        ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
+        ctrl._strategy = Mock()
+        ctrl._strategy.select.return_value = 'hanning'
+        ctrl.select_window(elapsed_time=7.5)
+        ctrl._strategy.select.assert_called_once_with(7.5)
+
+    def test_select_window_default_elapsed_time_zero(self, default_config):
+        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
+        ctrl._strategy = Mock()
+        ctrl._strategy.select.return_value = 'hanning'
+        ctrl.select_window()
+        ctrl._strategy.select.assert_called_once_with(0.0)
+
+    def test_select_window_delegates_for_transition(self, default_config):
+        spec = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
+        ctrl = WindowController(spec, config=default_config)
+        ctrl._strategy = Mock()
+        ctrl._strategy.select.return_value = 'bartlett'
+        result = ctrl.select_window(5.0)
+        ctrl._strategy.select.assert_called_once_with(5.0)
+        assert result == 'bartlett'
+
+    def test_select_window_delegates_for_multistate(self, default_config):
+        spec = {'envelope': {
+            'states': [[0.0, 'hanning'], [1.0, 'expodec']],
+            'curve': [[0, 0], [10, 1]],
+        }}
+        ctrl = WindowController(spec, config=default_config)
+        ctrl._strategy = Mock()
+        ctrl._strategy.select.return_value = 'expodec'
+        result = ctrl.select_window(8.0)
+        ctrl._strategy.select.assert_called_once_with(8.0)
+        assert result == 'expodec'
+
+    def test_select_window_return_value_comes_from_strategy(self, default_config):
+        ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
+        for expected in ['hanning', 'gaussian', 'expodec', 'bartlett']:
+            ctrl._strategy = Mock()
+            ctrl._strategy.select.return_value = expected
+            assert ctrl.select_window(0.0) == expected
