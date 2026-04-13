@@ -30,18 +30,22 @@ from envelopes.envelope import Envelope
 
 class TestSingleWindowStrategy:
 
+    def _make(self, window='hanning'):
+        from shared.probability_gate import NeverGate
+        return SingleWindowStrategy(window, gate=NeverGate())
+
     def test_always_returns_configured_window(self):
-        s = SingleWindowStrategy('hanning')
+        s = self._make('hanning')
         for _ in range(50):
             assert s.select(0.0) == 'hanning'
 
     def test_returns_correct_window_for_different_names(self):
         for name in ('hanning', 'bartlett', 'expodec', 'gaussian'):
-            s = SingleWindowStrategy(name)
+            s = self._make(name)
             assert s.select(0.0) == name
 
     def test_elapsed_time_has_no_effect(self):
-        s = SingleWindowStrategy('hanning')
+        s = self._make('hanning')
         for t in [0.0, 1.0, 5.0, 100.0]:
             assert s.select(t) == 'hanning'
 

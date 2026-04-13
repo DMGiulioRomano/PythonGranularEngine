@@ -1,0 +1,64 @@
+# PGE_window_strategy_test.yml
+#
+# Config di test empirico per WindowStrategyFactory refactoring.
+# Tre stream che esercitano le tre strategy principali:
+#   S1 — SingleWindowStrategy   (envelope: stringa)
+#   S2 — TransitionWindowStrategy (envelope: {from, to, curve})
+#   S3 — MultiStateWindowStrategy (envelope: {states, curve})
+#
+# Parametri comuni:
+#   density:  0.5  (un grano ogni ~2 secondi)
+#   duration: 1.0s (grano lungo, involucro ben udibile)
+#   durata stream: 60s
+
+streams:
+
+  # ---------------------------------------------------------------------------
+  # S1 — SingleWindowStrategy
+  # Sempre hanning. Riferimento: nessuna variazione di envelope.
+  # ---------------------------------------------------------------------------
+  - stream_id: "s1_single_hanning"
+    onset: 0.0
+    duration: 60.0
+    sample: "sinus.wav"
+    density: 0.5
+    grain:
+      duration: 1.0
+      envelope: hanning
+
+  # ---------------------------------------------------------------------------
+  # S2 — TransitionWindowStrategy
+  # Da hanning (morbido) a expodec (attacco netto) in 60 secondi.
+  # Si sente lo spostamento progressivo del timbro dell'involucro.
+  # ---------------------------------------------------------------------------
+  - stream_id: "s2_transition_hanning_to_expodec"
+    onset: 60.0
+    duration: 60.0
+    sample: "sinus.wav"
+    density: 10
+    grain:
+      duration: .1
+      envelope:
+        from: hanning
+        to: expodec
+        curve: [[0, 0], [60, 1]]
+
+  # ---------------------------------------------------------------------------
+  # S3 — MultiStateWindowStrategy
+  # Quattro stati: hanning → bartlett → gaussian → blackman
+  # La curve percorre tutto l'arco in 60s.
+  # ---------------------------------------------------------------------------
+  - stream_id: "s3_multistate_four_windows"
+    onset: 120.0
+    duration: 60.0
+    sample: "sinus.wav"
+    density: 15
+    grain:
+      duration: 0.01
+      envelope:
+        states:
+          - [0.0, hanning]
+          - [0.33, bartlett]
+          - [0.66, exporise]
+          - [1.0, blackman]
+        curve: [[0, 0], [60, 1]]

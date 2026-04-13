@@ -1,14 +1,10 @@
-# src/window_controller.py
-from typing import List, Optional, Dict, Any
+# src/controllers/window_controller.py
+from typing import List
 from controllers.window_registry import WindowRegistry
 from controllers.window_selection_strategy import (
     WindowSelectionStrategy,
-    SingleWindowStrategy,
-    RandomWindowStrategy,
-    TransitionWindowStrategy,
-    MultiStateWindowStrategy,
+    WindowStrategyFactory,
 )
-import random
 from core.stream_config import StreamConfig
 from parameters.gate_factory import GateFactory
 from parameters.parameter_definitions import DEFAULT_PROB
@@ -32,13 +28,14 @@ class WindowController:
     """
     Gestisce selezione grain envelope.
 
-    Supporta tre modalità:
-      - Stringa singola: sempre la stessa finestra
-      - Lista:           selezione casuale governata da gate probabilistico
-      - Transition dict: morphing probabilistico from→to via Envelope
+    Supporta quattro modalità (via WindowStrategyFactory):
+      - Stringa singola:  sempre la stessa finestra (SingleWindowStrategy)
+      - Lista:            selezione casuale con gate (RandomWindowStrategy)
+      - Transition dict:  morphing probabilistico from→to (TransitionWindowStrategy)
+      - Multi-state dict: transizione attraverso N stati (MultiStateWindowStrategy)
 
-    Per aggiungere nuove modalità: crea una WindowSelectionStrategy e registrala
-    nel metodo __init__() senza toccare select_window() né le strategie esistenti.
+    Per aggiungere nuove modalità: registra una WindowSelectionStrategy nel
+    WINDOW_STRATEGY_REGISTRY senza modificare questo controller.
     """
 
     # =========================================================================
@@ -118,93 +115,37 @@ class WindowController:
             config: StreamConfig con regole di processo (dephase, durata, ecc.)
         """
         envelope_spec = params.get('envelope', 'hanning')
+        self._windows = self.parse_window_list(params, config.context.stream_id)
 
-        # --- Modalità MULTI-STATE ---
-        if _is_multistate_spec(envelope_spec):
-            self._windows = self.parse_window_list(params, config.context.stream_id)
-            self._gate = GateFactory.create_gate(
-                dephase=False,
-                param_key='pc_rand_envelope',
-                default_prob=DEFAULT_PROB,
-                has_explicit_range=False,
-                range_always_active=config.range_always_active,
-                duration=config.context.duration,
-                time_mode=config.time_mode,
-            )
-            from envelopes.envelope import Envelope
-            raw_states = envelope_spec['states']
-            curve_data = envelope_spec.get('curve', [[0, 0], [1, 1]])
-            self._strategy: WindowSelectionStrategy = MultiStateWindowStrategy(
-                states=[(float(v), w) for v, w in raw_states],
-                curve=Envelope(curve_data),
-                duration=config.context.duration,
-                time_mode=config.time_mode,
-                stream_id=config.context.stream_id,
-            )
+        uses_gate = not (_is_transition_spec(envelope_spec) or _is_multistate_spec(envelope_spec))
+        gate = GateFactory.create_gate(
+            dephase=config.dephase if uses_gate else False,
+            param_key='pc_rand_envelope',
+            default_prob=DEFAULT_PROB,
+            has_explicit_range=uses_gate and len(self._windows) > 1,
+            range_always_active=config.range_always_active,
+            duration=config.context.duration,
+            time_mode=config.time_mode,
+        )
+        self._strategy: WindowSelectionStrategy = WindowStrategyFactory.from_spec(
+            envelope_spec, config, self._windows, gate
+        )
 
-        # --- Modalità TRANSITION ---
-        elif _is_transition_spec(envelope_spec):
-            self._windows = self.parse_window_list(params, config.context.stream_id)
-            # _gate è placeholder (non usato da TransitionWindowStrategy)
-            self._gate = GateFactory.create_gate(
-                dephase=False,
-                param_key='pc_rand_envelope',
-                default_prob=DEFAULT_PROB,
-                has_explicit_range=False,
-                range_always_active=config.range_always_active,
-                duration=config.context.duration,
-                time_mode=config.time_mode,
-            )
-            from envelopes.envelope import Envelope
-            curve_data = envelope_spec.get('curve', [[0, 0], [1, 1]])
-            self._strategy: WindowSelectionStrategy = TransitionWindowStrategy(
-                from_window=self._windows[0],
-                to_window=self._windows[1],
-                curve=Envelope(curve_data),
-                duration=config.context.duration,
-                time_mode=config.time_mode,
-                stream_id=config.context.stream_id,
-            )
+    @property
+    def _gate(self):
+        """Proxy verso strategy._gate per compatibilità con i test esistenti."""
+        return getattr(self._strategy, '_gate', None)
 
-        # --- Modalità RANDOM / SINGLE ---
-        else:
-            self._windows = self.parse_window_list(params, config.context.stream_id)
-            has_explicit_range = len(self._windows) > 1
-            self._gate = GateFactory.create_gate(
-                dephase=config.dephase,
-                param_key='pc_rand_envelope',
-                default_prob=DEFAULT_PROB,
-                has_explicit_range=has_explicit_range,
-                range_always_active=config.range_always_active,
-                duration=config.context.duration,
-                time_mode=config.time_mode,
-            )
-            if len(self._windows) == 1:
-                self._strategy = SingleWindowStrategy(self._windows[0])
-            else:
-                self._strategy = RandomWindowStrategy(self._windows, self._gate)
+    @_gate.setter
+    def _gate(self, value):
+        if hasattr(self._strategy, '_gate'):
+            self._strategy._gate = value
 
     def select_window(self, elapsed_time: float = 0.0) -> str:
         """
-        Seleziona finestra per grano corrente.
-
-        Per la modalità random la selezione rispetta ctrl._gate anche se sostituito
-        dopo l'inizializzazione (i test esistenti impostano ctrl._gate direttamente).
+        Seleziona la finestra per il grano corrente delegando alla strategy.
 
         Args:
-            elapsed_time: tempo corrente nello stream, necessario per
-                          gate con probabilità variabile nel tempo (EnvelopeGate)
-                          e per TransitionWindowStrategy.
+            elapsed_time: tempo corrente nello stream (secondi).
         """
-        # Transition / MultiState: delega completamente alla strategy
-        if isinstance(self._strategy, (TransitionWindowStrategy, MultiStateWindowStrategy)):
-            return self._strategy.select(elapsed_time)
-
-        # Single window: guard clause (non consulta il gate)
-        if len(self._windows) == 1:
-            return self._windows[0]
-
-        # Random: consulta self._gate (permettendo sostituzioni post-init nei test)
-        if not self._gate.should_apply(elapsed_time):
-            return self._windows[0]
-        return random.choice(self._windows)
+        return self._strategy.select(elapsed_time)

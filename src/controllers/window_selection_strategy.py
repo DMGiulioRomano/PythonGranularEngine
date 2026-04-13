@@ -79,10 +79,14 @@ class SingleWindowStrategy(WindowSelectionStrategy):
 
     Ritorna sempre la stessa finestra, senza consultare alcun gate.
     Corrisponde a: envelope: 'hanning'
+
+    Il gate viene memorizzato per compatibilità con il proxy _gate di
+    WindowController, ma non viene mai consultato in select().
     """
 
-    def __init__(self, window: str):
+    def __init__(self, window: str, gate):
         self._window = window
+        self._gate = gate
 
     def select(self, elapsed_time: float) -> str:
         return self._window
@@ -237,3 +241,116 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
 
         # Fallback (non raggiungibile se states è ordinato e v è clamped)
         return self._states[-1][1]
+
+
+# =============================================================================
+# REGISTRY E FACTORY
+# =============================================================================
+
+from typing import Dict, Type  # noqa: E402  (import locale, dopo le classi)
+
+WINDOW_STRATEGY_REGISTRY: Dict[str, Type[WindowSelectionStrategy]] = {
+    'single':     SingleWindowStrategy,
+    'random':     RandomWindowStrategy,
+    'transition': TransitionWindowStrategy,
+    'multistate': MultiStateWindowStrategy,
+}
+
+
+def register_window_strategy(name: str, cls: Type[WindowSelectionStrategy]) -> None:
+    """
+    Registra dinamicamente una nuova WindowSelectionStrategy.
+
+    Args:
+        name: chiave stringa per il registry
+        cls:  classe che implementa WindowSelectionStrategy
+    """
+    WINDOW_STRATEGY_REGISTRY[name] = cls
+
+
+class WindowStrategyFactory:
+    """
+    Factory per la creazione di WindowSelectionStrategy da nome o spec YAML.
+
+    Esempio:
+        s = WindowStrategyFactory.create('single', window='hanning', gate=gate)
+        s = WindowStrategyFactory.create('random', windows=['hanning', 'expodec'], gate=gate)
+        s = WindowStrategyFactory.from_spec(envelope_spec, config, windows, gate)
+    """
+
+    @staticmethod
+    def create(name: str, **kwargs) -> WindowSelectionStrategy:
+        """
+        Crea una WindowSelectionStrategy dal nome registrato.
+
+        Args:
+            name:    nome della strategy nel registry
+            **kwargs: parametri passati al costruttore
+
+        Raises:
+            KeyError: se il nome non è nel registry
+        """
+        if name not in WINDOW_STRATEGY_REGISTRY:
+            raise KeyError(
+                f"WindowSelectionStrategy '{name}' non trovata. "
+                f"Disponibili: {sorted(WINDOW_STRATEGY_REGISTRY.keys())}"
+            )
+        return WINDOW_STRATEGY_REGISTRY[name](**kwargs)
+
+    @staticmethod
+    def from_spec(
+        envelope_spec,
+        config,
+        windows: List[str],
+        gate,
+    ) -> WindowSelectionStrategy:
+        """
+        Crea la strategy corretta a partire dalla spec YAML envelope.
+
+        Args:
+            envelope_spec: valore del campo 'envelope' dal YAML
+            config:        StreamConfig con duration, time_mode, stream_id
+            windows:       lista di finestre già parsata da parse_window_list()
+            gate:          ProbabilityGate creato da WindowController
+
+        Returns:
+            Istanza di WindowSelectionStrategy appropriata
+        """
+        from envelopes.envelope import Envelope
+
+        duration  = config.context.duration
+        time_mode = config.time_mode
+        stream_id = config.context.stream_id
+
+        # --- Multi-state ---
+        if isinstance(envelope_spec, dict) and 'states' in envelope_spec:
+            raw_states = envelope_spec['states']
+            curve_data = envelope_spec.get('curve', [[0, 0], [1, 1]])
+            return WindowStrategyFactory.create(
+                'multistate',
+                states=[(float(v), w) for v, w in raw_states],
+                curve=Envelope(curve_data),
+                duration=duration,
+                time_mode=time_mode,
+                stream_id=stream_id,
+            )
+
+        # --- Transition ---
+        if isinstance(envelope_spec, dict) and 'from' in envelope_spec and 'to' in envelope_spec:
+            curve_data = envelope_spec.get('curve', [[0, 0], [1, 1]])
+            return WindowStrategyFactory.create(
+                'transition',
+                from_window=windows[0],
+                to_window=windows[1],
+                curve=Envelope(curve_data),
+                duration=duration,
+                time_mode=time_mode,
+                stream_id=stream_id,
+            )
+
+        # --- Random (lista con più finestre) ---
+        if len(windows) > 1:
+            return WindowStrategyFactory.create('random', windows=windows, gate=gate)
+
+        # --- Single ---
+        return WindowStrategyFactory.create('single', window=windows[0], gate=gate)

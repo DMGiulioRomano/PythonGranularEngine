@@ -94,6 +94,7 @@ class NumpyWindowRegistry:
         """Lista dei nomi di finestra disponibili."""
         names = list(self._NUMPY_WINDOWS.keys())
         names.append('kaiser')
+        names.append('gaussian')
         names.extend(self._GEN16_WINDOWS.keys())
         names.append('half_sine')
         return names
@@ -124,7 +125,11 @@ class NumpyWindowRegistry:
             start, curve, end = self._GEN16_WINDOWS[name]
             return self._gen16(n, start, curve, end)
 
-        # 4. Half-sine (GEN09 equivalente)
+        # 4. Gaussian (campana centrata, sigma=0.4)
+        if name == 'gaussian':
+            return self._gaussian(n)
+
+        # 5. Half-sine (GEN09 equivalente)
         if name == 'half_sine':
             return self._half_sine(n)
 
@@ -159,6 +164,21 @@ class NumpyWindowRegistry:
 
         normalized = (1.0 - np.exp(curve * x)) / (1.0 - np.exp(curve))
         return start + (end - start) * normalized
+
+    @staticmethod
+    def _gaussian(n: int, sigma: float = 0.4) -> np.ndarray:
+        """
+        Genera una finestra gaussiana centrata.
+
+        Equivalente a GEN20 di Csound con p5=gaussian.
+        sigma controlla la larghezza: 0.4 = leggermente più stretta di hanning.
+
+        Args:
+            n:     lunghezza in campioni
+            sigma: deviazione standard normalizzata rispetto a metà finestra
+        """
+        x = np.linspace(-1.0, 1.0, n)
+        return np.exp(-0.5 * (x / sigma) ** 2)
 
     @staticmethod
     def _half_sine(n: int) -> np.ndarray:
