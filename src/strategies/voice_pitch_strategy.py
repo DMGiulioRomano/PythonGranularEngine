@@ -33,17 +33,33 @@ from typing import Dict, List, Type
 # =============================================================================
 
 CHORD_INTERVALS: Dict[str, List[int]] = {
-    'maj':   [0, 4, 7],
-    'min':   [0, 3, 7],
-    'dom7':  [0, 4, 7, 10],
-    'maj7':  [0, 4, 7, 11],
-    'min7':  [0, 3, 7, 10],
-    'dim':   [0, 3, 6],
-    'aug':   [0, 4, 8],
-    'sus2':  [0, 2, 7],
-    'sus4':  [0, 5, 7],
-    'dim7':  [0, 3, 6, 9],
+    # --- 3 voci ---
+    'maj':     [0, 4, 7],
+    'min':     [0, 3, 7],
+    'dim':     [0, 3, 6],
+    'aug':     [0, 4, 8],
+    'sus2':    [0, 2, 7],
+    'sus4':    [0, 5, 7],
+    # --- 4 voci ---
+    'dom7':    [0, 4, 7, 10],
+    'maj7':    [0, 4, 7, 11],
+    'min7':    [0, 3, 7, 10],
+    'dim7':    [0, 3, 6,  9],
     'minmaj7': [0, 3, 7, 11],
+    # --- 5 voci ---
+    'dom9':    [0, 4, 7, 10, 14],
+    'maj9':    [0, 4, 7, 11, 14],
+    'min9':    [0, 3, 7, 10, 14],
+    '9sus4':   [0, 5, 7, 10, 14],
+    # --- 6 voci ---
+    'dom9s11': [0, 4, 7, 10, 14, 18],
+    'maj9s11': [0, 4, 7, 11, 14, 18],
+    'min11':   [0, 3, 7, 10, 14, 17],
+    # --- 7 voci ---
+    'dom13':   [0,  4,  7, 10, 14, 17, 21],
+    'min13':   [0,  3,  7, 10, 14, 17, 21],
+    'maj13s11':[0,  4,  7, 11, 14, 18, 21],
+    'altered': [0,  4,  7, 10, 13, 15, 20],
 }
 
 
@@ -124,16 +140,38 @@ class ChordPitchStrategy(VoicePitchStrategy):
     dove n = len(chord_intervals).
 
     Esempio: dom7=[0,4,7,10], 6 voci → [0, 4, 7, 10, 12, 16]
+
+    Il parametro `inversion` ruota gli intervalli dell'accordo in modo che
+    il grado k diventi la voce più bassa (normalizzata a 0):
+      inversion=0 → root position (default)
+      inversion=1 → primo rivolto (terza al basso)
+      ...
+
+    L'extend policy funziona invariata sugli intervalli invertiti.
     """
 
-    def __init__(self, chord: str):
+    def __init__(self, chord: str, inversion: int = 0):
         if chord not in CHORD_INTERVALS:
             raise ValueError(
                 f"Accordo '{chord}' non riconosciuto. "
                 f"Disponibili: {sorted(CHORD_INTERVALS.keys())}"
             )
+        base_intervals = CHORD_INTERVALS[chord]
+        n = len(base_intervals)
+        if not (0 <= inversion < n):
+            raise ValueError(
+                f"Accordo '{chord}' ha {n} note: inversion deve essere in "
+                f"[0, {n - 1}], ricevuto: {inversion}"
+            )
         self.chord = chord
-        self._intervals = CHORD_INTERVALS[chord]
+        self.inversion = inversion
+        self._intervals = self._invert(base_intervals, inversion)
+
+    @staticmethod
+    def _invert(intervals: List[int], k: int) -> List[int]:
+        rotated = intervals[k:] + [x + 12 for x in intervals[:k]]
+        base = rotated[0]
+        return [x - base for x in rotated]
 
     def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
         if voice_index == 0:
