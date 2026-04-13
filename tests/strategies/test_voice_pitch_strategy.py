@@ -472,3 +472,219 @@ class TestVoicePitchStrategyFactory:
         VoicePitchStrategy, *_, VoicePitchStrategyFactory = _get_module()
         s = VoicePitchStrategyFactory.create('step', step=1.0)
         assert isinstance(s, VoicePitchStrategy)
+
+
+# =============================================================================
+# TEST accordi jazz estesi (issue: 5, 6, 7 voci)
+# =============================================================================
+
+class TestJazzChordsExtended:
+    """
+    Verifica gli intervalli degli 11 nuovi accordi jazz aggiunti a
+    CHORD_INTERVALS. Per ogni accordo si controlla:
+    - che sia presente nel registry
+    - che gli intervalli corrispondano esattamente alla definizione
+    - che voce 0 sia sempre 0
+    """
+
+    def _chord(self, name):
+        _, _, _, ChordPitchStrategy, *_ = _get_module()
+        return ChordPitchStrategy(chord=name)
+
+    def _intervals(self, name):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        return CHORD_INTERVALS[name]
+
+    # --- 5 voci ---
+
+    def test_dom9_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'dom9' in CHORD_INTERVALS
+
+    def test_dom9_intervals(self):
+        s = self._chord('dom9')
+        assert [s.get_pitch_offset(i, 5) for i in range(5)] == [0, 4, 7, 10, 14]
+
+    def test_maj9_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'maj9' in CHORD_INTERVALS
+
+    def test_maj9_intervals(self):
+        s = self._chord('maj9')
+        assert [s.get_pitch_offset(i, 5) for i in range(5)] == [0, 4, 7, 11, 14]
+
+    def test_min9_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'min9' in CHORD_INTERVALS
+
+    def test_min9_intervals(self):
+        s = self._chord('min9')
+        assert [s.get_pitch_offset(i, 5) for i in range(5)] == [0, 3, 7, 10, 14]
+
+    def test_9sus4_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert '9sus4' in CHORD_INTERVALS
+
+    def test_9sus4_intervals(self):
+        s = self._chord('9sus4')
+        assert [s.get_pitch_offset(i, 5) for i in range(5)] == [0, 5, 7, 10, 14]
+
+    # --- 6 voci ---
+
+    def test_dom9s11_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'dom9s11' in CHORD_INTERVALS
+
+    def test_dom9s11_intervals(self):
+        s = self._chord('dom9s11')
+        assert [s.get_pitch_offset(i, 6) for i in range(6)] == [0, 4, 7, 10, 14, 18]
+
+    def test_maj9s11_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'maj9s11' in CHORD_INTERVALS
+
+    def test_maj9s11_intervals(self):
+        s = self._chord('maj9s11')
+        assert [s.get_pitch_offset(i, 6) for i in range(6)] == [0, 4, 7, 11, 14, 18]
+
+    def test_min11_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'min11' in CHORD_INTERVALS
+
+    def test_min11_intervals(self):
+        s = self._chord('min11')
+        assert [s.get_pitch_offset(i, 6) for i in range(6)] == [0, 3, 7, 10, 14, 17]
+
+    # --- 7 voci ---
+
+    def test_dom13_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'dom13' in CHORD_INTERVALS
+
+    def test_dom13_intervals(self):
+        s = self._chord('dom13')
+        assert [s.get_pitch_offset(i, 7) for i in range(7)] == [0, 4, 7, 10, 14, 17, 21]
+
+    def test_min13_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'min13' in CHORD_INTERVALS
+
+    def test_min13_intervals(self):
+        s = self._chord('min13')
+        assert [s.get_pitch_offset(i, 7) for i in range(7)] == [0, 3, 7, 10, 14, 17, 21]
+
+    def test_maj13s11_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'maj13s11' in CHORD_INTERVALS
+
+    def test_maj13s11_intervals(self):
+        s = self._chord('maj13s11')
+        assert [s.get_pitch_offset(i, 7) for i in range(7)] == [0, 4, 7, 11, 14, 18, 21]
+
+    def test_altered_in_registry(self):
+        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        assert 'altered' in CHORD_INTERVALS
+
+    def test_altered_intervals(self):
+        s = self._chord('altered')
+        assert [s.get_pitch_offset(i, 7) for i in range(7)] == [0, 4, 7, 10, 13, 15, 20]
+
+    # --- voce 0 sempre 0 per tutti i nuovi accordi ---
+
+    @pytest.mark.parametrize("chord_name", [
+        'dom9', 'maj9', 'min9', '9sus4',
+        'dom9s11', 'maj9s11', 'min11',
+        'dom13', 'min13', 'maj13s11', 'altered',
+    ])
+    def test_voice_0_always_zero_for_new_chords(self, chord_name):
+        s = self._chord(chord_name)
+        assert s.get_pitch_offset(0, 7) == 0.0
+
+
+# =============================================================================
+# TEST inversioni accordo (ChordPitchStrategy.inversion)
+# =============================================================================
+
+class TestChordInversion:
+    """
+    Verifica il parametro `inversion` di ChordPitchStrategy.
+
+    L'inversione k ruota gli intervalli dell'accordo:
+      rotated = intervals[k:] + [x+12 for x in intervals[:k]]
+      normalized = [x - rotated[0] for x in rotated]
+
+    Voce 0 deve restituire sempre 0.0, indipendentemente dall'inversione.
+    """
+
+    def _make(self, chord: str, inversion: int = 0):
+        _, _, _, ChordPitchStrategy, *_ = _get_module()
+        return ChordPitchStrategy(chord=chord, inversion=inversion)
+
+    # 1. inversion=0 equivale alla posizione fondamentale (backward compat)
+    def test_inversion_0_equals_root_position(self):
+        s0 = self._make('dom7', inversion=0)
+        s_default = self._make('dom7')
+        for i in range(4):
+            assert s0.get_pitch_offset(i, 4) == s_default.get_pitch_offset(i, 4)
+
+    # 2–4. dom7 [0,4,7,10] con inversion 1, 2, 3
+    def test_dom7_inversion_1(self):
+        # rotated=[4,7,10,12] → [0,3,6,8]
+        s = self._make('dom7', inversion=1)
+        assert [s.get_pitch_offset(i, 4) for i in range(4)] == [0, 3, 6, 8]
+
+    def test_dom7_inversion_2(self):
+        # rotated=[7,10,12,16] → [0,3,5,9]
+        s = self._make('dom7', inversion=2)
+        assert [s.get_pitch_offset(i, 4) for i in range(4)] == [0, 3, 5, 9]
+
+    def test_dom7_inversion_3(self):
+        # rotated=[10,12,16,19] → [0,2,6,9]
+        s = self._make('dom7', inversion=3)
+        assert [s.get_pitch_offset(i, 4) for i in range(4)] == [0, 2, 6, 9]
+
+    # 5–6. maj [0,4,7] con inversion 1 e 2
+    def test_maj_triad_inversion_1(self):
+        # rotated=[4,7,12] → [0,3,8]
+        s = self._make('maj', inversion=1)
+        assert [s.get_pitch_offset(i, 3) for i in range(3)] == [0, 3, 8]
+
+    def test_maj_triad_inversion_2(self):
+        # rotated=[7,12,16] → [0,5,9]
+        s = self._make('maj', inversion=2)
+        assert [s.get_pitch_offset(i, 3) for i in range(3)] == [0, 5, 9]
+
+    # 7. voce 0 sempre 0.0 anche con inversion > 0
+    def test_voice_0_always_zero_with_inversion(self):
+        s = self._make('dom7', inversion=2)
+        assert s.get_pitch_offset(0, 4) == 0.0
+
+    # 8–9. validazione: inversion fuori range → ValueError
+    def test_inversion_too_large_raises(self):
+        _, _, _, ChordPitchStrategy, *_ = _get_module()
+        with pytest.raises(ValueError, match="inversion"):
+            ChordPitchStrategy(chord='dom7', inversion=4)  # dom7 ha 4 note → max 3
+
+    def test_inversion_negative_raises(self):
+        _, _, _, ChordPitchStrategy, *_ = _get_module()
+        with pytest.raises(ValueError, match="inversion"):
+            ChordPitchStrategy(chord='dom7', inversion=-1)
+
+    # 10. extend policy preservata con inversion
+    def test_extend_policy_preserved_with_inversion(self):
+        # dom7 inversion=1 → intervals=[0,3,6,8], n=4
+        # voce 4 (prima voce extra): octave=1, idx=0 → 0+12=12
+        # voce 5: octave=1, idx=1 → 3+12=15
+        s = self._make('dom7', inversion=1)
+        assert s.get_pitch_offset(4, 6) == 12.0
+        assert s.get_pitch_offset(5, 6) == 15.0
+
+    # 11. parametrizzato: voce 0 = 0.0 per tutti gli accordi con tutte le inversioni
+    @pytest.mark.parametrize("chord_name,max_inv", [
+        ('maj', 2), ('min', 2), ('dom7', 3), ('maj7', 3),
+        ('dom9', 4), ('min11', 5), ('dom13', 6),
+    ])
+    def test_all_chords_all_inversions_voice_0_zero(self, chord_name, max_inv):
+        for inv in range(max_inv + 1):
+            s = self._make(chord_name, inversion=inv)
+            assert s.get_pitch_offset(0, 8) == 0.0
