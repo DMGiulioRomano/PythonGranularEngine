@@ -12,11 +12,9 @@ Inspired by Barry Truax's DMX-1000 (1988).
 
 **Lingua:** Rispondi sempre in italiano. No emoji, no emoticon, mai.
 
-**Prima di toccare qualsiasi file:** leggi il file effettivo con Read — non assumere nulla sull'implementazione senza aver verificato il codice.
-
 **Prima di modificare un modulo esistente:** esegui `/impact-analysis`.
 
-**Entry point TDD:** usa `/new-feature <nome>` per avviare ogni refactoring o nuova funzionalità — proponi le suite di test prima di scrivere codice di produzione, attendi conferma del design.
+**Entry point TDD:** usa `/new-feature <nome>` per avviare ogni refactoring o nuova funzionalità.
 
 **Codice generato:** fornisci prima il codice, poi chiedi se l'utente vuole un documento markdown di confronto. Non generare automaticamente documenti markdown di confronto.
 
@@ -38,9 +36,8 @@ Per refactoring e nuove funzionalità:
 - Se modifichi logiche esistenti: applica TDD (test rossi → verdi)
 - Se aggiungi feature completamente nuove: applica TDD
 - Se fix minori o docs: usa giudizio, ma `make tests` sempre obbligatorio prima di commit
-Prima di scrivere codice di produzione:
 
-**Non generare mai codice di produzione senza aver prima discusso e approvato il design con l'utente.**
+Non scrivere codice di produzione senza aver prima discusso e approvato il design — proponi le suite di test, attendi conferma.
 
 **CRITICAL: Test Gate prima di commit, PR e tag**
 
