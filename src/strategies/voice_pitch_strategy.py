@@ -23,6 +23,7 @@ Design:
 Coerente con: voice_pan_strategy.py, variation_strategy.py
 """
 
+import math
 import random
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type
@@ -208,6 +209,35 @@ class StochasticPitchStrategy(VoicePitchStrategy):
         return self._cache[voice_index]
 
 
+class SpectralPitchStrategy(VoicePitchStrategy):
+    """
+    Distribuzione voci sui parziali della serie armonica naturale.
+
+    Voce i → parziale (i+1) → round(12 * log2(i+1)) semitoni.
+    Voce 0 → fondamentale → 0 semitoni (invariante ABC).
+
+    Serie [0, 12, 19, 24, 28, 31, 34, 36, ...] per le prime 8 voci.
+
+    Args:
+        max_partial: numero di parziali pre-calcolati al __init__ (default 16).
+                     Voci oltre max_partial sono calcolate on-demand.
+    """
+
+    def __init__(self, max_partial: int = 16):
+        self.max_partial = max_partial
+        self._offsets: List[float] = [
+            float(round(12 * math.log2(i + 1))) for i in range(max_partial)
+        ]
+
+    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+        if voice_index == 0:
+            return 0.0
+        while voice_index >= len(self._offsets):
+            i = len(self._offsets)
+            self._offsets.append(float(round(12 * math.log2(i + 1))))
+        return self._offsets[voice_index]
+
+
 # =============================================================================
 # REGISTRY
 # =============================================================================
@@ -217,6 +247,7 @@ VOICE_PITCH_STRATEGIES: Dict[str, Type[VoicePitchStrategy]] = {
     'range':       RangePitchStrategy,
     'chord':       ChordPitchStrategy,
     'stochastic':  StochasticPitchStrategy,
+    'spectral':    SpectralPitchStrategy,
 }
 
 
