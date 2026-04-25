@@ -1,0 +1,109 @@
+composition:
+  title: "SpectralPitchStrategy — test serie armonica"
+
+streams:
+
+  # ==========================================================================
+  # SEZIONE 1 — SPECTRAL BASE
+  # Serie armonica: [0, 12, 19, 24, 28, 31, 34, 36] semitoni (8 voci)
+  # ==========================================================================
+
+  - stream_id: "spectral_8voci"
+    onset: 0.0
+    duration: 8.0
+    sample: "pino2.wav"
+    grain:
+      duration: 0.1
+    voices:
+      num_voices: 8
+      pitch:
+        strategy: spectral
+    pitch:
+      semitones: -24
+  # ==========================================================================
+  # SEZIONE 2 — CONFRONTO CON ALTRE STRATEGY
+  # Stesso contesto acustico, strategy diverse — utile per ascolto comparativo
+  # ==========================================================================
+
+  # chord dom7 — armonia temperata
+  - stream_id: "confronto_chord"
+    onset: 10.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "dom7"
+
+  # step fisso — distribuzione lineare
+  - stream_id: "confronto_step"
+    onset: 20.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.1
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 7.0
+
+  # ==========================================================================
+  # SEZIONE 3 — SPECTRAL CON POCHE VOCI
+  # Parziali bassi: [0, 12, 19] — fondamentale + ottava + quinta
+  # ==========================================================================
+
+  - stream_id: "spectral_3voci"
+    onset: 30.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.12
+    voices:
+      num_voices: 3
+      pitch:
+        strategy: spectral
+
+  # ==========================================================================
+  # SEZIONE 4 — SPECTRAL + PAN STEREO
+  # La distribuzione spettrale incontra la distribuzione spaziale
+  # ==========================================================================
+
+  - stream_id: "spectral_pan"
+    onset: 40.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.1
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: spectral
+      pan:
+        strategy: linear
+        spread: 80.0
+
+  # ==========================================================================
+  # SEZIONE 5 — SPECTRAL + max_partial CUSTOM
+  # Pre-calcola solo i primi 4 parziali; le voci 5-8 vengono estese dinamicamente
+  # ==========================================================================
+
+  - stream_id: "spectral_max_partial"
+    onset: 50.0
+    duration: 8.0
+    sample: "pino2.wav"
+    density: 10
+    grain:
+      duration: 0.1
+    voices:
+      num_voices: 8
+      pitch:
+        strategy: spectral
+        max_partial: 4

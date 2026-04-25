@@ -51,16 +51,18 @@ def _get_module():
         VOICE_PITCH_STRATEGIES,
         register_voice_pitch_strategy,
         VoicePitchStrategyFactory,
+        SpectralPitchStrategy,
     )
     return (
-        VoicePitchStrategy,
-        StepPitchStrategy,
-        RangePitchStrategy,
-        ChordPitchStrategy,
-        StochasticPitchStrategy,
-        VOICE_PITCH_STRATEGIES,
-        register_voice_pitch_strategy,
-        VoicePitchStrategyFactory,
+        VoicePitchStrategy,       # m[0]
+        StepPitchStrategy,        # m[1]
+        RangePitchStrategy,       # m[2]
+        ChordPitchStrategy,       # m[3]
+        StochasticPitchStrategy,  # m[4]
+        VOICE_PITCH_STRATEGIES,   # m[5]
+        register_voice_pitch_strategy,  # m[6]
+        VoicePitchStrategyFactory,      # m[7]
+        SpectralPitchStrategy,          # m[8]
     )
 
 
@@ -71,7 +73,7 @@ def _get_module():
 @pytest.fixture(autouse=True)
 def restore_registry():
     try:
-        _, _, _, _, _, registry, _, _ = _get_module()
+        _, _, _, _, _, registry, _, _, _ = _get_module()
         original = dict(registry)
         yield
         registry.clear()
@@ -344,6 +346,7 @@ class TestVoiceZeroInvariant:
         lambda m: m[2](semitone_range=12.0),                  # RangePitchStrategy
         lambda m: m[3](chord="dom7"),                         # ChordPitchStrategy
         lambda m: m[4](semitone_range=2.0, stream_id="s1"),   # StochasticPitchStrategy
+        lambda m: m[8](max_partial=4),                        # SpectralPitchStrategy
     ])
     def test_voice_0_is_always_zero(self, strategy_fixture):
         mod = _get_module()
@@ -380,27 +383,31 @@ class TestEdgeCases:
 class TestVoicePitchStrategiesRegistry:
 
     def test_registry_exists(self):
-        *_, VOICE_PITCH_STRATEGIES, _, _ = _get_module()
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
         assert isinstance(VOICE_PITCH_STRATEGIES, dict)
 
     def test_registry_contains_step(self):
-        *_, VOICE_PITCH_STRATEGIES, _, _ = _get_module()
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
         assert 'step' in VOICE_PITCH_STRATEGIES
 
     def test_registry_contains_range(self):
-        *_, VOICE_PITCH_STRATEGIES, _, _ = _get_module()
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
         assert 'range' in VOICE_PITCH_STRATEGIES
 
     def test_registry_contains_chord(self):
-        *_, VOICE_PITCH_STRATEGIES, _, _ = _get_module()
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
         assert 'chord' in VOICE_PITCH_STRATEGIES
 
     def test_registry_contains_stochastic(self):
-        *_, VOICE_PITCH_STRATEGIES, _, _ = _get_module()
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
         assert 'stochastic' in VOICE_PITCH_STRATEGIES
 
+    def test_registry_contains_spectral(self):
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
+        assert 'spectral' in VOICE_PITCH_STRATEGIES
+
     def test_registry_values_are_classes(self):
-        *_, VOICE_PITCH_STRATEGIES, _, _ = _get_module()
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
         for name, cls in VOICE_PITCH_STRATEGIES.items():
             assert isinstance(cls, type), f"{name} non è una classe"
 
@@ -412,7 +419,7 @@ class TestVoicePitchStrategiesRegistry:
 class TestRegisterVoicePitchStrategy:
 
     def test_register_new_strategy(self):
-        VoicePitchStrategy, _, _, _, _, VOICE_PITCH_STRATEGIES, register_voice_pitch_strategy, _ = _get_module()
+        VoicePitchStrategy, _, _, _, _, VOICE_PITCH_STRATEGIES, register_voice_pitch_strategy, _, _ = _get_module()
 
         class MySemitoneStrategy(VoicePitchStrategy):
             def get_pitch_offset(self, voice_index, num_voices):
@@ -422,7 +429,7 @@ class TestRegisterVoicePitchStrategy:
         assert 'my_semi' in VOICE_PITCH_STRATEGIES
 
     def test_registered_strategy_usable_via_factory(self):
-        VoicePitchStrategy, _, _, _, _, VOICE_PITCH_STRATEGIES, register_voice_pitch_strategy, VoicePitchStrategyFactory = _get_module()
+        VoicePitchStrategy, _, _, _, _, VOICE_PITCH_STRATEGIES, register_voice_pitch_strategy, VoicePitchStrategyFactory, _ = _get_module()
 
         class FixedStrategy(VoicePitchStrategy):
             def get_pitch_offset(self, voice_index, num_voices):
@@ -440,36 +447,36 @@ class TestRegisterVoicePitchStrategy:
 class TestVoicePitchStrategyFactory:
 
     def test_create_step(self):
-        *_, VoicePitchStrategyFactory = _get_module()
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         _, StepPitchStrategy, *_ = _get_module()
         s = VoicePitchStrategyFactory.create('step', step=4.0)
         assert isinstance(s, StepPitchStrategy)
 
     def test_create_range(self):
-        *_, VoicePitchStrategyFactory = _get_module()
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         _, _, RangePitchStrategy, *_ = _get_module()
         s = VoicePitchStrategyFactory.create('range', semitone_range=12.0)
         assert isinstance(s, RangePitchStrategy)
 
     def test_create_chord(self):
-        *_, VoicePitchStrategyFactory = _get_module()
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         _, _, _, ChordPitchStrategy, *_ = _get_module()
         s = VoicePitchStrategyFactory.create('chord', chord='maj7')
         assert isinstance(s, ChordPitchStrategy)
 
     def test_create_stochastic(self):
-        *_, VoicePitchStrategyFactory = _get_module()
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
         s = VoicePitchStrategyFactory.create('stochastic', semitone_range=2.0, stream_id='s1')
         assert isinstance(s, StochasticPitchStrategy)
 
     def test_unknown_strategy_raises(self):
-        *_, VoicePitchStrategyFactory = _get_module()
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         with pytest.raises((KeyError, ValueError)):
             VoicePitchStrategyFactory.create('nonexistent_xyz')
 
     def test_factory_returns_voice_pitch_strategy_instance(self):
-        VoicePitchStrategy, *_, VoicePitchStrategyFactory = _get_module()
+        VoicePitchStrategy, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         s = VoicePitchStrategyFactory.create('step', step=1.0)
         assert isinstance(s, VoicePitchStrategy)
 
@@ -688,3 +695,72 @@ class TestChordInversion:
         for inv in range(max_inv + 1):
             s = self._make(chord_name, inversion=inv)
             assert s.get_pitch_offset(0, 8) == 0.0
+
+
+# =============================================================================
+# 12. SpectralPitchStrategy
+# =============================================================================
+
+class TestSpectralPitchStrategy:
+
+    def _make(self, **kwargs):
+        _, _, _, _, _, _, _, _, SpectralPitchStrategy = _get_module()
+        return SpectralPitchStrategy(**kwargs)
+
+    # --- Happy path ---
+
+    def test_voice_0_returns_zero(self):
+        s = self._make()
+        assert s.get_pitch_offset(0, 8) == 0.0
+
+    def test_voice_1_returns_12(self):
+        s = self._make()
+        assert s.get_pitch_offset(1, 8) == 12.0
+
+    def test_voice_2_returns_19(self):
+        s = self._make()
+        assert s.get_pitch_offset(2, 8) == 19.0
+
+    def test_first_8_partials(self):
+        s = self._make()
+        result = [s.get_pitch_offset(i, 8) for i in range(8)]
+        assert result == [0, 12, 19, 24, 28, 31, 34, 36]
+
+    # --- Edge cases ---
+
+    def test_offsets_are_monotonically_increasing(self):
+        s = self._make()
+        offsets = [s.get_pitch_offset(i, 16) for i in range(16)]
+        for a, b in zip(offsets, offsets[1:]):
+            assert b > a
+
+    def test_beyond_default_max_partial(self):
+        s = self._make()
+        import math
+        expected = float(round(12 * math.log2(17)))
+        assert s.get_pitch_offset(16, 20) == expected
+
+    def test_default_max_partial_is_16(self):
+        s = self._make()
+        assert s.max_partial == 16
+
+    def test_custom_max_partial(self):
+        s = self._make(max_partial=8)
+        assert s.max_partial == 8
+
+    # --- Integration ---
+
+    def test_in_registry(self):
+        *_, VOICE_PITCH_STRATEGIES, _, _, _ = _get_module()
+        assert 'spectral' in VOICE_PITCH_STRATEGIES
+
+    def test_factory_creates_spectral(self):
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, SpectralPitchStrategy = _get_module()
+        s = VoicePitchStrategyFactory.create('spectral')
+        assert isinstance(s, SpectralPitchStrategy)
+
+    def test_factory_creates_spectral_with_max_partial(self):
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, SpectralPitchStrategy = _get_module()
+        s = VoicePitchStrategyFactory.create('spectral', max_partial=8)
+        assert isinstance(s, SpectralPitchStrategy)
+        assert s.max_partial == 8
