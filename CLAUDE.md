@@ -114,13 +114,6 @@ When adding a new parameter, renderer, window function, or variation strategy: r
 
 For YAML syntax (parameter, envelope, voices): see `docs/yaml-reference.md`.
 
-## Platform Notes
-
-- macOS: Fully supported (Apple Silicon and Intel)
-- Linux: Fully supported (iZotope RX integration disabled automatically)
-- Python: Requires 3.12 or higher
-- Dependencies: csound (for Csound renderer), sox (for audio trimming), NumPy/SciPy (for NumPy renderer)
-
 ## Documentation
 
 - **Architecture & rendering** (Csound/NumPy, caching, OCP, e2e tests): `docs/ARCHITECTURE.md`
