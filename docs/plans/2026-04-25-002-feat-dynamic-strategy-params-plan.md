@@ -64,7 +64,7 @@ Multi-voice system pre-computes pitch/onset/pointer/pan offsets per voice at `Vo
 ## Key Technical Decisions
 
 - **`time: float` required in ABC signature** (no default): all internal callers updated in U3/U5; makes explicit every strategy is time-aware.
-- **`_resolve_param` as module-level shared function** in `src/strategies/_strategy_utils.py`: simpler than mixin, easy import. Pattern: `isinstance(param, Envelope)` → `param.evaluate(time)`, else `float(param)`.
+- **`_resolve_param` as module-level shared function** in `src/parameters/parameter.py`: zero nuove dipendenze — `parameters/` già importa `Envelope`; `shared/` resta senza dipendenze domain. Pattern: `isinstance(param, Envelope)` → `param.evaluate(time)`, else `float(param)`. Nessun file `_strategy_utils.py`.
 - **`VoiceManager` becomes stateless re VoiceConfigs**: removes `voice_configs: List[VoiceConfig]` and `_compute()`; `get_voice_config(voice_index, time)` computes on-the-fly. `VoiceConfig` stays frozen dataclass, now ephemeral per call.
 - **`pan_spread: Union[float, Envelope]`** in `VoiceManager`: extracted raw from YAML (U4), resolved with `_resolve_param` in `get_voice_config`.
 - **YAML strategy kwargs parsing**: function `_parse_strategy_kwarg(value, duration)` — detect list/dict → `Envelope`, else `float`. Reuses `create_scaled_envelope()` if `time_mode: normalized`.
@@ -99,13 +99,13 @@ Multi-voice system pre-computes pitch/onset/pointer/pan offsets per voice at `Vo
 
 **P2 — da valutare**
 
-- [P2, omission] **`_resolve_param` duplica `_evaluate_input` da `parameter.py`:** Stessa logica `isinstance(param, Envelope) → evaluate(time) else float(param)`. Considerare estrazione come funzione condivisa per evitare manutenzione doppia.
+- [P2, ✓ risolto in U1] **`_resolve_param` duplica `_evaluate_input` da `parameter.py`:** `resolve_param` implementata come funzione module-level in `src/parameters/parameter.py` (non in `_strategy_utils.py`). `Parameter._evaluate_input` diventa delegato. Strategy importa da `parameters.parameter`. Zero nuove dipendenze — `parameters/` già importa `Envelope`; `shared/` resta senza dipendenze domain.
 
-- [P2, omission] **`_parse_strategy_kwarg` reimplementa detection già in `Envelope.is_envelope_like()`:** `src/envelopes/envelope.py:235-277` copre tutti i formati (list, compact dict, standard dict). Sostituire `isinstance(value, list/dict)` con `Envelope.is_envelope_like(value)`.
+- [P2, ✓ risolto in U4] **`_parse_strategy_kwarg` reimplementa detection già in `Envelope.is_envelope_like()`:** `_parse_strategy_kwarg` usa `Envelope.is_envelope_like(value)` come branch condition invece di `isinstance(value, list/dict)`. Copre compact format e dict con `points` senza `time_mode`. OCP: nuovi formati aggiunti a `is_envelope_like` propagano automaticamente.
 
-- [P2, omission] **`time_mode: normalized` — ordine inizializzazione non verificato:** Piano afferma `stream.duration` noto quando `_init_voice_manager` gira ma non mostra dove garantito. Aggiungere verifica esplicita in U4.
+- [P2, ✓ risolto in U4] **`time_mode: normalized` — ordine inizializzazione verificato:** `_init_stream_context` (step 4) setta `self.duration` via `setattr` su tutti i field di `StreamContext`; `_init_voice_manager` è step 7. Garanzia strutturale — nessuna guardia runtime necessaria. Documentato in U4 Approach.
 
-- [P2, omission] **Tempo per-voce vs globale — conseguenza musicale non discussa:** U5 passa `voice_cursors[voice_index]`. Con `num_voices > 1`, voci diverse valutano envelope in momenti diversi simultaneamente. Intentional? Specificare in U5 Approach.
+- [P2, ✓ risolto in U5] **Tempo per-voce vs globale — conseguenza musicale documentata:** U5 passa `voice_cursors[voice_index]`. Con `num_voices > 1`, voci diverse valutano envelope in momenti diversi simultaneamente — scelta intenzionale. Voce con onset più tardo ha posizione temporale più avanzata → envelope più avanzato fin dal primo grain. Documentato in U5 Approach. Edge case onset_offset grande (grain oltre duration) deferred a issue separata — divergenza renderer pre-esistente, fuori scope piano.
 
 ---
 
@@ -148,26 +148,30 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 **Dependencies:** None
 
 **Files:**
-- Create: `src/strategies/_strategy_utils.py`
-- Test: `tests/strategies/test_strategy_utils.py`
+- Modify: `src/parameters/parameter.py` (aggiunge `resolve_param` come funzione module-level; `_evaluate_input` diventa delegato)
+- Test: `tests/parameters/test_parameter.py` (nuova classe `TestResolveParam`)
 
 **Approach:**
-- `StrategyParam = Union[float, Envelope]` as type alias
-- `_resolve_param(param: StrategyParam, time: float) -> float`: branch `isinstance(param, Envelope)` → `param.evaluate(time)`, else `float(param)`
-- No other logic in this file
+- `StrategyParam = Union[float, Envelope]` as type alias (definito in `parameters/parameter.py`)
+- `resolve_param(param: StrategyParam, time: float) -> float`: branch `isinstance(param, Envelope)` → `param.evaluate(time)`, else `float(param)`. `None` → `0.0`.
+- `Parameter._evaluate_input` diventa: `return resolve_param(self._value, time)`
+- Strategy importa: `from parameters.parameter import resolve_param, StrategyParam`
+- Nessun file `_strategy_utils.py` — `parameters/` già importa `Envelope`; `shared/` resta senza dipendenze domain
 
 **Patterns to follow:**
-- `src/parameters/parameter.py` method `_evaluate_input` for float/Envelope branch pattern
+- `src/parameters/parameter.py` method `_evaluate_input` — logica da estrarre, non duplicare
 
 **Test scenarios:**
-- Happy path: `_resolve_param(2.5, 0.0)` → `2.5`
-- Happy path envelope: `_resolve_param(Envelope([[0,0],[1,10]]), 0.5)` → `5.0` (linear interpolation)
-- Edge case: `_resolve_param(0, 0.0)` → `0.0` (int cast to float)
-- Edge case envelope: `_resolve_param(Envelope([[0,0],[1,10]]), 0.0)` → `0.0`
-- Edge case envelope: `_resolve_param(Envelope([[0,0],[1,10]]), 1.0)` → `10.0`
+- Happy path: `resolve_param(2.5, 0.0)` → `2.5`
+- Happy path envelope: `resolve_param(Envelope([[0,0],[1,10]]), 0.5)` → `5.0` (linear interpolation)
+- Edge case: `resolve_param(0, 0.0)` → `0.0` (int cast to float)
+- Edge case None: `resolve_param(None, 0.0)` → `0.0`
+- Edge case envelope: `resolve_param(Envelope([[0,0],[1,10]]), 0.0)` → `0.0`
+- Edge case envelope: `resolve_param(Envelope([[0,0],[1,10]]), 1.0)` → `10.0`
+- Regressione: `Parameter._evaluate_input` delega correttamente (stesso risultato di `resolve_param`)
 
 **Verification:**
-- `test_strategy_utils.py` passes; no circular imports
+- `tests/parameters/test_parameter.py` passes; no circular imports; `_strategy_utils.py` non creato
 
 ---
 
@@ -276,10 +280,10 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 - Helper function `_parse_strategy_kwarg(value, duration) -> Union[float, Envelope, str]`:
   - `isinstance(value, str)` → `return value` (chord name e simili — non convertire)
   - `isinstance(value, (int, float))` → `float(value)`
-  - `isinstance(value, list)` → `Envelope(value)` (absolute time)
-  - `isinstance(value, dict)` with `time_mode: normalized` → `create_scaled_envelope(value, duration)`
+  - `Envelope.is_envelope_like(value)` → se `dict` con `time_mode: normalized`: `create_scaled_envelope(value, duration)`; altrimenti `Envelope(value)`. Copre list, compact format, dict con `points`.
 - Apply to all non-special kwargs (not `strategy`, not `stream_id`) before passing to factory
 - `pan_spread`: same parsing — `_parse_strategy_kwarg(kw.pop('spread', 0.0), self.duration)`
+- **`self.duration` disponibile:** `_init_stream_context` (step 4 in `__init__`) setta tutti i field di `StreamContext` — incluso `duration: float` — come attributi `self` via `setattr`. `_init_voice_manager` è step 7. Nessuna guardia necessaria: l'ordine è garantito dalla sequenza in `__init__`.
 
 **Patterns to follow:**
 - `stream._init_voice_manager` lines 198–241
@@ -313,6 +317,8 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 **Approach:**
 - One line: `self._voice_manager.get_voice_config(voice_index)` → `self._voice_manager.get_voice_config(voice_index, t)`
 - `t = voice_cursors[voice_index]` already available in loop
+- **Tempo per-voce — scelta intenzionale:** `voice_cursors[voice_index]` rappresenta il tempo musicale reale di quella voce. Con `num_voices > 1`, voci con onset offset diversi si trovano in posizioni temporali diverse durante lo stesso ciclo di rendering → valutano l'envelope in momenti diversi simultaneamente. Conseguenza musicale: una voce con onset più tardo ha già un envelope più avanzato fin dal suo primo grain. Questo è il comportamento corretto — rispecchia la posizione temporale effettiva di ciascuna voce. L'alternativa (global `t`) eliminerebbe questo senso di posizione e renderebbe l'envelope indipendente dall'offset per-voce.
+- **Edge case deferred — onset_offset envelope con valori grandi:** se `onset_offset` è envelope con valori che si avvicinano a `stream.duration`, grain finali di voci N>0 possono avere `onset > stream_onset + duration`. Comportamento diverge tra renderer: NumPy li ignora silenziosamente (guard `onset_sample < n_total`); Csound li scrive nel `.sco` e l'output audio si estende oltre la durata prevista. Questo è comportamento pre-esistente (stesso con offset statico grande) — non introdotto da questa refactoring. Tracking separato: issue #27.
 
 **Test scenarios:**
 - Integration: stream with `pitch.strategy: step, step: [[0,0],[1,12]]` and `num_voices: 4` → early grains have smaller pitch_offset than late grains (same voice)
