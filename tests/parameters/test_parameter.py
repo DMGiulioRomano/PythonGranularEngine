@@ -862,9 +862,9 @@ class TestParameterParametrized:
         bounds = ParameterBounds(0.0, 1000.0)
         param = Parameter('test', 500.0, bounds, mod_range=mod_range)
         param.set_probability_gate(AlwaysGate())
-        
+
         samples = [param.get_value(i * 0.1) for i in range(10)]
-        
+
         if mod_range == 0:
             # Nessuna variazione
             assert all(s == 500.0 for s in samples)
@@ -872,3 +872,74 @@ class TestParameterParametrized:
             # Variazione presente (probabilistica)
             # Almeno alcuni valori diversi
             assert len(set(samples)) > 1 or mod_range < 1.0
+
+
+# =============================================================================
+# 12. TEST resolve_param (U1 — funzione module-level)
+# =============================================================================
+
+import importlib
+import sys as _sys
+
+def _import_real_parameter():
+    """Importa il modulo reale parameters.parameter via src/."""
+    src_path = '/Users/giuliodemattia/github/DMGiulioRomano/PythonGranularEngine/src'
+    if src_path not in _sys.path:
+        _sys.path.insert(0, src_path)
+    # Force-reimport per evitare conflitti con mock class Parameter sopra
+    if 'parameters.parameter' in _sys.modules:
+        return _sys.modules['parameters.parameter']
+    return importlib.import_module('parameters.parameter')
+
+
+class TestResolveParam:
+    """Test funzione module-level resolve_param da parameters.parameter."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        mod = _import_real_parameter()
+        self.resolve_param = mod.resolve_param
+        self.StrategyParam = mod.StrategyParam
+        from envelopes.envelope import Envelope as RealEnvelope
+        self.Envelope = RealEnvelope
+
+    def test_float_returns_float(self):
+        assert self.resolve_param(2.5, 0.0) == 2.5
+
+    def test_float_type_is_float(self):
+        result = self.resolve_param(2.5, 0.0)
+        assert isinstance(result, float)
+
+    def test_int_cast_to_float(self):
+        assert self.resolve_param(0, 0.0) == 0.0
+        assert isinstance(self.resolve_param(0, 0.0), float)
+
+    def test_none_returns_zero(self):
+        assert self.resolve_param(None, 0.0) == 0.0
+
+    def test_envelope_at_start(self):
+        env = self.Envelope([[0, 0], [1, 10]])
+        assert self.resolve_param(env, 0.0) == pytest.approx(0.0)
+
+    def test_envelope_at_end(self):
+        env = self.Envelope([[0, 0], [1, 10]])
+        assert self.resolve_param(env, 1.0) == pytest.approx(10.0)
+
+    def test_envelope_midpoint_linear(self):
+        env = self.Envelope([[0, 0], [1, 10]])
+        assert self.resolve_param(env, 0.5) == pytest.approx(5.0)
+
+    def test_time_ignored_for_scalar(self):
+        """Scalare: time non influisce sul risultato."""
+        assert self.resolve_param(7.0, 0.0) == self.resolve_param(7.0, 99.9)
+
+    def test_regression_evaluate_input_delegates(self):
+        """Parameter._evaluate_input delega a resolve_param — stesso risultato."""
+        mod = _import_real_parameter()
+        from envelopes.envelope import Envelope as RealEnvelope
+        from parameters.parameter_definitions import ParameterBounds
+        env = RealEnvelope([[0, 0], [1, 10]])
+        bounds = ParameterBounds(min_val=-1000.0, max_val=1000.0, variation_mode='additive')
+        param = mod.Parameter(name='test', value=env, bounds=bounds)
+        # _evaluate_input deve restituire lo stesso valore di resolve_param
+        assert param._evaluate_input(env, 0.5) == pytest.approx(self.resolve_param(env, 0.5))

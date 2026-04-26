@@ -139,7 +139,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ## Implementation Units
 
-- [ ] U1. **Utility `_resolve_param` e type alias `StrategyParam`**
+- [x] U1. **Utility `_resolve_param` e type alias `StrategyParam`**
 
 **Goal:** Shared primitive to resolve `Union[float, Envelope]` to `float` at time `t`.
 
