@@ -91,9 +91,8 @@ def _make_mock_voice_manager(max_voices=1):
     from controllers.voice_manager import VoiceConfig
     vm = Mock()
     vm.max_voices = max_voices
-    # get_voice_config(i) → VoiceConfig(0,0,0,0) per tutti (voce 0 = riferimento)
+    # get_voice_config(voice_index, time) → VoiceConfig(0,0,0,0) per tutti
     vm.get_voice_config = Mock(return_value=VoiceConfig(0.0, 0.0, 0.0, 0.0))
-    vm.voice_configs = [VoiceConfig(0.0, 0.0, 0.0, 0.0)] * max_voices
     return vm
 
 

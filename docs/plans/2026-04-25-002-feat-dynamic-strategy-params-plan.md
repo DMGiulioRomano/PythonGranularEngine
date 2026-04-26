@@ -228,7 +228,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U3. **VoiceManager refactoring: remove pre-computation, add per-call dispatch**
+- [x] U3. **VoiceManager refactoring: remove pre-computation, add per-call dispatch**
 
 **Goal:** `get_voice_config(voice_index, time)` computes on-the-fly; remove `voice_configs: List[VoiceConfig]` and `_compute()`.
 
@@ -238,16 +238,21 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 **Files:**
 - Modify: `src/controllers/voice_manager.py`
-- Test: existing voice manager tests or dedicated section in strategy tests
+- Modify: `src/core/stream.py` (riga 329: `get_voice_config(voice_index, t)` — anticipato da U5 per mantenere `make tests` green)
+- Modify: `src/strategies/voice_pan_strategy.py` (guard voice_index==0 in `LinearPanStrategy` e `AdditivePanStrategy` — gap U2 rilevato durante U3)
+- Test: `tests/controllers/test_voice_manager.py` (riscritta: sezione 7 rimpiazza TestPrecomputedConfigs, aggiunta sezione 8 TestVoiceManagerTimeVarying)
+- Test: `tests/strategies/test_voice_pan_strategy.py` (aggiornati valori voice_index=0, aggiunta TestVoiceZeroInvariant per linear/additive)
+- Test: `tests/core/test_stream_voices_yaml.py` (tutte le chiamate `get_voice_config(i)` → `get_voice_config(i, 0.0)`)
 
 **Approach:**
-- Remove `self.voice_configs` and `_compute(voice_index)`
+- Remove `self.voice_configs` e `_compute(voice_index)`
 - Signature: `get_voice_config(self, voice_index: int, time: float) -> VoiceConfig`
 - Body calls `strategy.get_*_offset(vi, nv, time)` directly
-- **Voice-0 invariant:** non aggiungere guard in `get_voice_config` — garantito dai strategy (U2). `get_voice_config(0, t)` restituisce `VoiceConfig(0.0, 0.0, 0.0, 0.0)` perché ogni strategy ritorna `0.0` per `voice_index == 0`.
+- **Voice-0 invariant:** garantito dalle strategy. Gap U2: `LinearPanStrategy` e `AdditivePanStrategy` non avevano guard voice_index==0 — aggiunto in questa unit. I test pan aggiornati di conseguenza.
 - `self._pan_spread: Union[float, Envelope]` — resolved with `_resolve_param(self._pan_spread, time)` before passing to `get_pan_offset`
 - `pan_spread` in `VoiceManager` constructor: type `Union[float, Envelope]`
 - `VoiceConfig` stays frozen dataclass, ephemeral per call
+- **stream.py anticipato:** `generate_grains` già aggiornato (`get_voice_config(voice_index, t)`) per non rompere la suite. U5 rimane aperto per la documentazione del comportamento musicale per-voce.
 
 **Patterns to follow:**
 - `_resolve_param` from U1

@@ -192,26 +192,25 @@ class TestLinearPanStrategy:
         assert linear.get_pan_offset(0, 1, 0.0, 0.0) == pytest.approx(0.0)
 
     def test_two_voices_spread_100(self, linear):
-        assert linear.get_pan_offset(0, 2, 100.0, 0.0) == pytest.approx(-50.0)
+        assert linear.get_pan_offset(0, 2, 100.0, 0.0) == pytest.approx(0.0)
         assert linear.get_pan_offset(1, 2, 100.0, 0.0) == pytest.approx(50.0)
 
     def test_four_voices_spread_120(self, linear):
-        assert linear.get_pan_offset(0, 4, 120.0, 0.0) == pytest.approx(-60.0)
+        assert linear.get_pan_offset(0, 4, 120.0, 0.0) == pytest.approx(0.0)
         assert linear.get_pan_offset(1, 4, 120.0, 0.0) == pytest.approx(-20.0)
         assert linear.get_pan_offset(2, 4, 120.0, 0.0) == pytest.approx(20.0)
         assert linear.get_pan_offset(3, 4, 120.0, 0.0) == pytest.approx(60.0)
 
-    def test_three_voices_symmetric(self, linear):
-        offset_0 = linear.get_pan_offset(0, 3, 180.0, 0.0)
-        offset_1 = linear.get_pan_offset(1, 3, 180.0, 0.0)
-        offset_2 = linear.get_pan_offset(2, 3, 180.0, 0.0)
+    def test_three_voices_voice_zero_is_zero(self, linear):
+        """Voice 0 → 0.0 invariant; voci 1..N-1 distribuite linearmente."""
+        assert linear.get_pan_offset(0, 3, 180.0, 0.0) == pytest.approx(0.0)
+        assert linear.get_pan_offset(1, 3, 180.0, 0.0) == pytest.approx(0.0)
+        assert linear.get_pan_offset(2, 3, 180.0, 0.0) == pytest.approx(90.0)
 
-        assert offset_1 == pytest.approx(0.0)
-        assert offset_0 == pytest.approx(-offset_2)
-
-    def test_first_voice_at_negative_half_spread(self, linear):
+    def test_voice_zero_always_zero(self, linear):
+        """Voice 0 ritorna 0.0 indipendentemente da spread e num_voices."""
         for spread in [60.0, 90.0, 180.0, 360.0]:
-            assert linear.get_pan_offset(0, 4, spread, 0.0) == pytest.approx(-spread / 2.0)
+            assert linear.get_pan_offset(0, 4, spread, 0.0) == pytest.approx(0.0)
 
     def test_last_voice_at_positive_half_spread(self, linear):
         for n in [2, 3, 4, 5]:
@@ -227,11 +226,12 @@ class TestLinearPanStrategy:
         r2 = linear.get_pan_offset(2, 5, 180.0, 0.0)
         assert r1 == pytest.approx(r2)
 
-    def test_offsets_are_equidistant(self, linear):
+    def test_offsets_are_equidistant_for_nonzero_voices(self, linear):
+        """Voci 1..N-1 equidistanti; voce 0 è riferimento fisso a 0.0."""
         n = 5
         spread = 200.0
-        offsets = [linear.get_pan_offset(v, n, spread, 0.0) for v in range(n)]
-        gaps = [offsets[i + 1] - offsets[i] for i in range(n - 1)]
+        offsets = [linear.get_pan_offset(v, n, spread, 0.0) for v in range(1, n)]
+        gaps = [offsets[i + 1] - offsets[i] for i in range(len(offsets) - 1)]
 
         for gap in gaps:
             assert gap == pytest.approx(gaps[0])
@@ -322,21 +322,26 @@ class TestAdditivePanStrategy:
     def test_name_is_additive(self, additive):
         assert additive.name == 'additive'
 
-    def test_returns_spread_as_offset(self, additive):
-        assert additive.get_pan_offset(0, 4, 90.0, 0.0) == pytest.approx(90.0)
+    def test_returns_spread_as_offset_for_nonzero_voices(self, additive):
+        assert additive.get_pan_offset(1, 4, 90.0, 0.0) == pytest.approx(90.0)
         assert additive.get_pan_offset(3, 4, 90.0, 0.0) == pytest.approx(90.0)
+
+    def test_voice_zero_always_zero(self, additive):
+        assert additive.get_pan_offset(0, 4, 90.0, 0.0) == pytest.approx(0.0)
+        assert additive.get_pan_offset(0, 4, -45.0, 0.0) == pytest.approx(0.0)
 
     def test_spread_zero_returns_zero(self, additive):
         assert additive.get_pan_offset(2, 4, 0.0, 0.0) == pytest.approx(0.0)
 
-    def test_negative_spread_allowed(self, additive):
-        result = additive.get_pan_offset(0, 4, -45.0, 0.0)
+    def test_negative_spread_allowed_for_nonzero_voices(self, additive):
+        result = additive.get_pan_offset(1, 4, -45.0, 0.0)
         assert result == pytest.approx(-45.0)
 
-    def test_voice_index_does_not_affect_result(self, additive):
+    def test_nonzero_voices_same_offset(self, additive):
+        """Voci 1..N-1 ricevono tutte lo stesso offset."""
         spread = 60.0
         n = 6
-        results = [additive.get_pan_offset(v, n, spread, 0.0) for v in range(n)]
+        results = [additive.get_pan_offset(v, n, spread, 0.0) for v in range(1, n)]
         assert all(r == pytest.approx(spread) for r in results)
 
     def test_time_param_ignored(self, additive):
@@ -351,14 +356,21 @@ class TestAdditivePanStrategy:
 
 class TestVoiceZeroInvariant:
 
-    def test_linear_voice_zero_single_voice(self, linear):
-        """LinearPanStrategy con N=1: voce 0 = 0.0."""
-        assert linear.get_pan_offset(0, 1, 180.0, 0.0) == pytest.approx(0.0)
+    def test_linear_voice_zero_any_spread_any_num_voices(self, linear):
+        """LinearPanStrategy: voce 0 = 0.0 per qualsiasi spread e num_voices."""
+        for n in [1, 2, 3, 4]:
+            for spread in [0.0, 60.0, 120.0, 180.0]:
+                assert linear.get_pan_offset(0, n, spread, 0.0) == pytest.approx(0.0)
 
     def test_random_voice_zero_always_zero(self, random_strat):
         """RandomPanStrategy: voce 0 sempre 0.0."""
         for spread in [60.0, 120.0, 180.0]:
             assert random_strat.get_pan_offset(0, 4, spread, 0.0) == pytest.approx(0.0)
+
+    def test_additive_voice_zero_always_zero(self, additive):
+        """AdditivePanStrategy: voce 0 sempre 0.0."""
+        for spread in [0.0, 60.0, -45.0, 180.0]:
+            assert additive.get_pan_offset(0, 4, spread, 0.0) == pytest.approx(0.0)
 
 
 # =============================================================================

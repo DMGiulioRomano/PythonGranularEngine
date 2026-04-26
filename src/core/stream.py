@@ -326,7 +326,7 @@ class Stream:
                 active = max(1, min(max_v, int(self.num_voices.get_value(t))))
 
                 if voice_index < active:
-                    voice_config = self._voice_manager.get_voice_config(voice_index)
+                    voice_config = self._voice_manager.get_voice_config(voice_index, t)
                     grain = self._create_grain(t, grain_dur, voice_config)
                     all_voice_grains[voice_index].append(grain)
 

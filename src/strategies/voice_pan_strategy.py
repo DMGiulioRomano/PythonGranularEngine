@@ -9,7 +9,7 @@ Responsabilita':
 - Calcolare l'offset di pan MACRO per una voce data, basandosi su
   voice_index, num_voices, spread totale e tempo corrente.
 - NON gestisce il micro-jitter per-grano (responsabilita' del VoiceManager).
-- NON gestisce l'invariante voce 0 = riferimento (responsabilita' del VoiceManager).
+- Ogni implementazione concreta garantisce voice_index==0 → 0.0 (Voice-0 invariant).
 
 Design:
 - VoicePanStrategy (ABC): interfaccia comune
@@ -44,6 +44,10 @@ class VoicePanStrategy(ABC):
     Il valore restituito e' un OFFSET in gradi rispetto al pan base
     dello stream. Il VoiceManager somma questo offset al pan_base
     per ottenere il pan finale della voce.
+
+    Voice-0 invariant: ogni implementazione concreta deve restituire 0.0
+    per voice_index == 0, garantendo che la voce di riferimento non
+    abbia offset spaziale.
     """
 
     @abstractmethod
@@ -102,7 +106,7 @@ class LinearPanStrategy(VoicePanStrategy):
         time: float,
     ) -> float:
         """Calcola offset lineare equidistante."""
-        if spread == 0.0 or num_voices <= 1:
+        if voice_index == 0 or spread == 0.0 or num_voices <= 1:
             return 0.0
 
         return -spread / 2.0 + voice_index * spread / (num_voices - 1)
@@ -180,7 +184,9 @@ class AdditivePanStrategy(VoicePanStrategy):
         spread: float,
         time: float,
     ) -> float:
-        """Ritorna spread come offset fisso per tutte le voci."""
+        """Ritorna spread come offset fisso per tutte le voci non-zero."""
+        if voice_index == 0:
+            return 0.0
         return spread
 
     @property

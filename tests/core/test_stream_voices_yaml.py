@@ -91,7 +91,7 @@ class TestVoicesDefault:
 
     def test_no_voices_key_voice_config_0_is_zero(self):
         s = _build_stream()
-        vc = s._voice_manager.get_voice_config(0)
+        vc = s._voice_manager.get_voice_config(0, 0.0)
         assert vc == VoiceConfig(0.0, 0.0, 0.0, 0.0)
 
     def test_empty_voices_dict_max_voices_1(self):
@@ -129,38 +129,38 @@ class TestVoicesPitchStrategy:
             'num_voices': 3,
             'pitch': {'strategy': 'step', 'step': 4.0},
         })
-        assert s._voice_manager.get_voice_config(1).pitch_offset == pytest.approx(4.0)
-        assert s._voice_manager.get_voice_config(2).pitch_offset == pytest.approx(8.0)
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == pytest.approx(4.0)
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == pytest.approx(8.0)
 
     def test_range_pitch_strategy(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'range', 'semitone_range': 12.0},
         })
-        assert s._voice_manager.get_voice_config(0).pitch_offset == 0.0
-        assert s._voice_manager.get_voice_config(2).pitch_offset == pytest.approx(12.0)
+        assert s._voice_manager.get_voice_config(0, 0.0).pitch_offset == 0.0
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == pytest.approx(12.0)
 
     def test_chord_pitch_strategy_dom7(self):
         s = _build_stream({
             'num_voices': 4,
             'pitch': {'strategy': 'chord', 'chord': 'dom7'},
         })
-        assert s._voice_manager.get_voice_config(1).pitch_offset == 4.0
-        assert s._voice_manager.get_voice_config(2).pitch_offset == 7.0
-        assert s._voice_manager.get_voice_config(3).pitch_offset == 10.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == 4.0
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == 7.0
+        assert s._voice_manager.get_voice_config(3, 0.0).pitch_offset == 10.0
 
     def test_chord_pitch_strategy_maj(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'chord', 'chord': 'maj'},
         })
-        assert s._voice_manager.get_voice_config(1).pitch_offset == 4.0
-        assert s._voice_manager.get_voice_config(2).pitch_offset == 7.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == 4.0
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == 7.0
 
     def test_no_pitch_block_pitch_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i).pitch_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pitch_offset == 0.0
 
 
 # =============================================================================
@@ -174,21 +174,21 @@ class TestVoicesOnsetStrategy:
             'num_voices': 3,
             'onset_offset': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1).onset_offset == pytest.approx(0.1)
-        assert s._voice_manager.get_voice_config(2).onset_offset == pytest.approx(0.2)
+        assert s._voice_manager.get_voice_config(1, 0.0).onset_offset == pytest.approx(0.1)
+        assert s._voice_manager.get_voice_config(2, 0.0).onset_offset == pytest.approx(0.2)
 
     def test_geometric_onset_strategy(self):
         s = _build_stream({
             'num_voices': 3,
             'onset_offset': {'strategy': 'geometric', 'step': 0.1, 'base': 2.0},
         })
-        assert s._voice_manager.get_voice_config(1).onset_offset == pytest.approx(0.1)
-        assert s._voice_manager.get_voice_config(2).onset_offset == pytest.approx(0.2)
+        assert s._voice_manager.get_voice_config(1, 0.0).onset_offset == pytest.approx(0.1)
+        assert s._voice_manager.get_voice_config(2, 0.0).onset_offset == pytest.approx(0.2)
 
     def test_no_onset_block_onset_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i).onset_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
 
 
 # =============================================================================
@@ -202,13 +202,13 @@ class TestVoicesPointerStrategy:
             'num_voices': 3,
             'pointer': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1).pointer_offset == pytest.approx(0.1)
-        assert s._voice_manager.get_voice_config(2).pointer_offset == pytest.approx(0.2)
+        assert s._voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
+        assert s._voice_manager.get_voice_config(2, 0.0).pointer_offset == pytest.approx(0.2)
 
     def test_no_pointer_block_pointer_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i).pointer_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pointer_offset == 0.0
 
 
 # =============================================================================
@@ -223,8 +223,8 @@ class TestVoicesPanStrategy:
             'num_voices': 2,
             'pan': {'strategy': 'linear', 'spread': 60.0},
         })
-        assert s._voice_manager.get_voice_config(0).pan_offset == 0.0
-        assert s._voice_manager.get_voice_config(1).pan_offset == pytest.approx(30.0)
+        assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(30.0)
 
     def test_spread_zero_all_pan_zero(self):
         s = _build_stream({
@@ -232,12 +232,12 @@ class TestVoicesPanStrategy:
             'pan': {'strategy': 'linear', 'spread': 0.0},
         })
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i).pan_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
 
     def test_no_pan_block_pan_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i).pan_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
 
 
 # =============================================================================
@@ -256,8 +256,8 @@ class TestStochasticStreamIdInjection:
             'num_voices': 3,
             'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
         }, stream_id='stream_B')
-        offsets1 = [s1._voice_manager.get_voice_config(i).pitch_offset for i in range(1, 3)]
-        offsets2 = [s2._voice_manager.get_voice_config(i).pitch_offset for i in range(1, 3)]
+        offsets1 = [s1._voice_manager.get_voice_config(i, 0.0).pitch_offset for i in range(1, 3)]
+        offsets2 = [s2._voice_manager.get_voice_config(i, 0.0).pitch_offset for i in range(1, 3)]
         assert offsets1 != offsets2
 
     def test_stochastic_pitch_same_stream_id_reproducible(self):
@@ -271,8 +271,8 @@ class TestStochasticStreamIdInjection:
             'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
         }, stream_id='same_stream')
         for i in range(3):
-            assert (s1._voice_manager.get_voice_config(i).pitch_offset ==
-                    s2._voice_manager.get_voice_config(i).pitch_offset)
+            assert (s1._voice_manager.get_voice_config(i, 0.0).pitch_offset ==
+                    s2._voice_manager.get_voice_config(i, 0.0).pitch_offset)
 
     def test_stochastic_onset_stream_id_injected(self):
         """StochasticOnsetStrategy riceve stream_id automaticamente."""
@@ -282,7 +282,7 @@ class TestStochasticStreamIdInjection:
         }, stream_id='my_stream')
         # Se stream_id fosse mancante, solleverebbe TypeError
         for i in range(3):
-            offset = s._voice_manager.get_voice_config(i).onset_offset
+            offset = s._voice_manager.get_voice_config(i, 0.0).onset_offset
             assert 0.0 <= offset <= 0.2
 
     def test_stochastic_pointer_stream_id_injected(self):
@@ -292,7 +292,7 @@ class TestStochasticStreamIdInjection:
             'pointer': {'strategy': 'stochastic', 'pointer_range': 0.1},
         }, stream_id='my_stream')
         for i in range(3):
-            offset = s._voice_manager.get_voice_config(i).pointer_offset
+            offset = s._voice_manager.get_voice_config(i, 0.0).pointer_offset
             assert -0.1 <= offset <= 0.1
 
 
@@ -306,22 +306,22 @@ class TestPartialVoicesBlock:
         s = _build_stream({'num_voices': 4})
         assert s._voice_manager.max_voices == 4
         for i in range(4):
-            assert s._voice_manager.get_voice_config(i).pitch_offset == 0.0
-            assert s._voice_manager.get_voice_config(i).onset_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pitch_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
 
     def test_pitch_only_onset_zero(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'step', 'step': 3.0},
         })
-        assert s._voice_manager.get_voice_config(1).onset_offset == 0.0
+        assert s._voice_manager.get_voice_config(1, 0.0).onset_offset == 0.0
 
     def test_onset_only_pitch_zero(self):
         s = _build_stream({
             'num_voices': 3,
             'onset_offset': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1).pitch_offset == 0.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == 0.0
 
 
 # =============================================================================
