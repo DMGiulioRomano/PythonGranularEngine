@@ -6,7 +6,7 @@ Strategy pattern per la distribuzione della posizione di lettura (pointer)
 delle voci nella sintesi granulare multi-voice.
 
 Responsabilità:
-- Calcolare l'offset di pointer (normalizzato 0.0-1.0) per una voce data.
+- Calcolare l'offset di pointer (normalizzato 0.0-1.0) per una voce data al tempo t.
 - Voce 0 restituisce sempre 0.0 (riferimento immutato).
 - Il valore è additivo con il pointer base di PointerController e il grain
   jitter già esistente (mod_range). Vedere pointer_controller.py.
@@ -31,6 +31,8 @@ import random
 from abc import ABC, abstractmethod
 from typing import Dict, Type
 
+from parameters.parameter import resolve_param, StrategyParam
+
 
 # =============================================================================
 # ABSTRACT BASE CLASS
@@ -46,13 +48,14 @@ class VoicePointerStrategy(ABC):
     """
 
     @abstractmethod
-    def get_pointer_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """
-        Calcola l'offset di pointer per la voce data.
+        Calcola l'offset di pointer per la voce data al tempo dato.
 
         Args:
             voice_index: indice della voce (0-based). Voce 0 = riferimento.
             num_voices: numero totale di voci attive.
+            time: tempo corrente in secondi (onset del grain).
 
         Returns:
             Offset normalizzato (float). Voce 0 → sempre 0.0.
@@ -68,48 +71,49 @@ class LinearPointerStrategy(VoicePointerStrategy):
     """
     Offset lineare uniforme tra voci.
 
-    Voce i → i × step.
+    Voce i → i × step(t).
     Esempio: step=0.1, 4 voci → [0.0, 0.1, 0.2, 0.3]
     Crea un effetto di lettura da posizioni equidistanti nel sample.
     Step negativo → le voci leggono indietro rispetto alla voce 0.
     """
 
-    def __init__(self, step: float):
+    def __init__(self, step: StrategyParam):
         self.step = step
 
-    def get_pointer_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0:
             return 0.0
-        return float(voice_index * self.step)
+        return float(voice_index) * resolve_param(self.step, time)
 
 
 class StochasticPointerStrategy(VoicePointerStrategy):
     """
-    Offset fisso per voce, calcolato una volta con seed deterministico.
+    Offset per voce con seed deterministico; la magnitudine può variare nel
+    tempo se pointer_range è un Envelope.
 
     Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
-    L'offset è uniforme in [-pointer_range, +pointer_range].
+    _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
+    Offset = _cache[vi] * pointer_range(t).
     Voce 0 → sempre 0.0.
 
     Utile per "thickening": ogni voce legge da una posizione leggermente
     diversa nel sample, creando variazione timbrica senza pattern regolari.
     """
 
-    def __init__(self, pointer_range: float, stream_id: str):
+    def __init__(self, pointer_range: StrategyParam, stream_id: str):
         self.pointer_range = pointer_range
         self.stream_id = stream_id
         self._cache: Dict[int, float] = {}
 
-    def get_pointer_offset(self, voice_index: int, num_voices: int) -> float:
-        if voice_index == 0 or self.pointer_range == 0.0:
+    def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+        resolved = resolve_param(self.pointer_range, time)
+        if voice_index == 0 or resolved == 0.0:
             return 0.0
         if voice_index not in self._cache:
             seed = hash(self.stream_id + str(voice_index))
             rng = random.Random(seed)
-            self._cache[voice_index] = rng.uniform(
-                -self.pointer_range, self.pointer_range
-            )
-        return self._cache[voice_index]
+            self._cache[voice_index] = rng.uniform(-1.0, 1.0)
+        return self._cache[voice_index] * resolved
 
 
 # =============================================================================

@@ -175,7 +175,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U2. **ABC signature extension and all concrete strategy implementations**
+- [x] U2. **ABC signature extension and all concrete strategy implementations**
 
 **Goal:** Add `time: float` to all `get_*_offset` method signatures (ABC + concrete); strategies with scalar params accept `StrategyParam`; stochastic strategies separate normalized factor (cached) from scale (time-varying).
 

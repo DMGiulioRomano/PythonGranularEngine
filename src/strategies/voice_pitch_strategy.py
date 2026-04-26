@@ -6,7 +6,7 @@ Strategy pattern per la distribuzione di pitch (altezza) delle voci
 nella sintesi granulare multi-voice.
 
 Responsabilità:
-- Calcolare l'offset di pitch in SEMITONI per una voce data.
+- Calcolare l'offset di pitch in SEMITONI per una voce data al tempo t.
 - Voce 0 restituisce sempre 0.0 (riferimento immutato).
 - NON gestisce la variazione per-grano (responsabilità di PitchController + mod_range).
 
@@ -27,6 +27,8 @@ import math
 import random
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type
+
+from parameters.parameter import resolve_param, StrategyParam
 
 
 # =============================================================================
@@ -77,13 +79,14 @@ class VoicePitchStrategy(ABC):
     """
 
     @abstractmethod
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """
-        Calcola l'offset di pitch per la voce data.
+        Calcola l'offset di pitch per la voce data al tempo dato.
 
         Args:
             voice_index: indice della voce (0-based). Voce 0 = riferimento.
             num_voices: numero totale di voci attive.
+            time: tempo corrente in secondi (onset del grain).
 
         Returns:
             Offset in semitoni (float). Voce 0 → sempre 0.0.
@@ -97,37 +100,37 @@ class VoicePitchStrategy(ABC):
 
 class StepPitchStrategy(VoicePitchStrategy):
     """
-    Distribuzione lineare per step fisso.
+    Distribuzione lineare per step fisso o dinamico.
 
-    Voce i → i × step semitoni.
+    Voce i → i × step(t) semitoni.
     Esempio: step=3, 4 voci → [0, 3, 6, 9]
     """
 
-    def __init__(self, step: float):
+    def __init__(self, step: StrategyParam):
         self.step = step
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0:
             return 0.0
-        return float(voice_index * self.step)
+        return float(voice_index) * resolve_param(self.step, time)
 
 
 class RangePitchStrategy(VoicePitchStrategy):
     """
-    Distribuzione lineare nel range [0, semitone_range].
+    Distribuzione lineare nel range [0, semitone_range(t)].
 
     Le voci sono distribuite equidistanti nell'intervallo.
     Esempio: range=12, 4 voci → [0, 4, 8, 12]
     Con num_voices=1 → [0].
     """
 
-    def __init__(self, semitone_range: float):
+    def __init__(self, semitone_range: StrategyParam):
         self.semitone_range = semitone_range
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0 or num_voices <= 1:
             return 0.0
-        return float(voice_index * self.semitone_range / (num_voices - 1))
+        return float(voice_index) * resolve_param(self.semitone_range, time) / (num_voices - 1)
 
 
 class ChordPitchStrategy(VoicePitchStrategy):
@@ -149,6 +152,7 @@ class ChordPitchStrategy(VoicePitchStrategy):
       ...
 
     L'extend policy funziona invariata sugli intervalli invertiti.
+    Il parametro `time` è accettato ma ignorato (nessun param time-varying).
     """
 
     def __init__(self, chord: str, inversion: int = 0):
@@ -174,7 +178,7 @@ class ChordPitchStrategy(VoicePitchStrategy):
         base = rotated[0]
         return [x - base for x in rotated]
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0:
             return 0.0
         n = len(self._intervals)
@@ -185,28 +189,29 @@ class ChordPitchStrategy(VoicePitchStrategy):
 
 class StochasticPitchStrategy(VoicePitchStrategy):
     """
-    Offset fisso per voce, calcolato una volta con seed deterministico.
+    Offset per voce con seed deterministico; la direzione è fissa, la magnitudine
+    può variare nel tempo se semitone_range è un Envelope.
 
     Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
-    L'offset è uniforme in [-semitone_range, +semitone_range].
+    _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
+    Offset = _cache[vi] * semitone_range(t).
     Voce 0 → sempre 0.0.
     """
 
-    def __init__(self, semitone_range: float, stream_id: str):
+    def __init__(self, semitone_range: StrategyParam, stream_id: str):
         self.semitone_range = semitone_range
         self.stream_id = stream_id
         self._cache: Dict[int, float] = {}
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
-        if voice_index == 0 or self.semitone_range == 0.0:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+        resolved = resolve_param(self.semitone_range, time)
+        if voice_index == 0 or resolved == 0.0:
             return 0.0
         if voice_index not in self._cache:
             seed = hash(self.stream_id + str(voice_index))
             rng = random.Random(seed)
-            self._cache[voice_index] = rng.uniform(
-                -self.semitone_range, self.semitone_range
-            )
-        return self._cache[voice_index]
+            self._cache[voice_index] = rng.uniform(-1.0, 1.0)
+        return self._cache[voice_index] * resolved
 
 
 class SpectralPitchStrategy(VoicePitchStrategy):
@@ -221,6 +226,8 @@ class SpectralPitchStrategy(VoicePitchStrategy):
     Args:
         max_partial: numero di parziali pre-calcolati al __init__ (default 16).
                      Voci oltre max_partial sono calcolate on-demand.
+
+    Il parametro `time` è accettato ma ignorato (nessun param time-varying).
     """
 
     def __init__(self, max_partial: int = 16):
@@ -229,7 +236,7 @@ class SpectralPitchStrategy(VoicePitchStrategy):
             float(round(12 * math.log2(i + 1))) for i in range(max_partial)
         ]
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0:
             return 0.0
         while voice_index >= len(self._offsets):

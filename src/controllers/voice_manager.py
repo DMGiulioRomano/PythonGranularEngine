@@ -117,17 +117,17 @@ class VoiceManager:
             return VoiceConfig(0.0, 0.0, 0.0, 0.0)
 
         pitch = (
-            self._pitch_strategy.get_pitch_offset(voice_index, self.max_voices)
+            self._pitch_strategy.get_pitch_offset(voice_index, self.max_voices, 0.0)
             if self._pitch_strategy is not None
             else 0.0
         )
         onset = (
-            self._onset_strategy.get_onset_offset(voice_index, self.max_voices)
+            self._onset_strategy.get_onset_offset(voice_index, self.max_voices, 0.0)
             if self._onset_strategy is not None
             else 0.0
         )
         pointer = (
-            self._pointer_strategy.get_pointer_offset(voice_index, self.max_voices)
+            self._pointer_strategy.get_pointer_offset(voice_index, self.max_voices, 0.0)
             if self._pointer_strategy is not None
             else 0.0
         )
@@ -136,6 +136,7 @@ class VoiceManager:
                 voice_index=voice_index,
                 num_voices=self.max_voices,
                 spread=self._pan_spread,
+                time=0.0,
             )
             if self._pan_strategy is not None
             else 0.0

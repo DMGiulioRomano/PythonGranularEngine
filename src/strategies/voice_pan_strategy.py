@@ -7,14 +7,14 @@ nella sintesi granulare multi-voice.
 
 Responsabilita':
 - Calcolare l'offset di pan MACRO per una voce data, basandosi su
-  voice_index, num_voices e spread totale.
+  voice_index, num_voices, spread totale e tempo corrente.
 - NON gestisce il micro-jitter per-grano (responsabilita' del VoiceManager).
 - NON gestisce l'invariante voce 0 = riferimento (responsabilita' del VoiceManager).
 
 Design:
 - VoicePanStrategy (ABC): interfaccia comune
 - LinearPanStrategy: distribuzione deterministica equidistante
-- RandomPanStrategy: distribuzione stocastica uniforme per voce
+- RandomPanStrategy: distribuzione stocastica per voce, seed deterministico
 - AdditivePanStrategy: offset fisso additivo uguale per tutte le voci
 - VOICE_PAN_STRATEGIES: registry globale {nome: classe}
 - register_voice_pan_strategy(): estensibilita' dinamica
@@ -51,15 +51,17 @@ class VoicePanStrategy(ABC):
         self,
         voice_index: int,
         num_voices: int,
-        spread: float
+        spread: float,
+        time: float,
     ) -> float:
         """
-        Calcola l'offset di pan macro per la voce specificata.
+        Calcola l'offset di pan macro per la voce specificata al tempo dato.
 
         Args:
             voice_index: indice della voce (0-based)
             num_voices: numero totale di voci attive
-            spread: escursione totale in gradi (es. 180.0 = da -90 a +90)
+            spread: escursione totale in gradi (già risolta da VoiceManager)
+            time: tempo corrente in secondi (onset del grain)
 
         Returns:
             Offset in gradi da sommare al pan base dello stream.
@@ -89,21 +91,15 @@ class LinearPanStrategy(VoicePanStrategy):
         offset(v) = -spread/2 + v * spread / (N - 1)   per N > 1
         offset(0) = 0.0                                  per N == 1
 
-    Proprieta':
-    - Voce 0 sempre a -spread/2 (per N > 1)
-    - Ultima voce sempre a +spread/2
-    - Voci centrali simmetriche attorno a 0
-    - Completamente deterministica: stessa chiamata = stesso risultato
-
-    Uso tipico: distribuzione uniforme nello stereofield, ensemble
-    con posizioni fisse e definite.
+    Il parametro `time` è accettato ma ignorato (spread già risolto dal VoiceManager).
     """
 
     def get_pan_offset(
         self,
         voice_index: int,
         num_voices: int,
-        spread: float
+        spread: float,
+        time: float,
     ) -> float:
         """Calcola offset lineare equidistante."""
         if spread == 0.0 or num_voices <= 1:
@@ -118,28 +114,29 @@ class LinearPanStrategy(VoicePanStrategy):
 
 class RandomPanStrategy(VoicePanStrategy):
     """
-    Distribuzione stocastica uniforme.
+    Distribuzione stocastica uniforme con posizione stabile per voce.
 
-    Ogni chiamata campiona un offset casuale nell'intervallo
-    [-spread/2, +spread/2] con distribuzione uniforme.
-
-    Nota sul ciclo di vita:
-    Il campionamento avviene ad ogni chiamata. La stabilita' dell'offset
-    per-voce (macro = fisso per tutta la durata dello stream) e' responsabilita'
-    del VoiceManager, che chiama get_pan_offset UNA VOLTA alla costruzione
-    per ciascuna voce e memorizza il risultato.
+    _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
+    Offset = _cache[vi] * spread / 2.
+    Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
+    Voce 0 → sempre 0.0.
 
     Uso tipico: posizionamento "random but bounded" delle voci, texture
     dove la distribuzione spaziale deve essere imprevedibile ma contenuta.
     """
 
+    def __init__(self, stream_id: str):
+        self.stream_id = stream_id
+        self._cache: Dict[int, float] = {}
+
     def get_pan_offset(
         self,
         voice_index: int,
         num_voices: int,
-        spread: float
+        spread: float,
+        time: float,
     ) -> float:
-        """Campiona offset uniforme nel range [-spread/2, +spread/2]."""
+        """Campiona offset uniforme nel range [-spread/2, +spread/2], stabile per voce."""
         if spread == 0.0:
             return 0.0
 
@@ -148,7 +145,15 @@ class RandomPanStrategy(VoicePanStrategy):
                 f"spread deve essere >= 0, ricevuto: {spread}"
             )
 
-        return random.uniform(-spread / 2.0, spread / 2.0)
+        if voice_index == 0:
+            return 0.0
+
+        if voice_index not in self._cache:
+            seed = hash(self.stream_id + str(voice_index))
+            rng = random.Random(seed)
+            self._cache[voice_index] = rng.uniform(-1.0, 1.0)
+
+        return self._cache[voice_index] * spread / 2.0
 
     @property
     def name(self) -> str:
@@ -165,16 +170,15 @@ class AdditivePanStrategy(VoicePanStrategy):
     Semantica: spread e' interpretato come un offset assoluto da
     applicare al pan base dello stream per tutte le voci.
 
-    Uso tipico: spostare un gruppo di voci di una quantita' fissa
-    rispetto al pan base, controllo manuale diretto senza distribuzione
-    automatica tra le voci.
+    Il parametro `time` è accettato ma ignorato (spread già risolto dal VoiceManager).
     """
 
     def get_pan_offset(
         self,
         voice_index: int,
         num_voices: int,
-        spread: float
+        spread: float,
+        time: float,
     ) -> float:
         """Ritorna spread come offset fisso per tutte le voci."""
         return spread
@@ -215,7 +219,7 @@ def register_voice_pan_strategy(
 
     Esempio:
         class MyStereoSpread(VoicePanStrategy):
-            def get_pan_offset(self, voice_index, num_voices, spread):
+            def get_pan_offset(self, voice_index, num_voices, spread, time):
                 return (voice_index % 2) * spread - spread / 2
             @property
             def name(self): return 'stereo_spread'
@@ -242,17 +246,19 @@ class VoicePanStrategyFactory:
 
     Uso:
         strategy = VoicePanStrategyFactory.create('linear')
-        offset = strategy.get_pan_offset(voice_index=2, num_voices=4, spread=180.0)
+        strategy = VoicePanStrategyFactory.create('random', stream_id='s1')
+        offset = strategy.get_pan_offset(voice_index=2, num_voices=4, spread=180.0, time=0.0)
     """
 
     @staticmethod
-    def create(strategy_name: str) -> VoicePanStrategy:
+    def create(strategy_name: str, **kwargs) -> VoicePanStrategy:
         """
         Crea e restituisce un'istanza della strategy specificata.
 
         Args:
             strategy_name: nome della strategy nel registry
                            ('linear', 'random', 'additive', o custom)
+            **kwargs: parametri passati al costruttore della strategy
 
         Returns:
             Istanza di VoicePanStrategy corrispondente al nome
@@ -269,4 +275,4 @@ class VoicePanStrategyFactory:
             )
 
         strategy_class = VOICE_PAN_STRATEGIES[strategy_name]
-        return strategy_class()
+        return strategy_class(**kwargs)

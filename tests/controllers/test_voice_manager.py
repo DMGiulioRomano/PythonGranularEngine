@@ -299,7 +299,7 @@ class TestPanSpread:
         vm = VoiceManager(max_voices=3, pan_strategy=mock_pan, pan_spread=45.0)
         # Pre-computa all'init: controlla che voice_index=1 sia stato chiamato
         mock_pan.get_pan_offset.assert_any_call(
-            voice_index=1, num_voices=3, spread=45.0
+            voice_index=1, num_voices=3, spread=45.0, time=0.0
         )
 
     def test_default_pan_spread_is_zero(self):
