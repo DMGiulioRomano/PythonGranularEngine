@@ -85,6 +85,28 @@ Multi-voice system pre-computes pitch/onset/pointer/pan offsets per voice at `Vo
 - **Interpolation range for envelope on onset/pointer `step`**: verify negative value handling in integration tests.
 - **Interaction with time-varying `num_voices`**: skipped voices (index >= active) produce no VoiceConfig — already handled by `if voice_index < active` check in `generate_grains`.
 
+### Da ce-doc-review (2026-04-25)
+
+**P1 — da risolvere prima dell'implementazione**
+
+- [P1, error] **RandomPanStrategy stability broken:** `RandomPanStrategy.get_pan_offset` chiama `random.uniform` ad ogni invocazione (no cache). Con il refactoring per-grain → pan di ogni voce cambia ad ogni grain invece di essere stabile. Fix: aggiungere cache per-voce seeded da `stream_id + voice_index` (stesso pattern di `StochasticPitchStrategy._cache`).
+
+- [P1, error] **`StochasticPitchStrategy.semitone_range == 0.0` guard incompatibile con Envelope:** Guard corrente `if voice_index == 0 or self.semitone_range == 0.0` fallisce silenziosamente quando `self.semitone_range` è `Envelope` (mai `== 0.0`). Fix: `resolved = _resolve_param(self._semitone_range, time)` → `if voice_index == 0 or resolved == 0.0: return 0.0`.
+
+- [P1, error] **`_parse_strategy_kwarg` manca ramo `str`:** `ChordPitchStrategy` prende `chord: str`. Senza `isinstance(value, str): return value`, stringa come `"major"` → `float("major")` → `ValueError` a parse time.
+
+- [P1, omission] **Sito Voice-0 invariant non specificato dopo rimozione `_compute()`:** Piano rimuove `_compute()` senza specificare dove vive il guard `if voice_index == 0: return zeros` post-refactor. Decidere in U3: centralizzare in `get_voice_config` o affidarsi ai guard per-strategy.
+
+**P2 — da valutare**
+
+- [P2, omission] **`_resolve_param` duplica `_evaluate_input` da `parameter.py`:** Stessa logica `isinstance(param, Envelope) → evaluate(time) else float(param)`. Considerare estrazione come funzione condivisa per evitare manutenzione doppia.
+
+- [P2, omission] **`_parse_strategy_kwarg` reimplementa detection già in `Envelope.is_envelope_like()`:** `src/envelopes/envelope.py:235-277` copre tutti i formati (list, compact dict, standard dict). Sostituire `isinstance(value, list/dict)` con `Envelope.is_envelope_like(value)`.
+
+- [P2, omission] **`time_mode: normalized` — ordine inizializzazione non verificato:** Piano afferma `stream.duration` noto quando `_init_voice_manager` gira ma non mostra dove garantito. Aggiungere verifica esplicita in U4.
+
+- [P2, omission] **Tempo per-voce vs globale — conseguenza musicale non discussa:** U5 passa `voice_cursors[voice_index]`. Con `num_voices > 1`, voci diverse valutano envelope in momenti diversi simultaneamente. Intentional? Specificare in U5 Approach.
+
 ---
 
 ## High-Level Technical Design
