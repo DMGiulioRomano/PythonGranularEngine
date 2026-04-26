@@ -87,15 +87,15 @@ Multi-voice system pre-computes pitch/onset/pointer/pan offsets per voice at `Vo
 
 ### Da ce-doc-review (2026-04-25)
 
-**P1 — da risolvere prima dell'implementazione**
+**P1 — risolti nel piano**
 
-- [P1, error] **RandomPanStrategy stability broken:** `RandomPanStrategy.get_pan_offset` chiama `random.uniform` ad ogni invocazione (no cache). Con il refactoring per-grain → pan di ogni voce cambia ad ogni grain invece di essere stabile. Fix: aggiungere cache per-voce seeded da `stream_id + voice_index` (stesso pattern di `StochasticPitchStrategy._cache`).
+- [P1, ✓ risolto in U2] **RandomPanStrategy stability:** aggiunta cache per-voce seeded in `RandomPanStrategy` (vedi U2 Approach).
 
-- [P1, error] **`StochasticPitchStrategy.semitone_range == 0.0` guard incompatibile con Envelope:** Guard corrente `if voice_index == 0 or self.semitone_range == 0.0` fallisce silenziosamente quando `self.semitone_range` è `Envelope` (mai `== 0.0`). Fix: `resolved = _resolve_param(self._semitone_range, time)` → `if voice_index == 0 or resolved == 0.0: return 0.0`.
+- [P1, ✓ risolto in U2] **`StochasticPitchStrategy` guard:** guard riscritto con `_resolve_param` prima del check (vedi U2 Approach).
 
-- [P1, error] **`_parse_strategy_kwarg` manca ramo `str`:** `ChordPitchStrategy` prende `chord: str`. Senza `isinstance(value, str): return value`, stringa come `"major"` → `float("major")` → `ValueError` a parse time.
+- [P1, ✓ risolto in U4] **`_parse_strategy_kwarg` ramo `str`:** aggiunto primo branch `isinstance(value, str) → return value` (vedi U4 Approach).
 
-- [P1, omission] **Sito Voice-0 invariant non specificato dopo rimozione `_compute()`:** Piano rimuove `_compute()` senza specificare dove vive il guard `if voice_index == 0: return zeros` post-refactor. Decidere in U3: centralizzare in `get_voice_config` o affidarsi ai guard per-strategy.
+- [P1, ✓ risolto in U3] **Voice-0 invariant site:** guard lasciato ai strategy, non a VoiceManager (vedi U3 Approach).
 
 **P2 — da valutare**
 
@@ -192,9 +192,16 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 **Approach:**
 - ABC: `get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float` (and analogues)
 - Float-param strategies (`step`, `semitone_range`, `pointer_range`, `base`): type becomes `StrategyParam`; body uses `_resolve_param(self._param, time)`
-- `StochasticPitchStrategy`: `_cache[vi]` stores normalized factor; `get_pitch_offset` returns `_cache[vi] * _resolve_param(self._semitone_range, time)`
+- `StochasticPitchStrategy`: `_cache[vi]` stores normalized factor; `get_pitch_offset` body:
+  ```python
+  resolved = _resolve_param(self._semitone_range, time)
+  if voice_index == 0 or resolved == 0.0:
+      return 0.0
+  return self._cache[voice_index] * resolved
+  ```
 - `ChordPitchStrategy`, `SpectralPitchStrategy`: receive `time`, ignore it
 - `VoicePanStrategy.get_pan_offset(vi, nv, spread, time)`: `spread` still passed by VoiceManager; concrete pan strategies receive `time`
+- `RandomPanStrategy`: add per-voice seeded cache `_cache: Dict[int, float]`; seed `hash(stream_id + str(voice_index))` per generare valore fisso `[-1, 1]` per voce; primo accesso popola, successivi restituiscono valore cached. `stream_id` passato al costruttore (stesso pattern `StochasticPitchStrategy`).
 
 **Execution note:** Test-first — update existing tests first (red for wrong signature), then implement new signature.
 
@@ -233,6 +240,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 - Remove `self.voice_configs` and `_compute(voice_index)`
 - Signature: `get_voice_config(self, voice_index: int, time: float) -> VoiceConfig`
 - Body calls `strategy.get_*_offset(vi, nv, time)` directly
+- **Voice-0 invariant:** non aggiungere guard in `get_voice_config` — garantito dai strategy (U2). `get_voice_config(0, t)` restituisce `VoiceConfig(0.0, 0.0, 0.0, 0.0)` perché ogni strategy ritorna `0.0` per `voice_index == 0`.
 - `self._pan_spread: Union[float, Envelope]` — resolved with `_resolve_param(self._pan_spread, time)` before passing to `get_pan_offset`
 - `pan_spread` in `VoiceManager` constructor: type `Union[float, Envelope]`
 - `VoiceConfig` stays frozen dataclass, ephemeral per call
@@ -265,7 +273,8 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 - Test: `tests/core/test_stream.py` or existing integration file
 
 **Approach:**
-- Helper function `_parse_strategy_kwarg(value, duration) -> Union[float, Envelope]`:
+- Helper function `_parse_strategy_kwarg(value, duration) -> Union[float, Envelope, str]`:
+  - `isinstance(value, str)` → `return value` (chord name e simili — non convertire)
   - `isinstance(value, (int, float))` → `float(value)`
   - `isinstance(value, list)` → `Envelope(value)` (absolute time)
   - `isinstance(value, dict)` with `time_mode: normalized` → `create_scaled_envelope(value, duration)`
