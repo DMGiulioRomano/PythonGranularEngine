@@ -667,3 +667,67 @@ class TestScatter:
         s.generate_grains()
         onsets = [g.onset for g in s.grains]
         assert onsets == sorted(onsets)
+
+
+# =============================================================================
+# generate_grains — envelope valutata per-grain
+# =============================================================================
+
+class TestGenerateGrainsEnvelopePerGrain:
+    """Verifica che l'envelope della strategy venga valutata al tempo reale di
+    ogni grain (voice_cursors[voice_index]), non una volta sola per stream."""
+
+    def test_pitch_envelope_early_grains_smaller_than_late(self):
+        """Voice 1 con step=Envelope([[0,0],[1,12]]): pitch cresce nel tempo."""
+        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from envelopes.envelope import Envelope
+        env = Envelope([[0.0, 0.0], [1.0, 12.0]])
+        vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
+        # duration=1.0, inter_onset=0.1 → ~10 grani per voce a t=0.0,0.1,...,0.9
+        s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s.generate_grains()
+        v1 = s.voices[1]
+        assert len(v1) >= 3, "servono almeno 3 grani per confrontare early/late"
+        first_ratio = v1[0].pitch_ratio
+        last_ratio = v1[-1].pitch_ratio
+        # Al t=0: step=0 → ratio=1.0; al t=0.9: step=10.8 → ratio = 2^(10.8/12) ≈ 1.93
+        assert last_ratio > first_ratio
+
+    def test_pitch_envelope_voice_0_always_unmodified(self):
+        """Anche con step envelope, voce 0 ha sempre pitch_ratio = base."""
+        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from envelopes.envelope import Envelope
+        env = Envelope([[0.0, 0.0], [1.0, 12.0]])
+        vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
+        s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s.generate_grains()
+        voice_0_ratios = [g.pitch_ratio for g in s.voices[0]]
+        assert all(r == pytest.approx(1.0) for r in voice_0_ratios)
+
+    def test_scalar_strategy_regression_constant_over_time(self):
+        """Con step scalare, tutti i grani di voice 1 hanno stesso pitch_ratio."""
+        from strategies.voice_pitch_strategy import StepPitchStrategy
+        vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
+        s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s.generate_grains()
+        v1_ratios = [g.pitch_ratio for g in s.voices[1]]
+        expected = 2 ** (12.0 / 12.0)
+        assert all(r == pytest.approx(expected) for r in v1_ratios)
+
+    def test_pitch_envelope_values_match_envelope_at_voice_cursor(self):
+        """Ogni grain di voice 1 ha pitch_ratio = 2^(step_at_t/12) con t=voice_cursor."""
+        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from envelopes.envelope import Envelope
+        env = Envelope([[0.0, 0.0], [1.0, 12.0]])
+        vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
+        inter_onset = 0.1
+        s = _make_stream(duration=1.0, inter_onset=inter_onset, pitch_ratio=1.0, voice_manager=vm)
+        s.generate_grains()
+        v1 = s.voices[1]
+        for i, grain in enumerate(v1):
+            t = i * inter_onset
+            expected_step = env.evaluate(t)
+            expected_ratio = 2 ** (expected_step / 12.0)
+            assert grain.pitch_ratio == pytest.approx(expected_ratio, rel=1e-4), (
+                f"grain {i} at t={t:.1f}: expected ratio {expected_ratio:.4f}, got {grain.pitch_ratio:.4f}"
+            )

@@ -309,7 +309,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U5. **Update `generate_grains` to pass `t` to `get_voice_config`**
+- [x] U5. **Update `generate_grains` to pass `t` to `get_voice_config`**
 
 **Goal:** `generate_grains` passes current voice time to `VoiceManager.get_voice_config`.
 
