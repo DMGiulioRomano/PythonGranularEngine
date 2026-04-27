@@ -295,6 +295,17 @@ class TestStochasticStreamIdInjection:
             offset = s._voice_manager.get_voice_config(i, 0.0).pointer_offset
             assert -0.1 <= offset <= 0.1
 
+    def test_random_pan_stream_id_injected(self):
+        """RandomPanStrategy riceve stream_id automaticamente — no TypeError."""
+        s = _build_stream({
+            'num_voices': 3,
+            'pan': {'strategy': 'random', 'spread': 60.0},
+        }, stream_id='my_stream')
+        assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
+        for i in range(1, 3):
+            offset = s._voice_manager.get_voice_config(i, 0.0).pan_offset
+            assert -30.0 <= offset <= 30.0
+
 
 # =============================================================================
 # 8. Blocco voices parziale
@@ -490,3 +501,134 @@ class TestScatterParsing:
         """_scatter espone get_value (è un Parameter)."""
         s = _build_stream({'num_voices': 2, 'scatter': 0.5})
         assert callable(s._scatter.get_value)
+
+
+# =============================================================================
+# 13. U4 — YAML strategy kwargs con Envelope (list / dict / normalized)
+# =============================================================================
+
+class TestStrategyKwargsEnvelope:
+    """
+    _parse_strategy_kwarg converte automaticamente list/dict envelope-like
+    in oggetti Envelope prima di passarli alla strategy factory.
+    Scalari e stringhe restano invariati.
+    """
+
+    # --- scalar backward compat ---
+
+    def test_scalar_step_constant_offset(self):
+        """step: 2 → offset identico a time=0 e time=1."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {'strategy': 'step', 'step': 2},
+        })
+        vc0 = s._voice_manager.get_voice_config(1, 0.0)
+        vc1 = s._voice_manager.get_voice_config(1, 1.0)
+        assert vc0.pitch_offset == pytest.approx(vc1.pitch_offset)
+        assert vc0.pitch_offset == pytest.approx(2.0)
+
+    # --- list envelope ---
+
+    def test_list_envelope_step_varies_over_time(self):
+        """step: [[0,0],[10,12]] → offset più grande a time=10 che a time=0."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {'strategy': 'step', 'step': [[0, 0], [10, 12]]},
+        })
+        vc_early = s._voice_manager.get_voice_config(1, 0.0)
+        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        assert vc_late.pitch_offset > vc_early.pitch_offset
+
+    def test_list_envelope_onset_varies_over_time(self):
+        """step: [[0,0],[10,0.2]] onset → varia nel tempo."""
+        s = _build_stream({
+            'num_voices': 4,
+            'onset_offset': {'strategy': 'linear', 'step': [[0, 0.0], [10, 0.2]]},
+        })
+        vc_early = s._voice_manager.get_voice_config(1, 0.0)
+        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        assert vc_late.onset_offset > vc_early.onset_offset
+
+    def test_list_envelope_pointer_varies_over_time(self):
+        """step: [[0,0],[10,0.5]] linear pointer → varia nel tempo."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pointer': {'strategy': 'linear', 'step': [[0, 0.0], [10, 0.5]]},
+        })
+        vc_early = s._voice_manager.get_voice_config(1, 0.0)
+        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        assert vc_late.pointer_offset > vc_early.pointer_offset
+
+    # --- pan_spread envelope ---
+
+    def test_pan_spread_list_envelope_stored_as_envelope(self):
+        """spread: [[0,0],[10,120]] → _pan_spread è Envelope nel VoiceManager."""
+        from envelopes.envelope import Envelope
+        s = _build_stream({
+            'num_voices': 4,
+            'pan': {'strategy': 'linear', 'spread': [[0, 0], [10, 120]]},
+        })
+        assert isinstance(s._voice_manager._pan_spread, Envelope)
+
+    def test_pan_spread_envelope_pan_varies_over_time(self):
+        """spread Envelope → pan_offset voce 1 più grande a t=10 che t=0."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pan': {'strategy': 'linear', 'spread': [[0, 0], [10, 120]]},
+        })
+        vc_early = s._voice_manager.get_voice_config(1, 0.0)
+        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        assert abs(vc_late.pan_offset) > abs(vc_early.pan_offset)
+
+    # --- dict envelope normalized ---
+
+    def test_dict_envelope_normalized_step(self):
+        """step: {points: [[0,0],[1,12]], time_mode: normalized} → scala a stream.duration."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {
+                'strategy': 'step',
+                'step': {'points': [[0, 0], [1, 12]], 'time_mode': 'normalized'},
+            },
+        })
+        # duration=10.0: normalized 1.0 → t=10.0
+        vc_end = s._voice_manager.get_voice_config(1, 10.0)
+        assert vc_end.pitch_offset == pytest.approx(12.0)
+
+    # --- string kwargs pass-through (chord name) ---
+
+    def test_string_kwarg_not_converted(self):
+        """chord: 'dom7' non viene convertito a float né Envelope."""
+        s = _build_stream({
+            'num_voices': 2,
+            'pitch': {'strategy': 'chord', 'chord': 'dom7'},
+        })
+        # Se la stringa venisse convertita a float/Envelope, la factory crasherebbe.
+        # dom7 = [0,4,7,10] → voce 1 → 4 semitoni
+        vc = s._voice_manager.get_voice_config(1, 0.0)
+        assert vc.pitch_offset == pytest.approx(4.0)
+
+    def test_int_kwarg_preserved_as_int(self):
+        """max_partial: 4 (int YAML) non viene convertito a float.
+
+        SpectralPitchStrategy usa range(max_partial) — float crasherebbe con TypeError.
+        """
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {'strategy': 'spectral', 'max_partial': 4},
+        })
+        vc = s._voice_manager.get_voice_config(1, 0.0)
+        assert vc.pitch_offset == pytest.approx(12.0)  # voce 1 = 1° parziale = 12 st
+
+    def test_chord_inversion_int_preserved(self):
+        """inversion: 1 (int YAML) non viene convertito a float.
+
+        ChordPitchStrategy._invert usa slicing con inversion — float crasherebbe.
+        maj inversion=1 → [0,3,8] → voce 1 = 3 semitoni.
+        """
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {'strategy': 'chord', 'chord': 'maj', 'inversion': 1},
+        })
+        vc = s._voice_manager.get_voice_config(1, 0.0)
+        assert vc.pitch_offset == pytest.approx(3.0)

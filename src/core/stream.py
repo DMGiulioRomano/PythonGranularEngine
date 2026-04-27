@@ -16,7 +16,7 @@ import random
 from typing import List, Optional, Union
 
 from core.grain import Grain
-from envelopes.envelope import Envelope
+from envelopes.envelope import Envelope, create_scaled_envelope
 from controllers.window_controller import WindowController
 from controllers.pointer_controller import PointerController
 from controllers.pitch_controller import PitchController
@@ -31,6 +31,19 @@ from strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from strategies.voice_pan_strategy import VoicePanStrategyFactory
 from dataclasses import fields
+
+
+def _parse_strategy_kwarg(value, duration: float):
+    """Converte kwarg YAML strategy: str/int passthrough, envelope-like → Envelope."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    if Envelope.is_envelope_like(value):
+        if isinstance(value, dict) and value.get('time_mode') == 'normalized':
+            return create_scaled_envelope(value, duration, 'normalized')
+        return Envelope(value)
+    return value
 
 
 class Stream:
@@ -187,7 +200,6 @@ class Stream:
 
         # Estrae max_voices per pre-computare tutti i VoiceConfig all'init.
         # Se num_voices è un Envelope, max_voices = picco dei breakpoints.
-        from envelopes.envelope import Envelope
         param_val = self._num_voices.value
         if isinstance(param_val, Envelope):
             max_voices = int(max(bp[1] for bp in param_val.breakpoints))
@@ -202,6 +214,7 @@ class Stream:
             name = kw.pop('strategy')
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
+            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             pitch_strategy = VoicePitchStrategyFactory.create(name, **kw)
 
         # --- ONSET ---
@@ -211,6 +224,7 @@ class Stream:
             name = kw.pop('strategy')
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
+            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             onset_strategy = VoiceOnsetStrategyFactory.create(name, **kw)
 
         # --- POINTER ---
@@ -220,6 +234,7 @@ class Stream:
             name = kw.pop('strategy')
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
+            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             pointer_strategy = VoicePointerStrategyFactory.create(name, **kw)
 
         # --- PAN ---
@@ -228,8 +243,10 @@ class Stream:
         if 'pan' in v:
             kw = dict(v['pan'])
             name = kw.pop('strategy')
-            pan_spread = float(kw.pop('spread', 0.0))
-            pan_strategy = VoicePanStrategyFactory.create(name)
+            pan_spread = _parse_strategy_kwarg(kw.pop('spread', 0.0), self.duration)
+            if name == 'random':
+                kw['stream_id'] = self.stream_id
+            pan_strategy = VoicePanStrategyFactory.create(name, **kw)
 
         self._voice_manager = VoiceManager(
             max_voices=max_voices,
