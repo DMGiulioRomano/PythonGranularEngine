@@ -4,16 +4,16 @@ test_voice_pointer_strategy.py
 
 Suite TDD per voice_pointer_strategy.py
 
-Moduli sotto test (da scrivere):
+Moduli sotto test:
 - VoicePointerStrategy (ABC)
-- LinearPointerStrategy    → voce i = i × step (normalizzato 0.0-1.0)
-- StochasticPointerStrategy → offset fisso per voce, seed deterministico
+- LinearPointerStrategy    → voce i = i × step(t) (normalizzato 0.0-1.0)
+- StochasticPointerStrategy → offset per voce, seed deterministico, magnitudine time-varying
 
 Principi di design:
 - Voce 0 restituisce SEMPRE 0.0 (riferimento immutato)
 - Il valore restituito è un offset normalizzato (0.0-1.0) sulla posizione nel sample
-- Additivo con il pointer base di PointerController e il grain jitter (già esistente)
-- StochasticPointerStrategy: seed = hash(stream_id + str(voice_index))
+- get_pointer_offset(voice_index, num_voices, time) — time required
+- StochasticPointerStrategy: cache memorizza fattore normalizzato [-1,1]
 
 Organizzazione:
   1.  VoicePointerStrategy ABC
@@ -24,6 +24,7 @@ Organizzazione:
   6.  VOICE_POINTER_STRATEGIES registry
   7.  register_voice_pointer_strategy()
   8.  VoicePointerStrategyFactory
+  9.  Parametri dinamici (Envelope)
 """
 
 import pytest
@@ -97,6 +98,7 @@ class TestVoicePointerStrategyABC:
         params = list(sig.parameters.keys())
         assert 'voice_index' in params
         assert 'num_voices' in params
+        assert 'time' in params
 
 
 # =============================================================================
@@ -108,43 +110,43 @@ class TestLinearPointerStrategy:
     def test_voice_0_returns_zero(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.1)
-        assert s.get_pointer_offset(voice_index=0, num_voices=4) == 0.0
+        assert s.get_pointer_offset(voice_index=0, num_voices=4, time=0.0) == 0.0
 
     def test_voice_1_returns_one_step(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.1)
-        assert s.get_pointer_offset(voice_index=1, num_voices=4) == pytest.approx(0.1)
+        assert s.get_pointer_offset(voice_index=1, num_voices=4, time=0.0) == pytest.approx(0.1)
 
     def test_voice_2_returns_two_steps(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.1)
-        assert s.get_pointer_offset(voice_index=2, num_voices=4) == pytest.approx(0.2)
+        assert s.get_pointer_offset(voice_index=2, num_voices=4, time=0.0) == pytest.approx(0.2)
 
     def test_voice_3_returns_three_steps(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.1)
-        assert s.get_pointer_offset(voice_index=3, num_voices=4) == pytest.approx(0.3)
+        assert s.get_pointer_offset(voice_index=3, num_voices=4, time=0.0) == pytest.approx(0.3)
 
     def test_negative_step(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=-0.05)
-        assert s.get_pointer_offset(voice_index=2, num_voices=4) == pytest.approx(-0.10)
+        assert s.get_pointer_offset(voice_index=2, num_voices=4, time=0.0) == pytest.approx(-0.10)
 
     def test_step_zero_all_voices_zero(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.0)
         for i in range(4):
-            assert s.get_pointer_offset(voice_index=i, num_voices=4) == 0.0
+            assert s.get_pointer_offset(voice_index=i, num_voices=4, time=0.0) == 0.0
 
     def test_num_voices_one(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.1)
-        assert s.get_pointer_offset(voice_index=0, num_voices=1) == 0.0
+        assert s.get_pointer_offset(voice_index=0, num_voices=1, time=0.0) == 0.0
 
     def test_small_step_fine_spread(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.01)
-        assert s.get_pointer_offset(voice_index=5, num_voices=8) == pytest.approx(0.05)
+        assert s.get_pointer_offset(voice_index=5, num_voices=8, time=0.0) == pytest.approx(0.05)
 
 
 # =============================================================================
@@ -156,13 +158,13 @@ class TestStochasticPointerStrategy:
     def test_voice_0_always_zero(self):
         _, _, StochasticPointerStrategy, *_ = _get_module()
         s = StochasticPointerStrategy(pointer_range=0.2, stream_id="s1")
-        assert s.get_pointer_offset(voice_index=0, num_voices=4) == 0.0
+        assert s.get_pointer_offset(voice_index=0, num_voices=4, time=0.0) == 0.0
 
     def test_offset_within_range(self):
         _, _, StochasticPointerStrategy, *_ = _get_module()
         s = StochasticPointerStrategy(pointer_range=0.3, stream_id="s1")
         for i in range(1, 8):
-            offset = s.get_pointer_offset(voice_index=i, num_voices=8)
+            offset = s.get_pointer_offset(voice_index=i, num_voices=8, time=0.0)
             assert -0.3 <= offset <= 0.3
 
     def test_deterministic_same_stream(self):
@@ -170,27 +172,43 @@ class TestStochasticPointerStrategy:
         s1 = StochasticPointerStrategy(pointer_range=0.5, stream_id="my_stream")
         s2 = StochasticPointerStrategy(pointer_range=0.5, stream_id="my_stream")
         for i in range(1, 5):
-            assert s1.get_pointer_offset(i, 5) == s2.get_pointer_offset(i, 5)
+            assert s1.get_pointer_offset(i, 5, 0.0) == s2.get_pointer_offset(i, 5, 0.0)
 
     def test_different_stream_ids_different_offsets(self):
         _, _, StochasticPointerStrategy, *_ = _get_module()
         s1 = StochasticPointerStrategy(pointer_range=0.5, stream_id="stream_A")
         s2 = StochasticPointerStrategy(pointer_range=0.5, stream_id="stream_B")
-        offsets1 = [s1.get_pointer_offset(i, 4) for i in range(1, 4)]
-        offsets2 = [s2.get_pointer_offset(i, 4) for i in range(1, 4)]
+        offsets1 = [s1.get_pointer_offset(i, 4, 0.0) for i in range(1, 4)]
+        offsets2 = [s2.get_pointer_offset(i, 4, 0.0) for i in range(1, 4)]
         assert offsets1 != offsets2
 
     def test_pointer_range_zero_all_zero(self):
         _, _, StochasticPointerStrategy, *_ = _get_module()
         s = StochasticPointerStrategy(pointer_range=0.0, stream_id="s1")
         for i in range(4):
-            assert s.get_pointer_offset(i, 4) == 0.0
+            assert s.get_pointer_offset(i, 4, 0.0) == 0.0
 
     def test_different_voices_different_offsets(self):
         _, _, StochasticPointerStrategy, *_ = _get_module()
         s = StochasticPointerStrategy(pointer_range=0.5, stream_id="s1")
-        offsets = [s.get_pointer_offset(i, 6) for i in range(1, 6)]
+        offsets = [s.get_pointer_offset(i, 6, 0.0) for i in range(1, 6)]
         assert len(set(offsets)) > 1
+
+    def test_fixed_range_same_at_any_time(self):
+        """Float pointer_range: stesso risultato a qualsiasi time."""
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        s = StochasticPointerStrategy(pointer_range=0.5, stream_id="s1")
+        assert s.get_pointer_offset(1, 4, 0.0) == s.get_pointer_offset(1, 4, 1.0)
+
+    def test_direction_invariant_with_envelope_range(self):
+        """Con range envelope, il segno dell'offset rimane invariato."""
+        from envelopes.envelope import Envelope
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        env = Envelope([[0, 0.1], [1, 0.5]])
+        s = StochasticPointerStrategy(pointer_range=env, stream_id="s1")
+        sign_at_0 = s.get_pointer_offset(1, 4, 0.0) > 0
+        sign_at_1 = s.get_pointer_offset(1, 4, 1.0) > 0
+        assert sign_at_0 == sign_at_1
 
 
 # =============================================================================
@@ -206,7 +224,7 @@ class TestVoiceZeroInvariant:
     def test_voice_0_is_always_zero(self, strategy_fixture):
         mod = _get_module()
         strategy = strategy_fixture(mod)
-        assert strategy.get_pointer_offset(voice_index=0, num_voices=4) == 0.0
+        assert strategy.get_pointer_offset(voice_index=0, num_voices=4, time=0.0) == 0.0
 
 
 # =============================================================================
@@ -218,12 +236,12 @@ class TestEdgeCases:
     def test_linear_num_voices_1(self):
         _, LinearPointerStrategy, *_ = _get_module()
         s = LinearPointerStrategy(step=0.1)
-        assert s.get_pointer_offset(0, 1) == 0.0
+        assert s.get_pointer_offset(0, 1, 0.0) == 0.0
 
     def test_stochastic_num_voices_1(self):
         _, _, StochasticPointerStrategy, *_ = _get_module()
         s = StochasticPointerStrategy(pointer_range=0.2, stream_id="s1")
-        assert s.get_pointer_offset(0, 1) == 0.0
+        assert s.get_pointer_offset(0, 1, 0.0) == 0.0
 
 
 # =============================================================================
@@ -260,7 +278,7 @@ class TestRegisterVoicePointerStrategy:
         VoicePointerStrategy, _, _, VOICE_POINTER_STRATEGIES, register_voice_pointer_strategy, _ = _get_module()
 
         class FixedPointer(VoicePointerStrategy):
-            def get_pointer_offset(self, voice_index, num_voices):
+            def get_pointer_offset(self, voice_index, num_voices, time):
                 return 0.0 if voice_index == 0 else 0.5
 
         register_voice_pointer_strategy('fixed', FixedPointer)
@@ -270,12 +288,12 @@ class TestRegisterVoicePointerStrategy:
         VoicePointerStrategy, _, _, _, register_voice_pointer_strategy, VoicePointerStrategyFactory = _get_module()
 
         class HalfPointer(VoicePointerStrategy):
-            def get_pointer_offset(self, voice_index, num_voices):
+            def get_pointer_offset(self, voice_index, num_voices, time):
                 return 0.0 if voice_index == 0 else 0.25
 
         register_voice_pointer_strategy('quarter', HalfPointer)
         s = VoicePointerStrategyFactory.create('quarter')
-        assert s.get_pointer_offset(1, 2) == 0.25
+        assert s.get_pointer_offset(1, 2, 0.0) == 0.25
 
 
 # =============================================================================
@@ -303,3 +321,29 @@ class TestVoicePointerStrategyFactory:
         VoicePointerStrategy, *_, VoicePointerStrategyFactory = _get_module()
         s = VoicePointerStrategyFactory.create('linear', step=0.1)
         assert isinstance(s, VoicePointerStrategy)
+
+
+# =============================================================================
+# 9. Parametri dinamici (Envelope)
+# =============================================================================
+
+class TestDynamicPointerParams:
+
+    def test_linear_step_envelope_varies(self):
+        """LinearPointerStrategy con Envelope: step varia nel tempo."""
+        from envelopes.envelope import Envelope
+        _, LinearPointerStrategy, *_ = _get_module()
+        env = Envelope([[0, 0.0], [1, 0.2]])
+        s = LinearPointerStrategy(step=env)
+        assert s.get_pointer_offset(1, 4, 0.0) == pytest.approx(0.0)
+        assert s.get_pointer_offset(1, 4, 1.0) == pytest.approx(0.2)
+
+    def test_stochastic_envelope_varies_magnitude(self):
+        """StochasticPointerStrategy con Envelope: magnitudine varia."""
+        from envelopes.envelope import Envelope
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        env = Envelope([[0, 0.1], [1, 0.5]])
+        s = StochasticPointerStrategy(pointer_range=env, stream_id="s1")
+        v0 = abs(s.get_pointer_offset(1, 4, 0.0))
+        v1 = abs(s.get_pointer_offset(1, 4, 1.0))
+        assert v1 > v0

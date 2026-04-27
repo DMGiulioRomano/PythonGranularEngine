@@ -1,0 +1,371 @@
+composition:
+  title: "test dynamic strategy params - time varying"
+
+# Ogni stream dura 10s. La voce 0 è sempre il riferimento immutabile.
+# Cosa ascoltare: l'evoluzione dell'effetto nei 10 secondi.
+# Baseline scalare: configs/PGE_testVoices.yml
+
+streams:
+
+  # ===========================================================================
+  # SEZIONE 1 — PITCH TIME-VARYING
+  # ===========================================================================
+
+  # PITCH — step cresce da 0 a 12 semitoni
+  # Cosa ascoltare: le 4 voci partono all'unisono, si allargano a distanza
+  # crescente fino a un'ottava per step. Spreading progressivo.
+  - stream_id: "pitch_step_widening"
+    onset: 0.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: [[0, 0.0], [10, 12.0]]
+
+  # PITCH — step si riduce da 12 a 0 semitoni (convergenza)
+  # Cosa ascoltare: le voci partono disperse a intervalli di terza minore,
+  # convergono gradualmente all'unisono.
+  - stream_id: "pitch_step_narrowing"
+    onset: 12.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: [[0, 12.0], [10, 0.0]]
+
+  # PITCH — range cresce da 0 a 24 semitoni (2 ottave)
+  # Differenza da step: lo step effettivo si adatta a N voci → distribuzione
+  # uniforme che espande. Cosa ascoltare: allargamento graduale con passo
+  # normalizzato su 4 voci.
+  - stream_id: "pitch_range_widening"
+    onset: 24.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: range
+        semitone_range: [[0, 0.0], [10, 24.0]]
+
+  # PITCH stochastico — range cresce da 0 a 12 semitoni
+  # Invariante: direzione per voce fissa (seeded), solo la magnitudine varia.
+  # Cosa ascoltare: detuning inizialmente assente, poi cresce in modo
+  # stabile (nessun cambio di direzione per singola voce).
+  - stream_id: "pitch_stochastic_growing_range"
+    onset: 36.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: stochastic
+        semitone_range: [[0, 0.0], [10, 12.0]]
+
+  # PITCH — step cresce, con oscillazione centrale (v-shape: prima scende poi sale)
+  # Cosa ascoltare: voci si allargano, convergono a t=5 all'unisono, poi si
+  # allargano di nuovo — ciclo in 10s.
+  - stream_id: "pitch_step_v_shape"
+    onset: 48.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: [[0, 12.0], [5, 0.0], [10, 12.0]]
+
+  # ===========================================================================
+  # SEZIONE 2 — ONSET OFFSET TIME-VARYING
+  # ===========================================================================
+
+  # ONSET linear — step cresce da 0 a 200ms
+  # Cosa ascoltare: le 4 voci inizialmente sincrone, poi si separano
+  # temporalmente fino a 600ms di ritardo sulla voce 3.
+  - stream_id: "onset_linear_widening"
+    onset: 60.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step: [[0, 0.0], [10, 0.2]]
+
+  # ONSET geometric — step fisso, base cresce da 1.0 a 3.0
+  # Cosa ascoltare: a t=0 le voci sono quasi equidistanti (base≈1),
+  # poi la spaziatura diventa esponenziale — le prime riflessioni rimangono
+  # ravvicinate, le ultime si diradano.
+  - stream_id: "onset_geometric_base_growing"
+    onset: 72.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: geometric
+        step: 0.04
+        base: [[0, 1.0], [10, 3.0]]
+
+  # ONSET geometric — step cresce, base fissa
+  # Cosa ascoltare: spaziatura esponenziale che scala uniformemente
+  # nel tempo (early reflections che diventano un eco sempre più largo).
+  - stream_id: "onset_geometric_step_growing"
+    onset: 84.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: geometric
+        step: [[0, 0.01], [10, 0.12]]
+        base: 2.0
+
+  # ONSET stochastico — max_offset cresce da 0 a 300ms
+  # Invariante: posizione relativa per voce deterministicamente fissa,
+  # magnitudine cresce. Cosa ascoltare: offset casuali ma stabili per
+  # voce che si amplificano nel tempo.
+  - stream_id: "onset_stochastic_growing"
+    onset: 96.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: stochastic
+        max_offset: [[0, 0.0], [10, 0.3]]
+
+  # ===========================================================================
+  # SEZIONE 3 — POINTER TIME-VARYING
+  # ===========================================================================
+
+  # POINTER linear — step cresce da 0 a 0.3
+  # Cosa ascoltare: le 4 teste di lettura inizialmente sovrapposte,
+  # poi si disperdono fino al 30% di distanza reciproca nel sample.
+  # Evoluzione timbrica crescente.
+  - stream_id: "pointer_linear_widening"
+    onset: 108.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: linear
+        step: [[0, 0.0], [10, 0.3]]
+
+  # POINTER stochastico — pointer_range cresce da 0 a 0.25
+  # Invariante: offset per voce fisso (seeded), range si espande.
+  # Cosa ascoltare: thickening timbrico che cresce.
+  - stream_id: "pointer_stochastic_growing"
+    onset: 120.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pointer:
+        strategy: stochastic
+        pointer_range: [[0, 0.0], [10, 0.25]]
+
+  # ===========================================================================
+  # SEZIONE 4 — PAN SPREAD TIME-VARYING
+  # ===========================================================================
+
+  # PAN linear spread — spread cresce da 0 a 180 gradi
+  # Cosa ascoltare: 4 voci partono al centro, si allargano simmetricamente
+  # fino a coprire l'intero panorama stereo.
+  - stream_id: "pan_linear_spread_widening"
+    onset: 132.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pan:
+        strategy: linear
+        spread: [[0, 0.0], [10, 180.0]]
+
+  # PAN additive spread — spread cresce da 0 a 90 gradi
+  # Nota: additive sposta TUTTE le voci dello stesso valore → il gruppo
+  # si sposta come blocco verso destra man mano che lo spread cresce.
+  - stream_id: "pan_additive_spread_growing"
+    onset: 144.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pan:
+        strategy: additive
+        spread: [[0, 0.0], [10, 90.0]]
+
+  # PAN random spread — spread cresce da 0 a 180 gradi
+  # Invariante: direzione per voce fissa (cache seeded), magnitudine cresce.
+  # Cosa ascoltare: voci con posizioni casuali fisse che si amplificano
+  # nel panorama stereo nel corso del tempo.
+  - stream_id: "pan_random_spread_growing"
+    onset: 156.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pan:
+        strategy: random
+        spread: [[0, 0.0], [10, 180.0]]
+
+  # ===========================================================================
+  # SEZIONE 5 — COMBINATI
+  # ===========================================================================
+
+  # PITCH step + ONSET linear, entrambi in crescita
+  # Cosa ascoltare: le voci si allargano simultaneamente in pitch e nel
+  # tempo — effetto di canone che si allarga spettro e temporalmente.
+  - stream_id: "combined_pitch_onset_widening"
+    onset: 168.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: [[0, 0.0], [10, 7.0]]
+      onset_offset:
+        strategy: linear
+        step: [[0, 0.0], [10, 0.15]]
+
+  # PITCH stochastico + PAN linear, entrambi in crescita
+  # Cosa ascoltare: detuning casuale + distribuzione spaziale che
+  # crescono di concerto — dal monofono all'ensemble distribuito.
+  - stream_id: "combined_pitch_stoch_pan_widening"
+    onset: 180.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        semitone_range: [[0, 0.0], [10, 8.0]]
+      pan:
+        strategy: linear
+        spread: [[0, 0.0], [10, 150.0]]
+
+  # TUTTE E QUATTRO LE DIMENSIONI con envelope
+  # Cosa ascoltare: evoluzione complessa — pitch, onset, pointer e pan
+  # si aprono simultaneamente. Punto di partenza: monofonico, puntuale,
+  # centrato. Punto di arrivo: cluster armonico, distribuito, panoramico.
+  - stream_id: "combined_all_four_widening"
+    onset: 192.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: [[0, 0.0], [10, 5.0]]
+      onset_offset:
+        strategy: linear
+        step: [[0, 0.0], [10, 0.1]]
+      pointer:
+        strategy: linear
+        step: [[0, 0.0], [10, 0.15]]
+      pan:
+        strategy: linear
+        spread: [[0, 0.0], [10, 120.0]]
+
+  # ===========================================================================
+  # SEZIONE 6 — TIME MODE NORMALIZED
+  # ===========================================================================
+
+  # PITCH step con time_mode: normalized
+  # Risultato atteso: identico a pitch_step_widening (sezione 1, stream 1),
+  # ma l'envelope è descritta in coordinate 0.0-1.0 invece che 0-10s.
+  # Usa per verificare che la normalizzazione a stream.duration funzioni.
+  - stream_id: "pitch_step_normalized"
+    onset: 204.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step:
+          points: [[0, 0.0], [1, 12.0]]
+          time_mode: normalized
+
+  # ONSET linear con time_mode: normalized + PAN spread normalized
+  # Verifica che time_mode: normalized funzioni anche su onset e pan_spread.
+  # Risultato atteso: identico a onset_linear_widening + pan_linear_spread_widening
+  # se combinati, scaled su duration=10s.
+  - stream_id: "onset_pan_normalized"
+    onset: 216.0
+    duration: 10.0
+    sample: "pino2.wav"
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      onset_offset:
+        strategy: linear
+        step:
+          points: [[0, 0.0], [1, 0.2]]
+          time_mode: normalized
+      pan:
+        strategy: linear
+        spread:
+          points: [[0, 0.0], [1, 180.0]]
+          time_mode: normalized

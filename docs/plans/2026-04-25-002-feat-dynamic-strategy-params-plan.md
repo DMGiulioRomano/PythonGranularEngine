@@ -139,7 +139,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ## Implementation Units
 
-- [ ] U1. **Utility `_resolve_param` e type alias `StrategyParam`**
+- [x] U1. **Utility `_resolve_param` e type alias `StrategyParam`**
 
 **Goal:** Shared primitive to resolve `Union[float, Envelope]` to `float` at time `t`.
 
@@ -175,7 +175,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U2. **ABC signature extension and all concrete strategy implementations**
+- [x] U2. **ABC signature extension and all concrete strategy implementations**
 
 **Goal:** Add `time: float` to all `get_*_offset` method signatures (ABC + concrete); strategies with scalar params accept `StrategyParam`; stochastic strategies separate normalized factor (cached) from scale (time-varying).
 
@@ -228,7 +228,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U3. **VoiceManager refactoring: remove pre-computation, add per-call dispatch**
+- [x] U3. **VoiceManager refactoring: remove pre-computation, add per-call dispatch**
 
 **Goal:** `get_voice_config(voice_index, time)` computes on-the-fly; remove `voice_configs: List[VoiceConfig]` and `_compute()`.
 
@@ -238,16 +238,21 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 **Files:**
 - Modify: `src/controllers/voice_manager.py`
-- Test: existing voice manager tests or dedicated section in strategy tests
+- Modify: `src/core/stream.py` (riga 329: `get_voice_config(voice_index, t)` — anticipato da U5 per mantenere `make tests` green)
+- Modify: `src/strategies/voice_pan_strategy.py` (guard voice_index==0 in `LinearPanStrategy` e `AdditivePanStrategy` — gap U2 rilevato durante U3)
+- Test: `tests/controllers/test_voice_manager.py` (riscritta: sezione 7 rimpiazza TestPrecomputedConfigs, aggiunta sezione 8 TestVoiceManagerTimeVarying)
+- Test: `tests/strategies/test_voice_pan_strategy.py` (aggiornati valori voice_index=0, aggiunta TestVoiceZeroInvariant per linear/additive)
+- Test: `tests/core/test_stream_voices_yaml.py` (tutte le chiamate `get_voice_config(i)` → `get_voice_config(i, 0.0)`)
 
 **Approach:**
-- Remove `self.voice_configs` and `_compute(voice_index)`
+- Remove `self.voice_configs` e `_compute(voice_index)`
 - Signature: `get_voice_config(self, voice_index: int, time: float) -> VoiceConfig`
 - Body calls `strategy.get_*_offset(vi, nv, time)` directly
-- **Voice-0 invariant:** non aggiungere guard in `get_voice_config` — garantito dai strategy (U2). `get_voice_config(0, t)` restituisce `VoiceConfig(0.0, 0.0, 0.0, 0.0)` perché ogni strategy ritorna `0.0` per `voice_index == 0`.
+- **Voice-0 invariant:** garantito dalle strategy. Gap U2: `LinearPanStrategy` e `AdditivePanStrategy` non avevano guard voice_index==0 — aggiunto in questa unit. I test pan aggiornati di conseguenza.
 - `self._pan_spread: Union[float, Envelope]` — resolved with `_resolve_param(self._pan_spread, time)` before passing to `get_pan_offset`
 - `pan_spread` in `VoiceManager` constructor: type `Union[float, Envelope]`
 - `VoiceConfig` stays frozen dataclass, ephemeral per call
+- **stream.py anticipato:** `generate_grains` già aggiornato (`get_voice_config(voice_index, t)`) per non rompere la suite. U5 rimane aperto per la documentazione del comportamento musicale per-voce.
 
 **Patterns to follow:**
 - `_resolve_param` from U1
@@ -264,7 +269,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U4. **YAML strategy kwargs parsing with Envelope support**
+- [x] U4. **YAML strategy kwargs parsing with Envelope support**
 
 **Goal:** In `stream._init_voice_manager`, detect if strategy kwarg is envelope value (list or dict) and build `Envelope` object before passing to factory.
 
@@ -279,11 +284,12 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 **Approach:**
 - Helper function `_parse_strategy_kwarg(value, duration) -> Union[float, Envelope, str]`:
   - `isinstance(value, str)` → `return value` (chord name e simili — non convertire)
-  - `isinstance(value, (int, float))` → `float(value)`
-  - `Envelope.is_envelope_like(value)` → se `dict` con `time_mode: normalized`: `create_scaled_envelope(value, duration)`; altrimenti `Envelope(value)`. Copre list, compact format, dict con `points`.
+  - `isinstance(value, (int, float))` → `return value` (no cast a float — `int` preservato per `range(max_partial)` e slicing con `inversion`)
+  - `Envelope.is_envelope_like(value)` → se `dict` con `time_mode: normalized`: `create_scaled_envelope(value, duration, 'normalized')`; altrimenti `Envelope(value)`. Copre list, compact format, dict con `points`.
 - Apply to all non-special kwargs (not `strategy`, not `stream_id`) before passing to factory
 - `pan_spread`: same parsing — `_parse_strategy_kwarg(kw.pop('spread', 0.0), self.duration)`
 - **`self.duration` disponibile:** `_init_stream_context` (step 4 in `__init__`) setta tutti i field di `StreamContext` — incluso `duration: float` — come attributi `self` via `setattr`. `_init_voice_manager` è step 7. Nessuna guardia necessaria: l'ordine è garantito dalla sequenza in `__init__`.
+- **Blocco pan — stream_id injection:** `RandomPanStrategy.__init__(stream_id: str)` richiede stream_id. Blocco pan inietta `stream_id` quando `name == 'random'` (stesso pattern di pitch/onset/pointer con stochastic) e passa `**kw` a factory. Bug scoperto in review — gap U2/U3 non coperto.
 
 **Patterns to follow:**
 - `stream._init_voice_manager` lines 198–241
@@ -296,13 +302,14 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 - Backward compat: all existing YAML configs in `configs/` parse without errors
 - `pan_spread` envelope: `spread: [[0, 0], [1, 120]]` → VoiceManager receives `Envelope` as `pan_spread`
 - Strategies without float params (Chord, Spectral): kwargs passed unchanged
+- `pan: {strategy: random, spread: 60.0}` → no TypeError; voice 0 offset 0.0; voice N in [-30, 30]
 
 **Verification:**
 - `make tests` green; integration test with YAML envelope strategy produces grains with varying offsets
 
 ---
 
-- [ ] U5. **Update `generate_grains` to pass `t` to `get_voice_config`**
+- [x] U5. **Update `generate_grains` to pass `t` to `get_voice_config`**
 
 **Goal:** `generate_grains` passes current voice time to `VoiceManager.get_voice_config`.
 

@@ -196,3 +196,12 @@ Testa la pipeline `make → Python → NumPy → filesystem`. Non richiede Csoun
 - **NumPy STEMS**: idem — onset relativi, nessun silenzio iniziale
 - **Csound/NumPy MIX**: onset assoluti, tutti gli stream posizionati correttamente nel tempo
 - **Cache**: `StreamCacheManager` è attivo solo con `RENDERER=csound STEMS=true CACHE=true`
+
+---
+
+## Platform Notes
+
+- **macOS**: fully supported (Apple Silicon and Intel)
+- **Linux**: fully supported (iZotope RX integration disabled automatically)
+- **Python**: requires 3.12 or higher
+- **Dependencies**: csound (Csound renderer), sox (audio trimming), NumPy/SciPy (NumPy renderer)

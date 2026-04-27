@@ -18,8 +18,18 @@ from shared.logger import log_clip_warning
 from shared.probability_gate import *
 from shared.distribution_strategy import DistributionFactory, DistributionStrategy
 from strategies.variation_registry import VariationFactory
-# Definisco un tipo alias per chiarezza: l'input può essere un numero o un Envelope
+
 ParamInput = Union[float, int, Envelope]
+StrategyParam = Union[float, Envelope]
+
+
+def resolve_param(param: Optional[StrategyParam], time: float) -> float:
+    """Risolve Union[float, Envelope] a float al tempo dato. None → 0.0."""
+    if param is None:
+        return 0.0
+    if isinstance(param, Envelope):
+        return param.evaluate(time)
+    return float(param)
 
 class Parameter:
     """
@@ -123,11 +133,7 @@ class Parameter:
 
     def _evaluate_input(self, param: Optional[ParamInput], time: float) -> float:
         """Helper: Estrae il valore numerico da un numero o da un Envelope."""
-        if param is None:
-            return 0.0
-        if isinstance(param, Envelope):
-            return param.evaluate(time)
-        return float(param)
+        return resolve_param(param, time)
 
     def _calculate_range(self, time: float) -> float:
         """Calcola l'ampiezza della variazione."""

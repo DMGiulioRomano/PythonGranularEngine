@@ -6,7 +6,7 @@ Strategy pattern per la distribuzione temporale (onset offset) delle voci
 nella sintesi granulare multi-voice.
 
 Responsabilità:
-- Calcolare l'offset di onset in SECONDI per una voce data.
+- Calcolare l'offset di onset in SECONDI per una voce data al tempo t.
 - Voce 0 restituisce sempre 0.0 (riferimento immutato).
 - L'offset è additivo rispetto all'onset base dello stream.
 - Gli offset sono sempre >= 0: le voci seguono nel tempo, non precedono.
@@ -27,6 +27,8 @@ import random
 from abc import ABC, abstractmethod
 from typing import Dict, Type
 
+from parameters.parameter import resolve_param, StrategyParam
+
 
 # =============================================================================
 # ABSTRACT BASE CLASS
@@ -41,13 +43,14 @@ class VoiceOnsetStrategy(ABC):
     """
 
     @abstractmethod
-    def get_onset_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_onset_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """
-        Calcola l'offset di onset per la voce data.
+        Calcola l'offset di onset per la voce data al tempo dato.
 
         Args:
             voice_index: indice della voce (0-based). Voce 0 = riferimento.
             num_voices: numero totale di voci attive.
+            time: tempo corrente in secondi (onset del grain).
 
         Returns:
             Offset in secondi (float >= 0.0). Voce 0 → sempre 0.0.
@@ -63,66 +66,68 @@ class LinearOnsetStrategy(VoiceOnsetStrategy):
     """
     Spaziatura lineare uniforme tra voci.
 
-    Voce i → i × step secondi.
+    Voce i → i × step(t) secondi.
     Esempio: step=0.05, 4 voci → [0.0, 0.05, 0.10, 0.15]
     Crea un effetto di phasing regolare (Truax-style).
     """
 
-    def __init__(self, step: float):
+    def __init__(self, step: StrategyParam):
         self.step = step
 
-    def get_onset_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_onset_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0:
             return 0.0
-        return float(voice_index * self.step)
+        return float(voice_index) * resolve_param(self.step, time)
 
 
 class GeometricOnsetStrategy(VoiceOnsetStrategy):
     """
     Spaziatura esponenziale tra voci.
 
-    Voce 1 → step
-    Voce 2 → step × base
-    Voce 3 → step × base²
-    Voce i → step × base^(i-1)
+    Voce 1 → step(t)
+    Voce 2 → step(t) × base(t)
+    Voce 3 → step(t) × base(t)²
+    Voce i → step(t) × base(t)^(i-1)
 
     Con base > 1: le voci più lontane hanno offset sempre più grandi.
     Con base = 1: equivale a LinearOnsetStrategy con step fisso per tutte le voci.
-    Utile per distribuzioni logaritmiche nello spazio temporale.
     """
 
-    def __init__(self, step: float, base: float):
+    def __init__(self, step: StrategyParam, base: StrategyParam):
         self.step = step
         self.base = base
 
-    def get_onset_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_onset_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         if voice_index == 0:
             return 0.0
-        return float(self.step * (self.base ** (voice_index - 1)))
+        return float(resolve_param(self.step, time) * (resolve_param(self.base, time) ** (voice_index - 1)))
 
 
 class StochasticOnsetStrategy(VoiceOnsetStrategy):
     """
-    Offset fisso per voce, calcolato una volta con seed deterministico.
+    Offset per voce con seed deterministico; la magnitudine può variare nel
+    tempo se max_offset è un Envelope.
 
     Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
-    L'offset è uniforme in [0, max_offset] (sempre non-negativo).
+    _cache[voice_index] memorizza il fattore normalizzato in [0, 1].
+    Offset = _cache[vi] * max_offset(t).
     Voce 0 → sempre 0.0.
     """
 
-    def __init__(self, max_offset: float, stream_id: str):
+    def __init__(self, max_offset: StrategyParam, stream_id: str):
         self.max_offset = max_offset
         self.stream_id = stream_id
         self._cache: Dict[int, float] = {}
 
-    def get_onset_offset(self, voice_index: int, num_voices: int) -> float:
-        if voice_index == 0 or self.max_offset == 0.0:
+    def get_onset_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+        resolved = resolve_param(self.max_offset, time)
+        if voice_index == 0 or resolved == 0.0:
             return 0.0
         if voice_index not in self._cache:
             seed = hash(self.stream_id + str(voice_index))
             rng = random.Random(seed)
-            self._cache[voice_index] = rng.uniform(0.0, self.max_offset)
-        return self._cache[voice_index]
+            self._cache[voice_index] = rng.uniform(0.0, 1.0)
+        return self._cache[voice_index] * resolved
 
 
 # =============================================================================
