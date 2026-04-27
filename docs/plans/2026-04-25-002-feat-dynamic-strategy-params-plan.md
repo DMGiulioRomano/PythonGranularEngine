@@ -269,7 +269,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 
 ---
 
-- [ ] U4. **YAML strategy kwargs parsing with Envelope support**
+- [x] U4. **YAML strategy kwargs parsing with Envelope support**
 
 **Goal:** In `stream._init_voice_manager`, detect if strategy kwarg is envelope value (list or dict) and build `Envelope` object before passing to factory.
 
@@ -284,11 +284,12 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 **Approach:**
 - Helper function `_parse_strategy_kwarg(value, duration) -> Union[float, Envelope, str]`:
   - `isinstance(value, str)` → `return value` (chord name e simili — non convertire)
-  - `isinstance(value, (int, float))` → `float(value)`
-  - `Envelope.is_envelope_like(value)` → se `dict` con `time_mode: normalized`: `create_scaled_envelope(value, duration)`; altrimenti `Envelope(value)`. Copre list, compact format, dict con `points`.
+  - `isinstance(value, (int, float))` → `return value` (no cast a float — `int` preservato per `range(max_partial)` e slicing con `inversion`)
+  - `Envelope.is_envelope_like(value)` → se `dict` con `time_mode: normalized`: `create_scaled_envelope(value, duration, 'normalized')`; altrimenti `Envelope(value)`. Copre list, compact format, dict con `points`.
 - Apply to all non-special kwargs (not `strategy`, not `stream_id`) before passing to factory
 - `pan_spread`: same parsing — `_parse_strategy_kwarg(kw.pop('spread', 0.0), self.duration)`
 - **`self.duration` disponibile:** `_init_stream_context` (step 4 in `__init__`) setta tutti i field di `StreamContext` — incluso `duration: float` — come attributi `self` via `setattr`. `_init_voice_manager` è step 7. Nessuna guardia necessaria: l'ordine è garantito dalla sequenza in `__init__`.
+- **Blocco pan — stream_id injection:** `RandomPanStrategy.__init__(stream_id: str)` richiede stream_id. Blocco pan inietta `stream_id` quando `name == 'random'` (stesso pattern di pitch/onset/pointer con stochastic) e passa `**kw` a factory. Bug scoperto in review — gap U2/U3 non coperto.
 
 **Patterns to follow:**
 - `stream._init_voice_manager` lines 198–241
@@ -301,6 +302,7 @@ get_offset(vi, nv, t) → _cache[vi] * _resolve_param(self._range, t)
 - Backward compat: all existing YAML configs in `configs/` parse without errors
 - `pan_spread` envelope: `spread: [[0, 0], [1, 120]]` → VoiceManager receives `Envelope` as `pan_spread`
 - Strategies without float params (Chord, Spectral): kwargs passed unchanged
+- `pan: {strategy: random, spread: 60.0}` → no TypeError; voice 0 offset 0.0; voice N in [-30, 30]
 
 **Verification:**
 - `make tests` green; integration test with YAML envelope strategy produces grains with varying offsets

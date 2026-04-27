@@ -14,8 +14,6 @@ Inspired by Barry Truax's DMX-1000 (1988).
 
 **Prima di modificare un modulo esistente:** esegui `/impact-analysis`.
 
-**Entry point TDD:** usa `/new-feature <nome>` per avviare ogni refactoring o nuova funzionalità.
-
 **Codice generato:** fornisci prima il codice, poi chiedi se l'utente vuole un documento markdown di confronto. Non generare automaticamente documenti markdown di confronto.
 
 **Csound:** fai sempre riferimento al FLOSS manual e fornisci link agli opcode referenziati.
@@ -37,6 +35,8 @@ Per refactoring e nuove funzionalità:
 - Se aggiungi feature completamente nuove: applica TDD
 - Se fix minori o docs: usa giudizio, ma `make tests` sempre obbligatorio prima di commit
 
+**Usa sempre la skill `/tdd` per applicare il ciclo rosso→verde.** Non scrivere mai test e codice di produzione insieme nello stesso passo — scrivi prima il test, confermane il fallimento, poi implementa.
+
 Non scrivere codice di produzione senza aver prima discusso e approvato il design — proponi le suite di test, attendi conferma.
 
 **CRITICAL: Test Gate prima di commit, PR e tag**
@@ -57,43 +57,6 @@ che toccano file importati dai test.
 
 Questo progetto ha copertura test estensiva. Mantieni questo standard di qualità per ogni nuova funzionalità.
 
-## Build Commands
-
-### Setup
-```bash
-make setup                    # Full project setup
-make check-system-deps        # Verify Python 3.12, csound, sox installed
-```
-
-### Build Pipeline
-```bash
-make all                      # Build default file (FILE=PGE_test)
-make FILE=name all            # Build specific config
-make all TEST=true            # Build all configs in configs/
-
-# Renderer selection (default: csound)
-make FILE=name RENDERER=numpy all      # NumPy direct rendering
-make FILE=name RENDERER=csound all     # Csound rendering (default)
-
-# Stem mode (one file per stream)
-make FILE=name STEMS=true all                     # Csound stems
-make FILE=name STEMS=true CACHE=true all          # Incremental build (skips unchanged)
-make FILE=name STEMS=true RENDERER=numpy all      # NumPy stems
-```
-
-### Testing
-```bash
-make tests                    # Run full test suite
-make tests-cov                # Run with HTML coverage report
-make TEST_FILE=tests/core/ tests   # Run specific test directory
-```
-
-### Development Flags
-- `AUTOKILL=true/false`: Auto-quit iZotope RX 11 before build (macOS only, default: true)
-- `AUTOPEN=true/false`: Auto-open output files (default: true)
-- `AUTOVISUAL=true/false`: Generate PDF score visualizations (default: true)
-- `SHOWSTATIC=true/false`: Show static analysis output (default: true)
-- `PRECLEAN=true/false`: Run clean before build (default: true, disabled when CACHE=true)
 
 ## Architecture
 
