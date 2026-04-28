@@ -48,13 +48,15 @@ Stream
             ├─ VoiceOnsetStrategy
             ├─ VoicePointerStrategy
             └─ VoicePanStrategy
-            │
-            └─ Pre-computa voice_configs[0..N-1]  ← O(1) in seguito
 
 Stream.generate_grains()
-  └─ per ogni tick temporale:
+  └─ per ogni tick temporale t = voice_cursors[voice_index]:
        └─ per ogni voice_index in [0..N-1]:
-            ├─ voice_config = voice_manager.get_voice_config(voice_index)
+            ├─ voice_config = voice_manager.get_voice_config(voice_index, t)
+            │    ├─ pitch_offset   = pitch_strategy.get_pitch_offset(vi, nv, t)
+            │    ├─ onset_offset   = onset_strategy.get_onset_offset(vi, nv, t)
+            │    ├─ pointer_offset = pointer_strategy.get_pointer_offset(vi, nv, t)
+            │    └─ pan_offset     = pan_strategy.get_pan_offset(vi, nv, resolve_param(pan_spread, t), t)
             └─ _create_grain(t, dur, voice_config)
                   ├─ pitch_ratio  *= 2^(pitch_offset / 12)
                   ├─ pointer_pos  += pointer_offset
@@ -69,10 +71,10 @@ YAML 'voices:'
     │
     ▼
 Stream._init_voice_manager()
+    ├─ _parse_strategy_kwarg(): list/dict → Envelope, altrimenti float
     ├─ Factory per ogni strategy  (VoicePitchStrategyFactory, ecc.)
     ├─ Auto-injection stream_id   (per riproducibilità stochastic)
-    └─ VoiceManager(max_voices, strategy...)
-              └─ [VoiceConfig(0,0,0,0), VoiceConfig(p1,o1,ptr1,pan1), ...]
+    └─ VoiceManager(max_voices, strategy..., pan_spread: Union[float, Envelope])
 
     ▼
 Stream.generate_grains()
@@ -88,7 +90,7 @@ Stream.generate_grains()
 
 **File:** `src/controllers/voice_manager.py`
 
-Orchestratore centrale. Compone le quattro strategie e pre-calcola tutti i `VoiceConfig` all'inizializzazione, garantendo O(1) durante la sintesi.
+Orchestratore centrale. Compone le quattro strategie e calcola `VoiceConfig` on-the-fly per ogni grain al tempo reale della voce.
 
 ```python
 class VoiceManager:
@@ -99,14 +101,15 @@ class VoiceManager:
         onset_strategy:   Optional[VoiceOnsetStrategy]   = None,
         pointer_strategy: Optional[VoicePointerStrategy] = None,
         pan_strategy:     Optional[VoicePanStrategy]     = None,
-        pan_spread:       float = 0.0,
+        pan_spread:       Union[float, Envelope] = 0.0,
     ): ...
 
-    def get_voice_config(self, voice_index: int) -> VoiceConfig: ...
+    def get_voice_config(self, voice_index: int, time: float) -> VoiceConfig: ...
 ```
 
 - Strategy `None` → offset `0.0` per tutte le voci
-- `voice_configs` è una lista pre-calcolata, non ricalcolata per ogni grano
+- `VoiceConfig` è efimero: ricalcolato per ogni grain al `time` passato dal chiamante
+- `pan_spread` accetta `float` o `Envelope`; risolto con `resolve_param(pan_spread, time)` prima di passarlo alla pan strategy
 
 ---
 
@@ -132,9 +135,11 @@ Dataclass **immutabile** (`frozen=True`). Voce 0 è sempre `VoiceConfig(0.0, 0.0
 ```python
 class VoicePitchStrategy(ABC):
     @abstractmethod
-    def get_pitch_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """Offset in semitoni. Voce 0 → sempre 0.0."""
 ```
+
+I parametri scalari di ogni strategia (`step`, `semitone_range`, ecc.) accettano `Union[float, Envelope]`. Con un `Envelope`, il valore viene valutato a `time` tramite `resolve_param(param, time)` — il che consente evoluzione temporale per-grain.
 
 L'offset prodotto da ogni strategia viene applicato in `_create_grain()` come moltiplicatore sul pitch_ratio del grano:
 
@@ -149,10 +154,10 @@ Questa è la formula standard dell'equi-temperamento: ogni semitone corrisponde 
 #### `StepPitchStrategy`
 
 ```
-offset(i) = i × step
+offset(i) = i × step(t)
 ```
 
-Progressione aritmetica pura. Lo step è costante e indipendente dal numero totale di voci: aggiungere voci non redistribuisce le esistenti, ma le estende.
+Progressione aritmetica pura. `step` accetta `float` o `Envelope`: con un envelope lo step varia nel tempo, espandendo o contraendo l'intervallo tra le voci grain per grain. Aggiungere voci non redistribuisce le esistenti, ma le estende.
 
 ```
 step=3, 4 voci → [0, 3, 6, 9]  (terze minori)
@@ -167,11 +172,11 @@ step=-2, 3 voci → [0, -2, -4]  (step negativo: voci sotto la voce 0)
 #### `RangePitchStrategy`
 
 ```
-offset(i) = i × range / (N - 1)    per N > 1
-offset(i) = 0.0                     per N == 1
+offset(i) = i × range(t) / (N - 1)    per N > 1
+offset(i) = 0.0                        per N == 1
 ```
 
-Distribuzione lineare che **normalizza il passo** rispetto al numero di voci per riempire sempre l'intervallo `[0, range]`. La differenza con `step` è che qui lo step varia con N.
+Distribuzione lineare che **normalizza il passo** rispetto al numero di voci per riempire sempre l'intervallo `[0, range(t)]`. `semitone_range` accetta `float` o `Envelope`. La differenza con `step` è che qui lo step varia con N.
 
 ```
 range=12, 4 voci → [0, 4, 8, 12]   step effettivo = 4
@@ -227,11 +232,12 @@ i=5 → 5%4=1, 5//4=1  →  intervals[1] + 1×12 = 16
 #### `StochasticPitchStrategy`
 
 ```
-seed  = hash(stream_id + str(voice_index))
-offset(i) = Random(seed).uniform(-range, +range)
+seed         = hash(stream_id + str(voice_index))
+direction(i) = Random(seed).uniform(-1.0, +1.0)   ← calcolato una volta, cached
+offset(i, t) = direction(i) × semitone_range(t)
 ```
 
-L'offset è calcolato una volta per voce con un generatore pseudo-casuale inizializzato da un seed deterministico. Il seed combina lo `stream_id` (identità dello stream nel YAML) con l'indice di voce, garantendo:
+La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `semitone_range(t)` — può variare nel tempo se `semitone_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. Il seed combina lo `stream_id` (identità dello stream nel YAML) con l'indice di voce, garantendo:
 - voci diverse dello stesso stream → offset diversi
 - stream diversi → distribuzioni indipendenti
 - stesso YAML tra sessioni → stesso output audio
@@ -256,7 +262,7 @@ stream_id="pad", range=0.5, 4 voci → es. [0.0, +0.31, -0.18, +0.47]
 ```python
 class VoiceOnsetStrategy(ABC):
     @abstractmethod
-    def get_onset_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_onset_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """Offset in secondi. Sempre >= 0."""
 ```
 
@@ -267,10 +273,10 @@ class VoiceOnsetStrategy(ABC):
 #### `LinearOnsetStrategy`
 
 ```
-offset(i) = i × step
+offset(i) = i × step(t)
 ```
 
-Spaziatura aritmetica uniforme in secondi. Ogni voce entra esattamente `step` secondi dopo la precedente.
+Spaziatura aritmetica uniforme in secondi. `step` accetta `float` o `Envelope`. Ogni voce entra esattamente `step` secondi dopo la precedente.
 
 ```
 step=0.05, 4 voci → [0.0, 0.05, 0.10, 0.15]
@@ -284,11 +290,13 @@ step=0.08, 4 voci → [0.0, 0.08, 0.16, 0.24]
 #### `GeometricOnsetStrategy`
 
 ```
-offset(1) = step
-offset(2) = step × base
-offset(3) = step × base²
-offset(i) = step × base^(i-1)
+offset(1, t) = step(t)
+offset(2, t) = step(t) × base(t)
+offset(3, t) = step(t) × base(t)²
+offset(i, t) = step(t) × base(t)^(i-1)
 ```
+
+`step` e `base` accettano entrambi `float` o `Envelope`.
 
 Spaziatura **esponenziale**: ogni voce successiva è `base` volte più distante dalla precedente rispetto alla voce che la precede.
 
@@ -311,11 +319,12 @@ Caso limite: `base=1` → tutte le voci non-zero hanno lo stesso offset (`step`)
 #### `StochasticOnsetStrategy`
 
 ```
-seed  = hash(stream_id + str(voice_index))
-offset(i) = Random(seed).uniform(0.0, max_offset)
+seed         = hash(stream_id + str(voice_index))
+direction(i) = Random(seed).uniform(0.0, 1.0)   ← cached
+offset(i, t) = direction(i) × max_offset(t)
 ```
 
-Come `StochasticPitchStrategy` ma **unidirezionale** `[0, max_offset]`. L'intervallo positivo è un requisito architetturale: le voci non possono precedere la voce 0 nel tempo.
+Come `StochasticPitchStrategy` ma **unidirezionale** `[0, max_offset(t)]`. `max_offset` accetta `float` o `Envelope`. L'intervallo positivo è un requisito architetturale: le voci non possono precedere la voce 0 nel tempo.
 
 ```
 stream_id="pad", max_offset=0.1, 4 voci → es. [0.0, 0.073, 0.021, 0.089]
@@ -333,7 +342,7 @@ stream_id="pad", max_offset=0.1, 4 voci → es. [0.0, 0.073, 0.021, 0.089]
 ```python
 class VoicePointerStrategy(ABC):
     @abstractmethod
-    def get_pointer_offset(self, voice_index: int, num_voices: int) -> float:
+    def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """Offset normalizzato sulla posizione nel sample."""
 ```
 
@@ -352,10 +361,10 @@ Il valore è normalizzato `0.0–1.0` dove `0.0` = inizio del sample, `1.0` = fi
 #### `LinearPointerStrategy`
 
 ```
-offset(i) = i × step
+offset(i) = i × step(t)
 ```
 
-Crea N **teste di lettura equidistanti** nel sample. Ogni voce legge da un punto diverso, sfasato di `step` rispetto alla precedente.
+Crea N **teste di lettura equidistanti** nel sample. `step` accetta `float` o `Envelope`. Ogni voce legge da un punto diverso, sfasato di `step` rispetto alla precedente.
 
 ```
 step=0.1, 4 voci → [0.0, 0.1, 0.2, 0.3]
@@ -378,11 +387,12 @@ step=-0.05, 3 voci → [0.0, -0.05, -0.10]
 #### `StochasticPointerStrategy`
 
 ```
-seed  = hash(stream_id + str(voice_index))
-offset(i) = Random(seed).uniform(-range, +range)
+seed         = hash(stream_id + str(voice_index))
+direction(i) = Random(seed).uniform(-1.0, +1.0)   ← cached
+offset(i, t) = direction(i) × pointer_range(t)
 ```
 
-Bidirezionale `[-range, +range]`. Ogni voce legge da un punto casuale ma fisso nel sample, determinato al momento della costruzione.
+Bidirezionale `[-pointer_range(t), +pointer_range(t)]`. `pointer_range` accetta `float` o `Envelope`. Ogni voce legge da un punto casuale ma fisso nel sample, determinato al momento della costruzione.
 
 ```
 stream_id="texture", range=0.02, 4 voci → es. [0.0, +0.013, -0.007, +0.019]
@@ -401,11 +411,11 @@ Con `range` piccolo (0.01–0.05) le voci rimangono nella stessa zona del sample
 ```python
 class VoicePanStrategy(ABC):
     @abstractmethod
-    def get_pan_offset(self, voice_index: int, num_voices: int, spread: float) -> float:
+    def get_pan_offset(self, voice_index: int, num_voices: int, spread: float, time: float) -> float:
         """Offset in gradi rispetto al pan base dello stream."""
 ```
 
-La firma di pan è diversa dalle altre strategie: `spread` è un parametro diretto del metodo (non dell'`__init__`), perché è un parametro di sistema passato dal `VoiceManager` alla chiamata. L'offset viene sommato al `pan_base` dello stream per ottenere il pan finale del grano.
+La firma di pan è diversa dalle altre strategie: `spread` è un parametro diretto del metodo (non dell'`__init__`), perché `VoiceManager` lo risolve con `resolve_param(pan_spread, time)` prima di passarlo — consentendo `pan_spread: Envelope` nel YAML. L'offset viene sommato al `pan_base` dello stream per ottenere il pan finale del grano.
 
 ---
 
@@ -433,21 +443,19 @@ spread=60,  2 voci → [-30, +30]
 #### `RandomPanStrategy`
 
 ```
-offset(i) = uniform(-spread/2, +spread/2)   # campionato ad ogni chiamata
+seed         = hash(stream_id + str(voice_index))
+direction(i) = Random(seed).uniform(-1.0, +1.0)   ← cached
+offset(i, t) = direction(i) × spread(t) / 2
 ```
 
-**Non deterministico** — l'unica strategia pan senza seed fisso. Il valore varia ad ogni invocazione del metodo.
-
-La stabilità dell'offset per-voce per tutta la durata dello stream è garantita dal `VoiceManager`: chiama `get_pan_offset` **una sola volta** alla costruzione per ciascuna voce e memorizza il risultato nel `VoiceConfig` (frozen dataclass). Dopo quell'unica chiamata, la posizione rimane fissa.
+La **direzione** per voce è fissa (seeded, cached al primo accesso); la **magnitudine** dipende da `spread(t)` — risolto per ogni grain da `VoiceManager`. Con `spread: Envelope`, la posizione spaziale per voce mantiene segno fisso ma scala nel tempo.
 
 ```
-VoiceManager.__init__:
-    for i in range(N):
-        pan_off = pan_strategy.get_pan_offset(i, N, spread)  # unica chiamata
-        voice_configs[i] = VoiceConfig(..., pan_offset=pan_off)
+stream_id="pad", spread=60, 4 voci → es. [0.0, +18.6, -10.8, +28.2]
+                                          (deterministici, proporzionali a spread)
 ```
 
-**Effetto audio:** posizionamento "random but bounded" — le voci cadono in punti casuali all'interno dello spread, senza pattern prevedibile. Ideale per texture dove la distribuzione spaziale deve sembrare naturale e non strutturata.
+**Effetto audio:** posizionamento "random but bounded" — le voci cadono in punti casuali fissi all'interno dello spread, senza pattern prevedibile. Con spread envelope, l'ampiezza spaziale evolve mantenendo le posizioni relative stabili.
 
 ---
 
@@ -532,9 +540,14 @@ voices:
     # parametri specifici della strategy
 
   pan:
-    strategy: <nome>          # linear | additive
-    spread: <float>           # ampiezza distribuzione stereo in gradi
+    strategy: <nome>          # linear | additive | random
+    spread: <float|envelope>  # ampiezza distribuzione stereo in gradi
 ```
+
+Tutti i parametri scalari (`step`, `semitone_range`, `pointer_range`, `max_offset`, `base`, `spread`) accettano:
+- `float` — valore costante per tutta la durata dello stream
+- lista di punti `[[t, v], ...]` — envelope lineare in secondi
+- dizionario `{points: [...], time_mode: normalized}` — envelope in coordinate 0.0–1.0 scalate su `stream.duration`
 
 ### Esempi
 
@@ -595,16 +608,61 @@ Risultato: 3 letture parallele del sample a distanza di 10% l'una dall'altra.
 
 ---
 
+**Spreading progressivo — pitch che si apre nel tempo:**
+```yaml
+voices:
+  num_voices: 4
+  pitch:
+    strategy: step
+    step: [[0, 0.0], [10, 12.0]]
+```
+Risultato: 4 voci partono all'unisono, lo step cresce linearmente da 0 a 12 semitoni in 10s.
+
+---
+
+**Canone che si allarga — onset + pitch con envelope:**
+```yaml
+voices:
+  num_voices: 4
+  pitch:
+    strategy: step
+    step: [[0, 0.0], [30, 7.0]]
+  onset_offset:
+    strategy: linear
+    step: [[0, 0.0], [30, 0.15]]
+  pan:
+    strategy: linear
+    spread: [[0, 0.0], [30, 120.0]]
+```
+Risultato: tutte e tre le dimensioni si aprono in 30s — da cluster monofonico a ensemble distribuito.
+
+---
+
+**time_mode: normalized — stessa forma in qualsiasi durata:**
+```yaml
+voices:
+  num_voices: 4
+  pitch:
+    strategy: stochastic
+    semitone_range:
+      points: [[0, 0.0], [1, 8.0]]
+      time_mode: normalized
+```
+Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendentemente dalla durata in secondi.
+
+---
+
 ## 6. Invarianti di design
 
 | Invariante | Garanzia |
 |---|---|
-| Voce 0 = riferimento | Sempre `VoiceConfig(0, 0, 0, 0)`, indipendentemente dalle strategy |
+| Voce 0 = riferimento | Sempre `VoiceConfig(0, 0, 0, 0)` a qualsiasi `time`, indipendentemente dalle strategy |
 | Onset offset ≥ 0 | Le voci secondarie non precedono mai la voce 0 |
-| Pre-computazione | `voice_configs` calcolati all'init → O(1) per ogni grano |
+| Valutazione per-grain | `get_voice_config(voice_index, t)` riceve `voice_cursors[voice_index]` — tempo reale della voce |
+| Direzione stochastic fissa | Per le strategy stochastiche la direzione per-voce è calcolata una volta (seeded cache); solo la magnitudine varia con l'envelope |
 | Riproducibilità stochastic | Seed = `hash(stream_id + voice_index)` → stesso YAML → stesso output |
 | Pitch moltiplicativo | `pitch_ratio *= 2^(offset/12)` → compatibile con ratio audio standard |
-| Backward compatibility | `self.grains` rimane piatto e ordinato per tutti i consumer esistenti |
+| Backward compatibility | `self.grains` rimane piatto e ordinato per tutti i consumer esistenti; config scalari esistenti validi senza modifiche |
 
 ---
 
@@ -612,12 +670,14 @@ Risultato: 3 letture parallele del sample a distanza di 10% l'una dall'altra.
 
 | File test | Cosa copre |
 |---|---|
-| `tests/controllers/test_voice_manager.py` | VoiceManager, VoiceConfig, delega strategy, strategy opzionali, out-of-range |
-| `tests/strategies/test_voice_pitch_strategy.py` | Tutte le pitch strategy, accordi, estensione ottave, stocasticità |
-| `tests/strategies/test_voice_onset_strategy.py` | Linear, geometric, stochastic onset |
-| `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer |
-| `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager, conteggio grani, offset applicati |
-| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette, valori nei grani generati |
+| `tests/parameters/test_parameter.py` | `resolve_param`: float, Envelope, int, None; regressione `_evaluate_input` |
+| `tests/controllers/test_voice_manager.py` | VoiceManager stateless, `get_voice_config(vi, t)`, time-varying, strategy opzionali, voice-0 invariant |
+| `tests/strategies/test_voice_pitch_strategy.py` | Tutte le pitch strategy con `time` arg, voice-0 invariant, stochastic direction invariance, envelope range |
+| `tests/strategies/test_voice_onset_strategy.py` | Linear, geometric, stochastic onset con `time` arg e envelope |
+| `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer con `time` arg e envelope |
+| `tests/strategies/test_voice_pan_strategy.py` | Tutte le pan strategy con `time` arg, voice-0 invariant per linear/additive, spread envelope |
+| `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager; `TestGenerateGrainsEnvelopePerGrain`: verifica valore esatto pitch_ratio per grain a `voice_cursors[vi]` |
+| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized` |
 
 **Esecuzione test multi-voice:**
 ```bash
