@@ -6,6 +6,140 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v3.4.0] — "Temporal Voice" — 2026-04-28
+
+### Aggiunto
+
+- **Parametri strategy dinamici** (`src/parameters/parameter.py`, `src/strategies/`):
+  ogni parametro delle voice strategy accetta ora `float` o `Envelope` — il valore
+  viene valutato al tempo reale di ogni grain, consentendo evoluzione temporale su
+  tutte le dimensioni del sistema multi-voice
+  - `resolve_param(param, time)` — primitiva condivisa; risolve `Union[float, Envelope]` a `float`
+  - Tutte le strategy ABC ricevono `time: float`; implementazioni stochastiche separano
+    direzione (cache fissa, seeded) da magnitudine (time-varying)
+  - `VoiceManager` stateless: `get_voice_config(voice_index, time)` calcola on-the-fly per ogni grain
+  - Parsing YAML: `_parse_strategy_kwarg` rileva list/dict → costruisce `Envelope`;
+    supporta `time_mode: normalized`
+  - `generate_grains` passa `voice_cursors[voice_index]` — ogni voce valuta l'envelope
+    al proprio tempo musicale reale
+- **`SpectralPitchStrategy`**: voci sui parziali della serie armonica
+  (`src/strategies/voice_pitch_strategy.py`)
+- **Config di test empirico** `PGE_dynamic_strategy_params_test.yml` (allegato release):
+  19 stream da 10s (~3.75 min), ogni dimensione time-varying in isolamento e combinazione
+
+### Parametri time-varying per strategy
+
+| Strategy | Parametri |
+|---|---|
+| `step` pitch | `step` |
+| `range` pitch | `semitone_range` |
+| `stochastic` pitch | `semitone_range` |
+| `linear` onset | `step` |
+| `geometric` onset | `step`, `base` |
+| `stochastic` onset | `max_offset` |
+| `linear` pointer | `step` |
+| `stochastic` pointer | `pointer_range` |
+| tutte le pan | `spread` (via VoiceManager) |
+
+### Backward compatibility
+
+Tutti i config YAML scalari esistenti rimangono validi senza modifiche.
+
+### Documentazione
+
+- `docs/multi-voice.md`: aggiornata con architettura stateless e parametri dinamici
+
+---
+
+## [v3.3.0] — "Jazz Chords & Chord Inversions" — 2026-04-14
+
+### Aggiunto
+
+- **11 nuovi accordi jazz** in `CHORD_INTERVALS` (`ChordPitchStrategy`):
+  - 5 voci: `dom9`, `maj9`, `min9`, `9sus4`
+  - 6 voci: `dom9s11`, `maj9s11`, `min11`
+  - 7 voci: `dom13`, `min13`, `maj13s11`, `altered`
+- **Inversioni accordo**: `ChordPitchStrategy` accetta `inversion: int = 0` — ruota
+  gli intervalli in modo che il grado k diventi la voce più bassa, normalizzata a 0
+
+  ```yaml
+  voices:
+    num_voices: 4
+    pitch:
+      strategy: chord
+      chord: dom7
+      inversion: 1   # [0,3,6,8] invece di [0,4,7,10]
+  ```
+
+### Test
+
+3974 test, tutti verdi.
+
+---
+
+## [v3.2.0] — "Window Transitions" — 2026-04-13
+
+### Aggiunto
+
+- **Transizioni probabilistiche tra finestre di grano** (`src/controllers/window_controller.py`):
+  - Modalità `transition` — morphing da una finestra a un'altra guidato da una curva temporale:
+    ```yaml
+    grain:
+      envelope:
+        from: hanning
+        to: expodec
+        curve: [[0, 0], [30, 1]]
+    ```
+  - Modalità `multi-state` — transizione attraverso N finestre con separazione tra
+    spazio del valore e spazio del tempo:
+    ```yaml
+    grain:
+      envelope:
+        states:
+          - [0.0, hanning]
+          - [0.3, bartlett]
+          - [0.7, expodec]
+          - [1.0, gaussian]
+        curve: [[0, 0], [60, 1]]
+    ```
+  - La selezione per ogni grain è stocastica — il timbro dell'involucro evolve
+    in modo probabilistico, non a step
+- **`WindowStrategyFactory`**: registry + `**kwargs`, allineata al pattern delle voice strategy;
+  estendibile senza toccare `WindowController`
+- **Finestra `gaussian`** supportata anche nel renderer NumPy (era già disponibile nel path Csound)
+
+### Corretto
+
+- Errore leggibile quando `sample` è mancante o null in uno stream
+
+### Breaking changes
+
+- `envelope_range` rimosso dal YAML (era ridondante — la variazione è implicita
+  dalla struttura lista/stringa)
+
+---
+
+## [v3.1.0] — 2026-04-08
+
+### Aggiunto
+
+- **`PointerController`**: quando `loop_start` è definito ma `start` non è esplicito
+  nello YAML, il pointer parte da `loop_start(t=0)` invece che da `0`.
+  Il valore `start` esplicito non viene mai sovrascritto.
+
+### Corretto
+
+- **Loop bounds relativi al file audio**: `loop_dur`, `loop_start`, `loop_end` non hanno
+  più un upper bound statico arbitrario nel registry. `max_val=None` indica assenza di
+  limite statico — il bound reale è sempre `sample_dur_sec`, passato dinamicamente.
+  Eliminati i fallback `1000.0` / `100.0` che non rispecchiavano la realtà.
+
+### Test
+
+3802 test, 0 falliti.
+
+---
+
 ## [v3.0.0] — "Stimmung" — 2026-04-05
 
 ### Aggiunto
