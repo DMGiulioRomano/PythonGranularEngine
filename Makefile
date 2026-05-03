@@ -121,9 +121,17 @@ ifeq ($(OS), Darwin)
 	@command -v brew >/dev/null 2>&1 || { echo "Homebrew non trovato. Installa da https://brew.sh"; exit 1; }
 	brew install python@3.12 sox csound
 else ifeq ($(OS), Linux)
-	@echo "[DEPS] Installazione dipendenze Linux via apt..."
-	sudo apt update
-	sudo apt install -y python3.12 python3.12-venv sox csound
+	@echo "[DEPS] Rilevamento package manager Linux..."
+	@if command -v pacman >/dev/null 2>&1; then \
+		echo "[DEPS] Arch Linux — uso pacman..."; \
+		sudo pacman -Sy --noconfirm python sox csound; \
+	elif command -v apt >/dev/null 2>&1; then \
+		echo "[DEPS] Debian/Ubuntu — uso apt..."; \
+		sudo apt update && sudo apt install -y python3.12 python3.12-venv sox csound; \
+	else \
+		echo "ERRORE: package manager non supportato (né pacman né apt trovato)."; \
+		exit 1; \
+	fi
 else
 	@echo "Sistema non supportato per installazione automatica."
 endif
