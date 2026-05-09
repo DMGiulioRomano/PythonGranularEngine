@@ -48,9 +48,10 @@ class FtableManager:
         
         # Valida che la window esista nel registro
         if WindowRegistry.get(window_name) is None:
-            raise ValueError(
-                f"Window '{window_name}' non valida. "
-                f"Validi: {', '.join(WindowRegistry.all_names())}"
+            from shared.exceptions import InvalidWindowError
+            raise InvalidWindowError(
+                name=window_name,
+                available=list(WindowRegistry.all_names()),
             )
         
         num = self.next_num
@@ -118,10 +119,14 @@ class FtableManager:
                 
                 # ERROR HANDLING AGGIUNTO
                 if spec is None:
-                    raise ValueError(
-                        f"Window '{key}' non trovata nel WindowRegistry. "
-                        f"Questo non dovrebbe accadere se register_window() "
-                        f"ha validato correttamente."
+                    from shared.exceptions import FtableError
+                    raise FtableError(
+                        key=key,
+                        reason=(
+                            f"Window '{key}' non trovata nel WindowRegistry. "
+                            f"Stato incoerente: register_window() avrebbe dovuto "
+                            f"validarla."
+                        ),
                     )
                 
                 f.write(f'; Window: {key} - {spec.description}\n')
