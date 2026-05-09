@@ -28,6 +28,11 @@ import random
 from abc import ABC, abstractmethod
 from typing import Dict, Type
 
+from shared.exceptions import (
+    InvalidStrategyConfigError,
+    StrategyNotFoundError,
+)
+
 
 # =============================================================================
 # ABSTRACT BASE CLASS
@@ -145,8 +150,11 @@ class RandomPanStrategy(VoicePanStrategy):
             return 0.0
 
         if spread < 0.0:
-            raise ValueError(
-                f"spread deve essere >= 0, ricevuto: {spread}"
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pan",
+                field="spread",
+                value=spread,
+                hint="spread deve essere >= 0",
             )
 
         if voice_index == 0:
@@ -274,10 +282,10 @@ class VoicePanStrategyFactory:
                         con messaggio che elenca le strategy disponibili
         """
         if strategy_name not in VOICE_PAN_STRATEGIES:
-            available = ', '.join(sorted(VOICE_PAN_STRATEGIES.keys()))
-            raise ValueError(
-                f"Strategy pan voce non trovata: '{strategy_name}'. "
-                f"Strategy disponibili: {available}"
+            raise StrategyNotFoundError(
+                strategy_kind="voice_pan",
+                name=strategy_name,
+                available=list(VOICE_PAN_STRATEGIES.keys()),
             )
 
         strategy_class = VOICE_PAN_STRATEGIES[strategy_name]

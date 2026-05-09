@@ -28,6 +28,11 @@ import random
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type
 
+from shared.exceptions import (
+    InvalidStrategyConfigError,
+    StrategyNotFoundError,
+)
+
 from parameters.parameter import resolve_param, StrategyParam
 
 
@@ -157,16 +162,23 @@ class ChordPitchStrategy(VoicePitchStrategy):
 
     def __init__(self, chord: str, inversion: int = 0):
         if chord not in CHORD_INTERVALS:
-            raise ValueError(
-                f"Accordo '{chord}' non riconosciuto. "
-                f"Disponibili: {sorted(CHORD_INTERVALS.keys())}"
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="chord",
+                value=chord,
+                hint=f"accordi disponibili: {sorted(CHORD_INTERVALS.keys())}",
             )
         base_intervals = CHORD_INTERVALS[chord]
         n = len(base_intervals)
         if not (0 <= inversion < n):
-            raise ValueError(
-                f"Accordo '{chord}' ha {n} note: inversion deve essere in "
-                f"[0, {n - 1}], ricevuto: {inversion}"
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="inversion",
+                value=inversion,
+                hint=(
+                    f"accordo '{chord}' ha {n} note: inversion deve essere "
+                    f"in [0, {n - 1}]"
+                ),
             )
         self.chord = chord
         self.inversion = inversion
@@ -298,8 +310,9 @@ class VoicePitchStrategyFactory:
             KeyError: se il nome non è nel registry
         """
         if name not in VOICE_PITCH_STRATEGIES:
-            raise KeyError(
-                f"VoicePitchStrategy '{name}' non trovata. "
-                f"Disponibili: {sorted(VOICE_PITCH_STRATEGIES.keys())}"
+            raise StrategyNotFoundError(
+                strategy_kind="voice_pitch",
+                name=name,
+                available=list(VOICE_PITCH_STRATEGIES.keys()),
             )
         return VOICE_PITCH_STRATEGIES[name](**kwargs)
