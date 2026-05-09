@@ -267,3 +267,101 @@ def test_parameter_bound_error_supports_envelope_violations():
     msg = err.user_message()
     assert "999" in msg
     assert "-5" in msg
+
+
+# =============================================================================
+# Issue #38 — PR3: StrategyNotFoundError, InvalidStrategyConfigError
+# =============================================================================
+
+
+def test_strategy_not_found_error_inherits_config_error():
+    from shared.exceptions import (
+        ConfigError,
+        EngineError,
+        StrategyNotFoundError,
+    )
+
+    err = StrategyNotFoundError(
+        strategy_kind="pitch",
+        name="bogus",
+        available=["step", "range"],
+    )
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+
+
+def test_strategy_not_found_user_message_lists_available():
+    from shared.exceptions import StrategyNotFoundError
+
+    err = StrategyNotFoundError(
+        strategy_kind="variation",
+        name="bogus",
+        available=["additive", "quantized"],
+    )
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "variation" in msg
+    assert "bogus" in msg
+    assert "additive" in msg
+    assert "quantized" in msg
+
+
+def test_strategy_not_found_includes_optional_context():
+    from shared.exceptions import StrategyNotFoundError
+
+    err = StrategyNotFoundError(
+        strategy_kind="pitch", name="x", available=["a"],
+    )
+    err.stream_id = "s1"
+    err.config_file = "c.yml"
+    msg = err.user_message()
+    assert "s1" in msg
+    assert "c.yml" in msg
+
+
+def test_invalid_strategy_config_error_inherits_config_error():
+    from shared.exceptions import (
+        ConfigError,
+        EngineError,
+        InvalidStrategyConfigError,
+    )
+
+    err = InvalidStrategyConfigError(
+        strategy_kind="pitch",
+        field="chord",
+        value="bogus",
+    )
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+
+
+def test_invalid_strategy_config_user_message_contains_field_and_value():
+    from shared.exceptions import InvalidStrategyConfigError
+
+    err = InvalidStrategyConfigError(
+        strategy_kind="pitch",
+        field="chord",
+        value="bogus",
+        hint="usa uno tra dom7, maj7",
+    )
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "pitch" in msg
+    assert "chord" in msg
+    assert "bogus" in msg
+    assert "dom7" in msg
+
+
+def test_invalid_strategy_config_includes_optional_context():
+    from shared.exceptions import InvalidStrategyConfigError
+
+    err = InvalidStrategyConfigError(
+        strategy_kind="pan", field="spread", value=-1.0,
+    )
+    err.stream_id = "s1"
+    err.config_file = "c.yml"
+    msg = err.user_message()
+    assert "s1" in msg
+    assert "c.yml" in msg

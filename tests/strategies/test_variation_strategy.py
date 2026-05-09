@@ -568,32 +568,33 @@ class TestChoiceVariationInvalidType:
 
     def test_integer_raises_type_error(self, choice, mock_distribution):
         """value=int -> TypeError."""
-        with pytest.raises(TypeError, match="ChoiceVariation richiede"):
+        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(42, 1.0, mock_distribution)
 
     def test_float_raises_type_error(self, choice, mock_distribution):
         """value=float -> TypeError."""
-        with pytest.raises(TypeError, match="ChoiceVariation richiede"):
+        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(3.14, 1.0, mock_distribution)
 
     def test_none_raises_type_error(self, choice, mock_distribution):
         """value=None -> TypeError."""
-        with pytest.raises(TypeError, match="ChoiceVariation richiede"):
+        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(None, 1.0, mock_distribution)
 
     def test_dict_raises_type_error(self, choice, mock_distribution):
         """value=dict -> TypeError."""
-        with pytest.raises(TypeError, match="ChoiceVariation richiede"):
+        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply({'key': 'val'}, 1.0, mock_distribution)
 
     def test_tuple_raises_type_error(self, choice, mock_distribution):
         """value=tuple -> TypeError (non e' lista)."""
-        with pytest.raises(TypeError, match="ChoiceVariation richiede"):
+        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(('a', 'b'), 1.0, mock_distribution)
 
-    def test_error_message_contains_type(self, choice, mock_distribution):
-        """Il messaggio di errore contiene il tipo ricevuto."""
-        with pytest.raises(TypeError, match="<class 'int'>"):
+    def test_error_message_contains_value(self, choice, mock_distribution):
+        """Il messaggio di errore contiene il valore ricevuto."""
+        from shared.exceptions import InvalidParameterError
+        with pytest.raises(InvalidParameterError, match="42"):
             choice.apply(42, 1.0, mock_distribution)
 
 

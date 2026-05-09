@@ -398,8 +398,9 @@ class TestVariationFactoryErrors:
             VariationFactory.create('xyz')
 
         msg = str(exc_info.value)
-        assert "Strategia variation non trovata: 'xyz'" in msg
-        assert "Strategie disponibili:" in msg
+        assert "variation" in msg
+        assert "'xyz'" in msg
+        assert "Disponibili" in msg
         # Verifica che elenca tutte le strategie
         for mode in EXPECTED_MODE_NAMES:
             assert mode in msg

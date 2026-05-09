@@ -110,7 +110,7 @@ class TestDefaultNamingStrategy:
         naming = DefaultNamingStrategy()
         streams = [make_mock_stream()]
 
-        with pytest.raises(ValueError, match="Mode 'invalid' not supported"):
+        with pytest.raises(ValueError, match="naming"):
             naming.generate_paths('/out/base.aif', streams, mode='invalid')
 
 

@@ -125,6 +125,58 @@ class InvalidParameterError(ConfigError):
         return "\n".join(lines)
 
 
+class StrategyNotFoundError(ConfigError):
+    """Strategia non registrata nel registry corrispondente (issue #38, PR3)."""
+
+    def __init__(self, strategy_kind: str, name: str, available: list[str]):
+        self.strategy_kind = strategy_kind
+        self.name = name
+        self.available = list(available)
+        super().__init__(
+            f"Strategia {strategy_kind} non trovata: '{name}'. "
+            f"Disponibili: {sorted(self.available)}"
+        )
+
+    def user_message(self) -> str:
+        lines = [
+            f"[ERRORE] Strategia {self.strategy_kind} non trovata: '{self.name}'",
+            f"  Disponibili:  {', '.join(sorted(self.available))}",
+        ]
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
+class InvalidStrategyConfigError(ConfigError):
+    """Strategia trovata ma configurazione invalida (issue #38, PR3)."""
+
+    def __init__(
+        self,
+        strategy_kind: str,
+        field: str,
+        value,
+        hint: str | None = None,
+    ):
+        self.strategy_kind = strategy_kind
+        self.field = field
+        self.value = value
+        self.hint = hint
+        super().__init__(
+            f"Config invalida per strategia {strategy_kind} "
+            f"(campo '{field}'): {value!r}"
+        )
+
+    def user_message(self) -> str:
+        lines = [
+            f"[ERRORE] Config invalida per strategia {self.strategy_kind}",
+            f"  Campo:        {self.field}",
+            f"  Trovato:      {self.value!r}",
+        ]
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
 class ParameterBoundError(ConfigError):
     """Parametro YAML fuori dai bounds (strict validation mode, issue #38, PR2)."""
 

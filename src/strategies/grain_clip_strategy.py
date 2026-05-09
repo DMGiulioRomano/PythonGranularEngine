@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Type
 
 from core.grain import Grain
+from shared.exceptions import StrategyNotFoundError
 
 
 class GrainClipStrategy(ABC):
@@ -66,8 +67,9 @@ class GrainClipStrategyFactory:
     @staticmethod
     def create(name: str, **kwargs) -> GrainClipStrategy:
         if name not in GRAIN_CLIP_STRATEGIES:
-            raise ValueError(
-                f"GrainClipStrategy sconosciuta: '{name}'. "
-                f"Disponibili: {sorted(GRAIN_CLIP_STRATEGIES.keys())}"
+            raise StrategyNotFoundError(
+                strategy_kind="grain_clip",
+                name=name,
+                available=list(GRAIN_CLIP_STRATEGIES.keys()),
             )
         return GRAIN_CLIP_STRATEGIES[name](**kwargs)

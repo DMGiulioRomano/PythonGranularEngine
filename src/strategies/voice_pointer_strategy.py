@@ -32,6 +32,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Type
 
 from parameters.parameter import resolve_param, StrategyParam
+from shared.exceptions import StrategyNotFoundError
 
 
 # =============================================================================
@@ -166,8 +167,9 @@ class VoicePointerStrategyFactory:
             KeyError: se il nome non è nel registry
         """
         if name not in VOICE_POINTER_STRATEGIES:
-            raise KeyError(
-                f"VoicePointerStrategy '{name}' non trovata. "
-                f"Disponibili: {sorted(VOICE_POINTER_STRATEGIES.keys())}"
+            raise StrategyNotFoundError(
+                strategy_kind="voice_pointer",
+                name=name,
+                available=list(VOICE_POINTER_STRATEGIES.keys()),
             )
         return VOICE_POINTER_STRATEGIES[name](**kwargs)

@@ -133,6 +133,24 @@ streams:
       duration_range: 0.01
 """
 
+YAML_INVALID_DISTRIBUTION = f"""\
+composition:
+  title: "test invalid distribution mode"
+streams:
+  - stream_id: "stream_bad_dist"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'bogus_distribution'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
 YAML_SAMPLE_NOT_FOUND = """\
 composition:
   title: "test sample not found"
@@ -278,6 +296,19 @@ def test_e2e_invalid_dephase(tmp_path, cleanup_log):
     assert "Formato non valido" in result.stdout
     assert "dephase" in result.stdout
     _assert_log_contains(yaml_abs, "InvalidParameterError", ["dephase"])
+
+
+@pytest.mark.e2e
+def test_e2e_invalid_distribution_strategy(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '08_invalid_distribution.yml', YAML_INVALID_DISTRIBUTION)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    assert result.returncode != 0, f"Atteso exit != 0 (stdout={result.stdout})"
+    assert "[ERRORE]" in result.stdout
+    assert "Traceback" not in result.stdout
+    assert "Strategia distribution non trovata" in result.stdout
+    assert "bogus_distribution" in result.stdout
+    _assert_log_contains(yaml_abs, "StrategyNotFoundError", ["bogus_distribution"])
 
 
 @pytest.mark.e2e

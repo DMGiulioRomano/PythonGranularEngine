@@ -198,7 +198,7 @@ class TestGrainClipStrategyFactory:
 
     def test_unknown_name_raises(self):
         from strategies.grain_clip_strategy import GrainClipStrategyFactory
-        with pytest.raises(ValueError, match="sconosciuta"):
+        with pytest.raises(ValueError, match="grain_clip"):
             GrainClipStrategyFactory.create('bogus')
 
     def test_registry_contains_both_strategies(self):

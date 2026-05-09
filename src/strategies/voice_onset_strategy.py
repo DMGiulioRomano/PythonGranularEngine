@@ -28,6 +28,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Type
 
 from parameters.parameter import resolve_param, StrategyParam
+from shared.exceptions import StrategyNotFoundError
 
 
 # =============================================================================
@@ -182,8 +183,9 @@ class VoiceOnsetStrategyFactory:
             KeyError: se il nome non è nel registry
         """
         if name not in VOICE_ONSET_STRATEGIES:
-            raise KeyError(
-                f"VoiceOnsetStrategy '{name}' non trovata. "
-                f"Disponibili: {sorted(VOICE_ONSET_STRATEGIES.keys())}"
+            raise StrategyNotFoundError(
+                strategy_kind="voice_onset",
+                name=name,
+                available=list(VOICE_ONSET_STRATEGIES.keys()),
             )
         return VOICE_ONSET_STRATEGIES[name](**kwargs)

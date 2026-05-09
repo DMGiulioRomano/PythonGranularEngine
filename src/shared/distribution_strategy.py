@@ -9,6 +9,11 @@ import random
 from abc import ABC, abstractmethod
 from typing import Tuple
 
+from shared.exceptions import (
+    InvalidStrategyConfigError,
+    StrategyNotFoundError,
+)
+
 
 class DistributionStrategy(ABC):
     """
@@ -155,10 +160,10 @@ class DistributionFactory:
             ValueError: Se mode non è riconosciuto
         """
         if mode not in cls._registry:
-            valid_modes = list(cls._registry.keys())
-            raise ValueError(
-                f"Distribuzione '{mode}' non riconosciuta. "
-                f"Modalità valide: {valid_modes}"
+            raise StrategyNotFoundError(
+                strategy_kind="distribution",
+                name=mode,
+                available=list(cls._registry.keys()),
             )
         
         strategy_class = cls._registry[mode]
@@ -172,8 +177,11 @@ class DistributionFactory:
         Esempio:
             DistributionFactory.register('triangular', TriangularDistribution)
         """
-        if not issubclass(strategy_class, DistributionStrategy):
-            raise TypeError(
-                f"{strategy_class} deve essere subclass di DistributionStrategy"
+        if not (isinstance(strategy_class, type) and issubclass(strategy_class, DistributionStrategy)):
+            raise InvalidStrategyConfigError(
+                strategy_kind="distribution",
+                field="strategy_class",
+                value=strategy_class,
+                hint="deve essere subclass di DistributionStrategy",
             )
         cls._registry[name] = strategy_class
