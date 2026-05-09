@@ -197,6 +197,11 @@ def stream_factory():
         s.envelope_table_num = 2
         s.window_table_map = {'hanning': 2}
 
+        # Clip strategy: passthrough per test (preserva semantiche pre-U2).
+        # Test specifici per clipping iniettano la strategy esplicitamente.
+        from strategies.grain_clip_strategy import PassthroughClipStrategy
+        s._clip_strategy = PassthroughClipStrategy()
+
         # Stato
         s.voices = []
         s.grains = []
@@ -521,9 +526,11 @@ class TestStreamInit:
                 patch('core.stream.PointerController'), \
                 patch('core.stream.PitchController'), \
                 patch('core.stream.DensityController'), \
-                patch('core.stream.WindowController'):
+                patch('core.stream.WindowController'), \
+                patch('core.stream.GrainClipStrategyFactory') as MockClipFactory:
                 MockSCtx.from_yaml.return_value = Mock()
                 MockSC.from_yaml.return_value = Mock()
+                MockClipFactory.create.return_value = Mock()
 
                 mock_orch_inst = MockOrch.return_value
                 mock_orch_inst.create_all_parameters.return_value = {

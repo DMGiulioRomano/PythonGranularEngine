@@ -30,6 +30,7 @@ from strategies.voice_pitch_strategy import VoicePitchStrategyFactory
 from strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from strategies.voice_pan_strategy import VoicePanStrategyFactory
+from strategies.grain_clip_strategy import GrainClipStrategyFactory, OverflowMarginClipStrategy
 from dataclasses import fields
 
 
@@ -83,6 +84,11 @@ class Stream:
         self._init_controllers(params, config)
         # === 7. VOICE MANAGER ===
         self._init_voice_manager(params, config)
+        # === 7.5. GRAIN CLIP STRATEGY ===
+        self._clip_strategy = GrainClipStrategyFactory.create(
+            config.clip_strategy,
+            margin=config.clip_margin,
+        )
         # === 8. RIFERIMENTI CSOUND (assegnati da Generator) ===
         self.sample_table_num: Optional[int] = None
         self.envelope_table_num: Optional[int] = None
@@ -356,7 +362,13 @@ class Stream:
 
                 voice_cursors[voice_index] += iot
 
-        self.voices = all_voice_grains
+        # Post-process: applica GrainClipStrategy (Plan 001 U2).
+        # stream.voices diventa l'unica fonte di verita' su quali grain esistono.
+        # Fallback per mock stream creati con object.__new__ senza __init__.
+        clip_strategy = getattr(self, '_clip_strategy', None)
+        if clip_strategy is None:
+            clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        self.voices = clip_strategy.apply(all_voice_grains, self)
         # Flatten e sort per onset (backward compatibility)
         all_grains = [g for voice in self.voices for g in voice]
         all_grains.sort(key=lambda g: g.onset)
