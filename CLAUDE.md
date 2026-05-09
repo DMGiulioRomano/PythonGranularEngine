@@ -83,3 +83,4 @@ For YAML syntax (parameter, envelope, voices): see `docs/yaml-reference.md`.
 - **Multi-voice system** (pitch/onset/pointer/pan strategies): `docs/multi-voice.md`
 - **Common workflows** (how to add parameters, renderers, windows, strategies): `docs/workflows.md`
 - **YAML reference** (parameter syntax, envelope syntax, voices, flags): `docs/yaml-reference.md`
+- **Error handling** (gerarchia `EngineError`, `user_message()`, context enrichment): `docs/error-handling.md`
