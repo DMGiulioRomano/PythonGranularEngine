@@ -321,3 +321,74 @@ def test_e2e_sample_not_found(tmp_path, cleanup_log):
     assert "pinuzzo_inesistente.wav" in result.stdout
     assert "stream_missing_file" in result.stdout
     _assert_log_contains(yaml_abs, "SampleNotFoundError", ["pinuzzo_inesistente.wav"])
+
+
+# =============================================================================
+# PR4: Rendering errors
+# =============================================================================
+
+YAML_VALID_RENDERER = f"""\
+composition:
+  title: "test valid base"
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+YAML_INVALID_WINDOW = f"""\
+composition:
+  title: "test invalid window"
+streams:
+  - stream_id: "stream_bad_window"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+      envelope: "bogus_window_name_xyz"
+"""
+
+
+@pytest.mark.e2e
+def test_e2e_invalid_renderer(tmp_path, cleanup_log):
+    """--renderer bogus produce InvalidRendererError user-facing pulito."""
+    yaml_abs = _write_yaml(tmp_path, '09_invalid_renderer.yml', YAML_VALID_RENDERER)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = subprocess.run(
+        ['python', 'src/main.py', yaml_abs, '--renderer', 'bogus'],
+        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode != 0
+    assert "[ERRORE]" in result.stdout
+    assert "Traceback" not in result.stdout
+    assert "Renderer non supportato" in result.stdout
+    assert "bogus" in result.stdout
+
+
+@pytest.mark.e2e
+def test_e2e_invalid_window(tmp_path, cleanup_log):
+    """envelope name sconosciuto produce InvalidWindowError user-facing pulito."""
+    yaml_abs = _write_yaml(tmp_path, '10_invalid_window.yml', YAML_INVALID_WINDOW)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    assert result.returncode != 0
+    assert "[ERRORE]" in result.stdout
+    assert "Traceback" not in result.stdout
+    assert "bogus_window_name_xyz" in result.stdout
+    _assert_log_contains(yaml_abs, "InvalidWindowError", ["bogus_window_name_xyz"])
