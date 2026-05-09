@@ -135,17 +135,63 @@ def get_clip_logger():
 def get_clip_log_path():
     """
     Ritorna il percorso del file di log corrente (se esiste).
-    
+
     Returns:
         str o None
     """
     if _clip_logger is None:
         return None
-    
+
     for handler in _clip_logger.handlers:
         if isinstance(handler, logging.FileHandler):
             return handler.baseFilename
     return None
+
+
+# =============================================================================
+# ENGINE LOGGER (issue #33) — errori engine fatali, sempre su file
+# =============================================================================
+_engine_logger = None
+_engine_log_path: str | None = None
+
+
+def configure_engine_logger(yaml_name: str | None = None, log_dir: str = './logs'):
+    """Configura logger engine: scrive ERROR + traceback su <log_dir>/<yaml_name>_engine.log."""
+    global _engine_logger, _engine_log_path
+
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    name = yaml_name if yaml_name else datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f'{name}_engine.log'
+    log_path = os.path.join(log_dir, log_filename)
+
+    logger = logging.getLogger('engine')
+    logger.setLevel(logging.ERROR)
+    logger.handlers = []
+
+    file_handler = logging.FileHandler(log_path, mode='w', encoding='utf-8')
+    file_handler.setLevel(logging.ERROR)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    ))
+    logger.addHandler(file_handler)
+
+    _engine_logger = logger
+    _engine_log_path = log_path
+
+
+def get_engine_logger() -> logging.Logger:
+    """Ottiene engine logger; auto-configura se non ancora chiamato."""
+    if _engine_logger is None:
+        configure_engine_logger()
+    return _engine_logger
+
+
+def get_engine_log_path() -> str | None:
+    """Path del file di log engine corrente."""
+    return _engine_log_path
 
 def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value, 
                      min_val, max_val, is_envelope=False):
