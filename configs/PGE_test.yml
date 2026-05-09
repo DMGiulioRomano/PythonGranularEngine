@@ -7,7 +7,7 @@ streams:
     onset: 0.0
     duration: 5
     #time_scale: .3
-    sample: 
+    sample: "pino.wav"
     #range_always_active:
     distribution_mode: 'gaussian'
     #fill_factor: [[0,.3],[.1,4], cycle]
