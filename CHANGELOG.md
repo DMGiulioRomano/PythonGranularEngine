@@ -6,6 +6,66 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v3.5.0] — "Strategy passThrough" — 2026-05-09
+
+### Aggiunto
+
+- **`GrainClipStrategy`** (`src/strategies/grain_clip_strategy.py`):
+  ABC + registry + factory pattern per filtrare i grain in post-process dentro
+  `Stream.generate_grains`. `stream.voices` diventa l'unica fonte di verità su
+  quali grain esistono — Csound e NumPy ricevono ora la stessa struttura.
+  - `OverflowMarginClipStrategy(margin: float = 0.0)` — default; esclude grain
+    la cui coda sfora `stream_end + margin`
+  - `PassthroughClipStrategy` — nessun filtro; tutti i grain raggiungono il renderer
+- **Nuovi campi YAML in `StreamConfig`**:
+  - `clip_strategy: 'overflow_margin' | 'passthrough'` (default: `overflow_margin`)
+  - `clip_margin: float` (default: `0.0`)
+- **NumPy renderer passthrough puro** (`src/rendering/numpy_audio_renderer.py`):
+  buffer dimensionato sull'extent reale dei grain in `stream.voices`
+  (`max(g.onset + g.duration)`); il renderer non ha più opinioni proprie sui bounds
+
+### Modificato
+
+- `_add_grain_at_position`: rimossi i clamp `end_sample > n_total` e
+  `onset_sample >= n_total` (responsabilità migrata a `GrainClipStrategy`).
+  Preservato il clamp `onset_sample < 0` come difesa legittima
+- Firme `_add_grain_relative` / `_add_grain_absolute` / `_add_grain_at_position`
+  senza parametro `n_total`
+
+### Risolto
+
+- **#27** — Divergenza renderer su grain con `onset > stream.duration`:
+  prima NumPy troncava silenziosamente la coda, Csound includeva il grain intero.
+  Ora entrambi ricevono la stessa `stream.voices` filtrata
+- **#32** — `make`: rilevamento package manager Linux a runtime (apt vs pacman)
+
+### Compatibilità
+
+Comportamento default più restrittivo per la coda: grain con
+`grain.onset + grain.duration > stream_end` vengono esclusi. Per ripristinare
+l'inclusione integrale (vecchio comportamento Csound), aggiungere al blocco stream:
+
+```yaml
+clip_strategy: passthrough
+```
+
+In modalità `passthrough` il file `.aif` può superare `stream.duration` se i grain
+sforano. Tutti i config YAML scalari esistenti senza grain out-of-bounds restano
+validi senza modifiche.
+
+### Documentazione
+
+- `docs/yaml-reference.md`: nuova sottosezione "clip_strategy — Controllo grain
+  out-of-bounds" sotto "Configurazione Processo"
+- Piani archiviati in `docs/plans/done/`: `2026-05-03-001-fix-grain-clip-strategy-plan.md`,
+  `2026-05-03-002-fix-numpy-renderer-passthrough-plan.md`
+
+### Test
+
+4076 unit test + 39 e2e test, tutti verdi.
+
+---
+
 ## [v3.4.0] — "Temporal Voice" — 2026-04-28
 
 ### Aggiunto
