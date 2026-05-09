@@ -245,7 +245,7 @@ class TestInitStreamContext:
         # Manca stream_id
 
         with patch('core.stream.get_sample_duration', return_value=5.0):
-            with pytest.raises(ValueError, match="Parametro obbligatorio mancante"):
+            with pytest.raises(ValueError, match="Campo obbligatorio mancante"):
                 s._init_stream_context(params)
 
     def test_missing_multiple_fields_raises(self):
@@ -256,7 +256,7 @@ class TestInitStreamContext:
         # Mancano stream_id, onset, duration
 
         with patch('core.stream.get_sample_duration', return_value=5.0):
-            with pytest.raises(ValueError, match="Parametri obbligatori mancanti"):
+            with pytest.raises(ValueError, match="Campi obbligatori mancanti"):
                 s._init_stream_context(params)
 
     def test_empty_params_raises(self):
@@ -330,7 +330,7 @@ class TestInitGrainReverse:
         s.stream_id = 'test'
         params = {'grain': {'reverse': True}}
 
-        with pytest.raises(ValueError, match="deve essere lasciato vuoto"):
+        with pytest.raises(ValueError, match="grain.reverse"):
             s._init_grain_reverse(params)
 
     def test_reverse_false_raises(self):
@@ -340,7 +340,7 @@ class TestInitGrainReverse:
         s.stream_id = 'test'
         params = {'grain': {'reverse': False}}
 
-        with pytest.raises(ValueError, match="deve essere lasciato vuoto"):
+        with pytest.raises(ValueError, match="grain.reverse"):
             s._init_grain_reverse(params)
 
     def test_reverse_string_raises(self):
@@ -350,7 +350,7 @@ class TestInitGrainReverse:
         s.stream_id = 'test'
         params = {'grain': {'reverse': 'auto'}}
 
-        with pytest.raises(ValueError, match="deve essere lasciato vuoto"):
+        with pytest.raises(ValueError, match="grain.reverse"):
             s._init_grain_reverse(params)
 
     def test_reverse_number_raises(self):
@@ -522,6 +522,7 @@ class TestStreamInit:
                 patch('core.stream.StreamContext') as MockSCtx, \
                 patch('core.stream.StreamConfig') as MockSC, \
                 patch.object(Stream, '_init_stream_context', fake_init_ctx), \
+                patch.object(Stream, '_check_required_context_fields', lambda *a, **k: None), \
                 patch('core.stream.ParameterOrchestrator') as MockOrch, \
                 patch('core.stream.PointerController'), \
                 patch('core.stream.PitchController'), \
@@ -566,12 +567,14 @@ class TestStreamInit:
             Stream(params)
 
     def test_error_message_contains_stream_id(self):
-        """Il messaggio di errore include lo stream_id per facilitare il debug."""
+        """L'errore include lo stream_id come attributo per facilitare il debug."""
         params = _minimal_yaml_params()
         params['stream_id'] = 'stream_problematico'
         params['sample'] = None
-        with pytest.raises(ValueError, match="stream_problematico"):
+        with pytest.raises(ValueError) as exc_info:
             Stream(params)
+        assert exc_info.value.stream_id == 'stream_problematico'
+        assert 'stream_problematico' in exc_info.value.user_message()
 
 # =============================================================================
 # 6. TEST generate_grains - LOOP PRINCIPALE (1 VOCE)

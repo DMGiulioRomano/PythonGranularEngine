@@ -19,7 +19,7 @@ from core.cartridge import Cartridge
 from rendering.ftable_manager import FtableManager
 from rendering.score_writer import ScoreWriter
 from controllers.window_controller import WindowController
-from shared.exceptions import SampleNotFoundError
+from shared.exceptions import ConfigError, SampleNotFoundError
 
 class Generator:
     """
@@ -106,7 +106,7 @@ class Generator:
         # Crea stream (QUI viene chiamato _register_stream_windows)
         try:
             self._create_streams(filtered_streams)
-        except SampleNotFoundError as err:
+        except (SampleNotFoundError, ConfigError) as err:
             err.config_file = self.yaml_path
             raise
         

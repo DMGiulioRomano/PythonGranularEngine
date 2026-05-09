@@ -46,3 +46,58 @@ def test_handle_engine_error_prints_user_message_and_logs_traceback(tmp_path, ca
     assert "SampleNotFoundError" in contents
     assert "pino.wav" in contents
     assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_missing_field_error(tmp_path, capsys):
+    """Handler EngineError gestisce anche MissingFieldError (issue #38)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import MissingFieldError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_cfg', log_dir=str(tmp_path))
+
+    err = MissingFieldError(field='sample', hint="specificare il file wav")
+    err.stream_id = 'drone_a'
+    err.config_file = 'configs/broken.yml'
+
+    try:
+        raise err
+    except MissingFieldError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "Campo obbligatorio mancante" in captured.out
+    assert "sample" in captured.out
+    assert "drone_a" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "MissingFieldError" in contents
+    assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_invalid_field_value_error(tmp_path, capsys):
+    """Handler EngineError gestisce anche InvalidFieldValueError (issue #38)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import InvalidFieldValueError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_val', log_dir=str(tmp_path))
+
+    err = InvalidFieldValueError(field='grain.reverse', value=True, hint="lascia vuoto")
+    err.stream_id = 'sx'
+
+    try:
+        raise err
+    except InvalidFieldValueError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "grain.reverse" in captured.out
+    assert "True" in captured.out
+    assert "Dettagli:" in captured.out
