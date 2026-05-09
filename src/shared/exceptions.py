@@ -103,3 +103,67 @@ class InvalidFieldValueError(ConfigError):
             lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
         return "\n".join(lines)
+
+
+class InvalidParameterError(ConfigError):
+    """Parametro YAML con formato/tipo non supportato (issue #38, PR2)."""
+
+    def __init__(self, param_name: str, value, hint: str | None = None):
+        self.param_name = param_name
+        self.value = value
+        self.hint = hint
+        super().__init__(f"Formato non valido per '{param_name}': {value!r}")
+
+    def user_message(self) -> str:
+        lines = [
+            f"[ERRORE] Formato non valido per '{self.param_name}'",
+            f"  Trovato:      {self.value!r}",
+        ]
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
+class ParameterBoundError(ConfigError):
+    """Parametro YAML fuori dai bounds (strict validation mode, issue #38, PR2)."""
+
+    def __init__(
+        self,
+        param_name: str,
+        value_type: str,
+        min_bound: float,
+        max_bound: float | None,
+        value: float | None = None,
+        violations: list[tuple[float, float]] | None = None,
+    ):
+        if value is None and not violations:
+            raise TypeError("ParameterBoundError richiede 'value' o 'violations'")
+        self.param_name = param_name
+        self.value_type = value_type
+        self.value = value
+        self.violations = list(violations or [])
+        self.min_bound = min_bound
+        self.max_bound = max_bound
+        if violations:
+            base = f"Envelope '{param_name}' fuori bounds: {len(violations)} violazione(i)"
+        else:
+            base = f"Parametro '{param_name}' fuori bounds: {value}"
+        super().__init__(base)
+
+    def user_message(self) -> str:
+        bounds = f"[{self.min_bound}, {self.max_bound}]"
+        if self.violations:
+            head = f"[ERRORE] Envelope '{self.param_name}' fuori bounds"
+            lines = [head, f"  Bounds:       {bounds}"]
+            for t, y in self.violations:
+                lines.append(f"  t={t}: {self.value_type}={y}")
+        else:
+            head = f"[ERRORE] Parametro '{self.param_name}' fuori bounds"
+            lines = [
+                head,
+                f"  {self.value_type}:        {self.value}",
+                f"  Bounds:       {bounds}",
+            ]
+        lines.extend(self._context_lines())
+        return "\n".join(lines)

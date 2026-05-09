@@ -150,3 +150,120 @@ def test_invalid_field_value_error_includes_optional_context():
     msg = err.user_message()
     assert "s1" in msg
     assert "c.yml" in msg
+
+
+# =============================================================================
+# Issue #38 — PR2: InvalidParameterError, ParameterBoundError
+# =============================================================================
+
+
+def test_invalid_parameter_error_inherits_config_error():
+    """InvalidParameterError catturabile come ConfigError/EngineError/ValueError."""
+    from shared.exceptions import (
+        ConfigError,
+        EngineError,
+        InvalidParameterError,
+    )
+
+    err = InvalidParameterError(param_name="density.value", value="bad")
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+
+
+def test_invalid_parameter_error_user_message_contains_param_and_value():
+    """user_message mostra param_name e value, formato pulito."""
+    from shared.exceptions import InvalidParameterError
+
+    err = InvalidParameterError(
+        param_name="density.value",
+        value={"x": 1},
+        hint="atteso numero o lista breakpoints",
+    )
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "density.value" in msg
+    assert "atteso numero" in msg
+
+
+def test_invalid_parameter_error_includes_optional_context():
+    """stream_id e config_file compaiono quando settati."""
+    from shared.exceptions import InvalidParameterError
+
+    err = InvalidParameterError(param_name="dephase", value=object())
+    err.stream_id = "s1"
+    err.config_file = "c.yml"
+    msg = err.user_message()
+    assert "s1" in msg
+    assert "c.yml" in msg
+
+
+def test_parameter_bound_error_inherits_config_error():
+    """ParameterBoundError catturabile come ConfigError/EngineError/ValueError."""
+    from shared.exceptions import (
+        ConfigError,
+        EngineError,
+        ParameterBoundError,
+    )
+
+    err = ParameterBoundError(
+        param_name="density",
+        value_type="value",
+        value=999.0,
+        min_bound=0.0,
+        max_bound=100.0,
+    )
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+
+
+def test_parameter_bound_error_user_message_shows_violation():
+    """user_message mostra param, valore trovato, bounds."""
+    from shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="density",
+        value_type="value",
+        value=999.0,
+        min_bound=0.0,
+        max_bound=100.0,
+    )
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "density" in msg
+    assert "999" in msg
+    assert "100" in msg
+
+
+def test_parameter_bound_error_includes_optional_context():
+    from shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="density",
+        value_type="value",
+        value=-1.0,
+        min_bound=0.0,
+        max_bound=100.0,
+    )
+    err.stream_id = "s1"
+    err.config_file = "c.yml"
+    msg = err.user_message()
+    assert "s1" in msg
+    assert "c.yml" in msg
+
+
+def test_parameter_bound_error_supports_envelope_violations():
+    """ParameterBoundError accetta lista violazioni per envelope."""
+    from shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="density",
+        value_type="value",
+        violations=[(0.0, 999.0), (1.0, -5.0)],
+        min_bound=0.0,
+        max_bound=100.0,
+    )
+    msg = err.user_message()
+    assert "999" in msg
+    assert "-5" in msg

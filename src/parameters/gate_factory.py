@@ -7,6 +7,7 @@ from typing import Optional, Any, Union
 from shared.probability_gate import *
 from enum import Enum
 from envelopes.envelope import Envelope, create_scaled_envelope
+from shared.exceptions import InvalidParameterError
 
 class DephaseMode(Enum):
     """Stati semantici di dephase."""
@@ -44,7 +45,11 @@ class GateFactory:
         elif isinstance(dephase, dict):
             return DephaseMode.SPECIFIC
         else:
-            raise ValueError(f"dephase tipo invalido: {type(dephase)}")
+            raise InvalidParameterError(
+                param_name="dephase",
+                value=dephase,
+                hint="atteso bool, numero (0-100), envelope, o dict per chiave",
+            )
 
     @staticmethod
     def create_gate(
@@ -131,7 +136,8 @@ class GateFactory:
                 return AlwaysGate()
         
         # Tipo completamente sbagliato
-        raise ValueError(
-            f"Valore invalido per dephase: {raw_value} (tipo: {type(raw_value).__name__}). "
-            f"Atteso numero (0-100), lista di punti [[t,v],...], o dict envelope."
+        raise InvalidParameterError(
+            param_name="dephase",
+            value=raw_value,
+            hint="atteso numero (0-100), lista [[t,v],...], o dict envelope",
         )

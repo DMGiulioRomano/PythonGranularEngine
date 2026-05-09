@@ -15,6 +15,7 @@ from typing import Union, Optional, List, Any
 from parameters.parameter import Parameter, ParamInput
 from envelopes.envelope import Envelope, create_scaled_envelope
 from parameters.parameter_definitions import get_parameter_definition
+from shared.exceptions import InvalidParameterError, ParameterBoundError
 
 class GranularParser:
     """
@@ -125,10 +126,13 @@ class GranularParser:
         if isinstance(raw_data, (list, dict)):
             return create_scaled_envelope(raw_data, self.duration, self.time_mode)
         # Caso Errore: Tipo non supportato
-        raise ValueError(
-            f"Formato non valido per '{context_info}': {raw_data}. "
-            f"Atteso numero, lista di punti, o dict envelope."
+        err = InvalidParameterError(
+            param_name=context_info,
+            value=raw_data,
+            hint="atteso numero, lista di punti, o dict envelope",
         )
+        err.stream_id = self.stream_id
+        raise err
 
     def _validate_and_clip(
         self,
@@ -182,8 +186,15 @@ class GranularParser:
                 )
                 
                 if validation_mode == 'strict':
-                    # FAIL FAST: solleva eccezione
-                    raise ValueError(error_msg)
+                    err = ParameterBoundError(
+                        param_name=param_name,
+                        value_type=value_type,
+                        value=clean,
+                        min_bound=min_bound,
+                        max_bound=max_bound,
+                    )
+                    err.stream_id = self.stream_id
+                    raise err
                 else:
                     # PERMISSIVE: logga e continua
                     log_config_warning(
@@ -195,7 +206,7 @@ class GranularParser:
                         max_val=max_bound,
                         value_type=value_type
                     )
-            
+
             return clipped
         
         # Caso 2: Envelope
@@ -228,7 +239,20 @@ class GranularParser:
                 )
                 
                 if validation_mode == 'strict':
-                    raise ValueError(error_msg)
+                    violations_list = []
+                    for t, y in param.breakpoints:
+                        clipped_y = max(min_bound, y) if max_bound is None else max(min_bound, min(max_bound, y))
+                        if clipped_y != y:
+                            violations_list.append((t, y))
+                    err = ParameterBoundError(
+                        param_name=param_name,
+                        value_type=value_type,
+                        violations=violations_list,
+                        min_bound=min_bound,
+                        max_bound=max_bound,
+                    )
+                    err.stream_id = self.stream_id
+                    raise err
                 else:
                     # Log ogni violazione
                     for t, y in param.breakpoints:

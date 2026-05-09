@@ -155,7 +155,7 @@ class TestClassifyDephase:
 
     def test_invalid_type_raises_valueerror(self):
         """Tipo non riconosciuto solleva ValueError."""
-        with pytest.raises(ValueError, match="dephase tipo invalido"):
+        with pytest.raises(ValueError, match="dephase"):
             GateFactory._classify_dephase("invalid_string")
 
     def test_invalid_type_tuple_raises(self):
@@ -173,7 +173,7 @@ class TestClassifyDephase:
         """Lista non-envelope: _is_envelope_like viene chiamato prima del check dict."""
         # Una lista non-envelope dovrebbe sollevare errore
         # perché non è dict e _is_envelope_like ritorna False
-        with pytest.raises(ValueError, match="dephase tipo invalido"):
+        with pytest.raises(ValueError, match="dephase"):
             GateFactory._classify_dephase([1, 2, 3])
 
     def test_bool_true_is_not_int(self):
@@ -706,12 +706,12 @@ class TestParseRawValue:
 
     def test_string_raises_valueerror(self):
         """Stringa → ValueError."""
-        with pytest.raises(ValueError, match="Valore invalido per dephase"):
+        with pytest.raises(ValueError, match="dephase"):
             GateFactory._parse_raw_value("invalid", duration=1.0, time_mode='absolute')
 
     def test_none_raises_valueerror(self):
         """None → ValueError (None viene gestito a monte in create_gate)."""
-        with pytest.raises(ValueError, match="Valore invalido per dephase"):
+        with pytest.raises(ValueError, match="dephase"):
             GateFactory._parse_raw_value(None, duration=1.0, time_mode='absolute')
 
     def test_bool_treated_as_number(self):
@@ -732,7 +732,7 @@ class TestParseRawValue:
         
         error_msg = str(exc_info.value)
         assert "bad" in error_msg
-        assert "str" in error_msg
+        assert "dephase" in error_msg
 
 
 # =============================================================================
