@@ -118,8 +118,10 @@ class TestParseWindowListDefaults:
         assert result == ['hanning']
 
     def test_default_stream_id_in_error_is_unknown(self):
-        with pytest.raises(ValueError, match="unknown"):
+        from shared.exceptions import InvalidWindowError
+        with pytest.raises(InvalidWindowError) as exc_info:
             WindowController.parse_window_list({'envelope': 'NONEXISTENT'})
+        assert exc_info.value.stream_id == "unknown"
 
 
 # =============================================================================
@@ -188,8 +190,10 @@ class TestParseWindowListExplicit:
             WindowController.parse_window_list({'envelope': []})
 
     def test_empty_list_error_contains_stream_id(self):
-        with pytest.raises(ValueError, match="stream_B"):
+        from shared.exceptions import InvalidWindowError
+        with pytest.raises(InvalidWindowError) as exc_info:
             WindowController.parse_window_list({'envelope': []}, stream_id="stream_B")
+        assert exc_info.value.stream_id == "stream_B"
 
     def test_list_with_one_invalid_raises(self):
         with pytest.raises(ValueError, match="FAKE"):
@@ -231,13 +235,13 @@ class TestParseWindowListAll:
 class TestParseWindowListTypeErrors:
 
     @pytest.mark.parametrize("bad_spec,error_match", [
-        (42, "Formato envelope non valido"),
-        (3.14, "Formato envelope non valido"),
-        (None, "Formato envelope non valido"),
-        (False, "Formato envelope non valido"),
-        ({'type': 'hanning'}, "Formato envelope non valido"),
-        (('hanning', 'hamming'), "Formato envelope non valido"),
-        ([], "Lista envelope vuota"),
+        (42, "envelope"),
+        (3.14, "envelope"),
+        (None, "envelope"),
+        (False, "envelope"),
+        ({'type': 'hanning'}, "envelope"),
+        (('hanning', 'hamming'), "envelope"),
+        ([], "vuota"),
         ('INVALID', "non trovata"),
         (['INVALID'], "non trovata"),
         (['hanning', 'INVALID'], "non trovata"),
@@ -247,8 +251,10 @@ class TestParseWindowListTypeErrors:
             WindowController.parse_window_list({'envelope': bad_spec})
 
     def test_error_includes_stream_id(self):
-        with pytest.raises(ValueError, match="stream_X"):
+        from shared.exceptions import InvalidWindowError
+        with pytest.raises(InvalidWindowError) as exc_info:
             WindowController.parse_window_list({'envelope': 123}, stream_id="stream_X")
+        assert exc_info.value.stream_id == "stream_X"
 
     def test_is_static_method(self):
         assert callable(WindowController.parse_window_list)
@@ -278,8 +284,10 @@ class TestWindowControllerInit:
         assert len(ctrl._windows) == len(WindowRegistry.WINDOWS)
 
     def test_init_uses_stream_id_from_context(self, config_with_stream_id):
-        with pytest.raises(ValueError, match="my_stream_42"):
+        from shared.exceptions import InvalidWindowError
+        with pytest.raises(InvalidWindowError) as exc_info:
             WindowController({'envelope': 'NONEXISTENT'}, config=config_with_stream_id)
+        assert exc_info.value.stream_id == "my_stream_42"
 
     def test_gate_exists_after_init(self, default_config):
         ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
@@ -702,7 +710,7 @@ class TestParseWindowListTransitionDict:
     def test_dict_without_from_to_still_raises_format_error(self):
         """Un dict arbitrario senza from/to → errore formato."""
         spec = {'envelope': {'type': 'hanning'}}
-        with pytest.raises(ValueError, match="Formato envelope non valido"):
+        with pytest.raises(ValueError, match="envelope"):
             WindowController.parse_window_list(spec)
 
     def test_transition_with_alias_in_from(self):

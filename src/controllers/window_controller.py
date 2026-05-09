@@ -1,6 +1,7 @@
 # src/controllers/window_controller.py
 from typing import List
 from controllers.window_registry import WindowRegistry
+from shared.exceptions import InvalidWindowError
 from controllers.window_selection_strategy import (
     WindowSelectionStrategy,
     WindowStrategyFactory,
@@ -67,9 +68,11 @@ class WindowController:
         if _is_multistate_spec(envelope_spec):
             raw_states = envelope_spec['states']
             if len(raw_states) < 2:
-                raise ValueError(
-                    f"Stream '{stream_id}': 'states' richiede almeno 2 elementi"
+                err = InvalidWindowError(
+                    reason="'states' richiede almeno 2 elementi"
                 )
+                err.stream_id = stream_id
+                raise err
             windows = [w for _, w in raw_states]
 
         # Transition dict: {'from': 'hanning', 'to': 'bartlett', 'curve': ...}
@@ -81,24 +84,25 @@ class WindowController:
         # Lista esplicita
         elif isinstance(envelope_spec, list):
             if not envelope_spec:
-                raise ValueError(
-                    f"Stream '{stream_id}': Lista envelope vuota"
-                )
+                err = InvalidWindowError(reason="Lista envelope vuota")
+                err.stream_id = stream_id
+                raise err
             windows = envelope_spec
         else:
-            raise ValueError(
-                f"Stream '{stream_id}': Formato envelope non valido: {envelope_spec}"
+            err = InvalidWindowError(
+                param="envelope",
+                value=envelope_spec,
             )
+            err.stream_id = stream_id
+            raise err
 
         # Validazione nomi
         available = WindowRegistry.all_names()
         for window in windows:
             if window not in available:
-                raise ValueError(
-                    f"Stream '{stream_id}': "
-                    f"Finestra '{window}' non trovata. "
-                    f"Disponibili: {available}"
-                )
+                err = InvalidWindowError(name=window, available=list(available))
+                err.stream_id = stream_id
+                raise err
 
         return windows
 
