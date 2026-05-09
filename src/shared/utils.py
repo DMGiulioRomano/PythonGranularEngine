@@ -1,12 +1,23 @@
+import os
 import random
 import soundfile as sf
 from typing import Any
+
+from shared.exceptions import SampleNotFoundError
+
 # Path per i sample audio
 PATHSAMPLES = './refs/'
 
 def get_sample_duration(filepath: str) -> float:
-    """Ottiene la durata di un file audio in secondi."""
-    info = sf.info(PATHSAMPLES + filepath)
+    """Ottiene la durata di un file audio in secondi.
+
+    Raises:
+        SampleNotFoundError: se il file non esiste in PATHSAMPLES.
+    """
+    full_path = PATHSAMPLES + filepath
+    if not os.path.exists(full_path):
+        raise SampleNotFoundError(filename=filepath, search_path=PATHSAMPLES)
+    info = sf.info(full_path)
     return info.duration
 
 

@@ -22,6 +22,7 @@ from controllers.pointer_controller import PointerController
 from controllers.pitch_controller import PitchController
 from controllers.density_controller import DensityController
 from shared.utils import get_sample_duration
+from shared.exceptions import SampleNotFoundError
 from parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from core.stream_config import StreamConfig, StreamContext
@@ -74,7 +75,12 @@ class Stream:
                 f"Stream '{stream_id}': campo 'sample' mancante o null — "
                 "specificare il nome del file wav (es. sample: mio_file.wav)"
             )
-        config = StreamConfig.from_yaml(params, StreamContext.from_yaml(params, sample_dur_sec=get_sample_duration(sample)))
+        try:
+            sample_dur = get_sample_duration(sample)
+        except SampleNotFoundError as err:
+            err.stream_id = stream_id
+            raise
+        config = StreamConfig.from_yaml(params, StreamContext.from_yaml(params, sample_dur_sec=sample_dur))
         self._init_stream_context(params)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
