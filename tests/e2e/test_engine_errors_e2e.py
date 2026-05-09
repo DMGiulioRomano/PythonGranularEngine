@@ -1,13 +1,17 @@
 # tests/e2e/test_engine_errors_e2e.py
 """
 E2E test per la gerarchia EngineError: invoca src/main.py come subprocess
-sui YAML in configs/error_tests/ e verifica:
-  - exit code 1
+su YAML invalidi (scritti inline via tmp_path) e verifica:
+  - exit code != 0
   - stdout: messaggio user-facing pulito (niente Traceback)
   - log file: messaggio + Traceback
+
+I YAML di test stanno qui (non in configs/), perche' sono fixture di test
+e non materiale di lavoro dell'engine.
 """
 
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -16,8 +20,89 @@ import pytest
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..')
 )
-ERROR_DIR = os.path.join(PROJECT_ROOT, 'configs', 'error_tests')
-LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
+
+
+YAML_MISSING_SAMPLE = """\
+composition:
+  title: "test missing sample"
+streams:
+  - stream_id: "stream_no_sample"
+    onset: 0.0
+    duration: 5
+    sample:
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+YAML_MISSING_CONTEXT = """\
+composition:
+  title: "test missing context"
+streams:
+  - stream_id: "stream_no_ctx"
+    sample: "pino.wav"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+YAML_INVALID_GRAIN_REVERSE = """\
+composition:
+  title: "test invalid grain.reverse"
+streams:
+  - stream_id: "stream_bad_reverse"
+    onset: 0.0
+    duration: 5
+    sample: "pino.wav"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+      reverse: true
+"""
+
+YAML_SAMPLE_NOT_FOUND = """\
+composition:
+  title: "test sample not found"
+streams:
+  - stream_id: "stream_missing_file"
+    onset: 0.0
+    duration: 5
+    sample: "pinuzzo_inesistente.wav"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+
+def _write_yaml(tmp_path, name: str, content: str) -> str:
+    """
+    Scrive un YAML dentro PROJECT_ROOT/<tmp>/ perche' src/main.py costruisce
+    log path da basename(yaml) e logs/ vive nel CWD del subprocess.
+    Ritorna il path assoluto (anche relativo al PROJECT_ROOT).
+    """
+    f = tmp_path / name
+    f.write_text(content)
+    return str(f)
 
 
 def _run(yaml_path: str) -> subprocess.CompletedProcess:
@@ -32,36 +117,45 @@ def _run(yaml_path: str) -> subprocess.CompletedProcess:
 
 def _log_path_for(yaml_path: str) -> str:
     name = os.path.splitext(os.path.basename(yaml_path))[0]
-    return os.path.join(LOG_DIR, f'{name}_engine.log')
+    return os.path.join(PROJECT_ROOT, 'logs', f'{name}_engine.log')
 
 
-def _assert_clean_user_output(result, yaml_rel: str):
-    """Exit non-zero, stdout pulito (no Traceback), [ERRORE] presente."""
-    assert result.returncode != 0, f"Atteso exit != 0 per {yaml_rel}"
-    assert "[ERRORE]" in result.stdout, f"Manca [ERRORE] in stdout: {result.stdout}"
+def _assert_clean_user_output(result):
+    assert result.returncode != 0, f"Atteso exit != 0 (stdout={result.stdout})"
+    assert "[ERRORE]" in result.stdout
     assert "Traceback" not in result.stdout, (
-        f"Stdout contiene Traceback (deve stare solo nel log): {result.stdout}"
+        f"Stdout deve restare pulito: {result.stdout}"
     )
     assert "Dettagli:" in result.stdout
     assert "Config:" in result.stdout
 
 
-def _assert_log_contains(yaml_path: str, error_class_name: str, must_contain: list[str]):
+def _assert_log_contains(yaml_path: str, error_class: str, must_contain: list[str]):
     log = _log_path_for(yaml_path)
-    assert os.path.exists(log), f"Log file non creato: {log}"
+    assert os.path.exists(log), f"Log non creato: {log}"
     contents = open(log).read()
-    assert error_class_name in contents, f"{error_class_name} non in log {log}"
-    assert "Traceback" in contents, f"Traceback assente in log {log}"
+    assert error_class in contents
+    assert "Traceback" in contents
     for s in must_contain:
-        assert s in contents, f"'{s}' non in log {log}"
+        assert s in contents
+
+
+@pytest.fixture
+def cleanup_log():
+    """Rimuove il log file creato dal test (basename univoco per test)."""
+    created = []
+    yield created
+    for p in created:
+        if os.path.exists(p):
+            os.remove(p)
 
 
 @pytest.mark.e2e
-def test_e2e_missing_sample():
-    yaml_rel = 'configs/error_tests/01_missing_sample.yml'
-    yaml_abs = os.path.join(PROJECT_ROOT, yaml_rel)
+def test_e2e_missing_sample(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '01_missing_sample.yml', YAML_MISSING_SAMPLE)
+    cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
-    _assert_clean_user_output(result, yaml_rel)
+    _assert_clean_user_output(result)
     assert "Campo obbligatorio mancante" in result.stdout
     assert "'sample'" in result.stdout
     assert "stream_no_sample" in result.stdout
@@ -69,11 +163,11 @@ def test_e2e_missing_sample():
 
 
 @pytest.mark.e2e
-def test_e2e_missing_context_fields():
-    yaml_rel = 'configs/error_tests/02_missing_context_fields.yml'
-    yaml_abs = os.path.join(PROJECT_ROOT, yaml_rel)
+def test_e2e_missing_context_fields(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '02_missing_context.yml', YAML_MISSING_CONTEXT)
+    cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
-    _assert_clean_user_output(result, yaml_rel)
+    _assert_clean_user_output(result)
     assert "Campi obbligatori mancanti" in result.stdout
     assert "'duration'" in result.stdout
     assert "'onset'" in result.stdout
@@ -82,11 +176,11 @@ def test_e2e_missing_context_fields():
 
 
 @pytest.mark.e2e
-def test_e2e_invalid_grain_reverse():
-    yaml_rel = 'configs/error_tests/03_invalid_grain_reverse.yml'
-    yaml_abs = os.path.join(PROJECT_ROOT, yaml_rel)
+def test_e2e_invalid_grain_reverse(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '03_invalid_reverse.yml', YAML_INVALID_GRAIN_REVERSE)
+    cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
-    _assert_clean_user_output(result, yaml_rel)
+    _assert_clean_user_output(result)
     assert "Valore invalido per 'grain.reverse'" in result.stdout
     assert "True" in result.stdout
     assert "stream_bad_reverse" in result.stdout
@@ -94,11 +188,11 @@ def test_e2e_invalid_grain_reverse():
 
 
 @pytest.mark.e2e
-def test_e2e_sample_not_found():
-    yaml_rel = 'configs/error_tests/04_sample_not_found.yml'
-    yaml_abs = os.path.join(PROJECT_ROOT, yaml_rel)
+def test_e2e_sample_not_found(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '04_sample_not_found.yml', YAML_SAMPLE_NOT_FOUND)
+    cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
-    _assert_clean_user_output(result, yaml_rel)
+    _assert_clean_user_output(result)
     assert "Sample non trovato" in result.stdout
     assert "pinuzzo_inesistente.wav" in result.stdout
     assert "stream_missing_file" in result.stdout
