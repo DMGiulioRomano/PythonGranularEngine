@@ -6,6 +6,57 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v3.7.0] — "EngineError extension: controllers + envelopes" — 2026-05-10
+
+Issue #46 chiusa (follow-up di #38). Convertiti gli ultimi 11 raise
+user-facing residui nei moduli `controllers/` e `envelopes/` alle sotto-classi
+`EngineError` esistenti, completando l'unificazione della Categoria A
+(config errors). I 5 raise di Categoria C (internal contracts) restano
+intenzionalmente come `Exception`.
+
+### Modificato
+
+- **Controllers** (PR #47):
+  - `controllers/window_selection_strategy.py`:
+    - `_validate_curve_range` → `InvalidStrategyConfigError(strategy_kind="window")`
+    - `MultiStateWindowStrategy.__init__` (<2 stati / non ordinati) →
+      `InvalidStrategyConfigError(strategy_kind="window_multistate")`
+    - `WindowStrategyFactory.create` (nome ignoto) →
+      `StrategyNotFoundError(strategy_kind="window_selection")` (era `KeyError`)
+  - `controllers/window_registry.py`:
+    `WindowRegistry.generate_ftable_statement` → `InvalidWindowError`
+  - `controllers/pitch_controller.py` / `controllers/density_controller.py`:
+    violazione gruppo esclusivo → `InvalidFieldValueError`
+- **Envelopes** (PR #48):
+  - `envelopes/envelope_segment.py`: empty breakpoints → `InvalidFieldValueError`
+  - `envelopes/time_distribution.py`: `n_reps < 1`, `total_time <= 0`,
+    `rate <= 0` → `ParameterBoundError`
+
+### Compatibilità
+
+- Tutte le nuove sotto-classi ereditano `ValueError` via
+  `ConfigError(EngineError, ValueError)` → `pytest.raises(ValueError)` e
+  `except ValueError` pre-esistenti continuano a funzionare.
+- Unica eccezione: `WindowStrategyFactory.create` nome ignoto cambia base
+  da `KeyError` a `StrategyNotFoundError(ValueError)`. Verificato con grep:
+  nessun caller `except KeyError` su questa API.
+
+### Test
+
+- 4172 unit tests passing
+- 51 e2e tests passing (aggiunti `curve_exceeds_range`,
+  `multistate_unsorted` in `tests/e2e/test_engine_errors_e2e.py`)
+- Casi non raggiungibili da pipeline YAML (multistate <2 stati,
+  pitch/density exclusive group, time_distribution input runtime,
+  empty Segment breakpoints) coperti dai test unit
+
+### Riferimenti
+
+- Issue: #46 (PR1: #47 · PR2: #48)
+- Issue padre: #38
+
+---
+
 ## [v3.6.0] — "EngineError hierarchy & user-facing errors" — 2026-05-09
 
 Issue #38 chiusa. Estensione completa della gerarchia `EngineError` introdotta
