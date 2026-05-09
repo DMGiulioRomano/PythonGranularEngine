@@ -48,7 +48,9 @@ class StreamConfig:
     distribution_mode: str = 'uniform'
     time_mode: str = 'absolute'
     time_scale: float = 1.0
-    context: Optional[StreamContext] = None  
+    clip_strategy: str = 'overflow_margin'
+    clip_margin: float = 0.0
+    context: Optional[StreamContext] = None
 
     @classmethod
     def from_yaml(cls, yaml_data: dict, context: StreamContext, allow_none: bool = True) -> 'StreamConfig':

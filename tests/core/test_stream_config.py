@@ -268,20 +268,38 @@ class TestStreamConfigDefaults:
         assert config.distribution_mode == 'uniform'
         assert config.time_mode == 'absolute'
         assert config.time_scale == 1.0
+        assert config.clip_strategy == 'overflow_margin'
+        assert config.clip_margin == 0.0
         assert config.context is None
 
     def test_field_count(self):
-        """StreamConfig ha esattamente 6 campi."""
-        assert len(fields(StreamConfig)) == 6
+        """StreamConfig ha esattamente 8 campi."""
+        assert len(fields(StreamConfig)) == 8
 
     def test_field_names(self):
         """Nomi campi nell'ordine atteso."""
         names = [f.name for f in fields(StreamConfig)]
         expected = [
             'dephase', 'range_always_active', 'distribution_mode',
-            'time_mode', 'time_scale', 'context'
+            'time_mode', 'time_scale', 'clip_strategy', 'clip_margin', 'context'
         ]
         assert names == expected
+
+    def test_clip_strategy_from_yaml_passthrough(self, stream_context):
+        """from_yaml legge clip_strategy=passthrough."""
+        config = StreamConfig.from_yaml({'clip_strategy': 'passthrough'}, context=stream_context)
+        assert config.clip_strategy == 'passthrough'
+
+    def test_clip_margin_from_yaml(self, stream_context):
+        """from_yaml legge clip_margin float."""
+        config = StreamConfig.from_yaml({'clip_margin': 0.5}, context=stream_context)
+        assert config.clip_margin == 0.5
+
+    def test_clip_strategy_default_when_omitted(self, stream_context):
+        """YAML senza clip_strategy: default preservato."""
+        config = StreamConfig.from_yaml({}, context=stream_context)
+        assert config.clip_strategy == 'overflow_margin'
+        assert config.clip_margin == 0.0
 
 
 # =============================================================================

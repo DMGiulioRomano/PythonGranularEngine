@@ -149,6 +149,10 @@ def _make_stream(
     s.envelope_table_num = 2
     s.window_table_map = {'hanning': 2}
 
+    # Clip strategy: passthrough per test (preserva semantiche pre-U2).
+    from strategies.grain_clip_strategy import PassthroughClipStrategy
+    s._clip_strategy = PassthroughClipStrategy()
+
     s.voices = []
     s.grains = []
     s.generated = False
@@ -731,3 +735,124 @@ class TestGenerateGrainsEnvelopePerGrain:
             assert grain.pitch_ratio == pytest.approx(expected_ratio, rel=1e-4), (
                 f"grain {i} at t={t:.1f}: expected ratio {expected_ratio:.4f}, got {grain.pitch_ratio:.4f}"
             )
+
+
+# =============================================================================
+# 7. GrainClipStrategy integration (Plan 001 U2)
+# =============================================================================
+
+class TestGrainClipStrategyIntegration:
+    """generate_grains applica _clip_strategy in post-process.
+
+    Default: OverflowMarginClipStrategy(margin=0.0) — esclude grain con
+    onset >= stream_end o coda che sfora stream_end.
+    """
+
+    def test_default_excludes_grain_with_onset_past_stream_end(self):
+        """Voce 1 con onset_offset enorme: grain spinti oltre stream_end → esclusi."""
+        from strategies.voice_onset_strategy import LinearOnsetStrategy
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
+        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+                         grain_dur=0.05, voice_manager=vm)
+        s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s.generate_grains()
+        # voce 0: onsets in [0, 1.0), nessun offset → tutti dentro
+        assert len(s.voices[0]) > 0
+        for g in s.voices[0]:
+            assert g.onset < 1.0
+            assert g.onset + g.duration <= 1.0
+        # voce 1: onset_offset=10.0 → tutti onset >= 10.0 → tutti esclusi
+        assert s.voices[1] == []
+
+    def test_default_filters_per_voice_independently(self):
+        """Voice 0 dentro bounds, voice 1 fuori: solo voice 1 filtrata."""
+        from strategies.voice_onset_strategy import LinearOnsetStrategy
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
+        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+                         grain_dur=0.05, voice_manager=vm)
+        s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s.generate_grains()
+        voice_0_count = len(s.voices[0])
+        assert voice_0_count >= 9  # ~10 grani in 1.0s @ 0.1s IOT
+        assert len(s.voices[1]) == 0
+
+    def test_default_grains_flat_excludes_out_of_bounds(self):
+        """stream.grains (flatten) non contiene grain fuori bounds."""
+        from strategies.voice_onset_strategy import LinearOnsetStrategy
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
+        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+                         grain_dur=0.05, voice_manager=vm)
+        s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s.generate_grains()
+        stream_end = s.onset + s.duration
+        for g in s.grains:
+            assert g.onset < stream_end
+            assert g.onset + g.duration <= stream_end
+
+    def test_passthrough_strategy_keeps_out_of_bounds_grains(self):
+        """PassthroughClipStrategy iniettata: grain fuori bounds presenti."""
+        from strategies.voice_onset_strategy import LinearOnsetStrategy
+        from strategies.grain_clip_strategy import PassthroughClipStrategy
+        vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
+        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+                         grain_dur=0.05, voice_manager=vm)
+        s._clip_strategy = PassthroughClipStrategy()
+        s.generate_grains()
+        # voce 1 ora ha grain con onset >= 10.0
+        assert len(s.voices[1]) > 0
+        assert all(g.onset >= 10.0 for g in s.voices[1])
+
+    def test_grain_with_tail_exactly_at_stream_end_included(self):
+        """grain.onset + grain.duration == stream_end → incluso (limit `<=`)."""
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        # inter_onset=0.25, grain_dur=0.25 FP-safe: onsets 0, 0.25, 0.5, 0.75
+        # ultimo grain: onset=0.75, coda=1.0 == stream_end → incluso
+        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.25, grain_dur=0.25)
+        s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s.generate_grains()
+        onsets = [g.onset for g in s.grains]
+        assert any(o == pytest.approx(0.75) for o in onsets)
+        for g in s.grains:
+            assert g.onset + g.duration <= 1.0 + 1e-9
+
+    def test_grain_with_tail_overflow_excluded(self):
+        """grain con coda che sfora stream_end → escluso (margin=0.0)."""
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        # duration=1.0, grain_dur=0.2: grain con onset=0.9 → coda=1.1 > 1.0 → escluso
+        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
+        s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s.generate_grains()
+        for g in s.grains:
+            assert g.onset + g.duration <= 1.0
+
+    def test_margin_allows_tail_overflow(self):
+        """margin=0.5 ammette coda oltre stream_end → piu' grain di margin=0.0."""
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        s_strict = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
+        s_strict._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s_strict.generate_grains()
+        s_loose = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
+        s_loose._clip_strategy = OverflowMarginClipStrategy(margin=0.5)
+        s_loose.generate_grains()
+        # con margin=0.0 grain con coda > 1.0 esclusi, con margin=0.5 inclusi
+        assert len(s_loose.grains) > len(s_strict.grains)
+        # coda max con margin=0.0
+        for g in s_strict.grains:
+            assert g.onset + g.duration <= 1.0 + 1e-9
+        # coda max con margin=0.5
+        for g in s_loose.grains:
+            assert g.onset + g.duration <= 1.5 + 1e-9
+
+    def test_stream_with_nonzero_onset(self):
+        """stream.onset != 0: stream_end = onset + duration calcolato corretto."""
+        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        s = _make_stream(duration=1.0, onset=5.0, inter_onset=0.1, grain_dur=0.05)
+        s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
+        s.generate_grains()
+        for g in s.grains:
+            assert g.onset >= 5.0
+            assert g.onset < 6.0 + 1e-9
+            assert g.onset + g.duration <= 6.0 + 1e-9
