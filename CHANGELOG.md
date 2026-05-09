@@ -6,6 +6,67 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v3.6.0] — "EngineError hierarchy & user-facing errors" — 2026-05-09
+
+Issue #38 chiusa. Estensione completa della gerarchia `EngineError` introdotta
+in #33: tutti gli errori di configurazione YAML e di rendering producono ora
+output user-facing pulito su stdout (formato `[ERRORE] ...` + context
+strutturato), con il traceback Python persistito separatamente nel log engine.
+
+### Aggiunto
+
+- **Gerarchia `EngineError` estesa** (`src/shared/exceptions.py`):
+  - `ConfigError(EngineError, ValueError)` — base config errors
+    - `MissingFieldError` — campo YAML obbligatorio mancante o null
+    - `InvalidFieldValueError` — campo presente con valore invalido
+    - `InvalidParameterError` — formato/tipo parametro non supportato
+    - `ParameterBoundError` — parametro fuori bounds (scalare o envelope)
+    - `StrategyNotFoundError` — strategia non registrata nel registry
+    - `InvalidStrategyConfigError` — strategia trovata ma config invalida
+    - `InvalidRendererError` — renderer kind sconosciuto
+    - `InvalidWindowError` — window name/param invalido
+    - `FtableError` — incoerenza FtableManager
+  - `EngineRuntimeError(EngineError)` — runtime engine non-config
+    - `CsoundRenderError(EngineRuntimeError, RuntimeError)` — subprocess csound fallito
+- **Contratto `user_message()`** su tutte le sotto-classi: head `[ERRORE]` +
+  righe indentate con context locale + `Stream:` + `Config:` (quando
+  arricchiti) + path engine log appeso dal handler
+- **Pattern context enrichment layered**:
+  - `stream_id` arricchito al chiamante più prossimo (parser, strategy,
+    controller) prima di rilanciare
+  - `config_file` arricchito in `Generator.create_elements`
+  - Handler unico polimorfico in `main.py` (`except EngineError`)
+- **Documentazione**: nuovo `docs/error-handling.md` con gerarchia, contratto
+  `user_message()`, pattern enrichment, esempi YAML invalidi → output
+  user-facing, guida estensione, test patterns
+
+### Modificato
+
+- `parser.py`, `gate_factory.py`, registry strategy, `RendererFactory`,
+  `NumpyWindowRegistry`, `WindowController`, `FtableManager`,
+  `CsoundRenderer`, `main._build_renderer`: tutti i raise convertiti alle
+  sotto-classi `ConfigError`/`EngineRuntimeError` corrispondenti
+
+### Compatibilità
+
+- `ConfigError` eredita anche da `ValueError` → catch espliciti pre-esistenti
+  continuano a funzionare
+- `CsoundRenderError` eredita anche da `RuntimeError` → idem
+
+### Test
+
+- 4161 unit tests passing
+- 49 e2e tests passing (tutti gli errori coperti via subprocess su YAML inline)
+- Pattern test: unit (isinstance + `user_message`), integration per modulo,
+  handler in `main`, e2e subprocess
+
+### Riferimenti
+
+- Issue: #38 (PR1: #39 · PR2: #41 · PR3: #42 · PR4: #43 · PR5: #44)
+- Doc: `docs/error-handling.md`
+
+---
+
 ## [v3.5.0] — "Strategy passThrough" — 2026-05-09
 
 ### Aggiunto
