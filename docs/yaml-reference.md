@@ -66,7 +66,54 @@ range_always_active: false  # true: i _range sono sempre attivi anche senza deph
 distribution_mode: uniform  # (riservato, non usato correntemente)
 
 time_scale: 1.0         # fattore di scala temporale globale (default 1.0)
+
+clip_strategy: overflow_margin  # "overflow_margin" (default) | "passthrough"
+                                # Decide quali grain entrano in stream.voices
+clip_margin: 0.0        # tolleranza in secondi per la coda dei grain (default 0.0)
 ```
+
+### clip_strategy — Controllo grain out-of-bounds
+
+`GrainClipStrategy` filtra i grain in post-process dentro `Stream.generate_grains`. È l'**unica fonte di verità** su quali grain esistono — Csound e NumPy ricevono esattamente la stessa `stream.voices`.
+
+| Valore | Comportamento |
+|--------|---------------|
+| `overflow_margin` (default) | Grain valido iff `grain.onset < stream_end AND grain.onset + grain.duration <= stream_end + clip_margin`. Con `clip_margin=0.0` il grain deve stare interamente dentro lo stream. |
+| `passthrough` | Nessun filtro — tutti i grain passano al renderer, che li renderizza integralmente (il buffer si estende sull'extent reale). |
+
+`stream_end = stream.onset + stream.duration`.
+
+```yaml
+# Default — grain interi dentro lo stream
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+
+# Tollera 0.5s di coda oltre stream_end
+streams:
+  - stream_id: "s2"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+    clip_strategy: overflow_margin
+    clip_margin: 0.5
+
+# Passthrough — grain con onset/coda oltre stream_end vengono renderizzati;
+# la durata del file di output puo' essere > stream.duration
+streams:
+  - stream_id: "s3"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+    clip_strategy: passthrough
+```
+
+Note:
+- Con `passthrough` il renderer NumPy alloca un buffer esteso sull'extent reale dei grain (`max(g.onset + g.duration)`), quindi il file `.aif` può superare `stream.duration`.
+- Csound: stesso filtraggio a monte → SCO contiene solo i grain validi. Il grain non viene mai troncato (incluso intero o escluso).
+- `clip_margin` è un float fisso, non un Parameter con envelope (coerente con `time_scale`).
 
 ---
 
