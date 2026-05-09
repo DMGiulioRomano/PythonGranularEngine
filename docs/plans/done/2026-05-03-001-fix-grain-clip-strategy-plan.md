@@ -1,7 +1,7 @@
 ---
 title: "fix: GrainClipStrategy — controllo dichiarativo dei grain out-of-bounds (issue #27)"
 type: fix
-status: active
+status: done
 date: 2026-05-03
 ---
 

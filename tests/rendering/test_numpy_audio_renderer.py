@@ -508,3 +508,149 @@ class TestNumpyAudioRendererCache:
 
         assert mtime_second > mtime_first
 
+
+# =============================================================================
+# 8. TEST PASSTHROUGH BUFFER (Plan 002)
+# =============================================================================
+
+
+class TestPassthroughBufferSizing:
+    """
+    Plan 002: il renderer dimensiona il buffer sull'extent reale dei grain,
+    non su stream.duration. CLAMP 2/3 rimossi: i grain che sforano vengono
+    renderizzati integralmente (passthrough puro).
+    """
+
+    def test_buffer_extends_when_grain_tail_overflows(self, renderer, tmp_path):
+        """Grain con coda oltre stream.duration: buffer esteso, niente truncation."""
+        import soundfile as sf
+        # stream.duration = 0.5, grain finisce a 0.7 (sfora di 0.2s)
+        grains = [make_grain(onset=0.4, duration=0.3, pointer_pos=0.5)]
+        stream = make_mock_stream(duration=0.5, grains=grains)
+        output_path = str(tmp_path / 'overflow_tail.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        assert actual_duration >= 0.7 - 1e-3, (
+            f"Buffer should extend to grain end (0.7s), got {actual_duration}"
+        )
+        # Energy oltre stream.duration: il grain non e' stato troncato
+        tail = data[int(0.5 * sr):]
+        assert np.sum(tail ** 2) > 1e-4
+
+    def test_buffer_extends_when_grain_onset_past_stream_end(self, renderer, tmp_path):
+        """Grain con onset >= stream.duration: buffer esteso, grain renderizzato."""
+        import soundfile as sf
+        # stream.duration = 0.3, grain con onset 0.5 (oltre stream_end)
+        grains = [make_grain(onset=0.5, duration=0.1, pointer_pos=0.5)]
+        stream = make_mock_stream(duration=0.3, grains=grains)
+        output_path = str(tmp_path / 'onset_past.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        assert actual_duration >= 0.6 - 1e-3, (
+            f"Buffer should extend to grain end (0.6s), got {actual_duration}"
+        )
+        # Energy nella zona del grain: non e' stato scartato
+        grain_zone = data[int(0.5 * sr):int(0.6 * sr)]
+        assert np.sum(grain_zone ** 2) > 1e-4
+
+    def test_buffer_matches_stream_duration_when_grains_in_bounds(self, renderer, tmp_path):
+        """Default OverflowMarginClipStrategy: grain in-bounds → buffer == stream.duration."""
+        import soundfile as sf
+        grains = [
+            make_grain(onset=0.0, duration=0.05),
+            make_grain(onset=0.1, duration=0.05),
+        ]
+        stream = make_mock_stream(duration=0.5, grains=grains)
+        output_path = str(tmp_path / 'in_bounds.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        assert abs(actual_duration - 0.5) < 1e-3
+
+    def test_no_grains_falls_back_to_stream_duration(self, renderer, tmp_path):
+        """Stream senza grain: buffer == stream.duration (fallback R5)."""
+        import soundfile as sf
+        stream = make_mock_stream(duration=0.4, grains=[])
+        output_path = str(tmp_path / 'empty.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        assert abs(actual_duration - 0.4) < 1e-3
+
+    def test_render_single_stream_with_stream_onset(self, renderer, tmp_path):
+        """stream.onset != 0: extent calcolato relativamente a stream.onset."""
+        import soundfile as sf
+        # stream.onset=2.0, duration=0.5; grain absolute onset 2.0+0.4=2.4, dur 0.3 → end=2.7
+        grains = [make_grain(onset=2.4, duration=0.3, pointer_pos=0.5)]
+        stream = make_mock_stream(onset=2.0, duration=0.5, grains=grains)
+        output_path = str(tmp_path / 'onset_stream.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        # Buffer relativo: 2.7 - 2.0 = 0.7
+        assert actual_duration >= 0.7 - 1e-3
+
+    def test_render_merged_streams_extends_for_overflow(self, renderer, tmp_path):
+        """render_merged_streams: buffer esteso se un grain sfora stream_end."""
+        import soundfile as sf
+        # stream onset=0, duration=0.3; grain a onset 0.5, duration 0.1 → 0.6 absolute
+        grains = [make_grain(onset=0.5, duration=0.1, pointer_pos=0.5)]
+        stream = make_mock_stream(onset=0.0, duration=0.3, grains=grains)
+        output_path = str(tmp_path / 'merged_overflow.aif')
+
+        renderer.render_merged_streams([stream], output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        assert actual_duration >= 0.6 - 1e-3
+
+    def test_render_merged_streams_no_grains_falls_back(self, renderer, tmp_path):
+        """render_merged_streams senza grain: max(s.onset+s.duration)."""
+        import soundfile as sf
+        stream = make_mock_stream(onset=0.0, duration=0.4, grains=[])
+        output_path = str(tmp_path / 'merged_empty.aif')
+
+        renderer.render_merged_streams([stream], output_path)
+        data, sr = sf.read(output_path)
+
+        actual_duration = len(data) / sr
+        assert abs(actual_duration - 0.4) < 1e-3
+
+
+class TestAddGrainAtPositionSignature:
+    """U2: _add_grain_at_position non accetta piu' n_total."""
+
+    def test_add_grain_at_position_no_n_total_param(self, renderer):
+        """La firma ha 3 parametri: buffer, grain, onset_sample (no n_total)."""
+        import inspect
+        sig = inspect.signature(renderer._add_grain_at_position)
+        params = list(sig.parameters.keys())
+        assert 'n_total' not in params, (
+            f"_add_grain_at_position must not accept n_total, got params: {params}"
+        )
+
+    def test_negative_onset_clamp_preserved(self, renderer, tmp_path):
+        """CLAMP 1 (onset < 0) preservato: grain che inizia prima del buffer → tagliato all'inizio."""
+        import soundfile as sf
+        # Grain con onset assoluto 0.0 ma stream.onset=0.05 → onset relativo negativo (-0.05s)
+        grains = [make_grain(onset=0.0, duration=0.2, pointer_pos=0.5)]
+        stream = make_mock_stream(onset=0.05, duration=0.5, grains=grains)
+        output_path = str(tmp_path / 'neg_onset.aif')
+
+        renderer.render_single_stream(stream, output_path)
+        data, sr = sf.read(output_path)
+        # File deve essere creato senza errori; energia non zero (parte del grain renderizzata)
+        assert np.max(np.abs(data)) > 1e-5
+

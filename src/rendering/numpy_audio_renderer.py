@@ -97,14 +97,22 @@ class NumpyAudioRenderer(AudioRenderer):
                 if not dirty:
                     return output_path
 
-        # 1. Alloca buffer (solo per duration, ignora onset)
-        n_total = int(stream.duration * self.output_sr)
+        # 1. Alloca buffer su extent reale dei grain (Plan 002 U1).
+        # stream.voices e' la fonte di verita' (Plan 001): il renderer si adatta
+        # al contenuto, senza opinioni proprie sui bounds.
+        all_grains = [g for voice in stream.voices for g in voice]
+        if all_grains:
+            max_end_rel = max(g.onset + g.duration for g in all_grains) - stream.onset
+            max_end_rel = max(max_end_rel, stream.duration)
+        else:
+            max_end_rel = stream.duration
+        n_total = max(1, int(max_end_rel * self.output_sr))
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
         # 2. Overlap-add con onset RELATIVI
         for voice_grains in stream.voices:
             for grain in voice_grains:
-                self._add_grain_relative(buffer, grain, stream.onset, n_total)
+                self._add_grain_relative(buffer, grain, stream.onset)
 
         # 3. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
@@ -136,16 +144,22 @@ class NumpyAudioRenderer(AudioRenderer):
         Returns:
             Path del file prodotto
         """
-        # 1. Calcola durata totale buffer
-        max_end_time = max(s.onset + s.duration for s in streams)
-        n_total = int(max_end_time * self.output_sr)
+        # 1. Calcola durata totale buffer su extent reale (Plan 002 U1).
+        all_grains = [g for s in streams for v in s.voices for g in v]
+        stream_end_max = max(s.onset + s.duration for s in streams)
+        if all_grains:
+            grain_end_max = max(g.onset + g.duration for g in all_grains)
+            max_end_time = max(grain_end_max, stream_end_max)
+        else:
+            max_end_time = stream_end_max
+        n_total = max(1, int(max_end_time * self.output_sr))
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
         # 2. Overlap-add con onset ASSOLUTI
         for stream in streams:
             for voice_grains in stream.voices:
                 for grain in voice_grains:
-                    self._add_grain_absolute(buffer, grain, n_total)
+                    self._add_grain_absolute(buffer, grain)
 
         # 3. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
@@ -162,7 +176,6 @@ class NumpyAudioRenderer(AudioRenderer):
         buffer: np.ndarray,
         grain,
         stream_onset: float,
-        n_total: int,
     ):
         """
         Aggiunge grano al buffer con onset RELATIVO.
@@ -172,72 +185,56 @@ class NumpyAudioRenderer(AudioRenderer):
         Onset calculation: onset_sample = (grain.onset - stream_onset) * sr
         → grano posizionato relativamente allo stream (parte da 0)
         """
-        # Calcola onset RELATIVO (sottrae stream.onset)
         onset_sample = int((grain.onset - stream_onset) * self.output_sr)
-        self._add_grain_at_position(buffer, grain, onset_sample, n_total)
+        self._add_grain_at_position(buffer, grain, onset_sample)
 
     def _add_grain_absolute(
         self,
         buffer: np.ndarray,
         grain,
-        n_total: int,
     ):
         """
         Aggiunge grano al buffer con onset ASSOLUTO.
 
         Usato da: render_merged_streams() (MIX mode)
-
-        Onset calculation: onset_sample = grain.onset * sr
-        → grano posizionato assolutamente (rispetta stream.onset)
         """
-        # Calcola onset ASSOLUTO (usa grain.onset direttamente)
         onset_sample = int(grain.onset * self.output_sr)
-        self._add_grain_at_position(buffer, grain, onset_sample, n_total)
+        self._add_grain_at_position(buffer, grain, onset_sample)
 
     def _add_grain_at_position(
         self,
         buffer: np.ndarray,
         grain,
         onset_sample: int,
-        n_total: int,
     ):
         """
-        Template method: renderizza grano e somma nel buffer (overlap-add).
+        Renderizza grano e somma nel buffer (overlap-add).
 
-        Gestisce:
-        - Rendering grano (sample + window)
-        - Clamping ai bordi buffer
-        - Overlap-add
+        Plan 002: il renderer non ha opinioni sui bounds del buffer.
+        L'unico clamp legittimo e' onset_sample < 0 (grano inizia prima del
+        buffer); CLAMP 2/3 (coda/onset oltre fine buffer) sono stati rimossi
+        — la responsabilita' appartiene a GrainClipStrategy (Plan 001).
 
         Args:
             buffer: buffer stereo output (n_total, 2)
             grain: oggetto Grain
             onset_sample: posizione nel buffer (in samples)
-            n_total: lunghezza buffer
         """
-        # Risolvi sample + window
         sample_name = self._resolve_sample_name(grain.sample_table)
         window_name = self._resolve_window_name(grain.envelope_table)
 
-        # Renderizza grano
         grain_buffer = self._grain_renderer.render(grain, sample_name, window_name)
         grain_len = grain_buffer.shape[0]
 
-        # Clamp ai bordi buffer
+        # CLAMP 1 — onset negativo: taglia inizio del grano (legittimo, indipendente
+        # dai bounds dello stream).
         if onset_sample < 0:
-            # Grano inizia prima del buffer: taglia inizio
             grain_buffer = grain_buffer[-onset_sample:]
             grain_len = grain_buffer.shape[0]
             onset_sample = 0
 
         end_sample = onset_sample + grain_len
-        if end_sample > n_total:
-            # Grano sfora fine buffer: taglia fine
-            grain_buffer = grain_buffer[:n_total - onset_sample]
-            end_sample = n_total
-
-        # Overlap-add
-        if onset_sample < n_total and grain_buffer.shape[0] > 0:
+        if grain_buffer.shape[0] > 0:
             buffer[onset_sample:end_sample] += grain_buffer
 
     # =========================================================================
