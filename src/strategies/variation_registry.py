@@ -12,6 +12,7 @@ from strategies.variation_strategy import (
     InvertVariation,
     ChoiceVariation
 )
+from shared.exceptions import StrategyNotFoundError
 
 # =============================================================================
 # REGISTRY
@@ -64,10 +65,10 @@ class VariationFactory:
             ValueError: se variation_mode non è registrato
         """
         if variation_mode not in VARIATION_STRATEGIES:
-            available = ', '.join(VARIATION_STRATEGIES.keys())
-            raise ValueError(
-                f"Strategia variation non trovata: '{variation_mode}'. "
-                f"Strategie disponibili: {available}"
+            raise StrategyNotFoundError(
+                strategy_kind="variation",
+                name=variation_mode,
+                available=list(VARIATION_STRATEGIES.keys()),
             )
         
         strategy_class = VARIATION_STRATEGIES[variation_mode]

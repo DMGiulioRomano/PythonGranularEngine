@@ -6,6 +6,10 @@ Permette di aggiungere nuove strategie SENZA modificare controller esistenti.
 
 from typing import Dict, Type
 from strategies.strategie import *
+from shared.exceptions import (
+    InvalidStrategyConfigError,
+    StrategyNotFoundError,
+)
 
 # =============================================================================
 # REGISTRI
@@ -51,8 +55,12 @@ class StrategyFactory:
                              all_params: dict) -> PitchStrategy:
         """Crea una strategia di pitch."""
         if selected_param_name not in PITCH_STRATEGIES:
-            raise ValueError(f"Strategia pitch non trovata per: {selected_param_name}")
-        
+            raise StrategyNotFoundError(
+                strategy_kind="pitch",
+                name=selected_param_name,
+                available=list(PITCH_STRATEGIES.keys()),
+            )
+
         strategy_class = PITCH_STRATEGIES[selected_param_name]
         return strategy_class(param_obj)
     
@@ -62,11 +70,20 @@ class StrategyFactory:
                                all_params: dict) -> DensityStrategy:
         """Crea una strategia di density."""
         if selected_param_name not in DENSITY_STRATEGIES:
-            raise ValueError(f"Strategia density non trovata per: {selected_param_name}")
-        
+            raise StrategyNotFoundError(
+                strategy_kind="density",
+                name=selected_param_name,
+                available=list(DENSITY_STRATEGIES.keys()),
+            )
+
         # La strategia density ha bisogno anche del parametro distribution
         distribution_param = all_params.get('distribution')
         if distribution_param is None or not isinstance(distribution_param, Parameter):
-            raise ValueError("Density strategy richiede parametro 'distribution' valido")        
+            raise InvalidStrategyConfigError(
+                strategy_kind="density",
+                field="distribution",
+                value=distribution_param,
+                hint="density strategy richiede parametro 'distribution' valido",
+            )
         strategy_class = DENSITY_STRATEGIES[selected_param_name]
         return strategy_class(param_obj, distribution_param)
