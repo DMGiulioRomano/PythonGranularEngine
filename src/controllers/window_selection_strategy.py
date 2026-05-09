@@ -18,6 +18,10 @@ from typing import List, Optional, Tuple
 
 from shared.probability_gate import ProbabilityGate
 from shared.logger import log_window_curve_warning
+from shared.exceptions import (
+    InvalidStrategyConfigError,
+    StrategyNotFoundError,
+)
 
 
 def _validate_curve_range(curve, duration: float, time_mode: Optional[str],
@@ -39,12 +43,18 @@ def _validate_curve_range(curve, duration: float, time_mode: Optional[str],
 
     if curve_max_t > valid_max_t + eps:
         mode_label = time_mode or 'absolute'
-        raise ValueError(
-            f"Stream '{stream_id}': curve window transition ha breakpoint a "
-            f"t={curve_max_t} che supera il range valido t={valid_max_t} "
-            f"per time_mode='{mode_label}' (duration={duration}s). "
-            f"Converti i breakpoint o cambia time_mode."
+        err = InvalidStrategyConfigError(
+            strategy_kind="window",
+            field="curve",
+            value=curve_max_t,
+            hint=(
+                f"breakpoint a t={curve_max_t} supera range valido t={valid_max_t} "
+                f"per time_mode='{mode_label}' (duration={duration}s). "
+                f"Converti i breakpoint o cambia time_mode."
+            ),
         )
+        err.stream_id = stream_id
+        raise err
 
     if curve_max_t < valid_max_t - eps:
         mode_label = time_mode or 'absolute'
@@ -205,13 +215,19 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
         stream_id: str = 'unknown',
     ):
         if len(states) < 2:
-            raise ValueError(
-                f"MultiStateWindowStrategy richiede almeno 2 stati, ricevuti {len(states)}"
+            raise InvalidStrategyConfigError(
+                strategy_kind="window_multistate",
+                field="states",
+                value=len(states),
+                hint="MultiStateWindowStrategy richiede almeno 2 stati",
             )
         values = [v for v, _ in states]
         if values != sorted(values):
-            raise ValueError(
-                f"I valori degli stati devono essere in ordine crescente, ricevuti: {values}"
+            raise InvalidStrategyConfigError(
+                strategy_kind="window_multistate",
+                field="states",
+                value=values,
+                hint="i valori degli stati devono essere in ordine crescente",
             )
         _validate_curve_range(curve, duration, time_mode, stream_id)
         self._states = states
@@ -291,9 +307,10 @@ class WindowStrategyFactory:
             KeyError: se il nome non è nel registry
         """
         if name not in WINDOW_STRATEGY_REGISTRY:
-            raise KeyError(
-                f"WindowSelectionStrategy '{name}' non trovata. "
-                f"Disponibili: {sorted(WINDOW_STRATEGY_REGISTRY.keys())}"
+            raise StrategyNotFoundError(
+                strategy_kind="window_selection",
+                name=name,
+                available=list(WINDOW_STRATEGY_REGISTRY.keys()),
             )
         return WINDOW_STRATEGY_REGISTRY[name](**kwargs)
 

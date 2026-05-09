@@ -392,3 +392,82 @@ def test_e2e_invalid_window(tmp_path, cleanup_log):
     assert "Traceback" not in result.stdout
     assert "bogus_window_name_xyz" in result.stdout
     _assert_log_contains(yaml_abs, "InvalidWindowError", ["bogus_window_name_xyz"])
+
+
+# =============================================================================
+# Issue #46 - PR1: controllers raises -> EngineError (e2e)
+# =============================================================================
+
+YAML_CURVE_EXCEEDS_RANGE = f"""\
+composition:
+  title: "test curve exceeds range"
+streams:
+  - stream_id: "stream_curve_bad"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+      envelope:
+        from: hanning
+        to: expodec
+        curve: [[0, 0], [99, 1]]
+"""
+
+YAML_MULTISTATE_UNSORTED = f"""\
+composition:
+  title: "test multistate unsorted"
+streams:
+  - stream_id: "stream_ms_unsorted"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+      envelope:
+        states:
+          - [0.5, hanning]
+          - [0.2, bartlett]
+        curve: [[0, 0], [5, 1]]
+"""
+
+@pytest.mark.e2e
+def test_e2e_curve_exceeds_range(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '46_curve_exceeds.yml', YAML_CURVE_EXCEEDS_RANGE)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    assert result.returncode != 0
+    assert "[ERRORE]" in result.stdout
+    assert "Traceback" not in result.stdout
+    assert "window" in result.stdout.lower()
+    _assert_log_contains(yaml_abs, "InvalidStrategyConfigError", ["window"])
+
+
+@pytest.mark.e2e
+def test_e2e_multistate_unsorted(tmp_path, cleanup_log):
+    """Multistate states non in ordine crescente -> InvalidStrategyConfigError.
+
+    Note: i casi multistate <2 stati e pitch/density exclusive group sono
+    coperti dai test unit -- la pipeline YAML li intercetta prima
+    (parse layer per multistate; orchestrator priorita' per pitch/density),
+    quindi non sono raggiungibili tramite e2e su src/main.py.
+    """
+    yaml_abs = _write_yaml(tmp_path, '46_ms_unsorted.yml', YAML_MULTISTATE_UNSORTED)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    assert result.returncode != 0
+    assert "[ERRORE]" in result.stdout
+    assert "Traceback" not in result.stdout
+    _assert_log_contains(yaml_abs, "InvalidStrategyConfigError", ["window_multistate"])
