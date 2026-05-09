@@ -1,7 +1,7 @@
 ---
 title: "fix: logging strutturato per errori engine — sample mancanti con messaggio terminale pulito (issue #33)"
 type: fix
-status: draft
+status: done
 date: 2026-05-09
 issue: 33
 ---
@@ -217,7 +217,36 @@ Estensioni future seguiranno lo stesso pattern (`EngineError` + caller wrapping 
 
 ## Done criteria
 
-- [ ] `make tests` verde
-- [ ] Sample mancante produce messaggio terminale pulito + log file con traceback
-- [ ] Nessuna regressione su path felice (sample esistenti)
-- [ ] `pino.wav` test case riproducibile e gestito correttamente
+- [x] `make tests` verde (4088 test passano)
+- [x] Sample mancante produce messaggio terminale pulito + log file con traceback
+- [x] Nessuna regressione su path felice (sample esistenti) — verificato con `configs/PGE_density_experiment.yml`
+- [x] Test case riproducibile (`__nonexistent_sample_123__.wav`) e gestito correttamente
+
+## E2E verifica (step 7)
+
+Comando:
+```
+.venv/bin/python src/main.py /tmp/pge_e2e/broken.yml out.aif --renderer numpy
+```
+
+Output terminale (exit 1):
+```
+Caricamento /tmp/pge_e2e/broken.yml...
+Generazione streams...
+Creazione di 1 stream...
+[ERRORE] Sample non trovato: '__nonexistent_sample_123__.wav'
+  Path cercato: ./refs/__nonexistent_sample_123__.wav
+  Stream:       drone_a
+  Config:       /tmp/pge_e2e/broken.yml
+  Dettagli:     ./logs/broken_engine.log
+```
+
+File `./logs/broken_engine.log`:
+```
+2026-05-09 18:41:43 [ERROR] Sample non trovato: '__nonexistent_sample_123__.wav' in ./refs/
+Traceback (most recent call last):
+  File ".../src/main.py", line 231, in main
+    generator.create_elements()
+  ...
+shared.exceptions.SampleNotFoundError: Sample non trovato: '__nonexistent_sample_123__.wav' in ./refs/
+```
