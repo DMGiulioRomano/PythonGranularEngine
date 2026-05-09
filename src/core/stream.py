@@ -22,7 +22,11 @@ from controllers.pointer_controller import PointerController
 from controllers.pitch_controller import PitchController
 from controllers.density_controller import DensityController
 from shared.utils import get_sample_duration
-from shared.exceptions import SampleNotFoundError
+from shared.exceptions import (
+    InvalidFieldValueError,
+    MissingFieldError,
+    SampleNotFoundError,
+)
 from parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from core.stream_config import StreamConfig, StreamContext
@@ -71,15 +75,18 @@ class Stream:
         sample = params.get('sample')
         stream_id = params.get('stream_id', 'unknown')
         if not sample:
-            raise ValueError(
-                f"Stream '{stream_id}': campo 'sample' mancante o null — "
-                "specificare il nome del file wav (es. sample: mio_file.wav)"
+            err = MissingFieldError(
+                field='sample',
+                hint="specificare il nome del file wav (es. sample: mio_file.wav)",
             )
+            err.stream_id = stream_id
+            raise err
         try:
             sample_dur = get_sample_duration(sample)
         except SampleNotFoundError as err:
             err.stream_id = stream_id
             raise
+        self._check_required_context_fields(params, stream_id)
         config = StreamConfig.from_yaml(params, StreamContext.from_yaml(params, sample_dur_sec=sample_dur))
         self._init_stream_context(params)
         # === 4. PARAMETRI SPECIALI ===
@@ -103,16 +110,19 @@ class Stream:
         self.grains: List[Grain] = []  # backward compatibility
         self.generated = False
 
-    def _init_stream_context(self, params):
+    def _check_required_context_fields(self, params, stream_id):
+        """Verifica campi obbligatori StreamContext prima di StreamConfig.from_yaml."""
         base = {field.name for field in fields(StreamContext) if field.name != 'sample_dur_sec'}
         missing = base - set(params.keys())
         if missing:
             missing_list = sorted(missing)
-            if len(missing_list) == 1:
-                raise ValueError(f"Parametro obbligatorio mancante: '{missing_list[0]}'")
-            else:
-                missing_str = ", ".join(f"'{m}'" for m in missing_list)
-                raise ValueError(f"Parametri obbligatori mancanti: {missing_str}")
+            err = MissingFieldError(fields=missing_list)
+            err.stream_id = stream_id
+            raise err
+
+    def _init_stream_context(self, params):
+        self._check_required_context_fields(params, params.get('stream_id', 'unknown'))
+        base = {field.name for field in fields(StreamContext) if field.name != 'sample_dur_sec'}
         for key in base:
             setattr(self, key, params[key])
         self.sample_dur_sec = get_sample_duration(self.sample)
@@ -297,14 +307,19 @@ class Stream:
             # Validazione: se la chiave è presente, DEVE essere None (vuota)
             value = grain_params['reverse']
             if value is not None:
-                raise ValueError(
-                    f"Stream '{self.stream_id}': grain.reverse deve essere lasciato vuoto.\n"
-                    f"  Trovato: reverse: {value}\n"
-                    f"  Sintassi corretta:\n"
-                    f"    grain:\n"
-                    f"      reverse:  # ← senza valore\n"
-                    f"  Per seguire pointer_speed, ometti completamente la chiave 'reverse'."
+                err = InvalidFieldValueError(
+                    field='grain.reverse',
+                    value=value,
+                    hint=(
+                        "grain.reverse deve essere lasciato vuoto.\n"
+                        "  Sintassi corretta:\n"
+                        "    grain:\n"
+                        "      reverse:  # senza valore\n"
+                        "  Per seguire pointer_speed, ometti completamente 'reverse'."
+                    ),
                 )
+                err.stream_id = self.stream_id
+                raise err
             
             # Chiave presente e vuota → reverse forzato
             self.grain_reverse_mode = True
