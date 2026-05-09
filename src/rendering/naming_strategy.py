@@ -15,6 +15,8 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Any
 
+from shared.exceptions import InvalidStrategyConfigError
+
 
 class NamingStrategy(ABC):
     """
@@ -97,7 +99,9 @@ class DefaultNamingStrategy(NamingStrategy):
             return [(streams, base_path)]
 
         else:
-            raise ValueError(
-                f"Mode '{mode}' not supported by DefaultNamingStrategy. "
-                f"Supported: 'stems', 'mix'"
+            raise InvalidStrategyConfigError(
+                strategy_kind="naming",
+                field="mode",
+                value=mode,
+                hint="modalita supportate: 'stems', 'mix'",
             )

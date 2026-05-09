@@ -1,8 +1,9 @@
 # variation_strategy.py
 from abc import ABC, abstractmethod
 from shared.distribution_strategy import DistributionStrategy
-from typing import Any 
-import random 
+from shared.exceptions import InvalidParameterError
+from typing import Any
+import random
 
 class VariationStrategy(ABC):
     """Strategia di applicazione randomness a un valore base."""
@@ -65,7 +66,11 @@ class ChoiceVariation(VariationStrategy):
         
         # Caso 3: Lista esplicita
         if not isinstance(value, list):
-            raise TypeError(f"ChoiceVariation richiede stringa, lista, o True. Ricevuto {type(value)}")
+            raise InvalidParameterError(
+                param_name="ChoiceVariation",
+                value=value,
+                hint="richiede stringa, lista, o True",
+            )
         
         # Se mod_range == 0, non variare (usa primo elemento come default)
         if mod_range == 0:

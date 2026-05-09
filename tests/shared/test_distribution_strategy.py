@@ -360,7 +360,7 @@ class TestDistributionFactory:
         with pytest.raises(ValueError) as exc_info:
             DistributionFactory.create('invalid')
         
-        assert "non riconosciuta" in str(exc_info.value)
+        assert "distribution" in str(exc_info.value)
         assert "invalid" in str(exc_info.value)
     
     def test_create_error_includes_valid_modes(self):
@@ -410,14 +410,17 @@ class TestDistributionFactory:
         assert bounds == (5.0, 15.0)
     
     def test_register_invalid_class_raises_error(self):
-        """Registrazione classe non-DistributionStrategy solleva TypeError."""
+        """Registrazione classe non-DistributionStrategy solleva InvalidStrategyConfigError."""
+        from shared.exceptions import InvalidStrategyConfigError
+
         class NotADistribution:
             pass
-        
-        with pytest.raises(TypeError) as exc_info:
+
+        with pytest.raises(InvalidStrategyConfigError) as exc_info:
             DistributionFactory.register('invalid', NotADistribution)
-        
-        assert "subclass" in str(exc_info.value)
+
+        assert "strategy_class" in str(exc_info.value)
+        assert "NotADistribution" in str(exc_info.value)
 
 
 # =============================================================================
