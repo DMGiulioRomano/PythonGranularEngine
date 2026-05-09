@@ -163,3 +163,70 @@ def test_handle_engine_error_works_for_parameter_bound_error(tmp_path, capsys):
     contents = open(log_path).read()
     assert "ParameterBoundError" in contents
     assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_strategy_not_found_error(tmp_path, capsys):
+    """Handler EngineError gestisce StrategyNotFoundError (issue #38, PR3)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import StrategyNotFoundError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_strategy', log_dir=str(tmp_path))
+
+    err = StrategyNotFoundError(
+        strategy_kind="voice_pitch", name="bogus", available=["step", "range"],
+    )
+    err.stream_id = 'drone_a'
+    err.config_file = 'configs/broken.yml'
+
+    try:
+        raise err
+    except StrategyNotFoundError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "voice_pitch" in captured.out
+    assert "bogus" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "StrategyNotFoundError" in contents
+    assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_invalid_strategy_config_error(tmp_path, capsys):
+    """Handler EngineError gestisce InvalidStrategyConfigError (issue #38, PR3)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import InvalidStrategyConfigError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_strategy_cfg', log_dir=str(tmp_path))
+
+    err = InvalidStrategyConfigError(
+        strategy_kind="voice_pitch", field="chord", value="bogus_chord",
+        hint="usa dom7, maj7",
+    )
+    err.stream_id = 'drone_a'
+
+    try:
+        raise err
+    except InvalidStrategyConfigError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "voice_pitch" in captured.out
+    assert "chord" in captured.out
+    assert "bogus_chord" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "InvalidStrategyConfigError" in contents
+    assert "Traceback" in contents
