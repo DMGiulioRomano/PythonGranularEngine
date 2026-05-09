@@ -52,9 +52,23 @@ class TimeDistributionStrategy(ABC):
     def _validate_inputs(self, total_time: float, n_reps: int):
         """Validazione comune."""
         if n_reps < 1:
-            raise ValueError(f"n_reps deve essere >= 1, ricevuto: {n_reps}")
+            from shared.exceptions import ParameterBoundError
+            raise ParameterBoundError(
+                param_name="n_reps",
+                value_type="value",
+                min_bound=1,
+                max_bound=None,
+                value=n_reps,
+            )
         if total_time <= 0:
-            raise ValueError(f"total_time deve essere > 0, ricevuto: {total_time}")
+            from shared.exceptions import ParameterBoundError
+            raise ParameterBoundError(
+                param_name="total_time",
+                value_type="value",
+                min_bound=0,
+                max_bound=None,
+                value=total_time,
+            )
 
 
 # =============================================================================
@@ -101,7 +115,14 @@ class ExponentialDistribution(TimeDistributionStrategy):
             rate: Tasso di decadimento (>1 = accelera, <1 = rallenta)
         """
         if rate <= 0:
-            raise ValueError(f"rate deve essere > 0, ricevuto: {rate}")
+            from shared.exceptions import ParameterBoundError
+            raise ParameterBoundError(
+                param_name="rate",
+                value_type="value",
+                min_bound=0,
+                max_bound=None,
+                value=rate,
+            )
         self.rate = rate
     
     def calculate_distribution(
