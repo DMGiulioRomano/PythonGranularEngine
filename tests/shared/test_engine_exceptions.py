@@ -365,3 +365,90 @@ def test_invalid_strategy_config_includes_optional_context():
     msg = err.user_message()
     assert "s1" in msg
     assert "c.yml" in msg
+
+
+# =============================================================================
+# PR4: Rendering errors
+# =============================================================================
+
+def test_invalid_renderer_error_is_config_error():
+    from shared.exceptions import (
+        ConfigError, EngineError, InvalidRendererError,
+    )
+    err = InvalidRendererError(renderer_type="bogus", available=["numpy", "csound"])
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+
+
+def test_invalid_renderer_user_message_lists_available():
+    from shared.exceptions import InvalidRendererError
+    err = InvalidRendererError(renderer_type="bogus", available=["numpy", "csound"])
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "bogus" in msg
+    assert "numpy" in msg
+    assert "csound" in msg
+
+
+def test_invalid_window_error_name_form():
+    from shared.exceptions import ConfigError, InvalidWindowError
+    err = InvalidWindowError(name="bogus", available=["hanning", "hamming"])
+    assert isinstance(err, ConfigError)
+    msg = err.user_message()
+    assert "bogus" in msg
+    assert "hanning" in msg
+
+
+def test_invalid_window_error_param_form():
+    from shared.exceptions import InvalidWindowError
+    err = InvalidWindowError(param="n", value=0)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "n" in msg
+    assert "0" in msg
+
+
+def test_ftable_error_is_config_error():
+    from shared.exceptions import ConfigError, FtableError
+    err = FtableError(key="hanning", reason="Window non trovata nel registry")
+    assert isinstance(err, ConfigError)
+    msg = err.user_message()
+    assert "hanning" in msg
+    assert "non trovata" in msg
+
+
+def test_engine_runtime_error_is_engine_error():
+    from shared.exceptions import EngineError, EngineRuntimeError
+    err = EngineRuntimeError("boom")
+    assert isinstance(err, EngineError)
+    assert err.stream_id is None
+    assert err.config_file is None
+
+
+def test_csound_render_error_inheritance_and_message():
+    from shared.exceptions import (
+        CsoundRenderError, EngineError, EngineRuntimeError,
+    )
+    err = CsoundRenderError(
+        returncode=1,
+        command=["csound", "score.csd"],
+        stderr="orch error\n",
+    )
+    assert isinstance(err, EngineRuntimeError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, RuntimeError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "exit code 1" in msg
+    assert "orch error" in msg
+
+
+def test_csound_render_error_context_lines():
+    from shared.exceptions import CsoundRenderError
+    err = CsoundRenderError(returncode=2, command=["csound"], stderr="x")
+    err.stream_id = "drone_a"
+    err.config_file = "configs/x.yml"
+    msg = err.user_message()
+    assert "drone_a" in msg
+    assert "configs/x.yml" in msg

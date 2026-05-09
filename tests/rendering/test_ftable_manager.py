@@ -259,13 +259,13 @@ class TestRegisterWindow:
         assert num3 == 3
 
     def test_register_invalid_window_raises_valueerror(self, fm):
-        """Window non esistente solleva ValueError."""
-        with pytest.raises(ValueError, match="non valida"):
+        """Window non esistente solleva ValueError (InvalidWindowError eredita ValueError)."""
+        with pytest.raises(ValueError, match="non trovata"):
             fm.register_window("nonexistent_window")
 
     def test_register_invalid_window_error_message_contains_valid_names(self, fm):
         """Messaggio di errore elenca i nomi validi."""
-        with pytest.raises(ValueError, match="Validi:"):
+        with pytest.raises(ValueError, match="Disponibili"):
             fm.register_window("invalid")
 
     def test_register_invalid_window_no_side_effects(self, fm):

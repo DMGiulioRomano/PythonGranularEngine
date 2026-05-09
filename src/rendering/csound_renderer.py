@@ -205,8 +205,9 @@ class CsoundRenderer(AudioRenderer):
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
-            raise RuntimeError(
-                f"Csound ha fallito con codice {result.returncode}.\n"
-                f"Comando: {' '.join(cmd)}\n"
-                f"Stderr: {result.stderr}"
+            from shared.exceptions import CsoundRenderError
+            raise CsoundRenderError(
+                returncode=result.returncode,
+                command=cmd,
+                stderr=result.stderr or "",
             )

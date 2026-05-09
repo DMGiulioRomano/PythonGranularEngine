@@ -230,3 +230,88 @@ def test_handle_engine_error_works_for_invalid_strategy_config_error(tmp_path, c
     contents = open(log_path).read()
     assert "InvalidStrategyConfigError" in contents
     assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_invalid_renderer_error(tmp_path, capsys):
+    """Handler EngineError gestisce InvalidRendererError (issue #38, PR4)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import InvalidRendererError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_renderer', log_dir=str(tmp_path))
+
+    err = InvalidRendererError(renderer_type="bogus", available=["numpy", "csound"])
+    err.config_file = 'configs/broken.yml'
+
+    try:
+        raise err
+    except InvalidRendererError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "bogus" in captured.out
+    assert "numpy" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "InvalidRendererError" in contents
+    assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_csound_render_error(tmp_path, capsys):
+    """Handler EngineError gestisce CsoundRenderError (issue #38, PR4)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import CsoundRenderError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_csound', log_dir=str(tmp_path))
+
+    err = CsoundRenderError(
+        returncode=1,
+        command=["csound", "score.csd"],
+        stderr="orchestra error",
+    )
+    err.stream_id = 'drone_a'
+
+    try:
+        raise err
+    except CsoundRenderError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "exit code 1" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "CsoundRenderError" in contents
+    assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_invalid_window_error(tmp_path, capsys):
+    """Handler EngineError gestisce InvalidWindowError (issue #38, PR4)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import InvalidWindowError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_window', log_dir=str(tmp_path))
+
+    err = InvalidWindowError(name="bogus", available=["hanning"])
+    err.stream_id = 'sx'
+
+    try:
+        raise err
+    except InvalidWindowError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "bogus" in captured.out
+    assert "Dettagli:" in captured.out

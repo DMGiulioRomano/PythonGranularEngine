@@ -107,8 +107,10 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             sco_dir=kwargs.get('sco_dir'),
         )
 
-    raise ValueError(
-        f"Renderer '{renderer_type}' non supportato. Tipi validi: csound, numpy"
+    from shared.exceptions import InvalidRendererError
+    raise InvalidRendererError(
+        renderer_type=renderer_type,
+        available=["csound", "numpy"],
     )
 
 

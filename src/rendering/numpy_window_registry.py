@@ -78,9 +78,8 @@ class NumpyWindowRegistry:
             ValueError: se il nome non e' valido o n <= 0
         """
         if n <= 0:
-            raise ValueError(
-                f"Lunghezza finestra deve essere > 0, ricevuto: {n}"
-            )
+            from shared.exceptions import InvalidWindowError
+            raise InvalidWindowError(param="n", value=n)
 
         key = (name, n)
         if key in self._cache:
@@ -134,10 +133,8 @@ class NumpyWindowRegistry:
             return self._half_sine(n)
 
         # Nome non valido
-        raise ValueError(
-            f"Finestra '{name}' non trovata. "
-            f"Disponibili: {self.available_windows()}"
-        )
+        from shared.exceptions import InvalidWindowError
+        raise InvalidWindowError(name=name, available=self.available_windows())
 
     @staticmethod
     def _gen16(n: int, start: float, curve: float, end: float) -> np.ndarray:
