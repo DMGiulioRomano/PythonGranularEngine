@@ -1141,23 +1141,23 @@ class TestCurveRangeValidation:
 
     def test_transition_normalized_curve_exceeds_one_raises(self):
         """time_mode=normalized, curve va a t=10 > 1.0 → ValueError."""
-        with pytest.raises(ValueError, match="supera il range valido"):
+        with pytest.raises(ValueError, match="strategia window.*curve"):
             self._make_transition([[0, 0], [10, 1]], time_mode='normalized')
 
     def test_multistate_normalized_curve_exceeds_one_raises(self):
         """time_mode=normalized, curve va a t=6 > 1.0 → ValueError."""
-        with pytest.raises(ValueError, match="supera il range valido"):
+        with pytest.raises(ValueError, match="strategia window.*curve"):
             self._make_multistate([[0, 0], [6, 0.3], [9, 0.7], [10, 1]],
                                    time_mode='normalized')
 
     def test_transition_absolute_curve_exceeds_duration_raises(self):
         """time_mode=absolute, duration=10, curve va a t=15 → ValueError."""
-        with pytest.raises(ValueError, match="supera il range valido"):
+        with pytest.raises(ValueError, match="strategia window.*curve"):
             self._make_transition([[0, 0], [15, 1]], duration=10.0)
 
     def test_multistate_absolute_curve_exceeds_duration_raises(self):
         """time_mode=absolute, duration=10, curve va a t=12 → ValueError."""
-        with pytest.raises(ValueError, match="supera il range valido"):
+        with pytest.raises(ValueError, match="strategia window.*curve"):
             self._make_multistate([[0, 0], [12, 1]], duration=10.0)
 
     def test_transition_normalized_curve_exactly_one_ok(self):
@@ -1351,9 +1351,10 @@ class TestWindowStrategyFactoryCreate:
         )
         assert isinstance(s, MultiStateWindowStrategy)
 
-    def test_create_unknown_name_raises_key_error(self):
+    def test_create_unknown_name_raises_strategy_not_found(self):
         from controllers.window_selection_strategy import WindowStrategyFactory
-        with pytest.raises(KeyError, match="non trovata"):
+        from shared.exceptions import StrategyNotFoundError
+        with pytest.raises(StrategyNotFoundError, match="non trovata"):
             WindowStrategyFactory.create('nonexistent_strategy')
 
 

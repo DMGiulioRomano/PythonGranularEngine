@@ -168,7 +168,7 @@ class TestFindSelectedParam:
             'effective_density': 0.0,
         }
 
-        with pytest.raises(ValueError, match="Atteso esattamente 1"):
+        with pytest.raises(ValueError, match="density.*esclusivo"):
             _make_density_controller(mock_config, params)
 
     def test_raises_when_both_present(self, mock_config):
@@ -189,7 +189,7 @@ class TestFindSelectedParam:
             'effective_density': 0.0,
         }
 
-        with pytest.raises(ValueError, match="Atteso esattamente 1"):
+        with pytest.raises(ValueError, match="density.*esclusivo"):
             _make_density_controller(mock_config, params)
 
 

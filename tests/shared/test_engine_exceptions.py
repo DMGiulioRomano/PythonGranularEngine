@@ -452,3 +452,130 @@ def test_csound_render_error_context_lines():
     msg = err.user_message()
     assert "drone_a" in msg
     assert "configs/x.yml" in msg
+
+
+# =============================================================================
+# Issue #46 — PR1: controllers raises -> EngineError
+# =============================================================================
+
+def test_window_curve_range_violation_is_invalid_strategy_config():
+    """Curve breakpoint oltre range valido -> InvalidStrategyConfigError."""
+    from shared.exceptions import (
+        ConfigError, EngineError, InvalidStrategyConfigError,
+    )
+    from controllers.window_selection_strategy import _validate_curve_range
+    from envelopes.envelope import Envelope
+
+    curve = Envelope([[0.0, 0.0], [2.5, 1.0]])
+    with pytest.raises(InvalidStrategyConfigError) as excinfo:
+        _validate_curve_range(curve, duration=1.0, time_mode='normalized', stream_id='s1')
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+    assert err.stream_id == 's1'
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "window" in msg.lower()
+    assert "Stream:" in msg
+
+
+def test_multistate_too_few_states_is_invalid_strategy_config():
+    """MultiStateWindowStrategy con <2 stati -> InvalidStrategyConfigError."""
+    from shared.exceptions import InvalidStrategyConfigError
+    from controllers.window_selection_strategy import MultiStateWindowStrategy
+    from envelopes.envelope import Envelope
+
+    curve = Envelope([[0.0, 0.0], [1.0, 1.0]])
+    with pytest.raises(InvalidStrategyConfigError) as excinfo:
+        MultiStateWindowStrategy(states=[(0.0, 'hanning')], curve=curve)
+    err = excinfo.value
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "almeno 2" in msg or "2" in msg
+
+
+def test_multistate_unsorted_states_is_invalid_strategy_config():
+    """Stati non in ordine crescente -> InvalidStrategyConfigError."""
+    from shared.exceptions import InvalidStrategyConfigError
+    from controllers.window_selection_strategy import MultiStateWindowStrategy
+    from envelopes.envelope import Envelope
+
+    curve = Envelope([[0.0, 0.0], [1.0, 1.0]])
+    with pytest.raises(InvalidStrategyConfigError) as excinfo:
+        MultiStateWindowStrategy(
+            states=[(0.5, 'a'), (0.2, 'b')],
+            curve=curve,
+        )
+    err = excinfo.value
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "crescente" in msg or "ordine" in msg.lower()
+
+
+def test_window_strategy_factory_unknown_name_is_strategy_not_found():
+    """Factory.create con nome ignoto -> StrategyNotFoundError (non KeyError)."""
+    from shared.exceptions import (
+        ConfigError, EngineError, StrategyNotFoundError,
+    )
+    from controllers.window_selection_strategy import WindowStrategyFactory
+
+    with pytest.raises(StrategyNotFoundError) as excinfo:
+        WindowStrategyFactory.create('bogus_strategy_name_xyz')
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "bogus_strategy_name_xyz" in msg
+
+
+def test_window_registry_generate_unknown_is_invalid_window():
+    """generate_ftable_statement con nome ignoto -> InvalidWindowError."""
+    from shared.exceptions import ConfigError, InvalidWindowError
+    from controllers.window_registry import WindowRegistry
+
+    with pytest.raises(InvalidWindowError) as excinfo:
+        WindowRegistry.generate_ftable_statement(1, 'totally_fake_window_xyz')
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "totally_fake_window_xyz" in msg
+
+
+def test_pitch_controller_exclusive_group_violation_is_invalid_field_value():
+    """0 o >1 param pitch -> InvalidFieldValueError."""
+    from shared.exceptions import ConfigError, InvalidFieldValueError
+    from controllers.pitch_controller import PitchController, PITCH_STRATEGIES
+
+    pc = PitchController.__new__(PitchController)
+    pc._loaded_params = {}
+    with pytest.raises(InvalidFieldValueError) as excinfo:
+        pc._find_selected_param()
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "pitch" in msg.lower()
+
+
+def test_density_controller_exclusive_group_violation_is_invalid_field_value():
+    """0 o >1 param density -> InvalidFieldValueError."""
+    from shared.exceptions import ConfigError, InvalidFieldValueError
+    from controllers.density_controller import DensityController
+
+    dc = DensityController.__new__(DensityController)
+    dc._loaded_params = {}
+    with pytest.raises(InvalidFieldValueError) as excinfo:
+        dc._find_selected_param()
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "density" in msg.lower()

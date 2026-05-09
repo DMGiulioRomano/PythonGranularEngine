@@ -71,9 +71,14 @@ class DensityController:
         """
         candidates = [name for name in self._loaded_params if name in DENSITY_STRATEGIES and self._loaded_params[name] is not None]
         if len(candidates) != 1:
-            raise ValueError(
-                f"Atteso esattamente 1 parametro density dal gruppo esclusivo, "
-                f"trovati: {candidates}"
+            from shared.exceptions import InvalidFieldValueError
+            raise InvalidFieldValueError(
+                field="density (gruppo esclusivo)",
+                value=candidates,
+                hint=(
+                    f"atteso esattamente 1 parametro density dal gruppo esclusivo "
+                    f"({sorted(DENSITY_STRATEGIES.keys())}), trovati: {candidates}"
+                ),
             )
         return candidates[0]
  

@@ -158,7 +158,7 @@ class TestFindSelectedParam:
             'pitch_semitones': None,
         }
 
-        with pytest.raises(ValueError, match="Atteso esattamente 1"):
+        with pytest.raises(ValueError, match="pitch.*esclusivo"):
             _make_pitch_controller(mock_config, params)
 
     def test_raises_when_both_present(self, mock_config):
@@ -174,7 +174,7 @@ class TestFindSelectedParam:
             ),
         }
 
-        with pytest.raises(ValueError, match="Atteso esattamente 1"):
+        with pytest.raises(ValueError, match="pitch.*esclusivo"):
             _make_pitch_controller(mock_config, params)
 
 

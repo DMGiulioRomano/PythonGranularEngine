@@ -187,7 +187,11 @@ class WindowRegistry:
         """
         spec = cls.get(name)
         if not spec:
-            raise ValueError(f"WINDOW '{name}' non trovato nel registro")
+            from shared.exceptions import InvalidWindowError
+            raise InvalidWindowError(
+                name=name,
+                available=cls.all_names(),
+            )
         
         params_str = ' '.join(str(p) for p in spec.gen_params)
         return f"f {table_num} 0 {size} {spec.gen_routine} {params_str}"
