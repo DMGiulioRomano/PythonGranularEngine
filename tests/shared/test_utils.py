@@ -22,7 +22,13 @@ from shared.utils import get_sample_duration, random_percent, get_nested, PATHSA
 
 class TestGetSampleDuration:
     """Test per get_sample_duration() - usa mock di soundfile."""
-    
+
+    @pytest.fixture(autouse=True)
+    def _mock_path_exists(self):
+        """Default: simula sample esistente. Test specifici override via patch locale."""
+        with patch('shared.utils.os.path.exists', return_value=True):
+            yield
+
     @patch('shared.utils.sf.info')
     def test_get_duration_normal_file(self, mock_info):
         """File audio normale restituisce durata corretta."""
@@ -83,19 +89,31 @@ class TestGetSampleDuration:
     
     @patch('shared.utils.sf.info')
     def test_file_not_found_error(self, mock_info):
-        """File non esistente solleva errore."""
+        """File esistente ma sf.info fallisce con FileNotFoundError → propaga."""
         mock_info.side_effect = FileNotFoundError("File not found")
-        
-        with pytest.raises(FileNotFoundError):
-            get_sample_duration('nonexistent.wav')
+        with patch('shared.utils.os.path.exists', return_value=True):
+            with pytest.raises(FileNotFoundError):
+                get_sample_duration('nonexistent.wav')
     
     @patch('shared.utils.sf.info')
     def test_invalid_audio_file(self, mock_info):
         """File non valido solleva errore soundfile."""
         mock_info.side_effect = RuntimeError("Invalid audio file")
-        
-        with pytest.raises(RuntimeError):
-            get_sample_duration('invalid.wav')
+        with patch('shared.utils.os.path.exists', return_value=True):
+            with pytest.raises(RuntimeError):
+                get_sample_duration('invalid.wav')
+
+    def test_missing_sample_raises_sample_not_found_error(self):
+        """File assente in PATHSAMPLES → SampleNotFoundError con filename e path."""
+        from shared.exceptions import SampleNotFoundError
+
+        with patch('shared.utils.os.path.exists', return_value=False):
+            with pytest.raises(SampleNotFoundError) as exc_info:
+                get_sample_duration('pino.wav')
+
+        err = exc_info.value
+        assert err.filename == 'pino.wav'
+        assert err.search_path == './refs/'
 
 
 # =============================================================================
@@ -360,10 +378,11 @@ class TestUtilsIntegration:
     """Test di integrazione tra le funzioni utilities."""
     
     @patch('shared.utils.sf.info')
-    def test_chaining_functions(self, mock_info):
+    @patch('shared.utils.os.path.exists', return_value=True)
+    def test_chaining_functions(self, mock_exists, mock_info):
         """Test concatenazione funzioni utils."""
         mock_info.return_value = Mock(duration=2.5)
-        
+
         # Simula workflow reale
         duration = get_sample_duration('test.wav')
         
@@ -412,10 +431,11 @@ class TestPathSamplesConstant:
         assert PATHSAMPLES == './refs/'
     
     @patch('shared.utils.sf.info')
-    def test_pathsamples_used_in_get_duration(self, mock_info):
+    @patch('shared.utils.os.path.exists', return_value=True)
+    def test_pathsamples_used_in_get_duration(self, mock_exists, mock_info):
         """get_sample_duration usa PATHSAMPLES."""
         mock_info.return_value = Mock(duration=1.0)
-        
+
         get_sample_duration('test.wav')
         
         # Verifica che il path includa PATHSAMPLES
