@@ -1,7 +1,7 @@
 ---
 title: "fix: NumPy renderer passthrough — buffer dinamico, rimozione guard ortogonali (issue #27)"
 type: fix
-status: active
+status: done
 date: 2026-05-03
 ---
 
