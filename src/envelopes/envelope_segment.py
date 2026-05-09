@@ -46,7 +46,12 @@ class Segment(ABC):
             context: Additional data (e.g., {'tangents': [...]})
         """
         if len(breakpoints) < 1:
-            raise ValueError("Segment must have at least one breakpoint")
+            from shared.exceptions import InvalidFieldValueError
+            raise InvalidFieldValueError(
+                field="breakpoints",
+                value=breakpoints,
+                hint="Segment richiede almeno un breakpoint",
+            )
         
         # Sort by time
         self.breakpoints = sorted(breakpoints, key=lambda p: p[0])

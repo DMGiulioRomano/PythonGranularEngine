@@ -176,7 +176,7 @@ class TestEdgeCasesAndValidation:
     
     def test_segment_requires_at_least_one_breakpoint(self, linear_strategy):
         """Segment richiede almeno 1 breakpoint."""
-        with pytest.raises(ValueError, match="at least one breakpoint"):
+        with pytest.raises(ValueError, match="breakpoints"):
             NormalSegment([], linear_strategy)
         
     def test_breakpoints_sorted_automatically(self, linear_strategy):

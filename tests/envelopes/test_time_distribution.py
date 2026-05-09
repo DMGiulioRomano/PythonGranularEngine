@@ -83,7 +83,7 @@ class TestExponentialDistribution:
     
     def test_invalid_rate(self):
         """Rate <= 0 solleva errore."""
-        with pytest.raises(ValueError, match="rate deve essere > 0"):
+        with pytest.raises(ValueError, match="rate.*fuori bounds"):
             ExponentialDistribution(rate=0.0)
 
 
@@ -384,17 +384,17 @@ class TestEdgeCases:
         """n_reps < 1 solleva errore."""
         dist = LinearDistribution()
         
-        with pytest.raises(ValueError, match="n_reps deve essere >= 1"):
+        with pytest.raises(ValueError, match="n_reps.*fuori bounds"):
             dist.calculate_distribution(30.0, 0)
     
     def test_invalid_total_time(self):
         """total_time <= 0 solleva errore."""
         dist = LinearDistribution()
         
-        with pytest.raises(ValueError, match="total_time deve essere > 0"):
+        with pytest.raises(ValueError, match="total_time.*fuori bounds"):
             dist.calculate_distribution(0.0, 5)
         
-        with pytest.raises(ValueError, match="total_time deve essere > 0"):
+        with pytest.raises(ValueError, match="total_time.*fuori bounds"):
             dist.calculate_distribution(-10.0, 5)
 
 

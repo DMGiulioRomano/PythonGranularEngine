@@ -579,3 +579,69 @@ def test_density_controller_exclusive_group_violation_is_invalid_field_value():
     msg = err.user_message()
     assert "[ERRORE]" in msg
     assert "density" in msg.lower()
+
+
+# =============================================================================
+# Issue #46 — PR2: envelopes raises -> EngineError
+# =============================================================================
+
+def test_envelope_segment_empty_breakpoints_is_invalid_field_value():
+    """Segment senza breakpoint -> InvalidFieldValueError."""
+    from shared.exceptions import ConfigError, InvalidFieldValueError
+    from envelopes.envelope_segment import NormalSegment
+    from envelopes.envelope_interpolation import LinearInterpolation
+
+    with pytest.raises(InvalidFieldValueError) as excinfo:
+        NormalSegment(breakpoints=[], strategy=LinearInterpolation())
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "breakpoint" in msg.lower()
+
+
+def test_time_distribution_invalid_n_reps_is_parameter_bound():
+    """n_reps < 1 -> ParameterBoundError."""
+    from shared.exceptions import ConfigError, ParameterBoundError
+    from envelopes.time_distribution import LinearDistribution
+
+    dist = LinearDistribution()
+    with pytest.raises(ParameterBoundError) as excinfo:
+        dist.calculate_distribution(total_time=10.0, n_reps=0)
+    err = excinfo.value
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "n_reps" in msg
+    assert "fuori bounds" in msg
+
+
+def test_time_distribution_invalid_total_time_is_parameter_bound():
+    """total_time <= 0 -> ParameterBoundError."""
+    from shared.exceptions import ParameterBoundError
+    from envelopes.time_distribution import LinearDistribution
+
+    dist = LinearDistribution()
+    with pytest.raises(ParameterBoundError) as excinfo:
+        dist.calculate_distribution(total_time=0.0, n_reps=5)
+    err = excinfo.value
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "total_time" in msg
+
+
+def test_exponential_distribution_invalid_rate_is_parameter_bound():
+    """rate <= 0 -> ParameterBoundError."""
+    from shared.exceptions import ParameterBoundError
+    from envelopes.time_distribution import ExponentialDistribution
+
+    with pytest.raises(ParameterBoundError) as excinfo:
+        ExponentialDistribution(rate=0.0)
+    err = excinfo.value
+    assert isinstance(err, ValueError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "rate" in msg
