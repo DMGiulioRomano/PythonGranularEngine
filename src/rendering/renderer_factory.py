@@ -13,6 +13,7 @@ Usato da main.py per iniettare il renderer in Generator.
 from typing import Dict, Any
 
 from rendering.audio_renderer import AudioRenderer
+from shared.exceptions import InvalidRendererError
 
 
 class RendererFactory:
@@ -51,9 +52,9 @@ class RendererFactory:
             ValueError: se renderer_type non e' supportato
         """
         if renderer_type not in RendererFactory._VALID_TYPES:
-            raise ValueError(
-                f"Renderer '{renderer_type}' non supportato. "
-                f"Tipi validi: {', '.join(sorted(RendererFactory._VALID_TYPES))}"
+            raise InvalidRendererError(
+                renderer_type=renderer_type,
+                available=sorted(RendererFactory._VALID_TYPES),
             )
 
         if renderer_type == 'numpy':
