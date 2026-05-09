@@ -75,6 +75,64 @@ streams:
       reverse: true
 """
 
+REAL_SAMPLE = "001-0_0-3_0.wav"
+
+
+YAML_INVALID_PARAM_FORMAT = f"""\
+composition:
+  title: "test invalid param format"
+streams:
+  - stream_id: "stream_bad_density"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: "not_a_number"
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+YAML_PARAM_OUT_OF_BOUNDS = f"""\
+composition:
+  title: "test param bound violation"
+streams:
+  - stream_id: "stream_bad_bound"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: 999999
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+YAML_INVALID_DEPHASE = f"""\
+composition:
+  title: "test invalid dephase"
+streams:
+  - stream_id: "stream_bad_dephase"
+    onset: 0.0
+    duration: 5
+    sample: "{REAL_SAMPLE}"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    dephase: "not_a_valid_dephase"
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
 YAML_SAMPLE_NOT_FOUND = """\
 composition:
   title: "test sample not found"
@@ -185,6 +243,41 @@ def test_e2e_invalid_grain_reverse(tmp_path, cleanup_log):
     assert "True" in result.stdout
     assert "stream_bad_reverse" in result.stdout
     _assert_log_contains(yaml_abs, "InvalidFieldValueError", ["grain.reverse"])
+
+
+@pytest.mark.e2e
+def test_e2e_invalid_parameter_format(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '05_invalid_param.yml', YAML_INVALID_PARAM_FORMAT)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    _assert_clean_user_output(result)
+    assert "Formato non valido" in result.stdout
+    assert "density" in result.stdout
+    assert "stream_bad_density" in result.stdout
+    _assert_log_contains(yaml_abs, "InvalidParameterError", ["density"])
+
+
+@pytest.mark.e2e
+def test_e2e_parameter_out_of_bounds(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '06_param_bound.yml', YAML_PARAM_OUT_OF_BOUNDS)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    _assert_clean_user_output(result)
+    assert "fuori bounds" in result.stdout
+    assert "density" in result.stdout
+    assert "stream_bad_bound" in result.stdout
+    _assert_log_contains(yaml_abs, "ParameterBoundError", ["density"])
+
+
+@pytest.mark.e2e
+def test_e2e_invalid_dephase(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '07_invalid_dephase.yml', YAML_INVALID_DEPHASE)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    _assert_clean_user_output(result)
+    assert "Formato non valido" in result.stdout
+    assert "dephase" in result.stdout
+    _assert_log_contains(yaml_abs, "InvalidParameterError", ["dephase"])
 
 
 @pytest.mark.e2e

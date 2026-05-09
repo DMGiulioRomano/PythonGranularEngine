@@ -101,3 +101,65 @@ def test_handle_engine_error_works_for_invalid_field_value_error(tmp_path, capsy
     assert "grain.reverse" in captured.out
     assert "True" in captured.out
     assert "Dettagli:" in captured.out
+
+
+def test_handle_engine_error_works_for_invalid_parameter_error(tmp_path, capsys):
+    """Handler EngineError gestisce InvalidParameterError (issue #38, PR2)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import InvalidParameterError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_param', log_dir=str(tmp_path))
+
+    err = InvalidParameterError(param_name='density.value', value='abc', hint="atteso numero")
+    err.stream_id = 'drone_a'
+
+    try:
+        raise err
+    except InvalidParameterError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "density.value" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "InvalidParameterError" in contents
+    assert "Traceback" in contents
+
+
+def test_handle_engine_error_works_for_parameter_bound_error(tmp_path, capsys):
+    """Handler EngineError gestisce ParameterBoundError (issue #38, PR2)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from main import _handle_engine_error
+    from shared.exceptions import ParameterBoundError
+    from shared.logger import configure_engine_logger, get_engine_log_path
+
+    configure_engine_logger(yaml_name='broken_bound', log_dir=str(tmp_path))
+
+    err = ParameterBoundError(
+        param_name='density', value_type='value',
+        value=999.0, min_bound=0.0, max_bound=100.0,
+    )
+    err.stream_id = 'drone_b'
+
+    try:
+        raise err
+    except ParameterBoundError as e:
+        _handle_engine_error(e)
+
+    captured = capsys.readouterr()
+    assert "density" in captured.out
+    assert "999" in captured.out
+    assert "Dettagli:" in captured.out
+
+    log_path = get_engine_log_path()
+    for h in __import__('logging').getLogger('engine').handlers:
+        h.flush()
+    contents = open(log_path).read()
+    assert "ParameterBoundError" in contents
+    assert "Traceback" in contents
