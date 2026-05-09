@@ -48,6 +48,9 @@ def _make_mock_logger_module():
     mod = types.ModuleType('logger')
     mod.configure_clip_logger = MagicMock()
     mod.get_clip_log_path = MagicMock(return_value='/tmp/test.log')
+    mod.configure_engine_logger = MagicMock()
+    mod.get_engine_logger = MagicMock(return_value=MagicMock())
+    mod.get_engine_log_path = MagicMock(return_value='/tmp/engine.log')
     return mod
 
 

@@ -2,9 +2,25 @@
 # MAIN
 # =============================================================================
 
-from shared.logger import configure_clip_logger, get_clip_log_path
+import traceback
+
+from shared.logger import (
+    configure_clip_logger, get_clip_log_path,
+    configure_engine_logger, get_engine_logger, get_engine_log_path,
+)
+from shared.exceptions import EngineError
 from engine.generator import Generator
 from rendering.score_visualizer import ScoreVisualizer
+
+
+def _handle_engine_error(err: EngineError) -> None:
+    """Stampa user_message su stdout e persiste traceback nel file engine log."""
+    log_path = get_engine_log_path()
+    print(err.user_message())
+    if log_path:
+        print(f"  Dettagli:     {log_path}")
+    logger = get_engine_logger()
+    logger.error("%s\n%s", err, traceback.format_exc())
 
 
 def _build_renderer(renderer_type: str, generator, **kwargs):
@@ -203,6 +219,7 @@ def main():
         yaml_name=yaml_basename,
         log_transformations=False
     )
+    configure_engine_logger(yaml_name=yaml_basename, log_dir='./logs')
 
     try:
         generator = Generator(yaml_file)
@@ -286,9 +303,11 @@ def main():
     except FileNotFoundError:
         print(f" Errore: file '{yaml_file}' non trovato")
         sys.exit(1)
+    except EngineError as e:
+        _handle_engine_error(e)
+        sys.exit(1)
     except Exception as e:
         print(f" Errore: {e}")
-        import traceback
         traceback.print_exc()
         sys.exit(1)
 
