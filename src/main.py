@@ -32,7 +32,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
 
     Args:
         renderer_type: 'csound' o 'numpy'
-        generator: istanza di Generator con streams/cartridges gia' creati
+        generator: istanza di Generator con streams gia' creati
         **kwargs: argomenti specifici per ogni renderer
 
     Returns:
@@ -101,7 +101,6 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             'csound',
             score_writer=generator.score_writer,
             csound_config=csound_config,
-            cartridges=generator.cartridges,
             cache_manager=cache_manager,
             stream_data_map=generator.stream_data_map,
             sco_dir=kwargs.get('sco_dir'),

@@ -70,14 +70,6 @@ def mock_stream():
     return stream
 
 
-@pytest.fixture
-def mock_cartridge():
-    """Mock Cartridge minimale."""
-    cartridge = MagicMock()
-    cartridge.cartridge_id = 'test_cartridge'
-    return cartridge
-
-
 # =============================================================================
 # 1. TEST CSOUND RENDERER INIT
 # =============================================================================
@@ -307,21 +299,6 @@ class TestRendererFactoryValidation:
 class TestCsoundRendererNewParams:
     """Test per i nuovi parametri opzionali di CsoundRenderer."""
 
-    def test_default_cartridges_empty(self, mock_score_writer, csound_config):
-        """Senza cartridges, self.cartridges e' lista vuota."""
-        r = CsoundRenderer(score_writer=mock_score_writer, csound_config=csound_config)
-        assert r.cartridges == []
-
-    def test_stores_cartridges(self, mock_score_writer, csound_config):
-        """cartridges viene conservato."""
-        cartridges = [MagicMock(), MagicMock()]
-        r = CsoundRenderer(
-            score_writer=mock_score_writer,
-            csound_config=csound_config,
-            cartridges=cartridges,
-        )
-        assert r.cartridges == cartridges
-
     def test_default_cache_manager_none(self, mock_score_writer, csound_config):
         """Senza cache_manager, self.cache_manager e' None."""
         r = CsoundRenderer(score_writer=mock_score_writer, csound_config=csound_config)
@@ -365,43 +342,6 @@ class TestCsoundRendererNewParams:
             sco_dir='/sco',
         )
         assert r.sco_dir == '/sco'
-
-
-# =============================================================================
-# 8. TEST CARTRIDGES IN render_merged_streams
-# =============================================================================
-
-class TestCsoundRendererCartridges:
-    """Test per l'integrazione dei cartridges in render_merged_streams."""
-
-    @patch('rendering.csound_renderer.subprocess.run')
-    def test_render_merged_streams_passes_cartridges_to_score_writer(
-        self, mock_run, mock_score_writer, csound_config
-    ):
-        """render_merged_streams passa self.cartridges a ScoreWriter."""
-        mock_run.return_value = MagicMock(returncode=0)
-        cartridges = [MagicMock(), MagicMock()]
-        renderer = CsoundRenderer(
-            score_writer=mock_score_writer,
-            csound_config=csound_config,
-            cartridges=cartridges,
-        )
-        renderer.render_merged_streams([MagicMock()], '/out/mix.aif')
-
-        call_kwargs = mock_score_writer.write_score.call_args.kwargs
-        assert call_kwargs['cartridges'] == cartridges
-
-    @patch('rendering.csound_renderer.subprocess.run')
-    def test_render_merged_streams_no_cartridges_passes_empty_list(
-        self, mock_run, mock_score_writer, csound_config
-    ):
-        """Senza cartridges, passa lista vuota a ScoreWriter."""
-        mock_run.return_value = MagicMock(returncode=0)
-        renderer = CsoundRenderer(score_writer=mock_score_writer, csound_config=csound_config)
-        renderer.render_merged_streams([MagicMock()], '/out/mix.aif')
-
-        call_kwargs = mock_score_writer.write_score.call_args.kwargs
-        assert call_kwargs['cartridges'] == []
 
 
 # =============================================================================
@@ -572,17 +512,6 @@ class TestCsoundRendererKeepSco:
 
 class TestRendererFactoryCreateNewKwargs:
     """Test per i nuovi kwargs di RendererFactory.create('csound', ...)."""
-
-    def test_create_csound_forwards_cartridges(self):
-        """create('csound') forwarda il parametro cartridges."""
-        cartridges = [MagicMock()]
-        renderer = RendererFactory.create(
-            renderer_type='csound',
-            score_writer=MagicMock(),
-            csound_config={},
-            cartridges=cartridges,
-        )
-        assert renderer.cartridges == cartridges
 
     def test_create_csound_forwards_cache_manager(self):
         """create('csound') forwarda il parametro cache_manager."""

@@ -73,7 +73,6 @@ class RendererFactory:
             return CsoundRenderer(
                 score_writer=kwargs['score_writer'],
                 csound_config=kwargs.get('csound_config', {}),
-                cartridges=kwargs.get('cartridges'),
                 cache_manager=kwargs.get('cache_manager'),
                 stream_data_map=kwargs.get('stream_data_map'),
                 sco_dir=kwargs.get('sco_dir'),

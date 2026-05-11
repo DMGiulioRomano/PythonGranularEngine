@@ -75,7 +75,6 @@ def mocks():
     # Defaults necessari per il flusso unificato OCP
     gen_inst.ftable_manager.get_all_tables.return_value = {}
     gen_inst.streams = []
-    gen_inst.cartridges = []
     gen_inst.stream_data_map = {}
     gen_inst.score_writer = MagicMock()
 
@@ -983,15 +982,6 @@ class TestCsoundArgs:
             mocks['main'].main()
         kwargs = mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['score_writer'] is mocks['generator_instance'].score_writer
-
-    def test_csound_passes_cartridges_from_generator(self, mocks):
-        """RendererFactory.create riceve cartridges dal generator."""
-        cartridges = [MagicMock()]
-        mocks['generator_instance'].cartridges = cartridges
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            mocks['main'].main()
-        kwargs = mocks['RendererFactory'].create.call_args.kwargs
-        assert kwargs['cartridges'] is cartridges
 
     def test_csound_passes_stream_data_map_from_generator(self, mocks):
         """RendererFactory.create riceve stream_data_map dal generator."""

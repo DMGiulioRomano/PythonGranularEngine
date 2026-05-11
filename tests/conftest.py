@@ -57,19 +57,3 @@ def make_mock_stream_for_generator(stream_id='stream_01', sample='test.wav'):
     stream.__repr__ = Mock(return_value=f"Stream({stream_id})")
     stream.__str__ = Mock(return_value=f"Stream({stream_id})")
     return stream
-
-
-def make_mock_cartridge_for_generator(cartridge_id='cartridge_01', sample_path='tape.wav'):
-    """
-    Mock Cartridge con attributi necessari per Generator.
-
-    Attributi: cartridge_id, sample_path, sample_table_num,
-               __repr__, __str__
-    """
-    cartridge = Mock()
-    cartridge.cartridge_id = cartridge_id
-    cartridge.sample_path = sample_path
-    cartridge.sample_table_num = None
-    cartridge.__repr__ = Mock(return_value=f"Cartridge({cartridge_id})")
-    cartridge.__str__ = Mock(return_value=f"Cartridge({cartridge_id})")
-    return cartridge

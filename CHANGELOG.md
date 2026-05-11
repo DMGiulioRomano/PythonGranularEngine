@@ -6,6 +6,28 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Unreleased] — Rimozione classe Cartridge — 2026-05-11
+
+### Rimosso (breaking change)
+
+Issue #40. Rimossa completamente la classe `Cartridge` (tape recorder head)
+e tutto il codice correlato. Feature non utilizzata da nessun YAML in
+`configs/`, rappresentava solo debito tecnico.
+
+- `src/core/cartridge.py` eliminato
+- `csound/main.orc`: rimosso `instr TapeRecorder`
+- `Generator.create_elements()` ora ritorna `List[Stream]` (era `Tuple[List[Stream], List[Cartridge]]`)
+- Rimossi parametri/attributi `cartridges` da `Generator`, `CsoundRenderer`,
+  `RendererFactory.create('csound', ...)`, `ScoreWriter.write_score`
+- Test correlati rimossi (`tests/core/test_cartridge.py` e sezioni in test misti)
+
+### Compatibilità
+
+Chiave `cartridges:` in YAML viene ignorata silenziosamente (zero impatto
+sui brani esistenti in `configs/`, verificato).
+
+---
+
 ## [v3.7.0] — "EngineError extension: controllers + envelopes" — 2026-05-10
 
 Issue #46 chiusa (follow-up di #38). Convertiti gli ultimi 11 raise
