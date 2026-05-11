@@ -34,7 +34,6 @@ class CsoundRenderer(AudioRenderer):
             - env_vars: dict con INCDIR, SSDIR, SFDIR
             - log_dir: directory per i log
             - message_level: livello messaggi csound (-m flag)
-        cartridges: lista di Cartridge da includere nel mix (default: [])
         cache_manager: StreamCacheManager opzionale per skip stream invariati
         stream_data_map: dict {stream_id: yaml_dict} per fingerprint cache
         sco_dir: se specificato, salva i file .sco in questa directory
@@ -45,14 +44,12 @@ class CsoundRenderer(AudioRenderer):
         self,
         score_writer,
         csound_config: Dict[str, Any],
-        cartridges: Optional[List] = None,
         cache_manager=None,
         stream_data_map: Optional[Dict[str, dict]] = None,
         sco_dir: Optional[str] = None,
     ):
         self.score_writer = score_writer
         self.csound_config = csound_config
-        self.cartridges = list(cartridges) if cartridges is not None else []
         self.cache_manager = cache_manager
         self.stream_data_map = dict(stream_data_map) if stream_data_map is not None else {}
         self.sco_dir = sco_dir
@@ -87,7 +84,7 @@ class CsoundRenderer(AudioRenderer):
                 if not dirty:
                     return output_path
 
-        sco_path = self._write_score(streams=[stream], cartridges=[], output_path=output_path, per_stream=True)
+        sco_path = self._write_score(streams=[stream], output_path=output_path, per_stream=True)
         self._run_csound(sco_path, output_path)
 
         # Cleanup file temporaneo se non in modalita' keep-sco
@@ -106,8 +103,6 @@ class CsoundRenderer(AudioRenderer):
         """
         Renderizza PIU' stream in UN file (onset assoluti): ScoreWriter -> .sco -> csound -> .aif
 
-        Include i cartridges (tape recorder) nel file score.
-
         Usato per: MIX mode (tutti gli stream in un file)
 
         Args:
@@ -119,7 +114,6 @@ class CsoundRenderer(AudioRenderer):
         """
         sco_path = self._write_score(
             streams=streams,
-            cartridges=self.cartridges,
             output_path=output_path,
         )
         self._run_csound(sco_path, output_path)
@@ -134,7 +128,7 @@ class CsoundRenderer(AudioRenderer):
     # INTERNAL
     # =========================================================================
 
-    def _write_score(self, streams, cartridges, output_path: str, per_stream: bool = False) -> str:
+    def _write_score(self, streams, output_path: str, per_stream: bool = False) -> str:
         """
         Scrive il file .sco via ScoreWriter.
 
@@ -143,7 +137,6 @@ class CsoundRenderer(AudioRenderer):
 
         Args:
             streams: lista di Stream da includere
-            cartridges: lista di Cartridge da includere
             output_path: percorso del file .aif di output (usato per naming)
 
         Returns:
@@ -160,7 +153,6 @@ class CsoundRenderer(AudioRenderer):
         self.score_writer.write_score(
             filepath=sco_path,
             streams=streams,
-            cartridges=cartridges,
             per_stream=per_stream,
         )
 

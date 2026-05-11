@@ -131,7 +131,7 @@ Pages are 30 seconds wide in A3 landscape format. A 120-second piece produces a 
 │   ├── audioFile.mk              # Audio file trimming via sox
 │   └── clean.mk                  # Cleanup targets
 ├── src/
-│   ├── core/                     # Grain, Stream, Cartridge, StreamConfig
+│   ├── core/                     # Grain, Stream, StreamConfig
 │   ├── engine/                   # Generator (main orchestrator)
 │   ├── rendering/
 │   │   ├── score_visualizer.py   # Graphic score generator (PDF, matplotlib)

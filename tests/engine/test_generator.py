@@ -10,10 +10,9 @@ Sezioni:
 2.  Test load_yaml() - caricamento e preprocessing YAML
 3.  Test _eval_math_expressions() - valutazione espressioni matematiche
 4.  Test _filter_solo_mute() - logica solo/mute sugli stream
-5.  Test create_elements() - orchestrazione creazione stream e cartridges
+5.  Test create_elements() - orchestrazione creazione stream
 6.  Test _create_streams() - creazione stream granulari
-7.  Test _create_cartridges() - creazione cartridges tape recorder
-8.  Test _register_stream_windows() - pre-registrazione finestre
+7.  Test _register_stream_windows() - pre-registrazione finestre
 9.  Test generate_score_file() - delega a ScoreWriter
 10. Test integrazione - workflow end-to-end con mock
 11. Test edge cases e boundary conditions
@@ -21,7 +20,6 @@ Sezioni:
 
 Strategia di mocking:
 - Stream: mock completo per isolare da logica granulare
-- Cartridge: mock per isolare da logica tape recorder
 - FtableManager: mock per isolare gestione function tables
 - ScoreWriter: mock per isolare scrittura file
 - WindowController: mock per isolare parsing finestre
@@ -62,7 +60,7 @@ def _get_generator_class():
 # MOCK
 # =============================================================================
 
-from conftest import make_mock_stream_for_generator, make_mock_cartridge_for_generator
+from conftest import make_mock_stream_for_generator
 # =============================================================================
 # FIXTURES
 # =============================================================================
@@ -111,14 +109,6 @@ class TestGeneratorInit:
              patch('engine.generator.ScoreWriter'):
             g = Generator('config.yml')
         assert g.streams == []
-
-    def test_init_cartridges_empty(self):
-        """cartridges e' lista vuota all'inizializzazione."""
-        Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter'):
-            g = Generator('config.yml')
-        assert g.cartridges == []
 
     def test_init_creates_ftable_manager(self):
         """Il costruttore crea un FtableManager."""
@@ -562,17 +552,17 @@ class TestCreateElements:
         with pytest.raises(ValueError, match="Devi prima caricare il YAML"):
             gen.create_elements()
 
-    def test_create_elements_returns_tuple(self, gen):
-        """create_elements ritorna tupla (streams, cartridges)."""
-        gen.data = {'streams': [], 'cartridges': []}
+    def test_create_elements_returns_list_of_streams(self, gen):
+        """create_elements ritorna List[Stream]."""
+        gen.data = {'streams': []}
+        gen.streams = ['mock_stream']
 
         with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch.object(gen, '_create_cartridges'):
+             patch.object(gen, '_create_streams'):
             result = gen.create_elements()
 
-        assert isinstance(result, tuple)
-        assert len(result) == 2
+        assert isinstance(result, list)
+        assert result == ['mock_stream']
 
     def test_create_elements_calls_filter(self, gen):
         """create_elements chiama _filter_solo_mute."""
@@ -596,55 +586,19 @@ class TestCreateElements:
 
         mock_cs.assert_called_once_with(filtered)
 
-    def test_create_elements_with_cartridges(self, gen):
-        """create_elements crea cartridges se presenti."""
+    def test_create_elements_ignores_cartridges_key(self, gen):
+        """create_elements ignora silenziosamente la chiave legacy 'cartridges'."""
         gen.data = {
             'streams': [],
-            'cartridges': [{'cartridge_id': 't1'}]
+            'cartridges': [{'cartridge_id': 't1'}],
         }
 
         with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch.object(gen, '_create_cartridges') as mock_ct:
-            gen.create_elements()
+             patch.object(gen, '_create_streams'):
+            result = gen.create_elements()
 
-        mock_ct.assert_called_once_with([{'cartridge_id': 't1'}])
-
-    def test_create_elements_without_cartridges_key(self, gen):
-        """create_elements senza chiave 'cartridges' non crea cartridges."""
-        gen.data = {'streams': []}
-
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch.object(gen, '_create_cartridges') as mock_ct:
-            gen.create_elements()
-
-        mock_ct.assert_not_called()
-
-    def test_create_elements_with_empty_cartridges(self, gen):
-        """create_elements con cartridges=[] non chiama _create_cartridges."""
-        gen.data = {'streams': [], 'cartridges': []}
-
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch.object(gen, '_create_cartridges') as mock_ct:
-            gen.create_elements()
-
-        mock_ct.assert_not_called()
-
-    def test_create_elements_returns_streams_and_cartridges(self, gen):
-        """create_elements ritorna le liste corrette."""
-        gen.data = {'streams': [], 'cartridges': []}
-        gen.streams = ['mock_stream']
-        gen.cartridges = ['mock_cartridge']
-
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch.object(gen, '_create_cartridges'):
-            streams, cartridges = gen.create_elements()
-
-        assert streams == ['mock_stream']
-        assert cartridges == ['mock_cartridge']
+        assert isinstance(result, list)
+        assert not hasattr(gen, 'cartridges')
 
     def test_create_elements_missing_streams_key(self, gen):
         """create_elements con dict senza chiave 'streams' usa default vuoto."""
@@ -655,18 +609,6 @@ class TestCreateElements:
             gen.create_elements()
 
         mock_filter.assert_called_once_with([])
-
-    def test_create_elements_with_none_cartridges(self, gen):
-        """create_elements con cartridges=None non chiama _create_cartridges."""
-        gen.data = {'streams': [], 'cartridges': None}
-
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch.object(gen, '_create_cartridges') as mock_ct:
-            gen.create_elements()
-
-        mock_ct.assert_not_called()
-
 
 # =============================================================================
 # 6. TEST _create_streams()
@@ -786,81 +728,6 @@ class TestCreateStreams:
         assert gen.streams[0] == 'existing'
 
 
-# =============================================================================
-# 7. TEST _create_cartridges()
-# =============================================================================
-
-class TestCreatecartridges:
-    """Test per _create_cartridges() - creazione cartridges tape recorder."""
-
-    def test_creates_objects(self, gen):
-        """_create_cartridges crea oggetti Cartridge."""
-        cartridge_data = [{'cartridge_id': 't1', 'sample': 'tape.wav'}]
-        mock_cartridge = make_mock_cartridge_for_generator()
-
-        with patch('engine.generator.Cartridge', return_value=mock_cartridge) as MockCartridge:
-            gen._create_cartridges(cartridge_data)
-
-        MockCartridge.assert_called_once_with(cartridge_data[0])
-        assert len(gen.cartridges) == 1
-
-    def test_registers_sample(self, gen):
-        """_create_cartridges registra il sample_path nel FtableManager."""
-        mock_cartridge = make_mock_cartridge_for_generator(sample_path='my_tape.wav')
-        cartridge_data = [{'cartridge_id': 't1', 'sample': 'my_tape.wav'}]
-
-        with patch('engine.generator.Cartridge', return_value=mock_cartridge):
-            gen._create_cartridges(cartridge_data)
-
-        gen.ftable_manager.register_sample.assert_called_once_with('my_tape.wav')
-
-    def test_assigns_sample_table_num(self, gen):
-        """_create_cartridges assegna sample_table_num."""
-        mock_cartridge = make_mock_cartridge_for_generator()
-        gen.ftable_manager.register_sample = Mock(return_value=99)
-        cartridge_data = [{'cartridge_id': 't1', 'sample': 'tape.wav'}]
-
-        with patch('engine.generator.Cartridge', return_value=mock_cartridge):
-            gen._create_cartridges(cartridge_data)
-
-        assert mock_cartridge.sample_table_num == 99
-
-    def test_creates_multiple(self, gen):
-        """_create_cartridges crea piu' cartridges."""
-        cartridges_created = []
-
-        def make_t(data):
-            t = make_mock_cartridge_for_generator(cartridge_id=data['cartridge_id'])
-            cartridges_created.append(t)
-            return t
-
-        cartridge_data = [
-            {'cartridge_id': 't1', 'sample': 'a.wav'},
-            {'cartridge_id': 't2', 'sample': 'b.wav'},
-        ]
-
-        with patch('engine.generator.Cartridge', side_effect=make_t):
-            gen._create_cartridges(cartridge_data)
-
-        assert len(gen.cartridges) == 2
-
-    def test_empty_list(self, gen):
-        """_create_cartridges con lista vuota non crea nulla."""
-        gen._create_cartridges([])
-        assert gen.cartridges == []
-
-    def test_appends_to_existing(self, gen):
-        """_create_cartridges appende, non sovrascrive."""
-        gen.cartridges = ['existing']
-        mock_cartridge = make_mock_cartridge_for_generator()
-        cartridge_data = [{'cartridge_id': 't1', 'sample': 'tape.wav'}]
-
-        with patch('engine.generator.Cartridge', return_value=mock_cartridge):
-            gen._create_cartridges(cartridge_data)
-
-        assert len(gen.cartridges) == 2
-        assert gen.cartridges[0] == 'existing'
-
 
 # =============================================================================
 # 8. TEST _register_stream_windows()
@@ -975,21 +842,18 @@ class TestGenerateScoreFile:
     def test_delegates_to_writer(self, gen):
         """generate_score_file delega a score_writer.write_score."""
         gen.streams = ['s1', 's2']
-        gen.cartridges = ['t1']
 
         gen.generate_score_file('output.sco')
 
         gen.score_writer.write_score.assert_called_once_with(
             filepath='output.sco',
             streams=['s1', 's2'],
-            cartridges=['t1'],
             yaml_source='test_config.yml'
         )
 
     def test_default_path(self, gen):
         """generate_score_file usa 'output.sco' come default."""
         gen.streams = []
-        gen.cartridges = []
 
         gen.generate_score_file()
 
@@ -999,7 +863,6 @@ class TestGenerateScoreFile:
     def test_custom_path(self, gen):
         """generate_score_file accetta path custom."""
         gen.streams = []
-        gen.cartridges = []
 
         gen.generate_score_file('/tmp/my_score.sco')
 
@@ -1009,23 +872,20 @@ class TestGenerateScoreFile:
     def test_passes_yaml_path(self, gen):
         """generate_score_file passa yaml_path come yaml_source."""
         gen.streams = []
-        gen.cartridges = []
 
         gen.generate_score_file()
 
         call_kwargs = gen.score_writer.write_score.call_args
         assert call_kwargs.kwargs['yaml_source'] == 'test_config.yml'
 
-    def test_passes_current_streams_and_cartridges(self, gen):
-        """generate_score_file passa le liste correnti."""
+    def test_passes_current_streams(self, gen):
+        """generate_score_file passa la lista corrente di streams."""
         gen.streams = ['stream_a', 'stream_b']
-        gen.cartridges = ['cartridge_x']
 
         gen.generate_score_file()
 
         call_kwargs = gen.score_writer.write_score.call_args
         assert call_kwargs.kwargs['streams'] == ['stream_a', 'stream_b']
-        assert call_kwargs.kwargs['cartridges'] == ['cartridge_x']
 
 
 # =============================================================================
@@ -1041,28 +901,22 @@ class TestIntegration:
             'streams': [
                 {'stream_id': 's1', 'sample': 'a.wav', 'grain': {'envelope': 'hanning'}}
             ],
-            'cartridges': [
-                {'cartridge_id': 't1', 'sample': 'tape.wav'}
-            ]
         })
 
         mock_stream = make_mock_stream_for_generator()
-        mock_cartridge = make_mock_cartridge_for_generator()
 
         with patch('builtins.open', mock_open(read_data=yaml_content)), \
              patch('engine.generator.Stream', return_value=mock_stream), \
-             patch('engine.generator.Cartridge', return_value=mock_cartridge), \
              patch('engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen.ftable_manager.register_sample = Mock(return_value=1)
             gen.ftable_manager.register_window = Mock(return_value=2)
 
             gen.load_yaml()
-            streams, cartridges = gen.create_elements()
+            streams = gen.create_elements()
             gen.generate_score_file('out.sco')
 
         assert len(gen.streams) == 1
-        assert len(gen.cartridges) == 1
         gen.score_writer.write_score.assert_called_once()
 
     def test_workflow_solo_mode(self, gen):
@@ -1239,7 +1093,6 @@ class TestParametrized:
     def test_generate_score_various_paths(self, gen, output_path):
         """generate_score_file con vari percorsi output."""
         gen.streams = []
-        gen.cartridges = []
 
         gen.generate_score_file(output_path)
 
@@ -1265,92 +1118,52 @@ class TestParametrized:
 # =============================================================================
 
 class TestGenerateScoreFilesPerStream:
-    """Test per generate_score_files_per_stream() - un file per stream/cartridge."""
+    """Test per generate_score_files_per_stream() - un file per stream."""
 
     def _make_stream(self, stream_id):
         s = Mock()
         s.stream_id = stream_id
         return s
 
-    def _make_cartridge(self, cartridge_id):
-        c = Mock()
-        c.cartridge_id = cartridge_id
-        return c
-
     def test_returns_list(self, gen):
         """Il metodo ritorna una lista."""
         gen.streams = []
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream()
         assert isinstance(result, list)
 
-    def test_empty_streams_and_cartridges_returns_empty_list(self, gen):
-        """Con liste vuote non genera nessun file."""
+    def test_empty_streams_returns_empty_list(self, gen):
+        """Con lista vuota non genera nessun file."""
         gen.streams = []
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream()
         assert result == []
 
     def test_one_file_per_stream(self, gen):
         """Genera esattamente un file per ogni stream."""
         gen.streams = [self._make_stream('s1'), self._make_stream('s2')]
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream()
         assert len(result) == 2
-
-    def test_one_file_per_cartridge(self, gen):
-        """Genera esattamente un file per ogni cartridge."""
-        gen.streams = []
-        gen.cartridges = [self._make_cartridge('c1'), self._make_cartridge('c2')]
-        result = gen.generate_score_files_per_stream()
-        assert len(result) == 2
-
-    def test_streams_and_cartridges_combined(self, gen):
-        """Genera file per stream E per cartridges."""
-        gen.streams = [self._make_stream('s1')]
-        gen.cartridges = [self._make_cartridge('c1'), self._make_cartridge('c2')]
-        result = gen.generate_score_files_per_stream()
-        assert len(result) == 3
 
     def test_stream_filename_uses_stream_id(self, gen):
         """Il nome del file stream contiene stream_id."""
         gen.streams = [self._make_stream('texture_01')]
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream()
         assert any('texture_01' in path for path in result)
-
-    def test_cartridge_filename_uses_cartridge_id(self, gen):
-        """Il nome del file cartridge contiene cartridge_id."""
-        gen.streams = []
-        gen.cartridges = [self._make_cartridge('tape_head_A')]
-        result = gen.generate_score_files_per_stream()
-        assert any('tape_head_A' in path for path in result)
 
     def test_files_have_sco_extension(self, gen):
         """Tutti i file generati hanno estensione .sco."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = [self._make_cartridge('c1')]
         result = gen.generate_score_files_per_stream()
         assert all(path.endswith('.sco') for path in result)
 
     def test_base_name_prefix_applied_to_streams(self, gen):
         """Con base_name, il prefisso viene applicato ai file stream."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream(base_name='my_piece')
         assert any('my_piece_s1' in path for path in result)
-
-    def test_base_name_prefix_applied_to_cartridges(self, gen):
-        """Con base_name, il prefisso viene applicato ai file cartridge."""
-        gen.streams = []
-        gen.cartridges = [self._make_cartridge('c1')]
-        result = gen.generate_score_files_per_stream(base_name='my_piece')
-        assert any('my_piece_c1' in path for path in result)
 
     def test_without_base_name_no_prefix(self, gen):
         """Senza base_name, il file inizia direttamente con stream_id."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream(output_dir='.')
         filename = os.path.basename(result[0])
         assert filename == 's1.sco'
@@ -1358,7 +1171,6 @@ class TestGenerateScoreFilesPerStream:
     def test_output_dir_applied_to_paths(self, gen, tmp_path):
         """I file vengono creati nella output_dir specificata."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream(output_dir=str(tmp_path))
         assert all(str(tmp_path) in path for path in result)
 
@@ -1366,7 +1178,6 @@ class TestGenerateScoreFilesPerStream:
         """La output_dir viene creata se non esiste."""
         new_dir = str(tmp_path / 'new_subdir')
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = []
         gen.generate_score_files_per_stream(output_dir=new_dir)
         assert os.path.isdir(new_dir)
 
@@ -1375,56 +1186,34 @@ class TestGenerateScoreFilesPerStream:
         s1 = self._make_stream('s1')
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
-        gen.cartridges = []
 
         gen.generate_score_files_per_stream()
 
         calls = gen.score_writer.write_score.call_args_list
-        stream_calls = [c for c in calls]
-        assert stream_calls[0].kwargs['streams'] == [s1]
-        assert stream_calls[0].kwargs['cartridges'] == []
-        assert stream_calls[1].kwargs['streams'] == [s2]
-        assert stream_calls[1].kwargs['cartridges'] == []
-
-    def test_cartridge_written_with_only_its_cartridge(self, gen):
-        """Ogni chiamata a write_score per cartridge passa solo quella cartridge."""
-        c1 = self._make_cartridge('c1')
-        c2 = self._make_cartridge('c2')
-        gen.streams = []
-        gen.cartridges = [c1, c2]
-
-        gen.generate_score_files_per_stream()
-
-        calls = gen.score_writer.write_score.call_args_list
-        assert calls[0].kwargs['streams'] == []
-        assert calls[0].kwargs['cartridges'] == [c1]
-        assert calls[1].kwargs['cartridges'] == [c2]
+        assert calls[0].kwargs['streams'] == [s1]
+        assert calls[1].kwargs['streams'] == [s2]
 
     def test_yaml_source_passed_to_each_call(self, gen):
         """yaml_source viene passato a ogni chiamata di write_score."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = [self._make_cartridge('c1')]
 
         gen.generate_score_files_per_stream()
 
         for call in gen.score_writer.write_score.call_args_list:
             assert call.kwargs['yaml_source'] == 'test_config.yml'
 
-    def test_write_score_called_once_per_element(self, gen):
-        """write_score viene chiamato esattamente N volte (stream + cartridges)."""
+    def test_write_score_called_once_per_stream(self, gen):
+        """write_score viene chiamato esattamente N volte."""
         gen.streams = [self._make_stream('s1'), self._make_stream('s2')]
-        gen.cartridges = [self._make_cartridge('c1')]
 
         gen.generate_score_files_per_stream()
 
-        assert gen.score_writer.write_score.call_count == 3
+        assert gen.score_writer.write_score.call_count == 2
 
     def test_default_output_dir_is_current_dir(self, gen):
         """Senza output_dir, i file vengono messi nella directory corrente."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = []
         result = gen.generate_score_files_per_stream()
-        # Il path deve essere relativo alla dir corrente
         assert os.path.dirname(result[0]) == '.'
         
 # =============================================================================
@@ -1538,7 +1327,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
     def test_without_cache_manager_writes_all_streams(self, gen):
         """Senza cache_manager tutti gli stream producono write_score."""
         gen.streams = [self._make_stream('s1'), self._make_stream('s2')]
-        gen.cartridges = []
 
         gen.generate_score_files_per_stream()
 
@@ -1549,7 +1337,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s1 = self._make_stream('s1')
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
-        gen.cartridges = []
         gen.stream_data_map = {
             's1': {'stream_id': 's1'},
             's2': {'stream_id': 's2'},
@@ -1565,7 +1352,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s1 = self._make_stream('s1')
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
-        gen.cartridges = []
         gen.stream_data_map = {
             's1': {'stream_id': 's1'},
             's2': {'stream_id': 's2'},
@@ -1581,7 +1367,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
         s1 = self._make_stream('s1')
         s2 = self._make_stream('s2')
         gen.streams = [s1, s2]
-        gen.cartridges = []
         gen.stream_data_map = {
             's1': {'stream_id': 's1'},
             's2': {'stream_id': 's2'},
@@ -1598,7 +1383,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
         """update_after_build viene chiamato con i dict degli stream scritti."""
         s1 = self._make_stream('s1')
         gen.streams = [s1]
-        gen.cartridges = []
         raw = {'stream_id': 's1', 'volume': -6.0}
         gen.stream_data_map = {'s1': raw}
 
@@ -1611,7 +1395,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
         """update_after_build non viene chiamato se nessuno stream e' dirty."""
         s1 = self._make_stream('s1')
         gen.streams = [s1]
-        gen.cartridges = []
         gen.stream_data_map = {'s1': {'stream_id': 's1'}}
 
         cm = self._make_cache_manager(dirty_ids=set())
@@ -1623,7 +1406,6 @@ class TestGenerateScoreFilesPerStreamWithCache:
         """aif_dir viene inoltrato a cache_manager.get_dirty_stream_dicts."""
         s1 = self._make_stream('s1')
         gen.streams = [s1]
-        gen.cartridges = []
         gen.stream_data_map = {'s1': {'stream_id': 's1'}}
 
         cm = self._make_cache_manager(dirty_ids=set())
@@ -1634,23 +1416,9 @@ class TestGenerateScoreFilesPerStreamWithCache:
         call_kwargs = cm.get_dirty_stream_dicts.call_args
         assert call_kwargs.kwargs['aif_dir'] == '/output/stems'
 
-    def test_cartridges_not_filtered_by_cache(self, gen):
-        """Le cartridges non passano dal cache manager e vengono sempre scritte."""
-        c1 = Mock()
-        c1.cartridge_id = 'c1'
-        gen.streams = []
-        gen.cartridges = [c1]
-        gen.stream_data_map = {}
-
-        cm = self._make_cache_manager(dirty_ids=set())
-        gen.generate_score_files_per_stream(cache_manager=cm)
-
-        assert gen.score_writer.write_score.call_count == 1
-
     def test_without_cache_manager_update_never_called(self, gen):
         """Senza cache_manager non viene chiamato nessun update."""
         gen.streams = [self._make_stream('s1')]
-        gen.cartridges = []
 
         # Nessun cache_manager passato: nessun AttributeError atteso
         gen.generate_score_files_per_stream()

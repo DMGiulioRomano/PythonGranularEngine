@@ -12,10 +12,9 @@ Mantiene backward compatibility con l'API pubblica esistente.
 import yaml
 import re
 import math
-from typing import List, Tuple, Dict, Any
+from typing import List, Dict, Any
 
 from core.stream import Stream
-from core.cartridge import Cartridge
 from rendering.ftable_manager import FtableManager
 from rendering.score_writer import ScoreWriter
 from controllers.window_controller import WindowController
@@ -24,23 +23,22 @@ from shared.exceptions import ConfigError, SampleNotFoundError
 class Generator:
     """
     Orchestratore principale per generazione score Csound.
-    
+
     Responsabilita:
     - Caricare e preprocessare configurazione YAML
-    - Creare Stream e cartridges dai dati YAML
+    - Creare Stream dai dati YAML
     - Coordinare FtableManager e ScoreWriter
     - Applicare logica solo/mute
-    
-    Public API (backward compatible):
+
+    Public API:
     - load_yaml() -> dict
-    - create_elements() -> Tuple[List[Stream], List[Cartridge]]
+    - create_elements() -> List[Stream]
     - generate_score_file(output_path: str) -> None
-    
+
     Attributes:
         yaml_path: path file configurazione YAML
         data: dati YAML preprocessati
         streams: lista Stream creati
-        cartridges: lista cartridges create
         ftable_manager: gestore function tables
         score_writer: scrittore file score
     """
@@ -55,8 +53,7 @@ class Generator:
         self.yaml_path = yaml_path
         self.data: Dict[str, Any] = None
         self.streams: List[Stream] = []
-        self.cartridges: List[Cartridge] = []
-        
+
         # Delegati specializzati
         self.ftable_manager = FtableManager(start_num=1)
         self.score_writer = ScoreWriter(self.ftable_manager)
@@ -84,38 +81,33 @@ class Generator:
         self.data = self._eval_math_expressions(raw_data)
         return self.data
     
-    def create_elements(self) -> Tuple[List[Stream], List[Cartridge]]:
+    def create_elements(self) -> List[Stream]:
         """
-        Crea Stream e cartridges dai dati YAML.
-        
+        Crea Stream dai dati YAML.
+
         Applica logica solo/mute, registra ftables, genera grani.
-        
+
         Returns:
-            tuple: (streams, cartridges)
-            
+            List[Stream]: stream creati
+
         Raises:
             ValueError: se load_yaml() non è stato chiamato
         """
         if self.data is None:
             raise ValueError("Devi prima caricare il YAML con load_yaml()")
-        
+
         # Estrai e filtra stream
         stream_data_list = self.data.get('streams', [])
         filtered_streams = self._filter_solo_mute(stream_data_list)
-        
+
         # Crea stream (QUI viene chiamato _register_stream_windows)
         try:
             self._create_streams(filtered_streams)
         except (SampleNotFoundError, ConfigError) as err:
             err.config_file = self.yaml_path
             raise
-        
-        # Crea cartridges
-        cartridge_data_list = self.data.get('cartridges', [])
-        if cartridge_data_list:
-            self._create_cartridges(cartridge_data_list)
-        
-        return self.streams, self.cartridges
+
+        return self.streams
 
 
     def generate_score_file(self, output_path: str = 'output.sco'):
@@ -130,7 +122,6 @@ class Generator:
         self.score_writer.write_score(
             filepath=output_path,
             streams=self.streams,
-            cartridges=self.cartridges,
             yaml_source=self.yaml_path
         )
 
@@ -143,14 +134,13 @@ class Generator:
         aif_prefix: str = None,   
     ) -> List[str]:
         """
-        Genera un file .sco separato per ogni stream e per ogni cartridge.
+        Genera un file .sco separato per ogni stream.
 
-        Il nome file e' derivato da stream_id / cartridge_id.
-        Se base_name e' fornito: {base_name}_{id}.sco
-        Altrimenti: {id}.sco
+        Il nome file e' derivato da stream_id.
+        Se base_name e' fornito: {base_name}_{stream_id}.sco
+        Altrimenti: {stream_id}.sco
 
         Se cache_manager e' fornito, vengono scritti solo gli stream dirty.
-        Le cartridges non sono soggette al filtro cache.
 
         Args:
             output_dir: directory di output
@@ -196,7 +186,6 @@ class Generator:
             self.score_writer.write_score(
                 filepath=filepath,
                 streams=[stream],
-                cartridges=[],
                 yaml_source=self.yaml_path
             )
             generated.append(filepath)
@@ -204,23 +193,6 @@ class Generator:
         # --- Aggiorna cache dopo scrittura ---
         if cache_manager is not None and dirty_dicts:
             cache_manager.update_after_build(dirty_dicts)
-
-        # --- Scrivi cartridges (sempre, non filtrate dalla cache) ---
-        for cartridge in self.cartridges:
-            filename = (
-                f"{base_name}_{cartridge.cartridge_id}.sco"
-                if base_name
-                else f"{cartridge.cartridge_id}.sco"
-            )
-            filepath = os.path.join(output_dir, filename)
-
-            self.score_writer.write_score(
-                filepath=filepath,
-                streams=[],
-                cartridges=[cartridge],
-                yaml_source=self.yaml_path
-            )
-            generated.append(filepath)
 
         return generated
 
@@ -291,31 +263,6 @@ class Generator:
                 print(f"🔇 {muted_count} stream muted")
         
         return filtered
-    
-    # =========================================================================
-    # CREAZIONE cartridges
-    # =========================================================================
-    
-    def _create_cartridges(self, cartridge_data_list: list):
-        """
-        Crea le cartridges tape recorder.
-        
-        Args:
-            cartridge_data_list: lista dizionari parametri Cartridge da YAML
-        """
-        print(f"Creazione di {len(cartridge_data_list)} cartridges tape recorder...")
-        
-        for cartridge_data in cartridge_data_list:
-            # Crea Cartridge
-            cartridge = Cartridge(cartridge_data)
-            
-            # Registra ftable sample
-            cartridge.sample_table_num = self.ftable_manager.register_sample(
-                cartridge.sample_path
-            )
-            
-            self.cartridges.append(cartridge)
-            print(f"  → Cartridge '{cartridge.cartridge_id}': {Cartridge}")
     
     # =========================================================================
     # PREPROCESSING YAML
