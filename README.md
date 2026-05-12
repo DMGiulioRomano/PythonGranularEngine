@@ -45,20 +45,35 @@ brew install python@3.12 sox csound
 
 ### Linux (Debian / Ubuntu)
 
+**Ubuntu 24.04+** (python3.12 disponibile nei repo standard):
+
 ```bash
 sudo apt update
 sudo apt install -y python3.12 python3.12-venv sox csound
 ```
+
+**Debian 12 stable** (python3.12 non in repo standard): usa il `python3` di sistema se >= 3.12, oppure aggiungi il PPA `deadsnakes`, oppure usa `pyenv`. La detection del Makefile rileva automaticamente `python3` generico se la versione è adeguata.
 
 > **Note on Csound on Linux:** the version available via `apt` may be older than the one available on the [Csound website](https://csound.com/download.html). If you need a recent version, download the `.deb` package directly from the official releases.
 
 ### Arch Linux / Manjaro
 
 ```bash
-curl -fsSL https://pyenv.run | bash
-pyenv install 3.12
-pyenv local 3.12
+sudo pacman -Sy python sox csound
 ```
+
+`pacman -Sy python` installa la versione corrente di sistema (oggi 3.14, verificata >= 3.12). La detection del Makefile riconosce automaticamente `python3.12`..`python3.16` versionati e, in fallback, `python3` generico.
+
+### Compatibilità Python
+
+| OS | Comando install | Versione attesa | Detection |
+|---|---|---|---|
+| macOS (Homebrew) | `brew install python@3.12` | 3.12 esatta | `python3.12` versionato |
+| Ubuntu 24.04+ | `apt install python3.12` | 3.12 esatta | `python3.12` versionato |
+| Debian 12 stable | `python3` di sistema (>= 3.12) o `pyenv` | varia | fallback `python3` |
+| Arch / Manjaro | `pacman -Sy python` | corrente (3.14+) | `python3.14` versionato o `python3` |
+
+Il Makefile cerca nell'ordine `python3.12..python3.16` e poi `python3` generico (se versione >= 3.12). Versioni Python future (3.17+) saranno coperte dal fallback automatico fino al refresh della lista esplicita.
 
 ### Verify installation
 
