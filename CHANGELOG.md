@@ -6,7 +6,27 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
-## [Unreleased] — Rimozione classe Cartridge — 2026-05-11
+## [v3.8.0] — "Arch/Manjaro compat + Cartridge removal" — 2026-05-12
+
+### Aggiunto
+
+- Detection Python multi-versione nel Makefile: cerca `python3.12..python3.16`
+  versionati e fa fallback a `python3` generico con runtime version check
+  (issue #51). Sblocca `make setup` su Arch/Manjaro (`pacman -Sy python`
+  installa la versione corrente di sistema, oggi 3.14).
+- `tests/test_makefile_python_detection.py`: 5 scenari (versionato 3.12,
+  Arch-like 3.14, fallback python3 generico, no python, check-system-deps).
+- README: tabella compatibilità OS, distinzione Ubuntu 24.04 / Debian 12,
+  istruzioni Arch.
+- Brief design UI editor visuale (documentazione).
+
+### Modificato
+
+- `Makefile`: `check-system-deps` riusa `$(PYTHON_CMD)` invece di
+  `command -v python3.12` hardcoded.
+- `Makefile`: `PYTHON_CMD` Darwin/Linux ora `python3` (placeholder, sovrascritto
+  da `make/test.mk`); rimosso codice morto fuorviante.
+- `configs/PGE_test.yml`: sample `pino.wav`.
 
 ### Rimosso (breaking change)
 
