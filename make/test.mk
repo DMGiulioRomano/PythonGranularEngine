@@ -7,21 +7,26 @@ VENV_DIR := .venv
 PYTHON_VERSION := 3.12
 
 
-# Trova il comando Python corretto per la versione specificata
-ifeq ($(shell which python$(PYTHON_VERSION) 2>/dev/null),)
-    ifeq ($(shell which python3.12 2>/dev/null),)
-        # Se python3.12 non esiste, prova a usare python3 e controlla la versione
-        PYTHON_CHECK := $(shell python3 -c "import sys; print('OK' if sys.version_info[:2] >= (3, 12) else 'FAIL')")
-        ifeq ($(PYTHON_CHECK),OK)
-            PYTHON_CMD := python3
-        else
-            $(error Python $(PYTHON_VERSION) non trovato.)
-        endif
-    else
-        PYTHON_CMD := python3.12
-    endif
+# Detection Python multi-versione (>= 3.12).
+# Strategia a due livelli:
+#   1) cerca binari versionati python3.12..python3.16 nel PATH (foreach + which)
+#   2) se nessuno trovato, fallback a `python3` generico con runtime version check
+#   3) errore esplicito se nessuna opzione soddisfa >= 3.12
+#
+# TODO(2026-Q4): rivedere lista versioni al rilascio Python 3.17 (ottobre 2026).
+# Il fallback `python3` copre comunque versioni future via runtime check.
+PYTHON_VERSIONS := 3.12 3.13 3.14 3.15 3.16
+PYTHON_VERSIONED := $(firstword $(foreach v,$(PYTHON_VERSIONS),$(shell which python$(v) 2>/dev/null)))
+
+ifneq ($(PYTHON_VERSIONED),)
+    PYTHON_CMD := $(notdir $(PYTHON_VERSIONED))
 else
-    PYTHON_CMD := python$(PYTHON_VERSION)
+    PYTHON_FALLBACK_CHECK := $(shell python3 -c "import sys; print('OK' if sys.version_info[:2] >= (3, 12) else 'FAIL')" 2>/dev/null)
+    ifeq ($(PYTHON_FALLBACK_CHECK),OK)
+        PYTHON_CMD := python3
+    else
+        $(error Python >= $(PYTHON_VERSION) non trovato. Installa via package manager o pyenv. Versioni cercate: $(PYTHON_VERSIONS) + python3 generico)
+    endif
 endif
 
 # Definiamo gli eseguibili relativi al venv

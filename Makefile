@@ -1,17 +1,19 @@
 # Makefile Principale
 # --- Rilevazione OS ---
+# Nota: PYTHON_CMD definito qui è un placeholder; il valore reale è sovrascritto
+# da make/test.mk con detection multi-versione (Python >= 3.12).
 OS := $(shell uname -s)
 
 ifeq ($(OS), Darwin)
     OPEN_CMD        := open
     OPEN_REAPER_CMD := open -a "REAPER"
-    PYTHON_CMD      := python3.12
+    PYTHON_CMD      := python3
     HAS_RX11        := $(shell [ -d "/Applications/iZotope RX 11 Audio Editor.app" ] && echo "true" || echo "false")
     KILL_RX_CMD     := osascript -e 'tell application "iZotope RX 11 Audio Editor" to quit'
 else ifeq ($(OS), Linux)
     OPEN_CMD        := xdg-open
     OPEN_REAPER_CMD := xdg-open
-    PYTHON_CMD      := python3.12
+    PYTHON_CMD      := python3
     HAS_RX11        := false
     KILL_RX_CMD     := true
 else
@@ -109,7 +111,11 @@ help:
 
 check-system-deps:
 	@echo "[CHECK] Verifica dipendenze di sistema..."
-	@command -v python3.12 >/dev/null 2>&1 || { echo "ERRORE: python3.12 non trovato. Esegui: make install-system-deps"; exit 1; }
+	@$(PYTHON_CMD) -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 12) else 1)" 2>/dev/null || { \
+		echo "ERRORE: Python >= 3.12 richiesto (trovato: $$($(PYTHON_CMD) --version 2>&1 || echo 'nessun python'))."; \
+		echo "Esegui: make install-system-deps"; \
+		exit 1; \
+	}
 	@if [ "$(RENDERER)" = "csound" ]; then \
 		command -v csound >/dev/null 2>&1 || { echo "ERRORE: csound non trovato."; exit 1; }; \
 	fi
