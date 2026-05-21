@@ -134,8 +134,15 @@ else ifeq ($(OS), Linux)
 	elif command -v apt >/dev/null 2>&1; then \
 		echo "[DEPS] Debian/Ubuntu — uso apt..."; \
 		sudo apt update && sudo apt install -y python3.12 python3.12-venv sox csound; \
+	elif command -v dnf >/dev/null 2>&1; then \
+		echo "[DEPS] Fedora/RHEL — uso dnf..."; \
+		sudo dnf install -y python3 sox; \
+		echo ""; \
+		echo "[DEPS] NOTA: Csound non è disponibile nei repo Fedora/RPM Fusion."; \
+		echo "[DEPS]   Opzione 1 (consigliata su Fedora): usa RENDERER=numpy (nessuna dipendenza Csound)."; \
+		echo "[DEPS]   Opzione 2: compila Csound dai sorgenti (https://github.com/csound/csound)."; \
 	else \
-		echo "ERRORE: package manager non supportato (né pacman né apt trovato)."; \
+		echo "ERRORE: package manager non supportato (pacman/apt/dnf non trovati)."; \
 		exit 1; \
 	fi
 else

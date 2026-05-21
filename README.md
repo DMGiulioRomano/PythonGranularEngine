@@ -64,6 +64,24 @@ sudo pacman -Sy python sox csound
 
 `pacman -Sy python` installa la versione corrente di sistema (oggi 3.14, verificata >= 3.12). La detection del Makefile riconosce automaticamente `python3.12`..`python3.16` versionati e, in fallback, `python3` generico.
 
+### Fedora / RHEL / Rocky / AlmaLinux
+
+```bash
+sudo dnf install -y python3 sox
+```
+
+- **Fedora 40+** include `python3` >= 3.12 nei repo principali (Fedora 42 → 3.13.x).
+- **RHEL 9 / Rocky 9 / AlmaLinux 9**: il `python3` di sistema è 3.9. Installa esplicitamente `python3.12`:
+
+  ```bash
+  sudo dnf install -y python3.12 sox
+  ```
+
+> **Csound su Fedora.** Csound non è presente nei repo Fedora ufficiali né in RPM Fusion (free/nonfree), e le release upstream non distribuiscono binari Linux. Due opzioni:
+>
+> 1. **Consigliata**: usa il renderer NumPy puro (`make FILE=my-config RENDERER=numpy all`). Non richiede Csound.
+> 2. **Compila Csound dai sorgenti** seguendo le istruzioni in [github.com/csound/csound](https://github.com/csound/csound) (richiede `cmake`, `libsndfile-devel`, ecc., installabili via `dnf install -y cmake libsndfile-devel flex bison`).
+
 ### Compatibilità Python
 
 | OS | Comando install | Versione attesa | Detection |
@@ -72,6 +90,8 @@ sudo pacman -Sy python sox csound
 | Ubuntu 24.04+ | `apt install python3.12` | 3.12 esatta | `python3.12` versionato |
 | Debian 12 stable | `python3` di sistema (>= 3.12) o `pyenv` | varia | fallback `python3` |
 | Arch / Manjaro | `pacman -Sy python` | corrente (3.14+) | `python3.14` versionato o `python3` |
+| Fedora 40+ | `dnf install python3` | 3.12+ (3.13 su F41+) | fallback `python3` |
+| RHEL 9 / Rocky 9 / AlmaLinux 9 | `dnf install python3.12` | 3.12 esatta | `python3.12` versionato |
 
 Il Makefile cerca nell'ordine `python3.12..python3.16` e poi `python3` generico (se versione >= 3.12). Versioni Python future (3.17+) saranno coperte dal fallback automatico fino al refresh della lista esplicita.
 
@@ -333,6 +353,8 @@ Trims `refs/001.wav` starting at 5.0 seconds for 20 seconds using `sox` and save
 |---|---|
 | macOS (Apple Silicon / Intel) | Supported |
 | Linux (Debian / Ubuntu) | Supported |
+| Linux (Arch / Manjaro) | Supported |
+| Linux (Fedora / RHEL / Rocky / AlmaLinux) | Supported (renderer NumPy out-of-the-box; Csound da sorgenti) |
 | Windows (native) | Not supported |
 | Windows (WSL2) | Should work, not tested |
 
