@@ -391,7 +391,7 @@ class TestGarbageCollection:
     - Stream rinominato (vecchio id orfano, nuovo id non tocca)
     - Nessun orfano: nessuna modifica
     - aif_dir=None: rimuove entry manifest ma NON tocca il filesystem
-    - Prefisso FILE nei nomi .aif (es. PGE_test_stream1.aif)
+    - Prefisso FILE nei nomi .aif (es. PGE_test__stream1.aif)
     - Manifest vuoto: noop silenzioso
     - Tutti gli stream rimossi: manifest azzerato, tutti .aif cancellati
     """
@@ -452,10 +452,10 @@ class TestGarbageCollection:
         assert aif_s2.exists()  # non tocca il filesystem
 
     def test_gc_with_aif_prefix(self, manager, two_stream_dicts, tmp_path):
-        """Con aif_prefix='PGE_test', cancella PGE_test_s2.aif (non s2.aif)."""
+        """Con aif_prefix='PGE_test', cancella PGE_test__s2.aif (non s2.aif)."""
         manager.update_after_build(two_stream_dicts)
 
-        aif_prefixed = tmp_path / 'PGE_test_s2.aif'
+        aif_prefixed = tmp_path / 'PGE_test__s2.aif'
         aif_plain = tmp_path / 's2.aif'
         aif_prefixed.touch()
         aif_plain.touch()
@@ -520,3 +520,73 @@ class TestGarbageCollection:
 
         assert removed == ['s2']
         assert 's2' not in manager.load()
+
+
+# =============================================================================
+# 7. NAMING SEPARATOR (issue #56)
+# =============================================================================
+
+class TestDoubleUnderscoreSeparator:
+    """
+    Il separatore tra aif_prefix e stream_id nei nomi file e' '__' (doppio
+    underscore), per allinearsi al protocollo del server PGE-ui.
+
+    Vedi issue #56: il server PGE-ui usa glob('{basename}__*.aif') e il
+    client browser fetcha {basename}__{stream_id}.aif. L'engine deve
+    produrre/cercare lo stesso pattern.
+    """
+
+    def test_dirty_detection_uses_double_underscore_filename(
+        self, manager, tmp_path
+    ):
+        """get_dirty_stream_dicts cerca <prefix>__<sid>.aif (non <prefix>_<sid>.aif)."""
+        stream_dict = {'stream_id': 's1', 'sample': 'a.wav'}
+        manager.update_after_build([stream_dict])
+
+        # File presente con il NUOVO naming (doppio underscore)
+        (tmp_path / 'PGE_test__s1.aif').touch()
+
+        dirty = manager.get_dirty_stream_dicts(
+            [stream_dict],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+        )
+
+        # Fingerprint matcha e il file con il nuovo naming esiste → clean
+        assert dirty == []
+
+    def test_dirty_detection_ignores_old_single_underscore_file(
+        self, manager, tmp_path
+    ):
+        """File con vecchio naming (singolo underscore) e' invisibile al cache manager."""
+        stream_dict = {'stream_id': 's1', 'sample': 'a.wav'}
+        manager.update_after_build([stream_dict])
+
+        # File presente solo col VECCHIO naming
+        (tmp_path / 'PGE_test_s1.aif').touch()
+
+        dirty = manager.get_dirty_stream_dicts(
+            [stream_dict],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+        )
+
+        # Il file con doppio underscore non esiste → DIRTY
+        assert dirty == [stream_dict]
+
+    def test_gc_with_double_underscore_prefix(
+        self, manager, two_stream_dicts, tmp_path
+    ):
+        """Con aif_prefix='PGE_test', cancella PGE_test__s2.aif (doppio underscore)."""
+        manager.update_after_build(two_stream_dicts)
+
+        aif = tmp_path / 'PGE_test__s2.aif'
+        aif.touch()
+
+        manager.garbage_collect(
+            current_stream_ids=['s1'],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+        )
+
+        assert not aif.exists()
