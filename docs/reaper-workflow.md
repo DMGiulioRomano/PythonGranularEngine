@@ -3,6 +3,10 @@
 Il Makefile puo' esportare un progetto Reaper (`.rpp`) accanto al rendering
 audio, abilitando l'ascolto e l'editing immediato del materiale generato.
 
+**Documenti collegati:** [[INDEX]] · [[ARCHITECTURE]] (output `.aif` per stream
+via `StemsRenderMode`) · [[yaml-reference]] (campo `stream_id` usato come nome
+traccia REAPER) · [[workflows]] (Makefile targets).
+
 ## Flag
 
 | Variabile | Default | Descrizione |

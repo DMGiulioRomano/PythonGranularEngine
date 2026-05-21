@@ -2,6 +2,10 @@
 
 > Brief per Claude Design. Obiettivo: generare interfaccia browser-locale per editare composizioni granulari in YAML attraverso timeline DAW-like.
 
+**Documenti collegati:** [[INDEX]] · [[yaml-reference]] (modello dati di output) ·
+[[multi-voice]] (UI sub-tab voices) · [[envelopes-reference]] (breakpoint editor
+modale) · [[ARCHITECTURE]] (pipeline render invocata dal backend).
+
 ---
 
 ## 1. Cosa è
@@ -345,8 +349,10 @@ NON includere:
 
 ## File di riferimento PGE (allegare come context a Claude Design)
 
-- `docs/yaml-reference.md` — sintassi parametri completa
-- `docs/multi-voice.md` — sistema voci
-- `docs/ARCHITECTURE.md` — pipeline render
+- [[yaml-reference]] — sintassi parametri completa
+- [[multi-voice]] — sistema voci
+- [[envelopes-reference]] — sintassi envelope (breakpoint editor)
+- [[ARCHITECTURE]] — pipeline render
+- [[error-handling]] — errori da mostrare in UI (`user_message()`)
 - `configs/PGE_test.yml` — esempio composizione reale
 - `Media/` — directory samples
