@@ -72,6 +72,6 @@ operativo (puo' sostituire il progetto corrente invece di aprire una tab).
 ## Riferimenti
 
 - Issue [#17](https://github.com/DMGiulioRomano/PythonGranularEngine/issues/17)
-- Plan: `docs/plans/2026-05-15-001-fix-reaper-autokill-multitab-plan.md`
+- Plan: `docs/plans/done/2026-05-15-001-fix-reaper-autokill-multitab-plan.md`
 - [REAPER CLI flags](https://github.com/ReaTeam/Doc/blob/master/REAPER-CLI.md)
 - [ReaScript API](https://www.reaper.fm/sdk/reascript/reascript.php)
