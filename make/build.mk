@@ -71,17 +71,30 @@ endif
 # esecuzione genera al volo un ReaScript Lua che esegue action 40859
 # (New project tab) + Main_openProject(<abs path>). Multi-tab deterministico,
 # indipendente dalle pref utente (issue #17). Fallback: open -a REAPER.
+# emit_open_reaper_lua: scrive $(GENDIR)/open_reaper_tab.lua usando $$abs_rpp.
+# Se REAPER_REUSE_TAB=true, prepend clausola che chiude eventuale tab con
+# path matching (action 40860) prima di aprire nuova tab (action 40859).
+# Issue #59.
+define emit_open_reaper_lua
+mkdir -p $(GENDIR); \
+rpp_dir="$$(dirname "$(REAPER_PATH)")"; \
+rpp_base="$$(basename "$(REAPER_PATH)")"; \
+abs_rpp="$$(cd "$$rpp_dir" 2>/dev/null && pwd)/$$rpp_base"; \
+if [ "$(REAPER_REUSE_TAB)" = "true" ]; then \
+	printf 'local target = "%s"\nlocal i = 0\nwhile true do\n  local proj, path = reaper.EnumProjects(i)\n  if proj == nil then break end\n  if path == target then\n    reaper.SelectProjectInstance(proj)\n    reaper.Main_OnCommand(40860, 0)\n    break\n  end\n  i = i + 1\nend\nreaper.Main_OnCommand(40859, 0)\nreaper.Main_openProject(target)\n' "$$abs_rpp" \
+		> $(GENDIR)/open_reaper_tab.lua; \
+else \
+	printf 'reaper.Main_OnCommand(40859, 0)\nreaper.Main_openProject("%s")\n' "$$abs_rpp" \
+		> $(GENDIR)/open_reaper_tab.lua; \
+fi; \
+"$(REAPER_BIN)" -nonewinst "$(GENDIR)/open_reaper_tab.lua"
+endef
+
 define autopen_stems
 @if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
 	if [ "$(REAPER)" = "true" ]; then \
 		if [ "$(HAS_REAPER)" = "true" ] && $(REAPER_PGREP) >/dev/null 2>&1; then \
-			mkdir -p $(GENDIR); \
-			rpp_dir="$$(dirname "$(REAPER_PATH)")"; \
-			rpp_base="$$(basename "$(REAPER_PATH)")"; \
-			abs_rpp="$$(cd "$$rpp_dir" 2>/dev/null && pwd)/$$rpp_base"; \
-			printf 'reaper.Main_OnCommand(40859, 0)\nreaper.Main_openProject("%s")\n' "$$abs_rpp" \
-				> $(GENDIR)/open_reaper_tab.lua; \
-			"$(REAPER_BIN)" -nonewinst "$(GENDIR)/open_reaper_tab.lua"; \
+			$(emit_open_reaper_lua); \
 		else \
 			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
 		fi; \
@@ -95,13 +108,7 @@ define autopen_single
 @if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
 	if [ "$(REAPER)" = "true" ]; then \
 		if [ "$(HAS_REAPER)" = "true" ] && $(REAPER_PGREP) >/dev/null 2>&1; then \
-			mkdir -p $(GENDIR); \
-			rpp_dir="$$(dirname "$(REAPER_PATH)")"; \
-			rpp_base="$$(basename "$(REAPER_PATH)")"; \
-			abs_rpp="$$(cd "$$rpp_dir" 2>/dev/null && pwd)/$$rpp_base"; \
-			printf 'reaper.Main_OnCommand(40859, 0)\nreaper.Main_openProject("%s")\n' "$$abs_rpp" \
-				> $(GENDIR)/open_reaper_tab.lua; \
-			"$(REAPER_BIN)" -nonewinst "$(GENDIR)/open_reaper_tab.lua"; \
+			$(emit_open_reaper_lua); \
 		else \
 			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
 		fi; \

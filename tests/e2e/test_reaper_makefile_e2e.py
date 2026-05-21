@@ -136,6 +136,87 @@ class TestAutokillReaperWiring:
 
 
 @pytest.mark.e2e
+class TestReaperReuseTabFlag:
+    """
+    Flag REAPER_REUSE_TAB=true emette ReaScript Lua con clausola di chiusura
+    tab esistente (action 40860 + EnumProjects) prima della new tab (40859).
+
+    Issue: #59 — REAPER_REUSE_TAB flag per reload single-tab senza autokill
+    """
+
+    # Strategia test: make -n espande sempre entrambi i rami shell di un
+    # `if`, quindi cercare letteralmente `Main_OnCommand(40860` nello stdout
+    # darebbe falso-positivo per il default. Verifichiamo invece la guard
+    # `if [ "<val>" = "true" ]; then printf 'local target ...` che riflette
+    # il valore di REAPER_REUSE_TAB al momento dell'espansione make.
+    _REUSE_GUARD_RE = (
+        r'if \[ "(?P<val>true|false)" = "true" \];\s*then\s+'
+        r'printf \'local target'
+    )
+
+    def test_reuse_tab_true_selects_close_branch(self):
+        """
+        Con REAPER_REUSE_TAB=true la guard del branch reuse vale "true",
+        quindi il printf con EnumProjects + 40860 verra' eseguito a runtime.
+        """
+        import re
+        result = _run_make([
+            '-n', 'all',
+            'FILE=foo',
+            'REAPER=true',
+            'AUTOPEN=true',
+            'PRECLEAN=false',
+            'REAPER_REUSE_TAB=true',
+        ])
+        assert result.returncode == 0, (
+            f"`make -n all` fallito.\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        m = re.search(self._REUSE_GUARD_RE, result.stdout)
+        assert m is not None, (
+            f"Guard REAPER_REUSE_TAB non trovata.\nstdout: {result.stdout}"
+        )
+        assert m.group('val') == 'true', (
+            f"REAPER_REUSE_TAB=true atteso guard 'true', got '{m.group('val')}'.\n"
+            f"stdout: {result.stdout}"
+        )
+        # Il printf del branch reuse deve includere action 40860 e EnumProjects
+        assert "Main_OnCommand(40860" in result.stdout
+        assert "EnumProjects" in result.stdout
+        # Regression: reaper.CountProjects NON esiste in ReaScript API.
+        # Loop deve usare while + EnumProjects(i) == nil come terminator.
+        assert "CountProjects" not in result.stdout, (
+            f"reaper.CountProjects non esiste in ReaScript API: usare "
+            f"while + EnumProjects(i)==nil.\nstdout: {result.stdout}"
+        )
+
+    def test_reuse_tab_default_selects_new_tab_branch(self):
+        """
+        Default (REAPER_REUSE_TAB non settato): guard reuse vale "false",
+        verra' eseguito solo il printf legacy (action 40859).
+        Regression guard sul comportamento issue #17.
+        """
+        import re
+        result = _run_make([
+            '-n', 'all',
+            'FILE=foo',
+            'REAPER=true',
+            'AUTOPEN=true',
+            'PRECLEAN=false',
+        ])
+        assert result.returncode == 0
+        m = re.search(self._REUSE_GUARD_RE, result.stdout)
+        assert m is not None, (
+            f"Guard REAPER_REUSE_TAB non trovata.\nstdout: {result.stdout}"
+        )
+        assert m.group('val') == 'false', (
+            f"REAPER_REUSE_TAB default atteso guard 'false', got '{m.group('val')}'.\n"
+            f"stdout: {result.stdout}"
+        )
+        # Action 40859 (New tab) deve restare presente in entrambi i rami
+        assert "Main_OnCommand(40859" in result.stdout
+
+
+@pytest.mark.e2e
 class TestReaperPathDefault:
     """Default REAPER_PATH = $(FILE).rpp per multi-tab per YAML."""
 

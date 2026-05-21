@@ -10,6 +10,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Flag `REAPER_REUSE_TAB` nel `Makefile` (default `false`): se `true` con
+  `REAPER=true`, prima di aprire il `.rpp` aggiornato lo script Lua
+  `generated/open_reaper_tab.lua` scorre le tab REAPER aperte (`EnumProjects`)
+  e chiude solo quella con path assoluto matching (action `40860` "Close
+  current project tab"), poi apre nuova tab (action `40859`). Le altre tab
+  restano intatte. Alternativa meno distruttiva ad `AUTOKILL_REAPER` per
+  rebuild ripetuti dello stesso YAML. Risolve issue #59.
+- Refactor `make/build.mk`: estratta macro `emit_open_reaper_lua` condivisa
+  da `autopen_stems` e `autopen_single` per centralizzare la generazione
+  dello ReaScript Lua (branch condizionale su `REAPER_REUSE_TAB`).
 - Supporto Fedora / RHEL / Rocky / AlmaLinux nel branch `dnf` di
   `make install-system-deps` (issue #58). Installa `python3` + `sox`;
   stampa istruzioni per Csound (non disponibile nei repo Fedora / RPM

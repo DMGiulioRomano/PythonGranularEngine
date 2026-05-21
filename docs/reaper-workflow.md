@@ -10,6 +10,7 @@ audio, abilitando l'ascolto e l'editing immediato del materiale generato.
 | `REAPER` | `true` | Se `true`, il pipeline scrive un `.rpp` accanto agli `.aif`. |
 | `REAPER_PATH` | `$(FILE).rpp` | Path output del `.rpp`. Il default lega il nome del progetto al nome del YAML — ogni YAML apre una propria tab in REAPER. |
 | `AUTOKILL_REAPER` | `false` | Se `true` con `REAPER=true`, chiude REAPER prima del build, riscrive il `.rpp`, poi riapre REAPER. Utile quando si modificano `onset` o `duration` degli stream e REAPER ha gia' il progetto aperto. |
+| `REAPER_REUSE_TAB` | `false` | Se `true` con `REAPER=true`, prima di aprire il `.rpp` chiude la tab REAPER esistente con stesso path assoluto. Reload single-tab senza chiudere tutto REAPER (issue #59). |
 | `AUTOPEN` | `true` | Se `true`, apre il `.rpp` in REAPER alla fine del build. |
 
 ## Multi-tab automatico
@@ -59,6 +60,46 @@ vengono perse senza prompt. Scelta intenzionale per garantire automazione non
 bloccante — `osascript ... quit` veniva intercettato da REAPER che mostrava
 comunque il dialog "Save changes?".
 
+## Quando usare `REAPER_REUSE_TAB`
+
+Alternativa meno distruttiva a `AUTOKILL_REAPER`. Caso d'uso: rebuild ripetuti
+dello stesso YAML con REAPER aperto su piu' progetti.
+
+Con `REAPER_REUSE_TAB=true` lo script Lua, prima di creare una nuova tab, scorre
+le tab aperte (`reaper.EnumProjects`) e chiude solo quella che punta allo stesso
+path assoluto del `.rpp` corrente (action `40860` "Close current project tab").
+Le altre tab restano intatte.
+
+```lua
+local target = "/abs/path/brano.rpp"
+local i = 0
+while true do
+  local proj, path = reaper.EnumProjects(i)
+  if proj == nil then break end             -- terminator: ReaScript API non espone CountProjects
+  if path == target then
+    reaper.SelectProjectInstance(proj)
+    reaper.Main_OnCommand(40860, 0)         -- Close current project tab
+    break
+  end
+  i = i + 1
+end
+reaper.Main_OnCommand(40859, 0)             -- New project tab
+reaper.Main_openProject(target)
+```
+
+Se la tab non esiste (prima apertura del YAML in sessione), il loop e' no-op
+e il comportamento collassa nel default (singola tab nuova).
+
+**Precedenza flag:** `AUTOKILL_REAPER=true` ha precedenza su `REAPER_REUSE_TAB`
+— se REAPER viene chiuso prima del build, non c'e' tab da riusare.
+
+**Limitazioni:**
+- Path matching e' `==` esatto: se la tab e' stata aperta con cap differenti
+  su filesystem case-insensitive (HFS+/APFS) il match puo' fallire.
+- Action `40860` chiude la tab corrente; se contiene modifiche non salvate
+  REAPER mostra il dialog di salvataggio (stesso comportamento di un Cmd+W
+  manuale).
+
 ## Requisiti
 
 - macOS: REAPER installato in `/Applications/REAPER.app`.
@@ -71,7 +112,7 @@ operativo (puo' sostituire il progetto corrente invece di aprire una tab).
 
 ## Riferimenti
 
-- Issue [#17](https://github.com/DMGiulioRomano/PythonGranularEngine/issues/17)
-- Plan: `docs/plans/done/2026-05-15-001-fix-reaper-autokill-multitab-plan.md`
+- Issue [#17](https://github.com/DMGiulioRomano/PythonGranularEngine/issues/17), [#59](https://github.com/DMGiulioRomano/PythonGranularEngine/issues/59)
+- Plan: `docs/plans/done/2026-05-15-001-fix-reaper-autokill-multitab-plan.md`, `docs/plans/2026-05-22-001-feat-reaper-reuse-tab-plan.md`
 - [REAPER CLI flags](https://github.com/ReaTeam/Doc/blob/master/REAPER-CLI.md)
 - [ReaScript API](https://www.reaper.fm/sdk/reascript/reascript.php)
