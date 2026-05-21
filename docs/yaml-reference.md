@@ -1,5 +1,14 @@
 # YAML Reference — PythonGranularEngine
 
+**Documenti collegati:** [[INDEX]] · [[envelopes-reference]] (sintassi completa
+envelope, time mode, interpolazioni) · [[multi-voice]] (sistema voci, strategy
+dettagliate) · [[ARCHITECTURE]] (cosa fa il renderer con questi parametri) ·
+[[error-handling]] (errori YAML: `MissingFieldError`, `InvalidFieldValueError`,
+`ParameterBoundError`, `InvalidWindowError`) · [[workflows]] § "Adding a New
+Parameter".
+
+---
+
 ## Minimal Stream
 
 ```yaml
@@ -561,4 +570,6 @@ streams:
 | `num_voices` | 1 | 64 | 1 | intero |
 | `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
 
-Per la sintassi completa multi-voice, vedere `docs/multi-voice.md`.
+Per la sintassi completa multi-voice, vedere [[multi-voice]].
+Per la sintassi envelope (in ogni parametro che la accetta), vedere
+[[envelopes-reference]].

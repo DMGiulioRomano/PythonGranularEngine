@@ -4,6 +4,11 @@
 > Le variazioni rispetto al design iniziale sono documentate nella sezione
 > [Delta rispetto alla proposta originale](#delta).
 
+**Documenti collegati:** [[INDEX]] · [[workflows]] (estensione renderer/parametri) ·
+[[yaml-reference]] (input YAML accettato) · [[multi-voice]] (grani per voce) ·
+[[error-handling]] (errori rendering: `CsoundRenderError`, `InvalidRendererError`) ·
+[[reaper-workflow]] (consumo `.aif` post-rendering).
+
 ---
 
 ## Architettura Implementata

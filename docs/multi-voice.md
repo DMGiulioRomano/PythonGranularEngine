@@ -3,6 +3,13 @@
 > Documentazione tecnica del sistema multi-voice granulare.  
 > Ispirato al DMX-1000 di Barry Truax (1988).
 
+**Documenti collegati:** [[INDEX]] · [[yaml-reference]] § "Blocco Voices" (sintassi
+YAML) · [[envelopes-reference]] (parametri strategy come envelope: `step`,
+`semitone_range`, `pointer_range`, `max_offset`, `base`, `spread`) ·
+[[ARCHITECTURE]] (integrazione con renderer Csound/NumPy) · [[workflows]]
+§ "Adding a New Voice Strategy" · [[error-handling]] (`StrategyNotFoundError`,
+`InvalidStrategyConfigError`).
+
 ---
 
 ## Indice

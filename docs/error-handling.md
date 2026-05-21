@@ -5,6 +5,11 @@ completato in issue #38 (PR1–PR4). Obiettivo: separare il messaggio destinato
 all'utente finale (terminale pulito, italiano, contesto strutturato) dal
 traceback Python persistito nel log engine.
 
+**Documenti collegati:** [[INDEX]] · [[ARCHITECTURE]] (`CsoundRenderError` /
+`InvalidRendererError` nel layer rendering) · [[yaml-reference]] (campi YAML
+validati) · [[workflows]] § "Adding a New Error Class" · [[multi-voice]]
+(errori voice strategy via `StrategyNotFoundError`).
+
 ---
 
 ## 1. Gerarchia
