@@ -186,8 +186,8 @@ class TestNumpyStems:
         assert result.returncode == 0, f"make fallito:\n{output}"
 
         sfdir = tmp_path / "output"
-        assert (sfdir / "e2e_numpy_test_s1.aif").exists(), "s1.aif non trovato"
-        assert (sfdir / "e2e_numpy_test_s2.aif").exists(), "s2.aif non trovato"
+        assert (sfdir / "e2e_numpy_test__s1.aif").exists(), "s1.aif non trovato"
+        assert (sfdir / "e2e_numpy_test__s2.aif").exists(), "s2.aif non trovato"
 
     def test_no_mix_file_created(self, tmp_path):
         """In STEMS mode non viene creato il file mix (senza suffisso stream)."""

@@ -13,6 +13,7 @@ e non materiale di lavoro dell'engine.
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -75,7 +76,7 @@ streams:
       reverse: true
 """
 
-REAL_SAMPLE = "001-0_0-3_0.wav"
+REAL_SAMPLE = "pino.wav"
 
 
 YAML_INVALID_PARAM_FORMAT = f"""\
@@ -183,7 +184,7 @@ def _write_yaml(tmp_path, name: str, content: str) -> str:
 
 def _run(yaml_path: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ['python', 'src/main.py', yaml_path],
+        [sys.executable, 'src/main.py', yaml_path],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -371,7 +372,7 @@ def test_e2e_invalid_renderer(tmp_path, cleanup_log):
     yaml_abs = _write_yaml(tmp_path, '09_invalid_renderer.yml', YAML_VALID_RENDERER)
     cleanup_log.append(_log_path_for(yaml_abs))
     result = subprocess.run(
-        ['python', 'src/main.py', yaml_abs, '--renderer', 'bogus'],
+        [sys.executable, 'src/main.py', yaml_abs, '--renderer', 'bogus'],
         cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode != 0

@@ -22,9 +22,15 @@ Esegui con:
 
 import json
 import os
+import shutil
 import subprocess
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("csound") is None,
+    reason="csound non disponibile (Fedora/RHEL: usa RENDERER=numpy)",
+)
 
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..')
@@ -158,8 +164,8 @@ class TestFirstBuild:
         assert result.returncode == 0, f"make fallito:\n{output}"
 
         sfdir = tmp_path / "output"
-        assert (sfdir / "e2e_test_s1.aif").exists(), "s1.aif non trovato"
-        assert (sfdir / "e2e_test_s2.aif").exists(), "s2.aif non trovato"
+        assert (sfdir / "e2e_test__s1.aif").exists(), "s1.aif non trovato"
+        assert (sfdir / "e2e_test__s2.aif").exists(), "s2.aif non trovato"
 
     def test_manifest_created_with_both_streams(self, tmp_path):
         """Il manifest JSON contiene le entry per s1 e s2."""
@@ -301,13 +307,13 @@ class TestGarbageCollection:
         _write_yaml(tmp_path, _YAML_TWO_STREAMS)
         r1, _ = _make_build(tmp_path)
         assert r1.returncode == 0
-        assert (tmp_path / "output" / "e2e_test_s2.aif").exists()
+        assert (tmp_path / "output" / "e2e_test__s2.aif").exists()
 
         _write_yaml(tmp_path, _YAML_ONE_STREAM)
         r2, output2 = _make_build(tmp_path)
         assert r2.returncode == 0
 
-        assert not (tmp_path / "output" / "e2e_test_s2.aif").exists(), \
+        assert not (tmp_path / "output" / "e2e_test__s2.aif").exists(), \
             "s2.aif orfano non cancellato"
 
     def test_orphan_manifest_entry_removed(self, tmp_path):
@@ -358,5 +364,5 @@ class TestGarbageCollection:
         r2, _ = _make_build(tmp_path)
         assert r2.returncode == 0
 
-        assert (tmp_path / "output" / "e2e_test_s1.aif").exists(), \
+        assert (tmp_path / "output" / "e2e_test__s1.aif").exists(), \
             "s1.aif cancellato per errore dalla GC"
