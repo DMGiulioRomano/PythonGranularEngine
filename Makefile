@@ -51,6 +51,9 @@ CACHEDIR := cache
 # --- Flags configurabili ---
 AUTOKILL ?= true
 AUTOKILL_REAPER ?= false
+# Issue #59: chiude tab esistente con stesso path prima di aprire nuova tab.
+# Ortogonale a AUTOKILL_REAPER (che ha precedenza se true).
+REAPER_REUSE_TAB ?= false
 AUTOPEN ?= true
 AUTOVISUAL ?= false
 SHOWSTATIC ?= true
@@ -121,6 +124,7 @@ help:
 	@echo "  REAPER=true/false        - Esporta progetto Reaper .rpp"
 	@echo "  REAPER_PATH=file.rpp     - Path output .rpp (default: \$$(FILE).rpp)"
 	@echo "  AUTOKILL_REAPER=true/false - Chiudi REAPER prima del build e riapri dopo"
+	@echo "  REAPER_REUSE_TAB=true/false - Chiudi tab esistente stesso .rpp e riapri (single-tab reload)"
 
 .PHONY: install-system-deps check-system-deps
 
