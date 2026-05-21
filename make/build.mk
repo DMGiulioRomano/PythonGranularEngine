@@ -122,7 +122,7 @@ CSOUND_FLAGS := \
 	--orc-path $(CSDIR)/main.orc \
 	--incdir $(PWD_DIR)/$(INCDIR) \
 	--ssdir $(PWD_DIR)/$(SSDIR) \
-	--sfdir $(PWD_DIR)/$(SFDIR) \
+	--sfdir $(abspath $(SFDIR)) \
 	--log-dir $(LOGDIR)
 
 ifeq ($(CACHE), true)
@@ -177,7 +177,7 @@ CSOUND_FLAGS := \
 	--orc-path $(CSDIR)/main.orc \
 	--incdir $(PWD_DIR)/$(INCDIR) \
 	--ssdir $(PWD_DIR)/$(SSDIR) \
-	--sfdir $(PWD_DIR)/$(SFDIR) \
+	--sfdir $(abspath $(SFDIR)) \
 	--log-dir $(LOGDIR)
 
 .PHONY: all

@@ -61,13 +61,56 @@ def _make_fake_python(tmp_path: Path, name: str, version: str) -> Path:
     return bin_path
 
 
+def _make_fake_which(tmp_path: Path) -> None:
+    """
+    Crea un `which` falso in tmp_path che cerca solo in tmp_path.
+
+    Previene che `$(shell which pythonX.Y)` nel Makefile trovi binari di sistema
+    (es. /usr/bin/python3.12) quando il test vuole un PATH isolato.
+    """
+    script = textwrap.dedent(f"""\
+        #!/bin/sh
+        if [ -x "{tmp_path}/$1" ]; then
+            echo "{tmp_path}/$1"
+            exit 0
+        fi
+        exit 1
+    """)
+    bin_path = tmp_path / "which"
+    bin_path.write_text(script)
+    bin_path.chmod(0o755)
+
+
+def _make_python3_sentinel(tmp_path: Path) -> None:
+    """
+    Crea un python3 sentinel in tmp_path che fallisce sempre.
+
+    Blocca il fallback `$(shell python3 -c ...)` del Makefile dal trovare
+    python3 di sistema quando il test simula assenza di Python valido.
+    Solo creato se python3 non è già presente in tmp_path.
+    """
+    script = textwrap.dedent("""\
+        #!/bin/sh
+        exit 1
+    """)
+    bin_path = tmp_path / "python3"
+    bin_path.write_text(script)
+    bin_path.chmod(0o755)
+
+
 def _run_make(target: str, env_path: str, extra_env: dict | None = None) -> subprocess.CompletedProcess:
     """
     Esegue `make -n <target>` con PATH controllato.
 
     Include /usr/bin:/bin in PATH per permettere a make stesso di trovare shell/sed/awk.
-    Aggiunge tmp_path in testa per priorità.
+    Aggiunge tmp_path in testa con `which` falso per isolare la detection Python
+    dai binari di sistema (es. /usr/bin/python3.12 su Fedora).
     """
+    env_path_obj = Path(env_path)
+    _make_fake_which(env_path_obj)
+    if not (env_path_obj / "python3").exists():
+        _make_python3_sentinel(env_path_obj)
+
     env = os.environ.copy()
     env["PATH"] = f"{env_path}:/usr/bin:/bin"
     if extra_env:

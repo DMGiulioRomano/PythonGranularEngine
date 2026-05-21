@@ -6,6 +6,30 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Unreleased]
+
+### Aggiunto
+
+- Supporto Fedora / RHEL / Rocky / AlmaLinux nel branch `dnf` di
+  `make install-system-deps` (issue #58). Installa `python3` + `sox`;
+  stampa istruzioni per Csound (non disponibile nei repo Fedora / RPM
+  Fusion — usare `RENDERER=numpy` o compilare dai sorgenti).
+- README: sezione dedicata "Fedora / RHEL / Rocky / AlmaLinux" con
+  istruzioni install e nota Csound; righe Fedora/RHEL nella tabella
+  compatibilità Python; voce Fedora/RHEL nella tabella "Platform Support".
+
+### Corretto
+
+- Naming dei file stem `.aif` in STEMS mode: separatore tra basename del
+  progetto e `stream_id` cambiato da `_` a `__` (issue #56), per
+  allinearsi al protocollo del server PGE-ui (`server.py` glob,
+  `backend.js` fetch URL). Senza il fix la UI mostrava "no stems · render
+  first" anche dopo render completati, e la riproduzione audio nel
+  browser ritornava 404. Vedi
+  `docs/plans/done/2026-05-21-001-fix-stem-naming-double-underscore-plan.md`.
+
+---
+
 ## [v3.8.0] — "Arch/Manjaro compat + Cartridge removal" — 2026-05-12
 
 ### Aggiunto

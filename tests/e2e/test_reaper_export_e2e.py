@@ -204,8 +204,8 @@ class TestReaperStemsExport:
         result, output, _ = _make_build(tmp_path, stems=True)
         assert result.returncode == 0, f"make fallito:\n{output}"
         sfdir = tmp_path / "output"
-        assert (sfdir / "e2e_reaper_test_s1.aif").exists(), "s1.aif non trovato"
-        assert (sfdir / "e2e_reaper_test_s2.aif").exists(), "s2.aif non trovato"
+        assert (sfdir / "e2e_reaper_test__s1.aif").exists(), "s1.aif non trovato"
+        assert (sfdir / "e2e_reaper_test__s2.aif").exists(), "s2.aif non trovato"
 
 
 # =============================================================================
