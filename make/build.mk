@@ -46,6 +46,12 @@ ALL_PRE += rx-stop
 endif
 endif
 
+ifeq ($(AUTOKILL_REAPER), true)
+ifeq ($(REAPER), true)
+ALL_PRE += reaper-stop
+endif
+endif
+
 ifeq ($(PRECLEAN), true)
 ALL_PRE += clean
 endif
@@ -61,10 +67,24 @@ endif
 # invece dei .aif con OPEN_CMD.
 # =============================================================================
 
+# autopen_stems / autopen_single: in modalita' REAPER, se REAPER e' in
+# esecuzione genera al volo un ReaScript Lua che esegue action 40859
+# (New project tab) + Main_openProject(<abs path>). Multi-tab deterministico,
+# indipendente dalle pref utente (issue #17). Fallback: open -a REAPER.
 define autopen_stems
 @if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
 	if [ "$(REAPER)" = "true" ]; then \
-		$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		if [ "$(HAS_REAPER)" = "true" ] && $(REAPER_PGREP) >/dev/null 2>&1; then \
+			mkdir -p $(GENDIR); \
+			rpp_dir="$$(dirname "$(REAPER_PATH)")"; \
+			rpp_base="$$(basename "$(REAPER_PATH)")"; \
+			abs_rpp="$$(cd "$$rpp_dir" 2>/dev/null && pwd)/$$rpp_base"; \
+			printf 'reaper.Main_OnCommand(40859, 0)\nreaper.Main_openProject("%s")\n' "$$abs_rpp" \
+				> $(GENDIR)/open_reaper_tab.lua; \
+			"$(REAPER_BIN)" -nonewinst "$(GENDIR)/open_reaper_tab.lua"; \
+		else \
+			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		fi; \
 	else \
 		for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
 	fi; \
@@ -74,7 +94,17 @@ endef
 define autopen_single
 @if [ "$(AUTOPEN)" = "true" ] && [ "$(OPEN_CMD)" != "" ]; then \
 	if [ "$(REAPER)" = "true" ]; then \
-		$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		if [ "$(HAS_REAPER)" = "true" ] && $(REAPER_PGREP) >/dev/null 2>&1; then \
+			mkdir -p $(GENDIR); \
+			rpp_dir="$$(dirname "$(REAPER_PATH)")"; \
+			rpp_base="$$(basename "$(REAPER_PATH)")"; \
+			abs_rpp="$$(cd "$$rpp_dir" 2>/dev/null && pwd)/$$rpp_base"; \
+			printf 'reaper.Main_OnCommand(40859, 0)\nreaper.Main_openProject("%s")\n' "$$abs_rpp" \
+				> $(GENDIR)/open_reaper_tab.lua; \
+			"$(REAPER_BIN)" -nonewinst "$(GENDIR)/open_reaper_tab.lua"; \
+		else \
+			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
+		fi; \
 	else \
 		$(OPEN_CMD) "$@"; \
 	fi; \

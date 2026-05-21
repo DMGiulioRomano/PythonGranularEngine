@@ -17,6 +17,32 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - README: sezione dedicata "Fedora / RHEL / Rocky / AlmaLinux" con
   istruzioni install e nota Csound; righe Fedora/RHEL nella tabella
   compatibilità Python; voce Fedora/RHEL nella tabella "Platform Support".
+- Flag `AUTOKILL_REAPER` nel `Makefile` (default `false`): se `true` con
+  `REAPER=true`, chiude REAPER prima del build via `SIGKILL`
+  (`pkill -9 -x REAPER` macOS / `pkill -9 -x reaper` Linux), poi il `.rpp`
+  viene riscritto e REAPER riaperto. Kill immediato senza dialog di
+  salvataggio (modifiche manuali non salvate vengono perse — scelta
+  intenzionale per garantire automazione non bloccante). Risolve issue #17 —
+  REAPER non ricarica da disco le modifiche a `onset` / `duration` se il
+  progetto e' gia' aperto.
+- Target `make reaper-stop`: chiude REAPER se attivo (specchio di `rx-stop`).
+- Multi-tab REAPER per YAML: se REAPER e' gia' in esecuzione, l'apertura del
+  `.rpp` post-build avviene via ReaScript Lua generato al volo in
+  `generated/open_reaper_tab.lua` (action `40859` "New project tab" +
+  `Main_openProject`), invocato con `REAPER -nonewinst <script.lua>`.
+  Build dello stesso YAML produce nuova tab con dati aggiornati; build di
+  YAML diverso produce tab indipendente. Comportamento deterministico, non
+  dipende da preferenze utente REAPER. Richiede REAPER >= 6.80.
+- `docs/reaper-workflow.md`: workflow REAPER, requisiti, troubleshooting.
+- `tests/e2e/test_reaper_makefile_e2e.py`: 6 scenari su target `reaper-stop`,
+  wiring `AUTOKILL_REAPER`, default `REAPER_PATH`.
+
+### Modificato (breaking)
+
+- Default `REAPER_PATH`: era `Project.rpp` fisso, ora `$(FILE).rpp`. Ogni YAML
+  produce un `.rpp` con lo stesso basename, abilitando il multi-tab. Override
+  esplicito via `REAPER_PATH=...` sempre supportato. Aggiornato help
+  `make help` di conseguenza.
 
 ### Corretto
 

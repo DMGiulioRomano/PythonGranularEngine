@@ -289,6 +289,52 @@ class TestReaperCustomPath:
         assert custom_rpp.exists(), \
             f".rpp non trovato al path custom {custom_rpp}"
 
+    def test_default_reaper_path_is_file_basename(self, tmp_path):
+        """
+        Senza override di REAPER_PATH, il default del Makefile deve essere
+        $(FILE).rpp (multi-tab per YAML), NON il vecchio fisso 'Project.rpp'.
+
+        Issue #17 / Plan 2026-05-15-001.
+        """
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+
+        sfdir  = tmp_path / "output"
+        logdir = tmp_path / "logs"
+        ymldir = tmp_path / "configs"
+        for d in (sfdir, logdir, ymldir):
+            d.mkdir(exist_ok=True)
+
+        # NB: nessun REAPER_PATH passato — si verifica il default del Makefile
+        cmd = [
+            'make', '-n', 'all',
+            'FILE=e2e_reaper_test',
+            'STEMS=true',
+            'RENDERER=numpy',
+            'REAPER=true',
+            'AUTOKILL=false',
+            'AUTOPEN=false',
+            'AUTOVISUAL=false',
+            'SHOWSTATIC=false',
+            'PRECLEAN=false',
+            f'SFDIR={sfdir}',
+            f'LOGDIR={logdir}',
+            f'YMLDIR={ymldir}',
+        ]
+        result = subprocess.run(
+            cmd, cwd=PROJECT_ROOT, capture_output=True, text=True
+        )
+        assert result.returncode == 0, (
+            f"make -n fallito: {result.stdout}{result.stderr}"
+        )
+        assert "--reaper-path e2e_reaper_test.rpp" in result.stdout, (
+            f"Default REAPER_PATH atteso 'e2e_reaper_test.rpp'.\n"
+            f"stdout: {result.stdout}"
+        )
+        assert "Project.rpp" not in result.stdout, (
+            f"Vecchio default 'Project.rpp' ancora presente.\n"
+            f"stdout: {result.stdout}"
+        )
+
     def test_default_rpp_path_without_reaper_path_flag(self, tmp_path):
         """Senza REAPER_PATH esplicito, il .rpp viene creato con il nome YAML."""
         _write_yaml(tmp_path, _YAML_TWO_STREAMS)

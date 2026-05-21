@@ -10,12 +10,20 @@ ifeq ($(OS), Darwin)
     PYTHON_CMD      := python3
     HAS_RX11        := $(shell [ -d "/Applications/iZotope RX 11 Audio Editor.app" ] && echo "true" || echo "false")
     KILL_RX_CMD     := osascript -e 'tell application "iZotope RX 11 Audio Editor" to quit'
+    REAPER_BIN      := /Applications/REAPER.app/Contents/MacOS/REAPER
+    HAS_REAPER      := $(shell [ -x "/Applications/REAPER.app/Contents/MacOS/REAPER" ] && echo "true" || echo "false")
+    KILL_REAPER_CMD := pkill -9 -x REAPER
+    REAPER_PGREP    := pgrep -x "REAPER"
 else ifeq ($(OS), Linux)
     OPEN_CMD        := xdg-open
     OPEN_REAPER_CMD := xdg-open
     PYTHON_CMD      := python3
     HAS_RX11        := false
     KILL_RX_CMD     := true
+    REAPER_BIN      := reaper
+    HAS_REAPER      := $(shell command -v reaper >/dev/null 2>&1 && echo "true" || echo "false")
+    KILL_REAPER_CMD := pkill -9 -x reaper
+    REAPER_PGREP    := pgrep -x reaper
 else
     # Fallback / Windows con WSL o altri sistemi
     OPEN_CMD        := echo "Apertura automatica non supportata su questo OS:"
@@ -23,6 +31,10 @@ else
     PYTHON_CMD      := python3
     HAS_RX11        := false
     KILL_RX_CMD     := true
+    REAPER_BIN      := reaper
+    HAS_REAPER      := false
+    KILL_REAPER_CMD := true
+    REAPER_PGREP    := false
 endif
 
 # --- Configurazione directory ---
@@ -38,6 +50,7 @@ CACHE ?= true
 CACHEDIR := cache
 # --- Flags configurabili ---
 AUTOKILL ?= true
+AUTOKILL_REAPER ?= false
 AUTOPEN ?= true
 AUTOVISUAL ?= false
 SHOWSTATIC ?= true
@@ -47,7 +60,8 @@ PRECLEAN ?=true
 STEMS ?= true
 RENDERER ?= numpy
 REAPER ?= true
-REAPER_PATH ?= Project.rpp
+# Default: nome .rpp = nome YAML, abilita multi-tab in REAPER (vedi issue #17)
+REAPER_PATH ?= $(FILE).rpp
 # Include moduli
 include make/test.mk
 include make/utils.mk
@@ -104,8 +118,9 @@ help:
 	@echo "  AUTOPEN=true/false   - Auto-apri file generati"
 	@echo "  AUTOVISUAL=true/false- Genera visualizzazioni PDF"
 	@echo "  TEST=true/false      - Build tutti i file o solo FILE"
-	@echo "  REAPER=true/false    - Esporta progetto Reaper .rpp"
-	@echo "  REAPER_PATH=file.rpp - Path output .rpp (default: FILE.rpp)"
+	@echo "  REAPER=true/false        - Esporta progetto Reaper .rpp"
+	@echo "  REAPER_PATH=file.rpp     - Path output .rpp (default: \$$(FILE).rpp)"
+	@echo "  AUTOKILL_REAPER=true/false - Chiudi REAPER prima del build e riapri dopo"
 
 .PHONY: install-system-deps check-system-deps
 
