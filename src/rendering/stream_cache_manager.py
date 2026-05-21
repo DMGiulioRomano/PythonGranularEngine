@@ -126,7 +126,7 @@ class StreamCacheManager:
         for d in stream_dicts:
             stream_id = d.get('stream_id', '')
             if aif_dir is not None:
-                filename = f"{aif_prefix}_{stream_id}.aif" if aif_prefix else f"{stream_id}.aif"
+                filename = f"{aif_prefix}__{stream_id}.aif" if aif_prefix else f"{stream_id}.aif"
                 aif_path = os.path.join(aif_dir, filename)
             else:
                 aif_path = None
@@ -158,7 +158,7 @@ class StreamCacheManager:
         Args:
             current_stream_ids: lista degli stream_id attualmente nel YAML
             aif_dir: directory dove cercare i file .aif (None = non toccare filesystem)
-            aif_prefix: prefisso del nome file (es. 'PGE_test' → 'PGE_test_{sid}.aif')
+            aif_prefix: prefisso del nome file (es. 'PGE_test' → 'PGE_test__{sid}.aif')
 
         Returns:
             Lista degli stream_id rimossi (orfani)
@@ -169,7 +169,7 @@ class StreamCacheManager:
 
         for sid in stale_ids:
             if aif_dir is not None:
-                filename = f"{aif_prefix}_{sid}.aif" if aif_prefix else f"{sid}.aif"
+                filename = f"{aif_prefix}__{sid}.aif" if aif_prefix else f"{sid}.aif"
                 aif_path = os.path.join(aif_dir, filename)
                 if os.path.exists(aif_path):
                     os.unlink(aif_path)

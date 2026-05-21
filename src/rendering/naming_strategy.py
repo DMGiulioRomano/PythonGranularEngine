@@ -6,9 +6,9 @@ Open/Closed Principle: aggiungere nuove strategie di naming
 senza modificare codice esistente.
 
 Esempi:
-- DefaultNamingStrategy: {base}_{stream_id}.aif
+- DefaultNamingStrategy: {base}__{stream_id}.aif
 - DashNamingStrategy: {base}-{stream_id}.aif
-- TimestampNamingStrategy: {base}_{stream_id}_{timestamp}.aif
+- TimestampNamingStrategy: {base}__{stream_id}_{timestamp}.aif
 """
 
 import os
@@ -53,7 +53,7 @@ class NamingStrategy(ABC):
         Examples:
             # STEMS mode
             generate_paths('/out/base.aif', [s1, s2], 'stems')
-            → [(s1, '/out/base_s1.aif'), (s2, '/out/base_s2.aif')]
+            → [(s1, '/out/base__s1.aif'), (s2, '/out/base__s2.aif')]
 
             # MIX mode
             generate_paths('/out/base.aif', [s1, s2], 'mix')
@@ -67,7 +67,7 @@ class DefaultNamingStrategy(NamingStrategy):
     Naming strategy di default.
 
     Formato:
-    - STEMS: {base}_{stream_id}.aif
+    - STEMS: {base}__{stream_id}.aif
     - MIX: {base}.aif (invariato)
     """
 
@@ -88,9 +88,9 @@ class DefaultNamingStrategy(NamingStrategy):
         base = os.path.splitext(base_path)[0]
 
         if mode == 'stems':
-            # STEMS: {base}_{stream_id}.aif
+            # STEMS: {base}__{stream_id}.aif  (double __ as separator)
             return [
-                (stream, f"{base}_{stream.stream_id}.aif")
+                (stream, f"{base}__{stream.stream_id}.aif")
                 for stream in streams
             ]
 

@@ -48,7 +48,7 @@ class RenderMode(ABC):
             # STEMS mode
             mode = StemsRenderMode()
             paths = mode.execute(renderer, naming, [s1, s2], '/out/base.aif')
-            → ['/out/base_s1.aif', '/out/base_s2.aif']
+            → ['/out/base__s1.aif', '/out/base__s2.aif']
 
             # MIX mode
             mode = MixRenderMode()
@@ -65,7 +65,7 @@ class StemsRenderMode(RenderMode):
     Comportamento:
     - Un file per stream
     - Ogni stream parte da onset=0 nel proprio file (onset relativi)
-    - Naming: {base}_{stream_id}.aif
+    - Naming: {base}__{stream_id}.aif
     """
 
     def execute(

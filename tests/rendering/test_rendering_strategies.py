@@ -49,7 +49,7 @@ class TestDefaultNamingStrategy:
     """Test per DefaultNamingStrategy."""
 
     def test_generates_stems_paths(self):
-        """Mode 'stems': genera un path per stream con suffisso _streamid."""
+        """Mode 'stems': genera un path per stream con suffisso __streamid."""
         from rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
@@ -61,8 +61,8 @@ class TestDefaultNamingStrategy:
         paths = naming.generate_paths('/out/base.aif', streams, mode='stems')
 
         assert len(paths) == 2
-        assert paths[0] == (streams[0], '/out/base_stream1.aif')
-        assert paths[1] == (streams[1], '/out/base_stream2.aif')
+        assert paths[0] == (streams[0], '/out/base__stream1.aif')
+        assert paths[1] == (streams[1], '/out/base__stream2.aif')
 
     def test_generates_mix_path(self):
         """Mode 'mix': genera un solo path per tutti gli stream."""
@@ -90,7 +90,7 @@ class TestDefaultNamingStrategy:
 
         paths = naming.generate_paths('/dir/file.aif', streams, mode='stems')
 
-        assert paths[0][1] == '/dir/file_test.aif'
+        assert paths[0][1] == '/dir/file__test.aif'
 
     def test_handles_path_without_extension(self):
         """Gestisce correttamente path senza estensione."""
@@ -101,7 +101,7 @@ class TestDefaultNamingStrategy:
 
         paths = naming.generate_paths('/dir/file', streams, mode='stems')
 
-        assert paths[0][1] == '/dir/file_test.aif'
+        assert paths[0][1] == '/dir/file__test.aif'
 
     def test_invalid_mode_raises_error(self):
         """Mode non valido solleva ValueError."""
@@ -112,6 +112,27 @@ class TestDefaultNamingStrategy:
 
         with pytest.raises(ValueError, match="naming"):
             naming.generate_paths('/out/base.aif', streams, mode='invalid')
+
+    def test_stems_uses_double_underscore_separator(self):
+        """STEMS mode: separatore tra basename e stream_id e' '__' (issue #56).
+
+        Il doppio underscore garantisce parsing inverso non ambiguo:
+        stem.split('__') restituisce sempre ['basename', 'stream_id']
+        anche se basename o stream_id contengono singoli underscores.
+        """
+        from rendering.naming_strategy import DefaultNamingStrategy
+
+        naming = DefaultNamingStrategy()
+        streams = [make_mock_stream('s1')]
+
+        paths = naming.generate_paths('/out/PGE_test.aif', streams, mode='stems')
+
+        assert paths[0][1] == '/out/PGE_test__s1.aif'
+
+        stem = paths[0][1].split('/')[-1].replace('.aif', '')
+        basename, sid = stem.split('__')
+        assert basename == 'PGE_test'
+        assert sid == 's1'
 
 
 # =============================================================================
@@ -138,8 +159,8 @@ class TestStemsRenderMode:
         result = mode.execute(renderer, naming, streams, '/out/base.aif')
 
         assert renderer.render_single_stream.call_count == 2
-        renderer.render_single_stream.assert_any_call(streams[0], '/out/base_s1.aif')
-        renderer.render_single_stream.assert_any_call(streams[1], '/out/base_s2.aif')
+        renderer.render_single_stream.assert_any_call(streams[0], '/out/base__s1.aif')
+        renderer.render_single_stream.assert_any_call(streams[1], '/out/base__s2.aif')
 
     def test_returns_list_of_generated_paths(self):
         """Ritorna lista di path generati."""
@@ -155,8 +176,8 @@ class TestStemsRenderMode:
         result = mode.execute(renderer, naming, streams, '/out/base.aif')
 
         assert len(result) == 2
-        assert '/out/base_s1.aif' in result
-        assert '/out/base_s2.aif' in result
+        assert '/out/base__s1.aif' in result
+        assert '/out/base__s2.aif' in result
 
     def test_works_with_single_stream(self):
         """Funziona con un solo stream."""
@@ -172,7 +193,7 @@ class TestStemsRenderMode:
         result = mode.execute(renderer, naming, streams, '/out/base.aif')
 
         assert len(result) == 1
-        assert result[0] == '/out/base_solo.aif'
+        assert result[0] == '/out/base__solo.aif'
 
 
 # =============================================================================

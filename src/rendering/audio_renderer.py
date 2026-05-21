@@ -50,7 +50,7 @@ class AudioRenderer(ABC):
 
         Args:
             stream: oggetto Stream con voices e grains già generati
-            output_path: percorso file output (es. '/out/composition_stream1.aif')
+            output_path: percorso file output (es. '/out/composition__stream1.aif')
 
         Returns:
             Il percorso del file prodotto
