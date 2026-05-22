@@ -10,6 +10,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Target `make clean-rpp` (`make/clean.mk`): rimuove i file `.rpp` e `.rpp-bak`
+  in `$(SFDIR)` (default `output/`) e nella root del repo. Risolve la
+  pulizia esplicita dei progetti Reaper, prima orfana di target dedicato.
+  Issue #65.
+- Flag `CLEAN_RPP` nel `Makefile` (default `false`): controlla se `make clean`
+  rimuove anche i `.rpp` in `output/`. Default `false` per preservare
+  eventuale lavoro REAPER manuale (FX chain, automation, mixer routing) che
+  non è rigenerabile da YAML. `CLEAN_RPP=true` ripristina il comportamento
+  pre-issue#65 (wipe totale `$(SFDIR)/*`). Issue #65.
 - Flag `REAPER_REUSE_TAB` nel `Makefile` (default `false`): se `true` con
   `REAPER=true`, prima di aprire il `.rpp` aggiornato lo script Lua
   `generated/open_reaper_tab.lua` scorre le tab REAPER aperte (`EnumProjects`)
@@ -46,6 +55,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - `docs/reaper-workflow.md`: workflow REAPER, requisiti, troubleshooting.
 - `tests/e2e/test_reaper_makefile_e2e.py`: 6 scenari su target `reaper-stop`,
   wiring `AUTOKILL_REAPER`, default `REAPER_PATH`.
+
+### Modificato
+
+- Default `REAPER_PATH`: da `$(FILE).rpp` (root del repo) a `$(SFDIR)/$(FILE).rpp`
+  (default `output/$(FILE).rpp`). I progetti Reaper vivono ora accanto agli
+  `.aif` generati, co-location semantica tra progetto Reaper e audio referenziati.
+  **Breaking change minore:** script che cercano `foo.rpp` nella root vanno
+  aggiornati a `output/foo.rpp`. `REAPER_PATH=custom/path.rpp` resta supportato
+  per override esplicito. Issue #65.
+- `make clean` non rimuove più `$(SFDIR)/*` con `rm -rf` per default. Usa `find`
+  con esclusione di `*.rpp` per preservare progetti Reaper. Override via
+  `CLEAN_RPP=true`. Issue #65.
 
 ### Modificato (breaking)
 

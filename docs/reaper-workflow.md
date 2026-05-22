@@ -12,7 +12,8 @@ traccia REAPER) · [[workflows]] (Makefile targets).
 | Variabile | Default | Descrizione |
 |-----------|---------|-------------|
 | `REAPER` | `true` | Se `true`, il pipeline scrive un `.rpp` accanto agli `.aif`. |
-| `REAPER_PATH` | `$(FILE).rpp` | Path output del `.rpp`. Il default lega il nome del progetto al nome del YAML — ogni YAML apre una propria tab in REAPER. |
+| `REAPER_PATH` | `$(SFDIR)/$(FILE).rpp` | Path output del `.rpp` (default in `output/` accanto agli `.aif`). Il default lega il nome del progetto al nome del YAML — ogni YAML apre una propria tab in REAPER. |
+| `CLEAN_RPP` | `false` | Se `false` (default), `make clean` preserva i `.rpp` in `output/` per non distruggere eventuale lavoro REAPER manuale (FX, automation, mixer routing). Se `true`, `make clean` fa wipe totale incluso i `.rpp`. Per rimuovere solo i `.rpp` esplicitamente: `make clean-rpp`. |
 | `AUTOKILL_REAPER` | `false` | Se `true` con `REAPER=true`, chiude REAPER prima del build, riscrive il `.rpp`, poi riapre REAPER. Utile quando si modificano `onset` o `duration` degli stream e REAPER ha gia' il progetto aperto. |
 | `REAPER_REUSE_TAB` | `false` | Se `true` con `REAPER=true`, prima di aprire il `.rpp` chiude la tab REAPER esistente con stesso path assoluto. Reload single-tab senza chiudere tutto REAPER (issue #59). |
 | `AUTOPEN` | `true` | Se `true`, apre il `.rpp` in REAPER alla fine del build. |

@@ -38,19 +38,39 @@ Analisi directory esistenti:
 + REAPER_PATH ?= $(SFDIR)/$(FILE).rpp
 ```
 
-### 2. `make/clean.mk` — nuovo target `clean-rpp`
+### 2. `make/clean.mk` — `clean-rpp` + protezione `.rpp` in `clean`
+
+**Problema:** `clean` fa `rm -rf $(SFDIR)/*` → wipe-a anche `.rpp`. `.aif` rigenerabili da YAML, ma `.rpp` modificato in REAPER (FX chain, automation, mixer routing) NON rigenerabile. `make clean` rischia di distruggere lavoro utente.
+
+**Soluzione:** flag opt-in `CLEAN_RPP` (default `false`). Default-safe: `make clean` preserva `.rpp`. Power user: `make clean CLEAN_RPP=true` o `make clean-rpp` esplicito.
+
 ```makefile
+# Default: clean preserva .rpp (potenziale lavoro REAPER manuale non rigenerabile)
+CLEAN_RPP ?= false
+
 clean-rpp:
 	@echo "[CLEAN] Removing .rpp files..."
 	rm -f $(SFDIR)/*.rpp $(SFDIR)/*.rpp-bak
 	rm -f *.rpp *.rpp-bak
+
+clean:
+	@echo "[CLEAN] Removing generated files..."
+ifeq ($(CLEAN_RPP),true)
+	rm -rf $(GENDIR)/* $(SFDIR)/* $(LOGDIR)/*
+else
+	rm -rf $(GENDIR)/* $(LOGDIR)/*
+	find $(SFDIR) -mindepth 1 -maxdepth 1 -not -name '*.rpp' -not -name '*.rpp-bak' -exec rm -rf {} +
+	@echo "[CLEAN] .rpp preservati (CLEAN_RPP=true per rimuoverli, o 'make clean-rpp')"
+endif
+	@clear
 ```
-Integrare in `clean:`:
-```diff
-- clean:
-+ clean: clean-rpp
+
+Aggiornare `clean-file:` per rimuovere `$(SFDIR)/$(FILE).rpp` solo se `CLEAN_RPP=true`. `clean-output` resta wipe totale (esplicito).
+
+**Help:**
 ```
-Aggiornare `clean-file:` per rimuovere anche `$(SFDIR)/$(FILE).rpp`.
+CLEAN_RPP=true/false     - make clean rimuove anche .rpp (default: false, preserva lavoro REAPER)
+```
 
 ### 3. `tests/e2e/test_reaper_makefile_e2e.py:238-242`
 ```diff
@@ -94,12 +114,14 @@ Rimuovere 5 `.rpp` stale dalla root (untracked, gitignored).
 
 ## Rischi
 
-- `clean-rpp` con `rm -f *.rpp` in root elimina anche `.rpp` creati manualmente. Mitigazione: commento esplicito "legacy default path cleanup" + valutare flag opt-out.
+- `clean-rpp` esplicito con `rm -f *.rpp` in root elimina `.rpp` manuali. Accettabile: target esplicito, utente sa cosa fa.
+- `find` con `-not -name` su `$(SFDIR)`: verificare portabilità BSD find (macOS) vs GNU find (Linux). Sintassi `-mindepth -maxdepth -not -name -exec` portabile su entrambi.
 
 ## Acceptance
 
 - `make REAPER=true FILE=foo` scrive `output/foo.rpp`
-- `make clean` rimuove tutti `.rpp` in `output/` + root
-- `make clean-rpp` standalone funziona
+- `make clean` (default `CLEAN_RPP=false`) preserva `.rpp` in `output/`, rimuove tutto il resto
+- `make clean CLEAN_RPP=true` rimuove anche `.rpp`
+- `make clean-rpp` standalone rimuove `.rpp` da `output/` + root
 - test passano
-- docs aggiornate
+- docs aggiornate (workflow, Makefile help, CHANGELOG)

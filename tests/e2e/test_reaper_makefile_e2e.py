@@ -218,11 +218,11 @@ class TestReaperReuseTabFlag:
 
 @pytest.mark.e2e
 class TestReaperPathDefault:
-    """Default REAPER_PATH = $(FILE).rpp per multi-tab per YAML."""
+    """Default REAPER_PATH = $(SFDIR)/$(FILE).rpp in output/."""
 
-    def test_default_reaper_path_matches_file_basename(self):
+    def test_default_reaper_path_in_output_dir(self):
         """
-        Con FILE=foo e nessun REAPER_PATH esplicito, `--reaper-path foo.rpp`
+        Con FILE=foo e nessun REAPER_PATH esplicito, `--reaper-path output/foo.rpp`
         deve apparire nel comando python (visibile via dry-run).
         """
         result = _run_make([
@@ -235,8 +235,8 @@ class TestReaperPathDefault:
         assert result.returncode == 0, (
             f"`make -n all` fallito.\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
-        assert "--reaper-path foo.rpp" in result.stdout, (
-            f"Default REAPER_PATH atteso 'foo.rpp', non trovato.\nstdout: {result.stdout}"
+        assert "--reaper-path output/foo.rpp" in result.stdout, (
+            f"Default REAPER_PATH atteso 'output/foo.rpp', non trovato.\nstdout: {result.stdout}"
         )
         assert "Project.rpp" not in result.stdout, (
             f"Vecchio default 'Project.rpp' ancora presente.\nstdout: {result.stdout}"
