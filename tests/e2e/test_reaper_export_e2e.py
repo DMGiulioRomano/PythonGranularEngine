@@ -326,8 +326,10 @@ class TestReaperCustomPath:
         assert result.returncode == 0, (
             f"make -n fallito: {result.stdout}{result.stderr}"
         )
-        assert "--reaper-path e2e_reaper_test.rpp" in result.stdout, (
-            f"Default REAPER_PATH atteso 'e2e_reaper_test.rpp'.\n"
+        # Issue #65: default REAPER_PATH ora include $(SFDIR).
+        expected = f"--reaper-path {sfdir}/e2e_reaper_test.rpp"
+        assert expected in result.stdout, (
+            f"Default REAPER_PATH atteso '{expected}'.\n"
             f"stdout: {result.stdout}"
         )
         assert "Project.rpp" not in result.stdout, (

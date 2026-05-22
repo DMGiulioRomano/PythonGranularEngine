@@ -63,8 +63,8 @@ PRECLEAN ?=true
 STEMS ?= true
 RENDERER ?= numpy
 REAPER ?= true
-# Default: nome .rpp = nome YAML, abilita multi-tab in REAPER (vedi issue #17)
-REAPER_PATH ?= $(FILE).rpp
+# Default: nome .rpp = nome YAML in $(SFDIR), accanto agli .aif. Multi-tab per YAML (vedi issue #17)
+REAPER_PATH ?= $(SFDIR)/$(FILE).rpp
 # Include moduli
 include make/test.mk
 include make/utils.mk
@@ -113,7 +113,8 @@ help:
 	@echo "  make rx-stop         - Chiudi iZotope RX 11"
 	@echo ""
 	@echo " Pulizia:"
-	@echo "  make clean           - Pulisci file generati"
+	@echo "  make clean           - Pulisci file generati (default preserva .rpp)"
+	@echo "  make clean-rpp       - Rimuovi solo i .rpp in output/ e root"
 	@echo "  make clean-all       - Pulizia completa (+ venv)"
 	@echo ""
 	@echo "  Flags:"
@@ -121,8 +122,9 @@ help:
 	@echo "  AUTOPEN=true/false   - Auto-apri file generati"
 	@echo "  AUTOVISUAL=true/false- Genera visualizzazioni PDF"
 	@echo "  TEST=true/false      - Build tutti i file o solo FILE"
+	@echo "  CLEAN_RPP=true/false - make clean rimuove anche .rpp (default: false, preserva lavoro REAPER)"
 	@echo "  REAPER=true/false        - Esporta progetto Reaper .rpp"
-	@echo "  REAPER_PATH=file.rpp     - Path output .rpp (default: \$$(FILE).rpp)"
+	@echo "  REAPER_PATH=file.rpp     - Path output .rpp (default: \$$(SFDIR)/\$$(FILE).rpp)"
 	@echo "  AUTOKILL_REAPER=true/false - Chiudi REAPER prima del build e riapri dopo"
 	@echo "  REAPER_REUSE_TAB=true/false - Chiudi tab esistente stesso .rpp e riapri (single-tab reload)"
 
