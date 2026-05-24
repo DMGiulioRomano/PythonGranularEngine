@@ -80,34 +80,88 @@ class Envelope:
     def _parse_segments(self, breakpoints: list) -> List[Segment]:
         """
         Parsa lista di breakpoints in List[NormalSegment].
-        
-        Nota: Formato compatto già espanso da Builder.
-        
+
+        Accetta breakpoint 2-elem [t, v] (usa strategy globale) o 3-elem
+        [t, v, type] (override per-segmento, type applicato a seg i→i+1).
+
+        Quando non ci sono override per-punto crea un singolo segmento
+        (backward compat). Altrimenti crea N segmenti (uno per coppia).
+
         Returns:
-            List[NormalSegment]: Lista con singolo segmento contenente tutti i breakpoints
+            List[NormalSegment]
         """
         if not breakpoints:
             raise ValueError("Lista breakpoints vuota.")
-        
-        # Valida formato breakpoints
+
+        from envelopes.envelope_builder import EnvelopeBuilder as _EB
+
+        # Estrai (point_2elem, seg_type) per ogni breakpoint
+        points = []
+        seg_types: List[Any] = []
+        has_per_point_type = False
         for item in breakpoints:
-            if not isinstance(item, list) or len(item) != 2:
+            if not isinstance(item, list):
                 raise ValueError(
                     f"Formato breakpoint non valido: {item}. "
-                    "Deve essere [time, value]."
+                    "Deve essere [time, value] o [time, value, type]."
                 )
-        
-        # Crea context per cubic (tangenti)
-        context = self._create_context_for_segment(breakpoints)
-        
-        # Crea singolo NormalSegment con tutti i breakpoints
-        segment = NormalSegment(
-            breakpoints=breakpoints,
-            strategy=self.strategy,
-            context=context
-        )
-        
-        return [segment]
+            if len(item) == 2:
+                points.append(item)
+                seg_types.append(None)
+            elif len(item) == 3:
+                if not _EB._is_3tuple_breakpoint(item):
+                    raise ValueError(
+                        f"Formato breakpoint non valido: {item}. "
+                        "Deve essere [time, value] o [time, value, type]."
+                    )
+                if item[2] not in _EB.VALID_INTERP_TYPES:
+                    from shared.exceptions import InvalidFieldValueError
+                    raise InvalidFieldValueError(
+                        field="envelope.point.type",
+                        value=item[2],
+                        hint=f"Tipi validi: {', '.join(_EB.VALID_INTERP_TYPES)}",
+                    )
+                points.append([item[0], item[1]])
+                seg_types.append(item[2])
+                has_per_point_type = True
+            else:
+                raise ValueError(
+                    f"Formato breakpoint non valido: {item}. "
+                    "Deve essere [time, value] o [time, value, type]."
+                )
+
+        # Tangenti globali (usate solo dai segmenti cubic)
+        global_tangents = self._compute_fritsch_carlson_tangents(points)
+
+        # Backward compat: nessun override → singolo segmento
+        if not has_per_point_type:
+            context = self._create_context_for_segment(points)
+            return [NormalSegment(breakpoints=points, strategy=self.strategy, context=context)]
+
+        # N segmenti: uno per coppia (points[i], points[i+1])
+        # seg_types[i] applicato a segmento i→i+1; ultimo type ignorato (warning)
+        if seg_types[-1] is not None:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Envelope: type='{seg_types[-1]}' su ultimo punto ignorato (no segmento successivo)."
+            )
+
+        if len(points) == 1:
+            # Caso degenere: 1 solo punto
+            context = self._create_context_for_segment(points)
+            return [NormalSegment(breakpoints=points, strategy=self.strategy, context=context)]
+
+        segments: List[Segment] = []
+        for i in range(len(points) - 1):
+            pair = [points[i], points[i + 1]]
+            t_for_seg = seg_types[i] if seg_types[i] is not None else self.type
+            strategy = InterpolationStrategyFactory.create(t_for_seg)
+            context: Dict[str, Any] = {}
+            if t_for_seg == 'cubic':
+                context['tangents'] = [global_tangents[i], global_tangents[i + 1]]
+            segments.append(NormalSegment(breakpoints=pair, strategy=strategy, context=context))
+
+        return segments
     
     def _create_context_for_segment(self, points: List[List[float]]) -> Dict[str, Any]:
         """
@@ -174,39 +228,74 @@ class Envelope:
     def evaluate(self, t: float) -> float:
         """
         Valuta l'envelope al tempo t.
-        
-        Delegation Pattern: delega al singolo NormalSegment.
-        
-        Args:
-            t: Tempo in secondi
-            
-        Returns:
-            float: Valore dell'envelope
+
+        Multi-segmento: trova il segmento che contiene t (o restituisce hold
+        agli estremi globali).
         """
-        # Singolo segmento: delega direttamente
-        return self.segments[0].evaluate(t)
-    
+        if len(self.segments) == 1:
+            return self.segments[0].evaluate(t)
+
+        # Hold pre/post sugli estremi globali
+        global_start = self.segments[0].start_time
+        global_end = self.segments[-1].end_time
+        if t <= global_start:
+            return self.segments[0].breakpoints[0][1]
+        if t >= global_end:
+            return self.segments[-1].breakpoints[-1][1]
+
+        # Trova segmento contenente t (segmenti adiacenti condividono boundary)
+        for seg in self.segments:
+            if seg.start_time <= t <= seg.end_time:
+                return seg.evaluate(t)
+
+        # Fallback: ultimo valore (non dovrebbe accadere)
+        return self.segments[-1].breakpoints[-1][1]
+
     def integrate(self, from_time: float, to_time: float) -> float:
         """
         Integrale dell'envelope tra from_time e to_time.
-        
-        Delega al singolo NormalSegment.
-        
-        Args:
-            from_time: Tempo iniziale
-            to_time: Tempo finale
-            
-        Returns:
-            float: Area sotto la curva
+
+        Multi-segmento: somma per-segmento sul range overlap; hold pre/post
+        gestito sugli estremi globali.
         """
         if from_time > to_time:
             return -self.integrate(to_time, from_time)
-        
         if from_time == to_time:
             return 0.0
-        
-        # Singolo segmento: delega direttamente
-        return self.segments[0].integrate(from_time, to_time)
+
+        if len(self.segments) == 1:
+            return self.segments[0].integrate(from_time, to_time)
+
+        global_start = self.segments[0].start_time
+        global_end = self.segments[-1].end_time
+        total = 0.0
+        cursor = from_time
+
+        # Hold prima del primo segmento
+        if cursor < global_start:
+            hold_end = min(to_time, global_start)
+            total += self.segments[0].breakpoints[0][1] * (hold_end - cursor)
+            cursor = hold_end
+            if cursor >= to_time:
+                return total
+
+        # Integra su segmenti che overlappano [cursor, to_time]
+        for seg in self.segments:
+            if cursor >= to_time:
+                break
+            if to_time <= seg.start_time or cursor >= seg.end_time:
+                continue
+            a = max(cursor, seg.start_time)
+            b = min(to_time, seg.end_time)
+            if b > a:
+                total += seg.strategy.integrate(a, b, seg.breakpoints, **seg.context)
+                cursor = b
+
+        # Hold dopo l'ultimo segmento
+        if cursor < to_time and cursor >= global_end:
+            total += self.segments[-1].breakpoints[-1][1] * (to_time - cursor)
+
+        return total
         
     @property
     def breakpoints(self) -> List[List[float]]:
@@ -298,6 +387,8 @@ class Envelope:
                     scaled.append(new_item)
                 elif isinstance(item, list) and len(item) == 2:
                     scaled.append([item[0], item[1] * scale_factor])
+                elif EnvelopeBuilder._is_3tuple_breakpoint(item):
+                    scaled.append([item[0], item[1] * scale_factor, item[2]])
                 else:
                     scaled.append(item)
             return scaled
@@ -393,6 +484,9 @@ def _scale_time_recursive(points: List, factor: float) -> List:
         elif isinstance(item, list) and len(item) == 2:
             # Standard breakpoint: [t, v] -> [t * factor, v]
             scaled.append([item[0] * factor, item[1]])
+        elif EnvelopeBuilder._is_3tuple_breakpoint(item):
+            # 3-tuple breakpoint: [t, v, type] -> [t * factor, v, type]
+            scaled.append([item[0] * factor, item[1], item[2]])
         else:
 
             scaled.append(item)
