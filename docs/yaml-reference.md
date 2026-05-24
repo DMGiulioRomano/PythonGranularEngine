@@ -35,6 +35,8 @@ Qualsiasi parametro numerico accetta le seguenti forme:
 | Variazione | `grain: {duration: 0.05, duration_range: 0.01}` | `±0.01` randomizzazione |
 | Espressione math | `onset: (pi)`, `duration: (10/2)` | Valutato via `safe_eval` |
 | Envelope normalizzato | `step: {points: [[0, 0], [1, 12]], time_mode: normalized}` | `[0, 1]` mappato su `duration` |
+| Envelope per-punto interp | `density: [[0, 5, 'cubic'], [0.5, 30, 'step'], [1, 5]]` | `type` per-segmento, override del default globale (issue #54) |
+| Envelope dict per-punto | `density: {points: [{t:0, v:5, type:cubic}, {t:1, v:5}]}` | Forma dict equivalente di per-punto interp |
 
 ---
 

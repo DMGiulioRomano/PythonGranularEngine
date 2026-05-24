@@ -852,12 +852,12 @@ class ScoreVisualizer:
             
             # Aggiungi envelope del valore principale
             if isinstance(value, Envelope):
-                # Solo envelope dinamici (multi-breakpoint)
-                if len(value.breakpoints) > 1:
+                bp_values = [bp[1] for bp in value.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(value.breakpoints) > 1 and not is_static:
                     envelopes[spec.name] = value
-                # Envelope statici (solo se richiesto)
-                elif show_static and len(value.breakpoints) == 1:
-                    val = value.breakpoints[0][1]
+                elif show_static:
+                    val = bp_values[0]
                     envelopes[spec.name] = Envelope([[0, val], [stream.duration, val]])
             
             # Valori statici (numero)
@@ -920,6 +920,29 @@ class ScoreVisualizer:
             # Fallback: assume già normalizzato
             return np.clip(value, 0, 1)
 
+    @staticmethod
+    def _segment_strategy_name(segment) -> str:
+        """Mappa strategy del segmento al nome canonico ('step'/'linear'/'cubic')."""
+        cls_name = segment.strategy.__class__.__name__
+        if 'Step' in cls_name:
+            return 'step'
+        if 'Cubic' in cls_name:
+            return 'cubic'
+        return 'linear'
+
+    @staticmethod
+    def _is_per_segment_heterogeneous(envelope) -> bool:
+        """
+        True se envelope ha segmenti con strategie diverse (es. step+linear).
+
+        Envelope uniformi (1 segmento o tutti stessa strategy) → False.
+        """
+        segs = getattr(envelope, 'segments', None)
+        if not segs or len(segs) < 2:
+            return False
+        names = {ScoreVisualizer._segment_strategy_name(s) for s in segs}
+        return len(names) > 1
+
     def _draw_envelopes(self, ax, stream, y_base, y_height, page_start, page_end):
         """
         Disegna tutti gli envelope dello stream nella sua corsia.
@@ -950,7 +973,19 @@ class ScoreVisualizer:
         for param_name, envelope in envelopes.items():
             # Colore
             color = colors.get(param_name, '#333333')
-            
+
+            # Envelope per-segmento eterogeneo (issue #68): rendering per-segmento
+            if self._is_per_segment_heterogeneous(envelope):
+                self._draw_envelope_per_segment(
+                    ax, envelope, param_name, color,
+                    stream_start, y_base, y_height, t_start, t_end,
+                )
+                self._annotate_breakpoints(ax, envelope, param_name, color,
+                                           stream_start, y_base, y_height,
+                                           page_start, page_end)
+                drawn_types.add(param_name)
+                continue
+
             # ========== GESTIONE DIFFERENZIATA PER TIPO ==========
             if envelope.type == 'step':
                 # Per envelope STEP: disegna segmenti orizzontali espliciti
@@ -1042,6 +1077,57 @@ class ScoreVisualizer:
             drawn_types.add(param_name)
         
         return drawn_types    
+
+    def _draw_envelope_per_segment(
+        self, ax, envelope, param_name, color,
+        stream_start, y_base, y_height, t_start, t_end,
+    ):
+        """
+        Disegna envelope eterogeneo segmento per segmento (issue #68).
+
+        Ogni segmento usa drawstyle adattato alla propria strategy:
+        - step: drawstyle='steps-post' (gradini netti)
+        - linear: linea retta tra estremi
+        - cubic: campionamento denso del segmento
+        """
+        for seg in envelope.segments:
+            seg_t0 = stream_start + seg.start_time
+            seg_t1 = stream_start + seg.end_time
+            # Clipping alla pagina
+            a = max(seg_t0, t_start)
+            b = min(seg_t1, t_end)
+            if a >= b:
+                continue
+
+            strategy_name = self._segment_strategy_name(seg)
+
+            if strategy_name == 'step':
+                # Hold left value: linea orizzontale poi salto a fine
+                v_left = seg.breakpoints[0][1]
+                v_right = seg.breakpoints[-1][1]
+                y_left = y_base + self._normalize_envelope_value(param_name, v_left) * y_height
+                y_right = y_base + self._normalize_envelope_value(param_name, v_right) * y_height
+                ax.plot([a, b], [y_left, y_left], color=color, linewidth=1.1, alpha=0.8)
+                # Salto verticale a fine segmento (se b == seg_t1)
+                if b >= seg_t1:
+                    ax.plot([b, b], [y_left, y_right], color=color, linewidth=1.1, alpha=0.8)
+
+            elif strategy_name == 'linear':
+                v_a = envelope.evaluate(a - stream_start)
+                v_b = envelope.evaluate(b - stream_start)
+                y_a = y_base + self._normalize_envelope_value(param_name, v_a) * y_height
+                y_b = y_base + self._normalize_envelope_value(param_name, v_b) * y_height
+                ax.plot([a, b], [y_a, y_b], color=color, linewidth=1.1, alpha=0.8)
+
+            else:  # cubic
+                import numpy as np
+                n = max(20, int(50 * (b - a) / max(seg_t1 - seg_t0, 1e-9)))
+                ts = np.linspace(a, b, n)
+                ys = []
+                for t in ts:
+                    v = envelope.evaluate(t - stream_start)
+                    ys.append(y_base + self._normalize_envelope_value(param_name, v) * y_height)
+                ax.plot(ts, ys, color=color, linewidth=1.1, alpha=0.8)
 
     def _annotate_breakpoints(self, ax, envelope, param_name, color,
                                stream_start, y_base, y_height,
