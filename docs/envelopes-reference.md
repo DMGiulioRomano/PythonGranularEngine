@@ -139,6 +139,45 @@ density: [
 ]
 ```
 
+### 2.6 Interp type per-punto (issue #54)
+
+Ogni breakpoint puo' dichiarare il proprio tipo di interpolazione applicato al
+**segmento dal punto fino al successivo**. Due forme equivalenti:
+
+**Tupla 3-elem:** `[t, v, type]`
+
+```yaml
+density: [[0, 5, 'cubic'], [0.3, 30, 'linear'], [0.7, 10, 'step'], [1, 5]]
+# Seg 0->1: cubic. Seg 1->2: linear. Seg 2->3: step.
+```
+
+**Dict per-punto:** `{t, v, type}`
+
+```yaml
+density:
+  type: linear     # default per i punti senza 'type' esplicito
+  points:
+    - {t: 0,   v: 5,  type: cubic}
+    - {t: 0.3, v: 30, type: linear}
+    - {t: 0.7, v: 10, type: step}
+    - {t: 1,   v: 5}
+```
+
+Regole:
+
+- `type` su punto `i` = strategia segmento `i -> i+1`
+- Ultimo punto: `type` ignorato (warning a log, no errore)
+- Punto senza `type` (2-elem o dict senza chiave): eredita default globale
+  (`dict.type`, wrapper compact `interp`, oppure `'linear'`)
+- Mix 2-elem + 3-elem nella stessa lista accettato
+- `type` non in `{linear, cubic, step}` -> `InvalidFieldValueError`
+- Tangenti Fritsch-Carlson per segmenti `cubic`: calcolate globalmente sull'
+  intera lista breakpoint, applicate solo ai segmenti `cubic` (coerenza
+  boundary tra strategy diverse)
+
+Backward compat: tutti i formati 2-elem `[t, v]` continuano a funzionare
+invariati.
+
 ---
 
 ## 3. Time mode: `absolute` vs `normalized`
@@ -216,8 +255,9 @@ density: [[[0, 0], [100, 50]], 0.5, 4]
 
 ## 4. Tipi di interpolazione
 
-Tre strategie, selezionabili tramite `type` (in forma dict) o come quarto
-elemento opzionale di un formato compatto.
+Tre strategie, selezionabili tramite `type` (in forma dict), come quarto
+elemento opzionale di un formato compatto, oppure per-singolo-punto via
+tupla 3-elem o dict per-punto (vedi §2.6).
 
 ### 4.1 `linear` (default)
 
@@ -284,13 +324,17 @@ Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 [pattern_points, end_time, n_reps, interp?, time_dist?]
 ```
 
-| Posizione | Nome             | Tipo                  | Obbligatorio | Significato |
-|-----------|------------------|-----------------------|--------------|-------------|
-| 0         | `pattern_points` | lista di `[x%, y]`    | sì           | pattern del ciclo, `x` in `[0, 100]` |
-| 1         | `end_time`       | numero                | sì           | **tempo assoluto finale** del blocco compatto |
-| 2         | `n_reps`         | intero `>= 1`         | sì           | numero di ripetizioni |
-| 3         | `interp_type`    | str                   | no           | `'linear'` / `'cubic'` / `'step'` |
-| 4         | `time_dist`      | str o dict            | no           | distribuzione delle durate dei cicli |
+| Posizione | Nome             | Tipo                       | Obbligatorio | Significato |
+|-----------|------------------|----------------------------|--------------|-------------|
+| 0         | `pattern_points` | lista di `[x%, y]` o `[x%, y, type]` | sì | pattern del ciclo, `x` in `[0, 100]`. Pattern points possono essere 3-tuple (vedi §2.6) |
+| 1         | `end_time`       | numero                     | sì           | **tempo assoluto finale** del blocco compatto |
+| 2         | `n_reps`         | intero `>= 1`              | sì           | numero di ripetizioni |
+| 3         | `interp_type`    | str                        | no           | `'linear'` / `'cubic'` / `'step'`. Fa da default per i segmenti interni e per il gap inter-ciclo |
+| 4         | `time_dist`      | str o dict                 | no           | distribuzione delle durate dei cicli |
+
+**Pattern con 3-tuple (issue #54):** ogni `seg_type` per-punto viene replicato in
+ogni ciclo. Il gap tra fine ciclo N e inizio ciclo N+1 segue l'`interp_type`
+globale (posizione 3), non il `seg_type` dell'ultimo punto pattern.
 
 Punto cruciale di semantica: **`end_time` è il tempo assoluto finale, non la
 durata del blocco**. Quando il formato compatto è usato in forma mista, la

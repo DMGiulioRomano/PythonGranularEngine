@@ -954,9 +954,11 @@ class TestEnvelopeMissingLines:
 
         bps = env.breakpoints  # deve concatenare via il loop alla riga 303
 
-        assert len(bps) == 4
+        # Dedup boundary condiviso: [0.5, 5] appare solo 1 volta
+        assert len(bps) == 3
         assert bps[0] == [0, 0]
-        assert bps[3] == [1.0, 10]
+        assert bps[1] == [0.5, 5]
+        assert bps[2] == [1.0, 10]
 
     def test_empty_segments_after_parse_raises(self):
         """
