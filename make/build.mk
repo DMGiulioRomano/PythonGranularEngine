@@ -133,7 +133,6 @@ ifeq ($(STEMS), true)
 # Comportamento identico a STEMS+csound: --per-stream attiva StemsRenderMode.
 ifeq ($(RENDERER), numpy)
 
-PYFLAGS += --show-static
 PYFLAGS += --per-stream
 
 ifeq ($(CACHE), true)
@@ -152,7 +151,6 @@ stems-build: venv-setup $(SFDIR) $(CACHEDIR)
 else
 
 # --- STEMS + RENDERER=csound (one-step: Python invoca csound internamente) ---
-PYFLAGS += --show-static
 PYFLAGS += --per-stream
 
 CSOUND_FLAGS := \
