@@ -1,0 +1,216 @@
+composition:
+  title: "envelope syntax test - issue #54"
+
+# Test file copre tutte le sintassi envelope supportate.
+# Ogni stream isola una forma; tempo normalizzato per leggibilita'.
+
+streams:
+
+  # -------------------------------------------------------------------
+  # SINTASSI LEGACY (gia' supportate prima di #54)
+  # -------------------------------------------------------------------
+
+  # 1. Bare 2-elem: [[t, v], ...]
+  - stream_id: "01_bare_2elem"
+    time_mode: normalized
+    onset: 0.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[0, 5], [0.5, 20], [1, 5]]
+
+    grain:
+      duration: 0.05
+
+  # 2. Dict {type, points} con bare bps - globale cubic
+  - stream_id: "02_dict_global_cubic"
+    time_mode: normalized
+    onset: 5.0
+    duration: 4.0
+    sample: "pino.wav"
+    density:
+      type: cubic
+      points: [[0, 5], [0.3, 30], [0.7, 30], [1, 5]]
+
+    grain:
+      duration: 0.05
+
+  # 3. Dict {type, points} con bare bps - globale step
+  - stream_id: "03_dict_global_step"
+    time_mode: normalized
+    onset: 10.0
+    duration: 4.0
+    sample: "pino.wav"
+    density:
+      type: step
+      points: [[0, 5], [0.25, 15], [0.5, 30], [0.75, 15], [1, 5]]
+
+    grain:
+      duration: 0.05
+
+  # 4. Compact 3-elem: [pattern, end_time, n_reps]
+  - stream_id: "04_compact_3elem"
+    time_mode: normalized
+    onset: 15.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30], [100, 5]], 1.0, 4]
+
+    grain:
+      duration: 0.05
+
+  # 5. Compact 4-elem: [pattern, end_time, n_reps, interp]
+  - stream_id: "05_compact_4elem_cubic"
+    time_mode: normalized
+    onset: 20.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30], [100, 5]], 1.0, 4, 'cubic']
+
+    grain:
+      duration: 0.05
+
+  # 6. Compact 5-elem: [pattern, end_time, n_reps, interp, time_dist]
+  - stream_id: "06_compact_5elem_exponential"
+    time_mode: normalized
+    onset: 25.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30], [100, 5]], 1.0, 5, 'linear', 'exponential']
+
+    grain:
+      duration: 0.05
+
+  # 7. Mixed: bare bps + compact
+  - stream_id: "07_mixed_bare_and_compact"
+    time_mode: normalized
+    onset: 30.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[0, 5], [0.3, 5], [[[0, 10], [50, 40], [100, 10]], 1.0, 3]]
+
+    grain:
+      duration: 0.05
+
+  # -------------------------------------------------------------------
+  # SINTASSI NUOVE (issue #54)
+  # -------------------------------------------------------------------
+
+  # 8. NEW: 3-tuple [t, v, type] - attacco cubic, decay linear, tail step
+  - stream_id: "08_3tuple_cubic_linear_step"
+    time_mode: normalized
+    onset: 35.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[0, 5, 'cubic'], [0.3, 30, 'linear'], [0.7, 10, 'step'], [1, 5]]
+
+    grain:
+      duration: 0.05
+
+  # 9. NEW: 3-tuple - step ladder pieno
+  - stream_id: "09_3tuple_step_ladder"
+    time_mode: normalized
+    onset: 40.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[0, 5, 'step'], [0.25, 15, 'step'], [0.5, 30, 'step'], [0.75, 15, 'step'], [1, 5]]
+    grain:
+      duration: 0.05
+
+  # 10. NEW: mix 2-elem + 3-elem nella stessa lista
+  - stream_id: "10_mixed_2elem_3elem"
+    time_mode: normalized
+    onset: 45.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[0, 5], [0.3, 30, 'cubic'], [0.7, 10], [1, 5, 'step']]
+    grain:
+      duration: 0.05
+
+  # 11. NEW: dict per-punto {t, v, type}
+  - stream_id: "11_dict_per_point"
+    time_mode: normalized
+    onset: 50.0
+    duration: 4.0
+    sample: "pino.wav"
+    density:
+      type: linear
+      points:
+        - {t: 0, v: 5, type: cubic}
+        - {t: 0.3, v: 30, type: linear}
+        - {t: 0.7, v: 10, type: step}
+        - {t: 1, v: 5}
+
+    grain:
+      duration: 0.05
+
+  # 12. NEW: dict per-punto con mix dict + bare list
+  - stream_id: "12_dict_mixed_dict_list_points"
+    time_mode: normalized
+    onset: 55.0
+    duration: 4.0
+    sample: "pino.wav"
+    density:
+      type: linear
+      points:
+        - {t: 0, v: 5, type: step}
+        - [0.5, 30]
+        - {t: 1, v: 5}
+
+    grain:
+      duration: 0.05
+
+  # 13. NEW: compact wrapper con pattern 3-tuple
+  - stream_id: "13_compact_pattern_3tuple"
+    time_mode: normalized
+    onset: 60.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5, 'step'], [50, 30], [100, 5]], 1.0, 4]
+
+    grain:
+      duration: 0.05
+
+  # 14. NEW: compact pattern 3-tuple + interp_type globale (per-punto override)
+  - stream_id: "14_compact_3tuple_override_cubic"
+    time_mode: normalized
+    onset: 65.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5, 'step'], [50, 30, 'linear'], [100, 5]], 1.0, 3, 'cubic']
+
+    grain:
+      duration: 0.05
+
+  # 15. NEW: compact pattern 3-tuple + time_dist exponential
+  - stream_id: "15_compact_3tuple_exponential"
+    time_mode: normalized
+    onset: 70.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5, 'step'], [50, 30, 'cubic'], [100, 5]], 1.0, 5, 'linear', 'exponential']
+
+    grain:
+      duration: 0.05
+
+  # 16. NEW: 3-tuple su pitch envelope (attacco cubic + decay step)
+  - stream_id: "16_3tuple_pitch_envelope"
+    time_mode: normalized
+    onset: 75.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 10
+
+    pitch: [[0, -1200, 'cubic'], [0.5, 0, 'step'], [1, 1200]]
+    grain:
+      duration: 0.05
+
+  # 17. NEW: 3-tuple su grain.duration
+  - stream_id: "17_3tuple_grain_duration"
+    time_mode: normalized
+    onset: 80.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 10
+
+    grain:
+      duration: [[0, 0.02, 'cubic'], [0.5, 0.15, 'linear'], [1, 0.02]]
