@@ -1113,8 +1113,11 @@ class ScoreVisualizer:
                     ax.plot([b, b], [y_left, y_right], color=color, linewidth=1.1, alpha=0.8)
 
             elif strategy_name == 'linear':
-                v_a = envelope.evaluate(a - stream_start)
-                v_b = envelope.evaluate(b - stream_start)
+                # Usa seg.evaluate() per evitare bug precisione float al boundary
+                # tra segmenti (envelope.evaluate cerca per tempo e può cadere
+                # nel segmento precedente, restituendo valore sbagliato).
+                v_a = seg.evaluate(a - stream_start)
+                v_b = seg.evaluate(b - stream_start)
                 y_a = y_base + self._normalize_envelope_value(param_name, v_a) * y_height
                 y_b = y_base + self._normalize_envelope_value(param_name, v_b) * y_height
                 ax.plot([a, b], [y_a, y_b], color=color, linewidth=1.1, alpha=0.8)
@@ -1125,7 +1128,7 @@ class ScoreVisualizer:
                 ts = np.linspace(a, b, n)
                 ys = []
                 for t in ts:
-                    v = envelope.evaluate(t - stream_start)
+                    v = seg.evaluate(t - stream_start)
                     ys.append(y_base + self._normalize_envelope_value(param_name, v) * y_height)
                 ax.plot(ts, ys, color=color, linewidth=1.1, alpha=0.8)
 

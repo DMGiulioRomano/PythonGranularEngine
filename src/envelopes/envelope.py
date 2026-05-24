@@ -311,11 +311,17 @@ class Envelope:
         # Tipicamente c'è un solo segment con tutti i breakpoints
         if len(self.segments) == 1:
             return self.segments[0].breakpoints
-        
-        # Nel caso di multi-segmento (futuro), concatena
-        all_breakpoints = []
-        for seg in self.segments:
-            all_breakpoints.extend(seg.breakpoints)
+
+        # Multi-segmento: concatena senza duplicare punti di giunzione
+        # (segmenti adiacenti condividono bp boundary)
+        all_breakpoints = list(self.segments[0].breakpoints)
+        for seg in self.segments[1:]:
+            # Skip primo bp di seg se coincide con ultimo bp già aggiunto
+            seg_bps = seg.breakpoints
+            if seg_bps and all_breakpoints and seg_bps[0] == all_breakpoints[-1]:
+                all_breakpoints.extend(seg_bps[1:])
+            else:
+                all_breakpoints.extend(seg_bps)
         return all_breakpoints
 
 
@@ -389,6 +395,10 @@ class Envelope:
                     scaled.append([item[0], item[1] * scale_factor])
                 elif EnvelopeBuilder._is_3tuple_breakpoint(item):
                     scaled.append([item[0], item[1] * scale_factor, item[2]])
+                elif isinstance(item, dict) and 't' in item and 'v' in item:
+                    scaled_dict = dict(item)
+                    scaled_dict['v'] = item['v'] * scale_factor
+                    scaled.append(scaled_dict)
                 else:
                     scaled.append(item)
             return scaled
@@ -487,6 +497,11 @@ def _scale_time_recursive(points: List, factor: float) -> List:
         elif EnvelopeBuilder._is_3tuple_breakpoint(item):
             # 3-tuple breakpoint: [t, v, type] -> [t * factor, v, type]
             scaled.append([item[0] * factor, item[1], item[2]])
+        elif isinstance(item, dict) and 't' in item and 'v' in item:
+            # Dict per-punto {t, v, type?}: scala t
+            scaled_dict = dict(item)
+            scaled_dict['t'] = item['t'] * factor
+            scaled.append(scaled_dict)
         else:
 
             scaled.append(item)

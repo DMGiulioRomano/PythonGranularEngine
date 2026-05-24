@@ -289,3 +289,37 @@ class TestTimeNormalizedWith3Tuple:
         # Step segment ora 0→1s, linear 1→2s
         assert env.evaluate(0.5) == pytest.approx(0.0)  # step hold
         assert env.evaluate(1.5) == pytest.approx(0.5)  # linear midpoint
+
+    def test_scale_time_recursive_preserves_dict_per_point(self):
+        # Dict per-punto deve essere scalato come list
+        points = [{'t': 0, 'v': 5, 'type': 'step'}, [0.5, 30], {'t': 1, 'v': 5}]
+        scaled = _scale_time_recursive(points, factor=4.0)
+        # Tutti i t devono essere scalati × 4
+        assert scaled[0]['t'] == 0.0
+        assert scaled[1][0] == 2.0
+        assert scaled[2]['t'] == 4.0
+
+    def test_create_scaled_envelope_dict_mixed_dict_list_points(self):
+        # Bug riprodotto da stream 12 di PGE_envelope_syntax_test.yml
+        env = create_scaled_envelope(
+            {
+                'type': 'linear',
+                'points': [
+                    {'t': 0, 'v': 5, 'type': 'step'},
+                    [0.5, 30],
+                    {'t': 1, 'v': 5},
+                ],
+            },
+            duration=4.0,
+            time_mode='normalized',
+        )
+        # Tutti i bp devono cadere nel range [0, 4]
+        for bp in env.breakpoints:
+            assert 0.0 <= bp[0] <= 4.0
+        # Step da 0→2: hold a 5
+        assert env.evaluate(1.0) == pytest.approx(5.0)
+        # Peak a t=2
+        assert env.evaluate(2.0) == pytest.approx(30.0)
+        # Linear da 2→4: midpoint a t=3
+        assert env.evaluate(3.0) == pytest.approx(17.5)
+        assert env.evaluate(4.0) == pytest.approx(5.0)
