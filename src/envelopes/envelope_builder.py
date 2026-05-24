@@ -99,28 +99,64 @@ class EnvelopeBuilder:
         current_time = 0.0  # Traccia tempo corrente per offset
         
         for item in raw_points:
+            # Normalizza dict per-punto {t, v, type?} in lista
+            if isinstance(item, dict) and 't' in item and 'v' in item:
+                if 'type' in item:
+                    item = [item['t'], item['v'], item['type']]
+                else:
+                    item = [item['t'], item['v']]
             if cls._is_compact_format(item):
                 # Espandi formato compatto CON OFFSET
                 compact_expanded = cls._expand_compact_format(item, time_offset=current_time)
                 expanded.extend(compact_expanded)
-                
+
                 # Aggiorna tempo corrente (ultimo breakpoint espanso)
                 if compact_expanded:
                     current_time = compact_expanded[-1][0]
             else:
-                if not (isinstance(item, list) and len(item) == 2):
+                if cls._is_3tuple_breakpoint(item):
+                    expanded.append(item)
+                    current_time = max(current_time, item[0])
+                elif (isinstance(item, list) and len(item) == 2
+                      and isinstance(item[0], (int, float)) and not isinstance(item[0], bool)
+                      and isinstance(item[1], (int, float)) and not isinstance(item[1], bool)):
+                    expanded.append(item)
+                    current_time = max(current_time, item[0])
+                else:
                     raise ValueError(
                         f"Elemento non valido nel formato envelope: {item!r}. "
-                        "Atteso [time, value]."
+                        "Atteso [time, value] o [time, value, type]."
                     )
-                expanded.append(item)
-                current_time = max(current_time, item[0])
         
         # Log risultato finale
         cls._log_final_envelope(raw_points, expanded)
         
         return expanded
     
+    VALID_INTERP_TYPES = ('linear', 'cubic', 'step')
+
+    @classmethod
+    def _is_3tuple_breakpoint(cls, item) -> bool:
+        """
+        Rileva se item è breakpoint 3-tuple [t, v, type].
+
+        Discriminato da formato compatto (len==3 anche lì) tramite type(elem[0]):
+        - 3-tuple breakpoint: elem[0] numerico
+        - compact: elem[0] lista
+
+        Returns:
+            True se [t, v, type] con t,v numerici e type stringa valida.
+        """
+        if not isinstance(item, list) or len(item) != 3:
+            return False
+        if not isinstance(item[0], (int, float)) or isinstance(item[0], bool):
+            return False
+        if not isinstance(item[1], (int, float)) or isinstance(item[1], bool):
+            return False
+        if not isinstance(item[2], str):
+            return False
+        return True
+
     @classmethod
     def _is_compact_format(cls, item) -> bool:
         """
@@ -150,9 +186,9 @@ class EnvelopeBuilder:
         if not isinstance(item[0], list):
             return False
         
-        # Se pattern NON vuoto, verifica formato [x, y]
+        # Se pattern NON vuoto, verifica formato [x, y] o [x, y, type]
         if item[0]:
-            if not all(isinstance(p, list) and len(p) == 2 for p in item[0]):
+            if not all(isinstance(p, list) and len(p) in (2, 3) for p in item[0]):
                 return False
         
         # Secondo elemento: end_time (float/int)
@@ -248,21 +284,26 @@ class EnvelopeBuilder:
             cycle_duration = cycle_durations[rep]
                         
             # Converti coordinate % → assolute per questo ciclo
-            for i, (x_pct, y) in enumerate(pattern_points_pct):
+            for i, point in enumerate(pattern_points_pct):
+                x_pct, y = point[0], point[1]
+                seg_type = point[2] if len(point) == 3 else None
                 # x_pct è in [0, 100]
                 # Normalizza a [0, 1]
                 x_normalized = x_pct / 100.0
-                
+
                 # Calcola tempo assoluto
                 t_absolute = cycle_start_time + (x_normalized * cycle_duration)
-                
+
                 # Applica offset DISCONTINUITY per evitare collisioni:
                 # 1. Primo punto di cicli successivi (rep > 0)
                 # 2. Primo punto assoluto della parte compatta SE c'è time_offset
                 if (rep > 0 and i == 0) or (rep == 0 and i == 0 and time_offset > 0):
                     t_absolute += cls.DISCONTINUITY_OFFSET
-            
-                expanded.append([t_absolute, y])
+
+                if seg_type is not None:
+                    expanded.append([t_absolute, y, seg_type])
+                else:
+                    expanded.append([t_absolute, y])
         
         # LOGGING della trasformazione compatta
         cls._log_compact_transformation(
@@ -358,15 +399,19 @@ class EnvelopeBuilder:
         preview_count = min(5, len(expanded))
         logger.info(f"\n  First {preview_count} breakpoints:")
         for i in range(preview_count):
-            t, v = expanded[i]
-            logger.info(f"    [{i}] t={t:.6f}s, v={v}")
-        
+            bp = expanded[i]
+            t, v = bp[0], bp[1]
+            extra = f", type={bp[2]}" if len(bp) == 3 else ""
+            logger.info(f"    [{i}] t={t:.6f}s, v={v}{extra}")
+
         if len(expanded) > preview_count:
             logger.info(f"  ...")
             logger.info(f"  Last {preview_count} breakpoints:")
             for i in range(len(expanded) - preview_count, len(expanded)):
-                t, v = expanded[i]
-                logger.info(f"    [{i}] t={t:.6f}s, v={v}")
+                bp = expanded[i]
+                t, v = bp[0], bp[1]
+                extra = f", type={bp[2]}" if len(bp) == 3 else ""
+                logger.info(f"    [{i}] t={t:.6f}s, v={v}{extra}")
         
         logger.info(f"{'='*80}\n")
 
