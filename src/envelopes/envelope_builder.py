@@ -162,53 +162,61 @@ class EnvelopeBuilder:
         """
         Rileva se item è formato compatto.
         
-        Formato compatto: [pattern_points, end_time, n_reps, interp?, time_dist?]
+        Formato compatto: [pattern_points, end_time, n_reps, interp?, time_dist?, wrap?]
         - pattern_points è lista di liste [[x%, y], ...]
         - end_time è float/int (TEMPO ASSOLUTO FINALE, non durata)
         - n_reps è int
         - interp è str opzionale
         - time_dist è str/dict opzionale (distribuzione temporale)
-        
+        - wrap è bool opzionale (default False): se True, gap inter-ciclo
+          interpola da v_finale a primo y del ciclo successivo (loop chiuso)
+
         Returns:
             True se è formato compatto
         """
         if not isinstance(item, list):
             return False
-        
-        # Deve avere 3, 4 o 5 elementi
+
+        # Deve avere 3, 4, 5 o 6 elementi
         if len(item) < 3:  # Minimo: [pattern_points, end_time, n_reps]
             return False
-        
-        if len(item) > 5:  # Massimo: [pattern_points, end_time, n_reps, interp, time_dist]
+
+        if len(item) > 6:  # Massimo: [pattern_points, end_time, n_reps, interp, time_dist, wrap]
             return False
-        
+
         # Primo elemento deve essere lista (anche se vuota)
         if not isinstance(item[0], list):
             return False
-        
+
         # Se pattern NON vuoto, verifica formato [x, y] o [x, y, type]
         if item[0]:
             if not all(isinstance(p, list) and len(p) in (2, 3) for p in item[0]):
                 return False
-        
+
         # Secondo elemento: end_time (float/int)
         if not isinstance(item[1], (int, float)):
             return False
-        
+
         # Terzo elemento: n_reps (int)
         if not isinstance(item[2], int):
             return False
-        
+
         # Quarto elemento opzionale: interp_type (str)
         if len(item) >= 4 and item[3] is not None:
             if not isinstance(item[3], str):
                 return False
-        
+
         # Quinto elemento opzionale: time_dist_spec (str o dict)
-        if len(item) == 5 and item[4] is not None:
+        if len(item) >= 5 and item[4] is not None:
             if not isinstance(item[4], (str, dict)):
                 return False
-        
+
+        # Sesto elemento opzionale: wrap (bool)
+        if len(item) == 6 and item[5] is not None:
+            # Nota: isinstance(True, int) e' True in Python, ma vogliamo solo bool puro
+            if not isinstance(item[5], bool):
+                return False
+
         return True
         
     @classmethod
@@ -249,7 +257,10 @@ class EnvelopeBuilder:
         end_time = compact[1]  # Tempo assoluto finale
         n_reps = compact[2]
         interp_type = compact[3] if len(compact) >= 4 else None
-        time_dist_spec = compact[4] if len(compact) == 5 else None
+        time_dist_spec = compact[4] if len(compact) >= 5 else None
+        wrap = compact[5] if len(compact) == 6 else False
+        if wrap is None:
+            wrap = False
         
         # Valida
         if n_reps < 1:
@@ -304,12 +315,26 @@ class EnvelopeBuilder:
                     expanded.append([t_absolute, y, seg_type])
                 else:
                     expanded.append([t_absolute, y])
-        
+
+        # WRAP MODE: inietta breakpoint sintetici a fine ogni ciclo
+        # con y = first_y del pattern (loop chiuso). Skip se ultimo punto
+        # pattern coincide con fine ciclo (x_pct == 100, nessun gap).
+        if wrap:
+            last_x_pct = pattern_points_pct[-1][0]
+            if last_x_pct < 100:
+                first_y = pattern_points_pct[0][1]
+                for rep in range(n_reps):
+                    cycle_start = time_offset + relative_cycle_starts[rep]
+                    cycle_end = cycle_start + cycle_durations[rep]
+                    synthetic_t = cycle_end - cls.DISCONTINUITY_OFFSET
+                    expanded.append([synthetic_t, first_y])
+                expanded.sort(key=lambda p: p[0])
+
         # LOGGING della trasformazione compatta
         cls._log_compact_transformation(
             compact, expanded, time_offset, total_duration, distributor
         )
-        
+
         return expanded
 
 
@@ -517,18 +542,18 @@ class EnvelopeBuilder:
         """
         # FIX 2: Controlla PRIMA se raw_points STESSO è formato compatto con tipo
         if cls._is_compact_format(raw_points):
-            # Formato compatto con 4 elementi include interp_type
-            if len(raw_points) == 4:
+            # Formato compatto con >= 4 elementi include interp_type in posizione 3
+            if len(raw_points) >= 4 and raw_points[3] is not None:
                 return raw_points[3]
             return None
-        
+
         # Altrimenti itera sugli elementi (formato misto)
         for item in raw_points:
             if cls._is_compact_format(item):
-                # Formato compatto con 4 elementi include interp_type
-                if len(item) == 4:
+                # Formato compatto con >= 4 elementi include interp_type in posizione 3
+                if len(item) >= 4 and item[3] is not None:
                     return item[3]
-        
+
         return None
 
 

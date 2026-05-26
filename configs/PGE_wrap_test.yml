@@ -1,0 +1,128 @@
+composition:
+  title: "envelope wrap mode test - issue #55"
+
+# Test wrap mode: confronto visivo hold (default) vs wrap (loop chiuso).
+# Ogni coppia stream isola un caso. Visualizza con AUTOVISUAL=true per PDF.
+#
+# Run:
+#   make YAML=PGE_wrap_test AUTOVISUAL=true RENDERER=numpy
+#   make pdf YAML=PGE_wrap_test
+
+streams:
+
+  # -------------------------------------------------------------------
+  # COPPIA 1: pattern [[0,0],[50,1]] - sawtooth incompleto
+  # -------------------------------------------------------------------
+
+  # 1a. wrap=False (hold): plateau a y=1 nella seconda meta di ogni ciclo
+  - stream_id: "01a_hold_baseline"
+    time_mode: normalized
+    onset: 0.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30]], 1.0, 4, 'linear', null, false]
+
+    grain:
+      duration: 0.05
+
+  # 1b. wrap=True: dopo y=30 (a 50%) rampa GIU a y=5 (first_y) per fine ciclo
+  - stream_id: "01b_wrap_closed"
+    time_mode: normalized
+    onset: 5.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30]], 1.0, 4, 'linear', null, true]
+
+    grain:
+      duration: 0.05
+
+  # -------------------------------------------------------------------
+  # COPPIA 2: pattern singolo [[0,5]] - rampa pura via wrap
+  # -------------------------------------------------------------------
+
+  # 2a. wrap=False: densita costante a 5 (un solo punto, hold)
+  - stream_id: "02a_single_point_hold"
+    time_mode: normalized
+    onset: 10.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5]], 1.0, 4, 'linear', null, false]
+    grain:
+      duration: 0.05
+
+  # 2b. wrap=True con pattern [[0,5],[80,30]]: rampa SU + wrap SU (no cycle)
+  # Sawtooth ascendente che si chiude su se stesso
+  - stream_id: "02b_sawtooth_up_wrap"
+    time_mode: normalized
+    onset: 15.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [80, 30]], 1.0, 4, 'linear', null, true]
+
+    grain:
+      duration: 0.05
+
+  # -------------------------------------------------------------------
+  # COPPIA 3: cubic interp + wrap (smoothness inter-ciclo)
+  # -------------------------------------------------------------------
+
+  # 3a. cubic hold: cubic interno + plateau hold
+  - stream_id: "03a_cubic_hold"
+    time_mode: normalized
+    onset: 20.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30]], 1.0, 4, 'cubic', null, false]
+
+    grain:
+      duration: 0.05
+
+  # 3b. cubic wrap: cubic anche nel gap di chiusura
+  - stream_id: "03b_cubic_wrap"
+    time_mode: normalized
+    onset: 25.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30]], 1.0, 4, 'cubic', null, true]
+
+    grain:
+      duration: 0.05
+
+  # -------------------------------------------------------------------
+  # COPPIA 4: time_dist exponential + wrap (pendenza wrap variabile)
+  # -------------------------------------------------------------------
+
+  # 4a. exponential hold
+  - stream_id: "04a_exp_hold"
+    time_mode: normalized
+    onset: 30.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30]], 1.0, 5, 'linear', 'exponential', false]
+
+    grain:
+      duration: 0.05
+
+  # 4b. exponential wrap: cicli si accorciano, wrap segue cycle_duration variabile
+  - stream_id: "04b_exp_wrap"
+    time_mode: normalized
+    onset: 35.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 5], [50, 30]], 1.0, 5, 'linear', 'exponential', true]
+
+    grain:
+      duration: 0.05
+
+  # -------------------------------------------------------------------
+  # 5. Wrap su pitch envelope (LFO sawtooth pitch)
+  # -------------------------------------------------------------------
+
+  - stream_id: "05_pitch_wrap_lfo"
+    time_mode: normalized
+    onset: 40.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: [[[0, 2], [50, 600]], 1.0, 6, 'linear', null, true]
+    grain:
+      duration: 0.05
