@@ -321,7 +321,7 @@ Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 ### 5.1 Sintassi
 
 ```
-[pattern_points, end_time, n_reps, interp?, time_dist?]
+[pattern_points, end_time, n_reps, interp?, time_dist?, wrap?]
 ```
 
 | Posizione | Nome             | Tipo                       | Obbligatorio | Significato |
@@ -331,6 +331,7 @@ Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 | 2         | `n_reps`         | intero `>= 1`              | sì           | numero di ripetizioni |
 | 3         | `interp_type`    | str                        | no           | `'linear'` / `'cubic'` / `'step'`. Fa da default per i segmenti interni e per il gap inter-ciclo |
 | 4         | `time_dist`      | str o dict                 | no           | distribuzione delle durate dei cicli |
+| 5         | `wrap`           | bool                       | no           | se `True`, il gap inter-ciclo interpola da `v_finale` al primo `y` del ciclo successivo (loop chiuso). Default `False` (hold). Vedi §5.3.2 |
 
 **Pattern con 3-tuple (issue #54):** ogni `seg_type` per-punto viene replicato in
 ogni ciclo. Il gap tra fine ciclo N e inizio ciclo N+1 segue l'`interp_type`
@@ -360,6 +361,18 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 6, 'cubic']
 
 ```yaml
 density: [[[0, 5], [100, 50]], 30, 8, 'linear', 'exponential']
+```
+
+**Sei elementi** (con `wrap` per loop chiuso):
+
+```yaml
+# Sawtooth ciclico: rampa continua da 0 a 1 in ogni ciclo, poi salta indietro
+volume: [[[0, 0]], 30, 8, 'linear', null, true]
+# pattern = un solo punto a (0, 0); wrap=true ricostruisce la rampa
+# perche' a fine ciclo iniettiamo y=first_y=0 (no-op qui), ma il pattern
+# minimale piu utile e [[0, 0], [50, 1]] con wrap=true:
+density: [[[0, 0], [50, 1]], 30, 8, 'linear', null, true]
+# ciclo: 0 -> 1 (meta ciclo) -> 0 (fine ciclo via wrap)
 ```
 
 ### 5.3 Pattern percentuale
@@ -399,6 +412,50 @@ density: [[[0, 0], [50, 50], [100, 0]], 30, 4]
 # pattern con gap intenzionale: 20% di hold a 0 tra cicli
 density: [[[0, 0], [50, 50], [80, 0]], 30, 4]
 ```
+
+### 5.3.2 `wrap` mode (loop chiuso)
+
+Il sesto elemento `wrap` (bool, default `False`) controlla il **comportamento
+del gap** quando `x_finale < 100`.
+
+| Modo | Comportamento gap `[x_finale, 100%]` |
+|------|--------------------------------------|
+| `wrap=False` (default, hold) | Mantiene `v_finale` fino a inizio ciclo successivo |
+| `wrap=True` (loop chiuso) | Interpola da `v_finale` al primo `y` del ciclo (`first_y`) seguendo `interp_type` globale. Applicato anche all'ultimo ciclo. |
+
+Implementazione: iniezione di un breakpoint sintetico a `t = cycle_end -
+DISCONTINUITY_OFFSET` con `y = first_y`. L'interpolazione del segmento
+`[ultimo_pattern, sintetico]` segue `interp_type` (posizione 3).
+
+**Esempio** — pattern `[[0, 0], [50, 1]]`, `n_reps=2`, `end_time=2`:
+
+```
+wrap=False (hold):                wrap=True (loop chiuso):
+    1 ____                            1     /\        /\
+       \                                   /  \      /  \
+    0   \_____.____                    0  /    \____/    \____
+       0  .5  1   1.5  2                 0  .5  1   1.5  2
+
+ciclo 0: 0 -> 1 (a t=.5)         ciclo 0: 0 -> 1 (a t=.5)
+         hold 1 fino t=1                  -> 0 (a t≈1, wrap)
+ciclo 1: 0 -> 1 (a t=1.5)        ciclo 1: 0 -> 1 (a t=1.5)
+         hold 1 fino t=2                  -> 0 (a t≈2, wrap)
+```
+
+**Use case tipici:**
+
+- Sawtooth / ramp ciclici senza duplicare il primo punto come ultimo
+- Modulazioni LFO-like continue tra ripetizioni
+- Pattern minimali: `[[0, 0]]` + `wrap=true` genera una rampa che riparte ogni ciclo
+
+**Edge cases:**
+
+- `x_finale == 100`: nessun gap → nessun sintetico iniettato (no-op)
+- `n_reps == 1` + `wrap=True`: un sintetico a fine ciclo unico (fade verso `first_y`)
+- `time_dist != linear`: la pendenza del wrap varia per ciclo seguendo
+  `cycle_durations` corrente (comportamento coerente)
+- `interp='cubic'`: i breakpoint sintetici partecipano al calcolo Fritsch-Carlson
+  → tangenti coerenti
 
 ### 5.4 Comportamento ai bordi del ciclo
 

@@ -127,7 +127,10 @@ class TestIsCompactFormat:
     def test_reject_wrong_length(self):
         """Rifiuta liste con lunghezza sbagliata."""
         assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4])  # 2 elementi (troppo pochi)
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'extra', 'altro'])  # 6 elementi (troppi)
+        # 6° elemento (wrap) deve essere bool, non stringa
+        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'linear', 'altro'])
+        # 7 elementi (troppi)
+        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'linear', True, 'extra'])
 
     def test_reject_non_list(self):
         """Rifiuta non-liste."""
