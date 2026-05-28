@@ -96,6 +96,8 @@ class NumpyWindowRegistry:
         names.append('gaussian')
         names.extend(self._GEN16_WINDOWS.keys())
         names.append('half_sine')
+        names.append('rectangle')
+        names.append('sinc')
         return names
 
     def __len__(self) -> int:
@@ -131,6 +133,14 @@ class NumpyWindowRegistry:
         # 5. Half-sine (GEN09 equivalente)
         if name == 'half_sine':
             return self._half_sine(n)
+
+        # 6. Rectangle (GEN20 opt 8) — finestra piatta
+        if name == 'rectangle':
+            return np.ones(n, dtype=np.float64)
+
+        # 7. Sinc (GEN20 opt 9) — lobo centrale sin(πx)/(πx)
+        if name == 'sinc':
+            return self._sinc(n)
 
         # Nome non valido
         from shared.exceptions import InvalidWindowError
@@ -186,3 +196,14 @@ class NumpyWindowRegistry:
         con forma sinusoidale (piu' morbida di hanning ai bordi).
         """
         return np.sin(np.linspace(0.0, np.pi, n))
+
+    @staticmethod
+    def _sinc(n: int) -> np.ndarray:
+        """
+        Lobo centrale della funzione sinc: sin(πx)/(πx) per x in [-1, 1].
+
+        Equivalente a GEN20 opt 9 di Csound. Picco 1.0 al centro, zero agli estremi.
+        np.sinc(x) calcola sin(πx)/(πx), quindi linspace(-1, 1) produce
+        esattamente il lobo centrale senza lobi laterali negativi.
+        """
+        return np.sinc(np.linspace(-1.0, 1.0, n))
