@@ -1,39 +1,624 @@
-# Envelopes — Reference completa
+---
+slug: yaml
+type: reference
+status: stable
+tags: [yaml, syntax, parameters, envelopes]
+sources:
+  - src/engine/generator.py
+  - src/parameters/
+  - src/envelopes/
+last_synced_commit: 4c4fee4
+entry_for: [yaml-syntax, envelope-syntax]
+---
 
-> Riferimento esaustivo del sistema envelope di PythonGranularEngine.
-> Documenta ogni forma sintattica accettata nel YAML, le regole di parsing,
-> l'interpolazione, il comportamento ai bordi, le ripetizioni cicliche e
-> le distribuzioni temporali.
->
-> Sorgente di verità: `src/envelopes/envelope.py`, `src/envelopes/envelope_builder.py`,
-> `src/envelopes/envelope_interpolation.py`, `src/envelopes/envelope_segment.py`,
-> `src/envelopes/time_distribution.py`.
+# YAML Reference — PythonGranularEngine
 
-**Documenti collegati:** [[INDEX]] · [[yaml-reference]] (dove gli envelope sono
-accettati nel YAML) · [[multi-voice]] (envelope sui parametri scalari delle
-voice strategy) · [[ARCHITECTURE]] (valutazione runtime in `Stream` /
-controller) · [[workflows]] § "Making a Parameter Envelope-Aware".
+**Documenti collegati:** [[INDEX]] · [[multi-voice]] (sistema voci, strategy
+dettagliate) · [[architecture]] (cosa fa il renderer con questi parametri) ·
+[[errors]] (errori YAML: `MissingFieldError`, `InvalidFieldValueError`,
+`ParameterBoundError`, `InvalidWindowError`) · [[reaper]] (workflow REAPER) ·
+sezione [Envelopes](#envelopes) interna per la sintassi degli envelope.
 
 ---
 
-## Indice
+## Scope
+
+Reference completa del formato YAML consumato da `main.py`: sintassi per stream, parametri, envelope, voci, finestre, dephase. Copre solo il **formato di input**: la pipeline di rendering è in [[architecture]], le voice strategy in [[multi-voice]].
+
+## Sintassi
+
+Sezioni rilevanti in questo doc:
+
+- [Minimal Stream](#minimal-stream) — schema minimo
+- [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
+- [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
+- [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
+- [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [Dephase](#dephase-variazione-stocastica)
+- [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
+- [Envelopes](#envelopes) — sintassi envelope completa
+
+## Bounds
+
+Tabella bounds per ogni parametro: [Tabella Bounds Parametri](#tabella-bounds-parametri). Per `clip_strategy` e `ParameterBoundError` vedi [[errors]].
+
+## Esempi
+
+Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [Envelopes](#envelopes).
+
+## Versionato da
+
+- `src/yaml_parser/` — parser
+- `src/parameters/parameter_definitions.py`, `src/parameters/parameter_schema.py` — bounds e schema
+- `src/envelopes/` — sintassi envelope
+- Ultimo allineamento: vedi `last_synced_commit` in frontmatter
+
+---
+
+## Minimal Stream
+
+```yaml
+streams:
+  - stream_id: "stream1"
+    onset: 0.0
+    duration: 30
+    sample: "sample.wav"
+    grain:
+      duration: 0.05
+```
+
+---
+
+## Parameter Syntax
+
+Qualsiasi parametro numerico accetta le seguenti forme:
+
+| Forma | Esempio | Comportamento |
+|-------|---------|--------------|
+| Scalare | `density: 10` | Valore fisso |
+| Envelope lineare | `density: [[0, 10], [1, 50]]` | Interpolazione lineare tra breakpoint `[time, value]` |
+| Envelope annidata | `density: [[[0, 5], [10, 50]], 1.0, 5]` | Envelope di envelope |
+| Variazione | `grain: {duration: 0.05, duration_range: 0.01}` | `±0.01` randomizzazione |
+| Espressione math | `onset: (pi)`, `duration: (10/2)` | Valutato via `safe_eval` |
+| Envelope normalizzato | `step: {points: [[0, 0], [1, 12]], time_mode: normalized}` | `[0, 1]` mappato su `duration` |
+| Envelope per-punto interp | `density: [[0, 5, 'cubic'], [0.5, 30, 'step'], [1, 5]]` | `type` per-segmento, override del default globale (issue #54) |
+| Envelope dict per-punto | `density: {points: [{t:0, v:5, type:cubic}, {t:1, v:5}]}` | Forma dict equivalente di per-punto interp |
+
+---
+
+## Campi Obbligatori di Stream
+
+```yaml
+streams:
+  - stream_id: "nome_univoco"   # stringa identificativa
+    onset: 0.0                  # tempo di inizio in secondi (assoluto)
+    duration: 30.0              # durata dello stream in secondi
+    sample: "file.wav"          # nome file (cercato in Media/)
+```
+
+---
+
+## Flag di Stream
+
+```yaml
+solo:   # solo gli stream con questo flag vengono renderizzati
+mute:   # stream ignorato (a meno che non sia attivo solo mode)
+```
+
+---
+
+## Configurazione Processo (StreamConfig)
+
+Campi opzionali a livello stream che controllano il comportamento interno:
+
+```yaml
+time_mode: normalized   # "absolute" (default) | "normalized"
+                        # normalized: coordinate temporali envelope in [0, 1]
+                        #             mappate su duration al momento della generazione
+
+dephase: false          # Controllo variazione stocastica (vedi sezione Dephase)
+
+range_always_active: false  # true: i _range sono sempre attivi anche senza dephase
+
+distribution_mode: uniform  # (riservato, non usato correntemente)
+
+time_scale: 1.0         # fattore di scala temporale globale (default 1.0)
+
+clip_strategy: overflow_margin  # "overflow_margin" (default) | "passthrough"
+                                # Decide quali grain entrano in stream.voices
+clip_margin: 0.0        # tolleranza in secondi per la coda dei grain (default 0.0)
+```
+
+### clip_strategy — Controllo grain out-of-bounds
+
+`GrainClipStrategy` filtra i grain in post-process dentro `Stream.generate_grains`. È l'**unica fonte di verità** su quali grain esistono — Csound e NumPy ricevono esattamente la stessa `stream.voices`.
+
+| Valore | Comportamento |
+|--------|---------------|
+| `overflow_margin` (default) | Grain valido iff `grain.onset < stream_end AND grain.onset + grain.duration <= stream_end + clip_margin`. Con `clip_margin=0.0` il grain deve stare interamente dentro lo stream. |
+| `passthrough` | Nessun filtro — tutti i grain passano al renderer, che li renderizza integralmente (il buffer si estende sull'extent reale). |
+
+`stream_end = stream.onset + stream.duration`.
+
+```yaml
+# Default — grain interi dentro lo stream
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+
+# Tollera 0.5s di coda oltre stream_end
+streams:
+  - stream_id: "s2"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+    clip_strategy: overflow_margin
+    clip_margin: 0.5
+
+# Passthrough — grain con onset/coda oltre stream_end vengono renderizzati;
+# la durata del file di output puo' essere > stream.duration
+streams:
+  - stream_id: "s3"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+    clip_strategy: passthrough
+```
+
+Note:
+- Con `passthrough` il renderer NumPy alloca un buffer esteso sull'extent reale dei grain (`max(g.onset + g.duration)`), quindi il file `.aif` può superare `stream.duration`.
+- Csound: stesso filtraggio a monte → SCO contiene solo i grain validi. Il grain non viene mai troncato (incluso intero o escluso).
+- `clip_margin` è un float fisso, non un Parameter con envelope (coerente con `time_scale`).
+
+---
+
+## Densità
+
+`density` e `fill_factor` sono mutuamente esclusivi. `fill_factor` ha priorità.
+
+```yaml
+# Modalità density: grani al secondo (fisso o envelope)
+density: 20
+density: [[0, 5], [30, 80]]
+
+# Modalità fill_factor: density = fill_factor / grain_duration
+# La densità si adatta automaticamente alla durata del grano.
+fill_factor: 2.0
+
+# Distribuzione temporale (modello Truax)
+# 0.0 = sincrono (metronomo perfetto)
+# 1.0 = asincrono (random uniform 0..2×avg_iot)
+# valori intermedi = blend lineare
+distribution: 0.0
+distribution: [[0, 0.0], [30, 1.0]]
+```
+
+Bounds: `density` ∈ [0.01, 4000], `fill_factor` ∈ [0.001, 50], `distribution` ∈ [0, 1].
+
+---
+
+## Volume e Pan
+
+```yaml
+volume: -6.0                       # dB, default -6.0
+volume: [[0, -12], [30, 0]]
+volume_range: 3.0                  # ±3 dB randomizzazione per grano
+
+pan: 0.0                           # gradi, 0 = centro, ±180 = estremi
+pan: [[0, -90], [30, 90]]
+pan_range: 30.0                    # ±30° randomizzazione per grano
+```
+
+Bounds: `volume` ∈ [-120, 12], `pan` ∈ [-3600, 3600].
+
+---
+
+## Blocco Grain
+
+```yaml
+grain:
+  duration: 0.05           # secondi, default 0.05
+  duration: [[0, 0.02], [30, 0.2]]
+  duration_range: 0.01     # ±0.01s randomizzazione
+
+  envelope: hanning        # finestra per shape del grano (default: hanning)
+  # Vedi sezione "Finestre Disponibili" per tutti i valori validi.
+
+  # Modalità lista: selezione casuale tra finestre
+  envelope: [hanning, expodec, gaussian]
+
+  # Modalità transizione: morphing probabilistico da→a
+  envelope:
+    from: hanning
+    to: bartlett
+    curve: [[0, 0], [30, 1]]   # 0=100% from, 1=100% to
+
+  # Modalità multi-stato: percorso attraverso N finestre
+  envelope:
+    states:
+      - [0.0, hanning]
+      - [0.3, bartlett]
+      - [0.7, expodec]
+      - [1.0, gaussian]
+    curve: [[0, 0], [30, 1]]
+
+  # Reverse: chiave assente = auto (segue pointer_speed_ratio)
+  #          chiave presente vuota = reverse forzato
+  reverse:          # forza reverse per tutti i grani
+  # ERRORE: reverse: true / reverse: false / reverse: auto
+```
+
+Bounds: `grain_duration` ∈ [0.001, 10].
+
+---
+
+## Blocco Pointer
+
+Controlla la posizione di lettura nel sample sorgente.
+
+```yaml
+pointer:
+  start: 0.0              # posizione iniziale in secondi (default 0.0)
+  speed_ratio: 1.0        # velocità di lettura (default 1.0)
+                          # 1.0 = velocità normale, -1.0 = indietro, 2.0 = doppia
+                          # supporta envelope: [[0, 1.0], [30, 2.0]]
+
+  offset_range: 0.0       # deviazione per-grano ∈ [-offset_range, +offset_range]
+                          # scalata rispetto alla finestra di loop attiva
+
+  # Loop (opzionale) — richiede almeno loop_start
+  loop_start: 1.0         # inizio loop in secondi
+  loop_end: 3.0           # fine loop in secondi  ──┐ mutuamente esclusivi
+  loop_dur: 2.0           # durata loop in secondi ──┘ (loop_end ha priorità)
+
+  # loop_start e loop_end/loop_dur supportano envelope:
+  loop_start: [[0, 1.0], [30, 5.0]]   # finestra di loop mobile
+  loop_dur: [[0, 0.5], [30, 3.0]]
+
+  # Unità per i valori loop (opzionale)
+  loop_unit: normalized   # "normalized": valori [0,1] scalati su sample_dur_sec
+                          # default: eredita da time_mode dello stream
+```
+
+Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
+
+---
+
+## Blocco Pitch
+
+`semitones` e `ratio` sono mutuamente esclusivi. `semitones` ha priorità.
+
+```yaml
+pitch:
+  ratio: 1.0              # rapporto di trasposizione (default 1.0 = no trasposizione)
+  ratio: [[0, 0.5], [30, 2.0]]
+  range: 0.1              # ±variazione random intorno a ratio
+
+  semitones: 0            # trasposizione in semitoni (intero o float)
+  semitones: [[0, -12], [30, 12]]
+  range: 6                # ±variazione random in semitoni (intera)
+```
+
+Bounds: `pitch_ratio` ∈ [0.125, 8], `pitch_semitones` ∈ [-36, 36].
+
+---
+
+## Dephase (Variazione Stocastica)
+
+`dephase` controlla la probabilità di applicare variazioni stocastiche per-grano.
+Si applica a tutti i parametri che hanno un `_range` associato.
+
+```yaml
+# Disabilitato (default): range attivi solo se presenti
+dephase: false
+
+# Implicito: usa probabilità di default (1%)
+dephase: null
+
+# Globale: probabilità uniforme per tutti i parametri (0–100)
+dephase: 50
+
+# Globale con envelope: probabilità che varia nel tempo
+dephase: [[0, 0], [30, 80]]
+
+# Specifico per parametro: probabilità diverse per ciascuno
+dephase:
+  volume: 30          # 30% probabilità di applicare volume_range
+  pan: 50             # 50% probabilità di applicare pan_range
+  duration: 20        # 20% probabilità di applicare duration_range
+  pitch: 10           # 10% per pitch range
+  pointer: 40         # 40% per pointer offset_range
+  reverse: 5          # 5% probabilità di flip reverse
+  envelope: 15        # 15% probabilità di cambiare finestra (se lista)
+
+# Valore specifico come envelope
+dephase:
+  volume: [[0, 0], [30, 80]]
+  pan: 50
+```
+
+---
+
+## Blocco Voices (Multi-Voice)
+
+```yaml
+voices:
+  num_voices: 4           # numero di voci (int), default 1
+                          # supporta envelope: [[0, 1], [30, 8]]
+  scatter: 0.0            # 0.0 = tutte le voci sincrone sullo stesso IOT
+                          # 1.0 = ogni voce ha IOT indipendente
+                          # blend lineare tra i due estremi
+  pitch: ...              # strategia distribuzione pitch (vedi sotto)
+  onset_offset: ...       # strategia distribuzione onset (vedi sotto)
+  pointer: ...            # strategia distribuzione pointer (vedi sotto)
+  pan: ...                # strategia distribuzione pan (vedi sotto)
+```
+
+La voce 0 è sempre il riferimento: non riceve offset da nessuna strategia.
+
+---
+
+### voices.pitch — Strategie Pitch
+
+```yaml
+# step: voce i → i × step semitoni
+voices:
+  pitch:
+    strategy: step
+    step: 3.0             # semitoni per passo (scalare o envelope)
+
+# range: voci distribuite linearmente in [0, semitone_range]
+voices:
+  pitch:
+    strategy: range
+    semitone_range: 12.0  # range totale in semitoni (scalare o envelope)
+
+# chord: offsets da accordo nominale
+voices:
+  pitch:
+    strategy: chord
+    chord: "dom7"         # nome accordo (vedi lista sotto)
+    inversion: 0          # rivolto (0 = root position, default)
+
+# stochastic: offset per voce fisso (seeded), magnitudine time-varying
+voices:
+  pitch:
+    strategy: stochastic
+    semitone_range: 6.0   # magnitudine massima (scalare o envelope)
+
+# spectral: voci sui parziali della serie armonica naturale
+voices:
+  pitch:
+    strategy: spectral
+    # voce i → round(12 × log₂(i+1)) semitoni
+    # [0, 12, 19, 24, 28, 31, ...] per le prime voci
+```
+
+**Accordi disponibili (`chord`):**
+
+| 3 voci | 4 voci | 5 voci | 6 voci | 7 voci |
+|--------|--------|--------|--------|--------|
+| `maj` | `dom7` | `dom9` | `dom9s11` | `dom13` |
+| `min` | `maj7` | `maj9` | `maj9s11` | `min13` |
+| `dim` | `min7` | `min9` | `min11` | `maj13s11` |
+| `aug` | `dim7` | `9sus4` | | `altered` |
+| `sus2` | `minmaj7` | | | |
+| `sus4` | | | | |
+
+---
+
+### voices.onset_offset — Strategie Onset
+
+```yaml
+# linear: voce i → i × step secondi
+voices:
+  onset_offset:
+    strategy: linear
+    step: 0.08            # secondi per passo (scalare o envelope)
+
+# geometric: voce i → step × base^(i-1) secondi
+voices:
+  onset_offset:
+    strategy: geometric
+    step: 0.05            # passo iniziale (scalare o envelope)
+    base: 2.0             # base esponenziale (scalare o envelope)
+
+# stochastic: offset per voce in [0, max_offset] (seeded)
+voices:
+  onset_offset:
+    strategy: stochastic
+    max_offset: 0.2       # offset massimo in secondi (scalare o envelope)
+```
+
+---
+
+### voices.pointer — Strategie Pointer
+
+```yaml
+# linear: voce i → i × step (offset su posizione campione)
+voices:
+  pointer:
+    strategy: linear
+    step: 0.1             # scalare o envelope. Negativo = voci leggono indietro.
+
+# stochastic: offset per voce in [-pointer_range, +pointer_range] (seeded)
+voices:
+  pointer:
+    strategy: stochastic
+    pointer_range: 0.2    # range massimo (scalare o envelope)
+```
+
+---
+
+### voices.pan — Strategie Pan
+
+```yaml
+# linear: voci distribuite in [-spread/2, +spread/2]
+voices:
+  pan:
+    strategy: linear
+    spread: 120.0         # gradi totali (scalare o envelope)
+
+# additive: offset fisso identico per tutte le voci (non voce 0)
+voices:
+  pan:
+    strategy: additive
+    spread: 45.0          # offset in gradi (scalare o envelope)
+
+# random: offset per voce in [-spread/2, +spread/2] (seeded)
+voices:
+  pan:
+    strategy: random
+    spread: 180.0         # range totale in gradi (scalare o envelope)
+```
+
+---
+
+## Finestre Disponibili (`grain.envelope`)
+
+| Nome | Famiglia | Descrizione |
+|------|----------|-------------|
+| `hanning` | window | Hanning/von Hann (default) |
+| `hamming` | window | Hamming |
+| `bartlett` | window | Bartlett/Triangle (alias: `triangle`) |
+| `blackman` | window | Blackman |
+| `blackman_harris` | window | Blackman-Harris |
+| `gaussian` | window | Gaussiana |
+| `kaiser` | window | Kaiser-Bessel |
+| `rectangle` | window | Rettangolare/Dirichlet |
+| `sinc` | window | Sinc |
+| `half_sine` | custom | Semi-sinusoide |
+| `expodec` | asymmetric | Decadimento esponenziale (Roads-style) |
+| `expodec_strong` | asymmetric | Decadimento esponenziale forte |
+| `exporise` | asymmetric | Salita esponenziale |
+| `exporise_strong` | asymmetric | Salita esponenziale forte |
+| `rexpodec` | asymmetric | Decadimento esponenziale inverso |
+| `rexporise` | asymmetric | Salita esponenziale inversa |
+| `all` | — | Espande a tutte le finestre disponibili |
+
+---
+
+## Esempi Completi
+
+### Stream con loop e pitch in semitoni
+
+```yaml
+streams:
+  - stream_id: "loop_pitch"
+    onset: 0.0
+    duration: 60.0
+    sample: "sample.wav"
+    density: [[0, 5], [30, 40], [60, 5]]
+    volume: -9.0
+    volume_range: 6.0
+    pan: 0.0
+    dephase:
+      volume: 50
+      pan: 30
+    grain:
+      duration: 0.08
+      duration_range: 0.02
+      envelope: hanning
+    pointer:
+      speed_ratio: 1.0
+      loop_start: 2.0
+      loop_dur: 4.0
+    pitch:
+      semitones: 0
+      range: 2
+```
+
+### Stream multi-voice con chord e onset phasing
+
+```yaml
+streams:
+  - stream_id: "chord_phasing"
+    onset: 0.0
+    duration: 30.0
+    sample: "sample.wav"
+    density: 12
+    grain:
+      duration: 0.1
+    pitch:
+      semitones: 0
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: "maj7"
+      onset_offset:
+        strategy: linear
+        step: 0.05
+      pan:
+        strategy: linear
+        spread: 90.0
+```
+
+### Envelope normalizzata per strategia voice
+
+```yaml
+streams:
+  - stream_id: "voice_pitch_normalized"
+    onset: 0.0
+    duration: 10.0
+    sample: "sample.wav"
+    time_mode: normalized
+    density: 8
+    grain:
+      duration: 0.08
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step:
+          points: [[0, 0.0], [1, 12.0]]
+          time_mode: normalized
+```
+
+### Transizione finestra con multi-stato
+
+```yaml
+streams:
+  - stream_id: "window_morph"
+    onset: 0.0
+    duration: 30.0
+    sample: "sample.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      envelope:
+        states:
+          - [0.0, hanning]
+          - [0.4, bartlett]
+          - [1.0, expodec]
+        curve: [[0, 0], [30, 1]]
+```
+
+---
+
+## Envelopes
+
+> Sintassi completa del sistema envelope (sostituisce il vecchio `envelopes-reference.md`).
+>
+> Sorgente di verità: `src/envelopes/envelope.py`, `src/envelopes/envelope_builder.py`, `src/envelopes/envelope_interpolation.py`, `src/envelopes/envelope_segment.py`, `src/envelopes/time_distribution.py`.
+
+### Indice envelopes
 
 1. [Modello concettuale](#1-modello-concettuale)
 2. [Forme di sintassi accettate](#2-forme-di-sintassi-accettate)
-3. [Time mode: `absolute` vs `normalized`](#3-time-mode-absolute-vs-normalized)
+3. [Time mode: absolute vs normalized](#3-time-mode-absolute-vs-normalized)
 4. [Tipi di interpolazione](#4-tipi-di-interpolazione)
-5. [Formato compatto (cicli ripetuti)](#5-formato-compatto-cicli-ripetuti)
-6. [Distribuzioni temporali nei cicli](#6-distribuzioni-temporali-nei-cicli)
-7. [Formato misto (breakpoint + cicli)](#7-formato-misto-breakpoint--cicli)
-8. [Comportamento ai bordi (hold)](#8-comportamento-ai-bordi-hold)
-9. [Espressioni matematiche nei valori](#9-espressioni-matematiche-nei-valori)
+5. [Formato compatto](#5-formato-compatto-cicli-ripetuti)
+6. [Distribuzioni temporali](#6-distribuzioni-temporali-nei-cicli)
+7. [Formato misto](#7-formato-misto-breakpoint--cicli)
+8. [Comportamento ai bordi](#8-comportamento-ai-bordi-hold)
+9. [Espressioni matematiche](#9-espressioni-matematiche-nei-valori)
 10. [Casi speciali per dominio](#10-casi-speciali-per-dominio)
 11. [Validazione e bounds](#11-validazione-e-bounds)
-12. [Tabella riassuntiva delle sintassi](#12-tabella-riassuntiva-delle-sintassi)
+12. [Tabella riassuntiva](#12-tabella-riassuntiva-delle-sintassi)
 
----
-
-## 1. Modello concettuale
+### 1. Modello concettuale
 
 Un Envelope è una funzione `f(t) → v` definita a tratti su breakpoint. Sostituisce
 qualunque valore scalare ovunque il parser lo accetti. Il sistema riconosce un
@@ -64,12 +649,12 @@ che garantisce monotonia e previene overshoot tra breakpoint adiacenti.
 
 ---
 
-## 2. Forme di sintassi accettate
+### 2. Forme di sintassi accettate
 
 Le forme valide nel YAML sono cinque. Tutte vengono ricondotte a una lista
 piatta di breakpoint `[[t, v], …]` durante il parsing (`EnvelopeBuilder.parse`).
 
-### 2.1 Scalare
+#### 2.1 Scalare
 
 Non è un envelope: è un valore costante.
 
@@ -78,7 +663,7 @@ density: 20
 volume: -6.0
 ```
 
-### 2.2 Lista di breakpoint standard
+#### 2.2 Lista di breakpoint standard
 
 Forma più comune. Lista di coppie `[time, value]`. Il tipo di interpolazione
 implicito è `linear`.
@@ -95,7 +680,7 @@ Vincoli:
   automaticamente per tempo crescente in `Segment.__init__`
 - almeno un breakpoint è richiesto (zero solleva `InvalidFieldValueError`)
 
-### 2.3 Dict `{type, points}`
+#### 2.3 Dict `{type, points}`
 
 Permette di selezionare esplicitamente l'interpolazione e supporta una chiave
 opzionale per il time mode locale.
@@ -115,7 +700,7 @@ Campi:
 | `time_mode` | str (opzionale) | ereditato    | `'absolute'` o `'normalized'`              |
 | `time_unit` | str (opzionale) | come `time_mode` | alias locale per `time_mode` (vedi §3) |
 
-### 2.4 Formato compatto
+#### 2.4 Formato compatto
 
 Forma sintetica per generare N ripetizioni di un pattern definito in percentuale.
 Sintassi: `[pattern_points, end_time, n_reps, interp?, time_dist?]`. Dettagliato in §5.
@@ -125,7 +710,7 @@ grain:
   duration: [[[0, 0.01], [100, 0.2]], 30, 4]
 ```
 
-### 2.5 Formato misto
+#### 2.5 Formato misto
 
 Lista che contiene insieme breakpoint standard e formati compatti. Il sistema
 calcola un offset automatico in modo che ogni parte compatta inizi dall'ultimo
@@ -139,7 +724,9 @@ density: [
 ]
 ```
 
-### 2.6 Interp type per-punto (issue #54)
+#### 2.6 Interp type per-punto (issue #54)
+
+> Origine: [plans/done/2026-05-22-003-feat-envelope-per-point-interp-plan.md](../plans/done/2026-05-22-003-feat-envelope-per-point-interp-plan.md)
 
 Ogni breakpoint puo' dichiarare il proprio tipo di interpolazione applicato al
 **segmento dal punto fino al successivo**. Due forme equivalenti:
@@ -180,11 +767,11 @@ invariati.
 
 ---
 
-## 3. Time mode: `absolute` vs `normalized`
+### 3. Time mode: `absolute` vs `normalized`
 
 Il `time_mode` controlla l'unità di misura dell'asse X dell'envelope.
 
-### 3.1 `absolute` (default)
+#### 3.1 `absolute` (default)
 
 I tempi sono in secondi. Un breakpoint `[10, 40]` vale "al secondo 10 il valore
 è 40", indipendentemente dalla durata dello stream.
@@ -197,7 +784,7 @@ streams:
     # picco a t=10s
 ```
 
-### 3.2 `normalized`
+#### 3.2 `normalized`
 
 I tempi sono in `[0, 1]` e vengono moltiplicati per la `duration` dello stream
 al momento del parsing (`create_scaled_envelope` in `envelope.py`).
@@ -238,7 +825,7 @@ I parametri `loop_start`, `loop_end`, `loop_dur` (e `start`) hanno una semantica
 aggiuntiva: `loop_unit: normalized` scala i **valori** (asse Y) da `[0, 1]` a
 `[0, sample_dur_sec]`. Non agisce sull'asse X. È documentato nella sezione 10.
 
-### 3.3 Scaling del formato compatto
+#### 3.3 Scaling del formato compatto
 
 Quando `time_mode: normalized` è attivo, anche `end_time` di un formato compatto
 viene scalato per `duration`. Vedere `_scale_time_recursive` in `envelope.py`.
@@ -253,13 +840,13 @@ density: [[[0, 0], [100, 50]], 0.5, 4]
 
 ---
 
-## 4. Tipi di interpolazione
+### 4. Tipi di interpolazione
 
 Tre strategie, selezionabili tramite `type` (in forma dict), come quarto
 elemento opzionale di un formato compatto, oppure per-singolo-punto via
 tupla 3-elem o dict per-punto (vedi §2.6).
 
-### 4.1 `linear` (default)
+#### 4.1 `linear` (default)
 
 Interpolazione lineare tra breakpoint consecutivi. Integrale calcolato come area
 di trapezio.
@@ -270,7 +857,7 @@ density:
   points: [[0, 5], [10, 40], [30, 5]]
 ```
 
-### 4.2 `cubic`
+#### 4.2 `cubic`
 
 Hermite cubic con tangenti calcolate dall'algoritmo **Fritsch-Carlson**.
 Garantisce monotonia: se tre breakpoint sono monotoni, la curva interpolante non
@@ -290,7 +877,7 @@ Quando preferirlo:
 - fade di parametri continui (volume, density)
 - traiettorie di pointer dove la derivata seconda continua è udibile
 
-### 4.3 `step`
+#### 4.3 `step`
 
 Hold-left: il valore di ogni segmento è quello del breakpoint sinistro fino al
 breakpoint successivo. L'integrale è area di rettangolo.
@@ -304,7 +891,7 @@ density:
 Utile per cambi discontinui di sezione, automazioni "a quantità fisse",
 modulazioni di parametri categorici (es. numero di voci).
 
-### 4.4 Discontinuità con formato compatto
+#### 4.4 Discontinuità con formato compatto
 
 Quando si concatenano cicli, il `BUILDER` inserisce automaticamente un offset
 infinitesimale di `1e-6` secondi (`DISCONTINUITY_OFFSET` in `envelope_builder.py`)
@@ -314,11 +901,11 @@ intenzionali senza degenerare gli algoritmi di interpolazione.
 
 ---
 
-## 5. Formato compatto (cicli ripetuti)
+### 5. Formato compatto (cicli ripetuti)
 
 Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 
-### 5.1 Sintassi
+#### 5.1 Sintassi
 
 ```
 [pattern_points, end_time, n_reps, interp?, time_dist?, wrap?]
@@ -342,7 +929,7 @@ durata del blocco**. Quando il formato compatto è usato in forma mista, la
 durata effettiva è `end_time - time_offset`, dove `time_offset` è il tempo
 dell'ultimo breakpoint scritto prima del blocco.
 
-### 5.2 Forme valide
+#### 5.2 Forme valide
 
 **Tre elementi** (interp e distribuzione di default):
 
@@ -375,7 +962,7 @@ density: [[[0, 0], [50, 1]], 30, 8, 'linear', null, true]
 # ciclo: 0 -> 1 (meta ciclo) -> 0 (fine ciclo via wrap)
 ```
 
-### 5.3 Pattern percentuale
+#### 5.3 Pattern percentuale
 
 Le coordinate `x` del pattern sono in `[0, 100]` e rappresentano la posizione
 relativa **all'interno del singolo ciclo**. Il sistema le mappa al tempo
@@ -387,7 +974,7 @@ grain:
   duration: [[[0, 0.01], [25, 0.2], [100, 0.01]], 30, 10]
 ```
 
-### 5.3.1 Ultimo punto e copertura del ciclo
+#### 5.3.1 Ultimo punto e copertura del ciclo
 
 L'ultimo punto del pattern **non deve obbligatoriamente** essere `x = 100`. Il
 sistema non valida questo vincolo: `x_pct` è interpretato letteralmente come
@@ -413,7 +1000,7 @@ density: [[[0, 0], [50, 50], [100, 0]], 30, 4]
 density: [[[0, 0], [50, 50], [80, 0]], 30, 4]
 ```
 
-### 5.3.2 `wrap` mode (loop chiuso)
+#### 5.3.2 `wrap` mode (loop chiuso)
 
 Il sesto elemento `wrap` (bool, default `False`) controlla il **comportamento
 del gap** quando `x_finale < 100`.
@@ -457,7 +1044,7 @@ ciclo 1: 0 -> 1 (a t=1.5)        ciclo 1: 0 -> 1 (a t=1.5)
 - `interp='cubic'`: i breakpoint sintetici partecipano al calcolo Fritsch-Carlson
   → tangenti coerenti
 
-### 5.4 Comportamento ai bordi del ciclo
+#### 5.4 Comportamento ai bordi del ciclo
 
 Il primo punto di ogni ciclo successivo al primo è traslato di
 `DISCONTINUITY_OFFSET = 1e-6` secondi per evitare collisioni temporali tra
@@ -465,7 +1052,7 @@ l'ultimo punto del ciclo precedente e il primo del successivo. È invisibile
 all'orecchio ma garantisce che gli algoritmi di interpolazione operino su tempi
 strettamente crescenti.
 
-### 5.5 Validazioni
+#### 5.5 Validazioni
 
 - `n_reps < 1` → `ValueError` ("n_reps deve essere >= 1")
 - `end_time <= time_offset` → `ValueError`
@@ -473,7 +1060,7 @@ strettamente crescenti.
 
 ---
 
-## 6. Distribuzioni temporali nei cicli
+### 6. Distribuzioni temporali nei cicli
 
 Il quinto elemento del formato compatto controlla come le durate dei cicli sono
 distribuite all'interno del blocco. Definito in
@@ -481,7 +1068,7 @@ distribuite all'interno del blocco. Definito in
 
 Vincolo invariante: `sum(cycle_durations) == total_duration`.
 
-### 6.1 Forme di specifica
+#### 6.1 Forme di specifica
 
 **Default (omesso)** → equivale a `'linear'`.
 
@@ -497,7 +1084,7 @@ density: [[[0, 5], [100, 50]], 30, 8, 'linear', 'exponential']
 density: [[[0, 5], [100, 50]], 30, 8, 'linear', {type: geometric, ratio: 1.5}]
 ```
 
-### 6.2 Distribuzioni disponibili
+#### 6.2 Distribuzioni disponibili
 
 | Nome           | Alias       | Parametri        | Effetto musicale         |
 |----------------|-------------|------------------|--------------------------|
@@ -507,7 +1094,7 @@ density: [[[0, 5], [100, 50]], 30, 8, 'linear', {type: geometric, ratio: 1.5}]
 | `geometric`    | `geo`       | `ratio=1.5`      | progressione geometrica; `ratio>1` ritardando, `ratio<1` accelerando |
 | `power`        | —           | `exponent=2.0`   | power law configurabile  |
 
-### 6.3 Formule
+#### 6.3 Formule
 
 Date `total_duration = T` e `n_reps = N`:
 
@@ -520,7 +1107,7 @@ Date `total_duration = T` e `n_reps = N`:
   Somma di progressione geometrica `dur_0 = T * (1-r) / (1 - r^N)`.
 - **power** (esponente `e`): pesi `w_i = (i+1)^e`, normalizzati.
 
-### 6.4 Esempi parametrici
+#### 6.4 Esempi parametrici
 
 ```yaml
 # 8 cicli accelerando
@@ -537,7 +1124,7 @@ grain:
 volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponent: 3.0}]
 ```
 
-### 6.5 Validazioni
+#### 6.5 Validazioni
 
 - `n_reps < 1` → `ValueError`
 - `total_duration <= 0` → `ValueError`
@@ -547,13 +1134,13 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 
 ---
 
-## 7. Formato misto (breakpoint + cicli)
+### 7. Formato misto (breakpoint + cicli)
 
 Una lista di envelope può combinare breakpoint standard `[t, v]` e blocchi
 compatti `[pattern, end_time, n_reps, ...]`. Il sistema calcola l'offset
 temporale di ciascun blocco compatto in base all'ultimo breakpoint precedente.
 
-### 7.1 Regola di offset
+#### 7.1 Regola di offset
 
 Per ogni elemento iterato:
 
@@ -561,7 +1148,7 @@ Per ogni elemento iterato:
 - se è un formato compatto: la sua durata effettiva è `end_time - current_time`,
   e dopo l'espansione `current_time` diventa il tempo dell'ultimo punto generato.
 
-### 7.2 Esempio commentato
+#### 7.2 Esempio commentato
 
 ```yaml
 density: [
@@ -581,21 +1168,21 @@ Linea per linea:
    ricalcola il pattern `[0%→30, 100%→50]` nella propria finestra.
 3. `[30, 5]`: rampa finale da `(25, 50)` (ultimo punto compatto) a `(30, 5)`.
 
-### 7.3 Discontinuità al passaggio mista → compatto
+#### 7.3 Discontinuità al passaggio mista → compatto
 
 Il primo punto del primo ciclo viene anch'esso traslato di
 `DISCONTINUITY_OFFSET` se `time_offset > 0`, per separarlo dall'ultimo
 breakpoint standard. Anche in questo caso è subaudio e necessaria per la
 correttezza degli algoritmi.
 
-### 7.4 Limiti
+#### 7.4 Limiti
 
 Il formato compatto **non può essere annidato dentro un altro formato compatto**.
 Può comparire solo come elemento di primo livello in una lista mista.
 
 ---
 
-## 8. Comportamento ai bordi (hold)
+### 8. Comportamento ai bordi (hold)
 
 Implementato in `NormalSegment` (`envelope_segment.py`).
 
@@ -614,7 +1201,7 @@ deliberato: gli stream con `duration > envelope.end_time` non vanno in errore.
 
 ---
 
-## 9. Espressioni matematiche nei valori
+### 9. Espressioni matematiche nei valori
 
 Il loader YAML (`Generator._eval_math_expressions`) valuta espressioni racchiuse
 tra parentesi prima di passare il dato al parser envelope. Funzioni e costanti
@@ -636,9 +1223,9 @@ che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
 
 ---
 
-## 10. Casi speciali per dominio
+### 10. Casi speciali per dominio
 
-### 10.1 Loop pointer e `loop_unit`
+#### 10.1 Loop pointer e `loop_unit`
 
 `loop_start`, `loop_end`, `loop_dur`, e `start` accettano envelope. In più,
 hanno una semantica di unità separata controllata da `loop_unit`:
@@ -671,7 +1258,7 @@ Differenza chiave da `time_mode`:
 
 I due possono coesistere.
 
-### 10.2 `dephase` come envelope
+#### 10.2 `dephase` come envelope
 
 `dephase` può essere booleano, numerico, envelope, o dict. Quando è envelope, la
 probabilità di applicare la randomness al parametro varia nel tempo.
@@ -695,7 +1282,7 @@ Vedi `GateFactory._classify_dephase`: il dispatch usa
 `Envelope.is_envelope_like` per riconoscere il formato e crea un
 `EnvelopeGate` invece di un `RandomGate` scalare.
 
-### 10.3 `voices.*.curve` per window transition
+#### 10.3 `voices.*.curve` per window transition
 
 Il campo `curve` dentro `grain.envelope.transition` e `grain.envelope.multistate`
 è un envelope a tutti gli effetti. Il valore mappa il tempo `[0, T]` a un blend
@@ -716,7 +1303,9 @@ coprire `[0, duration]`. Eccedenze sollevano `InvalidStrategyConfigError`.
 Curve più corte del range valido emettono solo un warning: l'ultimo valore viene
 mantenuto fino alla fine (hold).
 
-### 10.4 Voice strategy parameters
+#### 10.4 Voice strategy parameters
+
+> Origine: [plans/done/2026-04-25-002-feat-dynamic-strategy-params-plan.md](../plans/done/2026-04-25-002-feat-dynamic-strategy-params-plan.md)
 
 Tutti i parametri scalari delle voice strategy (`step`, `semitone_range`,
 `pointer_range`, `max_offset`, `base`, `spread`) accettano envelope. Il parsing
@@ -734,7 +1323,7 @@ voices:
     spread: [[0, 0], [30, 120]]      # tutte centrate → spread ampio
 ```
 
-### 10.5 `num_voices` come envelope
+#### 10.5 `num_voices` come envelope
 
 `num_voices` è un caso particolare: viene parsato come `Parameter` che ammette
 envelope, ma il `VoiceManager` pre-alloca `max_voices` pari al picco massimo dei
@@ -748,7 +1337,7 @@ voices:
 
 ---
 
-## 11. Validazione e bounds
+### 11. Validazione e bounds
 
 Dopo il parsing, ogni envelope passa attraverso `GranularParser._validate_and_clip`.
 Il sistema valida ciascun breakpoint Y contro i bounds del parametro (definiti
@@ -783,7 +1372,7 @@ viene istanziato.
 
 ---
 
-## 12. Tabella riassuntiva delle sintassi
+### 12. Tabella riassuntiva delle sintassi
 
 Sintesi di tutte le forme accettate. `T` indica il tempo, `V` il valore.
 
@@ -809,7 +1398,7 @@ Sintesi di tutte le forme accettate. `T` indica il tempo, `V` il valore.
 
 ---
 
-## Appendice: ordine di elaborazione
+### Appendice: ordine di elaborazione
 
 Per chi volesse ispezionare il pipeline interno, l'ordine di trasformazione di
 un envelope dal YAML al runtime è:
@@ -830,7 +1419,7 @@ un envelope dal YAML al runtime è:
 
 ---
 
-## Riferimenti sorgente
+### Riferimenti sorgente
 
 - `src/envelopes/envelope.py` — classe `Envelope`, `is_envelope_like`,
   `create_scaled_envelope`, `_scale_raw_values_y`
@@ -846,3 +1435,29 @@ un envelope dal YAML al runtime è:
 - `src/controllers/pointer_controller.py` — `loop_unit` e scaling dei valori loop
 - `src/controllers/window_selection_strategy.py` — `_validate_curve_range`
 - `src/core/stream.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy
+
+---
+
+## Tabella Bounds Parametri
+
+| Parametro | Min | Max | Default | Note |
+|-----------|-----|-----|---------|------|
+| `density` | 0.01 | 4000 | — | grani/secondo |
+| `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
+| `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
+| `grain_duration` | 0.001 | 10 | 0.05 | secondi |
+| `volume` | -120 | 12 | -6.0 | dB |
+| `pan` | -3600 | 3600 | 0.0 | gradi |
+| `pitch_ratio` | 0.125 | 8 | 1.0 | 3 ottave ↓/↑ |
+| `pitch_semitones` | -36 | 36 | 0 | ±3 ottave |
+| `pointer_speed_ratio` | -100 | 100 | 1.0 | negativo = indietro |
+| `pointer_deviation` | -1 | 1 | 0.0 | offset per-grano |
+| `loop_start` | 0 | sample_dur | — | secondi |
+| `loop_end` | 0 | sample_dur | — | secondi |
+| `loop_dur` | 0.005 | sample_dur | — | secondi |
+| `num_voices` | 1 | 64 | 1 | intero |
+| `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
+
+Per la sintassi completa multi-voice, vedere [[multi-voice]].
+Per la sintassi envelope (in ogni parametro che la accetta), vedere la sezione
+[Envelopes](#envelopes) interna a questo doc.

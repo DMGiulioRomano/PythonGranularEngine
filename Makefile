@@ -71,6 +71,7 @@ include make/utils.mk
 include make/audioFile.mk
 include make/build.mk
 include make/clean.mk
+include make/docs.mk
 
 # --- Infrastruttura: creazione directory ---
 $(GENDIR):

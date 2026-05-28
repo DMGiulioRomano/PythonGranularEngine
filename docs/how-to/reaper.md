@@ -1,11 +1,65 @@
+---
+slug: reaper
+type: how-to
+status: stable
+tags: [reaper, daw, workflow, output]
+sources:
+  - make/audioFile.mk
+  - src/export/reaper_project_writer.py
+last_synced_commit: 4c4fee4
+entry_for: [reaper-workflow]
+---
+
 # Workflow REAPER
 
 Il Makefile puo' esportare un progetto Reaper (`.rpp`) accanto al rendering
 audio, abilitando l'ascolto e l'editing immediato del materiale generato.
 
-**Documenti collegati:** [[INDEX]] · [[ARCHITECTURE]] (output `.aif` per stream
-via `StemsRenderMode`) · [[yaml-reference]] (campo `stream_id` usato come nome
-traccia REAPER) · [[workflows]] (Makefile targets).
+**Documenti collegati:** [[INDEX]] · [[architecture]] (output `.aif` per stream
+via `StemsRenderMode`) · [[yaml]] (`stream_id` come nome traccia REAPER).
+
+---
+
+## Quando usarlo
+
+Vuoi aprire il rendering granulare in REAPER subito dopo la build, con tracce
+mappate sugli stream del YAML, per ascolto/editing/automazione.
+
+## Prerequisiti
+
+- REAPER installato (su macOS `/Applications/REAPER.app`)
+- Rendering in modalità STEMS (`STEMS=true`) — il `.rpp` ha senso solo con un file per stream
+- Variabili Makefile note: `REAPER`, `REAPER_PATH`
+
+## Passi
+
+Vedi [Flag](#flag), [Comportamento](#comportamento), [Note](#note-importanti) per uso operativo. In sintesi:
+
+1. Esegui la build come al solito (`make YAML=<nome> SEZIONE=<sezione>`)
+2. Il `.rpp` viene scritto in `$(SFDIR)/$(FILE).rpp` (default accanto agli `.aif`)
+3. REAPER si apre automaticamente (se `HAS_REAPER=true`)
+4. Una tab per YAML — riapertura riutilizza la stessa tab
+
+## File toccati
+
+| Path | Tipo |
+|------|------|
+| `output/<yaml_basename>.rpp` | output |
+| Tracce REAPER | una per stream, nominate per `stream_id` |
+
+## Test da aggiornare
+
+I test E2E del workflow REAPER vivono in `tests/e2e/` (filtra `reaper`). Test unitari per il generatore `.rpp` in `tests/reaper/`.
+
+## Verifica
+
+```bash
+make YAML=PGE_test SEZIONE=sezione1 STEMS=true REAPER=true
+```
+
+REAPER si apre. Verifica: una traccia per stream, naming corretto, audio allineato.
+
+---
 
 ## Flag
 
@@ -19,6 +73,9 @@ traccia REAPER) · [[workflows]] (Makefile targets).
 | `AUTOPEN` | `true` | Se `true`, apre il `.rpp` in REAPER alla fine del build. |
 
 ## Multi-tab automatico
+
+> Origine: [plans/done/2026-05-22-001-feat-reaper-reuse-tab-plan.md](../plans/done/2026-05-22-001-feat-reaper-reuse-tab-plan.md) (single-tab reuse via `REAPER_REUSE_TAB`)
+
 
 Quando REAPER e' gia' in esecuzione, il Makefile NON usa `open -a REAPER`
 (che ha comportamento non deterministico se il file e' gia' aperto). Genera

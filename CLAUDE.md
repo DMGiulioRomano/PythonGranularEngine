@@ -58,11 +58,7 @@ che toccano file importati dai test.
 Questo progetto ha copertura test estensiva. Mantieni questo standard di qualità per ogni nuova funzionalità.
 
 
-## Architecture
-
-For full documentation see `docs/ARCHITECTURE.md` (renderers, caching, OCP design) and `docs/multi-voice.md` (voice strategies).
-
-### Implementation Notes
+## Implementation Notes
 
 - **Grain is a frozen dataclass** — never mutate after creation
 - **Window Registry:** WindowController pre-registers all window functions at Stream init — FtableManager table numbering depends on this; don't lazy-register
@@ -71,16 +67,67 @@ For full documentation see `docs/ARCHITECTURE.md` (renderers, caching, OCP desig
 - **Time Modes:** `time_mode: normalized` maps 0.0–1.0 to actual duration at grain generation time
 - **Math in YAML:** expressions like `(pi)` and `(10/2)` are evaluated via safe_eval before parsing
 
-## Common Workflows
-
-When adding a new parameter, renderer, window function, or variation strategy: read `docs/workflows.md` first — lista i file esatti da toccare nell'ordine giusto.
-
-For YAML syntax (parameter, envelope, voices): see `docs/yaml-reference.md`.
-
 ## Documentation
 
-- **Architecture & rendering** (Csound/NumPy, caching, OCP, e2e tests): `docs/ARCHITECTURE.md`
-- **Multi-voice system** (pitch/onset/pointer/pan strategies): `docs/multi-voice.md`
-- **Common workflows** (how to add parameters, renderers, windows, strategies): `docs/workflows.md`
-- **YAML reference** (parameter syntax, envelope syntax, voices, flags): `docs/yaml-reference.md`
-- **Error handling** (gerarchia `EngineError`, `user_message()`, context enrichment): `docs/error-handling.md`
+`docs/` segue Diátaxis: `reference/` (sintassi stabile), `explanation/` (concetti),
+`how-to/` (task). L'indice è `docs/INDEX.md` — **auto-generato**, non editare a mano.
+
+Entry point per tipo di lavoro:
+
+- Sintassi YAML / envelope / voices → [docs/reference/yaml.md](docs/reference/yaml.md)
+- Errori e gerarchia `EngineError` → [docs/reference/errors.md](docs/reference/errors.md)
+- Architettura rendering / caching / multi-voice → [docs/explanation/](docs/explanation/)
+- Estendere il sistema (parameter / renderer / window / strategy / voice / error) → [docs/how-to/](docs/how-to/)
+
+### Workflow update-doc
+
+Prima di scrivere documentazione:
+
+1. Leggi `docs/INDEX.md` e identifica il doc esistente che copre l'argomento
+2. Se esiste: estendi quel doc, rispettando lo schema del suo `type`
+3. Se non esiste: dichiara `type` (`reference` / `explanation` / `how-to`),
+   crea il file in `docs/<type>/<slug>.md` con frontmatter completo
+4. Rigenera index con `make docs-index`; verifica con `make docs-lint`
+5. Mai creare doc in root `docs/` — sempre dentro un quadrante Diátaxis
+
+**Frontmatter obbligatorio** (chiavi inglesi):
+
+```yaml
+---
+slug: <kebab-case = basename>
+type: reference | explanation | how-to
+status: stable | draft | deprecated
+tags: [...]
+sources: [src/path/, ...]        # path esistenti, drift detection
+last_synced_commit: <short SHA>
+entry_for: [task1, ...]          # opzionale
+---
+```
+
+**Sezioni H2 obbligatorie per tipo**:
+
+- `reference`: Scope · Sintassi · Bounds · Esempi · Versionato da
+- `explanation`: Problema · Modello · Trade-off · Implicazioni codice · Vedi anche
+- `how-to`: Quando usarlo · Prerequisiti · Passi · File toccati · Test da aggiornare · Verifica
+
+### Workflow promote-plan
+
+Quando un plan in `docs/plans/done/` introduce feature stabile e ricorrente:
+
+1. Identifica il doc target (reference / explanation / how-to)
+2. Estrai sezione corrispondente dal plan
+3. Aggiungila al doc target rispettando lo schema
+4. Aggiungi backlink "Origine: plans/done/..." nel doc
+5. Plan resta in `done/` come archivio storico
+
+### Workflow lint-docs
+
+`make docs-lint` verifica:
+
+- Frontmatter presente e completo
+- Schema per tipo rispettato (sezioni obbligatorie)
+- `sources` esistenti su filesystem
+- Wikilink `[[slug]]` risolvibili
+- Nessun doc orfano in root `docs/`
+
+Il pre-commit hook (`make docs-hooks`) rigenera `INDEX.md` e lancia `docs-lint` quando file in `docs/{reference,explanation,how-to}/` cambiano.

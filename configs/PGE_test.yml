@@ -1,57 +1,198 @@
-composition:
-  title: "il mondo dorme"
+# project: PGE_test
+# saved:   2026-05-26T14:44:20.222Z
+# editor:  PGE-ui
 
+title: il mondo dorme
+duration: 60
+bpm: 120
 streams:
-  - stream_id: "stream1"
-    time_mode: normalized
-    onset: 0.0
+  - stream_id: stream1
+    onset: 0
     duration: 5
-    #time_scale: .3
-    sample: "pino.wav"
-    #range_always_active:
-    distribution_mode: 'gaussian'
-    #fill_factor: [[0,.3],[.1,4], cycle]
+    sample: pino.wav
+    time_mode: normalized
+    distribution_mode: gaussian
     density:
-      type: cubic
-      points: [[0,10],[.3,10],[[[0,5],[10,50], [100,30]], 1.0, 5]]
-    distribution: [[0,0],[.5,1],[1,0]]
-    pointer:
-      speed_ratio: [[[0,-1],[100,1]],1.0,10]
-      #loop_start: [[0,0.3],[.1,0.3],[0.2,0.3],[.3,0.4], cycle]
-      #loop_dur: [[0,0.2],[.1,0.02], cycle]
+      - - 0
+        - 10
+      - - 0.15
+        - 10
+      - - 0.4
+        - 50
+      - - 0.6
+        - 30
+      - - 1
+        - 30
+    distribution:
+      - - 0
+        - 0
+      - - 0.5
+        - 1
+      - - 1
+        - 0
     grain:
-      duration: [[0,.05],[.5,0.08],[[[0,.3],[10,.02], [100,.08]], 1.0, 5]]
-      duration_range: .01
-      #envelope: ['gaussian', 'hanning', 'expodec']
-      #envelope_range: 1.0
+      duration:
+        - - 0
+          - 0.05
+        - - 0.5
+          - 0.08
+        - - 1
+          - 0.05
+      duration_range: 0.01
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio:
+        - - 0
+          - -1
+        - - 1
+          - 1
+    pitch:
+      semitones: 0
+    pan: 0
+    volume: -6
     dephase:
-      type: 'cubic'
-      points: [[0,50],[.5,0],[1,30]]
-  - stream_id: "stream2"
-    onset: 40.0
-    duration: 5.0
-    sample: "pino.wav"
-  - stream_id: "stream3"
-    onset: 30.0
-    duration: 5.0
-    sample: "pino.wav"
-  - stream_id: "stream4"
-    onset: 20.0
-    duration: 5.0
-    sample: "pino.wav"
-  - stream_id: "stream5"
-    onset: 0.0
-    duration: 10.0
-    sample: "001-0-27_9.wav"
+      - - 0
+        - 50
+      - - 0.5
+        - 0
+      - - 1
+        - 30
+  - stream_id: stream2
+    onset: 40
+    duration: 5
+    sample: pino.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    density:
+      - - - - 0
+            - 5
+          - - 50
+            - 40
+          - - 100
+            - 5
+        - 1
+        - 6
+        - cubic
+        - exponential
+    distribution: 0
+    grain:
+      duration:
+        - - 0
+          - 0.02
+        - - 0.1
+          - 0.02
+        - - - - 0
+              - 0.05
+            - - 50
+              - 0.18
+            - - 100
+              - 0.05
+          - 0.9
+          - 5
+          - linear
+          - geometric
+        - - 1
+          - 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+    pitch:
+      semitones: 0
+    pan: 0
+    volume: -6
+    dephase: 30
+  - stream_id: stream3
+    onset: 30
+    duration: 5
+    sample: pino.wav
+    time_mode: absolute
+    distribution_mode: uniform
+    density: 12
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+    pitch:
+      semitones: 0
+    pan: 0
+    volume: -6
+    dephase:
+      volume: 50
+      pan: 30
+      duration: 20
+  - stream_id: stream4
+    onset: 20
+    duration: 5
+    sample: pino.wav
+    time_mode: normalized
+    distribution_mode: uniform
+    density: 12
+    distribution: 0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: 1
+    pitch:
+      semitones: 0
+    pan:
+      - - - - 0
+            - -45
+          - - 25
+            - 45
+          - - 50
+            - -45
+          - - 75
+            - 45
+          - - 100
+            - -45
+        - 1
+        - 4
+        - cubic
+        - type: logarithmic
+          base: 3
+    volume: -6
+  - stream_id: stream5
+    onset: 0
+    duration: 39.025
+    sample: 001-0-27_9.wav
+    time_mode: normalized
+    distribution_mode: gaussian
     density: 3
-    distribution: 
-      type: cubic
-      points:
-        - [0.0, 0.0]
-        - [5.0, 1.0]
-        - [10.0, 0.0]
-    distribution_mode: "gaussian"
-    pan: 
-      - [[[0, -3600.0], [100, 3600.0]], 10.0, 4]
-    time_mode: "normalized"
-    pitch:      
+    distribution:
+      - - 0
+        - 0
+      - - 0.5
+        - 1
+      - - 1
+        - 0
+    grain:
+      duration:
+        - - 0
+          - 0.05
+        - - 0.112
+          - 0.0876
+        - - 0.6823
+          - 0.0421
+        - - 0.9349
+          - 0.0919
+        - - 1
+          - 0.05
+      envelope: gaussian
+    pointer:
+      start: 0
+      speed_ratio: 1
+    pitch:
+      semitones: 0
+    pan:
+      - - 0
+        - -3600
+      - - 1
+        - 3600
+    volume: -9

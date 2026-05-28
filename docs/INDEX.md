@@ -1,63 +1,48 @@
-# Docs Index — PythonGranularEngine
+# Docs Index
 
-Mappa di navigazione (Obsidian MOC). Ogni file e' linkato come wikilink `[[slug]]`
-— in Obsidian risolve al `.md` corrispondente in questa cartella; in plain
-markdown viene mostrato come testo.
+> **Auto-generato.** Non editare a mano. Rigenera con `make docs-index`.
 
----
+## Reference
 
-## Architettura e rendering
+| Slug | Status | Tags |
+|------|--------|------|
+| [errors](reference/errors.md) | stable | errors, exceptions, user-facing |
+| [yaml](reference/yaml.md) | stable | yaml, syntax, parameters, envelopes |
 
-- [[ARCHITECTURE]] — Renderer (Csound/NumPy), OCP, `RenderingEngine`,
-  `StreamCacheManager`, copertura test E2E.
-- [[workflows]] — Estendere parametri, renderer, window function, variation
-  strategy. Lista i file da toccare in ordine.
+## Explanation
 
-## Composizione e parametri
+| Slug | Status | Tags |
+|------|--------|------|
+| [architecture](explanation/architecture.md) | stable | architecture, rendering, ocp |
+| [caching](explanation/caching.md) | stable | caching, rendering, csound |
+| [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
 
-- [[yaml-reference]] — Sintassi YAML completa: stream, grain, pointer, pitch,
-  voices, dephase, finestre. Tabella bounds.
-- [[envelopes-reference]] — Sistema envelope: forme sintattiche, time mode,
-  interpolazioni (linear/cubic/step), formato compatto, distribuzioni temporali.
-- [[multi-voice]] — Sistema multi-voce granulare: strategie pitch / onset /
-  pointer / pan; integrazione con `Stream`; esempi YAML.
+## How-to
 
-## Runtime e errori
+| Slug | Status | Tags |
+|------|--------|------|
+| [add-error-class](how-to/add-error-class.md) | stable | errors, exceptions, extension |
+| [add-parameter](how-to/add-parameter.md) | stable | parameters, schema, extension |
+| [add-renderer](how-to/add-renderer.md) | stable | renderer, ocp, extension |
+| [add-variation-strategy](how-to/add-variation-strategy.md) | stable | strategy, variation, extension |
+| [add-voice-strategy](how-to/add-voice-strategy.md) | stable | voices, strategy, extension |
+| [add-window-function](how-to/add-window-function.md) | stable | window, grain, extension |
+| [make-parameter-envelope-aware](how-to/make-parameter-envelope-aware.md) | stable | parameters, envelopes, extension |
+| [reaper](how-to/reaper.md) | stable | reaper, daw, workflow, output |
 
-- [[error-handling]] — Gerarchia `EngineError`, `user_message()`, context
-  enrichment layered, pattern di estensione.
+## Entry points per task
 
-## Workflow esterni
+| Task | Doc |
+|------|-----|
+| add-error-class | add-error-class |
+| add-parameter | add-parameter |
+| add-renderer | add-renderer |
+| add-variation-strategy | add-variation-strategy |
+| add-voice-strategy | add-voice-strategy |
+| add-window-function | add-window-function |
+| envelope-syntax | yaml |
+| error-handling | errors |
+| make-parameter-envelope-aware | make-parameter-envelope-aware |
+| reaper-workflow | reaper |
+| yaml-syntax | yaml |
 
-- [[reaper-workflow]] — Esportazione `.rpp`, multi-tab via ReaScript Lua,
-  flag `REAPER_REUSE_TAB`, `AUTOKILL_REAPER`.
-- [[ui-design-brief]] — Brief Visual Editor browser-locale (timeline DAW-like
-  → YAML PGE).
-
-## Plan attivi
-
-- `plans/` — Plan di feature in corso.
-- `plans/done/` — Plan completati e archiviati.
-
----
-
-## Punti di ingresso per task tipici
-
-| Task | Parti da |
-|------|---------|
-| Aggiungere parametro stream | [[workflows]] § "Adding a New Parameter" |
-| Aggiungere renderer | [[ARCHITECTURE]] § "Aggiungere un Nuovo Renderer" + [[workflows]] |
-| Capire sintassi envelope | [[envelopes-reference]] § 2 "Forme di sintassi" |
-| Configurare voci parallele | [[multi-voice]] § 5 "Configurazione YAML" + [[yaml-reference]] § "Blocco Voices" |
-| Gestire un nuovo errore user-facing | [[error-handling]] § 5 "Estensione" |
-| Iterare in REAPER su un YAML | [[reaper-workflow]] § "Quando usare `REAPER_REUSE_TAB`" |
-
----
-
-## Convenzioni
-
-- Lingua: italiano. No emoji.
-- Wikilink: `[[slug]]` (slug = nome file senza `.md`).
-- Sorgenti citate via path relativo a repo root (`src/...`, `tests/...`).
-- Plan: `docs/plans/YYYY-MM-DD-NNN-<kebab>-plan.md`; spostati in `done/` a
-  completamento.
