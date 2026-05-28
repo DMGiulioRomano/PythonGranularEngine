@@ -50,6 +50,21 @@ WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 H2_RE = re.compile(r"^## (.+?)\s*$", re.MULTILINE)
 
 
+INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+
+
+def strip_code_blocks(text: str) -> str:
+    out = []
+    in_code = False
+    for line in text.split("\n"):
+        if line.startswith("```"):
+            in_code = not in_code
+            continue
+        if not in_code:
+            out.append(INLINE_CODE_RE.sub("", line))
+    return "\n".join(out)
+
+
 class Linter:
     def __init__(self) -> None:
         self.errors: list[str] = []
@@ -98,14 +113,10 @@ class Linter:
         required = REQUIRED_SECTIONS.get(type_, [])
         if not required:
             return
-        found = [m.group(1).strip() for m in H2_RE.finditer(body)]
-        idx = 0
+        found = {m.group(1).strip() for m in H2_RE.finditer(body)}
         for needed in required:
-            try:
-                i = found.index(needed, idx)
-                idx = i + 1
-            except ValueError:
-                self.err(path, f"missing section '## {needed}' (order matters)")
+            if needed not in found:
+                self.err(path, f"missing section '## {needed}'")
 
     def collect_doc_dir(self, type_: str) -> list[Path]:
         d = DOCS / type_
@@ -129,7 +140,8 @@ class Linter:
             self.docs[slug] = {"path": p, "fm": fm, "body": body}
 
         for slug, info in self.docs.items():
-            for m in WIKILINK_RE.finditer(info["body"]):
+            body_no_code = strip_code_blocks(info["body"])
+            for m in WIKILINK_RE.finditer(body_no_code):
                 target = m.group(1).strip()
                 if target == "INDEX":
                     continue

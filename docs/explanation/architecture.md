@@ -1,33 +1,31 @@
-# Architettura Renderer — Stato dell'Arte
+---
+slug: architecture
+type: explanation
+status: stable
+tags: [architecture, rendering, ocp]
+sources:
+  - src/rendering/
+  - src/main.py
+last_synced_commit: 4c4fee4
+---
 
-> Questo documento descrive l'architettura **implementata** del sistema di rendering.
-> Le variazioni rispetto al design iniziale sono documentate nella sezione
-> [Delta rispetto alla proposta originale](#delta).
+# Architettura Renderer
 
-**Documenti collegati:** [[INDEX]] · [[workflows]] (estensione renderer/parametri) ·
-[[yaml-reference]] (input YAML accettato) · [[multi-voice]] (grani per voce) ·
-[[error-handling]] (errori rendering: `CsoundRenderError`, `InvalidRendererError`) ·
-[[reaper-workflow]] (consumo `.aif` post-rendering).
+**Documenti collegati:** [[INDEX]] · [[caching]] (StreamCacheManager dedicato) · [[yaml]] · [[multi-voice]] · [[errors]] · [[reaper]] · [[add-renderer]]
 
 ---
 
-## Architettura Implementata
+## Problema
 
-### Principi applicati
+Il sistema deve renderizzare YAML in audio usando back-end multipli (Csound, NumPy, in futuro SuperCollider/altri). Senza disciplina, aggiungere un renderer significa modificare `main.py` con `if renderer_type == 'csound': ...` ovunque — accumulazione di switch case nel core. Inoltre, la decisione "un file per stream" (stems) vs "un file unico" (mix) deve essere ortogonale alla scelta del renderer.
 
-- **Open/Closed Principle**: aggiungere un nuovo renderer (es. SuperCollider) richiede
-  solo una nuova classe — nessuna modifica a `main.py`, `RenderingEngine` o `RenderMode`.
-- **Single Responsibility**: ogni classe ha una sola ragione per cambiare.
-- **Strategy Pattern**: `RenderMode` decide la modalità (stems/mix), non il renderer.
-- **Facade**: `RenderingEngine` nasconde la coordinazione interna.
+## Modello
 
----
-
-### Componenti
+Quattro componenti coordinati. **Open/Closed Principle**: nuovi renderer e nuovi modi di output sono additivi, niente modifiche al core.
 
 ```
 main.py
-  └── _build_renderer()        ← crea il renderer giusto (lazy import)
+  └── _build_renderer()        ← factory: crea il renderer giusto (lazy import)
   └── RenderingEngine.render() ← unica chiamata, mode-agnostica
 
 RenderingEngine (Facade)
@@ -38,44 +36,24 @@ RenderingEngine (Facade)
   └── RenderMode (Strategy)
         ├── StemsRenderMode    ← un file per stream
         └── MixRenderMode      ← un file unico
-
-StreamCacheManager             ← caching incrementale (solo STEMS + RENDERER=csound)
-  ├── compute_fingerprint()    ← SHA-256 del dict YAML raw
-  ├── is_dirty()               ← fingerprint + presenza .aif
-  ├── update_after_build()     ← aggiorna manifest post-build
-  └── garbage_collect()        ← rimuove stream orfani (rimossi/rinominati nel YAML)
 ```
 
----
-
-### AudioRenderer ABC — Interfaccia Atomica
+**AudioRenderer ABC** — interfaccia atomica:
 
 ```python
 class AudioRenderer(ABC):
-
     @abstractmethod
     def render_single_stream(self, stream, output_path: str) -> str:
-        """
-        Renderizza UN stream in UN file (onset relativi).
-        Usato da StemsRenderMode.
-        """
-        ...
+        """Renderizza UN stream in UN file (onset relativi). Usato da StemsRenderMode."""
 
     @abstractmethod
     def render_merged_streams(self, streams: List, output_path: str) -> str:
-        """
-        Renderizza PIÙ stream in UN file (onset assoluti).
-        Usato da MixRenderMode.
-        """
-        ...
+        """Renderizza PIÙ stream in UN file (onset assoluti). Usato da MixRenderMode."""
 ```
 
-Il renderer **non decide** la modalità (stems/mix): questa responsabilità
-è delegata a `RenderMode`.
+Il renderer **non decide** stems/mix: lo fa `RenderMode`.
 
----
-
-### RenderMode — Strategy
+**RenderMode** — Strategy:
 
 ```python
 class StemsRenderMode(RenderMode):
@@ -91,122 +69,58 @@ class MixRenderMode(RenderMode):
         renderer.render_merged_streams(all_streams, mix_path)
 ```
 
----
-
-### main.py — Agnostico
+**main.py** è agnostico — un solo punto di factory:
 
 ```python
 renderer = _build_renderer(renderer_type, generator, **kwargs)
-
 engine = RenderingEngine(renderer)
 mode = StemsRenderMode() if per_stream else MixRenderMode()
 generated = engine.render(streams=generator.streams, output_path=output_file, mode=mode)
 ```
 
-`main.py` non contiene `if renderer_type == 'csound': ...` nella logica di rendering.
-L'unica discriminazione avviene in `_build_renderer()` (factory).
+Caching incrementale è componente separato, vedi [[caching]].
 
----
+## Trade-off
 
-### StreamCacheManager — Caching Incrementale
+| Aspetto | Alternativa | Perché questa |
+|---------|-------------|---------------|
+| Interfaccia ABC con 2 metodi atomici | Unico `render(streams, path, per_stream)` | Atomica → nuova `RenderMode` (es. per-voice) non richiede modifiche ai renderer |
+| RenderMode esterno al renderer | Flag `per_stream` nel renderer | Switch ortogonale: ogni renderer × ogni modo combinabile gratis |
+| NamingStrategy esterno al renderer | Naming dentro al renderer | Riuso tra renderer; test isolati |
+| Facade `RenderingEngine` | main.py orchestrazione diretta | Single entry point, test integrabili facilmente |
 
-Attivo solo con `STEMS=true CACHE=true RENDERER=csound`.
+## Implicazioni codice
 
-**Flusso:**
+- Aggiungere un renderer: vedi [[add-renderer]] (3 step, zero modifiche a main.py)
+- Aggiungere una mode (es. per-voice): nuova `RenderMode` subclass + uso in main; ABC invariata
+- Caching: vedi [[caching]]
+- Errori specifici renderer: `CsoundRenderError`, `InvalidRendererError` (vedi [[errors]])
 
-```
-1. GC: garbage_collect(current_stream_ids, aif_dir, aif_prefix)
-       → rimuove dal manifest gli stream non più nel YAML
-       → cancella i file .aif orfani da output/
-
-2. Per ogni stream (in render_single_stream):
-       is_dirty(stream_dict, aif_path)
-       → True se: stream_id assente nel manifest
-                  fingerprint cambiato
-                  file .aif assente su disco
-       → False → skip (ritorna output_path senza invocare csound)
-
-3. update_after_build(stream_dicts)
-       → aggiorna manifest con fingerprint correnti
-```
-
-**Manifest:** `cache/{yaml_basename}.json` — dict `{stream_id: sha256_fingerprint}`
-
----
-
-### Aggiungere un Nuovo Renderer
-
-```python
-# 1. Implementa l'interfaccia
-class SuperColliderRenderer(AudioRenderer):
-    def render_single_stream(self, stream, output_path):
-        ...
-    def render_merged_streams(self, streams, output_path):
-        ...
-
-# 2. Registra in RendererFactory
-# src/rendering/renderer_factory.py → REGISTRY dict
-
-# main.py: ZERO MODIFICHE
-```
-
----
-
-## Delta rispetto alla Proposta Originale
-
-| Aspetto | Proposta | Implementato |
-|---------|----------|--------------|
-| Interfaccia ABC | `render(streams, path, per_stream)` — metodo unico | `render_single_stream` + `render_merged_streams` — interfaccia atomica |
-| Decisione stems/mix | Dentro ogni renderer (`if per_stream`) | Delegata a `RenderMode` (Strategy separato) |
-| Naming file | Dentro ogni renderer | Delegata a `NamingStrategy` |
-| Facade | Assente | `RenderingEngine` coordina renderer + naming + mode |
-| Cache | Non prevista | `StreamCacheManager` con fingerprint SHA-256 e GC |
-| GC orfani | Non previsto | `garbage_collect()` rimuove stream rimossi dal YAML |
-
-L'interfaccia atomica (`render_single_stream` / `render_merged_streams`) è più
-OCP-pura della proposta: aggiungere una nuova modalità (es. per-voice) richiede
-solo un nuovo `RenderMode`, non modifiche ai renderer.
-
----
-
-## Copertura Test
+### Copertura test
 
 | Layer | Strumento | Conteggio |
 |-------|-----------|-----------|
-| Unit (mock) | `pytest` / `make tests` | 3444 test |
+| Unit (mock) | `pytest` / `make tests` | 4149 test |
 | E2E | `pytest -m e2e` / `make e2e-tests` | 21 test |
 
-### E2E Csound — `tests/e2e/test_cache_e2e.py` (15 test)
+**E2E Csound** (`tests/e2e/test_cache_e2e.py`, 15 test): pipeline `make → Python → Csound → filesystem` in `STEMS=true CACHE=true`. Copre first build, incremental, partial rebuild, garbage collection.
 
-Testa la pipeline completa `make → Python → Csound → filesystem` in modalità `STEMS=true CACHE=true`.
+**E2E NumPy** (`tests/e2e/test_numpy_renderer_e2e.py`, 6 test): pipeline `make → Python → NumPy → filesystem`, no Csound. Copre stems e mix.
 
-| Classe | Scenario |
-|--------|----------|
-| `TestFirstBuild` (4) | Prima build: .aif creati, manifest popolato, entrambi DIRTY, fingerprint SHA-256 |
-| `TestIncrementalBuild` (3) | Build invariata: tutti clean, nessun DIRTY, manifest immutato |
-| `TestPartialRebuild` (3) | Modifica parziale YAML: solo stream modificato DIRTY, fingerprint aggiornato |
-| `TestGarbageCollection` (5) | Stream rimosso: .aif orfano cancellato, entry manifest rimossa, GC in stdout |
+**Note semantica onset:**
+- Csound/NumPy STEMS: onset relativi allo stream (onset=0 nel file)
+- Csound/NumPy MIX: onset assoluti, stream posizionati nel tempo
 
-### E2E NumPy — `tests/e2e/test_numpy_renderer_e2e.py` (6 test)
+### Platform notes
 
-Testa la pipeline `make → Python → NumPy → filesystem`. Non richiede Csound.
+- macOS: fully supported (Apple Silicon e Intel)
+- Linux: fully supported (iZotope RX integration disabled automatically)
+- Python: 3.12+
+- Dipendenze: csound (Csound renderer), sox (audio trimming), NumPy/SciPy (NumPy renderer)
 
-| Classe | Scenario |
-|--------|----------|
-| `TestNumpyStems` (4) | `STEMS=true`: un .aif per stream, naming corretto, nessun manifest creato |
-| `TestNumpyMix` (2) | `STEMS=false`: un .aif unico con tutti gli stream mixati |
+## Vedi anche
 
-**Note sui renderer:**
-- **Csound STEMS**: ogni stem parte dall'onset relativo allo stream (onset=0 nel file)
-- **NumPy STEMS**: idem — onset relativi, nessun silenzio iniziale
-- **Csound/NumPy MIX**: onset assoluti, tutti gli stream posizionati correttamente nel tempo
-- **Cache**: `StreamCacheManager` è attivo solo con `RENDERER=csound STEMS=true CACHE=true`
-
----
-
-## Platform Notes
-
-- **macOS**: fully supported (Apple Silicon and Intel)
-- **Linux**: fully supported (iZotope RX integration disabled automatically)
-- **Python**: requires 3.12 or higher
-- **Dependencies**: csound (Csound renderer), sox (audio trimming), NumPy/SciPy (NumPy renderer)
+- [[caching]] — caching incrementale per stems Csound
+- [[add-renderer]] — workflow estensione
+- [[yaml]] — input accettato dalla pipeline
+- [[errors]] — errori renderer

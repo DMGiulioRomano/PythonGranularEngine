@@ -1,3 +1,16 @@
+---
+slug: yaml
+type: reference
+status: stable
+tags: [yaml, syntax, parameters, envelopes]
+sources:
+  - src/engine/generator.py
+  - src/parameters/
+  - src/envelopes/
+last_synced_commit: 4c4fee4
+entry_for: [yaml-syntax, envelope-syntax]
+---
+
 # YAML Reference — PythonGranularEngine
 
 **Documenti collegati:** [[INDEX]] · [[multi-voice]] (sistema voci, strategy
@@ -5,6 +18,39 @@ dettagliate) · [[architecture]] (cosa fa il renderer con questi parametri) ·
 [[errors]] (errori YAML: `MissingFieldError`, `InvalidFieldValueError`,
 `ParameterBoundError`, `InvalidWindowError`) · [[reaper]] (workflow REAPER) ·
 sezione [Envelopes](#envelopes) interna per la sintassi degli envelope.
+
+---
+
+## Scope
+
+Reference completa del formato YAML consumato da `main.py`: sintassi per stream, parametri, envelope, voci, finestre, dephase. Copre solo il **formato di input**: la pipeline di rendering è in [[architecture]], le voice strategy in [[multi-voice]].
+
+## Sintassi
+
+Sezioni rilevanti in questo doc:
+
+- [Minimal Stream](#minimal-stream) — schema minimo
+- [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
+- [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
+- [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
+- [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [Dephase](#dephase-variazione-stocastica)
+- [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
+- [Envelopes](#envelopes) — sintassi envelope completa
+
+## Bounds
+
+Tabella bounds per ogni parametro: [Tabella Bounds Parametri](#tabella-bounds-parametri). Per `clip_strategy` e `ParameterBoundError` vedi [[errors]].
+
+## Esempi
+
+Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [Envelopes](#envelopes).
+
+## Versionato da
+
+- `src/yaml_parser/` — parser
+- `src/parameters/parameter_definitions.py`, `src/parameters/parameter_schema.py` — bounds e schema
+- `src/envelopes/` — sintassi envelope
+- Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
 ---
 
@@ -1409,5 +1455,5 @@ un envelope dal YAML al runtime è:
 | `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
 
 Per la sintassi completa multi-voice, vedere [[multi-voice]].
-Per la sintassi envelope (in ogni parametro che la accetta), vedere
-[[envelopes-reference]].
+Per la sintassi envelope (in ogni parametro che la accetta), vedere la sezione
+[Envelopes](#envelopes) interna a questo doc.

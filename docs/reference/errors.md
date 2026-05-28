@@ -1,14 +1,55 @@
+---
+slug: errors
+type: reference
+status: stable
+tags: [errors, exceptions, user-facing]
+sources:
+  - src/shared/exceptions.py
+last_synced_commit: 4c4fee4
+entry_for: [error-handling]
+---
+
 # Error Handling — gerarchia `EngineError`
 
-Documentazione del sistema di errori user-facing introdotto in issue #33 e
-completato in issue #38 (PR1–PR4). Obiettivo: separare il messaggio destinato
-all'utente finale (terminale pulito, italiano, contesto strutturato) dal
-traceback Python persistito nel log engine.
+Documentazione del sistema di errori user-facing (issue #33 / #38). Obiettivo: separare il messaggio destinato all'utente finale (terminale pulito, italiano, contesto strutturato) dal traceback Python persistito nel log engine.
 
-**Documenti collegati:** [[INDEX]] · [[ARCHITECTURE]] (`CsoundRenderError` /
-`InvalidRendererError` nel layer rendering) · [[yaml-reference]] (campi YAML
-validati) · [[workflows]] § "Adding a New Error Class" · [[multi-voice]]
-(errori voice strategy via `StrategyNotFoundError`).
+**Documenti collegati:** [[INDEX]] · [[architecture]] (`CsoundRenderError` /
+`InvalidRendererError`) · [[yaml]] (campi YAML validati) · [[add-error-class]] ·
+[[multi-voice]] (`StrategyNotFoundError`).
+
+---
+
+## Scope
+
+Catalogo completo della gerarchia `EngineError`, regole `user_message()`, pattern di context enrichment. Per estendere con una nuova classe vedi [[add-error-class]].
+
+## Sintassi
+
+Forma del messaggio user-facing:
+
+```
+[ERRORE] <head>
+  <dettaglio chiave: valore>
+  <dettaglio chiave: valore>
+  Stream:    <stream_id>     (se enrichito)
+  Config:    <yaml_path>     (se enrichito)
+```
+
+Tutte le classi ereditano da `EngineError`. Sotto-gerarchie principali: `ConfigError` (YAML invalido) e `EngineRuntimeError` (errori a render-time).
+
+## Bounds
+
+Le classi specifiche e il loro contesto sono elencati in [Gerarchia](#1-gerarchia) e [Lista classi](#2-classi).
+
+## Esempi
+
+Vedi [Esempi](#3-esempi) per output reale di terminale.
+
+## Versionato da
+
+- `src/shared/exceptions.py` — definizioni
+- Siti di sollevamento sparsi nei moduli (parser, controller, renderer)
+- Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
 ---
 

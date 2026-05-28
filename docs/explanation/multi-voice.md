@@ -1,14 +1,58 @@
+---
+slug: multi-voice
+type: explanation
+status: stable
+tags: [voices, strategy, dmx-1000, granular]
+sources:
+  - src/strategies/
+  - src/core/stream.py
+last_synced_commit: 4c4fee4
+---
+
 # Sistema Multi-Voice — PythonGranularEngine
 
-> Documentazione tecnica del sistema multi-voice granulare.  
+> Documentazione tecnica del sistema multi-voice granulare.
 > Ispirato al DMX-1000 di Barry Truax (1988).
 
-**Documenti collegati:** [[INDEX]] · [[yaml-reference]] § "Blocco Voices" (sintassi
-YAML) · [[envelopes-reference]] (parametri strategy come envelope: `step`,
-`semitone_range`, `pointer_range`, `max_offset`, `base`, `spread`) ·
-[[ARCHITECTURE]] (integrazione con renderer Csound/NumPy) · [[workflows]]
-§ "Adding a New Voice Strategy" · [[error-handling]] (`StrategyNotFoundError`,
-`InvalidStrategyConfigError`).
+**Documenti collegati:** [[INDEX]] · [[yaml]] § "Blocco Voices" · [[yaml]] § Envelopes
+(parametri strategy come envelope) · [[architecture]] · [[add-voice-strategy]] ·
+[[errors]] (`StrategyNotFoundError`, `InvalidStrategyConfigError`).
+
+---
+
+## Problema
+
+Truax DMX-1000 (1988) componeva per "voci" parallele indipendenti: ogni stream granulare può sdoppiarsi in N voci con offset di pitch, onset, pointer, pan. Implementare questo in un engine moderno significa decidere: dove vivono le offset? Come si compongono? Come si testano? Come si estendono?
+
+## Modello
+
+`VoiceManager` per stream + `VoiceConfig` per asse + ABC per ogni axis-strategy. Quattro assi ortogonali: pitch, onset, pointer, pan. Invariante centrale: **voice 0 è sempre la voce neutra** (offset zero su ogni asse) — ogni nuova strategy deve rispettarla.
+
+Vedi [Architettura](#2-architettura) per il modello completo, [Componenti principali](#3-componenti-principali) per le ABC e factory.
+
+## Trade-off
+
+| Scelta | Alternativa | Perché questa |
+|--------|-------------|---------------|
+| Quattro ABC separate (per asse) | Una `VoiceStrategy` unica | Ortogonalità → ogni asse evolve indipendentemente; combinazioni gratis |
+| `VoiceManager` per stream | Stream contiene direttamente voce_i | Decoupling: lifecycle voci ≠ lifecycle stream; precompute facile |
+| Strategy parameters come envelope | Solo scalari | Pattern compositivi tempo-varying (cluster→spread) senza re-design API |
+| Determinismo da `stream_id` (stocastiche) | Random globale | Riproducibilità: stessa composizione → stesso suono |
+
+## Implicazioni codice
+
+- `src/strategies/` — un file per strategy + factory per asse
+- `src/core/stream.py` — `_init_voice_manager`, `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/core/voice_manager.py` — `VoiceManager`, `VoiceConfig`
+- Estensione: vedi [[add-voice-strategy]]
+- Errori specifici: `StrategyNotFoundError`, `InvalidStrategyConfigError` (vedi [[errors]])
+
+## Vedi anche
+
+- [[yaml]] § Blocco Voices — sintassi YAML
+- [[yaml]] § Envelopes — parametri strategy come envelope
+- [[architecture]] — integrazione con renderer
+- [[add-voice-strategy]] — workflow estensione
 
 ---
 
