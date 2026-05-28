@@ -286,11 +286,11 @@ grep -rE 'docs/[A-Z]' .                 # CLAUDE.md non punta a path obsoleti (u
 
 ---
 
-## Loose ends da chiarire prima di iniziare
+## Loose ends — RISOLTI (sessione 2026-05-28)
 
-1. **Diátaxis stretto vs adattato?** `ui-design-brief.md` non è né reference né how-to — è un brief di design futuro. Quadrante `brief/` extra-Diátaxis o piegarlo dentro `explanation/`? Default proposto: `explanation/`.
-2. **Lingua frontmatter:** italiano o inglese keys? Default proposto: inglese (compatibilità Obsidian/Dataview).
-3. **Pre-commit hook per `make docs-index`:** add o no? Default proposto: no in step iniziali (introdurre solo dopo che tooling stabile, evita friction).
-4. **Promote-plan: quali plan?** Step 9 opzionale. Candidati pilota: `feat-envelope-per-point-interp` (→ `reference/yaml.md#envelopes`), `feat-reaper-reuse-tab` (→ `how-to/reaper.md`), `feat-dynamic-strategy-params` (→ `reference/yaml.md` o nuovo doc).
+1. **`ui-design-brief.md`** → `git rm` definitivo (storia git conserva). Rimosso da tassonomia.
+2. **Lingua frontmatter:** inglese (compatibilità Obsidian/Dataview).
+3. **Pre-commit hook per `make docs-index`:** sì, introdurre in step 2 insieme al tooling.
+4. **Promote-plan step 9:** eseguire con 3 piloti — `feat-envelope-per-point-interp` → `reference/yaml.md#envelopes`, `feat-reaper-reuse-tab` → `how-to/reaper.md`, `feat-dynamic-strategy-params` → `reference/yaml.md`.
 
-Queste 4 vanno risolte all'apertura della prossima sessione, prima di eseguire step 1.
+**Aggiornamento tassonomia:** rimuovere `ui-design-brief.md` dalla sezione A; rimuovere dalla tabella file critici.
