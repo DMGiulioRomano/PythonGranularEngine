@@ -337,3 +337,87 @@ class TestHalfSine:
         """half_sine e' simmetrica."""
         window = registry.get('half_sine', 1024)
         np.testing.assert_array_almost_equal(window, window[::-1], decimal=5)
+
+
+# =============================================================================
+# 8. TEST RECTANGLE WINDOW
+# =============================================================================
+
+class TestRectangleWindow:
+    """Test per la finestra rectangle (GEN20 opt 8 — finestra piatta)."""
+
+    def test_rectangle_available(self, registry):
+        """rectangle e' nella lista delle finestre disponibili."""
+        assert 'rectangle' in registry.available_windows()
+
+    def test_rectangle_returns_array(self, registry):
+        """get() ritorna un array NumPy."""
+        w = registry.get('rectangle', 1024)
+        assert isinstance(w, np.ndarray)
+        assert len(w) == 1024
+
+    def test_rectangle_all_ones(self, registry):
+        """Tutti i valori sono 1.0 (finestra piatta)."""
+        w = registry.get('rectangle', 256)
+        np.testing.assert_array_almost_equal(w, np.ones(256))
+
+    def test_rectangle_dtype_float64(self, registry):
+        """Array in float64."""
+        w = registry.get('rectangle', 512)
+        assert w.dtype == np.float64
+
+    def test_rectangle_is_symmetric(self, registry):
+        """rectangle e' simmetrica."""
+        w = registry.get('rectangle', 512)
+        np.testing.assert_array_equal(w, w[::-1])
+
+
+# =============================================================================
+# 9. TEST SINC WINDOW
+# =============================================================================
+
+class TestSincWindow:
+    """Test per la finestra sinc (GEN20 opt 9 — lobo centrale sin(πx)/(πx))."""
+
+    def test_sinc_available(self, registry):
+        """sinc e' nella lista delle finestre disponibili."""
+        assert 'sinc' in registry.available_windows()
+
+    def test_sinc_returns_array(self, registry):
+        """get() ritorna un array NumPy."""
+        w = registry.get('sinc', 1024)
+        assert isinstance(w, np.ndarray)
+        assert len(w) == 1024
+
+    def test_sinc_peak_value_near_one(self, registry):
+        """sinc raggiunge quasi 1.0 al centro (per n pari il picco non tocca x=0 esatto)."""
+        w = registry.get('sinc', 1024)
+        assert np.max(w) > 0.9999
+
+    def test_sinc_peak_value_exact_for_odd_n(self, registry):
+        """Per n dispari il campione centrale e' x=0 esatto: sinc(0)=1.0."""
+        w = registry.get('sinc', 1025)
+        assert abs(np.max(w) - 1.0) < 1e-10
+        assert np.argmax(w) == 512
+
+    def test_sinc_peak_at_center(self, registry):
+        """Il picco e' vicino al campione centrale (tolleranza 1 campione per n pari)."""
+        w = registry.get('sinc', 1024)
+        center = len(w) // 2
+        assert abs(np.argmax(w) - center) <= 1
+
+    def test_sinc_edges_near_zero(self, registry):
+        """Primo e ultimo campione sono vicini a zero."""
+        w = registry.get('sinc', 1024)
+        assert abs(w[0]) < 1e-10
+        assert abs(w[-1]) < 1e-10
+
+    def test_sinc_is_symmetric(self, registry):
+        """sinc e' simmetrica."""
+        w = registry.get('sinc', 1024)
+        np.testing.assert_array_almost_equal(w, w[::-1], decimal=10)
+
+    def test_sinc_all_non_negative(self, registry):
+        """Tutti i valori sono >= 0 (solo lobo centrale, x in [-1,1])."""
+        w = registry.get('sinc', 1024)
+        assert np.all(w >= -1e-15)
