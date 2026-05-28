@@ -74,6 +74,9 @@ REAPER si apre. Verifica: una traccia per stream, naming corretto, audio allinea
 
 ## Multi-tab automatico
 
+> Origine: [plans/done/2026-05-22-001-feat-reaper-reuse-tab-plan.md](../plans/done/2026-05-22-001-feat-reaper-reuse-tab-plan.md) (single-tab reuse via `REAPER_REUSE_TAB`)
+
+
 Quando REAPER e' gia' in esecuzione, il Makefile NON usa `open -a REAPER`
 (che ha comportamento non deterministico se il file e' gia' aperto). Genera
 invece al volo un ReaScript Lua in `generated/open_reaper_tab.lua`:

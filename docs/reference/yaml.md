@@ -726,6 +726,8 @@ density: [
 
 #### 2.6 Interp type per-punto (issue #54)
 
+> Origine: [plans/done/2026-05-22-003-feat-envelope-per-point-interp-plan.md](../plans/done/2026-05-22-003-feat-envelope-per-point-interp-plan.md)
+
 Ogni breakpoint puo' dichiarare il proprio tipo di interpolazione applicato al
 **segmento dal punto fino al successivo**. Due forme equivalenti:
 
@@ -1302,6 +1304,8 @@ Curve più corte del range valido emettono solo un warning: l'ultimo valore vien
 mantenuto fino alla fine (hold).
 
 #### 10.4 Voice strategy parameters
+
+> Origine: [plans/done/2026-04-25-002-feat-dynamic-strategy-params-plan.md](../plans/done/2026-04-25-002-feat-dynamic-strategy-params-plan.md)
 
 Tutti i parametri scalari delle voice strategy (`step`, `semitone_range`,
 `pointer_range`, `max_offset`, `base`, `spread`) accettano envelope. Il parsing
