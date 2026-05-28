@@ -14,10 +14,6 @@ Inspired by Barry Truax's DMX-1000 (1988).
 
 **Prima di modificare un modulo esistente:** esegui `/impact-analysis`.
 
-**Codice generato:** fornisci prima il codice, poi chiedi se l'utente vuole un documento markdown di confronto. Non generare automaticamente documenti markdown di confronto.
-
-**Csound:** fai sempre riferimento al FLOSS manual e fornisci link agli opcode referenziati.
-
 ## Slash Commands
 
 - `/new-feature <nome>` — apre branch + avvia workflow TDD completo
