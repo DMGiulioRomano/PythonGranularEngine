@@ -1,0 +1,18 @@
+#!/bin/sh
+# Pre-commit hook: rigenera docs/INDEX.md se docs/ è cambiato, e lancia lint.
+# Installa con `make docs-hooks`.
+
+set -e
+
+# Solo se ci sono cambi in docs/ (escluso plans/)
+changed=$(git diff --cached --name-only | grep -E '^docs/(reference|explanation|how-to)/' || true)
+if [ -z "$changed" ]; then
+    exit 0
+fi
+
+echo "pre-commit: docs/ changed -> running docs-index + docs-lint"
+
+python3 utils/build_docs_index.py
+git add docs/INDEX.md
+
+python3 utils/lint_docs.py
