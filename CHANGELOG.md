@@ -10,6 +10,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Flag `--format aiff|wav|flac` in `src/main.py` e variabile `FORMAT` nel
+  Makefile: seleziona il formato audio di output (default `aiff`). Il formato
+  viene propagato a `NamingStrategy` (estensione file), `NumpyAudioRenderer`
+  (parametri `sf.write`), `StreamCacheManager` (fingerprint cache e
+  garbage collection). Csound non richiede modifiche: rileva il formato
+  dall'estensione del flag `-o`. Aggiunto `AudioFormat` dataclass in
+  `src/rendering/audio_format.py`. Risolve issue #75.
+
 - Target `make clean-rpp` (`make/clean.mk`): rimuove i file `.rpp` e `.rpp-bak`
   in `$(SFDIR)` (default `output/`) e nella root del repo. Risolve la
   pulizia esplicita dei progetti Reaper, prima orfana di target dedicato.
