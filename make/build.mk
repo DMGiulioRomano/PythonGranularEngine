@@ -105,7 +105,7 @@ define autopen_stems
 			$(OPEN_REAPER_CMD) "$(REAPER_PATH)"; \
 		fi; \
 	else \
-		for aif in $(SFDIR)/*.aif; do $(OPEN_CMD) "$$aif"; done; \
+		for aif in $(SFDIR)/*$(FORMAT_EXT); do $(OPEN_CMD) "$$aif"; done; \
 	fi; \
 fi
 endef
