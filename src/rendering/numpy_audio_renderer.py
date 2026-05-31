@@ -20,6 +20,7 @@ import numpy as np
 import soundfile as sf
 from typing import Dict, Tuple, List, Optional
 
+from rendering.audio_format import AudioFormat, DEFAULT_FORMAT
 from rendering.audio_renderer import AudioRenderer
 from rendering.grain_renderer import GrainRenderer
 from rendering.sample_registry import SampleRegistry
@@ -51,6 +52,7 @@ class NumpyAudioRenderer(AudioRenderer):
         output_sr: int = 48000,
         cache_manager=None,
         stream_data_map: Optional[Dict[str, dict]] = None,
+        audio_format: AudioFormat = DEFAULT_FORMAT,
     ):
         self.sample_registry = sample_registry
         self.window_registry = window_registry
@@ -58,6 +60,7 @@ class NumpyAudioRenderer(AudioRenderer):
         self.output_sr = output_sr
         self.cache_manager = cache_manager
         self.stream_data_map = dict(stream_data_map) if stream_data_map is not None else {}
+        self.audio_format = audio_format
 
         self._grain_renderer = GrainRenderer(
             sample_registry=sample_registry,
@@ -116,7 +119,9 @@ class NumpyAudioRenderer(AudioRenderer):
 
         # 3. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
-        sf.write(output_path, buffer, self.output_sr, format='AIFF')
+        sf.write(output_path, buffer, self.output_sr,
+                 format=self.audio_format.sf_format,
+                 subtype=self.audio_format.sf_subtype)
 
         # Aggiorna cache dopo build riuscita
         if self.cache_manager:
@@ -163,7 +168,9 @@ class NumpyAudioRenderer(AudioRenderer):
 
         # 3. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
-        sf.write(output_path, buffer, self.output_sr, format='AIFF')
+        sf.write(output_path, buffer, self.output_sr,
+                 format=self.audio_format.sf_format,
+                 subtype=self.audio_format.sf_subtype)
 
         return output_path
 

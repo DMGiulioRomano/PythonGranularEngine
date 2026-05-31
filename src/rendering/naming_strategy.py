@@ -67,9 +67,12 @@ class DefaultNamingStrategy(NamingStrategy):
     Naming strategy di default.
 
     Formato:
-    - STEMS: {base}__{stream_id}.aif
-    - MIX: {base}.aif (invariato)
+    - STEMS: {base}__{stream_id}{ext}
+    - MIX: {base_path} (invariato)
     """
+
+    def __init__(self, ext: str = '.aif'):
+        self.ext = ext
 
     def generate_paths(
         self,
@@ -88,9 +91,9 @@ class DefaultNamingStrategy(NamingStrategy):
         base = os.path.splitext(base_path)[0]
 
         if mode == 'stems':
-            # STEMS: {base}__{stream_id}.aif  (double __ as separator)
+            # STEMS: {base}__{stream_id}{ext}  (double __ as separator)
             return [
-                (stream, f"{base}__{stream.stream_id}.aif")
+                (stream, f"{base}__{stream.stream_id}{self.ext}")
                 for stream in streams
             ]
 

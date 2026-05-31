@@ -113,6 +113,40 @@ class TestDefaultNamingStrategy:
         with pytest.raises(ValueError, match="naming"):
             naming.generate_paths('/out/base.aif', streams, mode='invalid')
 
+    def test_stems_wav_extension(self):
+        """ext='.wav' genera path con estensione .wav."""
+        from rendering.naming_strategy import DefaultNamingStrategy
+
+        naming = DefaultNamingStrategy(ext='.wav')
+        streams = [make_mock_stream('s1'), make_mock_stream('s2')]
+
+        paths = naming.generate_paths('/out/base.aif', streams, mode='stems')
+
+        assert paths[0][1] == '/out/base__s1.wav'
+        assert paths[1][1] == '/out/base__s2.wav'
+
+    def test_stems_flac_extension(self):
+        """ext='.flac' genera path con estensione .flac."""
+        from rendering.naming_strategy import DefaultNamingStrategy
+
+        naming = DefaultNamingStrategy(ext='.flac')
+        streams = [make_mock_stream('s1')]
+
+        paths = naming.generate_paths('/out/base.aif', streams, mode='stems')
+
+        assert paths[0][1] == '/out/base__s1.flac'
+
+    def test_default_extension_unchanged(self):
+        """Senza parametri ext, default rimane .aif."""
+        from rendering.naming_strategy import DefaultNamingStrategy
+
+        naming = DefaultNamingStrategy()
+        streams = [make_mock_stream('s1')]
+
+        paths = naming.generate_paths('/out/base.aif', streams, mode='stems')
+
+        assert paths[0][1] == '/out/base__s1.aif'
+
     def test_stems_uses_double_underscore_separator(self):
         """STEMS mode: separatore tra basename e stream_id e' '__' (issue #56).
 

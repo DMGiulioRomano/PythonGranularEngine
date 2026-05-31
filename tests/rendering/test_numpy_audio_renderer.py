@@ -161,6 +161,79 @@ class TestNumpyAudioRendererInit:
         """table_map viene conservato."""
         assert renderer.table_map is table_map
 
+    def test_default_audio_format_is_aiff(self, renderer):
+        """audio_format di default e' AIFF."""
+        from rendering.audio_format import DEFAULT_FORMAT
+        assert renderer.audio_format == DEFAULT_FORMAT
+
+    def test_accepts_wav_format(self, sample_registry, window_registry, table_map):
+        """Accetta audio_format WAV."""
+        from rendering.audio_format import FORMATS
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+            audio_format=FORMATS['wav'],
+        )
+        assert r.audio_format == FORMATS['wav']
+
+
+# =============================================================================
+# 1b. TEST FORMATO OUTPUT
+# =============================================================================
+
+class TestAudioFormatOutput:
+    """Verifica che sf.write usi il formato corretto."""
+
+    def test_wav_format_passed_to_sf_write(self, sample_registry, window_registry, table_map, tmp_path):
+        """Con FORMATS['wav'], sf.write riceve format='WAV'."""
+        from rendering.audio_format import FORMATS
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+            audio_format=FORMATS['wav'],
+        )
+        stream = make_mock_stream()
+        output_path = str(tmp_path / 'test.wav')
+        with patch('rendering.numpy_audio_renderer.sf.write') as mock_write:
+            r.render_single_stream(stream, output_path)
+            _, _, _, kwargs = mock_write.call_args[0], mock_write.call_args[0], mock_write.call_args[0], mock_write.call_args[1]
+            assert kwargs.get('format') == 'WAV'
+
+    def test_flac_format_and_subtype_passed_to_sf_write(self, sample_registry, window_registry, table_map, tmp_path):
+        """Con FORMATS['flac'], sf.write riceve format='FLAC' e subtype='PCM_24'."""
+        from rendering.audio_format import FORMATS
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+            audio_format=FORMATS['flac'],
+        )
+        stream = make_mock_stream()
+        output_path = str(tmp_path / 'test.flac')
+        with patch('rendering.numpy_audio_renderer.sf.write') as mock_write:
+            r.render_single_stream(stream, output_path)
+            kwargs = mock_write.call_args[1]
+            assert kwargs.get('format') == 'FLAC'
+            assert kwargs.get('subtype') == 'PCM_24'
+
+    def test_merged_streams_wav_format(self, sample_registry, window_registry, table_map, tmp_path):
+        """render_merged_streams usa format WAV con FORMATS['wav']."""
+        from rendering.audio_format import FORMATS
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+            audio_format=FORMATS['wav'],
+        )
+        streams = [make_mock_stream('s1', onset=0.0), make_mock_stream('s2', onset=0.5)]
+        output_path = str(tmp_path / 'mix.wav')
+        with patch('rendering.numpy_audio_renderer.sf.write') as mock_write:
+            r.render_merged_streams(streams, output_path)
+            kwargs = mock_write.call_args[1]
+            assert kwargs.get('format') == 'WAV'
+
 
 # =============================================================================
 # 2. TEST RENDER STREAM BASIC

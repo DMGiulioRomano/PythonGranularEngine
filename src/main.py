@@ -65,6 +65,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             cache_manager = StreamCacheManager(cache_path=cache_path)
             print(f"[CACHE] Manifest: {cache_path}")
 
+        from rendering.audio_format import DEFAULT_FORMAT
         return RendererFactory.create(
             'numpy',
             sample_registry=sample_reg,
@@ -73,6 +74,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             output_sr=kwargs.get('output_sr', 48000),
             cache_manager=cache_manager,
             stream_data_map=generator.stream_data_map,
+            audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
         )
 
     if renderer_type == 'csound':
@@ -122,6 +124,7 @@ def main():
             "Uso: python main.py <file.yml> [output.aif] "
             "[--visualize] [--show-static] [--per-stream] "
             "[--renderer csound|numpy] "
+            "[--format aiff|wav|flac] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
@@ -212,6 +215,22 @@ def main():
             if idx + 1 < len(sys.argv):
                 sco_dir = sys.argv[idx + 1]
 
+    # --format aiff|wav|flac (default: aiff)
+    from rendering.audio_format import FORMATS, DEFAULT_FORMAT
+    audio_format = DEFAULT_FORMAT
+    if '--format' in sys.argv:
+        idx = sys.argv.index('--format')
+        if idx + 1 < len(sys.argv):
+            fmt_label = sys.argv[idx + 1].lower()
+            if fmt_label not in FORMATS:
+                print(f"Formato non supportato: '{fmt_label}'. Usa: aiff, wav, flac")
+                sys.exit(1)
+            audio_format = FORMATS[fmt_label]
+
+    # Adatta il default output_file all'estensione del formato scelto
+    if output_file == 'output.aif' and audio_format.extension != '.aif':
+        output_file = f'output{audio_format.extension}'
+
     yaml_basename = os.path.splitext(os.path.basename(yaml_file))[0]
     configure_clip_logger(
         console_enabled=False,
@@ -248,6 +267,7 @@ def main():
             cache_dir=cache_dir,
             yaml_basename=yaml_basename,
             sco_dir=sco_dir,
+            audio_format=audio_format,
         )
 
         # Garbage collection: rimuove stream orfani (rimossi/rinominati nel YAML)
@@ -260,11 +280,13 @@ def main():
                     current_stream_ids=current_ids,
                     aif_dir=os.path.dirname(os.path.abspath(output_file)),
                     aif_prefix=yaml_basename,
+                    ext=audio_format.extension,
                 )
                 if removed:
                     print(f"[CACHE] GC: rimossi {len(removed)} stream orfani: {removed}")
 
-        engine = RenderingEngine(renderer)
+        from rendering.naming_strategy import DefaultNamingStrategy
+        engine = RenderingEngine(renderer, naming_strategy=DefaultNamingStrategy(ext=audio_format.extension))
         mode = StemsRenderMode() if per_stream else MixRenderMode()
         generated = engine.render(
             streams=generator.streams,
