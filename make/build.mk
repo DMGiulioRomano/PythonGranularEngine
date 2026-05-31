@@ -17,9 +17,15 @@ RENDERER ?= csound
 # --- Logica condizionale per flags ---
 PYFLAGS  :=
 ALL_PRE  :=
+FORMAT_EXT = $(if $(filter wav,$(FORMAT)),.wav,$(if $(filter flac,$(FORMAT)),.flac,.aif))
 
 ifeq ($(CACHE), true)
 PRECLEAN := false
+endif
+
+# 0. Se FORMAT e' impostato (aiff|wav|flac), aggiungi --format
+ifdef FORMAT
+PYFLAGS += --format $(FORMAT)
 endif
 
 # 1. Se AUTOVISUAL e' true, aggiungi --visualize
@@ -145,7 +151,7 @@ all: $(ALL_PRE) stems-build
 .PHONY: stems-build
 stems-build: venv-setup $(SFDIR) $(CACHEDIR)
 	@echo "[NUMPY][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
-	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif --renderer numpy $(PYFLAGS)
+	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE)$(FORMAT_EXT) --renderer numpy $(PYFLAGS)
 	$(autopen_stems)
 
 else
@@ -170,7 +176,7 @@ all: $(ALL_PRE) stems-build
 .PHONY: stems-build
 stems-build: venv-setup $(SFDIR) $(LOGDIR) $(CACHEDIR)
 	@echo "[CSOUND][STEMS] Rendering YAML → AIF (Python invoca csound)..."
-	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE).aif \
+	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE)$(FORMAT_EXT) \
 		--renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
 	$(autopen_stems)
 
@@ -196,11 +202,11 @@ ifeq ($(RENDERER), numpy)
 ifeq ($(TEST), true)
 all: $(ALL_PRE) $(AIF_FILES)
 else
-all: $(ALL_PRE) $(SFDIR)/$(FILE).aif
+all: $(ALL_PRE) $(SFDIR)/$(FILE)$(FORMAT_EXT)
 endif
 
 # YAML → AIF (Python, una sola fase)
-$(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
+$(SFDIR)/%$(FORMAT_EXT): $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
 	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer numpy $(PYFLAGS)
 	$(autopen_single)
 
@@ -219,11 +225,11 @@ CSOUND_FLAGS := \
 ifeq ($(TEST), true)
 all: $(ALL_PRE) $(AIF_FILES)
 else
-all: $(ALL_PRE) $(SFDIR)/$(FILE).aif
+all: $(ALL_PRE) $(SFDIR)/$(FILE)$(FORMAT_EXT)
 endif
 
 # YAML → AIF (Python, una sola fase: Python invoca csound internamente)
-$(SFDIR)/%.aif: $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
+$(SFDIR)/%$(FORMAT_EXT): $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
 	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
 	$(autopen_single)
 

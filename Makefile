@@ -62,6 +62,7 @@ TEST ?= false
 PRECLEAN ?=true
 STEMS ?= true
 RENDERER ?= numpy
+FORMAT ?= aiff
 REAPER ?= true
 # Default: nome .rpp = nome YAML in $(SFDIR), accanto agli .aif. Multi-tab per YAML (vedi issue #17)
 REAPER_PATH ?= $(SFDIR)/$(FILE).rpp
@@ -128,6 +129,7 @@ help:
 	@echo "  REAPER_PATH=file.rpp     - Path output .rpp (default: \$$(SFDIR)/\$$(FILE).rpp)"
 	@echo "  AUTOKILL_REAPER=true/false - Chiudi REAPER prima del build e riapri dopo"
 	@echo "  REAPER_REUSE_TAB=true/false - Chiudi tab esistente stesso .rpp e riapri (single-tab reload)"
+	@echo "  FORMAT=aiff|wav|flac     - Formato audio output (default: aiff)"
 
 .PHONY: install-system-deps check-system-deps
 
