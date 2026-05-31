@@ -85,6 +85,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- Macro `autopen_stems` in `make/build.mk`: il glob `*.aif` hardcoded è stato
+  sostituito con `*$(FORMAT_EXT)`, così con `FORMAT=wav` o `FORMAT=flac` il
+  comando `AUTOPEN=true` apre i file con l'estensione corretta invece di non
+  trovare nulla. Nessuna regressione: `FORMAT_EXT` defaults a `.aif`. Risolve
+  issue #77.
+
 - Naming dei file stem `.aif` in STEMS mode: separatore tra basename del
   progetto e `stream_id` cambiato da `_` a `__` (issue #56), per
   allinearsi al protocollo del server PGE-ui (`server.py` glob,
