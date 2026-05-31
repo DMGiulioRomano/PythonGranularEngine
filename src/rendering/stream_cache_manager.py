@@ -121,12 +121,13 @@ class StreamCacheManager:
         stream_dicts: List[dict],
         aif_dir: Optional[str],
         aif_prefix: Optional[str] = None,
+        ext: str = '.aif',
     ) -> List[dict]:
         dirty = []
         for d in stream_dicts:
             stream_id = d.get('stream_id', '')
             if aif_dir is not None:
-                filename = f"{aif_prefix}__{stream_id}.aif" if aif_prefix else f"{stream_id}.aif"
+                filename = f"{aif_prefix}__{stream_id}{ext}" if aif_prefix else f"{stream_id}{ext}"
                 aif_path = os.path.join(aif_dir, filename)
             else:
                 aif_path = None
@@ -150,6 +151,7 @@ class StreamCacheManager:
         current_stream_ids: List[str],
         aif_dir: Optional[str] = None,
         aif_prefix: Optional[str] = None,
+        ext: str = '.aif',
     ) -> List[str]:
         """
         Rimuove dal manifest le entry di stream non piu' presenti nel YAML corrente.
@@ -169,7 +171,7 @@ class StreamCacheManager:
 
         for sid in stale_ids:
             if aif_dir is not None:
-                filename = f"{aif_prefix}__{sid}.aif" if aif_prefix else f"{sid}.aif"
+                filename = f"{aif_prefix}__{sid}{ext}" if aif_prefix else f"{sid}{ext}"
                 aif_path = os.path.join(aif_dir, filename)
                 if os.path.exists(aif_path):
                     os.unlink(aif_path)

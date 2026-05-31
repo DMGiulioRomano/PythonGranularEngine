@@ -590,3 +590,63 @@ class TestDoubleUnderscoreSeparator:
         )
 
         assert not aif.exists()
+
+
+# =============================================================================
+# 8. ESTENSIONE CONFIGURABILE (issue #75)
+# =============================================================================
+
+class TestConfigurableExtension:
+    """
+    get_dirty_stream_dicts e garbage_collect accettano parametro ext
+    per supportare formati audio diversi da .aif (WAV, FLAC).
+    """
+
+    def test_dirty_detection_uses_wav_ext(self, manager, tmp_path):
+        """ext='.wav': il cache manager cerca <prefix>__<sid>.wav."""
+        stream_dict = {'stream_id': 's1', 'sample': 'a.wav'}
+        manager.update_after_build([stream_dict])
+
+        (tmp_path / 'PGE_test__s1.wav').touch()
+
+        dirty = manager.get_dirty_stream_dicts(
+            [stream_dict],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+            ext='.wav',
+        )
+
+        assert dirty == []
+
+    def test_dirty_detection_wav_file_missing(self, manager, tmp_path):
+        """ext='.wav': file .wav assente → stream DIRTY."""
+        stream_dict = {'stream_id': 's1', 'sample': 'a.wav'}
+        manager.update_after_build([stream_dict])
+
+        # Solo .aif presente, non .wav
+        (tmp_path / 'PGE_test__s1.aif').touch()
+
+        dirty = manager.get_dirty_stream_dicts(
+            [stream_dict],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+            ext='.wav',
+        )
+
+        assert dirty == [stream_dict]
+
+    def test_gc_deletes_wav_orphan(self, manager, two_stream_dicts, tmp_path):
+        """ext='.wav': garbage_collect cancella file .wav orfano."""
+        manager.update_after_build(two_stream_dicts)
+
+        wav_s2 = tmp_path / 'PGE_test__s2.wav'
+        wav_s2.touch()
+
+        manager.garbage_collect(
+            current_stream_ids=['s1'],
+            aif_dir=str(tmp_path),
+            aif_prefix='PGE_test',
+            ext='.wav',
+        )
+
+        assert not wav_s2.exists()

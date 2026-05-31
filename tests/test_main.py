@@ -758,7 +758,7 @@ class TestRendererFlag:
     # -------------------------------------------------------------------------
 
     def test_renderer_numpy_creates_rendering_engine_with_renderer(self, mocks):
-        """RenderingEngine viene istanziato con il renderer creato dalla factory."""
+        """RenderingEngine viene istanziato con il renderer e una naming_strategy."""
         r = self._make_numpy_modules()
         modules, renderer_instance, engine_cls = r[0], r[2], r[7]
         self._setup_generator_for_numpy(mocks)
@@ -767,7 +767,10 @@ class TestRendererFlag:
             with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
                 mocks['main'].main()
 
-        engine_cls.assert_called_once_with(renderer_instance)
+        engine_cls.assert_called_once()
+        call_args = engine_cls.call_args
+        assert call_args.args[0] is renderer_instance
+        assert call_args.kwargs.get('naming_strategy') is not None
 
     def test_renderer_numpy_default_uses_mix_mode(self, mocks):
         """Senza --per-stream, engine.render viene chiamato con MixRenderMode."""
@@ -1238,3 +1241,83 @@ class TestReaperExport:
         call_args = writer.write.call_args
         rpp_path = call_args.kwargs.get('output_path') or call_args.args[2]
         assert rpp_path == '/custom/project.rpp'
+
+
+# =============================================================================
+# TEST FLAG --format (issue #75)
+# =============================================================================
+
+class TestFormatFlag:
+    """
+    Verifica il parsing di --format e la propagazione del formato audio.
+
+    Comportamenti testati:
+    - Default invariato: output.aif senza --format
+    - --format wav: default output diventa output.wav
+    - --format flac: default output diventa output.flac
+    - --format invalid: exit(1)
+    - Output esplicito: estensione NON viene modificata
+    - audio_format passato a RendererFactory.create (renderer numpy)
+    - RenderingEngine istanziato con DefaultNamingStrategy con ext corretta
+    """
+
+    def _run(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+
+    def test_default_output_unchanged_without_format_flag(self, mocks):
+        """Senza --format, default output rimane output.aif."""
+        self._run(mocks, ['main.py', 'test.yml'])
+        call_kwargs = mocks['engine_instance'].render.call_args.kwargs
+        assert call_kwargs['output_path'] == 'output.aif'
+
+    def test_format_wav_changes_default_output(self, mocks):
+        """--format wav → default output diventa output.wav."""
+        self._run(mocks, ['main.py', 'test.yml', '--format', 'wav'])
+        call_kwargs = mocks['engine_instance'].render.call_args.kwargs
+        assert call_kwargs['output_path'] == 'output.wav'
+
+    def test_format_flac_changes_default_output(self, mocks):
+        """--format flac → default output diventa output.flac."""
+        self._run(mocks, ['main.py', 'test.yml', '--format', 'flac'])
+        call_kwargs = mocks['engine_instance'].render.call_args.kwargs
+        assert call_kwargs['output_path'] == 'output.flac'
+
+    def test_format_aiff_keeps_aif_default(self, mocks):
+        """--format aiff → default output rimane output.aif."""
+        self._run(mocks, ['main.py', 'test.yml', '--format', 'aiff'])
+        call_kwargs = mocks['engine_instance'].render.call_args.kwargs
+        assert call_kwargs['output_path'] == 'output.aif'
+
+    def test_explicit_output_not_overridden(self, mocks):
+        """Output esplicito non viene modificato da --format."""
+        self._run(mocks, ['main.py', 'test.yml', 'custom/out.aif', '--format', 'wav'])
+        call_kwargs = mocks['engine_instance'].render.call_args.kwargs
+        assert call_kwargs['output_path'] == 'custom/out.aif'
+
+    def test_invalid_format_exits_with_1(self, mocks):
+        """--format con valore non supportato → exit(1)."""
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', '--format', 'mp3']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+    def test_wav_format_passed_to_renderer_factory(self, mocks):
+        """--format wav → RendererFactory.create riceve audio_format con extension .wav."""
+        self._run(mocks, ['main.py', 'test.yml', '--format', 'wav', '--renderer', 'numpy'])
+        call_kwargs = mocks['RendererFactory'].create.call_args.kwargs
+        assert call_kwargs['audio_format'].extension == '.wav'
+
+    def test_default_format_passed_to_renderer_factory(self, mocks):
+        """Senza --format → RendererFactory.create riceve audio_format AIFF (.aif)."""
+        self._run(mocks, ['main.py', 'test.yml', '--renderer', 'numpy'])
+        call_kwargs = mocks['RendererFactory'].create.call_args.kwargs
+        assert call_kwargs['audio_format'].extension == '.aif'
+
+    def test_wav_format_engine_gets_naming_strategy_with_wav_ext(self, mocks):
+        """--format wav → RenderingEngine istanziato con naming_strategy ext='.wav'."""
+        self._run(mocks, ['main.py', 'test.yml', '--format', 'wav'])
+        engine_call_kwargs = mocks['RenderingEngine'].call_args.kwargs
+        naming = engine_call_kwargs.get('naming_strategy')
+        assert naming is not None
+        assert naming.ext == '.wav'

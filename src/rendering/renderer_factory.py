@@ -59,6 +59,7 @@ class RendererFactory:
 
         if renderer_type == 'numpy':
             from rendering.numpy_audio_renderer import NumpyAudioRenderer
+            from rendering.audio_format import DEFAULT_FORMAT
             return NumpyAudioRenderer(
                 sample_registry=kwargs['sample_registry'],
                 window_registry=kwargs['window_registry'],
@@ -66,6 +67,7 @@ class RendererFactory:
                 output_sr=kwargs.get('output_sr', 48000),
                 cache_manager=kwargs.get('cache_manager'),
                 stream_data_map=kwargs.get('stream_data_map'),
+                audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
             )
 
         if renderer_type == 'csound':
