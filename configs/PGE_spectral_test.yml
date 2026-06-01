@@ -11,7 +11,7 @@ streams:
   - stream_id: "spectral_8voci"
     onset: 0.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     grain:
       duration: 0.1
     voices:
@@ -29,7 +29,7 @@ streams:
   - stream_id: "confronto_chord"
     onset: 10.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.1
@@ -43,7 +43,7 @@ streams:
   - stream_id: "confronto_step"
     onset: 20.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.1
@@ -61,7 +61,7 @@ streams:
   - stream_id: "spectral_3voci"
     onset: 30.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.12
@@ -78,7 +78,7 @@ streams:
   - stream_id: "spectral_pan"
     onset: 40.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.1
@@ -98,7 +98,7 @@ streams:
   - stream_id: "spectral_max_partial"
     onset: 50.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.1

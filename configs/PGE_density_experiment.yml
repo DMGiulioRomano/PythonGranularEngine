@@ -42,7 +42,7 @@
 # COSTANTI:
 #   stream_duration: 8.0s
 #   slot: 9.0s (8s stream + 1s gap)
-#   sample: "pino2.wav"
+#   sample: "weNeedToTalkAboutIt.wav"
 #   num_voices (dove presente): 4
 #
 # TABELLA DENSITY LADDER (sezioni C-H):
@@ -70,7 +70,7 @@ streams:
   - stream_id: "A1_ff1_d10equiv_novoice"
     onset: 0.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.1
@@ -79,7 +79,7 @@ streams:
   - stream_id: "A2_ff1_d50equiv_novoice"
     onset: 9.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.02
@@ -88,7 +88,7 @@ streams:
   - stream_id: "A3_ff1_d100equiv_novoice"
     onset: 18.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -97,7 +97,7 @@ streams:
   - stream_id: "A4_ff1_d200equiv_novoice"
     onset: 27.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.005
@@ -106,7 +106,7 @@ streams:
   - stream_id: "A5_ff1_d333equiv_novoice"
     onset: 36.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.003
@@ -120,7 +120,7 @@ streams:
   - stream_id: "B1_ff1_4v_pitch_step3"
     onset: 45.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -137,7 +137,7 @@ streams:
   - stream_id: "B2_ff1_4v_onset_linear"
     onset: 54.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -154,7 +154,7 @@ streams:
   - stream_id: "B3_ff1_4v_pointer_linear"
     onset: 63.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -171,7 +171,7 @@ streams:
   - stream_id: "B4_ff1_4v_pointer_stoch"
     onset: 72.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -188,7 +188,7 @@ streams:
   - stream_id: "B5_ff1_4v_chord_onset"
     onset: 81.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -208,7 +208,7 @@ streams:
   - stream_id: "B6_ff1_4v_full_combo"
     onset: 90.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     fill_factor: 1.0
     grain:
       duration: 0.01
@@ -240,7 +240,7 @@ streams:
   - stream_id: "C1_d10_4v_pitch_step1.5"
     onset: 99.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -257,7 +257,7 @@ streams:
   - stream_id: "C2_d50_4v_pitch_step3"
     onset: 108.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -274,7 +274,7 @@ streams:
   - stream_id: "C3_d100_4v_pitch_step5"
     onset: 117.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -291,7 +291,7 @@ streams:
   - stream_id: "C4_d200_4v_pitch_step7"
     onset: 126.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -308,7 +308,7 @@ streams:
   - stream_id: "C5_d300_4v_pitch_step12"
     onset: 135.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
@@ -340,7 +340,7 @@ streams:
   - stream_id: "D1_d10_4v_onset_step0.02"
     onset: 144.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -357,7 +357,7 @@ streams:
   - stream_id: "D2_d50_4v_onset_step0.05"
     onset: 153.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -374,7 +374,7 @@ streams:
   - stream_id: "D3_d100_4v_onset_step0.1"
     onset: 162.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -391,7 +391,7 @@ streams:
   - stream_id: "D4_d200_4v_onset_step0.2"
     onset: 171.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -408,7 +408,7 @@ streams:
   - stream_id: "D5_d300_4v_onset_step0.4"
     onset: 180.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
@@ -433,7 +433,7 @@ streams:
   - stream_id: "E1_d10_4v_ptr_stoch0.01"
     onset: 189.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -450,7 +450,7 @@ streams:
   - stream_id: "E2_d50_4v_ptr_stoch0.05"
     onset: 198.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -467,7 +467,7 @@ streams:
   - stream_id: "E3_d100_4v_ptr_stoch0.1"
     onset: 207.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -484,7 +484,7 @@ streams:
   - stream_id: "E4_d200_4v_ptr_stoch0.2"
     onset: 216.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -501,7 +501,7 @@ streams:
   - stream_id: "E5_d300_4v_ptr_stoch0.4"
     onset: 225.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
@@ -526,7 +526,7 @@ streams:
   - stream_id: "F1_d10_4v_chord_dom7"
     onset: 234.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -543,7 +543,7 @@ streams:
   - stream_id: "F2_d50_4v_chord_dom7"
     onset: 243.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -560,7 +560,7 @@ streams:
   - stream_id: "F3_d100_4v_chord_dom7"
     onset: 252.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -577,7 +577,7 @@ streams:
   - stream_id: "F4_d200_4v_chord_dom7"
     onset: 261.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -594,7 +594,7 @@ streams:
   - stream_id: "F5_d300_4v_chord_dom7"
     onset: 270.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
@@ -619,7 +619,7 @@ streams:
   - stream_id: "G1_d10_4v_pitch_onset"
     onset: 279.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -639,7 +639,7 @@ streams:
   - stream_id: "G2_d50_4v_pitch_onset"
     onset: 288.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -659,7 +659,7 @@ streams:
   - stream_id: "G3_d100_4v_pitch_onset"
     onset: 297.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -679,7 +679,7 @@ streams:
   - stream_id: "G4_d200_4v_pitch_onset"
     onset: 306.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -699,7 +699,7 @@ streams:
   - stream_id: "G5_d300_4v_pitch_onset"
     onset: 315.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
@@ -727,7 +727,7 @@ streams:
   - stream_id: "H1_d10_4v_pitch_pointer"
     onset: 324.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -747,7 +747,7 @@ streams:
   - stream_id: "H2_d50_4v_pitch_pointer"
     onset: 333.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -767,7 +767,7 @@ streams:
   - stream_id: "H3_d100_4v_pitch_pointer"
     onset: 342.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -787,7 +787,7 @@ streams:
   - stream_id: "H4_d200_4v_pitch_pointer"
     onset: 351.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -807,7 +807,7 @@ streams:
   - stream_id: "H5_d300_4v_pitch_pointer"
     onset: 360.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
@@ -835,7 +835,7 @@ streams:
   - stream_id: "I1_d10_4v_full"
     onset: 369.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 10
     grain:
       duration: 0.01
@@ -858,7 +858,7 @@ streams:
   - stream_id: "I2_d50_4v_full"
     onset: 378.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 50
     grain:
       duration: 0.01
@@ -881,7 +881,7 @@ streams:
   - stream_id: "I3_d100_4v_full"
     onset: 387.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 100
     grain:
       duration: 0.01
@@ -904,7 +904,7 @@ streams:
   - stream_id: "I4_d200_4v_full"
     onset: 396.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 200
     grain:
       duration: 0.01
@@ -927,7 +927,7 @@ streams:
   - stream_id: "I5_d300_4v_full"
     onset: 405.0
     duration: 8.0
-    sample: "pino2.wav"
+    sample: "weNeedToTalkAboutIt.wav"
     density: 300
     grain:
       duration: 0.01
