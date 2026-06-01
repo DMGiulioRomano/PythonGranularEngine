@@ -407,7 +407,7 @@ class Stream:
 
         Applica gli offset di VoiceConfig sopra i valori base:
           pitch_ratio  *= 2^(pitch_offset/12)
-          pointer_pos  += pointer_offset
+          pointer_pos  = (base + pointer_offset) % sample_dur_sec
           pan          += pan_offset
           onset        += onset_offset
 
@@ -429,9 +429,12 @@ class Stream:
         if voice_config.pitch_offset != 0.0:
             pitch_ratio *= 2 ** (voice_config.pitch_offset / 12.0)
 
-        # === 2. POINTER — base + voice_offset ===
+        # === 2. POINTER — base + voice_offset, re-wrap in [0, sample_dur) ===
+        # Il modulo mappa anche offset negativi in [0, sample_dur). Così
+        # grain.pointer_pos è la posizione reale di lettura: audio e partitura
+        # usano lo stesso valore (issue #79).
         pointer_pos = self._pointer.calculate(elapsed_time, grain_dur, grain_reverse)
-        pointer_pos += voice_config.pointer_offset
+        pointer_pos = (pointer_pos + voice_config.pointer_offset) % self.sample_dur_sec
 
         # === 3. VOLUME ===
         volume = self.volume.get_value(elapsed_time)
