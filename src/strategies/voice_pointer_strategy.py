@@ -6,10 +6,17 @@ Strategy pattern per la distribuzione della posizione di lettura (pointer)
 delle voci nella sintesi granulare multi-voice.
 
 Responsabilità:
-- Calcolare l'offset di pointer (normalizzato 0.0-1.0) per una voce data al tempo t.
+- Calcolare l'offset di pointer (valore raw da YAML) per una voce data al tempo t.
 - Voce 0 restituisce sempre 0.0 (riferimento immutato).
 - Il valore è additivo con il pointer base di PointerController e il grain
   jitter già esistente (mod_range). Vedere pointer_controller.py.
+
+Unità dell'offset:
+- La strategy restituisce il valore raw (es. step=0.12) senza interpretarne
+  l'unità. L'interpretazione la decide Stream._create_grain dal flag `normalized`
+  del blocco pointer YAML: default = secondi nel sample; `normalized: true` =
+  frazione di sample_dur_sec. Lo scaling vive in Stream perché solo lì è nota
+  sample_dur_sec; la strategy resta pura.
 
 Layering pointer (da design doc):
   pointer_final = base_pointer(t)        # PointerController
@@ -43,8 +50,9 @@ class VoicePointerStrategy(ABC):
     """
     Strategy astratta per la distribuzione del pointer delle voci.
 
-    Il valore restituito è un offset normalizzato (tipicamente in [-1.0, 1.0])
-    rispetto alla posizione di lettura base dello stream.
+    Il valore restituito è l'offset raw da YAML rispetto alla posizione di
+    lettura base dello stream. L'unità (secondi o frazione di sample_dur_sec)
+    è decisa a valle da Stream._create_grain via flag `normalized`.
     Voce 0 restituisce sempre 0.0.
     """
 
@@ -59,7 +67,8 @@ class VoicePointerStrategy(ABC):
             time: tempo corrente in secondi (onset del grain).
 
         Returns:
-            Offset normalizzato (float). Voce 0 → sempre 0.0.
+            Offset raw (float), unità decisa a valle dal flag `normalized`.
+            Voce 0 → sempre 0.0.
         """
         pass
 

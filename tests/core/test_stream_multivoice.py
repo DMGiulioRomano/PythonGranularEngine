@@ -91,6 +91,7 @@ def _make_stream(
     num_voices_fn=None,
     scatter_fn=None,
     density_side_effect=None,
+    voice_pointer_normalized=False,
 ):
     """Crea uno Stream con tutti i controller mockati e VoiceManager reale/mock.
 
@@ -115,6 +116,7 @@ def _make_stream(
     s._window_controller = _make_mock_window_controller()
 
     s._voice_manager = voice_manager or VoiceManager(max_voices=1)
+    s._voice_pointer_normalized = voice_pointer_normalized
 
     # density: supporta side_effect per simulare distribution > 0
     if density_side_effect is not None:
@@ -341,6 +343,63 @@ class TestGenerateGrainsVoiceOneOffsets:
         # Voce 1: 4.5 + 3.0 = 7.5 → 7.5 % 5.0 = 2.5
         voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
         assert all(p == pytest.approx(2.5) for p in voice_1_pointers)
+
+    def test_normalized_linear_offset_scaled_by_sample_dur(self):
+        """normalized=True → step interpretato come frazione del buffer.
+
+        LinearPointerStrategy(step=0.2), sample_dur_sec=5.0, base=0.3.
+        Voce 1 offset normalizzato = 0.2 * 5.0 = 1.0 → pointer = 0.3 + 1.0 = 1.3.
+        """
+        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.2))
+        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3,
+                         voice_manager=vm, voice_pointer_normalized=True)
+        s.generate_grains()
+        voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
+        assert all(p == pytest.approx(1.3) for p in voice_1_pointers)
+
+    def test_normalized_offset_rewrapped_into_buffer(self):
+        """normalized=True con offset oltre il buffer → re-wrap in [0, sample_dur).
+
+        step=0.6 normalizzato, sample_dur_sec=5.0 → offset=3.0; base=4.5
+        → 4.5 + 3.0 = 7.5 → 7.5 % 5.0 = 2.5. Wrap valido come in modalità secondi.
+        """
+        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.6))
+        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5,
+                         voice_manager=vm, voice_pointer_normalized=True)
+        s.generate_grains()
+        for voice_grains in s.voices:
+            for g in voice_grains:
+                assert 0.0 <= g.pointer_pos < s.sample_dur_sec
+        voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
+        assert all(p == pytest.approx(2.5) for p in voice_1_pointers)
+
+    def test_normalized_stochastic_offset_scaled_by_sample_dur(self):
+        """normalized=True con stochastic → stesso cache[-1,1]*range, scalato per sample_dur_sec.
+
+        Stesso stream_id → stesso seed → stesso fattore di cache. L'offset
+        normalizzato deve essere quello in secondi moltiplicato per sample_dur_sec
+        (range piccolo + base centrata → nessun wrap a confondere il confronto).
+        """
+        from strategies.voice_pointer_strategy import StochasticPointerStrategy
+        vm_sec = VoiceManager(
+            max_voices=2,
+            pointer_strategy=StochasticPointerStrategy(pointer_range=0.1, stream_id='seed_x'),
+        )
+        vm_norm = VoiceManager(
+            max_voices=2,
+            pointer_strategy=StochasticPointerStrategy(pointer_range=0.1, stream_id='seed_x'),
+        )
+        s_sec = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=2.5, voice_manager=vm_sec)
+        s_norm = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=2.5,
+                              voice_manager=vm_norm, voice_pointer_normalized=True)
+        s_sec.generate_grains()
+        s_norm.generate_grains()
+        off_sec = s_sec.voices[1][0].pointer_pos - 2.5
+        off_norm = s_norm.voices[1][0].pointer_pos - 2.5
+        assert off_sec != pytest.approx(0.0)  # cache non nullo
+        assert off_norm == pytest.approx(off_sec * s_norm.sample_dur_sec)
 
     def test_voice_1_onset_offset_applied(self):
         """Voce 1 con LinearOnsetStrategy(step=0.5) → primo onset = onset + 0.0 + 0.5."""
