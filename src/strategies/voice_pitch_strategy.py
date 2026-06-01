@@ -15,7 +15,7 @@ Design:
 - StepPitchStrategy: voce i = i × step
 - RangePitchStrategy: distribuiti linearmente in [0, semitone_range]
 - ChordPitchStrategy: offsets da nome accordo, extend all'ottava se num_voices > chord
-- StochasticPitchStrategy: offset fisso per voce, seed deterministico
+- StochasticPitchStrategy: offset fisso per voce (stabile entro un run)
 - VOICE_PITCH_STRATEGIES: registry globale {nome: classe}
 - register_voice_pitch_strategy(): estensibilità dinamica
 - VoicePitchStrategyFactory: factory con create() statico
@@ -201,10 +201,13 @@ class ChordPitchStrategy(VoicePitchStrategy):
 
 class StochasticPitchStrategy(VoicePitchStrategy):
     """
-    Offset per voce con seed deterministico; la direzione è fissa, la magnitudine
+    Offset fisso per voce entro un singolo run; la direzione è fissa, la magnitudine
     può variare nel tempo se semitone_range è un Envelope.
 
-    Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
+    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
+    riproducibile fra processi diversi. hash() su stringa è randomizzato
+    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
+    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
     _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
     Offset = _cache[vi] * semitone_range(t).
     Voce 0 → sempre 0.0.

@@ -6,7 +6,7 @@ Three components form the environment:
 
 - **YAML DSL** — a declarative language for describing granular streams: density, multi-voice architecture, envelope trajectories on all parameters, variation strategies, dephasing, and loop control. Mathematical expressions (`(pi)`, `(10/3)`) are evaluated at parse time.
 - **Graphic Score** — a time/buffer-position score generated automatically alongside the audio. Each grain is rendered as a directional arrow in the space of the source material, not in frequency space.
-- **Audio Engine** — two interchangeable renderers: Csound (via `.sco` score generation) and NumPy (direct overlap-add synthesis). The same YAML configuration produces identical results from either renderer.
+- **Audio Engine** — two interchangeable renderers: Csound (via `.sco` score generation) and NumPy (direct overlap-add synthesis). The same YAML configuration produces the same musical behaviour (density, dispersion, trajectory, voice distribution) from either renderer — not bit-identical output, since the two renderers draw independent `random` sequences for the stochastic grains.
 
 ```
 configs/*.yml
