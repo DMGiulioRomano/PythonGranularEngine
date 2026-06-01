@@ -323,6 +323,25 @@ class TestGenerateGrainsVoiceOneOffsets:
         voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
         assert all(p == pytest.approx(0.5) for p in voice_1_pointers)
 
+    def test_pointer_offset_rewrapped_into_buffer(self):
+        """Voce con offset che supera sample_dur → pointer_pos re-wrappato in [0, sample_dur).
+
+        Regressione issue #79: l'offset di voce veniva sommato DOPO il wrap base,
+        lasciando grain.pointer_pos oltre sample_dur. Audio ok (renderer ri-wrappa),
+        ma la partitura clippava le voci.
+        """
+        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=3.0))
+        # sample_dur_sec=5.0 (default _make_stream); base=4.5, voce 1 offset=3.0 → 7.5
+        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5, voice_manager=vm)
+        s.generate_grains()
+        for voice_grains in s.voices:
+            for g in voice_grains:
+                assert 0.0 <= g.pointer_pos < s.sample_dur_sec
+        # Voce 1: 4.5 + 3.0 = 7.5 → 7.5 % 5.0 = 2.5
+        voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
+        assert all(p == pytest.approx(2.5) for p in voice_1_pointers)
+
     def test_voice_1_onset_offset_applied(self):
         """Voce 1 con LinearOnsetStrategy(step=0.5) → primo onset = onset + 0.0 + 0.5."""
         from strategies.voice_onset_strategy import LinearOnsetStrategy

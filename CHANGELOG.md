@@ -85,6 +85,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- `Stream._create_grain` (`src/core/stream.py`): l'offset di voce sul pointer
+  veniva sommato *dopo* il wrap base, lasciando `grain.pointer_pos` oltre
+  `sample_dur` per le voci con offset positivo. Ora la somma è re-wrappata
+  in `[0, sample_dur)` con `% self.sample_dur_sec`. L'audio era già corretto
+  (`GrainRenderer` e Csound ri-wrappano la traiettoria di lettura), ma la
+  partitura (`ScoreVisualizer`) clippava le voci sopra il bordo del buffer,
+  facendole "ricomparire" tutte insieme al wrap della voce 0 invece che
+  sfasate. Ora `grain.pointer_pos` è la posizione reale di lettura, condivisa
+  da audio e partitura. Risolve issue #79.
 - Docstring delle voice strategy (`voice_pointer_strategy.py`,
   `voice_onset_strategy.py`, `voice_pitch_strategy.py`, `voice_pan_strategy.py`):
   rimosso il claim falso «seed deterministico / riproducibile tra sessioni».
