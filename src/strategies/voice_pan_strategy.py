@@ -14,7 +14,7 @@ Responsabilita':
 Design:
 - VoicePanStrategy (ABC): interfaccia comune
 - LinearPanStrategy: distribuzione deterministica equidistante
-- RandomPanStrategy: distribuzione stocastica per voce, seed deterministico
+- RandomPanStrategy: distribuzione stocastica per voce (stabile entro un run)
 - AdditivePanStrategy: offset fisso additivo uguale per tutte le voci
 - VOICE_PAN_STRATEGIES: registry globale {nome: classe}
 - register_voice_pan_strategy(): estensibilita' dinamica
@@ -127,7 +127,10 @@ class RandomPanStrategy(VoicePanStrategy):
 
     _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
     Offset = _cache[vi] * spread / 2.
-    Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
+    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
+    riproducibile fra processi diversi. hash() su stringa è randomizzato
+    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
+    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
     Voce 0 → sempre 0.0.
 
     Uso tipico: posizionamento "random but bounded" delle voci, texture

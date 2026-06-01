@@ -15,7 +15,7 @@ Design:
 - VoiceOnsetStrategy (ABC): interfaccia comune
 - LinearOnsetStrategy: voce i = i × step
 - GeometricOnsetStrategy: spaziatura esponenziale step * base^(i-1)
-- StochasticOnsetStrategy: offset fisso per voce, seed deterministico, in [0, max_offset]
+- StochasticOnsetStrategy: offset fisso per voce (stabile entro un run), in [0, max_offset]
 - VOICE_ONSET_STRATEGIES: registry globale {nome: classe}
 - register_voice_onset_strategy(): estensibilità dinamica
 - VoiceOnsetStrategyFactory: factory con create() statico
@@ -106,10 +106,13 @@ class GeometricOnsetStrategy(VoiceOnsetStrategy):
 
 class StochasticOnsetStrategy(VoiceOnsetStrategy):
     """
-    Offset per voce con seed deterministico; la magnitudine può variare nel
+    Offset fisso per voce entro un singolo run; la magnitudine può variare nel
     tempo se max_offset è un Envelope.
 
-    Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
+    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
+    riproducibile fra processi diversi. hash() su stringa è randomizzato
+    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
+    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
     _cache[voice_index] memorizza il fattore normalizzato in [0, 1].
     Offset = _cache[vi] * max_offset(t).
     Voce 0 → sempre 0.0.

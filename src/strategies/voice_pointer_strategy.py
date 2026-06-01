@@ -19,7 +19,7 @@ Layering pointer (da design doc):
 Design:
 - VoicePointerStrategy (ABC): interfaccia comune
 - LinearPointerStrategy: voce i = i × step (offset regolare)
-- StochasticPointerStrategy: offset fisso per voce, seed deterministico
+- StochasticPointerStrategy: offset fisso per voce (stabile entro un run)
 - VOICE_POINTER_STRATEGIES: registry globale {nome: classe}
 - register_voice_pointer_strategy(): estensibilità dinamica
 - VoicePointerStrategyFactory: factory con create() statico
@@ -89,10 +89,13 @@ class LinearPointerStrategy(VoicePointerStrategy):
 
 class StochasticPointerStrategy(VoicePointerStrategy):
     """
-    Offset per voce con seed deterministico; la magnitudine può variare nel
+    Offset fisso per voce entro un singolo run; la magnitudine può variare nel
     tempo se pointer_range è un Envelope.
 
-    Seed = hash(stream_id + str(voice_index)) — riproducibile tra sessioni.
+    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
+    riproducibile fra processi diversi. hash() su stringa è randomizzato
+    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
+    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
     _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
     Offset = _cache[vi] * pointer_range(t).
     Voce 0 → sempre 0.0.

@@ -85,6 +85,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- Docstring delle voice strategy (`voice_pointer_strategy.py`,
+  `voice_onset_strategy.py`, `voice_pitch_strategy.py`, `voice_pan_strategy.py`):
+  rimosso il claim falso «seed deterministico / riproducibile tra sessioni».
+  `hash()` su stringa è randomizzato per-processo (`PYTHONHASHSEED` non fissato),
+  quindi l'offset per voce è stabile solo *entro* un run, non fra processi. Le
+  docstring ora descrivono accuratamente il comportamento. Corretta anche la
+  frase del README sui due renderer: stesso *comportamento musicale*, non output
+  bit-identico (sequenze `random` indipendenti per i grani stocastici). Solo
+  documentazione, nessuna modifica al comportamento. Risolve issue #76.
 - Macro `autopen_stems` in `make/build.mk`: il glob `*.aif` hardcoded è stato
   sostituito con `*$(FORMAT_EXT)`, così con `FORMAT=wav` o `FORMAT=flac` il
   comando `AUTOPEN=true` apre i file con l'estensione corretta invece di non
