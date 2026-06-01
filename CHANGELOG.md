@@ -15,7 +15,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   secondi. Default invariato (`normalized: false` → secondi), nessun breaking
   change sugli YAML esistenti. Vale per le strategie `linear` e `stochastic`;
   lo scaling avviene in `Stream._create_grain`, le strategy restano pure.
-  Risolve l'ambiguità di unità documentata in issue #80.
+  Il flag accetta solo `true`/`false`: un valore non-bool solleva
+  `InvalidFieldValueError` (nessuna coercion silenziosa, coerente con
+  `grain.reverse`). Risolve l'ambiguità di unità documentata in issue #80.
 
 - Flag `--format aiff|wav|flac` in `src/main.py` e variabile `FORMAT` nel
   Makefile: seleziona il formato audio di output (default `aiff`). Il formato

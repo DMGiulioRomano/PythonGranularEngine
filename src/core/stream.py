@@ -261,7 +261,18 @@ class Stream:
             kw = dict(v['pointer'])
             name = kw.pop('strategy')
             # Flag di unità: config del blocco, non kwarg di strategy.
-            self._voice_pointer_normalized = bool(kw.pop('normalized', False))
+            # Solo bool puro: niente coercion silenziosa (cfr. grain.reverse,
+            # envelope_builder — il progetto valida i flag, non li forza).
+            raw_normalized = kw.pop('normalized', False)
+            if not isinstance(raw_normalized, bool):
+                err = InvalidFieldValueError(
+                    field='voices.pointer.normalized',
+                    value=raw_normalized,
+                    hint="normalized accetta solo true/false (default: false).",
+                )
+                err.stream_id = self.stream_id
+                raise err
+            self._voice_pointer_normalized = raw_normalized
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}

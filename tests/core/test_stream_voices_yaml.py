@@ -222,6 +222,15 @@ class TestVoicesPointerStrategy:
         # La strategy resta pura: step ancora applicato, nessun errore kwarg.
         assert s._voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
 
+    def test_pointer_normalized_non_bool_raises(self):
+        """`normalized` non-bool → InvalidFieldValueError (no coercion silenziosa)."""
+        from shared.exceptions import InvalidFieldValueError
+        with pytest.raises(InvalidFieldValueError):
+            _build_stream({
+                'num_voices': 3,
+                'pointer': {'strategy': 'linear', 'step': 0.1, 'normalized': 'flase'},
+            })
+
     def test_no_pointer_block_pointer_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):

@@ -463,8 +463,9 @@ voices:
 ```
 
 Il flag è opzionale e vale per `linear` e `stochastic`. Lo scaling avviene in
-`Stream._create_grain`; le strategy restituiscono il valore raw. Risolve l'ambiguità
-di unità storica (issue #80).
+`Stream._create_grain`; le strategy restituiscono il valore raw. Accetta solo
+`true`/`false`: un valore non booleano solleva `InvalidFieldValueError`. Risolve
+l'ambiguità di unità storica (issue #80).
 
 ---
 
