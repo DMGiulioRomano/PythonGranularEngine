@@ -14,6 +14,10 @@ Inspired by Barry Truax's DMX-1000 (1988).
 
 **Prima di modificare un modulo esistente:** esegui `/impact-analysis`.
 
+**Impatto cross-repo:** ogni modifica alla superficie pubblica (YAML, errori,
+CLI, formati) richiede analisi d'impatto su `PGE-ls` e `PGE-ui` ed eventuale
+apertura di issue. Regola completa: @.claude/rules/cross-repo-impact.md
+
 ## Slash Commands
 
 - `/new-feature <nome>` — apre branch + avvia workflow TDD completo

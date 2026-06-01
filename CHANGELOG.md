@@ -10,6 +10,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Flag `normalized` nel blocco `voices.pointer` (YAML): opt-in per interpretare
+  l'offset di pointer di voce come **frazione di `sample_dur_sec`** anziché in
+  secondi. Default invariato (`normalized: false` → secondi), nessun breaking
+  change sugli YAML esistenti. Vale per le strategie `linear` e `stochastic`;
+  lo scaling avviene in `Stream._create_grain`, le strategy restano pure.
+  Il flag accetta solo `true`/`false`: un valore non-bool solleva
+  `InvalidFieldValueError` (nessuna coercion silenziosa, coerente con
+  `grain.reverse`). Risolve l'ambiguità di unità documentata in issue #80.
+
 - Flag `--format aiff|wav|flac` in `src/main.py` e variabile `FORMAT` nel
   Makefile: seleziona il formato audio di output (default `aiff`). Il formato
   viene propagato a `NamingStrategy` (estensione file), `NumpyAudioRenderer`

@@ -51,7 +51,11 @@ class VoiceConfig:
 
     Attributes:
         pitch_offset:   offset in semitoni
-        pointer_offset: offset normalizzato sulla posizione nel sample
+        pointer_offset: offset sulla posizione di lettura nel sample. Unità
+                        decisa dal flag `normalized` del blocco pointer YAML:
+                        default = secondi nel sample; `normalized: true` =
+                        frazione di sample_dur_sec (lo scaling avviene in
+                        Stream._create_grain, che conosce sample_dur_sec).
         pan_offset:     offset in gradi rispetto al pan base dello stream
         onset_offset:   offset in secondi rispetto all'onset base
     """

@@ -204,6 +204,12 @@ class Stream:
         from parameters.parameter import Parameter
         from parameters.parameter_definitions import GRANULAR_PARAMETERS
 
+        # Modalità unità del voice pointer offset:
+        #   False (default) → offset in secondi nel sample
+        #   True            → offset normalizzato (frazione di sample_dur_sec)
+        # Impostato dal flag `normalized:` nel blocco `pointer:` (vedi sotto).
+        self._voice_pointer_normalized = False
+
         v = params.get('voices', {})
         if not v:
             # Senza blocco voices, valori di default (nessun config necessario)
@@ -254,6 +260,19 @@ class Stream:
         if 'pointer' in v:
             kw = dict(v['pointer'])
             name = kw.pop('strategy')
+            # Flag di unità: config del blocco, non kwarg di strategy.
+            # Solo bool puro: niente coercion silenziosa (cfr. grain.reverse,
+            # envelope_builder — il progetto valida i flag, non li forza).
+            raw_normalized = kw.pop('normalized', False)
+            if not isinstance(raw_normalized, bool):
+                err = InvalidFieldValueError(
+                    field='voices.pointer.normalized',
+                    value=raw_normalized,
+                    hint="normalized accetta solo true/false (default: false).",
+                )
+                err.stream_id = self.stream_id
+                raise err
+            self._voice_pointer_normalized = raw_normalized
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
@@ -434,7 +453,10 @@ class Stream:
         # grain.pointer_pos è la posizione reale di lettura: audio e partitura
         # usano lo stesso valore (issue #79).
         pointer_pos = self._pointer.calculate(elapsed_time, grain_dur, grain_reverse)
-        pointer_pos = (pointer_pos + voice_config.pointer_offset) % self.sample_dur_sec
+        voice_pointer_offset = voice_config.pointer_offset
+        if getattr(self, '_voice_pointer_normalized', False):
+            voice_pointer_offset *= self.sample_dur_sec
+        pointer_pos = (pointer_pos + voice_pointer_offset) % self.sample_dur_sec
 
         # === 3. VOLUME ===
         volume = self.volume.get_value(elapsed_time)

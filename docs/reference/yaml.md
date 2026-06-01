@@ -7,7 +7,7 @@ sources:
   - src/engine/generator.py
   - src/parameters/
   - src/envelopes/
-last_synced_commit: 4c4fee4
+last_synced_commit: 6c1c2ec
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -448,6 +448,24 @@ voices:
     strategy: stochastic
     pointer_range: 0.2    # range massimo (scalare o envelope)
 ```
+
+**Unità dell'offset (`normalized`).** Di default l'offset di pointer è in
+**secondi** nel sample (coerente con `onset_offset`). Aggiungendo `normalized: true`
+al blocco `pointer`, lo stesso valore è interpretato come **frazione di
+`sample_dur_sec`** (es. `step: 0.12` → 12% del buffer):
+
+```yaml
+voices:
+  pointer:
+    strategy: linear
+    step: 0.12
+    normalized: true      # 0.12 = 12% del buffer (default: 0.12 secondi)
+```
+
+Il flag è opzionale e vale per `linear` e `stochastic`. Lo scaling avviene in
+`Stream._create_grain`; le strategy restituiscono il valore raw. Accetta solo
+`true`/`false`: un valore non booleano solleva `InvalidFieldValueError`. Risolve
+l'ambiguità di unità storica (issue #80).
 
 ---
 
