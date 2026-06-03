@@ -92,7 +92,6 @@ def make_stream(stream_id='s1', onset=0.0, duration=10.0,
     del s.volume
     del s.pan
     del s.pointer_start
-    del s.pitch_ratio
     del s.density
     del s.num_voices
     return s

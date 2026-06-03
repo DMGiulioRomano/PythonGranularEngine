@@ -57,8 +57,6 @@ def _make_mock_pointer(return_value=0.5):
 def _make_mock_pitch(return_value=1.0):
     pitch = Mock()
     pitch.calculate = Mock(return_value=return_value)
-    pitch.base_ratio = return_value
-    pitch.base_semitones = None
     pitch.range = 0.0
     return pitch
 
@@ -444,8 +442,8 @@ class TestCreateGrainWithVoiceConfig:
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(2.0)
 
-    def test_pitch_offset_multiplies_base_ratio(self):
-        """Se base_ratio=2.0 e pitch_offset=12 → 2.0 * 2.0 = 4.0."""
+    def test_pitch_offset_multiplies_base(self):
+        """Se il pitch base è 2.0 e pitch_offset=12 → 2.0 * 2.0 = 4.0."""
         s = _make_stream(pitch_ratio=2.0)
         vc = VoiceConfig(pitch_offset=12.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)

@@ -288,7 +288,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: chord
-        chord: dom7           # accordo di settima di dominante
+        chord: dom7           
     volume: -9
 
   # --- B10. chord — con rivolto (inversion) ------------------------------------
@@ -318,7 +318,7 @@ streams:
     voices:
       num_voices: 6
       pitch:
-        strategy: spectral    # voce i → round(12·log2(i+1)) semitoni
+        strategy: spectral    
     volume: -9
 
   # --- B12. base pitch + voices.pitch combinati --------------------------------
@@ -335,5 +335,5 @@ streams:
       num_voices: 3
       pitch:
         strategy: chord
-        chord: min            # triade minore sopra il +7 st di base
+        chord: min            
     volume: -9

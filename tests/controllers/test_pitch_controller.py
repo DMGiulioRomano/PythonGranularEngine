@@ -11,7 +11,7 @@ Coverage:
   1. Selezione unità (default, chiavi multiple → errore)
   2. calculate() ratio / semitoni / cents / quarti / ottavi / edo
   3. Compensazione grain_reverse
-  4. Properties (mode, base_ratio, base_semitones, range)
+  4. Properties (mode, range)
   5. Integrazione Envelope
   6. range + dephase (uniforme per tutte le unità, edo incluso)
   7. Edge cases e clamping ai bounds
@@ -66,18 +66,17 @@ class TestUnitSelection:
         # solo `range` (config, non unità) → resta default semitoni con base neutra
         pc = _pc(mock_config, {'range': 5.0})
         assert pc.mode == 'semitones'
-        assert pc.base_semitones == pytest.approx(0.0)
+        assert pc.value == pytest.approx(0.0)
         assert pc.range == pytest.approx(5.0)
 
     def test_default_contract_is_semitones_neutral(self, mock_config):
         # Decisione esplicita (coerente col modello voci EdoUnit(12)): il default
         # senza blocco pitch è unità semitones con valore neutro 0.0 → ratio 1.0.
-        # Contratto esposto: base_semitones=0.0, base_ratio=None.
+        # Contratto esposto: value=0.0 (neutro), unità semitones.
         pc = _pc(mock_config, {})
         assert pc.mode == 'semitones'
         assert pc.calculate(0.0) == pytest.approx(1.0)
-        assert pc.base_semitones == pytest.approx(0.0)
-        assert pc.base_ratio is None
+        assert pc.value == pytest.approx(0.0)
         assert pc.unit.name == 'semitones'
 
     @pytest.mark.parametrize("params", [
@@ -204,8 +203,6 @@ class TestPitchEdoBase:
     def test_edo_range_property_safe(self, mock_config):
         pc = _pc(mock_config, {'edo': {'divisions': 31, 'value': 4}})
         assert pc.range == 0.0
-        assert pc.base_ratio is None
-        assert pc.base_semitones is None
 
 
 # =============================================================================
@@ -230,22 +227,6 @@ class TestGrainReverse:
 # =============================================================================
 
 class TestProperties:
-
-    def test_base_ratio_when_ratio_mode(self, mock_config):
-        assert _pc(mock_config, {'ratio': 2.5}).base_ratio == 2.5
-
-    def test_base_ratio_none_when_semitones_mode(self, mock_config):
-        assert _pc(mock_config, {'semitones': 7.0}).base_ratio is None
-
-    def test_base_semitones_when_semitones_mode(self, mock_config):
-        assert _pc(mock_config, {'semitones': 7.0}).base_semitones == 7.0
-
-    def test_base_semitones_none_when_ratio_mode(self, mock_config):
-        assert _pc(mock_config, {'ratio': 2.0}).base_semitones is None
-
-    def test_base_semitones_none_when_cents_mode(self, mock_config):
-        # cents non è semitones: base_semitones None
-        assert _pc(mock_config, {'cents': 50.0}).base_semitones is None
 
     def test_range_reflects_explicit_range(self, mock_config):
         assert _pc(mock_config, {'semitones': 0.0, 'range': 12.0}).range == pytest.approx(12.0)
@@ -273,10 +254,6 @@ class TestEnvelopeIntegration:
         pc = _pc(mock_config, {'edo': {'divisions': 12, 'value': [[0, 0.0], [10, 12.0]]}})
         assert pc.calculate(0.0) == pytest.approx(1.0)
         assert pc.calculate(10.0) == pytest.approx(2.0)
-
-    def test_base_ratio_is_envelope_object(self, mock_config):
-        pc = _pc(mock_config, {'ratio': [[0, 1.0], [10, 2.0]]})
-        assert isinstance(pc.base_ratio, Envelope)
 
 
 # =============================================================================

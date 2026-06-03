@@ -585,16 +585,6 @@ class Stream:
         return self._pointer.loop_dur
 
     @property
-    def pitch_ratio(self) -> Optional[Union[float, Envelope]]:
-        """Espone pitch_ratio per ScoreVisualizer (solo se in modalità ratio)."""
-        return self._pitch.base_ratio
-    
-    @property
-    def pitch_semitones(self) -> Optional[Union[float, Envelope]]:
-        """Espone pitch_semitones per ScoreVisualizer (solo se in modalità semitoni)."""
-        return self._pitch.base_semitones
-    
-    @property
     def pitch_range(self) -> Union[float, Envelope]:
         """Espone pitch_range per ScoreVisualizer."""
         return self._pitch.range

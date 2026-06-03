@@ -1,4 +1,4 @@
-# src/pitch_controller.py
+# src/controllers/pitch_controller.py
 """
 PitchController - Gestione pitch/trasposizione per sintesi granulare
 
@@ -157,16 +157,6 @@ class PitchController:
     def value(self):
         """Valore base del pitch (Envelope o scalare) nell'unità attiva."""
         return self._active_param.value
-
-    @property
-    def base_ratio(self):
-        """Valore base se l'unità è ratio, altrimenti None (per ScoreVisualizer)."""
-        return self._active_param.value if self.mode == 'ratio' else None
-
-    @property
-    def base_semitones(self):
-        """Valore base se l'unità è semitoni, altrimenti None (per ScoreVisualizer)."""
-        return self._active_param.value if self.mode == 'semitones' else None
 
     @property
     def range(self):
