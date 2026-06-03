@@ -6,8 +6,9 @@ tags: [yaml, syntax, parameters, envelopes]
 sources:
   - src/engine/generator.py
   - src/parameters/
+  - src/strategies/
   - src/envelopes/
-last_synced_commit: 6c1c2ec
+last_synced_commit: 2cba443
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -287,7 +288,21 @@ Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
 
 ## Blocco Pitch
 
-`semitones` e `ratio` sono mutuamente esclusivi. `semitones` ha priorità.
+Una sola unità di trasposizione per blocco (gruppo esclusivo `pitch_mode`).
+La famiglia EDO (Equal Division of the Octave) converte in ratio con
+`2^(valore / N)`; `ratio` è invece un moltiplicatore diretto.
+
+| Chiave | Unità | N (divisioni/ottava) | Bounds |
+|--------|-------|----------------------|--------|
+| `semitones` | semitoni | 12 | [-36, 36] |
+| `quarter_tone` | quarti di tono | 24 | [-72, 72] |
+| `eighth_tone` | ottavi di tono | 48 | [-144, 144] |
+| `cents` | cents | 1200 | [-3600, 3600] |
+| `edo: {divisions, value}` | EDO arbitrario | N | [-3·N, 3·N] |
+| `ratio` | ratio diretto | — | [0.125, 8] |
+
+Priorità se più chiavi presenti: `semitones` > `quarter_tone` > `eighth_tone`
+> `cents` > `ratio`.
 
 ```yaml
 pitch:
@@ -298,9 +313,15 @@ pitch:
   semitones: 0            # trasposizione in semitoni (intero o float)
   semitones: [[0, -12], [30, 12]]
   range: 6                # ±variazione random in semitoni (intera)
-```
 
-Bounds: `pitch_ratio` ∈ [0.125, 8], `pitch_semitones` ∈ [-36, 36].
+  quarter_tone: 3         # quarti di tono (24-EDO)
+  eighth_tone: 6          # ottavi di tono (48-EDO)
+  cents: 50               # cents (1200-EDO)
+
+  edo:                    # griglia EDO arbitraria (es. 31-EDO)
+    divisions: 31
+    value: 18             # 18 gradi di 31-EDO (scalare o envelope)
+```
 
 ---
 
@@ -405,6 +426,26 @@ voices:
 | `aug` | `dim7` | `9sus4` | | `altered` |
 | `sus2` | `minmaj7` | | | |
 | `sus4` | | | | |
+
+**`unit` — unità dell'offset di pitch.** Le strategie producono un numero puro;
+`unit` decide come diventa ratio alla generazione del grano. Default
+`semitones`. Valori: `semitones`, `cents`, `quarter_tone`, `eighth_tone`,
+`{edo: N}`, `ratio` (stesse unità del [Blocco Pitch](#blocco-pitch)).
+
+```yaml
+voices:
+  pitch:
+    strategy: range
+    semitone_range: 12.0
+    unit: {edo: 31}        # i gradi distribuiti sono interpretati in 31-EDO
+```
+
+- **`ratio`**: l'offset è usato come moltiplicatore diretto (`step: 1.5` →
+  voci a ratio 1.5, 3.0, ...), non come intervallo additivo. La voce 0
+  (offset 0) resta sempre invariata.
+- **Vincolo**: `chord` e `spectral` sono definiti intrinsecamente in semitoni
+  e accettano solo `unit: semitones` (o `unit` assente). Altre unità →
+  `InvalidStrategyConfigError`.
 
 ---
 

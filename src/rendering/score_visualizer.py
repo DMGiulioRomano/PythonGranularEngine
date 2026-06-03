@@ -93,6 +93,9 @@ class ScoreVisualizer:
                 'pitch_ratio_prob': (0, 100),  # probabilità %
                 'pitch_semitones': (-36, 36),
                 'pitch_semitones_prob': (0, 100),  # probabilità %
+                'pitch_cents': (-3600, 3600),
+                'pitch_quarter_tone': (-72, 72),
+                'pitch_eighth_tone': (-144, 144),
                 
                 # === DENSITY ===
                 'density': (1, 200),          # grani/sec
@@ -132,6 +135,9 @@ class ScoreVisualizer:
                 'pitch_ratio_prob': '#cab2d6',  # viola chiaro
                 'pitch_semitones': '#9467bd', # viola chiaro alternativo
                 'pitch_semitones_prob': '#e7d4e8',  # lavanda chiaro
+                'pitch_cents': '#8c6bb1',
+                'pitch_quarter_tone': '#88419d',
+                'pitch_eighth_tone': '#810f7c',
                 
                 # === DENSITY ===
                 'density': '#ff7f00',         # arancio
@@ -1145,6 +1151,9 @@ class ScoreVisualizer:
             'pan': '°',
             'pitch_ratio': 'x',
             'pitch_semitones': 'st',  # semitoni
+            'pitch_cents': 'c',        # cents
+            'pitch_quarter_tone': 'qt',  # quarti di tono
+            'pitch_eighth_tone': 'et',   # ottavi di tono
             'density': 'g/s',
             'pointer_speed': 'x',
             'fill_factor': '',
