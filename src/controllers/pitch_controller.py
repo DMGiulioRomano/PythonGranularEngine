@@ -2,79 +2,87 @@
 """
 PitchController - Gestione pitch/trasposizione per sintesi granulare
 
-Estratto da Stream come parte del refactoring Fase 3.
-Gestisce la trasposizione con due modalità:
-- Semitoni: specificando shift_semitones (convertito a ratio alla fine)
-- Ratio: specificando ratio direttamente (default 1.0)
+Modello unit-driven: il blocco pitch è espresso da UN'unica chiave-unità tra
+{semitones, cents, quarter_tone, eighth_tone, edo, ratio}. L'unità (PitchUnit)
+è la singola fonte di verità: conversione a ratio, bounds di sicurezza e
+modalità di variazione. Nessun gruppo esclusivo, nessuna strategy per-preset.
 
-Supporta range stocastico in entrambe le modalità.
-Ispirato al DMX-1000 di Barry Truax (1988)
+Fornisce un unico metodo `calculate(t)` che restituisce sempre un ratio.
+Ispirato al DMX-1000 di Barry Truax (1988).
 """
 
-from parameters.parameter_schema import PITCH_PARAMETER_SCHEMA
-from strategies.strategy_registry import StrategyFactory, PITCH_STRATEGIES
-from strategies.strategie import UnitPitchStrategy
 from parameters.parameter_orchestrator import ParameterOrchestrator
-from parameters.parameter import Parameter
-from parameters.parameter_definitions import ParameterBounds
-from parameters.pitch_unit import EdoUnit
-from envelopes.envelope import Envelope
+from parameters.pitch_unit import make_pitch_unit, PITCH_UNIT_PRESETS
+from strategies.strategie import UnitPitchStrategy
 from shared.exceptions import InvalidFieldValueError
 from core.stream_config import StreamConfig
+
+# Chiavi-unità riconosciute nel blocco pitch. `edo` è parametrico
+# ({divisions, value}); gli altri sono preset nominali.
+PITCH_UNIT_KEYS = frozenset(PITCH_UNIT_PRESETS) | {'edo'}
+
 
 class PitchController:
     """
     Gestisce la trasposizione del pitch per i grani.
+
     Responsabilità:
-    1. Inizializzare i parametri corretti (Ratio vs Semitoni).
-    2. Fornire un unico metodo `calculate(t)` che restituisce sempre un Ratio.
-    """    
-    
+    1. Selezionare l'unità di misura dal blocco pitch.
+    2. Costruire il Parameter con i bounds dell'unità (+ range/dephase).
+    3. Fornire `calculate(t)` che restituisce sempre un ratio.
+    """
+
     def __init__(
         self,
-        params: dict,                      # 1. Dati specifici
-        config: StreamConfig       # 2. Regole processo
+        params: dict,                # 1. Dati specifici (blocco pitch YAML)
+        config: StreamConfig         # 2. Regole processo
     ):
-        """
-        Inizializza il controller.
-        
-        Args:
-        """
-        
-        # Create orchestrator
         self._orchestrator = ParameterOrchestrator(config=config)
         self._config = config
 
-        # Ramo speciale: pitch su griglia EDO arbitraria. Il valore è annidato
-        # ({divisions, value}), quindi non passa per il gruppo esclusivo schema-driven.
-        edo_spec = params.get('edo')
-        if edo_spec is not None:
-            self._loaded_params = {}
-            self._strategy, self._active_param = self._build_edo_strategy(edo_spec)
-            return
-
-        # Create parameters
-        self._loaded_params = self._orchestrator.create_all_parameters(
-            params,
-            schema=PITCH_PARAMETER_SCHEMA
+        unit, value_raw = self._select_unit(params)
+        self._active_param = self._orchestrator.create_pitch_parameter(
+            name=f'pitch_{unit.name}',
+            value_raw=value_raw,
+            range_raw=params.get('range'),
+            bounds=unit.value_bounds(),
+            dephase_key='pitch',
         )
+        self._strategy = UnitPitchStrategy(self._active_param, unit, unit.name)
 
-        selected_param_name = self._find_selected_param()
-        self._active_param = self._loaded_params[selected_param_name]
-        self._strategy = StrategyFactory.create_pitch_strategy(
-            selected_param_name,
-            self._active_param,
-            self._loaded_params
-        )
+    # =========================================================================
+    # SELEZIONE UNITÀ
+    # =========================================================================
 
-    def _build_edo_strategy(self, edo_spec):
+    def _select_unit(self, params: dict):
         """
-        Costruisce la strategy per pitch: {edo: {divisions: N, value: X}}.
+        Individua l'unità dal blocco pitch e il valore grezzo associato.
 
-        divisions definisce la griglia (EdoUnit, valida N > 0); value è il numero
-        di gradi (scalare o envelope) con bounds dinamici ±3·divisions (3 ottave,
-        coerente con pitch_semitones [-36, 36]).
+        - 0 chiavi-unità → default semitoni, valore neutro (ratio 1.0).
+        - 1 chiave → quell'unità (edo: valore annidato, altri: valore diretto).
+        - >1 chiavi → InvalidFieldValueError (ambiguità esplicita).
         """
+        present = [k for k in params if k in PITCH_UNIT_KEYS]
+        if len(present) > 1:
+            raise InvalidFieldValueError(
+                field='pitch',
+                value=present,
+                hint=(
+                    "una sola unità per blocco pitch; trovate: "
+                    f"{present}. Unità disponibili: {sorted(PITCH_UNIT_KEYS)}."
+                ),
+            )
+        if not present:
+            unit = make_pitch_unit('semitones')
+            return unit, unit.identity_value()
+
+        key = present[0]
+        if key == 'edo':
+            return self._build_edo(params['edo'])
+        return make_pitch_unit(key), params[key]
+
+    def _build_edo(self, edo_spec):
+        """pitch: {edo: {divisions: N, value: X}} — divisione EDO arbitraria."""
         if (not isinstance(edo_spec, dict)
                 or 'divisions' not in edo_spec
                 or 'value' not in edo_spec):
@@ -83,99 +91,55 @@ class PitchController:
                 value=edo_spec,
                 hint="forma attesa: edo: {divisions: N, value: X}.",
             )
-        unit = EdoUnit(edo_spec['divisions'])  # valida divisions > 0
-        bound = 3.0 * unit.divisions
-        bounds = ParameterBounds(
-            min_val=-bound,
-            max_val=bound,
-            min_range=0.0,
-            max_range=bound,
-            variation_mode='quantized',
-        )
-        raw_value = edo_spec['value']
-        value = Envelope(raw_value) if Envelope.is_envelope_like(raw_value) else raw_value
-        param = Parameter(
-            name='pitch_edo',
-            value=value,
-            bounds=bounds,
-            owner_id=self._config.context.stream_id,
-        )
-        return UnitPitchStrategy(param, unit, 'edo'), param
+        unit = make_pitch_unit({'edo': edo_spec['divisions']})  # valida divisions > 0
+        return unit, edo_spec['value']
 
+    # =========================================================================
+    # CALCOLO
+    # =========================================================================
 
-    def _find_selected_param(self) -> str:
-        """
-        Individua quale parametro del gruppo esclusivo 'pitch_mode'
-        è stato selezionato da ExclusiveGroupSelector.
-
-        Non compie alcuna decisione di priorità: quella è già stata fatta
-        dal selettore durante create_all_parameters(). Questo metodo
-        semplicemente trova quale chiave sopravvisse, incrociando con
-        PITCH_STRATEGIES come sorgente di verità sui nomi validi.
-
-        Raises:
-            ValueError: se zero o più di un parametro pitch vengono trovati
-        """
-        candidates = [name for name in self._loaded_params if name in PITCH_STRATEGIES and self._loaded_params[name] is not None]
-        if len(candidates) != 1:
-            from shared.exceptions import InvalidFieldValueError
-            raise InvalidFieldValueError(
-                field="pitch (gruppo esclusivo)",
-                value=candidates,
-                hint=(
-                    f"atteso esattamente 1 parametro pitch dal gruppo esclusivo "
-                    f"({sorted(PITCH_STRATEGIES.keys())}), trovati: {candidates}"
-                ),
-            )
-        return candidates[0]
-    
     def calculate(
         self,
         elapsed_time: float,
         grain_reverse: bool = False
     ) -> float:
         """
-        Calcola pitch ratio finale con compensazione reverse.
-        
+        Calcola il pitch ratio finale con compensazione reverse.
+
         Args:
             elapsed_time: tempo corrente nello stream
             grain_reverse: se True, nega il pitch per lettura backward
-        
+
         Returns:
             float: pitch ratio finale (può essere negativo se reverse)
         """
-        # 1. Strategy calcola trasposizione musicale
         pitch_ratio = self._strategy.calculate(elapsed_time)
-        
-        # 2. Compensazione fisica per reverse
-        # Quando il grano è reverse, il phasor deve leggere backward
-        # Questo si ottiene con frequenza negativa
+        # Compensazione fisica per reverse: il phasor legge backward via freq negativa
         if grain_reverse:
             pitch_ratio *= -1
-        
-        return pitch_ratio    
+        return pitch_ratio
+
+    # =========================================================================
+    # PROPERTIES
+    # =========================================================================
+
     @property
     def mode(self) -> str:
-        return self._strategy.name    
+        return self._strategy.name
 
     @property
     def base_ratio(self):
-        param = self._loaded_params.get('pitch_ratio')
-        if param is not None:
-            return param.value
-        return None
+        """Valore base se l'unità è ratio, altrimenti None (per ScoreVisualizer)."""
+        return self._active_param.value if self.mode == 'ratio' else None
 
-    # Fix base_semitones (riga ~108)
     @property
     def base_semitones(self):
-        param = self._loaded_params.get('pitch_semitones')
-        if param is not None:
-            return param.value
-        return None
+        """Valore base se l'unità è semitoni, altrimenti None (per ScoreVisualizer)."""
+        return self._active_param.value if self.mode == 'semitones' else None
 
     @property
     def range(self):
-        """Espone il range del parametro attivo (cache da __init__)."""
+        """Espone il range del parametro attivo (0.0 se assente)."""
         param = self._active_param
         if hasattr(param, '_mod_range') and param._mod_range is not None:
             return param._mod_range
@@ -184,6 +148,6 @@ class PitchController:
     # =========================================================================
     # REPR
     # =========================================================================
-        
+
     def __repr__(self) -> str:
         return f"PitchController(mode={self.mode}, strategy={self._strategy.name})"

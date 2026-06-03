@@ -9,7 +9,7 @@ from typing import Optional, Union
 from parameters.parameter import Parameter
 from envelopes.envelope import Envelope
 from parameters.parameter_definitions import get_parameter_definition
-from parameters.pitch_unit import PitchUnit, EdoUnit, RatioUnit
+from parameters.pitch_unit import PitchUnit
 # =============================================================================
 # STRATEGIE PITCH
 # =============================================================================
@@ -59,41 +59,6 @@ class UnitPitchStrategy(PitchStrategy):
     @property
     def base_value(self):
         return self._param.value
-
-
-class SemitonesStrategy(UnitPitchStrategy):
-    """Pitch in semitoni: 2^(s/12). Alias di UnitPitchStrategy con EdoUnit(12)."""
-
-    def __init__(self, semitones_param: Parameter):
-        super().__init__(semitones_param, EdoUnit(12), "semitones")
-
-
-class RatioStrategy(UnitPitchStrategy):
-    """Pitch in ratio diretto. Alias di UnitPitchStrategy con RatioUnit."""
-
-    def __init__(self, ratio_param: Parameter):
-        super().__init__(ratio_param, RatioUnit(), "ratio")
-
-
-class CentsStrategy(UnitPitchStrategy):
-    """Pitch in cents: 2^(c/1200). EdoUnit(1200)."""
-
-    def __init__(self, cents_param: Parameter):
-        super().__init__(cents_param, EdoUnit(1200), "cents")
-
-
-class QuarterToneStrategy(UnitPitchStrategy):
-    """Pitch in quarti di tono: 2^(q/24). EdoUnit(24)."""
-
-    def __init__(self, quarter_tone_param: Parameter):
-        super().__init__(quarter_tone_param, EdoUnit(24), "quarter_tone")
-
-
-class EighthToneStrategy(UnitPitchStrategy):
-    """Pitch in ottavi di tono: 2^(e/48). EdoUnit(48)."""
-
-    def __init__(self, eighth_tone_param: Parameter):
-        super().__init__(eighth_tone_param, EdoUnit(48), "eighth_tone")
 
 
 # =============================================================================

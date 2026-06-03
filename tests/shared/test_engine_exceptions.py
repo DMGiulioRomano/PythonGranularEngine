@@ -547,15 +547,13 @@ def test_window_registry_generate_unknown_is_invalid_window():
     assert "totally_fake_window_xyz" in msg
 
 
-def test_pitch_controller_exclusive_group_violation_is_invalid_field_value():
-    """0 o >1 param pitch -> InvalidFieldValueError."""
+def test_pitch_controller_multiple_units_is_invalid_field_value(mock_config):
+    """>1 chiave-unità nel blocco pitch -> InvalidFieldValueError."""
     from shared.exceptions import ConfigError, InvalidFieldValueError
-    from controllers.pitch_controller import PitchController, PITCH_STRATEGIES
+    from controllers.pitch_controller import PitchController
 
-    pc = PitchController.__new__(PitchController)
-    pc._loaded_params = {}
     with pytest.raises(InvalidFieldValueError) as excinfo:
-        pc._find_selected_param()
+        PitchController({'semitones': 12, 'ratio': 2.0}, mock_config)
     err = excinfo.value
     assert isinstance(err, ConfigError)
     assert isinstance(err, ValueError)

@@ -161,14 +161,16 @@ with patch.dict(sys.modules, {
     'parameter_definitions': mock_paramdef_mod,
 }):
     from strategies.strategie import (
-        PitchStrategy, SemitonesStrategy, RatioStrategy,
+        PitchStrategy, UnitPitchStrategy,
         DensityStrategy, FillFactorStrategy, DirectDensityStrategy,
     )
     from strategies.strategy_registry import (
-        PITCH_STRATEGIES, DENSITY_STRATEGIES,
-        register_pitch_strategy, register_density_strategy,
+        DENSITY_STRATEGIES,
+        register_density_strategy,
         StrategyFactory,
     )
+
+from parameters.pitch_unit import EdoUnit, RatioUnit
 
 # =============================================================================
 # HELPERS
@@ -183,6 +185,16 @@ def _make_envelope_param(breakpoints, name='test_param'):
     """Crea un MockParameter con MockEnvelope."""
     env = MockEnvelope(breakpoints)
     return MockParameter(value=env, name=name)
+
+
+def _semitones_strategy(param):
+    """UnitPitchStrategy in semitoni (EDO 12): equivale al vecchio SemitonesStrategy."""
+    return UnitPitchStrategy(param, EdoUnit(12), "semitones")
+
+
+def _ratio_strategy(param):
+    """UnitPitchStrategy ratio diretto: equivale al vecchio RatioStrategy."""
+    return UnitPitchStrategy(param, RatioUnit(), "ratio")
 
 
 # =============================================================================
@@ -234,13 +246,13 @@ class TestSemitonesStrategyInit:
     def test_creates_with_parameter(self):
         """Costruzione con Parameter valido."""
         param = _make_param(12.0, name='pitch_semitones')
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy is not None
 
     def test_stores_parameter_reference(self):
         """Il parametro viene memorizzato internamente."""
         param = _make_param(7.0, name='pitch_semitones')
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy._param is param
 
 
@@ -250,45 +262,45 @@ class TestSemitonesStrategyCalculate:
     def test_zero_semitones_returns_unity(self):
         """0 semitoni = ratio 1.0 (nessuna trasposizione)."""
         param = _make_param(0.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(1.0)
 
     def test_12_semitones_returns_double(self):
         """12 semitoni = ottava sopra (ratio 2.0)."""
         param = _make_param(12.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(2.0)
 
     def test_minus_12_semitones_returns_half(self):
         """-12 semitoni = ottava sotto (ratio 0.5)."""
         param = _make_param(-12.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(0.5)
 
     def test_24_semitones_returns_quadruple(self):
         """24 semitoni = 2 ottave sopra (ratio 4.0)."""
         param = _make_param(24.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(4.0)
 
     def test_7_semitones_quinta_giusta(self):
         """7 semitoni = quinta giusta."""
         param = _make_param(7.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         expected = 2 ** (7.0 / 12.0)
         assert strategy.calculate(0.0) == pytest.approx(expected)
 
     def test_minus_7_semitones(self):
         """-7 semitoni = quinta giusta sotto."""
         param = _make_param(-7.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         expected = 2 ** (-7.0 / 12.0)
         assert strategy.calculate(0.0) == pytest.approx(expected)
 
     def test_fractional_semitones(self):
         """Semitoni frazionari (microtonali)."""
         param = _make_param(6.5)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         expected = 2 ** (6.5 / 12.0)
         assert strategy.calculate(0.0) == pytest.approx(expected)
 
@@ -307,14 +319,14 @@ class TestSemitonesStrategyCalculate:
     def test_musical_intervals(self, semitones, expected_ratio):
         """Verifica intervalli musicali standard."""
         param = _make_param(float(semitones))
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(expected_ratio)
 
     def test_formula_2_power_semitones_over_12(self):
         """Verifica la formula: ratio = 2^(semitones/12)."""
         for st in [-36, -12, -7, 0, 5, 7, 12, 24, 36]:
             param = _make_param(float(st))
-            strategy = SemitonesStrategy(param)
+            strategy = _semitones_strategy(param)
             expected = 2 ** (st / 12.0)
             assert strategy.calculate(0.0) == pytest.approx(expected), \
                 f"Fallito per {st} semitoni"
@@ -322,7 +334,7 @@ class TestSemitonesStrategyCalculate:
     def test_uses_get_value_with_time(self):
         """calculate() passa elapsed_time a param.get_value()."""
         param = _make_envelope_param([[0, 0], [10, 12]])
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
 
         # A t=0 -> 0 semitoni -> ratio 1.0
         assert strategy.calculate(0.0) == pytest.approx(1.0)
@@ -335,7 +347,7 @@ class TestSemitonesStrategyCalculate:
         """Il ratio e sempre positivo (2^x > 0 per ogni x)."""
         for st in [-36, -24, -12, 0, 12, 24, 36]:
             param = _make_param(float(st))
-            strategy = SemitonesStrategy(param)
+            strategy = _semitones_strategy(param)
             assert strategy.calculate(0.0) > 0
 
 
@@ -345,26 +357,26 @@ class TestSemitonesStrategyProperties:
     def test_name_is_semitones(self):
         """name ritorna 'semitones'."""
         param = _make_param(0.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.name == "semitones"
 
     def test_base_value_returns_float(self):
         """base_value ritorna il valore float del parametro."""
         param = _make_param(12.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.base_value == 12.0
 
     def test_base_value_returns_envelope(self):
         """base_value ritorna l'Envelope se il parametro ha un Envelope."""
         env = MockEnvelope([[0, 0], [10, 12]])
         param = MockParameter(value=env, name='pitch_semitones')
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert isinstance(strategy.base_value, MockEnvelope)
 
     def test_base_value_matches_param_value(self):
         """base_value e identico a param.value."""
         param = _make_param(7.0)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         assert strategy.base_value == param.value
 
 
@@ -378,13 +390,13 @@ class TestRatioStrategyInit:
     def test_creates_with_parameter(self):
         """Costruzione con Parameter valido."""
         param = _make_param(1.0, name='pitch_ratio')
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy is not None
 
     def test_stores_parameter_reference(self):
         """Il parametro viene memorizzato internamente."""
         param = _make_param(2.0, name='pitch_ratio')
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy._param is param
 
 
@@ -394,38 +406,38 @@ class TestRatioStrategyCalculate:
     def test_unity_ratio(self):
         """ratio=1.0 ritorna 1.0."""
         param = _make_param(1.0)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(1.0)
 
     def test_double_ratio(self):
         """ratio=2.0 ritorna 2.0 (ottava sopra)."""
         param = _make_param(2.0)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(2.0)
 
     def test_half_ratio(self):
         """ratio=0.5 ritorna 0.5 (ottava sotto)."""
         param = _make_param(0.5)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(0.5)
 
     def test_fractional_ratio(self):
         """Ratio frazionario."""
         param = _make_param(1.5)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(1.5)
 
     def test_passthrough_is_exact(self):
         """Il ratio e un passthrough esatto senza trasformazioni."""
         for ratio_val in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]:
             param = _make_param(ratio_val)
-            strategy = RatioStrategy(param)
+            strategy = _ratio_strategy(param)
             assert strategy.calculate(0.0) == pytest.approx(ratio_val)
 
     def test_uses_get_value_with_time(self):
         """calculate() passa elapsed_time a param.get_value()."""
         param = _make_envelope_param([[0, 1.0], [10, 2.0]])
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
 
         assert strategy.calculate(0.0) == pytest.approx(1.0)
         assert strategy.calculate(5.0) == pytest.approx(1.5)
@@ -438,20 +450,20 @@ class TestRatioStrategyProperties:
     def test_name_is_ratio(self):
         """name ritorna 'ratio'."""
         param = _make_param(1.0)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.name == "ratio"
 
     def test_base_value_returns_float(self):
         """base_value ritorna il valore float."""
         param = _make_param(1.5)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.base_value == 1.5
 
     def test_base_value_returns_envelope(self):
         """base_value ritorna Envelope se presente."""
         env = MockEnvelope([[0, 1], [10, 2]])
         param = MockParameter(value=env, name='pitch_ratio')
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert isinstance(strategy.base_value, MockEnvelope)
 
 
@@ -736,101 +748,34 @@ class TestDirectDensityStrategyName:
 # =============================================================================
 
 class TestRegistryContent:
-    """Test contenuto dei dizionari PITCH_STRATEGIES e DENSITY_STRATEGIES."""
+    """Test contenuto del dizionario DENSITY_STRATEGIES.
 
-    @pytest.mark.parametrize("key,registry", [
-        ('pitch_semitones',    PITCH_STRATEGIES),
-        ('pitch_ratio',        PITCH_STRATEGIES),
-        ('pitch_cents',        PITCH_STRATEGIES),
-        ('pitch_quarter_tone', PITCH_STRATEGIES),
-        ('pitch_eighth_tone',  PITCH_STRATEGIES),
-        ('fill_factor',        DENSITY_STRATEGIES),
-        ('density',            DENSITY_STRATEGIES),
-    ])
-    def test_registry_contains_key(self, key, registry):
-        """Ogni chiave attesa e' presente nel registry corretto."""
-        assert key in registry
+    Il pitch base non ha più registry: PitchController costruisce
+    direttamente UnitPitchStrategy dalla PitchUnit selezionata.
+    """
 
-    @pytest.mark.parametrize("key,registry,expected_class", [
-        ('pitch_semitones', PITCH_STRATEGIES,    SemitonesStrategy),
-        ('pitch_ratio',     PITCH_STRATEGIES,    RatioStrategy),
-        ('fill_factor',     DENSITY_STRATEGIES,  FillFactorStrategy),
-        ('density',         DENSITY_STRATEGIES,  DirectDensityStrategy),
+    @pytest.mark.parametrize("key", ['fill_factor', 'density'])
+    def test_registry_contains_key(self, key):
+        """Ogni chiave density attesa è presente nel registry."""
+        assert key in DENSITY_STRATEGIES
+
+    @pytest.mark.parametrize("key,expected_class", [
+        ('fill_factor', FillFactorStrategy),
+        ('density',     DirectDensityStrategy),
     ])
-    def test_registry_maps_to_correct_class(self, key, registry, expected_class):
+    def test_registry_maps_to_correct_class(self, key, expected_class):
         """Ogni chiave mappa alla classe di strategia corretta."""
-        assert registry[key] is expected_class
-
-    def test_pitch_strategies_count(self):
-        """PITCH_STRATEGIES: semitoni, ratio + famiglia EDO (cents/quarti/ottavi)."""
-        assert len(PITCH_STRATEGIES) == 5
+        assert DENSITY_STRATEGIES[key] is expected_class
 
     def test_density_strategies_count(self):
         """DENSITY_STRATEGIES ha esattamente 2 strategie."""
         assert len(DENSITY_STRATEGIES) == 2
-
-    def test_all_pitch_strategies_are_subclass(self):
-        """Tutte le strategie pitch sono subclass di PitchStrategy."""
-        for name, cls in PITCH_STRATEGIES.items():
-            assert issubclass(cls, PitchStrategy), \
-                f"{name} -> {cls} non e subclass di PitchStrategy"
 
     def test_all_density_strategies_are_subclass(self):
         """Tutte le strategie density sono subclass di DensityStrategy."""
         for name, cls in DENSITY_STRATEGIES.items():
             assert issubclass(cls, DensityStrategy), \
                 f"{name} -> {cls} non e subclass di DensityStrategy"
-
-
-# =============================================================================
-# GRUPPO 8: register_pitch_strategy
-# =============================================================================
-
-class TestRegisterPitchStrategy:
-    """Test registrazione dinamica di strategie pitch."""
-
-    def test_register_new_pitch_strategy(self):
-        """Registra una nuova strategia pitch."""
-        class HarmonicStrategy(PitchStrategy):
-            def __init__(self, param):
-                self._param = param
-            def calculate(self, elapsed_time):
-                return self._param.get_value(elapsed_time) * 2
-            @property
-            def name(self):
-                return "harmonic"
-            @property
-            def base_value(self):
-                return self._param.value
-
-        register_pitch_strategy('pitch_harmonic', HarmonicStrategy)
-        assert 'pitch_harmonic' in PITCH_STRATEGIES
-        assert PITCH_STRATEGIES['pitch_harmonic'] is HarmonicStrategy
-
-        # Cleanup
-        del PITCH_STRATEGIES['pitch_harmonic']
-
-    def test_overwrite_existing_strategy(self):
-        """Sovrascrivere una strategia esistente e permesso."""
-        original = PITCH_STRATEGIES['pitch_ratio']
-
-        class NewRatio(PitchStrategy):
-            def __init__(self, param):
-                self._param = param
-            def calculate(self, elapsed_time):
-                return 1.0
-            @property
-            def name(self):
-                return "new_ratio"
-            @property
-            def base_value(self):
-                return 1.0
-
-        register_pitch_strategy('pitch_ratio', NewRatio)
-        assert PITCH_STRATEGIES['pitch_ratio'] is NewRatio
-
-        # Restore
-        PITCH_STRATEGIES['pitch_ratio'] = original
 
 
 # =============================================================================
@@ -857,62 +802,6 @@ class TestRegisterDensityStrategy:
 
         # Cleanup
         del DENSITY_STRATEGIES['weighted_density']
-
-
-# =============================================================================
-# GRUPPO 10: StrategyFactory.create_pitch_strategy
-# =============================================================================
-
-class TestStrategyFactoryPitch:
-    """Test StrategyFactory.create_pitch_strategy()."""
-
-    def test_creates_semitones_strategy(self):
-        """Crea SemitonesStrategy da 'pitch_semitones'."""
-        param = _make_param(12.0, name='pitch_semitones')
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_semitones', param, {}
-        )
-        assert isinstance(strategy, SemitonesStrategy)
-        assert strategy.name == "semitones"
-
-    def test_creates_ratio_strategy(self):
-        """Crea RatioStrategy da 'pitch_ratio'."""
-        param = _make_param(1.0, name='pitch_ratio')
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_ratio', param, {}
-        )
-        assert isinstance(strategy, RatioStrategy)
-        assert strategy.name == "ratio"
-
-    def test_unknown_pitch_raises(self):
-        """Nome sconosciuto solleva ValueError."""
-        param = _make_param(1.0)
-        with pytest.raises(ValueError, match="Strategia pitch non trovata"):
-            StrategyFactory.create_pitch_strategy('pitch_unknown', param, {})
-
-    def test_created_strategy_is_functional(self):
-        """La strategia creata calcola correttamente."""
-        param = _make_param(12.0)
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_semitones', param, {}
-        )
-        assert strategy.calculate(0.0) == pytest.approx(2.0)
-
-    def test_all_params_ignored_for_pitch(self):
-        """all_params non viene usato per pitch (attualmente)."""
-        param = _make_param(1.0)
-        all_params = {'irrelevant': 'data', 'more': 42}
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_ratio', param, all_params
-        )
-        assert isinstance(strategy, RatioStrategy)
-
-    def test_is_static_method(self):
-        """create_pitch_strategy e un metodo statico."""
-        assert isinstance(
-            StrategyFactory.__dict__['create_pitch_strategy'],
-            staticmethod
-        )
 
 
 # =============================================================================
@@ -1026,20 +915,16 @@ class TestIntegration:
     """Test integrazione: factory -> strategy -> calculate."""
 
     def test_pitch_semitones_e2e(self):
-        """Pipeline completa: factory crea semitones, calculate funziona."""
+        """Pipeline completa: UnitPitchStrategy semitoni, calculate funziona."""
         param = _make_param(7.0, name='pitch_semitones')
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_semitones', param, {}
-        )
+        strategy = _semitones_strategy(param)
         expected = 2 ** (7.0 / 12.0)
         assert strategy.calculate(0.0) == pytest.approx(expected)
 
     def test_pitch_ratio_e2e(self):
-        """Pipeline completa: factory crea ratio, calculate funziona."""
+        """Pipeline completa: UnitPitchStrategy ratio, calculate funziona."""
         param = _make_param(1.5, name='pitch_ratio')
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_ratio', param, {}
-        )
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(1.5)
 
     def test_fill_factor_e2e(self):
@@ -1070,9 +955,7 @@ class TestIntegration:
         param = _make_envelope_param(
             [[0, 0], [5, 6], [10, 12]],
         )
-        strategy = StrategyFactory.create_pitch_strategy(
-            'pitch_semitones', param, {}
-        )
+        strategy = _semitones_strategy(param)
 
         assert strategy.calculate(0.0) == pytest.approx(1.0)
         assert strategy.calculate(5.0) == pytest.approx(2 ** (6/12))
@@ -1080,13 +963,12 @@ class TestIntegration:
 
     def test_polymorphism_pitch(self):
         """Entrambe le strategie pitch soddisfano l'interfaccia PitchStrategy."""
-        params = [
-            ('pitch_semitones', _make_param(12.0)),
-            ('pitch_ratio', _make_param(2.0)),
+        strategies = [
+            _semitones_strategy(_make_param(12.0)),
+            _ratio_strategy(_make_param(2.0)),
         ]
 
-        for name, param in params:
-            strategy = StrategyFactory.create_pitch_strategy(name, param, {})
+        for strategy in strategies:
             assert isinstance(strategy, PitchStrategy)
             result = strategy.calculate(0.0)
             assert isinstance(result, float)
@@ -1122,7 +1004,7 @@ class TestEdgeCases:
     def test_semitones_very_small_value(self):
         """Semitoni molto piccoli (quasi zero)."""
         param = _make_param(0.001)
-        strategy = SemitonesStrategy(param)
+        strategy = _semitones_strategy(param)
         result = strategy.calculate(0.0)
         assert result == pytest.approx(2 ** (0.001 / 12.0))
         assert abs(result - 1.0) < 0.001
@@ -1130,13 +1012,13 @@ class TestEdgeCases:
     def test_ratio_at_boundary_min(self):
         """Ratio al limite inferiore dei bounds (0.125)."""
         param = _make_param(0.125)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(0.125)
 
     def test_ratio_at_boundary_max(self):
         """Ratio al limite superiore dei bounds (8.0)."""
         param = _make_param(8.0)
-        strategy = RatioStrategy(param)
+        strategy = _ratio_strategy(param)
         assert strategy.calculate(0.0) == pytest.approx(8.0)
 
     def test_fill_factor_very_small_grain_duration(self):
@@ -1170,8 +1052,8 @@ class TestEdgeCases:
         for n in [1, 3, 5, 7, 12, 24]:
             p_up = _make_param(float(n))
             p_down = _make_param(float(-n))
-            s_up = SemitonesStrategy(p_up)
-            s_down = SemitonesStrategy(p_down)
+            s_up = _semitones_strategy(p_up)
+            s_down = _semitones_strategy(p_down)
 
             product = s_up.calculate(0.0) * s_down.calculate(0.0)
             assert product == pytest.approx(1.0), \
@@ -1181,7 +1063,7 @@ class TestEdgeCases:
         """Ogni +12 semitoni raddoppia il ratio."""
         for octave in range(1, 4):
             param = _make_param(float(12 * octave))
-            strategy = SemitonesStrategy(param)
+            strategy = _semitones_strategy(param)
             expected = 2.0 ** octave
             assert strategy.calculate(0.0) == pytest.approx(expected)
 
@@ -1198,8 +1080,8 @@ class TestEdgeCases:
         """Strategie diverse non condividono stato."""
         p1 = _make_param(12.0)
         p2 = _make_param(7.0)
-        s1 = SemitonesStrategy(p1)
-        s2 = SemitonesStrategy(p2)
+        s1 = _semitones_strategy(p1)
+        s2 = _semitones_strategy(p2)
 
         r1 = s1.calculate(0.0)
         r2 = s2.calculate(0.0)

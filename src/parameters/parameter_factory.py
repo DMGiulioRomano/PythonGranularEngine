@@ -77,6 +77,26 @@ class ParameterFactory:
             range_raw=range_val,
         )
     
+    def create_smart_parameter_with_bounds(
+        self,
+        name: str,
+        value_raw: Any,
+        range_raw: Any,
+        bounds,
+    ) -> Parameter:
+        """
+        Crea un Parameter con bounds espliciti (non dal Registry).
+
+        Usato per parametri con bounds dinamici, come il pitch unit-driven,
+        dove i limiti dipendono dall'unità di misura e non dal nome.
+        """
+        return self._parser.parse_parameter(
+            name=name,
+            value_raw=value_raw,
+            range_raw=range_raw,
+            bounds_override=bounds,
+        )
+
     def create_constant_parameter(self, name: str, value: float) -> Parameter:
         """
         Crea un Parameter costante da un valore scalare, senza YAML.

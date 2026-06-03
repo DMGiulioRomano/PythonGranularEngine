@@ -11,6 +11,7 @@ Modulo sotto test:
 import pytest
 
 from parameters.pitch_unit import EdoUnit, RatioUnit, make_pitch_unit
+from parameters.parameter_definitions import ParameterBounds
 from shared.exceptions import InvalidFieldValueError
 
 
@@ -101,3 +102,89 @@ def test_factory_edo_non_positive_raises(bad):
 def test_edo_unit_non_positive_divisions_raises(bad):
     with pytest.raises(InvalidFieldValueError):
         EdoUnit(bad)
+
+
+# =============================================================================
+# identity_value — valore neutro (ratio 1.0) dipendente dall'unità
+# =============================================================================
+
+@pytest.mark.parametrize("divisions", [12, 24, 48, 1200, 31])
+def test_edo_identity_value_is_zero(divisions):
+    # famiglia esponenziale: 2^0 = 1 -> nessuna trasposizione
+    assert EdoUnit(divisions).identity_value() == 0.0
+
+
+def test_ratio_identity_value_is_one():
+    # moltiplicatore diretto: x1 -> nessuna trasposizione (non *0 = silenzio)
+    assert RatioUnit().identity_value() == 1.0
+
+
+@pytest.mark.parametrize("unit", [EdoUnit(12), EdoUnit(1200), EdoUnit(31), RatioUnit()])
+def test_identity_value_yields_unison(unit):
+    # invariante: to_ratio(identity_value()) == 1.0 per ogni unità
+    assert unit.to_ratio(unit.identity_value()) == pytest.approx(1.0)
+
+
+# =============================================================================
+# value_bounds — i bounds derivano dall'unità (±3 ottave per EDO)
+# =============================================================================
+
+@pytest.mark.parametrize("divisions,expected", [
+    (12, 36.0), (24, 72.0), (48, 144.0), (1200, 3600.0), (31, 93.0),
+])
+def test_edo_value_bounds_three_octaves(divisions, expected):
+    b = EdoUnit(divisions).value_bounds()
+    assert isinstance(b, ParameterBounds)
+    assert b.min_val == -expected
+    assert b.max_val == expected
+    assert b.min_range == 0.0
+    assert b.max_range == expected
+    assert b.variation_mode == 'quantized'
+
+
+def test_ratio_value_bounds_matches_legacy():
+    # deve coincidere con i vecchi bounds statici di pitch_ratio
+    b = RatioUnit().value_bounds()
+    assert isinstance(b, ParameterBounds)
+    assert b.min_val == 0.125
+    assert b.max_val == 8.0
+    assert b.min_range == 0.0
+    assert b.max_range == 2.0
+    assert b.variation_mode == 'additive'
+
+
+def test_edo_semitones_bounds_match_legacy():
+    # regressione: semitones (EDO 12) = vecchi pitch_semitones [-36, 36]
+    b = make_pitch_unit('semitones').value_bounds()
+    assert (b.min_val, b.max_val, b.max_range) == (-36.0, 36.0, 36.0)
+    assert b.variation_mode == 'quantized'
+
+
+# =============================================================================
+# name / symbol — identità dell'unità (per mode e visualizer futuro)
+# =============================================================================
+
+@pytest.mark.parametrize("preset,name,symbol", [
+    ('semitones',    'semitones',    'st'),
+    ('cents',        'cents',        'c'),
+    ('quarter_tone', 'quarter_tone', 'qt'),
+    ('eighth_tone',  'eighth_tone',  'et'),
+    ('ratio',        'ratio',        'x'),
+])
+def test_preset_name_and_symbol(preset, name, symbol):
+    u = make_pitch_unit(preset)
+    assert u.name == name
+    assert u.symbol == symbol
+
+
+def test_edo_dict_name_and_symbol():
+    u = make_pitch_unit({'edo': 31})
+    assert u.name == 'edo'
+    assert u.symbol == 'edo31'
+
+
+def test_edo_constructed_directly_defaults_to_edo_name():
+    # EdoUnit(12) senza preset -> name generico 'edo', non 'semitones'
+    u = EdoUnit(12)
+    assert u.name == 'edo'
+    assert u.symbol == 'edo12'
