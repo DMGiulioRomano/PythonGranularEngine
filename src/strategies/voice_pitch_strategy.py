@@ -272,6 +272,11 @@ VOICE_PITCH_STRATEGIES: Dict[str, Type[VoicePitchStrategy]] = {
     'spectral':    SpectralPitchStrategy,
 }
 
+# Strategie i cui offset sono intrinsecamente in semitoni (interi da
+# CHORD_INTERVALS / 12*log2): in v1 accettano solo l'unità `semitones`.
+# Singola fonte di verità per la validazione in Stream._init_voice_manager.
+SEMITONE_LOCKED = frozenset({'chord', 'spectral'})
+
 
 def register_voice_pitch_strategy(name: str, cls: Type[VoicePitchStrategy]) -> None:
     """

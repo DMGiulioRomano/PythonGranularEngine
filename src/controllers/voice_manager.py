@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from parameters.parameter import resolve_param, StrategyParam
+from parameters.pitch_unit import PitchUnit, EdoUnit
 from strategies.voice_pitch_strategy import VoicePitchStrategy
 from strategies.voice_onset_strategy import VoiceOnsetStrategy
 from strategies.voice_pointer_strategy import VoicePointerStrategy
@@ -103,6 +104,7 @@ class VoiceManager:
         pointer_strategy: Optional[VoicePointerStrategy] = None,
         pan_strategy: Optional[VoicePanStrategy] = None,
         pan_spread: StrategyParam = 0.0,
+        pitch_unit: Optional[PitchUnit] = None,
     ):
         self.max_voices = max_voices
         self._pitch_strategy = pitch_strategy
@@ -110,6 +112,9 @@ class VoiceManager:
         self._pointer_strategy = pointer_strategy
         self._pan_strategy = pan_strategy
         self._pan_spread = pan_spread
+        # Unità in cui è espresso pitch_offset: decide la conversione a ratio
+        # in Stream._create_grain. Default semitoni (EdoUnit(12)), retrocompat.
+        self.pitch_unit: PitchUnit = pitch_unit if pitch_unit is not None else EdoUnit(12)
 
     def get_voice_config(self, voice_index: int, time: float) -> VoiceConfig:
         """

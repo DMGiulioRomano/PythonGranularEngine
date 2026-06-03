@@ -56,6 +56,8 @@ from strategies.voice_pointer_strategy import (
     LinearPointerStrategy, StochasticPointerStrategy,
 )
 from strategies.voice_pan_strategy import LinearPanStrategy
+from parameters.pitch_unit import EdoUnit, RatioUnit
+from shared.exceptions import InvalidStrategyConfigError
 
 
 # =============================================================================
@@ -658,3 +660,113 @@ class TestStrategyKwargsEnvelope:
         })
         vc = s._voice_manager.get_voice_config(1, 0.0)
         assert vc.pitch_offset == pytest.approx(3.0)
+
+
+# =============================================================================
+# 11. Unità di misura del pitch (voices.pitch.unit)
+# =============================================================================
+
+class TestVoicesPitchUnit:
+    """Il blocco voices.pitch accetta `unit:` che decide come l'offset della
+    distribuzione (numero puro) diventa ratio alla giunzione in _create_grain.
+    Default: semitoni (EdoUnit(12)), retrocompatibile."""
+
+    def test_default_unit_is_semitones(self):
+        s = _build_stream({'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0}})
+        assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
+        assert s._voice_manager.pitch_unit.divisions == 12
+
+    def test_unit_quarter_tone_preset(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'step', 'step': 1.0, 'unit': 'quarter_tone'},
+        })
+        assert s._voice_manager.pitch_unit.divisions == 24
+
+    def test_unit_edo_dict(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'range', 'semitone_range': 12.0, 'unit': {'edo': 31}},
+        })
+        assert s._voice_manager.pitch_unit.divisions == 31
+
+    def test_unit_ratio(self):
+        s = _build_stream({
+            'num_voices': 2,
+            'pitch': {'strategy': 'step', 'step': 1.5, 'unit': 'ratio'},
+        })
+        assert isinstance(s._voice_manager.pitch_unit, RatioUnit)
+
+    def test_unit_not_a_strategy_kwarg(self):
+        # `unit` non deve finire nel costruttore della distribuzione:
+        # step resta l'unico kwarg, offset voce 1 = 1*step.
+        s = _build_stream({
+            'num_voices': 2,
+            'pitch': {'strategy': 'step', 'step': 5.0, 'unit': 'cents'},
+        })
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == pytest.approx(5.0)
+
+
+class TestVoicesPitchUnitJunction:
+    """La giunzione in _create_grain converte l'offset col PitchUnit attivo.
+    base pitch_ratio default = 1.0 (nessun blocco pitch nei params)."""
+
+    def _grain_ratio_for_voice(self, voices_params, voice_index):
+        s = _build_stream(voices_params)
+        s._density = type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0)})()
+        s.sample_table_num = 1
+        s.window_table_map = {'hanning': 2}
+        s.generate_grains()
+        return s.voices[voice_index][0].pitch_ratio
+
+    def test_default_semitones_octave(self):
+        # step 12 semitoni -> 2^(12/12) = 2.0
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0}}, 1)
+        assert r == pytest.approx(2.0)
+
+    def test_quarter_tone_half_octave(self):
+        # step 12 quarti -> 2^(12/24) = sqrt(2)
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0, 'unit': 'quarter_tone'}}, 1)
+        assert r == pytest.approx(2 ** 0.5)
+
+    def test_ratio_unit_direct_multiplier(self):
+        # step 2.0 con unit ratio -> offset 2.0 usato come ratio diretto
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 2.0, 'unit': 'ratio'}}, 1)
+        assert r == pytest.approx(2.0)
+
+    def test_voice_0_unchanged_under_ratio(self):
+        # voce 0 -> offset 0 -> guardia salta la moltiplicazione -> base 1.0
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 2.0, 'unit': 'ratio'}}, 0)
+        assert r == pytest.approx(1.0)
+
+
+class TestVoicesPitchUnitSemitoneLocked:
+    """chord e spectral producono intervalli intrinsecamente in semitoni:
+    in v1 accettano solo `semitones` (o unit assente). Altra unità → errore."""
+
+    @pytest.mark.parametrize("strategy,extra", [
+        ('chord', {'chord': 'dom7'}),
+        ('spectral', {}),
+    ])
+    @pytest.mark.parametrize("unit", ['quarter_tone', 'cents', 'ratio', {'edo': 31}])
+    def test_non_semitone_unit_rejected(self, strategy, extra, unit):
+        with pytest.raises(InvalidStrategyConfigError):
+            _build_stream({
+                'num_voices': 4,
+                'pitch': {'strategy': strategy, 'unit': unit, **extra},
+            })
+
+    def test_chord_without_unit_ok(self):
+        s = _build_stream({'num_voices': 4, 'pitch': {'strategy': 'chord', 'chord': 'dom7'}})
+        assert s._voice_manager.pitch_unit.divisions == 12
+
+    def test_chord_explicit_semitones_ok(self):
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {'strategy': 'chord', 'chord': 'dom7', 'unit': 'semitones'},
+        })
+        assert s._voice_manager.pitch_unit.divisions == 12
