@@ -358,7 +358,10 @@ class TestPitchParameterSchema:
 
     def test_expected_parameters(self):
         names = {s.name for s in PITCH_PARAMETER_SCHEMA}
-        assert names == {'pitch_ratio', 'pitch_semitones'}
+        assert names == {
+            'pitch_ratio', 'pitch_semitones',
+            'pitch_cents', 'pitch_quarter_tone', 'pitch_eighth_tone',
+        }
 
     def test_pitch_mode_exclusive_group(self):
         """Entrambi i parametri appartengono a 'pitch_mode'."""

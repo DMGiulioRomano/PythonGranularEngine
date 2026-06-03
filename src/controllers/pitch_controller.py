@@ -13,7 +13,13 @@ Ispirato al DMX-1000 di Barry Truax (1988)
 
 from parameters.parameter_schema import PITCH_PARAMETER_SCHEMA
 from strategies.strategy_registry import StrategyFactory, PITCH_STRATEGIES
+from strategies.strategie import UnitPitchStrategy
 from parameters.parameter_orchestrator import ParameterOrchestrator
+from parameters.parameter import Parameter
+from parameters.parameter_definitions import ParameterBounds
+from parameters.pitch_unit import EdoUnit
+from envelopes.envelope import Envelope
+from shared.exceptions import InvalidFieldValueError
 from core.stream_config import StreamConfig
 
 class PitchController:
@@ -36,20 +42,65 @@ class PitchController:
         """
         
         # Create orchestrator
-        self._orchestrator = ParameterOrchestrator(config=config)        
+        self._orchestrator = ParameterOrchestrator(config=config)
+        self._config = config
+
+        # Ramo speciale: pitch su griglia EDO arbitraria. Il valore è annidato
+        # ({divisions, value}), quindi non passa per il gruppo esclusivo schema-driven.
+        edo_spec = params.get('edo')
+        if edo_spec is not None:
+            self._loaded_params = {}
+            self._strategy, self._active_param = self._build_edo_strategy(edo_spec)
+            return
+
         # Create parameters
         self._loaded_params = self._orchestrator.create_all_parameters(
-            params, 
+            params,
             schema=PITCH_PARAMETER_SCHEMA
         )
-    
+
         selected_param_name = self._find_selected_param()
-        param_obj = self._loaded_params[selected_param_name]
+        self._active_param = self._loaded_params[selected_param_name]
         self._strategy = StrategyFactory.create_pitch_strategy(
-            selected_param_name, 
-            param_obj, 
+            selected_param_name,
+            self._active_param,
             self._loaded_params
         )
+
+    def _build_edo_strategy(self, edo_spec):
+        """
+        Costruisce la strategy per pitch: {edo: {divisions: N, value: X}}.
+
+        divisions definisce la griglia (EdoUnit, valida N > 0); value è il numero
+        di gradi (scalare o envelope) con bounds dinamici ±3·divisions (3 ottave,
+        coerente con pitch_semitones [-36, 36]).
+        """
+        if (not isinstance(edo_spec, dict)
+                or 'divisions' not in edo_spec
+                or 'value' not in edo_spec):
+            raise InvalidFieldValueError(
+                field='pitch.edo',
+                value=edo_spec,
+                hint="forma attesa: edo: {divisions: N, value: X}.",
+            )
+        unit = EdoUnit(edo_spec['divisions'])  # valida divisions > 0
+        bound = 3.0 * unit.divisions
+        bounds = ParameterBounds(
+            min_val=-bound,
+            max_val=bound,
+            min_range=0.0,
+            max_range=bound,
+            variation_mode='quantized',
+        )
+        raw_value = edo_spec['value']
+        value = Envelope(raw_value) if Envelope.is_envelope_like(raw_value) else raw_value
+        param = Parameter(
+            name='pitch_edo',
+            value=value,
+            bounds=bounds,
+            owner_id=self._config.context.stream_id,
+        )
+        return UnitPitchStrategy(param, unit, 'edo'), param
 
 
     def _find_selected_param(self) -> str:
@@ -124,9 +175,8 @@ class PitchController:
 
     @property
     def range(self):
-        """Espone il range del parametro attivo."""
-        active_param = self._find_selected_param()
-        param = self._loaded_params[active_param]
+        """Espone il range del parametro attivo (cache da __init__)."""
+        param = self._active_param
         if hasattr(param, '_mod_range') and param._mod_range is not None:
             return param._mod_range
         return 0.0

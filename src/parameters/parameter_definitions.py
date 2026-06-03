@@ -117,7 +117,33 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         max_range=36.0,
         variation_mode='quantized'  # <--- NOTA: Variazione a interi (randint)
     ),
-    
+
+    # Famiglia EDO: bounds scalati a ±3 ottave come pitch_semitones
+    # (cents = ±3·1200, quarti = ±3·24, ottavi = ±3·48).
+    'pitch_cents': ParameterBounds(
+        min_val=-3600.0,
+        max_val=3600.0,
+        min_range=0.0,
+        max_range=3600.0,
+        variation_mode='quantized'
+    ),
+
+    'pitch_quarter_tone': ParameterBounds(
+        min_val=-72.0,
+        max_val=72.0,
+        min_range=0.0,
+        max_range=72.0,
+        variation_mode='quantized'
+    ),
+
+    'pitch_eighth_tone': ParameterBounds(
+        min_val=-144.0,
+        max_val=144.0,
+        min_range=0.0,
+        max_range=144.0,
+        variation_mode='quantized'
+    ),
+
     'pitch_ratio': ParameterBounds(
         min_val=0.125,   # 3 ottave sotto
         max_val=8.0,     # 3 ottave sopra

@@ -18,6 +18,9 @@ from shared.exceptions import (
 PITCH_STRATEGIES: Dict[str, Type[PitchStrategy]] = {
     'pitch_semitones': SemitonesStrategy,
     'pitch_ratio': RatioStrategy,
+    'pitch_cents': CentsStrategy,
+    'pitch_quarter_tone': QuarterToneStrategy,
+    'pitch_eighth_tone': EighthToneStrategy,
 }
 
 DENSITY_STRATEGIES: Dict[str, Type[DensityStrategy]] = {

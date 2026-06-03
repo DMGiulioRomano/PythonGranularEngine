@@ -47,6 +47,7 @@ EXPECTED_PARAMETERS = {
     'grain_duration', 'reverse', 'grain_envelope',
     # Pitch
     'pitch_semitones', 'pitch_ratio',
+    'pitch_cents', 'pitch_quarter_tone', 'pitch_eighth_tone',
     # Pointer
     'pointer_speed_ratio', 'pointer_deviation',
     'loop_dur', 'loop_start', 'loop_end',

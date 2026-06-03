@@ -660,3 +660,64 @@ class TestRealisticSequence:
                 assert result == pytest.approx(-1.5)
             else:
                 assert result == pytest.approx(1.5)
+
+# =============================================================================
+# GRUPPO 13: NUOVE UNITÀ — cents / quarti / ottavi (base pitch unificato)
+# =============================================================================
+
+class TestPitchUnitsBase:
+    """Il blocco pitch accetta nuove unità della famiglia EDO, costruite
+    attraverso lo stesso gruppo esclusivo pitch_mode (orchestrator reale)."""
+
+    def test_cents_mode(self, mock_config):
+        pc = PitchController({'cents': 50.0}, mock_config)
+        assert pc.mode == 'cents'
+        assert pc.calculate(0.0) == pytest.approx(2 ** (50.0 / 1200.0))
+
+    def test_quarter_tone_mode(self, mock_config):
+        pc = PitchController({'quarter_tone': 12.0}, mock_config)
+        assert pc.mode == 'quarter_tone'
+        assert pc.calculate(0.0) == pytest.approx(2 ** 0.5)
+
+    def test_eighth_tone_mode(self, mock_config):
+        pc = PitchController({'eighth_tone': 24.0}, mock_config)
+        assert pc.mode == 'eighth_tone'
+        assert pc.calculate(0.0) == pytest.approx(2 ** 0.5)
+
+    def test_semitones_still_default_priority(self, mock_config):
+        # Regressione: semitoni resta selezionabile e invariato.
+        pc = PitchController({'semitones': 12.0}, mock_config)
+        assert pc.mode == 'semitones'
+        assert pc.calculate(0.0) == pytest.approx(2.0)
+
+
+class TestPitchEdoBase:
+    """Unità EDO parametrica al base: pitch: {edo: {divisions: N, value: X}}.
+    Ramo speciale (non schema-driven) perché il valore è annidato."""
+
+    def test_edo_octave(self, mock_config):
+        # value == divisions -> un'ottava
+        pc = PitchController({'edo': {'divisions': 31, 'value': 31}}, mock_config)
+        assert pc.mode == 'edo'
+        assert pc.calculate(0.0) == pytest.approx(2.0)
+
+    def test_edo_partial(self, mock_config):
+        pc = PitchController({'edo': {'divisions': 24, 'value': 12}}, mock_config)
+        assert pc.calculate(0.0) == pytest.approx(2 ** 0.5)
+
+    def test_edo_invalid_divisions_raises(self, mock_config):
+        from shared.exceptions import InvalidFieldValueError
+        with pytest.raises(InvalidFieldValueError):
+            PitchController({'edo': {'divisions': 0, 'value': 1}}, mock_config)
+
+    def test_edo_malformed_missing_value_raises(self, mock_config):
+        from shared.exceptions import InvalidFieldValueError
+        with pytest.raises(InvalidFieldValueError):
+            PitchController({'edo': {'divisions': 31}}, mock_config)
+
+    def test_edo_range_property_safe(self, mock_config):
+        # le property non devono crashare nel ramo edo
+        pc = PitchController({'edo': {'divisions': 31, 'value': 4}}, mock_config)
+        assert pc.range == 0.0
+        assert pc.base_ratio is None
+        assert pc.base_semitones is None

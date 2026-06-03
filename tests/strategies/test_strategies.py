@@ -739,10 +739,13 @@ class TestRegistryContent:
     """Test contenuto dei dizionari PITCH_STRATEGIES e DENSITY_STRATEGIES."""
 
     @pytest.mark.parametrize("key,registry", [
-        ('pitch_semitones', PITCH_STRATEGIES),
-        ('pitch_ratio',     PITCH_STRATEGIES),
-        ('fill_factor',     DENSITY_STRATEGIES),
-        ('density',         DENSITY_STRATEGIES),
+        ('pitch_semitones',    PITCH_STRATEGIES),
+        ('pitch_ratio',        PITCH_STRATEGIES),
+        ('pitch_cents',        PITCH_STRATEGIES),
+        ('pitch_quarter_tone', PITCH_STRATEGIES),
+        ('pitch_eighth_tone',  PITCH_STRATEGIES),
+        ('fill_factor',        DENSITY_STRATEGIES),
+        ('density',            DENSITY_STRATEGIES),
     ])
     def test_registry_contains_key(self, key, registry):
         """Ogni chiave attesa e' presente nel registry corretto."""
@@ -759,8 +762,8 @@ class TestRegistryContent:
         assert registry[key] is expected_class
 
     def test_pitch_strategies_count(self):
-        """PITCH_STRATEGIES ha esattamente 2 strategie."""
-        assert len(PITCH_STRATEGIES) == 2
+        """PITCH_STRATEGIES: semitoni, ratio + famiglia EDO (cents/quarti/ottavi)."""
+        assert len(PITCH_STRATEGIES) == 5
 
     def test_density_strategies_count(self):
         """DENSITY_STRATEGIES ha esattamente 2 strategie."""

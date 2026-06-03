@@ -176,8 +176,36 @@ PITCH_PARAMETER_SCHEMA: List[ParameterSpec] = [
         default=None,
         range_path='range',
         dephase_key='pitch' ,
-        exclusive_group='pitch_mode', 
-        group_priority=1  
+        exclusive_group='pitch_mode',
+        group_priority=1
+    ),
+    # Famiglia EDO (stessa meccanica di pitch_semitones, gruppo pitch_mode).
+    ParameterSpec(
+        name='pitch_quarter_tone',
+        yaml_path='quarter_tone',
+        default=None,
+        range_path='range',
+        dephase_key='pitch',
+        exclusive_group='pitch_mode',
+        group_priority=2,
+    ),
+    ParameterSpec(
+        name='pitch_eighth_tone',
+        yaml_path='eighth_tone',
+        default=None,
+        range_path='range',
+        dephase_key='pitch',
+        exclusive_group='pitch_mode',
+        group_priority=3,
+    ),
+    ParameterSpec(
+        name='pitch_cents',
+        yaml_path='cents',
+        default=None,
+        range_path='range',
+        dephase_key='pitch',
+        exclusive_group='pitch_mode',
+        group_priority=4,
     ),
 ]
 
