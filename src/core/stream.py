@@ -446,7 +446,7 @@ class Stream:
         Crea un singolo grano con tutti i parametri calcolati.
 
         Applica gli offset di VoiceConfig sopra i valori base:
-          pitch_ratio  *= 2^(pitch_offset/12)
+          pitch_ratio  *= unit.to_ratio(pitch_offset)   # unità da voices.pitch
           pointer_pos  = (base + pointer_offset) % sample_dur_sec
           pan          += pan_offset
           onset        += onset_offset

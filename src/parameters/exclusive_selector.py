@@ -12,11 +12,14 @@ class ExclusiveGroupSelector:
     2. Se nessuno è specificato, usa quello con default non-None e priorità più alta
     3. Se più di uno è specificato, usa quello con priorità più alta
     
-    Esempio per pitch_mode:
-    - YAML ha 'semitones: 12' → seleziona pitch_semitones (priority=1)
-    - YAML ha 'ratio: 2.0' → seleziona pitch_ratio (priority=2) 
-    - YAML non ha nessuno → seleziona pitch_ratio (default=1.0, priority=2)
-    - YAML ha entrambi → seleziona pitch_semitones (priority=1 vince)
+    Esempio per density_mode (fill_factor priority=1, density priority=2):
+    - YAML ha 'fill_factor: 2' → seleziona fill_factor (priority=1)
+    - YAML ha 'density: 10'    → seleziona density (priority=2)
+    - YAML non ha nessuno      → seleziona fill_factor (default=2, priority=1)
+    - YAML ha entrambi         → seleziona fill_factor (priority=1 vince)
+
+    Nota: il blocco pitch NON usa più questo selettore (modello unit-driven,
+    vedi PitchController._select_unit).
     """
     
     @staticmethod
