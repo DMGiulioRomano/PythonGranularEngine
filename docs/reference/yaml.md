@@ -8,7 +8,7 @@ sources:
   - src/parameters/
   - src/strategies/
   - src/envelopes/
-last_synced_commit: 2cba443
+last_synced_commit: 14ea6eb
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -288,7 +288,8 @@ Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
 
 ## Blocco Pitch
 
-Una sola unità di trasposizione per blocco (gruppo esclusivo `pitch_mode`).
+Una sola chiave-unità di trasposizione per blocco (modello unit-driven:
+ogni unità è una `PitchUnit`, unica fonte di verità per conversione e bounds).
 La famiglia EDO (Equal Division of the Octave) converte in ratio con
 `2^(valore / N)`; `ratio` è invece un moltiplicatore diretto.
 
@@ -301,8 +302,9 @@ La famiglia EDO (Equal Division of the Octave) converte in ratio con
 | `edo: {divisions, value}` | EDO arbitrario | N | [-3·N, 3·N] |
 | `ratio` | ratio diretto | — | [0.125, 8] |
 
-Priorità se più chiavi presenti: `semitones` > `quarter_tone` > `eighth_tone`
-> `cents` > `ratio`.
+Più chiavi-unità nello stesso blocco → errore (`InvalidFieldValueError`):
+niente più priorità implicita. Senza alcuna chiave-unità: default `semitones`
+con valore neutro `0` (ratio 1.0).
 
 ```yaml
 pitch:
