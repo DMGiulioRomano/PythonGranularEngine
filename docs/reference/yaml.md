@@ -306,6 +306,10 @@ Più chiavi-unità nello stesso blocco → errore (`InvalidFieldValueError`):
 niente più priorità implicita. Senza alcuna chiave-unità: default `semitones`
 con valore neutro `0` (ratio 1.0).
 
+Chiavi sconosciute nel blocco (refusi tipo `semitone:` invece di `semitones:`)
+→ errore (`InvalidFieldValueError`), non vengono ignorate silenziosamente.
+Chiavi valide del blocco: le 6 unità più `range`.
+
 ```yaml
 pitch:
   ratio: 1.0              # rapporto di trasposizione (default 1.0 = no trasposizione)

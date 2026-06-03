@@ -91,6 +91,31 @@ class TestUnitSelection:
         with pytest.raises(InvalidFieldValueError):
             _pc(mock_config, params)
 
+    def test_typo_unit_key_raises_not_silent_default(self, mock_config):
+        # `semitone` (refuso di `semitones`) non è una chiave nota:
+        # niente silent default a semitoni neutri, deve sollevare.
+        with pytest.raises(InvalidFieldValueError):
+            _pc(mock_config, {'semitone': 12.0})
+
+    def test_unknown_key_beside_valid_unit_raises(self, mock_config):
+        # unità valida + chiave ignota nello stesso blocco → errore,
+        # la chiave extra non viene silenziosamente ignorata.
+        with pytest.raises(InvalidFieldValueError):
+            _pc(mock_config, {'semitones': 12.0, 'cnts': 5.0})
+
+    def test_valid_unit_with_range_no_false_positive(self, mock_config):
+        # `range` è modificatore ammesso: nessun falso positivo.
+        pc = _pc(mock_config, {'ratio': 2.0, 'range': 0.1})
+        assert pc.mode == 'ratio'
+        assert pc.range == pytest.approx(0.1)
+
+    def test_unknown_key_error_lists_valid_keys(self, mock_config):
+        # il messaggio deve guidare: elenca le chiavi valide del blocco.
+        with pytest.raises(InvalidFieldValueError) as exc:
+            _pc(mock_config, {'semitone': 12.0})
+        msg = exc.value.user_message()
+        assert 'semitones' in msg and 'range' in msg
+
 
 # =============================================================================
 # GRUPPO 2: CALCULATE - RATIO

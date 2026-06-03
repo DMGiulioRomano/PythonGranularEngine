@@ -21,6 +21,13 @@ from core.stream_config import StreamConfig
 # ({divisions, value}); gli altri sono preset nominali.
 PITCH_UNIT_KEYS = frozenset(PITCH_UNIT_PRESETS) | {'edo'}
 
+# Chiavi non-unità ammesse nel blocco pitch (modificatori).
+PITCH_BLOCK_EXTRA_KEYS = frozenset({'range'})
+
+# Whitelist completa del blocco pitch: unità + modificatori. Chiavi fuori da
+# questo insieme sono refusi/errori e vanno segnalate, non ignorate.
+PITCH_BLOCK_KEYS = PITCH_UNIT_KEYS | PITCH_BLOCK_EXTRA_KEYS
+
 
 class PitchController:
     """
@@ -59,10 +66,23 @@ class PitchController:
         """
         Individua l'unità dal blocco pitch e il valore grezzo associato.
 
+        - chiavi fuori da PITCH_BLOCK_KEYS (refusi, es. `semitone`) →
+          InvalidFieldValueError: nessun silent default.
         - 0 chiavi-unità → default semitoni, valore neutro (ratio 1.0).
         - 1 chiave → quell'unità (edo: valore annidato, altri: valore diretto).
         - >1 chiavi → InvalidFieldValueError (ambiguità esplicita).
         """
+        unknown = [k for k in params if k not in PITCH_BLOCK_KEYS]
+        if unknown:
+            raise InvalidFieldValueError(
+                field='pitch',
+                value=unknown,
+                hint=(
+                    "chiavi sconosciute nel blocco pitch: "
+                    f"{unknown}. Chiavi valide: {sorted(PITCH_BLOCK_KEYS)}."
+                ),
+            )
+
         present = [k for k in params if k in PITCH_UNIT_KEYS]
         if len(present) > 1:
             raise InvalidFieldValueError(
