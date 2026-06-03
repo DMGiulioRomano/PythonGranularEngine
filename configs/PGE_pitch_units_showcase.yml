@@ -1,0 +1,339 @@
+# PGE_pitch_units_showcase.yml
+#
+# Catalogo di TUTTE le possibilità del sistema pitch unit-driven (PR #84).
+# Diviso in due parti:
+#   PARTE A — blocco `pitch` base (trasposizione dello stream)
+#   PARTE B — blocco `voices.pitch` (distribuzione pitch fra le voci)
+#
+# Conversione a ratio:
+#   famiglia EDO → ratio = 2^(valore / N)   (N = divisioni per ottava)
+#     semitones N=12 · quarter_tone N=24 · eighth_tone N=48 · cents N=1200 · edo N
+#   ratio → moltiplicatore diretto (nessun esponente)
+#
+# Regole blocco pitch:
+#   - UNA sola chiave-unità per blocco. Due insieme → InvalidFieldValueError.
+#   - Nessuna chiave → default `semitones` con valore neutro (ratio 1.0).
+#   - Chiave sconosciuta / refuso (es. `semitone:`) → InvalidFieldValueError
+#     (validazione strict, niente silent default). Chiavi valide: 6 unità + `range`.
+#
+# Gli stream sono sfalsati nel tempo (onset crescente) per poterli ascoltare
+# uno alla volta. Sample: 001-0-27_9.wav (presente in refs/).
+
+duration: 130
+bpm: 120
+
+streams:
+
+  # ===========================================================================
+  # PARTE A — BLOCCO PITCH BASE
+  # ===========================================================================
+
+  # --- A1. semitones (scalare) — +12 = un'ottava sopra -------------------------
+  - stream_id: "A1_semitones_scalar"
+    onset: 0
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      semitones: 12
+    pan: 0
+    volume: -6
+
+  # --- A2. semitones (envelope) — glissando -1 ott → +1 ott --------------------
+  - stream_id: "A2_semitones_envelope"
+    onset: 5
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      semitones: [[0, -12], [4, 12]]
+    volume: -6
+
+  # --- A3. semitones + range — base 0, ±6 semitoni random ----------------------
+  - stream_id: "A3_semitones_range"
+    onset: 10
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    dephase: 100              # forza l'applicazione della variazione stocastica
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      semitones: 0
+      range: 6
+    volume: -6
+
+  # --- A4. cents — +50 cents (quarto di tono in 1200-EDO) ----------------------
+  - stream_id: "A4_cents"
+    onset: 15
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      cents: 50
+    volume: -6
+
+  # --- A5. quarter_tone — 3 quarti di tono (24-EDO) ----------------------------
+  - stream_id: "A5_quarter_tone"
+    onset: 20
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      quarter_tone: 3
+    volume: -6
+
+  # --- A6. eighth_tone — 6 ottavi di tono (48-EDO) -----------------------------
+  - stream_id: "A6_eighth_tone"
+    onset: 25
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      eighth_tone: 6
+    volume: -6
+
+  # --- A7. edo arbitrario — 18 gradi di 31-EDO ---------------------------------
+  - stream_id: "A7_edo_31"
+    onset: 30
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      edo:
+        divisions: 31
+        value: 18
+    volume: -6
+
+  # --- A8. ratio (scalare) — 1.5 = quinta giusta (moltiplicatore diretto) ------
+  - stream_id: "A8_ratio_scalar"
+    onset: 35
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      ratio: 1.5
+    volume: -6
+
+  # --- A9. ratio (envelope) — sweep 0.5 → 2.0 (un'ottava sotto → sopra) ---------
+  - stream_id: "A9_ratio_envelope"
+    onset: 40
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      ratio: [[0, 0.5], [4, 2.0]]
+    volume: -6
+
+  # --- A10. ratio + range — base 1.0, ±0.1 random (variazione additiva) --------
+  - stream_id: "A10_ratio_range"
+    onset: 45
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    dephase: 100
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      ratio: 1.0
+      range: 0.1
+    volume: -6
+
+  # ===========================================================================
+  # PARTE B — BLOCCO VOICES.PITCH
+  # `unit` decide come l'offset prodotto dalla strategia diventa ratio.
+  # Default `unit: semitones`. La voce 0 resta sempre senza offset.
+  # ===========================================================================
+
+  # --- B1. step — voce i → i × step (semitoni, default) ------------------------
+  - stream_id: "B1_step_semitones"
+    onset: 50
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0             # voci a 0, 3, 6, 9 semitoni
+    volume: -9
+
+  # --- B2. step — unit cents ---------------------------------------------------
+  - stream_id: "B2_step_cents"
+    onset: 55
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 50.0            # voci a 0, 50, 100, 150 cents
+        unit: cents
+    volume: -9
+
+  # --- B3. step — unit edo arbitrario (gradi interpretati in 31-EDO) -----------
+  - stream_id: "B3_step_edo31"
+    onset: 60
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0             # voci a 0, 2, 4, 6 gradi di 31-EDO
+        unit: {edo: 31}
+    volume: -9
+
+  # --- B4. step — unit ratio (offset = moltiplicatore diretto) -----------------
+  - stream_id: "B4_step_ratio"
+    onset: 65
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {ratio: 1.0}
+    voices:
+      num_voices: 3
+      pitch:
+        strategy: step
+        step: 1.5             # voce 0 invariata, voci 1..2 a ratio 1.5, 3.0
+        unit: ratio
+    volume: -9
+
+  # --- B5. range — voci distribuite in [0, semitone_range] ---------------------
+  - stream_id: "B5_range_semitones"
+    onset: 70
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: range
+        semitone_range: 12.0  # 5 voci spalmate su un'ottava
+    volume: -9
+
+  # --- B6. range — unit eighth_tone --------------------------------------------
+  - stream_id: "B6_range_eighth_tone"
+    onset: 75
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: range
+        semitone_range: 24.0  # 24 ottavi di tono = 1 ottava, distribuiti in 48-EDO
+        unit: eighth_tone
+    volume: -9
+
+  # --- B7. stochastic — offset fisso per voce (seeded), magnitudine time-varying
+  - stream_id: "B7_stochastic_semitones"
+    onset: 80
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        semitone_range: 6.0   # ogni voce un offset random fisso in ±6 semitoni
+    volume: -9
+
+  # --- B8. stochastic — unit cents (magnitudine in cents) ----------------------
+  - stream_id: "B8_stochastic_cents"
+    onset: 85
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        semitone_range: 100.0 # magnitudine ±100 (interpretata in cents)
+        unit: cents
+    volume: -9
+
+  # --- B9. chord — accordo nominale (SOLO semitoni per vincolo v1) --------------
+  - stream_id: "B9_chord_dom7"
+    onset: 90
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: dom7           # accordo di settima di dominante
+    volume: -9
+
+  # --- B10. chord — con rivolto (inversion) ------------------------------------
+  - stream_id: "B10_chord_maj7_inv2"
+    onset: 95
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord
+        chord: maj7
+        inversion: 2          # secondo rivolto
+    volume: -9
+
+  # --- B11. spectral — parziali della serie armonica (SOLO semitoni) -----------
+  - stream_id: "B11_spectral"
+    onset: 100
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: spectral    # voce i → round(12·log2(i+1)) semitoni
+    volume: -9
+
+  # --- B12. base pitch + voices.pitch combinati --------------------------------
+  #   trasposizione globale (+7 st) con accordo distribuito sopra.
+  - stream_id: "B12_base_plus_voices"
+    onset: 105
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      semitones: 7            # tutto lo stream trasposto di una quinta
+    voices:
+      num_voices: 3
+      pitch:
+        strategy: chord
+        chord: min            # triade minore sopra il +7 st di base
+    volume: -9
