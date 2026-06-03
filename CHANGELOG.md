@@ -10,6 +10,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Sistema pitch **unit-driven** (`PitchUnit`): il blocco `pitch` (base e
+  `voices.pitch`) accetta sei unità di misura — `semitones`, `cents`,
+  `quarter_tone`, `eighth_tone`, `edo` (EDO arbitrario `{divisions, value}`)
+  e `ratio` — con un'unica interfaccia di conversione a ratio. Famiglia EDO:
+  `2^(valore / N)`; `ratio` è moltiplicatore diretto. Default invariato
+  (`semitones`, valore neutro → ratio 1.0). `EdoUnit`/`RatioUnit` e factory
+  `make_pitch_unit` in `src/parameters/pitch_unit.py`; strategy unica
+  `UnitPitchStrategy`. PR #84.
+- Validazione strict del blocco `pitch`: una chiave sconosciuta — incluso un
+  refuso sull'unità (es. `semitone:` invece di `semitones:`) — solleva
+  `InvalidFieldValueError` che elenca le chiavi valide, invece di essere
+  ignorata silenziosamente con default a semitoni neutri (No Silent Failures).
+  Chiavi valide: le 6 unità più `range`. PR #84.
+
 - Flag `normalized` nel blocco `voices.pointer` (YAML): opt-in per interpretare
   l'offset di pointer di voce come **frazione di `sample_dur_sec`** anziché in
   secondi. Default invariato (`normalized: false` → secondi), nessun breaking
