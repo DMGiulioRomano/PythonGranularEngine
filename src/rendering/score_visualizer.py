@@ -88,15 +88,9 @@ class ScoreVisualizer:
                 'pointer_deviation': (0.0, 1.0),  # normalizzato
                 'pointer_deviation_prob': (0, 100),  # probabilità %
                 'loop_dur': (0.001, 10.0),    # secondi
-                # === PITCH ===
-                'pitch_ratio': (0.125, 8.0),
-                'pitch_ratio_prob': (0, 100),  # probabilità %
-                'pitch_semitones': (-36, 36),
-                'pitch_semitones_prob': (0, 100),  # probabilità %
-                'pitch_cents': (-3600, 3600),
-                'pitch_quarter_tone': (-72, 72),
-                'pitch_eighth_tone': (-144, 144),
-                
+                # NOTA: pitch è unit-driven (chiave 'pitch'); i bounds vengono da
+                # stream.pitch_unit.value_bounds(), non da range statici qui.
+
                 # === DENSITY ===
                 'density': (1, 200),          # grani/sec
                 'fill_factor': (0.1, 20),
@@ -132,14 +126,7 @@ class ScoreVisualizer:
                 
                 # === PITCH ===
                 'pitch': '#984ea3',           # viola (unit-driven, qualsiasi unità)
-                'pitch_ratio': '#984ea3',     # viola
-                'pitch_ratio_prob': '#cab2d6',  # viola chiaro
-                'pitch_semitones': '#9467bd', # viola chiaro alternativo
-                'pitch_semitones_prob': '#e7d4e8',  # lavanda chiaro
-                'pitch_cents': '#8c6bb1',
-                'pitch_quarter_tone': '#88419d',
-                'pitch_eighth_tone': '#810f7c',
-                
+
                 # === DENSITY ===
                 'density': '#ff7f00',         # arancio
                 'fill_factor': '#f781bf',     # rosa
@@ -1180,11 +1167,7 @@ class ScoreVisualizer:
             'volume': 'dB',
             'grain_duration': 'ms',
             'pan': '°',
-            'pitch_ratio': 'x',
-            'pitch_semitones': 'st',  # semitoni
-            'pitch_cents': 'c',        # cents
-            'pitch_quarter_tone': 'qt',  # quarti di tono
-            'pitch_eighth_tone': 'et',   # ottavi di tono
+            # pitch: il simbolo (st/c/qt/et/edoN/x) viene da pu.symbol, vedi sotto
             'density': 'g/s',
             'pointer_speed': 'x',
             'fill_factor': '',

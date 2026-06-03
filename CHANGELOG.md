@@ -140,6 +140,26 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   browser ritornava 404. Vedi
   `docs/plans/done/2026-05-21-001-fix-stem-naming-double-underscore-plan.md`.
 
+### Rimosso
+
+- Property legacy del pitch superate dal modello unit-driven:
+  `Stream.pitch_ratio`, `Stream.pitch_semitones` (`src/core/stream.py`) e
+  `PitchController.base_ratio`, `PitchController.base_semitones`
+  (`src/controllers/pitch_controller.py`). Erano ratio/semitoni-only e prive di
+  consumer in produzione (la visualizzazione legge ora `Stream.pitch_value` +
+  `Stream.pitch_unit`, validi per ogni unità). Nessun impatto cross-repo: le 4
+  property non erano referenziate da PGE-ls/PGE-ui. PR #84.
+
+- Chiavi pitch_* morte nei dict di config di `ScoreVisualizer`
+  (`src/rendering/score_visualizer.py`): rimosse le entry per-unità
+  (`pitch_ratio`, `pitch_semitones`, `pitch_cents`, `pitch_quarter_tone`,
+  `pitch_eighth_tone` e relative `*_prob`) da `envelope_ranges`,
+  `envelope_colors` e dal dict `units`. Dopo il passaggio unit-driven la curva
+  pitch usa l'unica chiave `'pitch'`: bounds da `pitch_unit.value_bounds()` e
+  simbolo da `pitch_unit.symbol`, quindi quelle entry non venivano mai
+  consultate. Conservata la sola chiave viva `'pitch'` in `envelope_colors`.
+  Nessun impatto cross-repo (config interna del rendering).
+
 ---
 
 ## [v3.8.0] — "Arch/Manjaro compat + Cartridge removal" — 2026-05-12
