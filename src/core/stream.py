@@ -598,7 +598,18 @@ class Stream:
     def pitch_range(self) -> Union[float, Envelope]:
         """Espone pitch_range per ScoreVisualizer."""
         return self._pitch.range
-        
+
+    @property
+    def pitch_unit(self):
+        """Espone l'unità di pitch attiva (PitchUnit) per ScoreVisualizer."""
+        return self._pitch.unit
+
+    @property
+    def pitch_value(self):
+        """Espone il valore base del pitch (Envelope o scalare) per ScoreVisualizer,
+        indipendentemente dall'unità (semitoni/cents/quarti/ottavi/edo/ratio)."""
+        return self._pitch.value
+
     @property
     def num_voices(self):
         """Espone num_voices come Parameter (supporta Envelope time-varying)."""

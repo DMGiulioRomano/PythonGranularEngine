@@ -131,6 +131,7 @@ class ScoreVisualizer:
                 'loop_dur': '#bebada',        # lavanda
                 
                 # === PITCH ===
+                'pitch': '#984ea3',           # viola (unit-driven, qualsiasi unità)
                 'pitch_ratio': '#984ea3',     # viola
                 'pitch_ratio_prob': '#cab2d6',  # viola chiaro
                 'pitch_semitones': '#9467bd', # viola chiaro alternativo
@@ -895,7 +896,23 @@ class ScoreVisualizer:
                     # Probabilita statiche (numero)
                     elif isinstance(mod_prob, (int, float)) and show_static:
                         envelopes[prob_key] = Envelope([[0, mod_prob], [stream.duration, mod_prob]])
-        
+
+        # =====================================================================
+        # PITCH: unit-driven, non più in PITCH_PARAMETER_SCHEMA. Raccolto da
+        # stream.pitch_value (Envelope o scalare) sotto la chiave 'pitch';
+        # range e simbolo derivano da stream.pitch_unit alla normalizzazione.
+        # =====================================================================
+        pitch_value = getattr(stream, 'pitch_value', None)
+        if isinstance(pitch_value, Envelope):
+            bp_values = [bp[1] for bp in pitch_value.breakpoints]
+            is_static = len(set(bp_values)) == 1
+            if len(pitch_value.breakpoints) > 1 and not is_static:
+                envelopes['pitch'] = pitch_value
+            elif show_static:
+                envelopes['pitch'] = Envelope([[0, bp_values[0]], [stream.duration, bp_values[0]]])
+        elif isinstance(pitch_value, (int, float)) and show_static:
+            envelopes['pitch'] = Envelope([[0, pitch_value], [stream.duration, pitch_value]])
+
         return envelopes
 
     def _normalize_envelope_value(self, param_name, value):
@@ -909,8 +926,17 @@ class ScoreVisualizer:
         Returns:
             float: valore normalizzato 0-1
         """
+        # PITCH unit-driven: i bounds vengono dall'unità attiva, non dai range statici.
+        if param_name == 'pitch':
+            unit = getattr(self, '_current_pitch_unit', None)
+            if unit is not None:
+                b = unit.value_bounds()
+                if b.max_val is not None and b.max_val != b.min_val:
+                    return np.clip((value - b.min_val) / (b.max_val - b.min_val), 0, 1)
+            return np.clip(value, 0, 1)
+
         ranges = self.config['envelope_ranges']
-        
+
         if param_name in ranges:
             min_val, max_val = ranges[param_name]
             
@@ -958,10 +984,15 @@ class ScoreVisualizer:
             set: nomi dei tipi di envelope disegnati
         """
         envelopes = self._get_stream_envelopes(stream)
-        
+
+        # Unità pitch dello stream corrente: serve a _normalize_envelope_value e
+        # _annotate_breakpoints per scalare/etichettare la curva 'pitch' (i bounds
+        # dipendono dall'unità, non sono statici come gli altri parametri).
+        self._current_pitch_unit = getattr(stream, 'pitch_unit', None)
+
         if not envelopes:
             return set()
-        
+
         drawn_types = set()
         colors = self.config['envelope_colors']
         
@@ -1168,6 +1199,11 @@ class ScoreVisualizer:
         }
         
         unit = units.get(param_name, '')
+        # PITCH unit-driven: il simbolo (st/c/qt/et/edoN/x) viene dall'unità attiva.
+        if param_name == 'pitch':
+            pu = getattr(self, '_current_pitch_unit', None)
+            if pu is not None:
+                unit = pu.symbol
         mult = multipliers.get(param_name, 1)
         
         for t_rel, value in envelope.breakpoints:

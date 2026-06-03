@@ -41,6 +41,7 @@ class PitchController:
         self._config = config
 
         unit, value_raw = self._select_unit(params)
+        self._unit = unit
         self._active_param = self._orchestrator.create_pitch_parameter(
             name=f'pitch_{unit.name}',
             value_raw=value_raw,
@@ -126,6 +127,16 @@ class PitchController:
     @property
     def mode(self) -> str:
         return self._strategy.name
+
+    @property
+    def unit(self):
+        """L'unità di misura attiva (PitchUnit): per visualizzazione e label."""
+        return self._unit
+
+    @property
+    def value(self):
+        """Valore base del pitch (Envelope o scalare) nell'unità attiva."""
+        return self._active_param.value
 
     @property
     def base_ratio(self):

@@ -69,6 +69,17 @@ class TestUnitSelection:
         assert pc.base_semitones == pytest.approx(0.0)
         assert pc.range == pytest.approx(5.0)
 
+    def test_default_contract_is_semitones_neutral(self, mock_config):
+        # Decisione esplicita (coerente col modello voci EdoUnit(12)): il default
+        # senza blocco pitch è unità semitones con valore neutro 0.0 → ratio 1.0.
+        # Contratto esposto: base_semitones=0.0, base_ratio=None.
+        pc = _pc(mock_config, {})
+        assert pc.mode == 'semitones'
+        assert pc.calculate(0.0) == pytest.approx(1.0)
+        assert pc.base_semitones == pytest.approx(0.0)
+        assert pc.base_ratio is None
+        assert pc.unit.name == 'semitones'
+
     @pytest.mark.parametrize("params", [
         {'semitones': 12.0, 'cents': 50.0},
         {'ratio': 2.0, 'semitones': 12.0},
