@@ -115,6 +115,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato (breaking)
 
+- Chiave YAML `voices.pitch.semitone_range` rinominata in `pitch_range` (strategie
+  `range` e `stochastic`). Il valore è interpretato nell'unità attiva
+  (`semitones`/`cents`/`edo`/`ratio`), non in semitoni: il vecchio nome mentiva.
+  `pitch_range` è domain-based, coerente con i sibling `pointer_range`/`max_offset`.
+  Hard break: la vecchia chiave `semitone_range` solleva
+  `InvalidStrategyConfigError` con hint di migrazione (guard in
+  `Stream._init_voice_manager`). Migrati i config in-repo.
 - Default `REAPER_PATH`: era `Project.rpp` fisso, ora `$(FILE).rpp`. Ogni YAML
   produce un `.rpp` con lo stesso basename, abilitando il multi-tab. Override
   esplicito via `REAPER_PATH=...` sempre supportato. Aggiornato help

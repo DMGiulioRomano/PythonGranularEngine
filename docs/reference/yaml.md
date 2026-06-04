@@ -8,7 +8,7 @@ sources:
   - src/parameters/
   - src/strategies/
   - src/envelopes/
-last_synced_commit: a8faa4d
+last_synced_commit: 836a236
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -401,11 +401,11 @@ voices:
     strategy: step
     step: 3.0             # semitoni per passo (scalare o envelope)
 
-# range: voci distribuite linearmente in [0, semitone_range]
+# range: voci distribuite linearmente in [0, pitch_range]
 voices:
   pitch:
     strategy: range
-    semitone_range: 12.0  # range totale in semitoni (scalare o envelope)
+    pitch_range: 12.0  # ampiezza totale nell'unità attiva (scalare o envelope)
 
 # chord: offsets da accordo nominale
 voices:
@@ -418,7 +418,7 @@ voices:
 voices:
   pitch:
     strategy: stochastic
-    semitone_range: 6.0   # magnitudine massima (scalare o envelope)
+    pitch_range: 6.0   # magnitudine massima (scalare o envelope)
 
 # spectral: voci sui parziali della serie armonica naturale
 voices:
@@ -451,14 +451,14 @@ sempre all'identità (ratio 1.0) per ogni unità.
 - **`ratio`** → **geometrica**: `amount^position`. La distribuzione compone
   moltiplicativamente (le frequenze si moltiplicano), sempre positiva. Esempi:
   `step: 2` → voci a ratio `1, 2, 4, 8` (ottave pulite); `range: 2` con 4 voci
-  → `1, 1.26, 1.59, 2`; `stochastic` con `semitone_range: 2` → fattori in
-  `[0.5, 2]`. Con `ratio` l'ampiezza (`step`/`semitone_range`) dev'essere `> 0`.
+  → `1, 1.26, 1.59, 2`; `stochastic` con `pitch_range: 2` → fattori in
+  `[0.5, 2]`. Con `ratio` l'ampiezza (`step`/`pitch_range`) dev'essere `> 0`.
 
 ```yaml
 voices:
   pitch:
     strategy: range
-    semitone_range: 12.0
+    pitch_range: 12.0
     unit: {edo: 31}        # i gradi distribuiti sono interpretati in 31-EDO
 ```
 
@@ -712,7 +712,7 @@ Tutti i parametri numerici dei seguenti blocchi accettano envelope:
 `pointer.start`, `pointer.speed_ratio`, `pointer.offset_range`,
 `pointer.loop_start`, `pointer.loop_end`, `pointer.loop_dur`, `dephase` (globale
 o per chiave), `voices.num_voices`, `voices.scatter`, i parametri scalari di
-ciascuna voice strategy (`step`, `semitone_range`, `pointer_range`,
+ciascuna voice strategy (`step`, `pitch_range`, `pointer_range`,
 `max_offset`, `base`, `spread`), e il campo `curve` di
 `grain.envelope.transition` e `grain.envelope.multistate`.
 
@@ -1385,7 +1385,7 @@ mantenuto fino alla fine (hold).
 
 > Origine: [plans/done/2026-04-25-002-feat-dynamic-strategy-params-plan.md](../plans/done/2026-04-25-002-feat-dynamic-strategy-params-plan.md)
 
-Tutti i parametri scalari delle voice strategy (`step`, `semitone_range`,
+Tutti i parametri scalari delle voice strategy (`step`, `pitch_range`,
 `pointer_range`, `max_offset`, `base`, `spread`) accettano envelope. Il parsing
 avviene in `Stream._init_voice_manager` via `_parse_strategy_kwarg`, che usa
 `Envelope.is_envelope_like` per discriminare.
