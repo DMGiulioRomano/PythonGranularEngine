@@ -243,6 +243,21 @@ class Stream:
         if 'pitch' in v:
             kw = dict(v['pitch'])
             name = kw.pop('strategy')
+            # Hard break: `semitone_range` rinominato in `pitch_range` (il valore è
+            # letto nell'unità attiva, non in semitoni). Senza guard il kwarg ignoto
+            # darebbe un TypeError grezzo dal costruttore della strategy.
+            if 'semitone_range' in kw:
+                err = InvalidStrategyConfigError(
+                    strategy_kind='voice_pitch',
+                    field='voices.pitch.semitone_range',
+                    value=kw['semitone_range'],
+                    hint=(
+                        "`semitone_range` rinominato in `pitch_range` (stesso "
+                        "valore, letto nell'unità attiva: semitones/cents/edo/ratio…)."
+                    ),
+                )
+                err.stream_id = self.stream_id
+                raise err
             # `unit` è config del blocco, non kwarg della distribuzione: decide
             # come l'offset (numero puro) diventa ratio in _create_grain.
             unit_spec = kw.pop('unit', None)

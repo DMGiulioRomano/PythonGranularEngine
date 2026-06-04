@@ -204,31 +204,31 @@ class TestRangePitchStrategy:
 
     def test_voice_0_returns_identity(self):
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=12.0)
+        s = RangePitchStrategy(pitch_range=12.0)
         assert _factor(s, 0, 4, 0.0) == 1.0
 
     def test_last_voice_returns_range(self):
         """Con 4 voci e range=12: voce 3 → 12.0 semitoni."""
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=12.0)
+        s = RangePitchStrategy(pitch_range=12.0)
         assert _st(s, 3, 4, 0.0) == pytest.approx(12.0)
 
     def test_middle_voice_interpolated(self):
         """Con 4 voci e range=12: voce 1 → 4.0, voce 2 → 8.0."""
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=12.0)
+        s = RangePitchStrategy(pitch_range=12.0)
         assert _st(s, 1, 4, 0.0) == pytest.approx(4.0)
         assert _st(s, 2, 4, 0.0) == pytest.approx(8.0)
 
     def test_two_voices_only_zero_and_range(self):
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=7.0)
+        s = RangePitchStrategy(pitch_range=7.0)
         assert _factor(s, 0, 2, 0.0) == 1.0
         assert _st(s, 1, 2, 0.0) == pytest.approx(7.0)
 
     def test_num_voices_one_returns_identity(self):
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=12.0)
+        s = RangePitchStrategy(pitch_range=12.0)
         assert _factor(s, 0, 1, 0.0) == 1.0
 
 
@@ -325,12 +325,12 @@ class TestStochasticPitchStrategy:
 
     def test_voice_0_always_identity(self):
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = StochasticPitchStrategy(semitone_range=2.0, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="s1")
         assert _factor(s, 0, 4, 0.0) == 1.0
 
     def test_offset_within_range(self):
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = StochasticPitchStrategy(semitone_range=3.0, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=3.0, stream_id="s1")
         for i in range(1, 8):
             offset = _st(s, i, 8, 0.0)
             assert -3.0 <= offset <= 3.0
@@ -338,16 +338,16 @@ class TestStochasticPitchStrategy:
     def test_deterministic_same_stream(self):
         """Stesso stream_id e voice_index → stesso fattore."""
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s1 = StochasticPitchStrategy(semitone_range=5.0, stream_id="my_stream")
-        s2 = StochasticPitchStrategy(semitone_range=5.0, stream_id="my_stream")
+        s1 = StochasticPitchStrategy(pitch_range=5.0, stream_id="my_stream")
+        s2 = StochasticPitchStrategy(pitch_range=5.0, stream_id="my_stream")
         for i in range(1, 5):
             assert _factor(s1, i, 5, 0.0) == _factor(s2, i, 5, 0.0)
 
     def test_different_stream_ids_different_offsets(self):
         """stream_id diversi → offsets diversi (con alta probabilità)."""
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s1 = StochasticPitchStrategy(semitone_range=5.0, stream_id="stream_A")
-        s2 = StochasticPitchStrategy(semitone_range=5.0, stream_id="stream_B")
+        s1 = StochasticPitchStrategy(pitch_range=5.0, stream_id="stream_A")
+        s2 = StochasticPitchStrategy(pitch_range=5.0, stream_id="stream_B")
         offsets1 = [_factor(s1, i, 4, 0.0) for i in range(1, 4)]
         offsets2 = [_factor(s2, i, 4, 0.0) for i in range(1, 4)]
         assert offsets1 != offsets2
@@ -355,20 +355,20 @@ class TestStochasticPitchStrategy:
     def test_different_voices_different_offsets(self):
         """voice_index diversi → offsets diversi (con alta probabilità)."""
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = StochasticPitchStrategy(semitone_range=5.0, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=5.0, stream_id="s1")
         offsets = [_factor(s, i, 6, 0.0) for i in range(1, 6)]
         assert len(set(offsets)) > 1
 
     def test_range_zero_all_identity(self):
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = StochasticPitchStrategy(semitone_range=0.0, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=0.0, stream_id="s1")
         for i in range(4):
             assert _factor(s, i, 4, 0.0) == 1.0
 
     def test_fixed_range_same_at_any_time(self):
         """Float range: stesso risultato a qualsiasi time."""
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = StochasticPitchStrategy(semitone_range=5.0, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=5.0, stream_id="s1")
         assert _factor(s, 1, 4, 0.0) == _factor(s, 1, 4, 1.0)
 
     def test_direction_invariant_with_envelope_range(self):
@@ -376,7 +376,7 @@ class TestStochasticPitchStrategy:
         from envelopes.envelope import Envelope
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
         env = Envelope([[0, 1.0], [1, 12.0]])
-        s = StochasticPitchStrategy(semitone_range=env, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=env, stream_id="s1")
         sign_at_0 = _st(s, 1, 4, 0.0) > 0
         sign_at_1 = _st(s, 1, 4, 1.0) > 0
         assert sign_at_0 == sign_at_1
@@ -386,7 +386,7 @@ class TestStochasticPitchStrategy:
         from envelopes.envelope import Envelope
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
         env = Envelope([[0, 1.0], [1, 12.0]])
-        s = StochasticPitchStrategy(semitone_range=env, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=env, stream_id="s1")
         v0 = abs(_st(s, 1, 4, 0.0))
         v1 = abs(_st(s, 1, 4, 1.0))
         assert v1 > v0
@@ -400,9 +400,9 @@ class TestVoiceZeroInvariant:
 
     @pytest.mark.parametrize("strategy_fixture", [
         lambda m: m[1](step=3.0),                            # StepPitchStrategy
-        lambda m: m[2](semitone_range=12.0),                  # RangePitchStrategy
+        lambda m: m[2](pitch_range=12.0),                  # RangePitchStrategy
         lambda m: m[3](chord="dom7"),                         # ChordPitchStrategy
-        lambda m: m[4](semitone_range=2.0, stream_id="s1"),   # StochasticPitchStrategy
+        lambda m: m[4](pitch_range=2.0, stream_id="s1"),   # StochasticPitchStrategy
         lambda m: m[8](max_partial=4),                        # SpectralPitchStrategy
     ])
     def test_voice_0_is_always_identity(self, strategy_fixture):
@@ -412,9 +412,9 @@ class TestVoiceZeroInvariant:
 
     @pytest.mark.parametrize("strategy_fixture", [
         lambda m: m[1](step=3.0),
-        lambda m: m[2](semitone_range=12.0),
+        lambda m: m[2](pitch_range=12.0),
         lambda m: m[3](chord="dom7"),
-        lambda m: m[4](semitone_range=2.0, stream_id="s1"),
+        lambda m: m[4](pitch_range=2.0, stream_id="s1"),
         lambda m: m[8](max_partial=4),
     ])
     def test_voice_0_is_identity_at_any_time(self, strategy_fixture):
@@ -438,7 +438,7 @@ class TestEdgeCases:
 
     def test_range_num_voices_1(self):
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=12.0)
+        s = RangePitchStrategy(pitch_range=12.0)
         assert _factor(s, 0, 1, 0.0) == 1.0
 
     def test_chord_num_voices_1(self):
@@ -526,7 +526,7 @@ class TestVoicePitchStrategyFactory:
     def test_create_range(self):
         _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = VoicePitchStrategyFactory.create('range', semitone_range=12.0)
+        s = VoicePitchStrategyFactory.create('range', pitch_range=12.0)
         assert isinstance(s, RangePitchStrategy)
 
     def test_create_chord(self):
@@ -538,7 +538,7 @@ class TestVoicePitchStrategyFactory:
     def test_create_stochastic(self):
         _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = VoicePitchStrategyFactory.create('stochastic', semitone_range=2.0, stream_id='s1')
+        s = VoicePitchStrategyFactory.create('stochastic', pitch_range=2.0, stream_id='s1')
         assert isinstance(s, StochasticPitchStrategy)
 
     def test_unknown_strategy_raises(self):
@@ -581,7 +581,7 @@ class TestDynamicPitchParams:
         from envelopes.envelope import Envelope
         _, _, RangePitchStrategy, *_ = _get_module()
         env = Envelope([[0, 0.0], [1, 12.0]])
-        s = RangePitchStrategy(semitone_range=env)
+        s = RangePitchStrategy(pitch_range=env)
         assert _st(s, 3, 4, 0.0) == pytest.approx(0.0)
         assert _st(s, 3, 4, 1.0) == pytest.approx(12.0)
 
@@ -611,7 +611,7 @@ class TestRatioGeometry:
     def test_range_ratio_is_geometric_monotone(self):
         """range=2, 4 voci → 2^[0,⅓,⅔,1] ≈ [1, 1.26, 1.587, 2], monotono crescente."""
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=2.0)
+        s = RangePitchStrategy(pitch_range=2.0)
         factors = [s.get_pitch_factor(i, 4, 0.0, self.RU) for i in range(4)]
         assert factors == pytest.approx([1.0, 2 ** (1 / 3), 2 ** (2 / 3), 2.0])
         for a, b in zip(factors, factors[1:]):
@@ -620,7 +620,7 @@ class TestRatioGeometry:
     def test_stochastic_ratio_symmetric_positive(self):
         """stochastic range=2 → tutti i fattori in [0.5, 2], nessun negativo."""
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
-        s = StochasticPitchStrategy(semitone_range=2.0, stream_id="s1")
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="s1")
         for i in range(1, 8):
             f = s.get_pitch_factor(i, 8, 0.0, self.RU)
             assert 0.5 <= f <= 2.0
@@ -629,7 +629,7 @@ class TestRatioGeometry:
         """range<=0 con ratio è errore di dominio (materialize valida amount>0)."""
         from shared.exceptions import InvalidFieldValueError
         _, _, RangePitchStrategy, *_ = _get_module()
-        s = RangePitchStrategy(semitone_range=0.0)
+        s = RangePitchStrategy(pitch_range=0.0)
         # voce 0 resta identità (non chiama materialize); voce 1 con amount 0 -> errore
         assert s.get_pitch_factor(0, 4, 0.0, self.RU) == 1.0
         with pytest.raises(InvalidFieldValueError):

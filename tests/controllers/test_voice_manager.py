@@ -448,7 +448,7 @@ class TestEdgeCases:
     def test_stochastic_pitch_with_voice_manager(self):
         _, VoiceManager = _get_module()
         from strategies.voice_pitch_strategy import StochasticPitchStrategy
-        s = StochasticPitchStrategy(semitone_range=2.0, stream_id="test")
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="test")
         vm = VoiceManager(max_voices=4, pitch_strategy=s)
         assert vm.get_voice_config(0, 0.0).pitch_factor == 1.0
         for i in range(1, 4):

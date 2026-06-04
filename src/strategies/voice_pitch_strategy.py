@@ -18,7 +18,7 @@ Responsabilità:
 Design:
 - VoicePitchStrategy (ABC): interfaccia comune
 - StepPitchStrategy: voce i = i × step
-- RangePitchStrategy: distribuiti linearmente in [0, semitone_range]
+- RangePitchStrategy: distribuiti linearmente in [0, pitch_range]
 - ChordPitchStrategy: offsets da nome accordo, extend all'ottava se num_voices > chord
 - StochasticPitchStrategy: offset fisso per voce (stabile entro un run)
 - VOICE_PITCH_STRATEGIES: registry globale {nome: classe}
@@ -132,22 +132,22 @@ class StepPitchStrategy(VoicePitchStrategy):
 
 class RangePitchStrategy(VoicePitchStrategy):
     """
-    Distribuzione nell'intervallo [identità, semitone_range(t)].
+    Distribuzione nell'intervallo [identità, pitch_range(t)].
 
-    Posizione voce i = i/(num_voices-1) ∈ [0,1], ampiezza = range(t).
+    Posizione voce i = i/(num_voices-1) ∈ [0,1], ampiezza = pitch_range(t).
     EDO → equidistante in semitoni [0..range]; ratio → geometrica [1..range].
-    Esempio (semitones): range=12, 4 voci → [0, 4, 8, 12] semitoni.
+    Esempio (semitones): pitch_range=12, 4 voci → [0, 4, 8, 12] semitoni.
     Con num_voices=1 → solo identità.
     """
 
-    def __init__(self, semitone_range: StrategyParam):
-        self.semitone_range = semitone_range
+    def __init__(self, pitch_range: StrategyParam):
+        self.pitch_range = pitch_range
 
     def get_pitch_factor(self, voice_index, num_voices, time, unit):
         if voice_index == 0 or num_voices <= 1:
             return 1.0
         position = float(voice_index) / (num_voices - 1)
-        return unit.materialize(position, resolve_param(self.semitone_range, time))
+        return unit.materialize(position, resolve_param(self.pitch_range, time))
 
 
 class ChordPitchStrategy(VoicePitchStrategy):
@@ -215,25 +215,25 @@ class ChordPitchStrategy(VoicePitchStrategy):
 class StochasticPitchStrategy(VoicePitchStrategy):
     """
     Offset fisso per voce entro un singolo run; la direzione è fissa, la magnitudine
-    può variare nel tempo se semitone_range è un Envelope.
+    può variare nel tempo se pitch_range è un Envelope.
 
     Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
     riproducibile fra processi diversi. hash() su stringa è randomizzato
     per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
     cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
     _cache[voice_index] memorizza la posizione normalizzata in [-1, 1].
-    Fattore = unit.materialize(position, semitone_range(t)): EDO → ± attorno a 0
+    Fattore = unit.materialize(position, pitch_range(t)): EDO → ± attorno a 0
     in semitoni; ratio → simmetrico geometrico (es. range=2 → [0.5, 2]).
     Voce 0 (e range 0) → sempre 1.0 (identità).
     """
 
-    def __init__(self, semitone_range: StrategyParam, stream_id: str):
-        self.semitone_range = semitone_range
+    def __init__(self, pitch_range: StrategyParam, stream_id: str):
+        self.pitch_range = pitch_range
         self.stream_id = stream_id
         self._cache: Dict[int, float] = {}
 
     def get_pitch_factor(self, voice_index, num_voices, time, unit):
-        resolved = resolve_param(self.semitone_range, time)
+        resolved = resolve_param(self.pitch_range, time)
         if voice_index == 0 or resolved == 0.0:
             return 1.0
         if voice_index not in self._cache:

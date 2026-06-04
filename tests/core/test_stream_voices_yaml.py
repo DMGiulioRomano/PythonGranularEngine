@@ -142,7 +142,7 @@ class TestVoicesPitchStrategy:
     def test_range_pitch_strategy(self):
         s = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'range', 'semitone_range': 12.0},
+            'pitch': {'strategy': 'range', 'pitch_range': 12.0},
         })
         assert s._voice_manager.get_voice_config(0, 0.0).pitch_factor == 1.0
         assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(12.0))
@@ -283,11 +283,11 @@ class TestStochasticStreamIdInjection:
         """Due stream con id diversi → pitch offsets diversi."""
         s1 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='stream_A')
         s2 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='stream_B')
         offsets1 = [s1._voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
         offsets2 = [s2._voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
@@ -297,11 +297,11 @@ class TestStochasticStreamIdInjection:
         """Due stream con stesso id → stessi pitch offsets."""
         s1 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='same_stream')
         s2 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='same_stream')
         for i in range(3):
             assert (s1._voice_manager.get_voice_config(i, 0.0).pitch_factor ==
@@ -394,6 +394,24 @@ class TestInvalidStrategies:
                 'num_voices': 2,
                 'pointer': {'strategy': 'nonexistent_xyz'},
             })
+
+    def test_legacy_semitone_range_key_range_raises(self):
+        """`semitone_range` (vecchia chiave) su strategy range → hard break."""
+        with pytest.raises(InvalidStrategyConfigError) as exc:
+            _build_stream({
+                'num_voices': 3,
+                'pitch': {'strategy': 'range', 'semitone_range': 12.0},
+            })
+        assert 'pitch_range' in exc.value.user_message()
+
+    def test_legacy_semitone_range_key_stochastic_raises(self):
+        """`semitone_range` (vecchia chiave) su strategy stochastic → hard break."""
+        with pytest.raises(InvalidStrategyConfigError) as exc:
+            _build_stream({
+                'num_voices': 3,
+                'pitch': {'strategy': 'stochastic', 'semitone_range': 6.0},
+            })
+        assert 'pitch_range' in exc.value.user_message()
 
 
 # =============================================================================
@@ -691,7 +709,7 @@ class TestVoicesPitchUnit:
     def test_unit_edo_dict(self):
         s = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'range', 'semitone_range': 12.0, 'unit': {'edo': 31}},
+            'pitch': {'strategy': 'range', 'pitch_range': 12.0, 'unit': {'edo': 31}},
         })
         assert s._voice_manager.pitch_unit.divisions == 31
 
