@@ -625,15 +625,12 @@ class TestRatioGeometry:
             f = s.get_pitch_factor(i, 8, 0.0, self.RU)
             assert 0.5 <= f <= 2.0
 
-    def test_range_ratio_below_one_amount_raises(self):
-        """range<=0 con ratio è errore di dominio (materialize valida amount>0)."""
-        from shared.exceptions import InvalidFieldValueError
+    def test_range_ratio_zero_amount_is_identity(self):
+        """range=0 con ratio → identità per tutte le voci (allineato a EDO)."""
         _, _, RangePitchStrategy, *_ = _get_module()
         s = RangePitchStrategy(pitch_range=0.0)
-        # voce 0 resta identità (non chiama materialize); voce 1 con amount 0 -> errore
-        assert s.get_pitch_factor(0, 4, 0.0, self.RU) == 1.0
-        with pytest.raises(InvalidFieldValueError):
-            s.get_pitch_factor(1, 4, 0.0, self.RU)
+        for i in range(4):
+            assert s.get_pitch_factor(i, 4, 0.0, self.RU) == pytest.approx(1.0)
 
 
 # =============================================================================

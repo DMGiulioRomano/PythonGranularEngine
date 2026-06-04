@@ -11,7 +11,7 @@ Responsabilità:
   (step/range/stochastic) emettono una posizione adimensionale e chiedono
   all'unità di materializzarla (`unit.materialize(position, amount)`); quelle
   "assolute" (chord/spectral) emettono un offset in semitoni e usano
-  `unit.to_ratio` (valido solo con unità EDO/semitones, vedi SEMITONE_LOCKED).
+  `unit.to_ratio` (valido solo con unità semitones, vedi SEMITONE_LOCKED).
 - Voce 0 restituisce sempre 1.0 (riferimento immutato = ratio identità).
 - NON gestisce la variazione per-grano (responsabilità di PitchController + mod_range).
 

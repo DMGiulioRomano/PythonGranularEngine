@@ -191,10 +191,10 @@ def test_materialize_ratio_is_geometric():
 
 
 @pytest.mark.parametrize("amount", [0.0, -1.0, -2.0])
-def test_materialize_ratio_non_positive_amount_raises(amount):
-    # amount<=0 con esponente frazionario è nonsense -> errore di dominio
-    with pytest.raises(InvalidFieldValueError):
-        RatioUnit().materialize(0.5, amount)
+def test_materialize_ratio_non_positive_amount_is_identity(amount):
+    # amount<=0 → identità, allineato a EDO (2^(p*0/d) = 1.0)
+    assert RatioUnit().materialize(0.5, amount) == pytest.approx(1.0)
+    assert RatioUnit().materialize(2.0, amount) == pytest.approx(1.0)
 
 
 # =============================================================================

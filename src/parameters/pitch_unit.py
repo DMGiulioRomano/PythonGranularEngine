@@ -115,12 +115,9 @@ class RatioUnit(PitchUnit):
 
     def materialize(self, position: float, amount: float) -> float:
         # geometrica: ogni passo compone moltiplicativamente (amount^position).
+        # amount <= 0 → identità (allineato al comportamento EDO con range 0).
         if amount <= 0:
-            raise InvalidFieldValueError(
-                field='amount',
-                value=amount,
-                hint="con unit: ratio l'ampiezza (step/range) deve essere > 0.",
-            )
+            return 1.0
         return amount ** position
 
     def identity_value(self) -> float:
