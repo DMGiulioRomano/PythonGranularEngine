@@ -215,7 +215,7 @@ streams:
         unit: ratio
     volume: -9
 
-  # --- B5. range — voci distribuite in [0, semitone_range] ---------------------
+  # --- B5. range — voci distribuite in [0, pitch_range] ---------------------
   - stream_id: "B5_range_semitones"
     onset: 70
     duration: 4
@@ -227,7 +227,7 @@ streams:
       num_voices: 5
       pitch:
         strategy: range
-        semitone_range: 12.0  # 5 voci spalmate su un'ottava
+        pitch_range: 12.0  # 5 voci spalmate su un'ottava
     volume: -9
 
   # --- B6. range — unit eighth_tone --------------------------------------------
@@ -242,7 +242,7 @@ streams:
       num_voices: 5
       pitch:
         strategy: range
-        semitone_range: 24.0  # 24 ottavi di tono = 1 ottava, distribuiti in 48-EDO
+        pitch_range: 24.0  # 24 ottavi di tono = 1 ottava, distribuiti in 48-EDO
         unit: eighth_tone
     volume: -9
 
@@ -258,7 +258,7 @@ streams:
       num_voices: 6
       pitch:
         strategy: stochastic
-        semitone_range: 6.0   # ogni voce un offset random fisso in ±6 semitoni
+        pitch_range: 6.0   # ogni voce un offset random fisso in ±6 semitoni
     volume: -9
 
   # --- B8. stochastic — unit cents (magnitudine in cents) ----------------------
@@ -273,7 +273,7 @@ streams:
       num_voices: 6
       pitch:
         strategy: stochastic
-        semitone_range: 100.0 # magnitudine ±100 (interpretata in cents)
+        pitch_range: 100.0 # magnitudine ±100 (interpretata in cents)
         unit: cents
     volume: -9
 

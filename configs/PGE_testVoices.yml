@@ -33,7 +33,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: range
-        semitone_range: 12.0
+        pitch_range: 12.0
 
   - stream_id: "pitch_chord_dom7"
     onset: 16.0
@@ -59,7 +59,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
 
   # --- ONSET ---
 
@@ -298,7 +298,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: range
-        semitone_range: 12.0
+        pitch_range: 12.0
       onset_offset:
         strategy: geometric
         step: 0.05
@@ -316,7 +316,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 60.0

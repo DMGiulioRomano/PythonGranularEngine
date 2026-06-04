@@ -409,7 +409,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 5.0
+        pitch_range: 5.0
       pan:
         strategy: linear
         spread: 70.0
@@ -687,7 +687,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 75.0
@@ -811,7 +811,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 7.0
+        pitch_range: 7.0
       pan:
         strategy: linear
         spread: 75.0
@@ -1143,7 +1143,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 8.0
+        pitch_range: 8.0
       pan:
         strategy: linear
         spread: 82.0
@@ -1316,7 +1316,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 10.0
+        pitch_range: 10.0
       pan:
         strategy: linear
         spread: 88.0
@@ -1593,7 +1593,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 9.0
+        pitch_range: 9.0
       pan:
         strategy: linear
         spread: 90.0
