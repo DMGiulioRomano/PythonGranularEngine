@@ -47,11 +47,12 @@ class VoiceConfig:
     """
     Configurazione immutabile per una singola voce.
 
-    Tutti i valori sono offset rispetto alla voce 0 (riferimento).
-    Voce 0 ha sempre tutti i campi a 0.0.
+    I valori sono offset rispetto alla voce 0 (riferimento); pitch è invece un
+    fattore moltiplicativo. Voce 0 ha gli offset a 0.0 e pitch_factor a 1.0.
 
     Attributes:
-        pitch_offset:   offset in semitoni
+        pitch_factor:   fattore di ratio sul pitch base (1.0 = identità),
+                        prodotto dalla PitchUnit via la voice pitch strategy
         pointer_offset: offset sulla posizione di lettura nel sample. Unità
                         decisa dal flag `normalized` del blocco pointer YAML:
                         default = secondi nel sample; `normalized: true` =
@@ -60,7 +61,7 @@ class VoiceConfig:
         pan_offset:     offset in gradi rispetto al pan base dello stream
         onset_offset:   offset in secondi rispetto all'onset base
     """
-    pitch_offset: float
+    pitch_factor: float
     pointer_offset: float
     pan_offset: float
     onset_offset: float
@@ -92,7 +93,7 @@ class VoiceManager:
             onset_strategy=LinearOnsetStrategy(step=0.05),
         )
         config = vm.get_voice_config(2, t=0.5)
-        # config.pitch_offset == 7.0 (terza nota di dom7)
+        # config.pitch_factor == 2^(7/12) (quinta di dom7 come ratio)
         # config.onset_offset == 0.10
     """
 
@@ -112,16 +113,17 @@ class VoiceManager:
         self._pointer_strategy = pointer_strategy
         self._pan_strategy = pan_strategy
         self._pan_spread = pan_spread
-        # Unità in cui è espresso pitch_offset: decide la conversione a ratio
-        # in Stream._create_grain. Default semitoni (EdoUnit(12)), retrocompat.
+        # Unità che possiede la geometria del pitch voci: materializza il
+        # fattore di ratio dentro la voice pitch strategy. Default semitoni
+        # (EdoUnit(12)), retrocompat.
         self.pitch_unit: PitchUnit = pitch_unit if pitch_unit is not None else EdoUnit(12)
 
     def get_voice_config(self, voice_index: int, time: float) -> VoiceConfig:
         """
         Calcola e restituisce il VoiceConfig per voice_index al tempo time.
 
-        Voce 0 restituisce sempre VoiceConfig(0.0, 0.0, 0.0, 0.0) — garantito
-        dalle strategy che ritornano 0.0 per voice_index == 0.
+        Voce 0 restituisce sempre VoiceConfig(1.0, 0.0, 0.0, 0.0) — garantito
+        dalle strategy (pitch_factor 1.0, offset 0.0 per voice_index == 0).
 
         Args:
             voice_index: indice della voce (0-based, < max_voices)
@@ -139,9 +141,11 @@ class VoiceManager:
             )
 
         pitch = (
-            self._pitch_strategy.get_pitch_offset(voice_index, self.max_voices, time)
+            self._pitch_strategy.get_pitch_factor(
+                voice_index, self.max_voices, time, self.pitch_unit
+            )
             if self._pitch_strategy is not None
-            else 0.0
+            else 1.0
         )
         onset = (
             self._onset_strategy.get_onset_offset(voice_index, self.max_voices, time)
@@ -165,7 +169,7 @@ class VoiceManager:
         )
 
         return VoiceConfig(
-            pitch_offset=pitch,
+            pitch_factor=pitch,
             pointer_offset=pointer,
             pan_offset=pan,
             onset_offset=onset,

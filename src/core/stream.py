@@ -446,7 +446,7 @@ class Stream:
         Crea un singolo grano con tutti i parametri calcolati.
 
         Applica gli offset di VoiceConfig sopra i valori base:
-          pitch_ratio  *= unit.to_ratio(pitch_offset)   # unità da voices.pitch
+          pitch_ratio  *= pitch_factor   # fattore già materializzato dall'unità
           pointer_pos  = (base + pointer_offset) % sample_dur_sec
           pan          += pan_offset
           onset        += onset_offset
@@ -454,23 +454,22 @@ class Stream:
         Args:
             elapsed_time: tempo trascorso dall'inizio dello stream
             grain_dur:    durata del grano
-            voice_config: offset per questa voce (None = VoiceConfig(0,0,0,0))
+            voice_config: offset per questa voce (None = VoiceConfig(1.0,0,0,0))
 
         Returns:
             Grain: oggetto grano completo
         """
         if voice_config is None:
-            voice_config = VoiceConfig(0.0, 0.0, 0.0, 0.0)
+            voice_config = VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
         grain_reverse = self._calculate_grain_reverse(elapsed_time)
 
-        # === 1. PITCH — base × unit.to_ratio(offset) ===
-        # L'unità (semitoni default, o cents/quarti/ottavi/edo/ratio) è decisa
-        # dal blocco voices.pitch.unit e vive su VoiceManager. La guardia != 0.0
-        # preserva la voce-0 per ogni unità (anche ratio: niente *0).
+        # === 1. PITCH — base × pitch_factor ===
+        # Il fattore di ratio è già materializzato dalla voice pitch strategy
+        # tramite la PitchUnit attiva (voce 0 → 1.0). Identità nativa: nessun
+        # guard, nessuna conversione qui.
         pitch_ratio = self._pitch.calculate(elapsed_time, grain_reverse=grain_reverse)
-        if voice_config.pitch_offset != 0.0:
-            pitch_ratio *= self._voice_manager.pitch_unit.to_ratio(voice_config.pitch_offset)
+        pitch_ratio *= voice_config.pitch_factor
 
         # === 2. POINTER — base + voice_offset, re-wrap in [0, sample_dur) ===
         # Il modulo mappa anche offset negativi in [0, sample_dur). Così
