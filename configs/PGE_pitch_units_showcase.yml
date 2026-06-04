@@ -19,7 +19,7 @@
 # Gli stream sono sfalsati nel tempo (onset crescente) per poterli ascoltare
 # uno alla volta. Sample: 001-0-27_9.wav (presente in refs/).
 
-duration: 130
+duration: 185
 bpm: 120
 
 streams:
@@ -336,5 +336,257 @@ streams:
       num_voices: 3
       pitch:
         strategy: chord
-        chord: min            
+        chord: min
+    volume: -9
+
+  # ===========================================================================
+  # PARTE A (supplemento) — casi mancanti sul blocco pitch base
+  # ===========================================================================
+
+  # --- A11. edo + value envelope — sweep 0 → 31 gradi (0 → 1 ottava in 31-EDO) --
+  - stream_id: "A11_edo_envelope"
+    onset: 110
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      edo: 31
+      value: [[0, 0], [4, 31]]   # glissando: 0 → 1 ottava in 31-EDO
+    volume: -6
+
+  # ===========================================================================
+  # PARTE B (supplemento) — combinazioni strategia × unità mancanti
+  # ===========================================================================
+
+  # --- B13. step / quarter_tone ------------------------------------------------
+  - stream_id: "B13_step_quarter_tone"
+    onset: 115
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 2.0          # voci a 0, 1, 2, 3 quarti di tono (24-EDO)
+        unit: quarter_tone
+    volume: -9
+
+  # --- B14. step / eighth_tone -------------------------------------------------
+  - stream_id: "B14_step_eighth_tone"
+    onset: 120
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 4.0          # voci a 0, 4, 8, 12 ottavi di tono (48-EDO) = 0, 1, 2, 3 quarti
+        unit: eighth_tone
+    volume: -9
+
+  # --- B15. range / cents ------------------------------------------------------
+  - stream_id: "B15_range_cents"
+    onset: 125
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: range
+        pitch_range: 1200.0   # 5 voci spalmate su un'ottava (1200 cents)
+        unit: cents
+    volume: -9
+
+  # --- B16. range / quarter_tone -----------------------------------------------
+  - stream_id: "B16_range_quarter_tone"
+    onset: 130
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: range
+        pitch_range: 24.0     # 5 voci spalmate su 24 quarti = 1 ottava (24-EDO)
+        unit: quarter_tone
+    volume: -9
+
+  # --- B17. range / edo (31-EDO) -----------------------------------------------
+  - stream_id: "B17_range_edo31"
+    onset: 135
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: range
+        pitch_range: 31.0     # 5 voci spalmate su 31 gradi = 1 ottava in 31-EDO
+        unit: {edo: 31}
+    volume: -9
+
+  # --- B18. range / ratio — distribuzione GEOMETRICA ---------------------------
+  #   Il caso chiave del refactor: amount^position invece di lineare.
+  #   4 voci, range=2 → ratio [1.0, 1.26, 1.587, 2.0] (2^[0,1/3,2/3,1]).
+  - stream_id: "B18_range_ratio"
+    onset: 140
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {ratio: 1.0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: range
+        pitch_range: 2.0      # geometrico: voci a ratio 1.0, 1.26, 1.587, 2.0
+        unit: ratio
+    volume: -9
+
+  # --- B19. stochastic / quarter_tone ------------------------------------------
+  - stream_id: "B19_stochastic_quarter_tone"
+    onset: 145
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        pitch_range: 12.0     # ±12 quarti di tono = ±1 ottava
+        unit: quarter_tone
+    volume: -9
+
+  # --- B20. stochastic / eighth_tone -------------------------------------------
+  - stream_id: "B20_stochastic_eighth_tone"
+    onset: 150
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        pitch_range: 24.0     # ±24 ottavi di tono = ±1 ottava
+        unit: eighth_tone
+    volume: -9
+
+  # --- B21. stochastic / edo (31-EDO) ------------------------------------------
+  - stream_id: "B21_stochastic_edo31"
+    onset: 155
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        pitch_range: 15.0     # ±15 gradi di 31-EDO (~±7 semitoni)
+        unit: {edo: 31}
+    volume: -9
+
+  # --- B22. stochastic / ratio — distribuzione GEOMETRICA SIMMETRICA -----------
+  #   _cache in [-1, 1] → materialize(pos, 2.0) = 2^pos.
+  #   Voce con pos=-1 → 0.5 (un'ottava sotto), pos=+1 → 2.0 (un'ottava sopra).
+  - stream_id: "B22_stochastic_ratio"
+    onset: 160
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {ratio: 1.0}
+    voices:
+      num_voices: 6
+      pitch:
+        strategy: stochastic
+        pitch_range: 2.0      # geometrico simmetrico: fattori in [0.5, 2.0]
+        unit: ratio
+    volume: -9
+
+  # --- B23. step con step dinamico (Envelope) ----------------------------------
+  #   step cresce da 1 a 6 semitoni: voci si allargano nel tempo.
+  - stream_id: "B23_step_envelope"
+    onset: 165
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: [[0, 1.0], [4, 6.0]]   # spread cresce da 1 st a 6 st
+    volume: -9
+
+  # --- B24. range con pitch_range dinamico (Envelope) --------------------------
+  #   range cresce 0 → 12 semitoni: voci si aprono da unisono a ottava.
+  - stream_id: "B24_range_envelope"
+    onset: 170
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch: {semitones: 0}
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: range
+        pitch_range: [[0, 0.0], [4, 12.0]]   # da unisono a ottava
+    volume: -9
+
+  # --- B25. base pitch cents + voices step semitones — combinazione cross-unità --
+  #   trasposizione base in cents (+50 = quarto di tono sopra),
+  #   distribuzione voci in semitoni (step 3 st).
+  - stream_id: "B25_cents_base_step_voices"
+    onset: 175
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      cents: 50              # base: +50 cents sopra l'originale
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: step
+        step: 3.0            # voci a 0, 3, 6, 9 semitoni sopra la base
+    volume: -9
+
+  # --- B26. base ratio + voices stochastic ratio — tutto geometrico ------------
+  #   trasposizione base 1.5 (quinta giusta), voci distribuite geometricamente.
+  - stream_id: "B26_ratio_base_stochastic_ratio_voices"
+    onset: 180
+    duration: 4
+    sample: 001-0-27_9.wav
+    density: 20
+    grain: {duration: 0.05, envelope: hanning}
+    pitch:
+      ratio: 1.5             # base: quinta giusta
+    voices:
+      num_voices: 5
+      pitch:
+        strategy: stochastic
+        pitch_range: 1.5     # fattori geometrici in [1/1.5, 1.5] ≈ [0.667, 1.5]
+        unit: ratio
     volume: -9
