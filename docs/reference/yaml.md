@@ -8,7 +8,7 @@ sources:
   - src/parameters/
   - src/strategies/
   - src/envelopes/
-last_synced_commit: 14ea6eb
+last_synced_commit: a8faa4d
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -299,7 +299,7 @@ La famiglia EDO (Equal Division of the Octave) converte in ratio con
 | `quarter_tone` | quarti di tono | 24 | [-72, 72] |
 | `eighth_tone` | ottavi di tono | 48 | [-144, 144] |
 | `cents` | cents | 1200 | [-3600, 3600] |
-| `edo: {divisions, value}` | EDO arbitrario | N | [-3·N, 3·N] |
+| `edo` (+ `value`) | EDO arbitrario | N | [-3·N, 3·N] |
 | `ratio` | ratio diretto | — | [0.125, 8] |
 
 Più chiavi-unità nello stesso blocco → errore (`InvalidFieldValueError`):
@@ -308,7 +308,9 @@ con valore neutro `0` (ratio 1.0).
 
 Chiavi sconosciute nel blocco (refusi tipo `semitone:` invece di `semitones:`)
 → errore (`InvalidFieldValueError`), non vengono ignorate silenziosamente.
-Chiavi valide del blocco: le 6 unità più `range`.
+Chiavi valide del blocco: le 6 unità più `range` e `value`. `value` è ammesso
+**solo** con `edo: N` (per i preset il valore sta nella chiave); usarlo altrove
+→ errore.
 
 ```yaml
 pitch:
@@ -324,10 +326,14 @@ pitch:
   eighth_tone: 6          # ottavi di tono (48-EDO)
   cents: 50               # cents (1200-EDO)
 
-  edo:                    # griglia EDO arbitraria (es. 31-EDO)
-    divisions: 31
-    value: 18             # 18 gradi di 31-EDO (scalare o envelope)
+  edo: 31                 # griglia EDO arbitraria (es. 31-EDO), divisioni/ottava
+  value: 18               # 18 gradi di 31-EDO (scalare o envelope)
 ```
+
+> `edo` ha una sola grammatica su tutta la superficie YAML: intero scalare. Su
+> base si abbina a `value:` a fianco; nelle voci è `unit: {edo: N}` (il valore
+> arriva dalla strategy). La vecchia forma annidata `edo: {divisions, value}`
+> non è più valida (`InvalidFieldValueError` con hint di migrazione).
 
 ---
 

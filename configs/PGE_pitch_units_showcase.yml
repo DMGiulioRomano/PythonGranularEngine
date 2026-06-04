@@ -105,9 +105,8 @@ streams:
     density: 20
     grain: {duration: 0.05, envelope: hanning}
     pitch:
-      edo:
-        divisions: 31
-        value: 18
+      edo: 31         # divisioni/ottava (intero > 0)
+      value: 18       # 18 gradi di 31-EDO (scalare o envelope)
     volume: -6
 
   # --- A8. ratio (scalare) — 1.5 = quinta giusta (moltiplicatore diretto) ------
