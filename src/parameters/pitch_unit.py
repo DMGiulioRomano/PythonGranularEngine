@@ -41,6 +41,16 @@ class PitchUnit(ABC):
         """Converte value (nell'unità) in ratio di frequenza."""
 
     @abstractmethod
+    def materialize(self, position: float, amount: float) -> float:
+        """Materializza una distribuzione voce in un fattore di ratio.
+
+        `position` è una posizione adimensionale (indice voce, frazione,
+        random in [-1,1]); `amount` è l'estensione espressa nell'unità.
+        L'unità possiede la geometria: position=0 -> ratio 1.0 (identità)
+        per ogni famiglia.
+        """
+
+    @abstractmethod
     def identity_value(self) -> float:
         """Valore neutro: quello che produce ratio 1.0 (nessuna trasposizione)."""
 
@@ -70,6 +80,10 @@ class EdoUnit(PitchUnit):
     def to_ratio(self, value: float) -> float:
         return 2 ** (value / self.divisions)
 
+    def materialize(self, position: float, amount: float) -> float:
+        # additiva nel log: equivale a to_ratio(position*amount)
+        return 2 ** (position * amount / self.divisions)
+
     def identity_value(self) -> float:
         return 0.0
 
@@ -98,6 +112,16 @@ class RatioUnit(PitchUnit):
 
     def to_ratio(self, value: float) -> float:
         return value
+
+    def materialize(self, position: float, amount: float) -> float:
+        # geometrica: ogni passo compone moltiplicativamente (amount^position).
+        if amount <= 0:
+            raise InvalidFieldValueError(
+                field='amount',
+                value=amount,
+                hint="con unit: ratio l'ampiezza (step/range) deve essere > 0.",
+            )
+        return amount ** position
 
     def identity_value(self) -> float:
         return 1.0

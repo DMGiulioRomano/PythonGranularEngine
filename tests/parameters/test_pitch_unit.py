@@ -161,6 +161,43 @@ def test_edo_semitones_bounds_match_legacy():
 
 
 # =============================================================================
+# materialize(position, amount) — geometria voce-distribuzione, unit-aware
+# =============================================================================
+# Strategy emettono (position, amount) puri; l'unità possiede la geometria.
+# EDO: additiva nel log -> 2^(position*amount/divisions) == to_ratio(position*amount).
+# Ratio: geometrica -> amount^position. In entrambe position=0 -> 1.0 (identità).
+
+@pytest.mark.parametrize("unit", [EdoUnit(12), EdoUnit(24), EdoUnit(1200), EdoUnit(31), RatioUnit()])
+def test_materialize_position_zero_is_identity(unit):
+    # position 0 -> ratio 1.0 per ogni unità (identità nativa, niente guard)
+    assert unit.materialize(0.0, 12.0) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("divisions", [12, 24, 48, 1200, 31])
+@pytest.mark.parametrize("position,amount", [(1.0, 3.0), (2.0, 4.0), (-1.0, 7.0), (0.5, 12.0)])
+def test_materialize_edo_equals_to_ratio_of_product(divisions, position, amount):
+    # equivalenza EDO: materialize(p, a) == to_ratio(p*a)
+    unit = EdoUnit(divisions)
+    assert unit.materialize(position, amount) == pytest.approx(unit.to_ratio(position * amount))
+
+
+def test_materialize_ratio_is_geometric():
+    u = RatioUnit()
+    assert u.materialize(1.0, 2.0) == pytest.approx(2.0)
+    assert u.materialize(2.0, 2.0) == pytest.approx(4.0)
+    assert u.materialize(3.0, 2.0) == pytest.approx(8.0)
+    assert u.materialize(-1.0, 2.0) == pytest.approx(0.5)
+    assert u.materialize(0.5, 2.0) == pytest.approx(2.0 ** 0.5)
+
+
+@pytest.mark.parametrize("amount", [0.0, -1.0, -2.0])
+def test_materialize_ratio_non_positive_amount_raises(amount):
+    # amount<=0 con esponente frazionario è nonsense -> errore di dominio
+    with pytest.raises(InvalidFieldValueError):
+        RatioUnit().materialize(0.5, amount)
+
+
+# =============================================================================
 # name / symbol — identità dell'unità (per mode e visualizer futuro)
 # =============================================================================
 
