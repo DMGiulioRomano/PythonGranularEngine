@@ -433,10 +433,20 @@ voices:
 | `sus2` | `minmaj7` | | | |
 | `sus4` | | | | |
 
-**`unit` — unità dell'offset di pitch.** Le strategie producono un numero puro;
-`unit` decide come diventa ratio alla generazione del grano. Default
-`semitones`. Valori: `semitones`, `cents`, `quarter_tone`, `eighth_tone`,
-`{edo: N}`, `ratio` (stesse unità del [Blocco Pitch](#blocco-pitch)).
+**`unit` — geometria della distribuzione pitch.** Le strategie scalate
+(`step`/`range`/`stochastic`) emettono una posizione adimensionale; `unit`
+possiede la geometria con cui diventa un fattore di ratio. Default `semitones`.
+Valori: `semitones`, `cents`, `quarter_tone`, `eighth_tone`, `{edo: N}`,
+`ratio` (stesse unità del [Blocco Pitch](#blocco-pitch)). La voce 0 resta
+sempre all'identità (ratio 1.0) per ogni unità.
+
+- famiglia **EDO** → additiva nel log: `2^(position·amount/N)`. La
+  distribuzione è equidistante in semitoni/cents/gradi.
+- **`ratio`** → **geometrica**: `amount^position`. La distribuzione compone
+  moltiplicativamente (le frequenze si moltiplicano), sempre positiva. Esempi:
+  `step: 2` → voci a ratio `1, 2, 4, 8` (ottave pulite); `range: 2` con 4 voci
+  → `1, 1.26, 1.59, 2`; `stochastic` con `semitone_range: 2` → fattori in
+  `[0.5, 2]`. Con `ratio` l'ampiezza (`step`/`semitone_range`) dev'essere `> 0`.
 
 ```yaml
 voices:
@@ -446,12 +456,9 @@ voices:
     unit: {edo: 31}        # i gradi distribuiti sono interpretati in 31-EDO
 ```
 
-- **`ratio`**: l'offset è usato come moltiplicatore diretto (`step: 1.5` →
-  voci a ratio 1.5, 3.0, ...), non come intervallo additivo. La voce 0
-  (offset 0) resta sempre invariata.
 - **Vincolo**: `chord` e `spectral` sono definiti intrinsecamente in semitoni
-  e accettano solo `unit: semitones` (o `unit` assente). Altre unità →
-  `InvalidStrategyConfigError`.
+  (offset assoluti) e accettano solo `unit: semitones` (o `unit` assente).
+  Altre unità → `InvalidStrategyConfigError`.
 
 ---
 

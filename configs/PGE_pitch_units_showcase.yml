@@ -147,8 +147,10 @@ streams:
 
   # ===========================================================================
   # PARTE B — BLOCCO VOICES.PITCH
-  # `unit` decide come l'offset prodotto dalla strategia diventa ratio.
-  # Default `unit: semitones`. La voce 0 resta sempre senza offset.
+  # `unit` possiede la geometria con cui la strategia materializza il fattore di
+  # ratio: famiglia EDO additiva (2^(position·amount/N)), ratio geometrica
+  # (amount^position). Sotto `unit: ratio` la spaziatura è quindi geometrica.
+  # Default `unit: semitones`. La voce 0 resta sempre all'identità (ratio 1.0).
   # ===========================================================================
 
   # --- B1. step — voce i → i × step (semitoni, default) ------------------------
@@ -198,7 +200,7 @@ streams:
         unit: {edo: 31}
     volume: -9
 
-  # --- B4. step — unit ratio (offset = moltiplicatore diretto) -----------------
+  # --- B4. step — unit ratio (geometrico: voce i = step^i) ---------------------
   - stream_id: "B4_step_ratio"
     onset: 65
     duration: 4
@@ -210,7 +212,7 @@ streams:
       num_voices: 3
       pitch:
         strategy: step
-        step: 1.5             # voce 0 invariata, voci 1..2 a ratio 1.5, 3.0
+        step: 1.5             # voce 0 invariata, voci 1..2 a ratio 1.5, 2.25 (1.5^i)
         unit: ratio
     volume: -9
 

@@ -89,6 +89,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Pitch delle voci **unit-agnostico**: la geometria della distribuzione vive
+  ora nella `PitchUnit` via il nuovo metodo `materialize(position, amount)`
+  (EDO additiva `2^(position·amount/N)`, `ratio` geometrica `amount^position`).
+  Le voice pitch strategy emettono un **fattore di ratio** (`get_pitch_factor`,
+  prima `get_pitch_offset` in semitoni); `VoiceConfig.pitch_offset` →
+  `pitch_factor` (default `1.0` = identità) e `Stream._create_grain` moltiplica
+  direttamente, senza il guard `!= 0.0`. Conseguenze su `voices.pitch` con
+  `unit: ratio`: `range` e `stochastic` diventano **validi** (distribuzione
+  geometrica, nessun ratio negativo o sub-zero); `step` passa da `i·step`
+  (lineare) a `step^i` (geometrico) — **breaking sui valori delle voci ≥2** con
+  `unit: ratio`. I path EDO (semitones/cents/quarter_tone/eighth_tone/edo)
+  restano numericamente identici. `chord`/`spectral` restano semitone-locked.
 - Default `REAPER_PATH`: da `$(FILE).rpp` (root del repo) a `$(SFDIR)/$(FILE).rpp`
   (default `output/$(FILE).rpp`). I progetti Reaper vivono ora accanto agli
   `.aif` generati, co-location semantica tra progetto Reaper e audio referenziati.
