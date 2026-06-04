@@ -54,7 +54,7 @@ class TestUnitSelection:
         assert _pc(mock_config, {'eighth_tone': 1.0}).mode == 'eighth_tone'
 
     def test_edo_mode(self, mock_config):
-        assert _pc(mock_config, {'edo': {'divisions': 31, 'value': 4}}).mode == 'edo'
+        assert _pc(mock_config, {'edo': 31, 'value': 4}).mode == 'edo'
 
     def test_default_no_key_is_semitones_unison(self, mock_config):
         # nessuna chiave-unità → semitoni con valore neutro → ratio 1.0
@@ -83,7 +83,7 @@ class TestUnitSelection:
         {'semitones': 12.0, 'cents': 50.0},
         {'ratio': 2.0, 'semitones': 12.0},
         {'cents': 50.0, 'quarter_tone': 1.0},
-        {'edo': {'divisions': 31, 'value': 4}, 'semitones': 12.0},
+        {'edo': 31, 'value': 4, 'semitones': 12.0},
     ])
     def test_multiple_unit_keys_raises(self, mock_config, params):
         # ambiguità esplicita, niente priorità silenziosa
@@ -179,29 +179,52 @@ class TestEdoFamilyUnits:
 
 
 # =============================================================================
-# GRUPPO 5: EDO PARAMETRICO ({divisions, value})
+# GRUPPO 5: EDO FLAT (edo: N + value: X)
 # =============================================================================
 
 class TestPitchEdoBase:
 
     def test_edo_octave(self, mock_config):
-        pc = _pc(mock_config, {'edo': {'divisions': 31, 'value': 31}})
+        pc = _pc(mock_config, {'edo': 31, 'value': 31})
         assert pc.mode == 'edo'
         assert pc.calculate(0.0) == pytest.approx(2.0)
 
     def test_edo_partial(self, mock_config):
-        assert _pc(mock_config, {'edo': {'divisions': 24, 'value': 12}}).calculate(0.0) == pytest.approx(2 ** 0.5)
+        assert _pc(mock_config, {'edo': 24, 'value': 12}).calculate(0.0) == pytest.approx(2 ** 0.5)
+
+    def test_edo_value_ratio(self, mock_config):
+        # forma canonica: edo: 31 + value: 18 → 2^(18/31)
+        assert _pc(mock_config, {'edo': 31, 'value': 18}).calculate(0.0) == pytest.approx(2 ** (18 / 31))
 
     def test_edo_invalid_divisions_raises(self, mock_config):
         with pytest.raises(InvalidFieldValueError):
-            _pc(mock_config, {'edo': {'divisions': 0, 'value': 1}})
+            _pc(mock_config, {'edo': 0, 'value': 1})
 
-    def test_edo_malformed_missing_value_raises(self, mock_config):
+    def test_edo_missing_value_raises(self, mock_config):
+        # `edo: N` senza `value` a fianco → errore esplicito
         with pytest.raises(InvalidFieldValueError):
-            _pc(mock_config, {'edo': {'divisions': 31}})
+            _pc(mock_config, {'edo': 31})
+
+    def test_edo_nested_form_is_hard_break(self, mock_config):
+        # la vecchia forma annidata {divisions, value} non è più valida:
+        # deve sollevare con hint di migrazione, non passare silenziosa.
+        with pytest.raises(InvalidFieldValueError) as exc:
+            _pc(mock_config, {'edo': {'divisions': 31, 'value': 4}})
+        assert 'edo' in exc.value.user_message()
+
+    def test_value_with_preset_raises(self, mock_config):
+        # `value` è ammesso solo con `edo: N`; per i preset il valore sta
+        # nella chiave (es. semitones: 7) → value a fianco è ambiguo.
+        with pytest.raises(InvalidFieldValueError):
+            _pc(mock_config, {'semitones': 7, 'value': 3})
+
+    def test_value_without_unit_raises(self, mock_config):
+        # `value` da solo (nessuna unità) → errore, non default silenzioso.
+        with pytest.raises(InvalidFieldValueError):
+            _pc(mock_config, {'value': 3})
 
     def test_edo_range_property_safe(self, mock_config):
-        pc = _pc(mock_config, {'edo': {'divisions': 31, 'value': 4}})
+        pc = _pc(mock_config, {'edo': 31, 'value': 4})
         assert pc.range == 0.0
 
 
@@ -251,7 +274,7 @@ class TestEnvelopeIntegration:
         assert pc.calculate(10.0) == pytest.approx(2.0)
 
     def test_edo_envelope_varies(self, mock_config):
-        pc = _pc(mock_config, {'edo': {'divisions': 12, 'value': [[0, 0.0], [10, 12.0]]}})
+        pc = _pc(mock_config, {'edo': 12, 'value': [[0, 0.0], [10, 12.0]]})
         assert pc.calculate(0.0) == pytest.approx(1.0)
         assert pc.calculate(10.0) == pytest.approx(2.0)
 
@@ -268,7 +291,7 @@ class TestRangeUniform:
         ({'semitones': 0.0, 'range': 6.0}, 6.0),
         ({'cents': 0.0, 'range': 100.0}, 100.0),
         ({'ratio': 1.0, 'range': 1.5}, 1.5),
-        ({'edo': {'divisions': 31, 'value': 4}, 'range': 6.0}, 6.0),
+        ({'edo': 31, 'value': 4, 'range': 6.0}, 6.0),
     ])
     def test_range_registered_for_all_units(self, mock_config, params, expected_range):
         assert _pc(mock_config, params).range == pytest.approx(expected_range)
@@ -329,4 +352,4 @@ class TestRepr:
         assert 'PitchController' in repr(_pc(mock_config, {'ratio': 1.0}))
 
     def test_repr_edo(self, mock_config):
-        assert 'PitchController' in repr(_pc(mock_config, {'edo': {'divisions': 31, 'value': 4}}))
+        assert 'PitchController' in repr(_pc(mock_config, {'edo': 31, 'value': 4}))

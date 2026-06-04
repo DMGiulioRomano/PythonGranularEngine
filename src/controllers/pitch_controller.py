@@ -22,7 +22,9 @@ from core.stream_config import StreamConfig
 PITCH_UNIT_KEYS = frozenset(PITCH_UNIT_PRESETS) | {'edo'}
 
 # Chiavi non-unità ammesse nel blocco pitch (modificatori).
-PITCH_BLOCK_EXTRA_KEYS = frozenset({'range'})
+# `value` è il valore della griglia EDO (`edo: N` + `value: X`); per i preset
+# il valore sta nella chiave stessa (es. `semitones: 7`).
+PITCH_BLOCK_EXTRA_KEYS = frozenset({'range', 'value'})
 
 # Whitelist completa del blocco pitch: unità + modificatori. Chiavi fuori da
 # questo insieme sono refusi/errori e vanno segnalate, non ignorate.
@@ -69,8 +71,10 @@ class PitchController:
         - chiavi fuori da PITCH_BLOCK_KEYS (refusi, es. `semitone`) →
           InvalidFieldValueError: nessun silent default.
         - 0 chiavi-unità → default semitoni, valore neutro (ratio 1.0).
-        - 1 chiave → quell'unità (edo: valore annidato, altri: valore diretto).
+        - 1 chiave → quell'unità (edo: `value` a fianco; altri: valore diretto).
         - >1 chiavi → InvalidFieldValueError (ambiguità esplicita).
+        - `value` è ammesso solo con `edo`: altrove è ambiguo (il valore dei
+          preset sta nella chiave) → InvalidFieldValueError.
         """
         unknown = [k for k in params if k not in PITCH_BLOCK_KEYS]
         if unknown:
@@ -93,27 +97,45 @@ class PitchController:
                     f"{present}. Unità disponibili: {sorted(PITCH_UNIT_KEYS)}."
                 ),
             )
-        if not present:
+
+        key = present[0] if present else None
+        if 'value' in params and key != 'edo':
+            raise InvalidFieldValueError(
+                field='pitch.value',
+                value=params.get('value'),
+                hint=(
+                    "`value` è ammesso solo con `edo: N`; per i preset il valore "
+                    "sta nella chiave (es. semitones: 7)."
+                ),
+            )
+        if key is None:
             unit = make_pitch_unit('semitones')
             return unit, unit.identity_value()
-
-        key = present[0]
         if key == 'edo':
-            return self._build_edo(params['edo'])
+            return self._build_edo(params)
         return make_pitch_unit(key), params[key]
 
-    def _build_edo(self, edo_spec):
-        """pitch: {edo: {divisions: N, value: X}} — divisione EDO arbitraria."""
-        if (not isinstance(edo_spec, dict)
-                or 'divisions' not in edo_spec
-                or 'value' not in edo_spec):
+    def _build_edo(self, params):
+        """pitch: {edo: N, value: X} — N divisioni per ottava, valore a fianco."""
+        divisions = params['edo']
+        if isinstance(divisions, dict):  # vecchia forma annidata: hard break
             raise InvalidFieldValueError(
                 field='pitch.edo',
-                value=edo_spec,
-                hint="forma attesa: edo: {divisions: N, value: X}.",
+                value=divisions,
+                hint=(
+                    "forma edo cambiata: ora `edo: N` con `value: X` a fianco "
+                    "(es. edo: 31, value: 18). La forma annidata "
+                    "{divisions, value} non è più valida."
+                ),
             )
-        unit = make_pitch_unit({'edo': edo_spec['divisions']})  # valida divisions > 0
-        return unit, edo_spec['value']
+        if 'value' not in params:
+            raise InvalidFieldValueError(
+                field='pitch.edo',
+                value=params,
+                hint="con `edo: N` serve `value: X` a fianco (es. edo: 31, value: 18).",
+            )
+        unit = make_pitch_unit({'edo': divisions})  # valida divisions int > 0
+        return unit, params['value']
 
     # =========================================================================
     # CALCOLO
