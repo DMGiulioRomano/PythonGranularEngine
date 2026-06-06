@@ -595,3 +595,53 @@ class TestPitchEnvelopeCollection:
     def test_static_pitch_skipped_without_show_static(self):
         s = self._stream_with_pitch(0.0, 'semitones')
         assert 'pitch' not in make_viz([s])._get_stream_envelopes(s)
+
+
+class TestVoiceScatterEnvelopeCollection:
+    """num_voices e scatter non sono in nessuno schema *_PARAMETER_SCHEMA
+    (issue #88): vanno raccolti per nome esplicito in _get_stream_envelopes,
+    altrimenti i loro envelope non vengono mai disegnati."""
+
+    def _param(self, name, value):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        return Parameter(name, value, GRANULAR_PARAMETERS[name])
+
+    def _stream(self, num_voices=None, scatter=None):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # make_stream fa gia' `del s.num_voices`; scatter resta MagicMock.
+        if num_voices is not None:
+            s.num_voices = num_voices
+        if scatter is not None:
+            s.scatter = scatter
+        else:
+            del s.scatter
+        return s
+
+    def test_scatter_dynamic_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.0], [10, 1.0]])))
+        assert 'scatter' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_num_voices_dynamic_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(num_voices=self._param('num_voices', Envelope([[0, 1.0], [10, 8.0]])))
+        assert 'num_voices' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_scatter_skipped_without_show_static(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.3], [10, 0.3]])))
+        assert 'scatter' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_scatter_collected_with_show_static(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.3], [10, 0.3]])))
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'scatter' in viz._get_stream_envelopes(s)
+
+    def test_has_envelopes_true_when_only_scatter_modulated(self):
+        """Regressione issue #88: il pannello envelope deve esistere anche se
+        l'unica modulazione time-varying e' scatter/num_voices."""
+        from envelopes.envelope import Envelope
+        s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.0], [10, 1.0]])))
+        assert bool(make_viz([s])._get_stream_envelopes(s)) is True

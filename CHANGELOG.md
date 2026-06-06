@@ -8,6 +8,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Corretto
+
+- `ScoreVisualizer` ora disegna gli envelope di `num_voices` e `scatter`. Questi
+  parametri sono `Parameter` privati dello Stream, fuori da ogni
+  `*_PARAMETER_SCHEMA`, quindi `_get_stream_envelopes` non li cercava mai: il
+  pannello envelope spariva del tutto se l'unica modulazione time-varying
+  riguardava scatter/num_voices. Aggiunti: property `Stream.scatter` (simmetrica
+  a `num_voices`), estrazione per nome esplicito nel visualizer, range/colore di
+  `scatter`. Issue #88 (Fase 1).
+
 ### Modificato
 
 - Default del parametro `volume` cambiato da `-6.0` a `0.0` dB. Gli stream che

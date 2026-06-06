@@ -99,6 +99,7 @@ class ScoreVisualizer:
                 
                 # === VOICES ===
                 'num_voices': (1, 20),
+                'scatter': (0.0, 1.0),        # normalizzato (cluster→spread)
                 'voice_pitch_offset': (-48, 48),  # semitoni
                 'voice_pointer_offset': (-1.0, 1.0),  # normalizzato
                 'voice_pointer_range': (0.0, 1.0),    # normalizzato
@@ -135,6 +136,7 @@ class ScoreVisualizer:
                 
                 # === VOICES ===
                 'num_voices': '#e377c2',      # magenta
+                'scatter': '#17becf',         # teal
                 'voice_pitch_offset': '#c49c94',  # beige
                 'voice_pointer_offset': '#f7b6d2', # rosa chiaro
                 'voice_pointer_range': '#c7c7c7',  # grigio chiaro
@@ -899,6 +901,29 @@ class ScoreVisualizer:
                 envelopes['pitch'] = Envelope([[0, bp_values[0]], [stream.duration, bp_values[0]]])
         elif isinstance(pitch_value, (int, float)) and show_static:
             envelopes['pitch'] = Envelope([[0, pitch_value], [stream.duration, pitch_value]])
+
+        # =====================================================================
+        # VOICE / SCATTER: num_voices e scatter sono Parameter privati dello
+        # Stream, fuori da ogni *_PARAMETER_SCHEMA (issue #88). Vanno estratti
+        # per nome esplicito, con la stessa logica del valore principale
+        # (PART 1): Parameter → _value; solo Envelope dinamici, statici solo
+        # con show_static.
+        # =====================================================================
+        for name in ('num_voices', 'scatter'):
+            if not hasattr(stream, name):
+                continue
+            param = getattr(stream, name)
+            value = param._value if isinstance(param, Parameter) else param
+            if isinstance(value, Envelope):
+                bp_values = [bp[1] for bp in value.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(value.breakpoints) > 1 and not is_static:
+                    envelopes[name] = value
+                elif show_static:
+                    val = bp_values[0]
+                    envelopes[name] = Envelope([[0, val], [stream.duration, val]])
+            elif isinstance(value, (int, float)) and show_static:
+                envelopes[name] = Envelope([[0, value], [stream.duration, value]])
 
         return envelopes
 
