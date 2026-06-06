@@ -581,7 +581,8 @@ class Stream:
         
     @property
     def pointer_speed(self):
-        return self._pointer.speed.value
+        # Il PointerController espone `speed_ratio` (Parameter), non `speed`.
+        return self._pointer.speed_ratio.value
 
     @property
     def loop_start(self):
