@@ -8,6 +8,8 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+## [v4.0.0] — "Unit-Driven Pitch" — 2026-06-06
+
 ### Aggiunto
 
 - Sistema pitch **unit-driven** (`PitchUnit`): il blocco `pitch` (base e
