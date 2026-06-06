@@ -281,8 +281,10 @@ streams:
   - stream_id: "B9_chord_dom7"
     onset: 90
     duration: 4
-    sample: 001-0-27_9.wav
-    density: 20
+    sample: "weNeedToTalkAboutIt.wav"
+    pointer:
+      speed_ratio: .03
+      start: .3
     grain: {duration: 0.05, envelope: hanning}
     pitch: {semitones: 0}
     voices:
@@ -296,8 +298,10 @@ streams:
   - stream_id: "B10_chord_maj7_inv2"
     onset: 95
     duration: 4
-    sample: 001-0-27_9.wav
-    density: 20
+    sample: "weNeedToTalkAboutIt.wav"
+    pointer:
+      speed_ratio: .03
+      start: .3
     grain: {duration: 0.05, envelope: hanning}
     pitch: {semitones: 0}
     voices:
@@ -312,10 +316,12 @@ streams:
   - stream_id: "B11_spectral"
     onset: 100
     duration: 4
-    sample: 001-0-27_9.wav
-    density: 20
+    sample: "weNeedToTalkAboutIt.wav"
     grain: {duration: 0.05, envelope: hanning}
     pitch: {semitones: 0}
+    pointer:
+      speed_ratio: .03
+      start: .3
     voices:
       num_voices: 6
       pitch:
@@ -327,8 +333,10 @@ streams:
   - stream_id: "B12_base_plus_voices"
     onset: 105
     duration: 4
-    sample: 001-0-27_9.wav
-    density: 20
+    sample: "weNeedToTalkAboutIt.wav"
+    pointer:
+      speed_ratio: .03
+      start: .3    
     grain: {duration: 0.05, envelope: hanning}
     pitch:
       semitones: 7            # tutto lo stream trasposto di una quinta
