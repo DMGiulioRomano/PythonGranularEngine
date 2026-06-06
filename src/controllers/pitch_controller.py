@@ -68,14 +68,34 @@ class PitchController:
         """
         Individua l'unità dal blocco pitch e il valore grezzo associato.
 
+        - `pitch:` vuoto (None) o non-mapping (lista, scalare) →
+          InvalidFieldValueError: niente silent default a ratio 1.0, niente
+          TypeError grezzo. Per nessuna trasposizione si omette il blocco.
+        - `pitch: {}` o blocco assente (Stream passa `{}`) → default semitoni
+          neutro (ratio 1.0): i due casi sono indistinguibili a valle.
         - chiavi fuori da PITCH_BLOCK_KEYS (refusi, es. `semitone`) →
           InvalidFieldValueError: nessun silent default.
-        - 0 chiavi-unità → default semitoni, valore neutro (ratio 1.0).
+        - 0 chiavi-unità (solo modificatori, es. `range`) → default semitoni.
         - 1 chiave → quell'unità (edo: `value` a fianco; altri: valore diretto).
         - >1 chiavi → InvalidFieldValueError (ambiguità esplicita).
         - `value` è ammesso solo con `edo`: altrove è ambiguo (il valore dei
           preset sta nella chiave) → InvalidFieldValueError.
         """
+        if not isinstance(params, dict):
+            # `pitch:` vuoto (None) o non-mapping (lista/scalare): blocco
+            # presente ma privo di unità. Nessun silent default, nessun
+            # TypeError grezzo dall'iterazione sottostante. Il blocco assente
+            # arriva invece come `{}` (default di Stream) → ramo key=None sotto.
+            raise InvalidFieldValueError(
+                field='pitch',
+                value=params,
+                hint=(
+                    "il blocco pitch deve specificare un'unità "
+                    "(es. semitones: 7, ratio: 1.5, oppure edo: 31 + value: 18). "
+                    "Per nessuna trasposizione, ometti del tutto il blocco pitch."
+                ),
+            )
+
         unknown = [k for k in params if k not in PITCH_BLOCK_KEYS]
         if unknown:
             raise InvalidFieldValueError(

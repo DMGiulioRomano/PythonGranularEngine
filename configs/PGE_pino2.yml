@@ -26,7 +26,6 @@ streams:
           - [1.0, 1.0]
     grain:
       duration: .05
-    pitch:
     dephase:
     density: 
       - [[[0, 400], [100, 1000]],
@@ -64,7 +63,6 @@ streams:
           - [1.0, 1.0]
     grain:
       duration: .05
-    pitch:
     dephase:
     density: 
       - [[[0, 400], [100, 1000]],

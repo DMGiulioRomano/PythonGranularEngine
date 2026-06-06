@@ -24,7 +24,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `InvalidFieldValueError` che elenca le chiavi valide, invece di essere
   ignorata silenziosamente con default a semitoni neutri (No Silent Failures).
   Chiavi valide: le 6 unità più `range` e `value` (`value` solo con `edo: N`).
-  PR #84.
+  Inoltre un blocco `pitch` **presente ma vuoto** (`pitch:` → `None`) o
+  **non-mapping** (lista/scalare, es. `pitch: [[0, -1200], [1, 1200]]`) solleva
+  `InvalidFieldValueError` con hint, invece del precedente `TypeError` grezzo da
+  `PitchController._select_unit`: per nessuna trasposizione si omette del tutto
+  il blocco. `pitch: {}` e blocco assente restano default semitoni neutro
+  (indistinguibili a valle: Stream passa `{}` in entrambi i casi). Migrati i
+  config in-repo `PGE_pino2.yml` (rimosso il `pitch:` vuoto) e
+  `PGE_envelope_syntax_test.yml` (envelope di pitch esplicitato come `cents`,
+  che è l'unità reale dei valori ±1200). PR #84.
 
 - Flag `normalized` nel blocco `voices.pointer` (YAML): opt-in per interpretare
   l'offset di pointer di voce come **frazione di `sample_dur_sec`** anziché in

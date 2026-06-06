@@ -115,6 +115,28 @@ class TestUnitSelection:
         msg = exc.value.user_message()
         assert 'semitones' in msg and 'range' in msg
 
+    @pytest.mark.parametrize("params", [
+        None,                              # `pitch:` vuoto nello YAML (None)
+        [[0, -1200], [1, 1200]],           # `pitch: [[...]]` lista (non-mapping)
+        3.0,                               # `pitch: 3.0` scalare (non-mapping)
+    ])
+    def test_none_or_non_mapping_pitch_block_raises(self, mock_config, params):
+        # Un blocco pitch presente ma vuoto (`pitch:` → None) o non-mapping
+        # (lista/scalare) è un errore di dominio esplicito: niente silent default
+        # a ratio 1.0 (No Silent Failures) e mai un TypeError grezzo. Per nessuna
+        # trasposizione si omette del tutto il blocco. NB: `pitch: {}` e blocco
+        # assente arrivano entrambi come `{}` (default di Stream) → restano
+        # default semitoni, vedi test_default_*.
+        with pytest.raises(InvalidFieldValueError):
+            _pc(mock_config, params)
+
+    def test_empty_pitch_block_error_has_hint(self, mock_config):
+        # L'errore deve guidare l'utente con un hint non vuoto, coerente con le
+        # altre violazioni del blocco pitch.
+        with pytest.raises(InvalidFieldValueError) as exc:
+            _pc(mock_config, None)
+        assert exc.value.user_message()
+
 
 # =============================================================================
 # GRUPPO 2: CALCULATE - RATIO
