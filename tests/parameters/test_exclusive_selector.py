@@ -15,7 +15,6 @@ import pytest
 from parameters.exclusive_selector import ExclusiveGroupSelector
 from parameters.parameter_schema import (
     ParameterSpec,
-    PITCH_PARAMETER_SCHEMA,
     DENSITY_PARAMETER_SCHEMA,
     POINTER_PARAMETER_SCHEMA,
 )
@@ -476,35 +475,7 @@ class TestSelectParametersSingletonGroup:
 class TestIntegrationWithRealSchemas:
     """Test di integrazione con gli schema reali definiti in parameter_schema.py."""
 
-    # --- PITCH_PARAMETER_SCHEMA ---
-
-    def test_pitch_yaml_semitones_seleziona_semitones(self):
-        """YAML con semitones -> pitch_semitones selezionato (priority 1)."""
-        yaml_data = {'semitones': 12}
-        selected, _ = ExclusiveGroupSelector.select_parameters(PITCH_PARAMETER_SCHEMA, yaml_data)
-        assert 'pitch_semitones' in selected
-        assert 'pitch_ratio' not in selected
-
-    def test_pitch_yaml_ratio_seleziona_ratio(self):
-        """YAML con ratio -> pitch_ratio selezionato (unico specificato)."""
-        yaml_data = {'ratio': 2.0}
-        selected, _ = ExclusiveGroupSelector.select_parameters(PITCH_PARAMETER_SCHEMA, yaml_data)
-        assert 'pitch_ratio' in selected
-        assert 'pitch_semitones' not in selected
-
-    def test_pitch_yaml_entrambi_vince_semitones(self):
-        """YAML con entrambi -> pitch_semitones vince (priority 1)."""
-        yaml_data = {'semitones': 12, 'ratio': 2.0}
-        selected, _ = ExclusiveGroupSelector.select_parameters(PITCH_PARAMETER_SCHEMA, yaml_data)
-        assert 'pitch_semitones' in selected
-        assert 'pitch_ratio' not in selected
-
-    def test_pitch_yaml_vuoto_usa_ratio_come_default(self):
-        """YAML vuoto -> pitch_ratio selezionato (ha default=1.0, semitones ha default=None)."""
-        yaml_data = {}
-        selected, _ = ExclusiveGroupSelector.select_parameters(PITCH_PARAMETER_SCHEMA, yaml_data)
-        assert 'pitch_ratio' in selected
-        assert 'pitch_semitones' not in selected
+    # PITCH non usa più il gruppo esclusivo: è unit-driven (PitchController).
 
     # --- DENSITY_PARAMETER_SCHEMA ---
 

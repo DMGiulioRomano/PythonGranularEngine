@@ -200,7 +200,7 @@ streams:
     sample: "pino.wav"
     density: 10
 
-    pitch: [[0, -1200, 'cubic'], [0.5, 0, 'step'], [1, 1200]]
+    pitch: {cents: [[0, -1200, 'cubic'], [0.5, 0, 'step'], [1, 1200]]}
     grain:
       duration: 0.05
 

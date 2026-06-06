@@ -57,8 +57,6 @@ def _make_mock_pointer(return_value=0.5):
 def _make_mock_pitch(return_value=1.0):
     pitch = Mock()
     pitch.calculate = Mock(return_value=return_value)
-    pitch.base_ratio = return_value
-    pitch.base_semitones = None
     pitch.range = 0.0
     return pitch
 
@@ -427,64 +425,64 @@ class TestGenerateGrainsVoiceOneOffsets:
 
 class TestCreateGrainWithVoiceConfig:
 
-    def test_zero_voice_config_identical_to_default(self):
-        """VoiceConfig(0,0,0,0) produce lo stesso grano di nessun config."""
+    def test_identity_voice_config_identical_to_default(self):
+        """VoiceConfig(1,0,0,0) produce lo stesso grano di nessun config."""
         s = _make_stream(pitch_ratio=1.0, pointer_pos=0.5, pan_value=0.0, onset=1.0)
-        vc = VoiceConfig(0.0, 0.0, 0.0, 0.0)
+        vc = VoiceConfig(1.0, 0.0, 0.0, 0.0)
         g = s._create_grain(elapsed_time=0.0, grain_dur=0.05, voice_config=vc)
         assert g.onset == pytest.approx(1.0)
         assert g.pitch_ratio == pytest.approx(1.0)
         assert g.pointer_pos == pytest.approx(0.5)
         assert g.pan == pytest.approx(0.0)
 
-    def test_pitch_offset_semitones_to_ratio(self):
-        """pitch_offset=12 → pitch_ratio moltiplicato per 2^(12/12) = 2.0."""
+    def test_pitch_factor_multiplies_base(self):
+        """pitch_factor=2.0 → pitch_ratio base moltiplicato per 2.0."""
         s = _make_stream(pitch_ratio=1.0)
-        vc = VoiceConfig(pitch_offset=12.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
+        vc = VoiceConfig(pitch_factor=2.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(2.0)
 
-    def test_pitch_offset_multiplies_base_ratio(self):
-        """Se base_ratio=2.0 e pitch_offset=12 → 2.0 * 2.0 = 4.0."""
+    def test_pitch_factor_compounds_base(self):
+        """Se il pitch base è 2.0 e pitch_factor=2.0 → 2.0 * 2.0 = 4.0."""
         s = _make_stream(pitch_ratio=2.0)
-        vc = VoiceConfig(pitch_offset=12.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
+        vc = VoiceConfig(pitch_factor=2.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(4.0)
 
     def test_pointer_offset_added(self):
         """pointer_offset=0.2 viene sommato al pointer base."""
         s = _make_stream(pointer_pos=0.3)
-        vc = VoiceConfig(pitch_offset=0.0, pointer_offset=0.2, pan_offset=0.0, onset_offset=0.0)
+        vc = VoiceConfig(pitch_factor=1.0, pointer_offset=0.2, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pointer_pos == pytest.approx(0.5)
 
     def test_pan_offset_added(self):
         """pan_offset=30.0 viene sommato al pan base."""
         s = _make_stream(pan_value=10.0)
-        vc = VoiceConfig(pitch_offset=0.0, pointer_offset=0.0, pan_offset=30.0, onset_offset=0.0)
+        vc = VoiceConfig(pitch_factor=1.0, pointer_offset=0.0, pan_offset=30.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pan == pytest.approx(40.0)
 
     def test_onset_offset_added(self):
         """onset_offset=0.5 viene sommato all'onset assoluto."""
         s = _make_stream(onset=2.0)
-        vc = VoiceConfig(pitch_offset=0.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.5)
+        vc = VoiceConfig(pitch_factor=1.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.5)
         g = s._create_grain(elapsed_time=0.1, grain_dur=0.05, voice_config=vc)
         # onset = stream_onset(2.0) + elapsed(0.1) + onset_offset(0.5) = 2.6
         assert g.onset == pytest.approx(2.6)
 
-    def test_negative_pitch_offset(self):
-        """pitch_offset=-12 → pitch_ratio / 2 (ottava inferiore)."""
+    def test_pitch_factor_below_one_descends(self):
+        """pitch_factor=0.5 → pitch_ratio / 2 (ottava inferiore)."""
         s = _make_stream(pitch_ratio=1.0)
-        vc = VoiceConfig(pitch_offset=-12.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
+        vc = VoiceConfig(pitch_factor=0.5, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(0.5)
 
-    def test_voice_config_none_uses_zeros(self):
-        """voice_config=None → comportamento identico a VoiceConfig(0,0,0,0)."""
+    def test_voice_config_none_uses_identity(self):
+        """voice_config=None → comportamento identico a VoiceConfig(1,0,0,0)."""
         s = _make_stream(pitch_ratio=1.0, pointer_pos=0.5, pan_value=0.0, onset=1.0)
         g_none = s._create_grain(0.0, 0.05, voice_config=None)
-        g_zero = s._create_grain(0.0, 0.05, voice_config=VoiceConfig(0.0, 0.0, 0.0, 0.0))
+        g_zero = s._create_grain(0.0, 0.05, voice_config=VoiceConfig(1.0, 0.0, 0.0, 0.0))
         assert g_none.pitch_ratio == g_zero.pitch_ratio
         assert g_none.pointer_pos == g_zero.pointer_pos
         assert g_none.pan == g_zero.pan

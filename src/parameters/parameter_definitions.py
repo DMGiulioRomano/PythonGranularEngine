@@ -108,28 +108,15 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         variation_mode='choice'  # Usa ChoiceVariation
     ),
     # =========================================================================
-    # PITCH (La distinzione chiave discussa)
+    # PITCH
     # =========================================================================
-    'pitch_semitones': ParameterBounds(
-        min_val=-36.0,
-        max_val=36.0,
-        min_range=0.0,
-        max_range=36.0,
-        variation_mode='quantized'  # <--- NOTA: Variazione a interi (randint)
-    ),
-    
-    'pitch_ratio': ParameterBounds(
-        min_val=0.125,   # 3 ottave sotto
-        max_val=8.0,     # 3 ottave sopra
-        min_range=0.0,
-        max_range=2.0,
-        default_jitter=0.005,
-        variation_mode='additive'   
-    ),
+    # I bounds del pitch sono unit-driven: derivano da PitchUnit.value_bounds()
+    # (±3 ottave per la famiglia EDO, [0.125, 8] per ratio) e non sono registrati
+    # qui. Vedi src/parameters/pitch_unit.py.
 
     # =========================================================================
     # POINTER (PLAYHEAD)
-    # =========================================================================  
+    # =========================================================================
     'pointer_speed_ratio': ParameterBounds(
         min_val=-100.0,
         max_val=100.0

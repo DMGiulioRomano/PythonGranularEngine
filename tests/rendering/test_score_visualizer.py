@@ -92,7 +92,6 @@ def make_stream(stream_id='s1', onset=0.0, duration=10.0,
     del s.volume
     del s.pan
     del s.pointer_start
-    del s.pitch_ratio
     del s.density
     del s.num_voices
     return s
@@ -556,3 +555,43 @@ class TestRobustness:
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             figs = viz.render_all()
         assert len(figs) >= 1
+
+# =============================================================================
+# GROUP - Regressione: raccolta della curva di pitch (unit-driven)
+# =============================================================================
+
+class TestPitchEnvelopeCollection:
+    """Dopo il refactor unit-driven il pitch non è più in PITCH_PARAMETER_SCHEMA.
+    _get_stream_envelopes deve comunque raccogliere la curva di pitch tramite
+    stream.pitch_value, per QUALSIASI unità (regressione visualizer)."""
+
+    def _stream_with_pitch(self, pitch_value, unit_spec):
+        from parameters.pitch_unit import make_pitch_unit
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pitch_value = pitch_value
+        s.pitch_unit = make_pitch_unit(unit_spec)
+        return s
+
+    def test_semitones_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream_with_pitch(Envelope([[0, 0.0], [10, 12.0]]), 'semitones')
+        assert 'pitch' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_cents_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream_with_pitch(Envelope([[0, 0.0], [10, 1200.0]]), 'cents')
+        assert 'pitch' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_edo_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream_with_pitch(Envelope([[0, 0.0], [10, 31.0]]), {'edo': 31})
+        assert 'pitch' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_pitch_collected_when_show_static(self):
+        s = self._stream_with_pitch(7.0, 'semitones')
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pitch' in viz._get_stream_envelopes(s)
+
+    def test_static_pitch_skipped_without_show_static(self):
+        s = self._stream_with_pitch(0.0, 'semitones')
+        assert 'pitch' not in make_viz([s])._get_stream_envelopes(s)

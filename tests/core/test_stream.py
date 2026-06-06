@@ -69,8 +69,6 @@ def _make_mock_pitch():
     """Crea un mock PitchController."""
     pitch = Mock()
     pitch.calculate = Mock(return_value=1.0)
-    pitch.base_ratio = 1.0
-    pitch.base_semitones = None
     pitch.range = 0.0
     return pitch
 
@@ -972,20 +970,6 @@ class TestStreamProperties:
         s._pointer.loop_dur = 0.5
 
         assert s.loop_dur == 0.5
-
-    def test_pitch_ratio_property(self, stream_factory):
-        """pitch_ratio dal PitchController."""
-        s = stream_factory()
-        s._pitch.base_ratio = 1.5
-
-        assert s.pitch_ratio == 1.5
-
-    def test_pitch_semitones_property(self, stream_factory):
-        """pitch_semitones dal PitchController."""
-        s = stream_factory()
-        s._pitch.base_semitones = 7.0
-
-        assert s.pitch_semitones == 7.0
 
     def test_pitch_range_property(self, stream_factory):
         """pitch_range dal PitchController."""

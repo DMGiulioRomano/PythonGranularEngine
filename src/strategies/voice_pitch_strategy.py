@@ -6,14 +6,19 @@ Strategy pattern per la distribuzione di pitch (altezza) delle voci
 nella sintesi granulare multi-voice.
 
 Responsabilità:
-- Calcolare l'offset di pitch in SEMITONI per una voce data al tempo t.
-- Voce 0 restituisce sempre 0.0 (riferimento immutato).
+- Calcolare il FATTORE DI RATIO di pitch per una voce data al tempo t.
+- La geometria vive nell'unità (PitchUnit): le strategy "scalate"
+  (step/range/stochastic) emettono una posizione adimensionale e chiedono
+  all'unità di materializzarla (`unit.materialize(position, amount)`); quelle
+  "assolute" (chord/spectral) emettono un offset in semitoni e usano
+  `unit.to_ratio` (valido solo con unità semitones, vedi SEMITONE_LOCKED).
+- Voce 0 restituisce sempre 1.0 (riferimento immutato = ratio identità).
 - NON gestisce la variazione per-grano (responsabilità di PitchController + mod_range).
 
 Design:
 - VoicePitchStrategy (ABC): interfaccia comune
 - StepPitchStrategy: voce i = i × step
-- RangePitchStrategy: distribuiti linearmente in [0, semitone_range]
+- RangePitchStrategy: distribuiti linearmente in [0, pitch_range]
 - ChordPitchStrategy: offsets da nome accordo, extend all'ottava se num_voices > chord
 - StochasticPitchStrategy: offset fisso per voce (stabile entro un run)
 - VOICE_PITCH_STRATEGIES: registry globale {nome: classe}
@@ -79,22 +84,26 @@ class VoicePitchStrategy(ABC):
     """
     Strategy astratta per la distribuzione di pitch delle voci.
 
-    Il valore restituito è un offset in SEMITONI rispetto al pitch base
-    dello stream. Voce 0 restituisce sempre 0.0.
+    Il valore restituito è un FATTORE DI RATIO rispetto al pitch base
+    dello stream, prodotto tramite la PitchUnit attiva. Voce 0 → sempre 1.0.
     """
 
     @abstractmethod
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+    def get_pitch_factor(
+        self, voice_index: int, num_voices: int, time: float, unit: 'PitchUnit'
+    ) -> float:
         """
-        Calcola l'offset di pitch per la voce data al tempo dato.
+        Calcola il fattore di ratio per la voce data al tempo dato.
 
         Args:
             voice_index: indice della voce (0-based). Voce 0 = riferimento.
             num_voices: numero totale di voci attive.
             time: tempo corrente in secondi (onset del grain).
+            unit: PitchUnit attiva — possiede la geometria (materialize/to_ratio).
 
         Returns:
-            Offset in semitoni (float). Voce 0 → sempre 0.0.
+            Fattore di ratio (float) da moltiplicare sul ratio base.
+            Voce 0 → sempre 1.0 (identità).
         """
         pass
 
@@ -105,37 +114,40 @@ class VoicePitchStrategy(ABC):
 
 class StepPitchStrategy(VoicePitchStrategy):
     """
-    Distribuzione lineare per step fisso o dinamico.
+    Distribuzione per step fisso o dinamico.
 
-    Voce i → i × step(t) semitoni.
-    Esempio: step=3, 4 voci → [0, 3, 6, 9]
+    Posizione voce i = i, ampiezza = step(t). L'unità materializza:
+    EDO → 0, step, 2·step, … semitoni; ratio → step^i (geometrico).
+    Esempio (semitones): step=3, 4 voci → [0, 3, 6, 9] semitoni.
     """
 
     def __init__(self, step: StrategyParam):
         self.step = step
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+    def get_pitch_factor(self, voice_index, num_voices, time, unit):
         if voice_index == 0:
-            return 0.0
-        return float(voice_index) * resolve_param(self.step, time)
+            return 1.0
+        return unit.materialize(float(voice_index), resolve_param(self.step, time))
 
 
 class RangePitchStrategy(VoicePitchStrategy):
     """
-    Distribuzione lineare nel range [0, semitone_range(t)].
+    Distribuzione nell'intervallo [identità, pitch_range(t)].
 
-    Le voci sono distribuite equidistanti nell'intervallo.
-    Esempio: range=12, 4 voci → [0, 4, 8, 12]
-    Con num_voices=1 → [0].
+    Posizione voce i = i/(num_voices-1) ∈ [0,1], ampiezza = pitch_range(t).
+    EDO → equidistante in semitoni [0..range]; ratio → geometrica [1..range].
+    Esempio (semitones): pitch_range=12, 4 voci → [0, 4, 8, 12] semitoni.
+    Con num_voices=1 → solo identità.
     """
 
-    def __init__(self, semitone_range: StrategyParam):
-        self.semitone_range = semitone_range
+    def __init__(self, pitch_range: StrategyParam):
+        self.pitch_range = pitch_range
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+    def get_pitch_factor(self, voice_index, num_voices, time, unit):
         if voice_index == 0 or num_voices <= 1:
-            return 0.0
-        return float(voice_index) * resolve_param(self.semitone_range, time) / (num_voices - 1)
+            return 1.0
+        position = float(voice_index) / (num_voices - 1)
+        return unit.materialize(position, resolve_param(self.pitch_range, time))
 
 
 class ChordPitchStrategy(VoicePitchStrategy):
@@ -190,43 +202,45 @@ class ChordPitchStrategy(VoicePitchStrategy):
         base = rotated[0]
         return [x - base for x in rotated]
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+    def get_pitch_factor(self, voice_index, num_voices, time, unit):
         if voice_index == 0:
-            return 0.0
+            return 1.0
         n = len(self._intervals)
         octave = voice_index // n
         interval_idx = voice_index % n
-        return float(self._intervals[interval_idx] + octave * 12)
+        semitones = float(self._intervals[interval_idx] + octave * 12)
+        return unit.to_ratio(semitones)
 
 
 class StochasticPitchStrategy(VoicePitchStrategy):
     """
     Offset fisso per voce entro un singolo run; la direzione è fissa, la magnitudine
-    può variare nel tempo se semitone_range è un Envelope.
+    può variare nel tempo se pitch_range è un Envelope.
 
     Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
     riproducibile fra processi diversi. hash() su stringa è randomizzato
     per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
     cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
-    _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
-    Offset = _cache[vi] * semitone_range(t).
-    Voce 0 → sempre 0.0.
+    _cache[voice_index] memorizza la posizione normalizzata in [-1, 1].
+    Fattore = unit.materialize(position, pitch_range(t)): EDO → ± attorno a 0
+    in semitoni; ratio → simmetrico geometrico (es. range=2 → [0.5, 2]).
+    Voce 0 (e range 0) → sempre 1.0 (identità).
     """
 
-    def __init__(self, semitone_range: StrategyParam, stream_id: str):
-        self.semitone_range = semitone_range
+    def __init__(self, pitch_range: StrategyParam, stream_id: str):
+        self.pitch_range = pitch_range
         self.stream_id = stream_id
         self._cache: Dict[int, float] = {}
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
-        resolved = resolve_param(self.semitone_range, time)
+    def get_pitch_factor(self, voice_index, num_voices, time, unit):
+        resolved = resolve_param(self.pitch_range, time)
         if voice_index == 0 or resolved == 0.0:
-            return 0.0
+            return 1.0
         if voice_index not in self._cache:
             seed = hash(self.stream_id + str(voice_index))
             rng = random.Random(seed)
             self._cache[voice_index] = rng.uniform(-1.0, 1.0)
-        return self._cache[voice_index] * resolved
+        return unit.materialize(self._cache[voice_index], resolved)
 
 
 class SpectralPitchStrategy(VoicePitchStrategy):
@@ -251,13 +265,13 @@ class SpectralPitchStrategy(VoicePitchStrategy):
             float(round(12 * math.log2(i + 1))) for i in range(max_partial)
         ]
 
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
+    def get_pitch_factor(self, voice_index, num_voices, time, unit):
         if voice_index == 0:
-            return 0.0
+            return 1.0
         while voice_index >= len(self._offsets):
             i = len(self._offsets)
             self._offsets.append(float(round(12 * math.log2(i + 1))))
-        return self._offsets[voice_index]
+        return unit.to_ratio(self._offsets[voice_index])
 
 
 # =============================================================================
@@ -271,6 +285,11 @@ VOICE_PITCH_STRATEGIES: Dict[str, Type[VoicePitchStrategy]] = {
     'stochastic':  StochasticPitchStrategy,
     'spectral':    SpectralPitchStrategy,
 }
+
+# Strategie i cui offset sono intrinsecamente in semitoni (interi da
+# CHORD_INTERVALS / 12*log2): in v1 accettano solo l'unità `semitones`.
+# Singola fonte di verità per la validazione in Stream._init_voice_manager.
+SEMITONE_LOCKED = frozenset({'chord', 'spectral'})
 
 
 def register_voice_pitch_strategy(name: str, cls: Type[VoicePitchStrategy]) -> None:

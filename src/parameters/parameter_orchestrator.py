@@ -87,6 +87,39 @@ class ParameterOrchestrator:
         
         return param
     
+    def create_pitch_parameter(
+        self,
+        name: str,
+        value_raw,
+        range_raw,
+        bounds,
+        dephase_key: str = 'pitch',
+    ) -> Parameter:
+        """
+        Crea il Parameter del pitch con bounds dall'unità + ProbabilityGate.
+
+        Il pitch è unit-driven: i bounds derivano dalla PitchUnit, non dallo
+        schema. Replica la pipeline di create_parameter_with_gate (range +
+        dephase) ma con bounds espliciti.
+        """
+        param = self._param_factory.create_smart_parameter_with_bounds(
+            name=name,
+            value_raw=value_raw,
+            range_raw=range_raw,
+            bounds=bounds,
+        )
+        gate = GateFactory.create_gate(
+            dephase=self._config.dephase,
+            param_key=dephase_key,
+            default_prob=DEFAULT_PROB,
+            has_explicit_range=(param._mod_range is not None),
+            range_always_active=self._config.range_always_active,
+            duration=self._config.context.duration,
+            time_mode=self._config.time_mode,
+        )
+        param.set_probability_gate(gate)
+        return param
+
     def create_constant_parameter(self, name: str, value: float) -> Parameter:
         """
         Thin wrapper su ParameterFactory.create_constant_parameter.

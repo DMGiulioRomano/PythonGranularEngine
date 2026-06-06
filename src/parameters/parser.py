@@ -44,7 +44,8 @@ class GranularParser:
         name: str,
         value_raw: Any,
         range_raw: Any = None,
-        prob_raw: Any = None
+        prob_raw: Any = None,
+        bounds_override: Any = None
     ) -> Parameter:
         """
         Metodo Factory principale. Crea un oggetto Parameter pronto all'uso.
@@ -54,13 +55,17 @@ class GranularParser:
             value_raw: Valore base dal YAML (numero, lista breakpoints, dict envelope).
             range_raw: Valore range/randomness dal YAML (opzionale).
             prob_raw: Valore probabilità/dephase dal YAML (opzionale).
+            bounds_override: ParameterBounds espliciti. Se forniti, bypassano il
+                Registry — usati per parametri con bounds dinamici (es. pitch,
+                i cui bounds derivano dall'unità di misura, non dal nome).
 
         Returns:
             Un'istanza configurata di Parameter.
         """
-        # 1. Recupera la definizione (Bounds & Rules) dal Registry.
+        # 1. Recupera la definizione (Bounds & Rules) dal Registry, salvo override.
         # Per loop_dur/loop_start/loop_end il bound massimo è la durata del file audio.
-        bounds = get_parameter_definition(name, sample_dur_sec=self.sample_dur_sec)
+        bounds = (bounds_override if bounds_override is not None
+                  else get_parameter_definition(name, sample_dur_sec=self.sample_dur_sec))
 
         # 2. Converte i dati grezzi in formati utilizzabili (float o Envelope)
         # Qui avviene la normalizzazione temporale se necessaria

@@ -190,7 +190,7 @@ class VoicePitchStrategy(ABC):
         """Offset in semitoni. Voce 0 → sempre 0.0."""
 ```
 
-I parametri scalari di ogni strategia (`step`, `semitone_range`, ecc.) accettano `Union[float, Envelope]`. Con un `Envelope`, il valore viene valutato a `time` tramite `resolve_param(param, time)` — il che consente evoluzione temporale per-grain.
+I parametri scalari di ogni strategia (`step`, `pitch_range`, ecc.) accettano `Union[float, Envelope]`. Con un `Envelope`, il valore viene valutato a `time` tramite `resolve_param(param, time)` — il che consente evoluzione temporale per-grain.
 
 L'offset prodotto da ogni strategia viene applicato in `_create_grain()` come moltiplicatore sul pitch_ratio del grano:
 
@@ -227,7 +227,7 @@ offset(i) = i × range(t) / (N - 1)    per N > 1
 offset(i) = 0.0                        per N == 1
 ```
 
-Distribuzione lineare che **normalizza il passo** rispetto al numero di voci per riempire sempre l'intervallo `[0, range(t)]`. `semitone_range` accetta `float` o `Envelope`. La differenza con `step` è che qui lo step varia con N.
+Distribuzione lineare che **normalizza il passo** rispetto al numero di voci per riempire sempre l'intervallo `[0, range(t)]`. `pitch_range` accetta `float` o `Envelope`. La differenza con `step` è che qui lo step varia con N.
 
 ```
 range=12, 4 voci → [0, 4, 8, 12]   step effettivo = 4
@@ -285,10 +285,10 @@ i=5 → 5%4=1, 5//4=1  →  intervals[1] + 1×12 = 16
 ```
 seed         = hash(stream_id + str(voice_index))
 direction(i) = Random(seed).uniform(-1.0, +1.0)   ← calcolato una volta, cached
-offset(i, t) = direction(i) × semitone_range(t)
+offset(i, t) = direction(i) × pitch_range(t)
 ```
 
-La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `semitone_range(t)` — può variare nel tempo se `semitone_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. Il seed combina lo `stream_id` (identità dello stream nel YAML) con l'indice di voce, garantendo:
+La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `pitch_range(t)` — può variare nel tempo se `pitch_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. Il seed combina lo `stream_id` (identità dello stream nel YAML) con l'indice di voce, garantendo:
 - voci diverse dello stesso stream → offset diversi
 - stream diversi → distribuzioni indipendenti
 - stesso YAML tra sessioni → stesso output audio
@@ -595,7 +595,7 @@ voices:
     spread: <float|envelope>  # ampiezza distribuzione stereo in gradi
 ```
 
-Tutti i parametri scalari (`step`, `semitone_range`, `pointer_range`, `max_offset`, `base`, `spread`) accettano:
+Tutti i parametri scalari (`step`, `pitch_range`, `pointer_range`, `max_offset`, `base`, `spread`) accettano:
 - `float` — valore costante per tutta la durata dello stream
 - lista di punti `[[t, v], ...]` — envelope lineare in secondi
 - dizionario `{points: [...], time_mode: normalized}` — envelope in coordinate 0.0–1.0 scalate su `stream.duration`
@@ -695,7 +695,7 @@ voices:
   num_voices: 4
   pitch:
     strategy: stochastic
-    semitone_range:
+    pitch_range:
       points: [[0, 0.0], [1, 8.0]]
       time_mode: normalized
 ```

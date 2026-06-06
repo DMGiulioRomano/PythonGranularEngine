@@ -56,6 +56,13 @@ from strategies.voice_pointer_strategy import (
     LinearPointerStrategy, StochasticPointerStrategy,
 )
 from strategies.voice_pan_strategy import LinearPanStrategy
+from parameters.pitch_unit import EdoUnit, RatioUnit
+
+
+def _f(semitones: float) -> float:
+    """Semitoni -> fattore di ratio (EDO 12), per le asserzioni pitch_factor."""
+    return 2 ** (semitones / 12)
+from shared.exceptions import InvalidStrategyConfigError
 
 
 # =============================================================================
@@ -89,10 +96,10 @@ class TestVoicesDefault:
         s = _build_stream()
         assert s._voice_manager.max_voices == 1
 
-    def test_no_voices_key_voice_config_0_is_zero(self):
+    def test_no_voices_key_voice_config_0_is_identity(self):
         s = _build_stream()
         vc = s._voice_manager.get_voice_config(0, 0.0)
-        assert vc == VoiceConfig(0.0, 0.0, 0.0, 0.0)
+        assert vc == VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
     def test_empty_voices_dict_max_voices_1(self):
         s = _build_stream(voices_params={})
@@ -129,38 +136,38 @@ class TestVoicesPitchStrategy:
             'num_voices': 3,
             'pitch': {'strategy': 'step', 'step': 4.0},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == pytest.approx(4.0)
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == pytest.approx(8.0)
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(8.0))
 
     def test_range_pitch_strategy(self):
         s = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'range', 'semitone_range': 12.0},
+            'pitch': {'strategy': 'range', 'pitch_range': 12.0},
         })
-        assert s._voice_manager.get_voice_config(0, 0.0).pitch_offset == 0.0
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == pytest.approx(12.0)
+        assert s._voice_manager.get_voice_config(0, 0.0).pitch_factor == 1.0
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(12.0))
 
     def test_chord_pitch_strategy_dom7(self):
         s = _build_stream({
             'num_voices': 4,
             'pitch': {'strategy': 'chord', 'chord': 'dom7'},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == 4.0
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == 7.0
-        assert s._voice_manager.get_voice_config(3, 0.0).pitch_offset == 10.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
+        assert s._voice_manager.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(10.0))
 
     def test_chord_pitch_strategy_maj(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'chord', 'chord': 'maj'},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == 4.0
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_offset == 7.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
 
-    def test_no_pitch_block_pitch_offset_zero(self):
+    def test_no_pitch_block_pitch_factor_identity(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i, 0.0).pitch_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pitch_factor == 1.0
 
 
 # =============================================================================
@@ -276,29 +283,29 @@ class TestStochasticStreamIdInjection:
         """Due stream con id diversi → pitch offsets diversi."""
         s1 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='stream_A')
         s2 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='stream_B')
-        offsets1 = [s1._voice_manager.get_voice_config(i, 0.0).pitch_offset for i in range(1, 3)]
-        offsets2 = [s2._voice_manager.get_voice_config(i, 0.0).pitch_offset for i in range(1, 3)]
+        offsets1 = [s1._voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
+        offsets2 = [s2._voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
         assert offsets1 != offsets2
 
     def test_stochastic_pitch_same_stream_id_reproducible(self):
         """Due stream con stesso id → stessi pitch offsets."""
         s1 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='same_stream')
         s2 = _build_stream({
             'num_voices': 3,
-            'pitch': {'strategy': 'stochastic', 'semitone_range': 3.0},
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='same_stream')
         for i in range(3):
-            assert (s1._voice_manager.get_voice_config(i, 0.0).pitch_offset ==
-                    s2._voice_manager.get_voice_config(i, 0.0).pitch_offset)
+            assert (s1._voice_manager.get_voice_config(i, 0.0).pitch_factor ==
+                    s2._voice_manager.get_voice_config(i, 0.0).pitch_factor)
 
     def test_stochastic_onset_stream_id_injected(self):
         """StochasticOnsetStrategy riceve stream_id automaticamente."""
@@ -343,7 +350,7 @@ class TestPartialVoicesBlock:
         s = _build_stream({'num_voices': 4})
         assert s._voice_manager.max_voices == 4
         for i in range(4):
-            assert s._voice_manager.get_voice_config(i, 0.0).pitch_offset == 0.0
+            assert s._voice_manager.get_voice_config(i, 0.0).pitch_factor == 1.0
             assert s._voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
 
     def test_pitch_only_onset_zero(self):
@@ -358,7 +365,7 @@ class TestPartialVoicesBlock:
             'num_voices': 3,
             'onset_offset': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_offset == 0.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == 1.0
 
 
 # =============================================================================
@@ -387,6 +394,24 @@ class TestInvalidStrategies:
                 'num_voices': 2,
                 'pointer': {'strategy': 'nonexistent_xyz'},
             })
+
+    def test_legacy_semitone_range_key_range_raises(self):
+        """`semitone_range` (vecchia chiave) su strategy range → hard break."""
+        with pytest.raises(InvalidStrategyConfigError) as exc:
+            _build_stream({
+                'num_voices': 3,
+                'pitch': {'strategy': 'range', 'semitone_range': 12.0},
+            })
+        assert 'pitch_range' in exc.value.user_message()
+
+    def test_legacy_semitone_range_key_stochastic_raises(self):
+        """`semitone_range` (vecchia chiave) su strategy stochastic → hard break."""
+        with pytest.raises(InvalidStrategyConfigError) as exc:
+            _build_stream({
+                'num_voices': 3,
+                'pitch': {'strategy': 'stochastic', 'semitone_range': 6.0},
+            })
+        assert 'pitch_range' in exc.value.user_message()
 
 
 # =============================================================================
@@ -550,8 +575,8 @@ class TestStrategyKwargsEnvelope:
         })
         vc0 = s._voice_manager.get_voice_config(1, 0.0)
         vc1 = s._voice_manager.get_voice_config(1, 1.0)
-        assert vc0.pitch_offset == pytest.approx(vc1.pitch_offset)
-        assert vc0.pitch_offset == pytest.approx(2.0)
+        assert vc0.pitch_factor == pytest.approx(vc1.pitch_factor)
+        assert vc0.pitch_factor == pytest.approx(_f(2.0))
 
     # --- list envelope ---
 
@@ -563,7 +588,7 @@ class TestStrategyKwargsEnvelope:
         })
         vc_early = s._voice_manager.get_voice_config(1, 0.0)
         vc_late = s._voice_manager.get_voice_config(1, 10.0)
-        assert vc_late.pitch_offset > vc_early.pitch_offset
+        assert vc_late.pitch_factor > vc_early.pitch_factor
 
     def test_list_envelope_onset_varies_over_time(self):
         """step: [[0,0],[10,0.2]] onset → varia nel tempo."""
@@ -619,7 +644,7 @@ class TestStrategyKwargsEnvelope:
         })
         # duration=10.0: normalized 1.0 → t=10.0
         vc_end = s._voice_manager.get_voice_config(1, 10.0)
-        assert vc_end.pitch_offset == pytest.approx(12.0)
+        assert vc_end.pitch_factor == pytest.approx(_f(12.0))
 
     # --- string kwargs pass-through (chord name) ---
 
@@ -630,9 +655,9 @@ class TestStrategyKwargsEnvelope:
             'pitch': {'strategy': 'chord', 'chord': 'dom7'},
         })
         # Se la stringa venisse convertita a float/Envelope, la factory crasherebbe.
-        # dom7 = [0,4,7,10] → voce 1 → 4 semitoni
+        # dom7 = [0,4,7,10] → voce 1 → 4 semitoni → 2^(4/12)
         vc = s._voice_manager.get_voice_config(1, 0.0)
-        assert vc.pitch_offset == pytest.approx(4.0)
+        assert vc.pitch_factor == pytest.approx(_f(4.0))
 
     def test_int_kwarg_preserved_as_int(self):
         """max_partial: 4 (int YAML) non viene convertito a float.
@@ -644,7 +669,7 @@ class TestStrategyKwargsEnvelope:
             'pitch': {'strategy': 'spectral', 'max_partial': 4},
         })
         vc = s._voice_manager.get_voice_config(1, 0.0)
-        assert vc.pitch_offset == pytest.approx(12.0)  # voce 1 = 1° parziale = 12 st
+        assert vc.pitch_factor == pytest.approx(_f(12.0))  # voce 1 = 1° parziale = 12 st
 
     def test_chord_inversion_int_preserved(self):
         """inversion: 1 (int YAML) non viene convertito a float.
@@ -657,4 +682,120 @@ class TestStrategyKwargsEnvelope:
             'pitch': {'strategy': 'chord', 'chord': 'maj', 'inversion': 1},
         })
         vc = s._voice_manager.get_voice_config(1, 0.0)
-        assert vc.pitch_offset == pytest.approx(3.0)
+        assert vc.pitch_factor == pytest.approx(_f(3.0))
+
+
+# =============================================================================
+# 11. Unità di misura del pitch (voices.pitch.unit)
+# =============================================================================
+
+class TestVoicesPitchUnit:
+    """Il blocco voices.pitch accetta `unit:` che possiede la geometria con cui
+    la distribuzione materializza il fattore di ratio. Default: semitoni
+    (EdoUnit(12)), retrocompatibile."""
+
+    def test_default_unit_is_semitones(self):
+        s = _build_stream({'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0}})
+        assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
+        assert s._voice_manager.pitch_unit.divisions == 12
+
+    def test_unit_quarter_tone_preset(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'step', 'step': 1.0, 'unit': 'quarter_tone'},
+        })
+        assert s._voice_manager.pitch_unit.divisions == 24
+
+    def test_unit_edo_dict(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'range', 'pitch_range': 12.0, 'unit': {'edo': 31}},
+        })
+        assert s._voice_manager.pitch_unit.divisions == 31
+
+    def test_unit_ratio(self):
+        s = _build_stream({
+            'num_voices': 2,
+            'pitch': {'strategy': 'step', 'step': 1.5, 'unit': 'ratio'},
+        })
+        assert isinstance(s._voice_manager.pitch_unit, RatioUnit)
+
+    def test_unit_not_a_strategy_kwarg(self):
+        # `unit` non deve finire nel costruttore della distribuzione: step resta
+        # l'unico kwarg, voce 1 → materialize(1, 5) sull'unità cents = 2^(5/1200).
+        s = _build_stream({
+            'num_voices': 2,
+            'pitch': {'strategy': 'step', 'step': 5.0, 'unit': 'cents'},
+        })
+        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(2 ** (5.0 / 1200))
+
+
+class TestVoicesPitchUnitJunction:
+    """La giunzione in _create_grain converte l'offset col PitchUnit attivo.
+    base pitch_ratio default = 1.0 (nessun blocco pitch nei params)."""
+
+    def _grain_ratio_for_voice(self, voices_params, voice_index):
+        s = _build_stream(voices_params)
+        s._density = type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0)})()
+        s.sample_table_num = 1
+        s.window_table_map = {'hanning': 2}
+        s.generate_grains()
+        return s.voices[voice_index][0].pitch_ratio
+
+    def test_default_semitones_octave(self):
+        # step 12 semitoni -> 2^(12/12) = 2.0
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0}}, 1)
+        assert r == pytest.approx(2.0)
+
+    def test_quarter_tone_half_octave(self):
+        # step 12 quarti -> 2^(12/24) = sqrt(2)
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0, 'unit': 'quarter_tone'}}, 1)
+        assert r == pytest.approx(2 ** 0.5)
+
+    def test_ratio_unit_geometric_step(self):
+        # step 2.0 con unit ratio -> voce 1 = 2^1 = 2.0 (geometrico: amount^position)
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 2.0, 'unit': 'ratio'}}, 1)
+        assert r == pytest.approx(2.0)
+
+    def test_ratio_unit_geometric_step_voice_2(self):
+        # step 2.0 ratio, voce 2 = 2^2 = 4.0 (ottave pulite, non lineare 2*step=4? sì 4)
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 3, 'pitch': {'strategy': 'step', 'step': 2.0, 'unit': 'ratio'}}, 2)
+        assert r == pytest.approx(4.0)
+
+    def test_voice_0_unchanged_under_ratio(self):
+        # voce 0 -> pitch_factor identità 1.0 -> base invariato
+        r = self._grain_ratio_for_voice(
+            {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 2.0, 'unit': 'ratio'}}, 0)
+        assert r == pytest.approx(1.0)
+
+
+class TestVoicesPitchUnitSemitoneLocked:
+    """chord e spectral producono intervalli intrinsecamente in semitoni:
+    in v1 accettano solo `semitones` (o unit assente). Altra unità → errore."""
+
+    @pytest.mark.parametrize("strategy,extra", [
+        ('chord', {'chord': 'dom7'}),
+        ('spectral', {}),
+    ])
+    @pytest.mark.parametrize("unit", ['quarter_tone', 'cents', 'ratio', {'edo': 31}])
+    def test_non_semitone_unit_rejected(self, strategy, extra, unit):
+        with pytest.raises(InvalidStrategyConfigError):
+            _build_stream({
+                'num_voices': 4,
+                'pitch': {'strategy': strategy, 'unit': unit, **extra},
+            })
+
+    def test_chord_without_unit_ok(self):
+        s = _build_stream({'num_voices': 4, 'pitch': {'strategy': 'chord', 'chord': 'dom7'}})
+        assert s._voice_manager.pitch_unit.divisions == 12
+
+    def test_chord_explicit_semitones_ok(self):
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {'strategy': 'chord', 'chord': 'dom7', 'unit': 'semitones'},
+        })
+        assert s._voice_manager.pitch_unit.divisions == 12

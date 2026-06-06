@@ -165,7 +165,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -371,7 +371,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -577,7 +577,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -783,7 +783,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -989,7 +989,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -1195,7 +1195,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -1401,7 +1401,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -1607,7 +1607,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -1813,7 +1813,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0
@@ -2019,7 +2019,7 @@ streams:
       num_voices: 4
       pitch:
         strategy: stochastic
-        semitone_range: 6.0
+        pitch_range: 6.0
       pan:
         strategy: linear
         spread: 70.0

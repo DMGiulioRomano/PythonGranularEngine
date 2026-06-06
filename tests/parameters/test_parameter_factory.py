@@ -345,17 +345,17 @@ class TestParameterOrchestrator:
         orchestrator = ParameterOrchestrator(config)
         
         schema = [
-            ParameterSpec('pitch_ratio', 'ratio', 1.0, 
-                         exclusive_group='pitch', group_priority=2),
-            ParameterSpec('pitch_semitones', 'semitones', None,
-                         exclusive_group='pitch', group_priority=1)
+            ParameterSpec('volume', 'volume', -6.0,
+                         exclusive_group='outgrp', group_priority=2),
+            ParameterSpec('pan', 'pan', None,
+                         exclusive_group='outgrp', group_priority=1)
         ]
-        yaml_data = {'semitones': 7}  # Only semitones present
-        
+        yaml_data = {'pan': 0.5}  # Only pan present
+
         params = orchestrator.create_all_parameters(yaml_data, schema)
-        
-        assert params['pitch_semitones'] is not None
-        assert params['pitch_ratio'] is None  # Loser set to None
+
+        assert params['pan'] is not None
+        assert params['volume'] is None  # Loser set to None
 
     def test_create_constant_parameter_restituisce_parameter(self):
         orchestrator = ParameterOrchestrator(make_config())
@@ -398,16 +398,16 @@ class TestCreateParameterWithGate:
         orchestrator = ParameterOrchestrator(config)
         
         spec = ParameterSpec(
-            name='pitch_ratio',
-            yaml_path='ratio',
-            default=1.0,
-            range_path='range',
-            dephase_key='pitch'
+            name='grain_duration',
+            yaml_path='grain.duration',
+            default=0.05,
+            range_path='grain.duration_range',
+            dephase_key='duration'
         )
-        yaml_data = {'ratio': 1.0, 'range': 0.1}
-        
+        yaml_data = {'grain': {'duration': 0.05, 'duration_range': 0.1}}
+
         param = orchestrator.create_parameter_with_gate(yaml_data, spec)
-        
+
         assert param._mod_range == 0.1
         assert param._probability_gate is not None
 

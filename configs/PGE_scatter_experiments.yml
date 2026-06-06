@@ -238,7 +238,7 @@ streams:
       scatter: 0.5
       pitch:
         strategy: range
-        semitone_range: 7.0
+        pitch_range: 7.0
       pan:
         strategy: linear
         spread: 60.0
@@ -286,7 +286,7 @@ streams:
       scatter: 1.0
       pitch:
         strategy: stochastic
-        semitone_range: 5.0
+        pitch_range: 5.0
       pan:
         strategy: linear
         spread: 60.0
@@ -337,7 +337,7 @@ streams:
       scatter: [[0, 0.0], [15, 1.0], [30, 0.0]]
       pitch:
         strategy: range
-        semitone_range: 12.0
+        pitch_range: 12.0
       pan:
         strategy: linear
         spread: 90.0
@@ -435,7 +435,7 @@ streams:
       scatter: [[0, 1.0], [30, 0.0]]
       pitch:
         strategy: range
-        semitone_range: 12.0
+        pitch_range: 12.0
       pan:
         strategy: linear
         spread: 80.0
@@ -554,7 +554,7 @@ streams:
       scatter: 0.5
       pitch:
         strategy: range
-        semitone_range: 7.0
+        pitch_range: 7.0
       pan:
         strategy: linear
         spread: 60.0
@@ -622,7 +622,7 @@ streams:
       scatter: 1.0
       pitch:
         strategy: range
-        semitone_range: 5.0
+        pitch_range: 5.0
       pan:
         strategy: linear
         spread: 80.0
@@ -663,7 +663,7 @@ streams:
       scatter: [[0, 1.0], [30, 0.0]]
       pitch:
         strategy: range
-        semitone_range: 10.0
+        pitch_range: 10.0
       pan:
         strategy: linear
         spread: 80.0
@@ -731,7 +731,7 @@ streams:
       scatter: [[0, 1.0], [30, 0.0]]
       pitch:
         strategy: range
-        semitone_range: 12.0
+        pitch_range: 12.0
       pan:
         strategy: linear
         spread: 90.0
@@ -809,7 +809,7 @@ streams:
         points: [[0, 0.0], [10, 1.0], [20, 0.5], [30, 0.0]]
       pitch:
         strategy: range
-        semitone_range: 7.0
+        pitch_range: 7.0
       pointer:
         strategy: linear
         step: 0.03

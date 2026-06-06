@@ -9,7 +9,7 @@ Moduli sotto test:
 - VoiceManager (orchestratore strategy, stateless post-U3)
 
 VoiceConfig:
-  pitch_offset: float    # semitoni
+  pitch_factor: float    # fattore di ratio (1.0 = identità)
   pointer_offset: float  # normalizzato
   pan_offset: float      # gradi
   onset_offset: float    # secondi
@@ -17,7 +17,7 @@ VoiceConfig:
 VoiceManager:
   - Riceve max_voices + le quattro strategy (pitch, pointer, onset, pan)
   - get_voice_config(voice_index, time) computa on-the-fly (non pre-computa)
-  - Voce 0 → VoiceConfig(0.0, 0.0, 0.0, 0.0) sempre (garantito dalle strategy)
+  - Voce 0 → VoiceConfig(1.0, 0.0, 0.0, 0.0) sempre (pitch identità, offset 0)
   - pan_strategy usa pan_spread come parametro aggiuntivo (Union[float, Envelope])
 
 Principi:
@@ -40,6 +40,11 @@ Organizzazione:
 
 import pytest
 from unittest.mock import MagicMock
+
+
+def _f(semitones: float) -> float:
+    """Semitoni -> fattore di ratio (EDO 12), per le asserzioni pitch_factor."""
+    return 2 ** (semitones / 12)
 
 
 # =============================================================================
@@ -67,24 +72,24 @@ class TestVoiceConfig:
 
     def test_can_be_instantiated(self):
         VoiceConfig, _ = _get_module()
-        vc = VoiceConfig(pitch_offset=3.0, pointer_offset=0.1,
+        vc = VoiceConfig(pitch_factor=3.0, pointer_offset=0.1,
                          pan_offset=30.0, onset_offset=0.05)
-        assert vc.pitch_offset == 3.0
+        assert vc.pitch_factor == 3.0
         assert vc.pointer_offset == 0.1
         assert vc.pan_offset == 30.0
         assert vc.onset_offset == 0.05
 
     def test_is_frozen(self):
         VoiceConfig, _ = _get_module()
-        vc = VoiceConfig(pitch_offset=0.0, pointer_offset=0.0,
+        vc = VoiceConfig(pitch_factor=0.0, pointer_offset=0.0,
                          pan_offset=0.0, onset_offset=0.0)
         with pytest.raises((AttributeError, TypeError)):
-            vc.pitch_offset = 5.0
+            vc.pitch_factor = 5.0
 
     def test_zero_config(self):
         VoiceConfig, _ = _get_module()
         vc = VoiceConfig(0.0, 0.0, 0.0, 0.0)
-        assert vc.pitch_offset == 0.0
+        assert vc.pitch_factor == 0.0
         assert vc.pointer_offset == 0.0
         assert vc.pan_offset == 0.0
         assert vc.onset_offset == 0.0
@@ -153,7 +158,7 @@ class TestVoiceZeroAlwaysZero:
         VoiceConfig, VoiceManager = _get_module()
         vm = VoiceManager(max_voices=4)
         vc = vm.get_voice_config(0, 0.0)
-        assert vc == VoiceConfig(0.0, 0.0, 0.0, 0.0)
+        assert vc == VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
     def test_voice_0_all_zeros_with_strategies(self):
         VoiceConfig, VoiceManager = _get_module()
@@ -167,13 +172,13 @@ class TestVoiceZeroAlwaysZero:
             pan_spread=90.0,
         )
         vc = vm.get_voice_config(0, 0.0)
-        assert vc == VoiceConfig(0.0, 0.0, 0.0, 0.0)
+        assert vc == VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
     def test_voice_0_zero_regardless_of_pitch_strategy(self):
         VoiceConfig, VoiceManager = _get_module()
         StepPitchStrategy, *_ = _get_strategies()
         vm = VoiceManager(max_voices=3, pitch_strategy=StepPitchStrategy(step=12.0))
-        assert vm.get_voice_config(0, 0.0).pitch_offset == 0.0
+        assert vm.get_voice_config(0, 0.0).pitch_factor == 1.0
 
     def test_voice_0_zero_regardless_of_onset_strategy(self):
         VoiceConfig, VoiceManager = _get_module()
@@ -195,7 +200,7 @@ class TestVoiceZeroAlwaysZero:
         )
         for t in [0.0, 0.5, 1.0, 10.0]:
             vc = vm.get_voice_config(0, t)
-            assert vc == VoiceConfig(0.0, 0.0, 0.0, 0.0), f"voce 0 non zero a t={t}"
+            assert vc == VoiceConfig(1.0, 0.0, 0.0, 0.0), f"voce 0 non identità a t={t}"
 
 
 # =============================================================================
@@ -208,9 +213,9 @@ class TestVoiceManagerDelegation:
         VoiceConfig, VoiceManager = _get_module()
         StepPitchStrategy, *_ = _get_strategies()
         vm = VoiceManager(max_voices=4, pitch_strategy=StepPitchStrategy(step=3.0))
-        assert vm.get_voice_config(1, 0.0).pitch_offset == pytest.approx(3.0)
-        assert vm.get_voice_config(2, 0.0).pitch_offset == pytest.approx(6.0)
-        assert vm.get_voice_config(3, 0.0).pitch_offset == pytest.approx(9.0)
+        assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(3.0))
+        assert vm.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(6.0))
+        assert vm.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(9.0))
 
     def test_onset_delegated_to_strategy(self):
         _, VoiceManager = _get_module()
@@ -252,7 +257,7 @@ class TestVoiceManagerDelegation:
             pan_spread=10.0,
         )
         vc2 = vm.get_voice_config(2, 0.0)
-        assert vc2.pitch_offset == pytest.approx(8.0)
+        assert vc2.pitch_factor == pytest.approx(_f(8.0))
         assert vc2.onset_offset == pytest.approx(0.2)
         assert vc2.pointer_offset == pytest.approx(0.10)
 
@@ -263,11 +268,11 @@ class TestVoiceManagerDelegation:
 
 class TestOptionalStrategies:
 
-    def test_no_pitch_strategy_all_zero(self):
+    def test_no_pitch_strategy_all_identity(self):
         _, VoiceManager = _get_module()
         vm = VoiceManager(max_voices=4)
         for i in range(4):
-            assert vm.get_voice_config(i, 0.0).pitch_offset == 0.0
+            assert vm.get_voice_config(i, 0.0).pitch_factor == 1.0
 
     def test_no_onset_strategy_all_zero(self):
         _, VoiceManager = _get_module()
@@ -293,7 +298,7 @@ class TestOptionalStrategies:
         StepPitchStrategy, *_ = _get_strategies()
         vm = VoiceManager(max_voices=3, pitch_strategy=StepPitchStrategy(step=5.0))
         vc = vm.get_voice_config(1, 0.0)
-        assert vc.pitch_offset == pytest.approx(5.0)
+        assert vc.pitch_factor == pytest.approx(_f(5.0))
         assert vc.onset_offset == 0.0
         assert vc.pointer_offset == 0.0
         assert vc.pan_offset == 0.0
@@ -362,18 +367,18 @@ class TestGetVoiceConfig:
 
 class TestVoiceManagerTimeVarying:
 
-    def test_pitch_offset_varies_with_time_when_envelope(self):
-        """StepPitchStrategy(Envelope) → offset diverso a t=0 e t=1."""
+    def test_pitch_factor_varies_with_time_when_envelope(self):
+        """StepPitchStrategy(Envelope) → fattore diverso a t=0 e t=1."""
         _, VoiceManager = _get_module()
         StepPitchStrategy, *_ = _get_strategies()
         from envelopes.envelope import Envelope
         env = Envelope([[0, 0], [1, 12]])
         vm = VoiceManager(max_voices=4, pitch_strategy=StepPitchStrategy(step=env))
-        offset_t0 = vm.get_voice_config(1, 0.0).pitch_offset
-        offset_t1 = vm.get_voice_config(1, 1.0).pitch_offset
-        assert offset_t0 != offset_t1
-        assert offset_t0 == pytest.approx(0.0)
-        assert offset_t1 == pytest.approx(12.0)
+        factor_t0 = vm.get_voice_config(1, 0.0).pitch_factor
+        factor_t1 = vm.get_voice_config(1, 1.0).pitch_factor
+        assert factor_t0 != factor_t1
+        assert factor_t0 == pytest.approx(_f(0.0))   # 1.0
+        assert factor_t1 == pytest.approx(_f(12.0))  # 2.0
 
     def test_onset_offset_varies_with_time_when_envelope(self):
         _, VoiceManager = _get_module()
@@ -414,7 +419,7 @@ class TestVoiceManagerTimeVarying:
         )
         for t in [0.0, 0.5, 1.0]:
             vc = vm.get_voice_config(2, t)
-            assert vc.pitch_offset == pytest.approx(6.0)
+            assert vc.pitch_factor == pytest.approx(_f(6.0))
             assert vc.onset_offset == pytest.approx(0.2)
             assert vc.pointer_offset == pytest.approx(0.10)
 
@@ -428,23 +433,24 @@ class TestEdgeCases:
     def test_max_voices_1_only_voice_0(self):
         VoiceConfig, VoiceManager = _get_module()
         vm = VoiceManager(max_voices=1)
-        assert vm.get_voice_config(0, 0.0) == VoiceConfig(0.0, 0.0, 0.0, 0.0)
+        assert vm.get_voice_config(0, 0.0) == VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
     def test_chord_strategy_with_voice_manager(self):
         """Integrazione ChordPitchStrategy con VoiceManager."""
         _, VoiceManager = _get_module()
         from strategies.voice_pitch_strategy import ChordPitchStrategy
         vm = VoiceManager(max_voices=4, pitch_strategy=ChordPitchStrategy(chord="dom7"))
-        assert vm.get_voice_config(0, 0.0).pitch_offset == 0.0
-        assert vm.get_voice_config(1, 0.0).pitch_offset == 4.0
-        assert vm.get_voice_config(2, 0.0).pitch_offset == 7.0
-        assert vm.get_voice_config(3, 0.0).pitch_offset == 10.0
+        assert vm.get_voice_config(0, 0.0).pitch_factor == 1.0
+        assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert vm.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
+        assert vm.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(10.0))
 
     def test_stochastic_pitch_with_voice_manager(self):
         _, VoiceManager = _get_module()
         from strategies.voice_pitch_strategy import StochasticPitchStrategy
-        s = StochasticPitchStrategy(semitone_range=2.0, stream_id="test")
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="test")
         vm = VoiceManager(max_voices=4, pitch_strategy=s)
-        assert vm.get_voice_config(0, 0.0).pitch_offset == 0.0
+        assert vm.get_voice_config(0, 0.0).pitch_factor == 1.0
         for i in range(1, 4):
-            assert -2.0 <= vm.get_voice_config(i, 0.0).pitch_offset <= 2.0
+            # ±2 semitoni in fattore di ratio
+            assert _f(-2.0) <= vm.get_voice_config(i, 0.0).pitch_factor <= _f(2.0)

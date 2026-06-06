@@ -9,6 +9,7 @@ from typing import Optional, Union
 from parameters.parameter import Parameter
 from envelopes.envelope import Envelope
 from parameters.parameter_definitions import get_parameter_definition
+from parameters.pitch_unit import PitchUnit
 # =============================================================================
 # STRATEGIE PITCH
 # =============================================================================
@@ -34,38 +35,27 @@ class PitchStrategy(ABC):
         pass
 
 
-class SemitonesStrategy(PitchStrategy):
-    """Strategia pitch in semitoni."""
-    
-    def __init__(self, semitones_param: Parameter):
-        self._param = semitones_param
-    
+class UnitPitchStrategy(PitchStrategy):
+    """
+    Strategia pitch generica: converte il valore del parametro in ratio tramite
+    una PitchUnit. Unica implementazione del calcolo pitch — semitoni, cents,
+    quarti/ottavi di tono, EDO arbitrari e ratio sono tutti casi di questa.
+
+        ratio(t) = unit.to_ratio(param.get_value(t))
+    """
+
+    def __init__(self, param: Parameter, unit: PitchUnit, name: str):
+        self._param = param
+        self._unit = unit
+        self._name = name
+
     def calculate(self, elapsed_time: float) -> float:
-        semitones = self._param.get_value(elapsed_time)
-        return 2 ** (semitones / 12.0)
-    
+        return self._unit.to_ratio(self._param.get_value(elapsed_time))
+
     @property
     def name(self) -> str:
-        return "semitones"
-    
-    @property
-    def base_value(self):
-        return self._param.value
+        return self._name
 
-
-class RatioStrategy(PitchStrategy):
-    """Strategia pitch in ratio diretto."""
-    
-    def __init__(self, ratio_param: Parameter):
-        self._param = ratio_param
-    
-    def calculate(self, elapsed_time: float) -> float:
-        return self._param.get_value(elapsed_time)
-    
-    @property
-    def name(self) -> str:
-        return "ratio"
-    
     @property
     def base_value(self):
         return self._param.value

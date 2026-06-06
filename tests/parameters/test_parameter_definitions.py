@@ -45,8 +45,7 @@ EXPECTED_PARAMETERS = {
     'density', 'fill_factor', 'distribution', 'effective_density',
     # Grain Properties
     'grain_duration', 'reverse', 'grain_envelope',
-    # Pitch
-    'pitch_semitones', 'pitch_ratio',
+    # Pitch: i bounds sono unit-driven (PitchUnit.value_bounds), non registrati qui.
     # Pointer
     'pointer_speed_ratio', 'pointer_deviation',
     'loop_dur', 'loop_start', 'loop_end',
@@ -400,44 +399,14 @@ class TestGrainPropertiesBounds:
 # =============================================================================
 
 class TestPitchBounds:
-    """Bounds per pitch_semitones e pitch_ratio."""
+    """I bounds del pitch sono unit-driven: vivono in PitchUnit.value_bounds()
+    e sono coperti da tests/parameters/test_pitch_unit.py, non più qui."""
 
-    def test_pitch_semitones_bounds(self):
-        b = GRANULAR_PARAMETERS['pitch_semitones']
-        assert b.min_val == -36.0
-        assert b.max_val == 36.0
-        assert b.min_range == 0.0
-        assert b.max_range == 36.0
-
-    def test_pitch_semitones_variation_mode_quantized(self):
-        """pitch_semitones usa quantized (step interi)."""
-        assert GRANULAR_PARAMETERS['pitch_semitones'].variation_mode == 'quantized'
-
-    def test_pitch_semitones_symmetric(self):
-        """pitch_semitones ha range simmetrico attorno allo zero."""
-        b = GRANULAR_PARAMETERS['pitch_semitones']
-        assert b.min_val == -b.max_val
-
-    def test_pitch_ratio_bounds(self):
-        b = GRANULAR_PARAMETERS['pitch_ratio']
-        assert b.min_val == 0.125   # 3 ottave sotto
-        assert b.max_val == 8.0     # 3 ottave sopra
-        assert b.min_range == 0.0
-        assert b.max_range == 2.0
-        assert b.default_jitter == 0.005
-
-    def test_pitch_ratio_variation_mode_additive(self):
-        """pitch_ratio usa additive (variazione continua)."""
-        assert GRANULAR_PARAMETERS['pitch_ratio'].variation_mode == 'additive'
-
-    def test_pitch_ratio_min_positive(self):
-        """pitch_ratio non puo' essere zero o negativo."""
-        assert GRANULAR_PARAMETERS['pitch_ratio'].min_val > 0
-
-    def test_pitch_ratio_octave_relationship(self):
-        """min_val * max_val == 1.0 (reciproci: 3 ottave su/giu')."""
-        b = GRANULAR_PARAMETERS['pitch_ratio']
-        assert b.min_val * b.max_val == pytest.approx(1.0)
+    def test_pitch_bounds_not_in_registry(self):
+        # nessun bound pitch statico nel registry (migrato su PitchUnit)
+        for name in ('pitch_semitones', 'pitch_ratio', 'pitch_cents',
+                     'pitch_quarter_tone', 'pitch_eighth_tone'):
+            assert name not in GRANULAR_PARAMETERS
 
 
 # =============================================================================
@@ -778,11 +747,6 @@ class TestRegistrySemanticGroups:
         }
         actual = set(GRANULAR_PARAMETERS.keys())
         assert voice_params.issubset(actual)
-
-    def test_all_pitch_params_present(self):
-        pitch_params = {'pitch_semitones', 'pitch_ratio'}
-        actual = set(GRANULAR_PARAMETERS.keys())
-        assert pitch_params.issubset(actual)
 
     def test_all_output_params_present(self):
         output_params = {'volume', 'pan'}

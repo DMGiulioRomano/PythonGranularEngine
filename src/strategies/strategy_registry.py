@@ -15,10 +15,8 @@ from shared.exceptions import (
 # REGISTRI
 # =============================================================================
 
-PITCH_STRATEGIES: Dict[str, Type[PitchStrategy]] = {
-    'pitch_semitones': SemitonesStrategy,
-    'pitch_ratio': RatioStrategy,
-}
+# Il pitch base è unit-driven: PitchController costruisce direttamente
+# UnitPitchStrategy dalla PitchUnit, senza registry per-preset.
 
 DENSITY_STRATEGIES: Dict[str, Type[DensityStrategy]] = {
     'fill_factor': FillFactorStrategy,
@@ -29,12 +27,6 @@ DENSITY_STRATEGIES: Dict[str, Type[DensityStrategy]] = {
 # =============================================================================
 # FUNZIONI DI REGISTRAZIONE (per estensibilità)
 # =============================================================================
-
-def register_pitch_strategy(param_name: str, strategy_class: Type[PitchStrategy]):
-    """Registra una nuova strategia di pitch."""
-    PITCH_STRATEGIES[param_name] = strategy_class
-    print(f"✅ Registrata nuova strategia pitch: {param_name} -> {strategy_class.__name__}")
-
 
 def register_density_strategy(param_name: str, strategy_class: Type[DensityStrategy]):
     """Registra una nuova strategia di density."""
@@ -48,22 +40,7 @@ def register_density_strategy(param_name: str, strategy_class: Type[DensityStrat
 
 class StrategyFactory:
     """Crea strategie basate sui parametri selezionati."""
-    
-    @staticmethod
-    def create_pitch_strategy(selected_param_name: str, 
-                             param_obj: Parameter,
-                             all_params: dict) -> PitchStrategy:
-        """Crea una strategia di pitch."""
-        if selected_param_name not in PITCH_STRATEGIES:
-            raise StrategyNotFoundError(
-                strategy_kind="pitch",
-                name=selected_param_name,
-                available=list(PITCH_STRATEGIES.keys()),
-            )
 
-        strategy_class = PITCH_STRATEGIES[selected_param_name]
-        return strategy_class(param_obj)
-    
     @staticmethod
     def create_density_strategy(selected_param_name: str,
                                param_obj: Parameter,

@@ -349,51 +349,17 @@ class TestPointerParameterSchema:
 # =============================================================================
 
 class TestPitchParameterSchema:
-    """Contenuto e gruppi esclusivi di PITCH_PARAMETER_SCHEMA."""
+    """Il pitch base non è più schema-driven: PITCH_PARAMETER_SCHEMA è vuoto.
+    L'unità (semitones/cents/quarter_tone/eighth_tone/edo/ratio) e i suoi bounds
+    sono gestiti da PitchController tramite PitchUnit."""
 
     def test_is_list_of_specs(self):
         assert isinstance(PITCH_PARAMETER_SCHEMA, list)
         for spec in PITCH_PARAMETER_SCHEMA:
             assert isinstance(spec, ParameterSpec)
 
-    def test_expected_parameters(self):
-        names = {s.name for s in PITCH_PARAMETER_SCHEMA}
-        assert names == {'pitch_ratio', 'pitch_semitones'}
-
-    def test_pitch_mode_exclusive_group(self):
-        """Entrambi i parametri appartengono a 'pitch_mode'."""
-        for spec in PITCH_PARAMETER_SCHEMA:
-            assert spec.exclusive_group == 'pitch_mode'
-
-    def test_pitch_semitones_has_higher_priority(self):
-        """pitch_semitones ha priority=1 (vince su pitch_ratio)."""
-        ratio = next(s for s in PITCH_PARAMETER_SCHEMA if s.name == 'pitch_ratio')
-        semi = next(s for s in PITCH_PARAMETER_SCHEMA if s.name == 'pitch_semitones')
-        assert semi.group_priority < ratio.group_priority
-
-    def test_pitch_ratio_defaults(self):
-        spec = next(s for s in PITCH_PARAMETER_SCHEMA if s.name == 'pitch_ratio')
-        assert spec.default == 1.0
-        assert spec.yaml_path == 'ratio'
-        assert spec.range_path == 'range'
-        assert spec.dephase_key == 'pitch'
-
-    def test_pitch_semitones_defaults(self):
-        spec = next(s for s in PITCH_PARAMETER_SCHEMA if s.name == 'pitch_semitones')
-        assert spec.default is None
-        assert spec.yaml_path == 'semitones'
-        assert spec.range_path == 'range'
-        assert spec.dephase_key == 'pitch'
-
-    def test_both_share_dephase_key(self):
-        """Entrambi usano 'pitch' come dephase_key."""
-        keys = {s.dephase_key for s in PITCH_PARAMETER_SCHEMA}
-        assert keys == {'pitch'}
-
-    def test_both_share_range_path(self):
-        """Entrambi usano 'range' come range_path."""
-        paths = {s.range_path for s in PITCH_PARAMETER_SCHEMA}
-        assert paths == {'range'}
+    def test_is_empty(self):
+        assert PITCH_PARAMETER_SCHEMA == []
 
     def test_both_are_smart(self):
         for spec in PITCH_PARAMETER_SCHEMA:
@@ -492,8 +458,11 @@ class TestAllSchemasRegistry:
                 )
 
     def test_no_empty_schemas(self):
-        """Nessuno schema e' vuoto."""
+        """Gli schema sono non vuoti, eccetto PITCH (unit-driven, gestito dal controller)."""
         for name, schema in ALL_SCHEMAS.items():
+            if name == 'pitch':
+                assert schema == [], "PITCH_PARAMETER_SCHEMA deve essere vuoto (unit-driven)"
+                continue
             assert len(schema) > 0, f"Schema '{name}' e' vuoto"
 
 
@@ -537,7 +506,7 @@ class TestSchemaByNameIndex:
 
     def test_controller_params_in_index(self):
         """I parametri dei controller sono nel flat index."""
-        controller_names = ['pointer_start', 'pitch_ratio', 'fill_factor']
+        controller_names = ['pointer_start', 'fill_factor']
         for name in controller_names:
             assert name in _SCHEMA_BY_NAME
 
@@ -622,8 +591,6 @@ class TestGetParameterSpecFromSchema:
         ('pointer', 'pointer_deviation'),
         ('pointer', 'loop_end'),
         ('pointer', 'loop_dur'),
-        ('pitch', 'pitch_ratio'),
-        ('pitch', 'pitch_semitones'),
         ('density', 'fill_factor'),
         ('density', 'density'),
         ('density', 'distribution'),
@@ -667,7 +634,6 @@ class TestGetParameterSpec:
         'volume', 'pan', 'grain_duration', 'grain_envelope', 'reverse',
         'pointer_start', 'pointer_speed_ratio', 'pointer_deviation',
         'loop_start', 'loop_end', 'loop_dur',
-        'pitch_ratio', 'pitch_semitones',
         'fill_factor', 'density', 'distribution', 'effective_density',
     ])
     def test_returns_spec_for_all_known_params(self, param_name):
@@ -842,7 +808,7 @@ class TestCrossSchemaInvariants:
             for spec in schema_list:
                 if spec.exclusive_group:
                     all_groups.add(spec.exclusive_group)
-        expected_groups = {'loop_bounds', 'pitch_mode', 'density_mode'}
+        expected_groups = {'loop_bounds', 'density_mode'}
         assert all_groups == expected_groups, (
             f"Gruppi esclusivi inattesi: {all_groups - expected_groups} "
             f"o mancanti: {expected_groups - all_groups}"

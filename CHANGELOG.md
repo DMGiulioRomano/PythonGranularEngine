@@ -10,6 +10,30 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Sistema pitch **unit-driven** (`PitchUnit`): il blocco `pitch` (base e
+  `voices.pitch`) accetta sei unità di misura — `semitones`, `cents`,
+  `quarter_tone`, `eighth_tone`, `edo` (EDO arbitrario: `edo: N` + `value: X`
+  su base, `unit: {edo: N}` nelle voci) e `ratio` — con un'unica interfaccia di
+  conversione a ratio. Famiglia EDO:
+  `2^(valore / N)`; `ratio` è moltiplicatore diretto. Default invariato
+  (`semitones`, valore neutro → ratio 1.0). `EdoUnit`/`RatioUnit` e factory
+  `make_pitch_unit` in `src/parameters/pitch_unit.py`; strategy unica
+  `UnitPitchStrategy`. PR #84.
+- Validazione strict del blocco `pitch`: una chiave sconosciuta — incluso un
+  refuso sull'unità (es. `semitone:` invece di `semitones:`) — solleva
+  `InvalidFieldValueError` che elenca le chiavi valide, invece di essere
+  ignorata silenziosamente con default a semitoni neutri (No Silent Failures).
+  Chiavi valide: le 6 unità più `range` e `value` (`value` solo con `edo: N`).
+  Inoltre un blocco `pitch` **presente ma vuoto** (`pitch:` → `None`) o
+  **non-mapping** (lista/scalare, es. `pitch: [[0, -1200], [1, 1200]]`) solleva
+  `InvalidFieldValueError` con hint, invece del precedente `TypeError` grezzo da
+  `PitchController._select_unit`: per nessuna trasposizione si omette del tutto
+  il blocco. `pitch: {}` e blocco assente restano default semitoni neutro
+  (indistinguibili a valle: Stream passa `{}` in entrambi i casi). Migrati i
+  config in-repo `PGE_pino2.yml` (rimosso il `pitch:` vuoto) e
+  `PGE_envelope_syntax_test.yml` (envelope di pitch esplicitato come `cents`,
+  che è l'unità reale dei valori ±1200). PR #84.
+
 - Flag `normalized` nel blocco `voices.pointer` (YAML): opt-in per interpretare
   l'offset di pointer di voce come **frazione di `sample_dur_sec`** anziché in
   secondi. Default invariato (`normalized: false` → secondi), nessun breaking
@@ -75,6 +99,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Pitch delle voci **unit-agnostico**: la geometria della distribuzione vive
+  ora nella `PitchUnit` via il nuovo metodo `materialize(position, amount)`
+  (EDO additiva `2^(position·amount/N)`, `ratio` geometrica `amount^position`).
+  Le voice pitch strategy emettono un **fattore di ratio** (`get_pitch_factor`,
+  prima `get_pitch_offset` in semitoni); `VoiceConfig.pitch_offset` →
+  `pitch_factor` (default `1.0` = identità) e `Stream._create_grain` moltiplica
+  direttamente, senza il guard `!= 0.0`. Conseguenze su `voices.pitch` con
+  `unit: ratio`: `range` e `stochastic` diventano **validi** (distribuzione
+  geometrica, nessun ratio negativo o sub-zero); `step` passa da `i·step`
+  (lineare) a `step^i` (geometrico) — **breaking sui valori delle voci ≥2** con
+  `unit: ratio`. I path EDO (semitones/cents/quarter_tone/eighth_tone/edo)
+  restano numericamente identici. `chord`/`spectral` restano semitone-locked.
 - Default `REAPER_PATH`: da `$(FILE).rpp` (root del repo) a `$(SFDIR)/$(FILE).rpp`
   (default `output/$(FILE).rpp`). I progetti Reaper vivono ora accanto agli
   `.aif` generati, co-location semantica tra progetto Reaper e audio referenziati.
@@ -87,6 +123,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato (breaking)
 
+- Chiave YAML `voices.pitch.semitone_range` rinominata in `pitch_range` (strategie
+  `range` e `stochastic`). Il valore è interpretato nell'unità attiva
+  (`semitones`/`cents`/`edo`/`ratio`), non in semitoni: il vecchio nome mentiva.
+  `pitch_range` è domain-based, coerente con i sibling `pointer_range`/`max_offset`.
+  Hard break: la vecchia chiave `semitone_range` solleva
+  `InvalidStrategyConfigError` con hint di migrazione (guard in
+  `Stream._init_voice_manager`). Migrati i config in-repo.
 - Default `REAPER_PATH`: era `Project.rpp` fisso, ora `$(FILE).rpp`. Ogni YAML
   produce un `.rpp` con lo stesso basename, abilitando il multi-tab. Override
   esplicito via `REAPER_PATH=...` sempre supportato. Aggiornato help
@@ -125,6 +168,26 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   first" anche dopo render completati, e la riproduzione audio nel
   browser ritornava 404. Vedi
   `docs/plans/done/2026-05-21-001-fix-stem-naming-double-underscore-plan.md`.
+
+### Rimosso
+
+- Property legacy del pitch superate dal modello unit-driven:
+  `Stream.pitch_ratio`, `Stream.pitch_semitones` (`src/core/stream.py`) e
+  `PitchController.base_ratio`, `PitchController.base_semitones`
+  (`src/controllers/pitch_controller.py`). Erano ratio/semitoni-only e prive di
+  consumer in produzione (la visualizzazione legge ora `Stream.pitch_value` +
+  `Stream.pitch_unit`, validi per ogni unità). Nessun impatto cross-repo: le 4
+  property non erano referenziate da PGE-ls/PGE-ui. PR #84.
+
+- Chiavi pitch_* morte nei dict di config di `ScoreVisualizer`
+  (`src/rendering/score_visualizer.py`): rimosse le entry per-unità
+  (`pitch_ratio`, `pitch_semitones`, `pitch_cents`, `pitch_quarter_tone`,
+  `pitch_eighth_tone` e relative `*_prob`) da `envelope_ranges`,
+  `envelope_colors` e dal dict `units`. Dopo il passaggio unit-driven la curva
+  pitch usa l'unica chiave `'pitch'`: bounds da `pitch_unit.value_bounds()` e
+  simbolo da `pitch_unit.symbol`, quindi quelle entry non venivano mai
+  consultate. Conservata la sola chiave viva `'pitch'` in `envelope_colors`.
+  Nessun impatto cross-repo (config interna del rendering).
 
 ---
 

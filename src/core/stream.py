@@ -24,6 +24,7 @@ from controllers.density_controller import DensityController
 from shared.utils import get_sample_duration
 from shared.exceptions import (
     InvalidFieldValueError,
+    InvalidStrategyConfigError,
     MissingFieldError,
     SampleNotFoundError,
 )
@@ -31,7 +32,8 @@ from parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from core.stream_config import StreamConfig, StreamContext
 from controllers.voice_manager import VoiceManager, VoiceConfig
-from strategies.voice_pitch_strategy import VoicePitchStrategyFactory
+from parameters.pitch_unit import make_pitch_unit
+from strategies.voice_pitch_strategy import VoicePitchStrategyFactory, SEMITONE_LOCKED
 from strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from strategies.voice_pan_strategy import VoicePanStrategyFactory
@@ -237,9 +239,42 @@ class Stream:
 
         # --- PITCH ---
         pitch_strategy = None
+        pitch_unit = None
         if 'pitch' in v:
             kw = dict(v['pitch'])
             name = kw.pop('strategy')
+            # Hard break: `semitone_range` rinominato in `pitch_range` (il valore è
+            # letto nell'unità attiva, non in semitoni). Senza guard il kwarg ignoto
+            # darebbe un TypeError grezzo dal costruttore della strategy.
+            if 'semitone_range' in kw:
+                err = InvalidStrategyConfigError(
+                    strategy_kind='voice_pitch',
+                    field='voices.pitch.semitone_range',
+                    value=kw['semitone_range'],
+                    hint=(
+                        "`semitone_range` rinominato in `pitch_range` (stesso "
+                        "valore, letto nell'unità attiva: semitones/cents/edo/ratio…)."
+                    ),
+                )
+                err.stream_id = self.stream_id
+                raise err
+            # `unit` è config del blocco, non kwarg della distribuzione: decide
+            # come l'offset (numero puro) diventa ratio in _create_grain.
+            unit_spec = kw.pop('unit', None)
+            # chord/spectral sono semitoni-locked: rifiuta unità ≠ semitones.
+            if name in SEMITONE_LOCKED and unit_spec not in (None, 'semitones'):
+                err = InvalidStrategyConfigError(
+                    strategy_kind='voice_pitch',
+                    field='voices.pitch.unit',
+                    value=unit_spec,
+                    hint=(
+                        f"la strategia '{name}' è definita in semitoni: "
+                        "ometti `unit` oppure usa 'semitones'."
+                    ),
+                )
+                err.stream_id = self.stream_id
+                raise err
+            pitch_unit = make_pitch_unit(unit_spec)
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
@@ -296,6 +331,7 @@ class Stream:
             pointer_strategy=pointer_strategy,
             pan_strategy=pan_strategy,
             pan_spread=pan_spread,
+            pitch_unit=pitch_unit,
         )
 
     def _init_grain_reverse(self, params: dict) -> None:
@@ -425,7 +461,7 @@ class Stream:
         Crea un singolo grano con tutti i parametri calcolati.
 
         Applica gli offset di VoiceConfig sopra i valori base:
-          pitch_ratio  *= 2^(pitch_offset/12)
+          pitch_ratio  *= pitch_factor   # fattore già materializzato dall'unità
           pointer_pos  = (base + pointer_offset) % sample_dur_sec
           pan          += pan_offset
           onset        += onset_offset
@@ -433,20 +469,22 @@ class Stream:
         Args:
             elapsed_time: tempo trascorso dall'inizio dello stream
             grain_dur:    durata del grano
-            voice_config: offset per questa voce (None = VoiceConfig(0,0,0,0))
+            voice_config: offset per questa voce (None = VoiceConfig(1.0,0,0,0))
 
         Returns:
             Grain: oggetto grano completo
         """
         if voice_config is None:
-            voice_config = VoiceConfig(0.0, 0.0, 0.0, 0.0)
+            voice_config = VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
         grain_reverse = self._calculate_grain_reverse(elapsed_time)
 
-        # === 1. PITCH — base × 2^(semitoni/12) ===
+        # === 1. PITCH — base × pitch_factor ===
+        # Il fattore di ratio è già materializzato dalla voice pitch strategy
+        # tramite la PitchUnit attiva (voce 0 → 1.0). Identità nativa: nessun
+        # guard, nessuna conversione qui.
         pitch_ratio = self._pitch.calculate(elapsed_time, grain_reverse=grain_reverse)
-        if voice_config.pitch_offset != 0.0:
-            pitch_ratio *= 2 ** (voice_config.pitch_offset / 12.0)
+        pitch_ratio *= voice_config.pitch_factor
 
         # === 2. POINTER — base + voice_offset, re-wrap in [0, sample_dur) ===
         # Il modulo mappa anche offset negativi in [0, sample_dur). Così
@@ -561,20 +599,21 @@ class Stream:
         return self._pointer.loop_dur
 
     @property
-    def pitch_ratio(self) -> Optional[Union[float, Envelope]]:
-        """Espone pitch_ratio per ScoreVisualizer (solo se in modalità ratio)."""
-        return self._pitch.base_ratio
-    
-    @property
-    def pitch_semitones(self) -> Optional[Union[float, Envelope]]:
-        """Espone pitch_semitones per ScoreVisualizer (solo se in modalità semitoni)."""
-        return self._pitch.base_semitones
-    
-    @property
     def pitch_range(self) -> Union[float, Envelope]:
         """Espone pitch_range per ScoreVisualizer."""
         return self._pitch.range
-        
+
+    @property
+    def pitch_unit(self):
+        """Espone l'unità di pitch attiva (PitchUnit) per ScoreVisualizer."""
+        return self._pitch.unit
+
+    @property
+    def pitch_value(self):
+        """Espone il valore base del pitch (Envelope o scalare) per ScoreVisualizer,
+        indipendentemente dall'unità (semitoni/cents/quarti/ottavi/edo/ratio)."""
+        return self._pitch.value
+
     @property
     def num_voices(self):
         """Espone num_voices come Parameter (supporta Envelope time-varying)."""

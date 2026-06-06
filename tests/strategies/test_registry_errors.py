@@ -13,18 +13,6 @@ from shared.exceptions import (
 )
 
 
-def test_strategy_factory_pitch_not_found_raises_strategy_not_found_error():
-    from strategies.strategy_registry import StrategyFactory
-
-    with pytest.raises(StrategyNotFoundError) as exc_info:
-        StrategyFactory.create_pitch_strategy("bogus", None, {})
-
-    err = exc_info.value
-    assert isinstance(err, ConfigError)
-    assert err.strategy_kind == "pitch"
-    assert err.name == "bogus"
-
-
 def test_strategy_factory_density_not_found_raises_strategy_not_found_error():
     from strategies.strategy_registry import StrategyFactory
 
