@@ -8,6 +8,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Modificato
+
+- Default del parametro `volume` cambiato da `-6.0` a `0.0` dB. Gli stream che
+  non specificano `volume` ora rendono a 0 dB invece di -6 dB. Issue #87.
+
 ## [v4.0.0] — "Unit-Driven Pitch" — 2026-06-06
 
 ### Aggiunto

@@ -64,7 +64,7 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
     ParameterSpec(
         name='volume',
         yaml_path='volume',
-        default=-6.0,
+        default=0.0,
         range_path='volume_range',
         dephase_key='volume'
     ),

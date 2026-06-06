@@ -229,7 +229,7 @@ class TestStreamParameterSchema:
         """volume ha la configurazione corretta."""
         spec = next(s for s in STREAM_PARAMETER_SCHEMA if s.name == 'volume')
         assert spec.yaml_path == 'volume'
-        assert spec.default == -6.0
+        assert spec.default == 0.0
         assert spec.range_path == 'volume_range'
         assert spec.dephase_key == 'volume'
         assert spec.is_smart is True

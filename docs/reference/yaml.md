@@ -202,7 +202,7 @@ Bounds: `density` ∈ [0.01, 4000], `fill_factor` ∈ [0.001, 50], `distribution
 ## Volume e Pan
 
 ```yaml
-volume: -6.0                       # dB, default -6.0
+volume: 0.0                        # dB, default 0.0
 volume: [[0, -12], [30, 0]]
 volume_range: 3.0                  # ±3 dB randomizzazione per grano
 
@@ -1524,7 +1524,7 @@ un envelope dal YAML al runtime è:
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 0.001 | 10 | 0.05 | secondi |
-| `volume` | -120 | 12 | -6.0 | dB |
+| `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
 | `pitch_ratio` | 0.125 | 8 | 1.0 | 3 ottave ↓/↑ |
 | `pitch_semitones` | -36 | 36 | 0 | ±3 ottave |
