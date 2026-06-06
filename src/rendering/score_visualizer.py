@@ -903,13 +903,17 @@ class ScoreVisualizer:
             envelopes['pitch'] = Envelope([[0, pitch_value], [stream.duration, pitch_value]])
 
         # =====================================================================
-        # VOICE / SCATTER: num_voices e scatter sono Parameter privati dello
-        # Stream, fuori da ogni *_PARAMETER_SCHEMA (issue #88). Vanno estratti
-        # per nome esplicito, con la stessa logica del valore principale
-        # (PART 1): Parameter → _value; solo Envelope dinamici, statici solo
-        # con show_static.
+        # ESTRAZIONE PER NOME ESPLICITO (issue #88). Parametri non raggiungibili
+        # dal ciclo sugli schemi:
+        #   - num_voices / scatter: Parameter privati dello Stream, fuori da ogni
+        #     *_PARAMETER_SCHEMA.
+        #   - pointer_speed: lo schema lo definisce come `pointer_speed_ratio`, ma
+        #     lo Stream espone la property `pointer_speed` → hasattr sul nome di
+        #     schema e' falso e il ciclo lo salta.
+        # Stessa logica del valore principale (PART 1): Parameter → _value; solo
+        # Envelope dinamici, statici solo con show_static.
         # =====================================================================
-        for name in ('num_voices', 'scatter'):
+        for name in ('num_voices', 'scatter', 'pointer_speed'):
             if not hasattr(stream, name):
                 continue
             param = getattr(stream, name)

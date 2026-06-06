@@ -645,3 +645,31 @@ class TestVoiceScatterEnvelopeCollection:
         from envelopes.envelope import Envelope
         s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.0], [10, 1.0]])))
         assert bool(make_viz([s])._get_stream_envelopes(s)) is True
+
+
+class TestPointerSpeedEnvelopeCollection:
+    """pointer_speed_ratio e' nello schema col nome `pointer_speed_ratio`, ma lo
+    Stream espone la property `pointer_speed`: hasattr(stream, 'pointer_speed_ratio')
+    e' falso, quindi il ciclo sugli schemi lo salta sempre (issue #88, Fase 2).
+    Va raccolto per nome esplicito sotto la chiave `pointer_speed`."""
+
+    def _stream(self, pointer_speed):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pointer_speed = pointer_speed
+        return s
+
+    def test_pointer_speed_dynamic_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(Envelope([[0, -2.0], [10, 4.0]]))
+        assert 'pointer_speed' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_pointer_speed_skipped_without_show_static(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(Envelope([[0, 1.0], [10, 1.0]]))
+        assert 'pointer_speed' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_pointer_speed_collected_with_show_static(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(Envelope([[0, 1.0], [10, 1.0]]))
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_speed' in viz._get_stream_envelopes(s)
