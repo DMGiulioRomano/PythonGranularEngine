@@ -618,7 +618,12 @@ class Stream:
     def num_voices(self):
         """Espone num_voices come Parameter (supporta Envelope time-varying)."""
         return self._num_voices
-            
+
+    @property
+    def scatter(self):
+        """Espone scatter come Parameter (supporta Envelope time-varying)."""
+        return self._scatter
+
     # =========================================================================
     # REPR
     # =========================================================================

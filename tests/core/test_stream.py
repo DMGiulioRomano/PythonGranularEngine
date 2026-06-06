@@ -978,6 +978,14 @@ class TestStreamProperties:
 
         assert s.pitch_range == 2.0
 
+    def test_scatter_property(self, stream_factory):
+        """scatter espone il Parameter privato _scatter (simmetrico a num_voices)."""
+        s = stream_factory()
+        sentinel = _make_mock_parameter(0.0, 'scatter')
+        s._scatter = sentinel
+
+        assert s.scatter is sentinel
+
 
 
 # =============================================================================
