@@ -10,6 +10,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Config showcase `configs/PGE_scatter_experiments.yml`: rimosso lo stream
+  duplicato `s01_cluster_equidistant1`, ripuliti i flag `solo`/`mute` residui e
+  aggiunto `time_mode: normalized` dove mancante. Solo dati di esempio, nessun
+  impatto sul codice.
 - Default del parametro `volume` cambiato da `-6.0` a `0.0` dB. Gli stream che
   non specificano `volume` ora rendono a 0 dB invece di -6 dB. Issue #87.
 
