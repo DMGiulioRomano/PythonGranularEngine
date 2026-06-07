@@ -1202,6 +1202,8 @@ class ScoreVisualizer:
             'fill_factor': '',
             'distribution': '',
             'num_voices': ' voci',
+            'scatter': '',  # normalizzato 0-1, adimensionale
+            'scatter': '',  # normalizzato 0-1, adimensionale
             'pc_rand_reverse': '%',
         }
         

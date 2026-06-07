@@ -94,6 +94,8 @@ def make_stream(stream_id='s1', onset=0.0, duration=10.0,
     del s.pointer_start
     del s.density
     del s.num_voices
+    del s.scatter
+    del s.pointer_speed
     return s
 
 def make_generator(streams):
@@ -609,13 +611,11 @@ class TestVoiceScatterEnvelopeCollection:
 
     def _stream(self, num_voices=None, scatter=None):
         s = make_stream('s1', onset=0.0, duration=10.0)
-        # make_stream fa gia' `del s.num_voices`; scatter resta MagicMock.
+        # make_stream fa gia' `del s.num_voices` e `del s.scatter`: assenti di default.
         if num_voices is not None:
             s.num_voices = num_voices
         if scatter is not None:
             s.scatter = scatter
-        else:
-            del s.scatter
         return s
 
     def test_scatter_dynamic_envelope_collected(self):
