@@ -319,9 +319,12 @@ def main():
                 print("[grain-json] ignorato: richiede --per-stream")
             else:
                 from export.grain_json_writer import GrainJsonWriter
+                # Sidecar accanto agli stem .aif: PGE-ui trova grain JSON e
+                # audio nella stessa directory dell'output STEMS.
+                grain_json_dir = os.path.dirname(os.path.abspath(output_file))
                 writer = GrainJsonWriter()
                 for stream in generator.streams:
-                    json_path = writer.write(stream, cache_dir, yaml_basename)
+                    json_path = writer.write(stream, grain_json_dir, yaml_basename)
                     print(f"Grain JSON: {json_path}")
 
         if do_visualize:
