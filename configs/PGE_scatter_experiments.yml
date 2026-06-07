@@ -45,26 +45,7 @@ streams:
       pan:
         strategy: linear
         spread: 60.0
-  - stream_id: "s01_cluster_equidistant1"
-    onset: 0.0
-    duration: 30.0
-    sample: "weNeedToTalkAboutIt.wav"
-    density: 12
-    distribution: 0.0
-    grain:
-      duration: .2
-    voices:
-      num_voices: 4
-        #- [0.0, 1]
-        #- [15.0, 10.0]
-        #- [30.0, 1]
-      scatter: 0.0
-      pitch:
-        strategy: step
-        step: 3.0
-      pan:
-        strategy: linear
-        spread: 60.0
+
 
   # S2: cluster Truax — distribution=1, scatter=0
   # Le voci avanzano all'unisono ma con iot distribuito (Truax).
@@ -74,6 +55,7 @@ streams:
     duration: 30.0
     sample: "001-0_0-3_0.wav"
     density: 12
+    time_mode: "normalized"
     distribution: 1.0
     distribution_mode: "gaussian"
     grain:
@@ -141,6 +123,7 @@ streams:
   - stream_id: "s04_fully_independent1-"
     onset: 107.0
     duration: 30.0
+    mute:
     sample: "001-37_0-4_5.wav"
     time_mode: "normalized"
     density: 5
@@ -157,7 +140,6 @@ streams:
       speed_ratio:
         time_unit: absolute
         points: [[0.0, 0.04], [0.5, 0.006], [1.0, 0.006]]
-    solo:
     voices:
       num_voices: 5
       pointer: {strategy: linear, step: .2}
@@ -186,7 +168,6 @@ streams:
       speed_ratio: 
         - [0.0, .02]
         - [.5, 0.006]
-    solo:
     voices:
       num_voices: 5
       pointer: {strategy: linear, step: .2}
