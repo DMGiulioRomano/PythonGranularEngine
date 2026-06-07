@@ -8,6 +8,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Corretto
+
+- `ScoreVisualizer` ora disegna gli envelope di `num_voices` e `scatter`. Questi
+  parametri sono `Parameter` privati dello Stream, fuori da ogni
+  `*_PARAMETER_SCHEMA`, quindi `_get_stream_envelopes` non li cercava mai: il
+  pannello envelope spariva del tutto se l'unica modulazione time-varying
+  riguardava scatter/num_voices. Aggiunti: property `Stream.scatter` (simmetrica
+  a `num_voices`), estrazione per nome esplicito nel visualizer, range/colore di
+  `scatter`. Issue #88 (Fase 1).
+- `Stream.pointer_speed` era rotta: leggeva `self._pointer.speed.value`, ma il
+  `PointerController` espone `speed_ratio` (non `speed`) → `AttributeError` a ogni
+  chiamata. Corretta in `speed_ratio.value`. Inoltre `ScoreVisualizer` non
+  disegnava mai l'envelope di velocita' del pointer: lo schema lo definisce come
+  `pointer_speed_ratio` ma lo Stream espone la property `pointer_speed`, quindi il
+  ciclo sugli schemi lo saltava. Ora raccolto per nome esplicito sotto la chiave
+  `pointer_speed` (range/colore gia' presenti). Issue #88 (Fase 2).
+
 ### Modificato
 
 - Config showcase `configs/PGE_scatter_experiments.yml`: rimosso lo stream

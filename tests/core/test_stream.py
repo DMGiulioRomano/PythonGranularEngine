@@ -57,8 +57,8 @@ def _make_mock_pointer():
     ptr = Mock()
     ptr.calculate = Mock(return_value=2.5)
     ptr.get_speed = Mock(return_value=1.0)
-    ptr.speed = Mock()
-    ptr.speed.value = 1.0
+    ptr.speed_ratio = Mock()
+    ptr.speed_ratio.value = 1.0
     ptr.loop_start = None
     ptr.loop_end = None
     ptr.loop_dur = None
@@ -944,9 +944,16 @@ class TestStreamProperties:
         assert s.distribution == 0.7
 
     def test_pointer_speed_property(self, stream_factory):
-        """pointer_speed espone .value dalla speed del pointer."""
+        """pointer_speed espone .value da speed_ratio del PointerController.
+
+        Il controller espone `speed_ratio` (Parameter), non `speed`: la property
+        deve leggere quello. Mock con spec per garantire che `.speed` non esista
+        (regressione issue #88: prima leggeva `_pointer.speed.value` → AttributeError)."""
         s = stream_factory()
-        s._pointer.speed.value = 2.0
+        ptr = Mock(spec=['speed_ratio'])
+        ptr.speed_ratio = Mock()
+        ptr.speed_ratio.value = 2.0
+        s._pointer = ptr
 
         assert s.pointer_speed == 2.0
 
@@ -977,6 +984,14 @@ class TestStreamProperties:
         s._pitch.range = 2.0
 
         assert s.pitch_range == 2.0
+
+    def test_scatter_property(self, stream_factory):
+        """scatter espone il Parameter privato _scatter (simmetrico a num_voices)."""
+        s = stream_factory()
+        sentinel = _make_mock_parameter(0.0, 'scatter')
+        s._scatter = sentinel
+
+        assert s.scatter is sentinel
 
 
 

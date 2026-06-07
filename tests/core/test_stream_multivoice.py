@@ -46,8 +46,8 @@ def _make_mock_pointer(return_value=0.5):
     ptr = Mock()
     ptr.calculate = Mock(return_value=return_value)
     ptr.get_speed = Mock(return_value=1.0)
-    ptr.speed = Mock()
-    ptr.speed.value = 1.0
+    ptr.speed_ratio = Mock()
+    ptr.speed_ratio.value = 1.0
     ptr.loop_start = None
     ptr.loop_end = None
     ptr.loop_dur = None

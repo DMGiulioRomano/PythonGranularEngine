@@ -99,6 +99,7 @@ class ScoreVisualizer:
                 
                 # === VOICES ===
                 'num_voices': (1, 20),
+                'scatter': (0.0, 1.0),        # normalizzato (cluster→spread)
                 'voice_pitch_offset': (-48, 48),  # semitoni
                 'voice_pointer_offset': (-1.0, 1.0),  # normalizzato
                 'voice_pointer_range': (0.0, 1.0),    # normalizzato
@@ -135,6 +136,7 @@ class ScoreVisualizer:
                 
                 # === VOICES ===
                 'num_voices': '#e377c2',      # magenta
+                'scatter': '#17becf',         # teal
                 'voice_pitch_offset': '#c49c94',  # beige
                 'voice_pointer_offset': '#f7b6d2', # rosa chiaro
                 'voice_pointer_range': '#c7c7c7',  # grigio chiaro
@@ -900,6 +902,33 @@ class ScoreVisualizer:
         elif isinstance(pitch_value, (int, float)) and show_static:
             envelopes['pitch'] = Envelope([[0, pitch_value], [stream.duration, pitch_value]])
 
+        # =====================================================================
+        # ESTRAZIONE PER NOME ESPLICITO (issue #88). Parametri non raggiungibili
+        # dal ciclo sugli schemi:
+        #   - num_voices / scatter: Parameter privati dello Stream, fuori da ogni
+        #     *_PARAMETER_SCHEMA.
+        #   - pointer_speed: lo schema lo definisce come `pointer_speed_ratio`, ma
+        #     lo Stream espone la property `pointer_speed` → hasattr sul nome di
+        #     schema e' falso e il ciclo lo salta.
+        # Stessa logica del valore principale (PART 1): Parameter → _value; solo
+        # Envelope dinamici, statici solo con show_static.
+        # =====================================================================
+        for name in ('num_voices', 'scatter', 'pointer_speed'):
+            if not hasattr(stream, name):
+                continue
+            param = getattr(stream, name)
+            value = param._value if isinstance(param, Parameter) else param
+            if isinstance(value, Envelope):
+                bp_values = [bp[1] for bp in value.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(value.breakpoints) > 1 and not is_static:
+                    envelopes[name] = value
+                elif show_static:
+                    val = bp_values[0]
+                    envelopes[name] = Envelope([[0, val], [stream.duration, val]])
+            elif isinstance(value, (int, float)) and show_static:
+                envelopes[name] = Envelope([[0, value], [stream.duration, value]])
+
         return envelopes
 
     def _normalize_envelope_value(self, param_name, value):
@@ -1173,6 +1202,8 @@ class ScoreVisualizer:
             'fill_factor': '',
             'distribution': '',
             'num_voices': ' voci',
+            'scatter': '',  # normalizzato 0-1, adimensionale
+            'scatter': '',  # normalizzato 0-1, adimensionale
             'pc_rand_reverse': '%',
         }
         

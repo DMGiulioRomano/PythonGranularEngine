@@ -581,7 +581,8 @@ class Stream:
         
     @property
     def pointer_speed(self):
-        return self._pointer.speed.value
+        # Il PointerController espone `speed_ratio` (Parameter), non `speed`.
+        return self._pointer.speed_ratio.value
 
     @property
     def loop_start(self):
@@ -618,7 +619,12 @@ class Stream:
     def num_voices(self):
         """Espone num_voices come Parameter (supporta Envelope time-varying)."""
         return self._num_voices
-            
+
+    @property
+    def scatter(self):
+        """Espone scatter come Parameter (supporta Envelope time-varying)."""
+        return self._scatter
+
     # =========================================================================
     # REPR
     # =========================================================================
