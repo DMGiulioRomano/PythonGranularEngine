@@ -444,8 +444,6 @@ class ScoreVisualizer:
         # =========================================================================
         # DISEGNA SUBPLOT PER OGNI SAMPLE
         # =========================================================================
-        all_envelope_types = set()
-        
         for i, (sample_path, streams) in enumerate(samples_dict.items()):
             # Crea subplot per questo sample
             ax_wave = fig.add_subplot(gs[i, 0])
@@ -491,48 +489,36 @@ class ScoreVisualizer:
         # =========================================================================
         if has_envelopes:
             ax_env = fig.add_subplot(gs[n_samples, 1])
-            
-            # Calcola altezze per ogni stream nel subplot envelope
-            n_streams_with_env = len([s for s in active_streams if self._get_stream_envelopes(s)])
-            
-            if n_streams_with_env > 0:
-                gap_ratio = 0.02  # piccolo gap tra stream
-                total_gap = gap_ratio * 2 * (n_streams_with_env)
-                env_slot_height = (1.0 - total_gap) / n_streams_with_env
-                
-                slot_idx = 0
-                for stream in active_streams:
-                    if self._get_stream_envelopes(stream):
-                        # Calcola y_base e y_height per questo stream
 
-                        y_single_stream_with_gap=gap_ratio*2+(env_slot_height)
-                        y_that_stream=y_single_stream_with_gap*slot_idx
-                        
-                        y_base=y_that_stream + gap_ratio
-                        y_height= env_slot_height
-                        # Disegna envelope in questa "corsia"
-                        env_types = self._draw_envelopes(ax_env, stream, y_base, y_height,
-                                                        page_start, page_end)
-                        all_envelope_types.update(env_types)
-                        
-                        # Label stream nella corsia envelope
-                        ax_env.text(
-                            page_start + 0.3, 
-                            y_base + y_height * 0.5,
-                            stream.stream_id,
-                            fontsize=self.config['label_fontsize'] - 2,
-                            verticalalignment='center',
-                            color='gray',
-                            alpha=0.6
-                        )
-                        # ========== LINEE DIVISORIE ==========
-                        # Linea sopra questa corsia (non sulla prima)
-                        if slot_idx > 0:
-                            ax_env.axhline(y=y_that_stream, color='darkgray', 
-                                        linewidth=1, alpha=0.4, linestyle='-')
-                        
-                        slot_idx += 1
-            
+            # Layout condiviso lane/legenda (issue #91): stesso ordinamento e
+            # stesse y, cosi' la legenda non appare mirrorata rispetto alle curve.
+            lanes, legend_entries = self._compute_env_legend_layout(active_streams)
+
+            for slot_idx, lane in enumerate(lanes):
+                stream = lane['stream']
+                y_base = lane['y_base']
+                y_height = lane['y_height']
+
+                # Disegna envelope in questa "corsia"
+                self._draw_envelopes(ax_env, stream, y_base, y_height,
+                                     page_start, page_end)
+
+                # Label stream nella corsia envelope
+                ax_env.text(
+                    page_start + 0.3,
+                    y_base + y_height * 0.5,
+                    stream.stream_id,
+                    fontsize=self.config['label_fontsize'] - 2,
+                    verticalalignment='center',
+                    color='gray',
+                    alpha=0.6
+                )
+                # ========== LINEE DIVISORIE ==========
+                # Linea sopra questa corsia (non sulla prima)
+                if slot_idx > 0:
+                    ax_env.axhline(y=y_base - 0.02, color='darkgray',
+                                   linewidth=1, alpha=0.4, linestyle='-')
+
             # Configura assi envelope
             ax_env.set_xlim(page_start, page_end)
             ax_env.set_ylim(0, 1)
@@ -546,10 +532,10 @@ class ScoreVisualizer:
             ax_env.spines['bottom'].set_position(('axes', 0))  
 
 
-            # Legenda envelope
-            if all_envelope_types:
+            # Legenda envelope (per-lane, allineata alle curve — issue #91)
+            if legend_entries:
                 ax_legend = fig.add_subplot(gs[n_samples, 0])
-                self._draw_envelope_legend(ax_legend, all_envelope_types)
+                self._draw_envelope_legend(ax_legend, legend_entries)
         # =========================================================================
         # TITOLO
         # =========================================================================
@@ -1259,37 +1245,84 @@ class ScoreVisualizer:
                          alpha=0.7, edgecolor='none')
             )
 
-    def _draw_envelope_legend(self, ax, envelope_types):
+    def _compute_env_legend_layout(self, active_streams):
+        """
+        Calcola la geometria condivisa tra lane envelope e legenda (issue #91).
+
+        Lane e legenda devono usare lo stesso ordinamento e le stesse y,
+        altrimenti la legenda appare mirrorata rispetto alle curve.
+
+        Returns:
+            (lanes, legend_entries)
+            lanes: list[dict] con {stream, stream_id, y_base, y_height,
+                   env_types}, ordine = impilamento (slot_idx crescente, dal
+                   basso verso l'alto come in render_page).
+            legend_entries: list[(param_name, y, stream_id)], con y interna
+                   alla lane dello stream proprietario.
+        """
+        streams_with_env = [
+            (s, self._get_stream_envelopes(s)) for s in active_streams
+        ]
+        streams_with_env = [(s, e) for s, e in streams_with_env if e]
+
+        lanes = []
+        legend_entries = []
+        n = len(streams_with_env)
+        if n == 0:
+            return lanes, legend_entries
+
+        gap_ratio = 0.02  # coerente con render_page
+        total_gap = gap_ratio * 2 * n
+        env_slot_height = (1.0 - total_gap) / n
+
+        for slot_idx, (stream, envelopes) in enumerate(streams_with_env):
+            y_single_stream_with_gap = gap_ratio * 2 + env_slot_height
+            y_that_stream = y_single_stream_with_gap * slot_idx
+            y_base = y_that_stream + gap_ratio
+            y_height = env_slot_height
+
+            env_types = sorted(envelopes.keys())
+            lanes.append({
+                'stream': stream,
+                'stream_id': stream.stream_id,
+                'y_base': y_base,
+                'y_height': y_height,
+                'env_types': env_types,
+            })
+
+            m = len(env_types)
+            if m == 1:
+                ys = [y_base + y_height * 0.5]
+            else:
+                ys = np.linspace(y_base + y_height * 0.85,
+                                 y_base + y_height * 0.15, m)
+            for param_name, y in zip(env_types, ys):
+                legend_entries.append((param_name, float(y), stream.stream_id))
+
+        return lanes, legend_entries
+
+    def _draw_envelope_legend(self, ax, legend_entries):
         """
         Disegna la legenda degli envelope nel subplot dedicato.
+
+        legend_entries: list[(param_name, y, stream_id)] gia' posizionati
+        per-lane da _compute_env_legend_layout (issue #91), allineati alle
+        curve nelle corsie.
         """
         ax.axis('off')
-        
         colors = self.config['envelope_colors']
-        
-        # Ordina per nome
-        sorted_types = sorted(envelope_types)
-        
-        # Posiziona verticalmente
-        n = len(sorted_types)
-        y_positions = np.linspace(0.85, 0.15, n) if n > 1 else [0.5]
-        
-        for i, param_name in enumerate(sorted_types):
+
+        for param_name, y, stream_id in legend_entries:
             color = colors.get(param_name, '#333333')
-            
-            # Linea di esempio
-            ax.plot([0.1, 0.15], [y_positions[i], y_positions[i]], 
-                   color=color, linewidth=2)
-            
-            # Label
-            ax.text(0.4, y_positions[i], param_name.replace('_', ' '),
-                   fontsize=self.config['label_fontsize'] - 2,
-                   verticalalignment='center',
-                   color=color)
-        
+            ax.plot([0.1, 0.15], [y, y], color=color, linewidth=2)
+            ax.text(0.4, y, param_name.replace('_', ' '),
+                    fontsize=self.config['label_fontsize'] - 2,
+                    verticalalignment='center',
+                    color=color)
+
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-    
+
 
 
     # =========================================================================
