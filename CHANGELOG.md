@@ -24,6 +24,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `pointer_speed_ratio` ma lo Stream espone la property `pointer_speed`, quindi il
   ciclo sugli schemi lo saltava. Ora raccolto per nome esplicito sotto la chiave
   `pointer_speed` (range/colore gia' presenti). Issue #88 (Fase 2).
+- `ScoreVisualizer`: la legenda degli envelope appariva mirrorata rispetto alle
+  corsie delle curve, dando l'impressione di uno swap tra stream. La causa erano
+  due ordinamenti scollegati: lane impilate per onset (dal basso) e legenda
+  globale alfabetica (dall'alto). Ora lane e legenda condividono un unico layout
+  (`_compute_env_legend_layout`): ogni voce di legenda e' posizionata per-lane,
+  allineata alla y delle curve dello stream proprietario. Issue #91.
 
 ### Modificato
 

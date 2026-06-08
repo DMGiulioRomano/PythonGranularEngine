@@ -673,3 +673,66 @@ class TestPointerSpeedEnvelopeCollection:
         s = self._stream(Envelope([[0, 1.0], [10, 1.0]]))
         viz = make_viz([s], config={'show_static_params': True})
         assert 'pointer_speed' in viz._get_stream_envelopes(s)
+
+
+# =============================================================================
+# GROUP - Legenda envelope per-lane (issue #91)
+# =============================================================================
+
+class TestEnvelopeLegendPerLane:
+    """La legenda envelope deve essere allineata per-lane: la voce di legenda di
+    ogni envelope-type cade nella lane dello stream che lo possiede, alla stessa
+    y delle curve. Pre-fix legenda globale alfabetica -> swap apparente."""
+
+    def _two_streams(self):
+        s_low = make_stream('s_low', onset=0.0, duration=10.0)
+        s_high = make_stream('s_high', onset=20.0, duration=10.0)
+        return make_viz([s_low, s_high]), s_low, s_high
+
+    def test_legend_entry_lands_in_owning_lane(self):
+        from envelopes.envelope import Envelope
+        viz, s_low, s_high = self._two_streams()
+        env_low = {'grain_duration': Envelope([[0, 0.01], [10, 0.1]])}
+        env_high = {'pointer_speed': Envelope([[0, -2.0], [10, 4.0]])}
+
+        def fake(stream):
+            return env_low if stream is s_low else env_high
+
+        with patch.object(viz, '_get_stream_envelopes', side_effect=fake):
+            lanes, legend_entries = viz._compute_env_legend_layout(
+                [s_low, s_high])
+
+        lane_by_id = {lane['stream_id']: lane for lane in lanes}
+        for name, y, stream_id in legend_entries:
+            lane = lane_by_id[stream_id]
+            assert lane['y_base'] <= y <= lane['y_base'] + lane['y_height']
+
+        owner = {name: sid for name, y, sid in legend_entries}
+        assert owner['grain_duration'] == 's_low'
+        assert owner['pointer_speed'] == 's_high'
+
+    def test_multiple_types_in_one_lane_stay_within_lane(self):
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        viz = make_viz([s])
+        env = {
+            'grain_duration': Envelope([[0, 0.01], [10, 0.1]]),
+            'pointer_speed': Envelope([[0, -2.0], [10, 4.0]]),
+        }
+        with patch.object(viz, '_get_stream_envelopes', return_value=env):
+            lanes, legend_entries = viz._compute_env_legend_layout([s])
+
+        assert len(lanes) == 1
+        lane = lanes[0]
+        assert len(legend_entries) == 2
+        for name, y, stream_id in legend_entries:
+            assert stream_id == 's1'
+            assert lane['y_base'] <= y <= lane['y_base'] + lane['y_height']
+
+    def test_streams_without_envelopes_excluded(self):
+        viz, s_low, s_high = self._two_streams()
+        with patch.object(viz, '_get_stream_envelopes', return_value={}):
+            lanes, legend_entries = viz._compute_env_legend_layout(
+                [s_low, s_high])
+        assert lanes == []
+        assert legend_entries == []
