@@ -321,6 +321,7 @@ The test suite covers unit tests for every module and end-to-end pipeline valida
 | `CACHE` | `true` | Skip unchanged streams when `STEMS=true` |
 | `CACHEDIR` | `cache` | Directory for stream fingerprint manifests |
 | `GRAIN_JSON` | `false` | Export per-stream grain JSON sidecar (requires `STEMS=true`) |
+| `PLOT_ENVELOPES` | _(empty)_ | Comma-separated envelope names to plot in the PDF score; empty = all (requires `AUTOVISUAL=true`) |
 
 Example:
 
