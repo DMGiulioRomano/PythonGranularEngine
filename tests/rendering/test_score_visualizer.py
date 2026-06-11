@@ -1048,3 +1048,81 @@ class TestEnvelopeAutozoom:
             viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
                                 page_start=0.0, page_end=10.0)
         assert not viz._current_display_ranges
+
+
+# =============================================================================
+# GROUP - Filtro selettivo degli envelope (issue #101)
+# =============================================================================
+
+class TestEnvelopeFilter:
+    """issue #101 - config `envelope_filter`: se non-None, _get_stream_envelopes
+    ritorna solo le chiavi elencate; default None = nessun filtro (tutte)."""
+
+    def _stream(self):
+        """Stream con due envelope dinamici: pitch e pointer_speed."""
+        from envelopes.envelope import Envelope
+        from parameters.pitch_unit import make_pitch_unit
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pitch_value = Envelope([[0, 0.0], [10, 12.0]])
+        s.pitch_unit = make_pitch_unit('semitones')
+        s.pointer_speed = Envelope([[0, -2.0], [10, 4.0]])
+        return s
+
+    def test_filter_keeps_only_listed_keys(self):
+        s = self._stream()
+        viz = make_viz([s], config={'envelope_filter': {'pitch'}})
+        assert set(viz._get_stream_envelopes(s)) == {'pitch'}
+
+    def test_no_filter_keeps_all_keys(self):
+        """Default (envelope_filter assente/None) = comportamento attuale."""
+        s = self._stream()
+        envs = make_viz([s])._get_stream_envelopes(s)
+        assert set(envs) == {'pitch', 'pointer_speed'}
+
+    def test_filter_does_not_force_static_visibility(self):
+        """Il filtro interseca: uno statico elencato resta fuori senza
+        show_static_params (la distinzione STATIC e' ortogonale)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pointer_speed = Envelope([[0, 1.0], [10, 1.0]])  # statico
+        viz = make_viz([s], config={'envelope_filter': {'pointer_speed'}})
+        assert 'pointer_speed' not in viz._get_stream_envelopes(s)
+
+    def test_filter_with_show_static_keeps_listed_static(self):
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pointer_speed = Envelope([[0, 1.0], [10, 1.0]])  # statico
+        viz = make_viz([s], config={'envelope_filter': {'pointer_speed'},
+                                    'show_static_params': True})
+        assert set(viz._get_stream_envelopes(s)) == {'pointer_speed'}
+
+    def test_filter_applies_to_prob_keys(self):
+        """Le chiavi derivate (`*_prob`, dal ProbabilityGate) sono filtrabili
+        come le altre: il filtro agisce sul dict finale."""
+        from envelopes.envelope import Envelope
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from shared.probability_gate import EnvelopeGate
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        p = Parameter('volume', Envelope([[0, -20.0], [10, 0.0]]),
+                      GRANULAR_PARAMETERS['volume'])
+        p.set_probability_gate(EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
+        s.volume = p
+        viz = make_viz([s], config={'envelope_filter': {'volume_prob'}})
+        assert set(viz._get_stream_envelopes(s)) == {'volume_prob'}
+
+    def test_filter_key_absent_from_stream_is_ignored(self):
+        """Chiave valida nel filtro ma senza envelope nello stream: nessun
+        errore, semplicemente assente dal risultato."""
+        s = self._stream()
+        viz = make_viz([s], config={'envelope_filter': {'pitch', 'density'}})
+        assert set(viz._get_stream_envelopes(s)) == {'pitch'}
+
+    def test_plot_envelope_keys_is_the_color_universe(self):
+        """PLOT_ENVELOPE_KEYS (usata da main.py per validare --plot-envelopes)
+        coincide con le chiavi di envelope_colors: unica fonte dei nomi."""
+        from rendering.score_visualizer import PLOT_ENVELOPE_KEYS
+        viz = make_viz([make_stream()])
+        assert PLOT_ENVELOPE_KEYS == frozenset(viz.config['envelope_colors'])
+        assert 'pitch' in PLOT_ENVELOPE_KEYS
+        assert 'volume_prob' in PLOT_ENVELOPE_KEYS
