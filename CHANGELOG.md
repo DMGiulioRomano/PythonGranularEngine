@@ -24,6 +24,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- `ScoreVisualizer`: `offset_range` (deviazione stocastica del pointer) e il
+  `dephase` non venivano mai disegnati nel pannello envelope. `_get_stream_envelopes`
+  leggeva due attributi obsoleti del refactor parametri: `Parameter._mod_prob`
+  (codice morto, mai assegnato → sempre `None`) per il dephase, e `_value` per
+  `offset_range` (che ha `yaml_path='_dummy_fixed_zero_'` → valore base 0 costante).
+  Ora il dephase si legge dal `Parameter._probability_gate` (`EnvelopeGate`/
+  `RandomGate`, con nuove property pubbliche `.envelope`/`.probability`) e il range
+  da `Parameter._mod_range`. Inoltre `pointer_deviation` non e' esposto sullo
+  Stream ma vive in `stream._pointer.deviation` (`PointerController`): il ciclo
+  sugli schemi lo saltava (`hasattr` falso), quindi e' stato aggiunto un blocco di
+  estrazione per nome esplicito (come `pointer_speed`, issue #88). La correzione
+  ripristina anche le curve di range/dephase dei parametri stream-level
+  (`volume`, `pan`, `grain_duration`). Range/colori gia' presenti in config.
+  Issue #96.
 - `NumpyAudioRenderer`: drift sub-campione dell'onset eliminato usando `round()`
   invece di `int()`. Lo scheduler accumula il tempo con somme `float64`; dopo k
   iterazioni `onset * sr` scende ~1 ULP sotto l'intero ideale e `int()` troncava
