@@ -1146,7 +1146,7 @@ class TestPitchColorAutozoom:
         az = viz.config['pitch_color_autozoom']
         assert az['enabled'] is True
         assert az['pad_ratio'] > 0
-        assert az['min_span_cents'] > 0
+        assert az['min_span_cents'] == 100.0  # 1 semitono
 
     def test_range_from_visible_grains_min_max_cents(self):
         """Range = [min, max] in cents dei grani visibili, con pad per lato."""
@@ -1173,6 +1173,20 @@ class TestPitchColorAutozoom:
         expected_half = az['min_span_cents'] / 2.0 + az['pad_ratio'] * az['min_span_cents']
         assert (lo + hi) / 2.0 == pytest.approx(center)
         assert hi - lo == pytest.approx(2 * expected_half)
+
+    def test_floor_enforces_minimum_semitone_span(self):
+        """Una differenza reale minima (12 cents, grani a ±6c) non deve
+        produrre uno span quasi nullo: il floor garantisce almeno un
+        semitono (100 cents), cosi' pochi cents di scarto non occupano
+        l'intera colormap."""
+        s = make_stream('s1', n_grains=0)
+        s.voices = [[
+            make_grain(onset=1.0, pitch_ratio=2.0 ** (-6.0 / 1200.0)),
+            make_grain(onset=2.0, pitch_ratio=2.0 ** (6.0 / 1200.0)),
+        ]]
+        viz = make_viz([s])
+        lo, hi = viz._compute_pitch_color_range([s], 0.0, 10.0)
+        assert hi - lo >= 100.0
 
     def test_grains_outside_page_excluded(self):
         """Grano fuori finestra di pagina non influenza il range."""
@@ -1242,6 +1256,18 @@ class TestPitchColorAutozoom:
         return [s]
 
     @staticmethod
+    def _semitone_detuned_scene():
+        """Stream con due grani a ±60 cents (scarto reale 120 cents,
+        oltre il floor di un semitono)."""
+        s = make_stream('s1', onset=0.0, duration=10.0,
+                        sample='piano.wav', n_grains=0)
+        s.voices = [[
+            make_grain(onset=1.0, pitch_ratio=2.0 ** (-60.0 / 1200.0)),
+            make_grain(onset=2.0, pitch_ratio=2.0 ** (60.0 / 1200.0)),
+        ]]
+        return [s]
+
+    @staticmethod
     def _grain_facecolors(fig):
         """Facecolors della PatchCollection dei grani (zorder=2)."""
         from matplotlib.collections import PatchCollection
@@ -1251,15 +1277,28 @@ class TestPitchColorAutozoom:
                     return coll.get_facecolors()
         return None
 
-    def test_render_page_applies_zoomed_colors(self):
-        """End-to-end: nel PDF i due grani a ±6c hanno colori distinti."""
+    def test_render_page_micro_detune_colors_stay_close(self):
+        """End-to-end: con il floor di un semitono (100 cents), due grani
+        a ±6c (12 cents di scarto reale, ben sotto il floor) restano in una
+        banda ristretta della colormap — niente piu' salto cromatico
+        estremo per pochi cents di differenza."""
         viz = make_viz(self._detuned_scene(), config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             figs = viz.render_all()
         colors = self._grain_facecolors(figs[0])
         assert colors is not None and len(colors) == 2
-        # RGB (no alpha: dipende dal volume) chiaramente diversi
-        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.3
+        # RGB (no alpha: dipende dal volume) restano vicini
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() < 0.4
+
+    def test_render_page_above_semitone_detune_still_distinct(self):
+        """Uno scarto reale >= 1 semitono (qui 120 cents) supera il floor:
+        i colori restano chiaramente distinti, come prima della modifica."""
+        viz = make_viz(self._semitone_detuned_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            figs = viz.render_all()
+        colors = self._grain_facecolors(figs[0])
+        assert colors is not None and len(colors) == 2
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.5
 
     def test_render_page_fixed_colors_when_disabled(self):
         """Autozoom off: i due grani a ±6c restano indistinguibili."""

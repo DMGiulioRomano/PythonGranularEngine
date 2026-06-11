@@ -105,7 +105,11 @@ class ScoreVisualizer:
             'pitch_color_autozoom': {
                 'enabled': True,
                 'pad_ratio': 0.1,        # margine per lato: 10% dello span
-                'min_span_cents': 2.0,   # floor: evita div/0 su span nullo
+                # floor: 1 semitono. Senza questo minimo, una manciata di
+                # cents di scarto reale produrrebbe uno span quasi nullo e
+                # quindi un gradiente di colore esagerato (l'intera colormap)
+                # per una differenza musicalmente trascurabile.
+                'min_span_cents': 100.0,
             },
             'volume_range': (-60, 0),        # dB range per normalizzare alpha
             'min_grain_width_pts': 1,        # larghezza minima visibile

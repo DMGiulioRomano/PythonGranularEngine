@@ -17,6 +17,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   il micro-detune ±12 cents (issue #95) diventa visibile nel PDF. Colormap
   default `coolwarm` → `turbo` (gradazioni più dense). Nuova colorbar per
   subplot con la scala pitch (cents con auto-zoom, ratio col range fisso).
+  Floor sullo span del range colore: 1 semitono (`min_span_cents: 100`),
+  cosi' uno scarto di pochi cents tra i grani non occupa l'intera colormap
+  con un gradiente di colore esagerato.
   `pitch_color_autozoom: {enabled: false}` ripristina il comportamento
   precedente; nessuna modifica a YAML/CLI.
 - Detune implicito del pitch nel dephase per le unità EDO (`semitones`,
