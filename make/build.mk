@@ -133,6 +133,12 @@ endef
 
 ifeq ($(STEMS), true)
 
+# Se GRAIN_JSON e' true, aggiungi --grain-json (sidecar JSON dei grani).
+# Scoped a STEMS=true: richiede --per-stream (issue #99).
+ifeq ($(GRAIN_JSON), true)
+PYFLAGS += --grain-json
+endif
+
 # --- STEMS + RENDERER=numpy ---
 # Python produce N .aif direttamente in SFDIR (uno per stream).
 # Non c'e' file .sco intermedio, non c'e' invocazione di csound.

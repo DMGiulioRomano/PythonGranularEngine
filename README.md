@@ -320,6 +320,7 @@ The test suite covers unit tests for every module and end-to-end pipeline valida
 | `DURATA` | `30.0` | Duration in seconds for audio trim |
 | `CACHE` | `true` | Skip unchanged streams when `STEMS=true` |
 | `CACHEDIR` | `cache` | Directory for stream fingerprint manifests |
+| `GRAIN_JSON` | `false` | Export per-stream grain JSON sidecar (requires `STEMS=true`) |
 
 Example:
 
