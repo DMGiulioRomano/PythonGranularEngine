@@ -123,6 +123,7 @@ def main():
         print(
             "Uso: python main.py <file.yml> [output.aif] "
             "[--visualize] [--show-static] [--plot-envelopes nomi,csv] "
+            "[--page-duration SECONDI] "
             "[--per-stream] "
             "[--renderer csound|numpy] "
             "[--format aiff|wav|flac] "
@@ -145,6 +146,20 @@ def main():
 
     do_visualize = '--visualize' in sys.argv or '-v' in sys.argv
     show_static = '--show-static' in sys.argv or '-s' in sys.argv
+
+    # --page-duration SECONDI: durata (secondi) di una pagina della partitura.
+    page_duration = 15.0
+    if '--page-duration' in sys.argv:
+        idx = sys.argv.index('--page-duration')
+        if idx + 1 < len(sys.argv):
+            try:
+                page_duration = float(sys.argv[idx + 1])
+            except ValueError:
+                print(f"--page-duration non valido: '{sys.argv[idx + 1]}'. Deve essere un numero.")
+                sys.exit(1)
+            if page_duration <= 0:
+                print(f"--page-duration deve essere positivo, ricevuto: {page_duration}")
+                sys.exit(1)
 
     # --plot-envelopes nomi,comma-separated (issue #101): filtro selettivo
     # degli envelope nella partitura. None = tutti (default).
@@ -351,7 +366,7 @@ def main():
             print("\nGenerazione partitura grafica...")
             pdf_file = output_file.rsplit('.', 1)[0] + '.pdf'
             viz = ScoreVisualizer(generator, config={
-                'page_duration': 15.0,
+                'page_duration': page_duration,
                 'show_static_params': show_static,
                 'envelope_filter': plot_envelopes,
             })
