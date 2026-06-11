@@ -10,7 +10,7 @@ from shared.logger import (
 )
 from shared.exceptions import EngineError
 from engine.generator import Generator
-from rendering.score_visualizer import ScoreVisualizer
+from rendering.score_visualizer import ScoreVisualizer, PLOT_ENVELOPE_KEYS
 
 
 def _handle_engine_error(err: EngineError) -> None:
@@ -122,7 +122,8 @@ def main():
     if len(sys.argv) < 2:
         print(
             "Uso: python main.py <file.yml> [output.aif] "
-            "[--visualize] [--show-static] [--per-stream] "
+            "[--visualize] [--show-static] [--plot-envelopes nomi,csv] "
+            "[--per-stream] "
             "[--renderer csound|numpy] "
             "[--format aiff|wav|flac] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
@@ -144,6 +145,25 @@ def main():
 
     do_visualize = '--visualize' in sys.argv or '-v' in sys.argv
     show_static = '--show-static' in sys.argv or '-s' in sys.argv
+
+    # --plot-envelopes nomi,comma-separated (issue #101): filtro selettivo
+    # degli envelope nella partitura. None = tutti (default).
+    plot_envelopes = None
+    if '--plot-envelopes' in sys.argv:
+        idx = sys.argv.index('--plot-envelopes')
+        if idx + 1 < len(sys.argv):
+            plot_envelopes = {
+                name.strip()
+                for name in sys.argv[idx + 1].split(',')
+                if name.strip()
+            }
+            unknown = plot_envelopes - PLOT_ENVELOPE_KEYS
+            if unknown:
+                print(
+                    f"Envelope non validi: {', '.join(sorted(unknown))}. "
+                    f"Validi: {', '.join(sorted(PLOT_ENVELOPE_KEYS))}"
+                )
+                sys.exit(1)
     per_stream = '--per-stream' in sys.argv or '-p' in sys.argv
     use_cache = '--cache' in sys.argv
     reaper_export = '--reaper' in sys.argv
@@ -333,6 +353,7 @@ def main():
             viz = ScoreVisualizer(generator, config={
                 'page_duration': 15.0,
                 'show_static_params': show_static,
+                'envelope_filter': plot_envelopes,
             })
             viz.export_pdf(pdf_file)
 

@@ -41,6 +41,10 @@ def _make_mock_score_visualizer_module():
     mock_instance = MagicMock()
     mock_cls.return_value = mock_instance
     mod.ScoreVisualizer = mock_cls
+    # Universo finto ma realistico dei nomi validi per --plot-envelopes:
+    # main.py lo importa per la validazione (issue #101)
+    mod.PLOT_ENVELOPE_KEYS = frozenset(
+        {'volume', 'pitch', 'density', 'volume_prob'})
     return mod, mock_cls, mock_instance
 
 
@@ -390,6 +394,59 @@ class TestShowStaticFlag:
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--show-static']):
             mocks['main'].main()
         mocks['ScoreVisualizer'].assert_not_called()
+
+
+# =============================================================================
+# TEST FLAG --plot-envelopes (issue #101)
+# =============================================================================
+
+class TestPlotEnvelopesFlag:
+    """
+    --plot-envelopes nomi,separati,da,virgola seleziona quali envelope
+    plottare: la config di ScoreVisualizer riceve envelope_filter (set).
+    Senza flag: envelope_filter = None (tutti). Nomi non validi: exit 1.
+    """
+
+    def _get_viz_config(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        _, kwargs = mocks['ScoreVisualizer'].call_args
+        return kwargs['config']
+
+    def test_flag_sets_envelope_filter(self, mocks):
+        config = self._get_viz_config(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--visualize',
+             '--plot-envelopes', 'volume,pitch']
+        )
+        assert config.get('envelope_filter') == {'volume', 'pitch'}
+
+    def test_without_flag_filter_is_none(self, mocks):
+        """Senza --plot-envelopes tutti gli envelope restano attivi."""
+        config = self._get_viz_config(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--visualize']
+        )
+        assert config.get('envelope_filter') is None
+
+    def test_unknown_name_exits_with_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--plot-envelopes', 'volume,banana']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+    def test_unknown_name_prints_offender_and_valid_names(self, mocks, capsys):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--plot-envelopes', 'banana']):
+            with pytest.raises(SystemExit):
+                mocks['main'].main()
+        out = capsys.readouterr().out
+        assert 'banana' in out
+        # elenco dei nomi validi (dal mock PLOT_ENVELOPE_KEYS)
+        assert 'volume_prob' in out
 
 
 # =============================================================================
