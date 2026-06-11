@@ -23,6 +23,14 @@ from typing import Callable, Dict, Optional, Union
 from parameters.parameter_definitions import ParameterBounds
 from shared.exceptions import InvalidFieldValueError
 
+# Detune implicito del dephase per le unità EDO (issue #95): semi-ampiezza in
+# cents (±N) del micro-detune continuo applicato in ratio-space da
+# UnitPitchStrategy quando il pitch è sotto dephase senza range esplicito.
+# Non può vivere in default_jitter: il value-space EDO è quantizzato e un
+# jitter sub-grado arrotonderebbe a 0 (no-op), un grado intero sarebbe una
+# trasposizione piena.
+EDO_IMPLICIT_DETUNE_CENTS = 6.0
+
 
 class PitchUnit(ABC):
     """
@@ -35,6 +43,10 @@ class PitchUnit(ABC):
 
     name: str
     symbol: str
+
+    # Semi-ampiezza (±N cents) del detune implicito in ratio-space, campionato
+    # continuo per grano da UnitPitchStrategy nel path dephase senza range.
+    implicit_detune_cents: float = 0.0
 
     @abstractmethod
     def to_ratio(self, value: float) -> float:
@@ -65,6 +77,8 @@ class EdoUnit(PitchUnit):
     I bounds del valore sono ±3 ottave, cioè ±(3·divisions), con variazione
     quantizzata (gradi interi). Il valore neutro è 0 (2^0 = 1).
     """
+
+    implicit_detune_cents = EDO_IMPLICIT_DETUNE_CENTS
 
     def __init__(self, divisions: int, name: str = 'edo', symbol: Optional[str] = None):
         if not isinstance(divisions, int) or isinstance(divisions, bool) or divisions <= 0:

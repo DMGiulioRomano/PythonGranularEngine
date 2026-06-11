@@ -198,6 +198,49 @@ def test_materialize_ratio_non_positive_amount_is_identity(amount):
 
 
 # =============================================================================
+# implicit_detune_cents — detune implicito in ratio-space (issue #95)
+# =============================================================================
+# Il detune NON vive in default_jitter (value-space quantizzato: sub-grado
+# arrotonda a 0, un grado intero è una trasposizione enorme). È una costante
+# in cents (semi-ampiezza ±N) applicata da UnitPitchStrategy in ratio-space,
+# solo nel path dephase senza range esplicito.
+
+@pytest.mark.parametrize("divisions", [12, 24, 48, 1200, 31])
+def test_edo_implicit_detune_is_six_cents(divisions):
+    # ±6 cents per ogni griglia EDO, indipendente dalle divisioni
+    assert EdoUnit(divisions).implicit_detune_cents == 6.0
+
+
+def test_ratio_implicit_detune_is_zero():
+    # RatioUnit ha già il jitter implicito in value-space (default_jitter=0.005):
+    # detune ratio-space a 0 per evitare doppia applicazione
+    assert RatioUnit().implicit_detune_cents == 0.0
+
+
+@pytest.mark.parametrize("preset,expected", [
+    ('semitones', 6.0), ('cents', 6.0), ('quarter_tone', 6.0),
+    ('eighth_tone', 6.0), ('ratio', 0.0),
+])
+def test_preset_implicit_detune(preset, expected):
+    assert make_pitch_unit(preset).implicit_detune_cents == expected
+
+
+def test_edo_default_jitter_stays_zero():
+    # regressione: il detune non passa dai bounds — il path esplicito
+    # quantizzato resta invariato
+    assert EdoUnit(12).value_bounds().default_jitter == 0.0
+
+
+@pytest.mark.parametrize("unit", [EdoUnit(12), EdoUnit(31), RatioUnit()])
+def test_materialize_is_deterministic_no_detune(unit):
+    # regressione issue #95: il detune vive solo in UnitPitchStrategy,
+    # mai nella materializzazione del path voci
+    a = unit.materialize(1.0, 3.0)
+    b = unit.materialize(1.0, 3.0)
+    assert a == b
+
+
+# =============================================================================
 # name / symbol — identità dell'unità (per mode e visualizer futuro)
 # =============================================================================
 
