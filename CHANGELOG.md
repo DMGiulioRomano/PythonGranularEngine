@@ -10,10 +10,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Score visualizer: auto-zoom del range colore pitch per-subplot
+  (`pitch_color_autozoom`, default attivo). Il colore dei grani normalizza
+  `1200*log2(pitch_ratio)` sul min/max in cents dei grani visibili nel
+  subplot (sample+pagina) invece del range fisso `pitch_range` (0.5, 2.0):
+  il micro-detune ±12 cents (issue #95) diventa visibile nel PDF. Colormap
+  default `coolwarm` → `turbo` (gradazioni più dense). Nuova colorbar per
+  subplot con la scala pitch (cents con auto-zoom, ratio col range fisso).
+  `pitch_color_autozoom: {enabled: false}` ripristina il comportamento
+  precedente; nessuna modifica a YAML/CLI.
 - Detune implicito del pitch nel dephase per le unità EDO (`semitones`,
   `cents`, `quarter_tone`, `eighth_tone`, `edo: N`): con pitch sotto `dephase`
   **senza** `range` esplicito, ogni grano selezionato dal gate riceve un
-  micro-detune continuo uniforme in ±6 cents, applicato in ratio-space dopo la
+  micro-detune continuo uniforme in ±12 cents, applicato in ratio-space dopo la
   quantizzazione di griglia (`UnitPitchStrategy`), con clamp ai bounds ±3
   ottave. Prima era un no-op silenzioso (`default_jitter=0.0` quantizzato).
   Il path con `range` esplicito, il path `ratio` (jitter ±0.005 storico) e il
@@ -21,7 +30,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   attributo `PitchUnit.implicit_detune_cents`; nuova API pubblica
   `Parameter.has_explicit_range` / `Parameter.variation_allowed(time)`.
   **Nota retroattiva**: brani con `dephase` globale e pitch EDO senza range
-  iniziano a muovere il pitch (±6c per grano). Issue #95.
+  iniziano a muovere il pitch (±12c per grano). Issue #95.
 - Flag CLI `--plot-envelopes nomi,csv` (variabile Make `PLOT_ENVELOPES`):
   filtro selettivo degli envelope nella partitura PDF. Default (flag assente):
   tutti gli envelope, come prima. Con flag: solo i nomi elencati vengono
