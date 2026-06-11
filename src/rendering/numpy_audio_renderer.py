@@ -109,7 +109,7 @@ class NumpyAudioRenderer(AudioRenderer):
             max_end_rel = max(max_end_rel, stream.duration)
         else:
             max_end_rel = stream.duration
-        n_total = max(1, int(max_end_rel * self.output_sr))
+        n_total = max(1, round(max_end_rel * self.output_sr))
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
         # 2. Overlap-add con onset RELATIVI
@@ -157,7 +157,7 @@ class NumpyAudioRenderer(AudioRenderer):
             max_end_time = max(grain_end_max, stream_end_max)
         else:
             max_end_time = stream_end_max
-        n_total = max(1, int(max_end_time * self.output_sr))
+        n_total = max(1, round(max_end_time * self.output_sr))
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
         # 2. Overlap-add con onset ASSOLUTI
@@ -192,7 +192,7 @@ class NumpyAudioRenderer(AudioRenderer):
         Onset calculation: onset_sample = (grain.onset - stream_onset) * sr
         → grano posizionato relativamente allo stream (parte da 0)
         """
-        onset_sample = int((grain.onset - stream_onset) * self.output_sr)
+        onset_sample = round((grain.onset - stream_onset) * self.output_sr)
         self._add_grain_at_position(buffer, grain, onset_sample)
 
     def _add_grain_absolute(
@@ -205,7 +205,7 @@ class NumpyAudioRenderer(AudioRenderer):
 
         Usato da: render_merged_streams() (MIX mode)
         """
-        onset_sample = int(grain.onset * self.output_sr)
+        onset_sample = round(grain.onset * self.output_sr)
         self._add_grain_at_position(buffer, grain, onset_sample)
 
     def _add_grain_at_position(

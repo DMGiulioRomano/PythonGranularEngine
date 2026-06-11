@@ -727,3 +727,47 @@ class TestAddGrainAtPositionSignature:
         # File deve essere creato senza errori; energia non zero (parte del grain renderizzata)
         assert np.max(np.abs(data)) > 1e-5
 
+
+class TestOnsetRounding:
+    """Issue #97: onset_sample arrotondato (round), non troncato (int).
+
+    Lo scheduler accumula il tempo con somme float64; dopo k iterazioni il
+    prodotto onset*sr scende ~1 ULP sotto l'intero ideale. int() troncava
+    → onset 1 sample early. round() colloca al campione corretto.
+    """
+
+    # onset accumulato come lo scheduler (9 * 0.025): float64 non esatto
+    # → 0.22499999999999998. A 48 kHz: prod=10799.999999999998
+    #   int()   → 10799 (sbagliato, 1 sample early)
+    #   round() → 10800 (corretto)
+    DRIFT_ONSET = sum(0.025 for _ in range(9))
+
+    def test_absolute_onset_is_rounded_not_truncated(self, renderer):
+        """_add_grain_absolute passa l'onset arrotondato a _add_grain_at_position."""
+        grain = make_grain(onset=self.DRIFT_ONSET, duration=0.05)
+        buffer = np.zeros((2, OUTPUT_SR), dtype=np.float64)
+
+        with patch.object(renderer, '_add_grain_at_position') as spy:
+            renderer._add_grain_absolute(buffer, grain)
+
+        onset_sample = spy.call_args.args[2]
+        expected = round(self.DRIFT_ONSET * OUTPUT_SR)
+        assert onset_sample == expected, (
+            f"onset_sample atteso {expected} (round), ottenuto {onset_sample}"
+        )
+
+    def test_relative_onset_is_rounded_not_truncated(self, renderer):
+        """_add_grain_relative passa l'onset relativo arrotondato."""
+        stream_onset = 0.0
+        grain = make_grain(onset=self.DRIFT_ONSET, duration=0.05)
+        buffer = np.zeros((2, OUTPUT_SR), dtype=np.float64)
+
+        with patch.object(renderer, '_add_grain_at_position') as spy:
+            renderer._add_grain_relative(buffer, grain, stream_onset)
+
+        onset_sample = spy.call_args.args[2]
+        expected = round((self.DRIFT_ONSET - stream_onset) * OUTPUT_SR)
+        assert onset_sample == expected, (
+            f"onset_sample atteso {expected} (round), ottenuto {onset_sample}"
+        )
+
