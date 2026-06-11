@@ -24,6 +24,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- `NumpyAudioRenderer`: drift sub-campione dell'onset eliminato usando `round()`
+  invece di `int()`. Lo scheduler accumula il tempo con somme `float64`; dopo k
+  iterazioni `onset * sr` scende ~1 ULP sotto l'intero ideale e `int()` troncava
+  → grano posizionato 1 sample in anticipo (residuo RMS −13 dB vs i −74 dB del
+  COLA puro). `round()` colloca al campione corretto, rendendo il renderer
+  bit-identico al risultato ideale `k*iot`. Stessa correzione applicata al
+  calcolo dell'extent del buffer (`render_single_stream`/`render_merged_streams`)
+  per evitare buffer 1 sample corti. Effetto uditivo nullo (0.021 ms a 48 kHz).
+  Issue #97.
 - `ScoreVisualizer` ora disegna gli envelope di `num_voices` e `scatter`. Questi
   parametri sono `Parameter` privati dello Stream, fuori da ogni
   `*_PARAMETER_SCHEMA`, quindi `_get_stream_envelopes` non li cercava mai: il
