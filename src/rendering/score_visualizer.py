@@ -142,6 +142,21 @@ class ScoreVisualizer:
                 'voice_pointer_range': '#c7c7c7',  # grigio chiaro
             },
             'envelope_panel_ratio': 0.3,      # 30% altezza per envelope
+
+            # Auto-zoom degli envelope a range ampio: se il movimento reale
+            # occupa una banda stretta del range fisso, restringe il range di
+            # display a `factor` x l'escursione reale (centrato), clampato al
+            # range pieno. floor = min_span_ratio x range pieno (evita zoom
+            # estremo su micro-movimenti). pan sempre escluso (ciclico).
+            'envelope_autozoom': {
+                'enabled': True,
+                'factor': 2.0,
+                'min_span_ratio': 0.04,
+                'params': {
+                    'pointer_speed', 'volume', 'density', 'loop_dur',
+                    'grain_duration', 'pitch', 'voice_pitch_offset',
+                },
+            },
         }
         
         self.config = default_config
@@ -917,6 +932,82 @@ class ScoreVisualizer:
 
         return envelopes
 
+    def _full_range(self, param_name):
+        """
+        Range pieno (min, max) di un parametro, o None se non disponibile.
+
+        pitch è unit-driven (bounds dall'unità attiva); gli altri vengono da
+        config['envelope_ranges'].
+        """
+        if param_name == 'pitch':
+            unit = getattr(self, '_current_pitch_unit', None)
+            if unit is not None:
+                b = unit.value_bounds()
+                if b.max_val is not None and b.max_val != b.min_val:
+                    return (b.min_val, b.max_val)
+            return None
+        rng = self.config['envelope_ranges'].get(param_name)
+        if rng is None or rng[0] == rng[1]:
+            return None
+        return (rng[0], rng[1])
+
+    def _compute_display_ranges(self, envelopes, stream, t_start, t_end):
+        """
+        Calcola, per ogni envelope a range ampio, un range di display ristretto
+        all'escursione reale (auto-zoom). Vedi config['envelope_autozoom'].
+
+        Returns:
+            dict {param_name: (disp_min, disp_max)} solo per i parametri zoomati.
+        """
+        cfg = self.config.get('envelope_autozoom', {})
+        if not cfg.get('enabled', False):
+            return {}
+
+        params = cfg.get('params', set())
+        factor = cfg.get('factor', 2.0)
+        min_span_ratio = cfg.get('min_span_ratio', 0.04)
+        stream_start = stream.onset
+
+        result = {}
+        for param_name, envelope in envelopes.items():
+            if param_name == 'pan' or param_name not in params:
+                continue
+            full = self._full_range(param_name)
+            if full is None:
+                continue
+            full_min, full_max = full
+            full_span = full_max - full_min
+
+            # Escursione reale nella finestra visibile: campiona densamente la
+            # curva (cattura overshoot cubic) e includi i breakpoint.
+            t_rel0 = max(0.0, t_start - stream_start)
+            t_rel1 = max(t_rel0, t_end - stream_start)
+            samples = [envelope.evaluate(t) for t in np.linspace(t_rel0, t_rel1, 64)]
+            samples += [v for t, v in envelope.breakpoints if t_rel0 <= t <= t_rel1]
+            if not samples:
+                continue
+            v_min, v_max = min(samples), max(samples)
+            span_real = v_max - v_min
+            center = (v_min + v_max) / 2.0
+
+            floor = min_span_ratio * full_span
+            disp_span = min(max(factor * span_real, floor), full_span)
+            if disp_span >= full_span:
+                continue  # no-op: il movimento riempie già il range pieno
+
+            half = disp_span / 2.0
+            disp_min = center - half
+            disp_max = center + half
+            # Trasla dentro [full_min, full_max] mantenendo l'ampiezza.
+            if disp_min < full_min:
+                disp_min, disp_max = full_min, full_min + disp_span
+            elif disp_max > full_max:
+                disp_min, disp_max = full_max - disp_span, full_max
+
+            result[param_name] = (disp_min, disp_max)
+
+        return result
+
     def _normalize_envelope_value(self, param_name, value):
         """
         Normalizza un valore di envelope a 0-1 usando i range fissi.
@@ -937,16 +1028,27 @@ class ScoreVisualizer:
                     return np.clip((value - b.min_val) / (b.max_val - b.min_val), 0, 1)
             return np.clip(value, 0, 1)
 
+        # Auto-zoom: se è attivo un display range per questo parametro, usalo al
+        # posto del range fisso (la curva sfrutta tutta l'altezza della lane).
+        display_ranges = getattr(self, '_current_display_ranges', None) or {}
+        if param_name in display_ranges:
+            min_val, max_val = display_ranges[param_name]
+            if param_name == 'pan':
+                value = ((value + 180) % 360) - 180
+            if max_val != min_val:
+                return np.clip((value - min_val) / (max_val - min_val), 0, 1)
+            return np.clip(value, 0, 1)
+
         ranges = self.config['envelope_ranges']
 
         if param_name in ranges:
             min_val, max_val = ranges[param_name]
-            
+
             # Pan è ciclico: gestisci valori fuori range
             if param_name == 'pan':
                 # Normalizza a -180..180 usando modulo
                 value = ((value + 180) % 360) - 180
-            
+
             # Normalizza
             normalized = (value - min_val) / (max_val - min_val)
             return np.clip(normalized, 0, 1)
@@ -991,6 +1093,7 @@ class ScoreVisualizer:
         # _annotate_breakpoints per scalare/etichettare la curva 'pitch' (i bounds
         # dipendono dall'unità, non sono statici come gli altri parametri).
         self._current_pitch_unit = getattr(stream, 'pitch_unit', None)
+        self._current_display_ranges = {}
 
         if not envelopes:
             return set()
@@ -1008,7 +1111,11 @@ class ScoreVisualizer:
         
         if t_start >= t_end:
             return set()
-        
+
+        # Auto-zoom: range di display ristretti per i parametri a range ampio.
+        self._current_display_ranges = self._compute_display_ranges(
+            envelopes, stream, t_start, t_end)
+
         for param_name, envelope in envelopes.items():
             # Colore
             color = colors.get(param_name, '#333333')
@@ -1114,8 +1221,11 @@ class ScoreVisualizer:
                                     page_start, page_end)
             
             drawn_types.add(param_name)
-        
-        return drawn_types    
+
+        # Reset: le lane successive ricalcolano i propri display range.
+        self._current_display_ranges = {}
+
+        return drawn_types
 
     def _draw_envelope_per_segment(
         self, ax, envelope, param_name, color,

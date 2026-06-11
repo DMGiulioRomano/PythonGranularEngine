@@ -8,6 +8,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- `ScoreVisualizer`: auto-zoom degli envelope a range ampio. Quando un
+  inviluppo si muove in una banda stretta di un range fisso molto largo (es.
+  `pointer_speed` su `-4..16`), la curva risultava quasi piatta e illeggibile.
+  Ora, per i parametri elencati in `config['envelope_autozoom']['params']`
+  (`pointer_speed`, `volume`, `density`, `loop_dur`, `grain_duration`, `pitch`,
+  `voice_pitch_offset`), il range di visualizzazione viene ristretto a `factor`
+  (default 2x) l'escursione reale, centrato sul movimento e clampato al range
+  pieno, con un floor `min_span_ratio` per evitare zoom estremi su
+  micro-movimenti. `pan` resta escluso (ciclico). Le annotazioni dei breakpoint
+  continuano a mostrare i valori reali. Comportamento configurabile e
+  disattivabile via `envelope_autozoom.enabled`.
+
 ### Corretto
 
 - `ScoreVisualizer` ora disegna gli envelope di `num_voices` e `scatter`. Questi

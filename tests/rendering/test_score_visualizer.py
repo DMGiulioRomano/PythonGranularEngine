@@ -736,3 +736,133 @@ class TestEnvelopeLegendPerLane:
                 [s_low, s_high])
         assert lanes == []
         assert legend_entries == []
+
+
+# =============================================================================
+# GROUP - Envelope auto-zoom (range ampi)
+# =============================================================================
+
+class TestEnvelopeAutozoom:
+    """Per i parametri a range ampio, se il movimento reale dell'inviluppo
+    occupa solo una banda stretta del range fisso, la curva va riscalata a un
+    range di display ~2x l'escursione reale (centrato), così il movimento
+    diventa visibile invece di restare schiacciato."""
+
+    def test_normalize_uses_active_display_range(self):
+        """Quando _current_display_ranges contiene il parametro, la
+        normalizzazione usa quel range al posto di quello fisso."""
+        viz = make_viz([make_stream('s1', onset=0.0, duration=10.0)])
+        viz._current_display_ranges = {'pointer_speed': (0.3, 0.7)}
+        assert viz._normalize_envelope_value('pointer_speed', 0.3) == pytest.approx(0.0)
+        assert viz._normalize_envelope_value('pointer_speed', 0.5) == pytest.approx(0.5)
+        assert viz._normalize_envelope_value('pointer_speed', 0.7) == pytest.approx(1.0)
+
+    def test_small_movement_zooms_to_double_span(self):
+        """pointer_speed (range fisso -4..16) che si muove 2.0->6.0:
+        display span = 2x escursione = 8, centrato a 4 -> [0, 8]."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        lo, hi = ranges['pointer_speed']
+        assert (lo, hi) == pytest.approx((0.0, 8.0))
+
+    def test_large_movement_is_noop(self):
+        """Movimento che riempie gran parte del range pieno: 2x supera il range
+        -> nessuno zoom (parametro assente dai display ranges)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pointer_speed': Envelope([[0, -2.0], [10, 14.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert 'pointer_speed' not in ranges
+
+    def test_floor_prevents_extreme_zoom(self):
+        """Micro-movimento: il display span non scende sotto
+        min_span_ratio x range pieno (no divisione per zero, no zoom estremo)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # pointer_speed range pieno 20 -> floor = 0.04*20 = 0.8
+        envelopes = {'pointer_speed': Envelope([[0, 1.0], [10, 1.001]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        lo, hi = ranges['pointer_speed']
+        assert (hi - lo) == pytest.approx(0.8)
+
+    def test_window_clamped_within_full_range(self):
+        """Movimento vicino al bordo del range pieno: la finestra resta dentro
+        i bound mantenendo l'ampiezza."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # pointer_speed full max = 16; movimento 14->16 span 2, 2x=4
+        envelopes = {'pointer_speed': Envelope([[0, 14.0], [10, 16.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        lo, hi = ranges['pointer_speed']
+        assert hi <= 16.0
+        assert (hi - lo) == pytest.approx(4.0)
+        assert (lo, hi) == pytest.approx((12.0, 16.0))
+
+    def test_pan_excluded(self):
+        """pan è ciclico: mai zoomato."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pan': Envelope([[0, -10.0], [10, 10.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert 'pan' not in ranges
+
+    def test_param_not_in_list_excluded(self):
+        """Parametro fuori dalla lista autozoom: range fisso invariato."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pointer_deviation': Envelope([[0, 0.4], [10, 0.5]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert 'pointer_deviation' not in ranges
+
+    def test_disabled_returns_empty(self):
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        viz = make_viz([s], config={'envelope_autozoom': {'enabled': False}})
+        envelopes = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+        ranges = viz._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert ranges == {}
+
+    def test_draw_applies_zoom_to_curve(self):
+        """Integrazione: _draw_envelopes attiva lo zoom. Con factor 2 il
+        movimento occupa il 50% centrale della lane (margine sopra/sotto),
+        contro il ~10% schiacciato del range fisso (-4..16)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        env = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+
+        def span_of(viz):
+            fig, ax = plt.subplots()
+            with patch.object(viz, '_get_stream_envelopes', return_value=env):
+                viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
+                                    page_start=0.0, page_end=10.0)
+            ydata = next(l for l in ax.lines
+                         if l.get_label() == 'pointer_speed').get_ydata()
+            return ydata.max() - ydata.min()
+
+        zoomed = span_of(make_viz([s]))
+        flat = span_of(make_viz([s], config={
+            'envelope_autozoom': {'enabled': False}}))
+        assert zoomed == pytest.approx(0.5)
+        assert zoomed > flat * 2
+
+    def test_draw_resets_display_ranges_after(self):
+        """Dopo il draw, _current_display_ranges torna vuoto: lane successive
+        ricalcolano da zero."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        viz = make_viz([s])
+        env = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+        fig, ax = plt.subplots()
+        with patch.object(viz, '_get_stream_envelopes', return_value=env):
+            viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
+                                page_start=0.0, page_end=10.0)
+        assert not viz._current_display_ranges
