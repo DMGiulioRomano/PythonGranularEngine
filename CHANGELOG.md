@@ -38,6 +38,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ripristina anche le curve di range/dephase dei parametri stream-level
   (`volume`, `pan`, `grain_duration`). Range/colori gia' presenti in config.
   Issue #96.
+- `ScoreVisualizer`: i nomi lunghi nella legenda envelope (es.
+  `pointer_deviation_prob`) sforavano dalla colonna stretta (~6% pagina) dentro
+  l'area del plot. Ora `_legend_display_name` abbrevia i nomi lunghi con forme
+  corte semantiche (`pointer_deviation` → `ptr dev`, suffisso `_prob` → ` %`) e
+  il testo ha `clip_on=True` come rete di sicurezza: nessuna etichetta puo' piu'
+  invadere il plot. Issue #96.
 - `NumpyAudioRenderer`: drift sub-campione dell'onset eliminato usando `round()`
   invece di `int()`. Lo scheduler accumula il tempo con somme `float64`; dopo k
   iterazioni `onset * sr` scende ~1 ULP sotto l'intero ideale e `int()` troncava

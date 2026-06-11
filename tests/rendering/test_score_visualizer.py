@@ -820,6 +820,43 @@ class TestPointerDeviationEnvelopeCollection:
         assert make_viz([s])._get_stream_envelopes(s) is not None
 
 
+class TestLegendDisplayName:
+    """issue #96 - i nomi lunghi (pointer_deviation_prob, grain_duration_prob)
+    sforavano dalla colonna legenda (6%) dentro il plot. _legend_display_name
+    abbrevia con nomi corti semantici e suffisso ' %' per le probabilita'."""
+
+    def _viz(self):
+        return make_viz(single_stream_scene())
+
+    def test_prob_suffix_becomes_percent(self):
+        assert self._viz()._legend_display_name('volume_prob') == 'volume %'
+
+    def test_pan_prob(self):
+        assert self._viz()._legend_display_name('pan_prob') == 'pan %'
+
+    def test_pointer_deviation_abbreviated(self):
+        assert self._viz()._legend_display_name('pointer_deviation') == 'ptr dev'
+
+    def test_pointer_deviation_prob_abbreviated(self):
+        assert self._viz()._legend_display_name('pointer_deviation_prob') == 'ptr dev %'
+
+    def test_grain_duration_abbreviated(self):
+        assert self._viz()._legend_display_name('grain_duration') == 'grain dur'
+
+    def test_grain_duration_prob_abbreviated(self):
+        assert self._viz()._legend_display_name('grain_duration_prob') == 'grain dur %'
+
+    def test_unmapped_underscore_becomes_space(self):
+        assert self._viz()._legend_display_name('scatter') == 'scatter'
+
+    def test_all_known_keys_fit_column(self):
+        """Ogni chiave in envelope_colors deve produrre un nome abbastanza corto
+        da non sforare nella colonna legenda stretta."""
+        viz = self._viz()
+        for key in viz.config['envelope_colors']:
+            assert len(viz._legend_display_name(key)) <= 12, key
+
+
 # =============================================================================
 # GROUP - Legenda envelope per-lane (issue #91)
 # =============================================================================

@@ -1473,6 +1473,30 @@ class ScoreVisualizer:
 
         return lanes, legend_entries
 
+    # Nomi corti per la legenda: la colonna e' stretta (~6% pagina), i nomi
+    # lunghi sforavano nel plot (issue #96). Mappa solo i nomi lunghi; gli altri
+    # usano replace('_', ' ').
+    _ENV_LEGEND_SHORT = {
+        'pointer_deviation': 'ptr dev',
+        'pointer_speed': 'ptr spd',
+        'pointer_start': 'ptr start',
+        'grain_duration': 'grain dur',
+        'num_voices': 'voices',
+        'voice_pitch_offset': 'v pitch off',
+        'voice_pointer_offset': 'v ptr off',
+        'voice_pointer_range': 'v ptr rng',
+        'effective_density': 'eff density',
+        'distribution': 'distrib',
+        'fill_factor': 'fill',
+    }
+
+    def _legend_display_name(self, param_name):
+        """Nome corto per la legenda. Suffisso '_prob' → ' %' (probabilita')."""
+        if param_name.endswith('_prob'):
+            base = param_name[:-len('_prob')]
+            return f"{self._legend_display_name(base)} %"
+        return self._ENV_LEGEND_SHORT.get(param_name, param_name.replace('_', ' '))
+
     def _draw_envelope_legend(self, ax, legend_entries):
         """
         Disegna la legenda degli envelope nel subplot dedicato.
@@ -1487,10 +1511,13 @@ class ScoreVisualizer:
         for param_name, y, stream_id in legend_entries:
             color = colors.get(param_name, '#333333')
             ax.plot([0.1, 0.15], [y, y], color=color, linewidth=2)
-            ax.text(0.4, y, param_name.replace('_', ' '),
+            # clip_on=True: anche un nome inatteso non sfora mai nel plot,
+            # viene tagliato al bordo della colonna legenda (issue #96).
+            ax.text(0.4, y, self._legend_display_name(param_name),
                     fontsize=self.config['label_fontsize'] - 2,
                     verticalalignment='center',
-                    color=color)
+                    color=color,
+                    clip_on=True)
 
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
