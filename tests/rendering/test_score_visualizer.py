@@ -675,6 +675,188 @@ class TestPointerSpeedEnvelopeCollection:
         assert 'pointer_speed' in viz._get_stream_envelopes(s)
 
 
+class TestModRangeEnvelopeCollection:
+    """issue #96 - i parametri con range_path (volume_range, pan_range,
+    grain.duration_range, offset_range) tengono il range stocastico in
+    Parameter._mod_range, mai estratto dal visualizer. Va raccolto sotto la
+    chiave spec.name. Qui via `volume` (stream-level, raggiungibile dal loop)."""
+
+    def _stream_with_volume_range(self, base, mod_range):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # base scalare statico: PARTE 1 non emette 'volume', isola PARTE 3
+        s.volume = Parameter('volume', base, GRANULAR_PARAMETERS['volume'],
+                             mod_range=mod_range)
+        return s
+
+    def test_dynamic_range_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream_with_volume_range(-6.0, Envelope([[0, 0.0], [10, 12.0]]))
+        assert 'volume' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_dynamic_range_envelope_is_the_mod_range(self):
+        from envelopes.envelope import Envelope
+        env = Envelope([[0, 0.0], [10, 12.0]])
+        s = self._stream_with_volume_range(-6.0, env)
+        assert make_viz([s])._get_stream_envelopes(s)['volume'] is env
+
+    def test_static_range_skipped_without_show_static(self):
+        s = self._stream_with_volume_range(-6.0, 3.0)
+        assert 'volume' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_range_collected_with_show_static(self):
+        s = self._stream_with_volume_range(-6.0, 3.0)
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'volume' in viz._get_stream_envelopes(s)
+
+
+class TestDephaseGateEnvelopeCollection:
+    """issue #96 - il dephase oggi e' un ProbabilityGate in
+    Parameter._probability_gate, non piu' in _mod_prob (codice morto). Va letto
+    dal gate sotto la chiave `{spec.name}_prob`. Qui via `volume` (stream-level)."""
+
+    def _stream_with_gate(self, gate):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        p = Parameter('volume', -6.0, GRANULAR_PARAMETERS['volume'])
+        if gate is not None:
+            p.set_probability_gate(gate)
+        s.volume = p
+        return s
+
+    def test_envelope_gate_collected(self):
+        from envelopes.envelope import Envelope
+        from shared.probability_gate import EnvelopeGate
+        s = self._stream_with_gate(EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
+        assert 'volume_prob' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_envelope_gate_curve_is_the_gate_envelope(self):
+        from envelopes.envelope import Envelope
+        from shared.probability_gate import EnvelopeGate
+        env = Envelope([[0, 0.0], [10, 100.0]])
+        s = self._stream_with_gate(EnvelopeGate(env))
+        assert make_viz([s])._get_stream_envelopes(s)['volume_prob'] is env
+
+    def test_random_gate_skipped_without_show_static(self):
+        from shared.probability_gate import RandomGate
+        s = self._stream_with_gate(RandomGate(50.0))
+        assert 'volume_prob' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_random_gate_collected_with_show_static(self):
+        from shared.probability_gate import RandomGate
+        s = self._stream_with_gate(RandomGate(50.0))
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'volume_prob' in viz._get_stream_envelopes(s)
+
+    def test_never_gate_not_collected(self):
+        s = self._stream_with_gate(None)  # default NeverGate
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'volume_prob' not in viz._get_stream_envelopes(s)
+
+
+class TestPointerDeviationEnvelopeCollection:
+    """issue #96 - il vero pointer_deviation NON e' esposto sullo Stream: vive in
+    stream._pointer.deviation (PointerController), offset_range in _mod_range e
+    dephase in _probability_gate. hasattr(stream,'pointer_deviation') e' False:
+    il loop sugli schemi lo salta, serve estrazione esplicita (come pointer_speed,
+    issue #88). Chiavi: `pointer_deviation` (range) e `pointer_deviation_prob`."""
+
+    def _stream(self, mod_range=None, gate=None):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        p = Parameter('pointer_deviation', 0.0,
+                      GRANULAR_PARAMETERS['pointer_deviation'],
+                      mod_range=mod_range)
+        if gate is not None:
+            p.set_probability_gate(gate)
+        pointer = MagicMock()
+        pointer.deviation = p
+        s._pointer = pointer
+        return s
+
+    def test_offset_range_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(mod_range=Envelope([[0, 0.0], [10, 1.0]]))
+        assert 'pointer_deviation' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_offset_range_envelope_is_the_mod_range(self):
+        from envelopes.envelope import Envelope
+        env = Envelope([[0, 0.0], [10, 1.0]])
+        s = self._stream(mod_range=env)
+        assert make_viz([s])._get_stream_envelopes(s)['pointer_deviation'] is env
+
+    def test_offset_range_static_skipped_without_show_static(self):
+        s = self._stream(mod_range=0.4)
+        assert 'pointer_deviation' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_offset_range_static_collected_with_show_static(self):
+        s = self._stream(mod_range=0.4)
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_deviation' in viz._get_stream_envelopes(s)
+
+    def test_dephase_envelope_gate_collected(self):
+        from envelopes.envelope import Envelope
+        from shared.probability_gate import EnvelopeGate
+        s = self._stream(gate=EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
+        assert 'pointer_deviation_prob' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_dephase_random_gate_collected_with_show_static(self):
+        from shared.probability_gate import RandomGate
+        s = self._stream(gate=RandomGate(50.0))
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_deviation_prob' in viz._get_stream_envelopes(s)
+
+    def test_dephase_never_gate_not_collected(self):
+        s = self._stream()  # default NeverGate
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_deviation_prob' not in viz._get_stream_envelopes(s)
+
+    def test_no_pointer_attr_does_not_crash(self):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        del s._pointer
+        assert make_viz([s])._get_stream_envelopes(s) is not None
+
+
+class TestLegendDisplayName:
+    """issue #96 - i nomi lunghi (pointer_deviation_prob, grain_duration_prob)
+    sforavano dalla colonna legenda (6%) dentro il plot. _legend_display_name
+    abbrevia con nomi corti semantici e suffisso ' %' per le probabilita'."""
+
+    def _viz(self):
+        return make_viz(single_stream_scene())
+
+    def test_prob_suffix_becomes_percent(self):
+        assert self._viz()._legend_display_name('volume_prob') == 'volume %'
+
+    def test_pan_prob(self):
+        assert self._viz()._legend_display_name('pan_prob') == 'pan %'
+
+    def test_pointer_deviation_abbreviated(self):
+        assert self._viz()._legend_display_name('pointer_deviation') == 'ptr dev'
+
+    def test_pointer_deviation_prob_abbreviated(self):
+        assert self._viz()._legend_display_name('pointer_deviation_prob') == 'ptr dev %'
+
+    def test_grain_duration_abbreviated(self):
+        assert self._viz()._legend_display_name('grain_duration') == 'grain dur'
+
+    def test_grain_duration_prob_abbreviated(self):
+        assert self._viz()._legend_display_name('grain_duration_prob') == 'grain dur %'
+
+    def test_unmapped_underscore_becomes_space(self):
+        assert self._viz()._legend_display_name('scatter') == 'scatter'
+
+    def test_all_known_keys_fit_column(self):
+        """Ogni chiave in envelope_colors deve produrre un nome abbastanza corto
+        da non sforare nella colonna legenda stretta."""
+        viz = self._viz()
+        for key in viz.config['envelope_colors']:
+            assert len(viz._legend_display_name(key)) <= 12, key
+
+
 # =============================================================================
 # GROUP - Legenda envelope per-lane (issue #91)
 # =============================================================================

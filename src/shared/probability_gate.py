@@ -69,7 +69,12 @@ class RandomGate(ProbabilityGate):
     
     def get_probability_value(self, time: float) -> float:
         return self._probability
-    
+
+    @property
+    def probability(self) -> float:
+        """Probabilità costante (0-100). Esposta per la visualizzazione."""
+        return self._probability
+
     @property
     def mode(self) -> str:
         return f"random({self._probability}%)"
@@ -87,7 +92,12 @@ class EnvelopeGate(ProbabilityGate):
     
     def get_probability_value(self, time: float) -> float:
         return self._envelope.evaluate(time)
-    
+
+    @property
+    def envelope(self) -> Envelope:
+        """Envelope di probabilità nel tempo. Esposta per la visualizzazione."""
+        return self._envelope
+
     @property
     def mode(self) -> str:
         return f"envelope({self._envelope.type})"

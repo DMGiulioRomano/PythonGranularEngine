@@ -812,6 +812,7 @@ class ScoreVisualizer:
         """
         from envelopes.envelope import Envelope
         from parameters.parameter import Parameter
+        from shared.probability_gate import EnvelopeGate, RandomGate
         from parameters.parameter_schema import (
             STREAM_PARAMETER_SCHEMA, 
             POINTER_PARAMETER_SCHEMA, 
@@ -865,27 +866,49 @@ class ScoreVisualizer:
             # =====================================================================
             # PARTE 2: ESTRAZIONE DEPHASE (PROBABILITA) CON SUFFISSO "_prob"
             # =====================================================================
-            
-            # Se il parametro ha un dephase_key E è un Parameter object
+            # Il dephase oggi e' un ProbabilityGate iniettato in
+            # param._probability_gate (issue #96): EnvelopeGate per curve nel
+            # tempo, RandomGate per probabilita' costante. Never/Always: nessuna
+            # curva da disegnare.
             if spec.dephase_key and isinstance(param, Parameter):
-                mod_prob = getattr(param, '_mod_prob', None)
-                
-                if mod_prob is not None:
-                    # CHIAVE: Usa spec.name + "_prob" come nome nell'envelope
-                    prob_key = f"{spec.name}_prob"
-                    
-                    if isinstance(mod_prob, Envelope):
-                        # Solo envelope dinamici
-                        if len(mod_prob.breakpoints) > 1:
-                            envelopes[prob_key] = mod_prob
-                        # Envelope statici (solo se richiesto)
-                        elif show_static and len(mod_prob.breakpoints) == 1:
-                            val = mod_prob.breakpoints[0][1]
-                            envelopes[prob_key] = Envelope([[0, val], [stream.duration, val]])
-                    
-                    # Probabilita statiche (numero)
-                    elif isinstance(mod_prob, (int, float)) and show_static:
-                        envelopes[prob_key] = Envelope([[0, mod_prob], [stream.duration, mod_prob]])
+                gate = getattr(param, '_probability_gate', None)
+                prob_key = f"{spec.name}_prob"
+
+                if isinstance(gate, EnvelopeGate):
+                    env = gate.envelope
+                    bp_values = [bp[1] for bp in env.breakpoints]
+                    is_static = len(set(bp_values)) == 1
+                    if len(env.breakpoints) > 1 and not is_static:
+                        envelopes[prob_key] = env
+                    elif show_static:
+                        val = bp_values[0]
+                        envelopes[prob_key] = Envelope([[0, val], [stream.duration, val]])
+
+                elif isinstance(gate, RandomGate) and show_static:
+                    prob = gate.probability
+                    envelopes[prob_key] = Envelope([[0, prob], [stream.duration, prob]])
+
+            # =====================================================================
+            # PARTE 3: ESTRAZIONE RANGE (_mod_range) PER SPEC CON range_path
+            # =====================================================================
+            # Per parametri come pointer_deviation il valore base e' un dummy 0
+            # costante (yaml_path='_dummy_fixed_zero_'); la deviazione reale vive
+            # in param._mod_range (issue #96). Chiave = spec.name: sovrascrive il
+            # dummy-0 eventualmente emesso da PARTE 1.
+            if spec.range_path and isinstance(param, Parameter):
+                mod_range = getattr(param, '_mod_range', None)
+
+                if isinstance(mod_range, Envelope):
+                    bp_values = [bp[1] for bp in mod_range.breakpoints]
+                    is_static = len(set(bp_values)) == 1
+                    if len(mod_range.breakpoints) > 1 and not is_static:
+                        envelopes[spec.name] = mod_range
+                    elif show_static:
+                        val = bp_values[0]
+                        envelopes[spec.name] = Envelope([[0, val], [stream.duration, val]])
+
+                elif isinstance(mod_range, (int, float)) and show_static:
+                    envelopes[spec.name] = Envelope([[0, mod_range], [stream.duration, mod_range]])
 
         # =====================================================================
         # PITCH: unit-driven, non più in PITCH_PARAMETER_SCHEMA. Raccolto da
@@ -929,6 +952,45 @@ class ScoreVisualizer:
                     envelopes[name] = Envelope([[0, val], [stream.duration, val]])
             elif isinstance(value, (int, float)) and show_static:
                 envelopes[name] = Envelope([[0, value], [stream.duration, value]])
+
+        # =====================================================================
+        # POINTER DEVIATION (issue #96). pointer_deviation NON e' esposto sullo
+        # Stream: il Parameter vive in stream._pointer.deviation (PointerController)
+        # e hasattr(stream,'pointer_deviation') e' False, quindi il ciclo sugli
+        # schemi lo salta. offset_range sta in _mod_range (chiave
+        # 'pointer_deviation'), il dephase nel _probability_gate (chiave
+        # 'pointer_deviation_prob'). Stessa logica di PARTE 2 e PARTE 3.
+        # =====================================================================
+        pointer = getattr(stream, '_pointer', None)
+        deviation = getattr(pointer, 'deviation', None)
+        if isinstance(deviation, Parameter):
+            # offset_range -> chiave 'pointer_deviation'
+            mod_range = deviation._mod_range
+            if isinstance(mod_range, Envelope):
+                bp_values = [bp[1] for bp in mod_range.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(mod_range.breakpoints) > 1 and not is_static:
+                    envelopes['pointer_deviation'] = mod_range
+                elif show_static:
+                    val = bp_values[0]
+                    envelopes['pointer_deviation'] = Envelope([[0, val], [stream.duration, val]])
+            elif isinstance(mod_range, (int, float)) and show_static:
+                envelopes['pointer_deviation'] = Envelope([[0, mod_range], [stream.duration, mod_range]])
+
+            # dephase -> chiave 'pointer_deviation_prob'
+            gate = deviation._probability_gate
+            if isinstance(gate, EnvelopeGate):
+                env = gate.envelope
+                bp_values = [bp[1] for bp in env.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(env.breakpoints) > 1 and not is_static:
+                    envelopes['pointer_deviation_prob'] = env
+                elif show_static:
+                    val = bp_values[0]
+                    envelopes['pointer_deviation_prob'] = Envelope([[0, val], [stream.duration, val]])
+            elif isinstance(gate, RandomGate) and show_static:
+                prob = gate.probability
+                envelopes['pointer_deviation_prob'] = Envelope([[0, prob], [stream.duration, prob]])
 
         return envelopes
 
@@ -1411,6 +1473,30 @@ class ScoreVisualizer:
 
         return lanes, legend_entries
 
+    # Nomi corti per la legenda: la colonna e' stretta (~6% pagina), i nomi
+    # lunghi sforavano nel plot (issue #96). Mappa solo i nomi lunghi; gli altri
+    # usano replace('_', ' ').
+    _ENV_LEGEND_SHORT = {
+        'pointer_deviation': 'ptr dev',
+        'pointer_speed': 'ptr spd',
+        'pointer_start': 'ptr start',
+        'grain_duration': 'grain dur',
+        'num_voices': 'voices',
+        'voice_pitch_offset': 'v pitch off',
+        'voice_pointer_offset': 'v ptr off',
+        'voice_pointer_range': 'v ptr rng',
+        'effective_density': 'eff density',
+        'distribution': 'distrib',
+        'fill_factor': 'fill',
+    }
+
+    def _legend_display_name(self, param_name):
+        """Nome corto per la legenda. Suffisso '_prob' → ' %' (probabilita')."""
+        if param_name.endswith('_prob'):
+            base = param_name[:-len('_prob')]
+            return f"{self._legend_display_name(base)} %"
+        return self._ENV_LEGEND_SHORT.get(param_name, param_name.replace('_', ' '))
+
     def _draw_envelope_legend(self, ax, legend_entries):
         """
         Disegna la legenda degli envelope nel subplot dedicato.
@@ -1425,10 +1511,13 @@ class ScoreVisualizer:
         for param_name, y, stream_id in legend_entries:
             color = colors.get(param_name, '#333333')
             ax.plot([0.1, 0.15], [y, y], color=color, linewidth=2)
-            ax.text(0.4, y, param_name.replace('_', ' '),
+            # clip_on=True: anche un nome inatteso non sfora mai nel plot,
+            # viene tagliato al bordo della colonna legenda (issue #96).
+            ax.text(0.4, y, self._legend_display_name(param_name),
                     fontsize=self.config['label_fontsize'] - 2,
                     verticalalignment='center',
-                    color=color)
+                    color=color,
+                    clip_on=True)
 
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
