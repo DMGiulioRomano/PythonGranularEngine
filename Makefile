@@ -57,6 +57,9 @@ REAPER_REUSE_TAB ?= false
 AUTOPEN ?= true
 AUTOVISUAL ?= false
 SHOWSTATIC ?= false
+# Filtro envelope nella partitura, nomi comma-separated (issue #101).
+# Vuoto = tutti. Es: PLOT_ENVELOPES=pitch,density (richiede AUTOVISUAL=true)
+PLOT_ENVELOPES ?=
 FILE ?= PGE_test
 TEST ?= false
 PRECLEAN ?=true
