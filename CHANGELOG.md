@@ -10,6 +10,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Flag CLI `--grain-json` (attivo solo con `--per-stream`): esporta l'IR
+  `Grain` di ogni stream in JSON, scritto come sidecar accanto agli stem `.aif`
+  (`{output_dir}/{basename}__{stream_id}__grains.json`). Pensato per client di
+  visualizzazione (PGE-ui) che disegnano i singoli grani nella clip timeline.
+  Nuovo `GrainJsonWriter` (`src/export/grain_json_writer.py`) con split
+  `generate()` puro / `write()` I/O: itera `stream.voices` preservando l'indice
+  voce, ordina i grani per `t` (onset relativo allo stream, puo' essere `< 0`
+  con onset offset per-voce), JSON compatto. Issue #73.
 - `ScoreVisualizer`: auto-zoom degli envelope a range ampio. Quando un
   inviluppo si muove in una banda stretta di un range fisso molto largo (es.
   `pointer_speed` su `-4..16`), la curva risultava quasi piatta e illeggibile.

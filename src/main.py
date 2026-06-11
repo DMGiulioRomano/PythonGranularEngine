@@ -129,7 +129,8 @@ def main():
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
             "[--cache] [--cache-dir DIR] "
-            "[--reaper] [--reaper-path FILE]"
+            "[--reaper] [--reaper-path FILE] "
+            "[--grain-json]"
         )
         sys.exit(1)
 
@@ -146,6 +147,7 @@ def main():
     per_stream = '--per-stream' in sys.argv or '-p' in sys.argv
     use_cache = '--cache' in sys.argv
     reaper_export = '--reaper' in sys.argv
+    grain_json = '--grain-json' in sys.argv
 
     # --reaper-path PATH (default: {yaml_basename}.rpp)
     reaper_path = None
@@ -311,6 +313,19 @@ def main():
                 output_path=rpp_out,
             )
             print(f"Reaper project: {rpp_out}")
+
+        if grain_json:
+            if not per_stream:
+                print("[grain-json] ignorato: richiede --per-stream")
+            else:
+                from export.grain_json_writer import GrainJsonWriter
+                # Sidecar accanto agli stem .aif: PGE-ui trova grain JSON e
+                # audio nella stessa directory dell'output STEMS.
+                grain_json_dir = os.path.dirname(os.path.abspath(output_file))
+                writer = GrainJsonWriter()
+                for stream in generator.streams:
+                    json_path = writer.write(stream, grain_json_dir, yaml_basename)
+                    print(f"Grain JSON: {json_path}")
 
         if do_visualize:
             print("\nGenerazione partitura grafica...")
