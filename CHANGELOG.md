@@ -18,9 +18,49 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `generate()` puro / `write()` I/O: itera `stream.voices` preservando l'indice
   voce, ordina i grani per `t` (onset relativo allo stream, puo' essere `< 0`
   con onset offset per-voce), JSON compatto. Issue #73.
+- `ScoreVisualizer`: auto-zoom degli envelope a range ampio. Quando un
+  inviluppo si muove in una banda stretta di un range fisso molto largo (es.
+  `pointer_speed` su `-4..16`), la curva risultava quasi piatta e illeggibile.
+  Ora, per i parametri elencati in `config['envelope_autozoom']['params']`
+  (`pointer_speed`, `volume`, `density`, `loop_dur`, `grain_duration`, `pitch`,
+  `voice_pitch_offset`), il range di visualizzazione viene ristretto a `factor`
+  (default 2x) l'escursione reale, centrato sul movimento e clampato al range
+  pieno, con un floor `min_span_ratio` per evitare zoom estremi su
+  micro-movimenti. `pan` resta escluso (ciclico). Le annotazioni dei breakpoint
+  continuano a mostrare i valori reali. Comportamento configurabile e
+  disattivabile via `envelope_autozoom.enabled`.
 
 ### Corretto
 
+- `ScoreVisualizer`: `offset_range` (deviazione stocastica del pointer) e il
+  `dephase` non venivano mai disegnati nel pannello envelope. `_get_stream_envelopes`
+  leggeva due attributi obsoleti del refactor parametri: `Parameter._mod_prob`
+  (codice morto, mai assegnato → sempre `None`) per il dephase, e `_value` per
+  `offset_range` (che ha `yaml_path='_dummy_fixed_zero_'` → valore base 0 costante).
+  Ora il dephase si legge dal `Parameter._probability_gate` (`EnvelopeGate`/
+  `RandomGate`, con nuove property pubbliche `.envelope`/`.probability`) e il range
+  da `Parameter._mod_range`. Inoltre `pointer_deviation` non e' esposto sullo
+  Stream ma vive in `stream._pointer.deviation` (`PointerController`): il ciclo
+  sugli schemi lo saltava (`hasattr` falso), quindi e' stato aggiunto un blocco di
+  estrazione per nome esplicito (come `pointer_speed`, issue #88). La correzione
+  ripristina anche le curve di range/dephase dei parametri stream-level
+  (`volume`, `pan`, `grain_duration`). Range/colori gia' presenti in config.
+  Issue #96.
+- `ScoreVisualizer`: i nomi lunghi nella legenda envelope (es.
+  `pointer_deviation_prob`) sforavano dalla colonna stretta (~6% pagina) dentro
+  l'area del plot. Ora `_legend_display_name` abbrevia i nomi lunghi con forme
+  corte semantiche (`pointer_deviation` → `ptr dev`, suffisso `_prob` → ` %`) e
+  il testo ha `clip_on=True` come rete di sicurezza: nessuna etichetta puo' piu'
+  invadere il plot. Issue #96.
+- `NumpyAudioRenderer`: drift sub-campione dell'onset eliminato usando `round()`
+  invece di `int()`. Lo scheduler accumula il tempo con somme `float64`; dopo k
+  iterazioni `onset * sr` scende ~1 ULP sotto l'intero ideale e `int()` troncava
+  → grano posizionato 1 sample in anticipo (residuo RMS −13 dB vs i −74 dB del
+  COLA puro). `round()` colloca al campione corretto, rendendo il renderer
+  bit-identico al risultato ideale `k*iot`. Stessa correzione applicata al
+  calcolo dell'extent del buffer (`render_single_stream`/`render_merged_streams`)
+  per evitare buffer 1 sample corti. Effetto uditivo nullo (0.021 ms a 48 kHz).
+  Issue #97.
 - `ScoreVisualizer` ora disegna gli envelope di `num_voices` e `scatter`. Questi
   parametri sono `Parameter` privati dello Stream, fuori da ogni
   `*_PARAMETER_SCHEMA`, quindi `_get_stream_envelopes` non li cercava mai: il
@@ -35,6 +75,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `pointer_speed_ratio` ma lo Stream espone la property `pointer_speed`, quindi il
   ciclo sugli schemi lo saltava. Ora raccolto per nome esplicito sotto la chiave
   `pointer_speed` (range/colore gia' presenti). Issue #88 (Fase 2).
+- `ScoreVisualizer`: la legenda degli envelope appariva mirrorata rispetto alle
+  corsie delle curve, dando l'impressione di uno swap tra stream. La causa erano
+  due ordinamenti scollegati: lane impilate per onset (dal basso) e legenda
+  globale alfabetica (dall'alto). Ora lane e legenda condividono un unico layout
+  (`_compute_env_legend_layout`): ogni voce di legenda e' posizionata per-lane,
+  allineata alla y delle curve dello stream proprietario. Issue #91.
 
 ### Modificato
 

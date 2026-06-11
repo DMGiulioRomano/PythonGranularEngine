@@ -142,6 +142,21 @@ class ScoreVisualizer:
                 'voice_pointer_range': '#c7c7c7',  # grigio chiaro
             },
             'envelope_panel_ratio': 0.3,      # 30% altezza per envelope
+
+            # Auto-zoom degli envelope a range ampio: se il movimento reale
+            # occupa una banda stretta del range fisso, restringe il range di
+            # display a `factor` x l'escursione reale (centrato), clampato al
+            # range pieno. floor = min_span_ratio x range pieno (evita zoom
+            # estremo su micro-movimenti). pan sempre escluso (ciclico).
+            'envelope_autozoom': {
+                'enabled': True,
+                'factor': 2.0,
+                'min_span_ratio': 0.04,
+                'params': {
+                    'pointer_speed', 'volume', 'density', 'loop_dur',
+                    'grain_duration', 'pitch', 'voice_pitch_offset',
+                },
+            },
         }
         
         self.config = default_config
@@ -444,8 +459,6 @@ class ScoreVisualizer:
         # =========================================================================
         # DISEGNA SUBPLOT PER OGNI SAMPLE
         # =========================================================================
-        all_envelope_types = set()
-        
         for i, (sample_path, streams) in enumerate(samples_dict.items()):
             # Crea subplot per questo sample
             ax_wave = fig.add_subplot(gs[i, 0])
@@ -491,48 +504,36 @@ class ScoreVisualizer:
         # =========================================================================
         if has_envelopes:
             ax_env = fig.add_subplot(gs[n_samples, 1])
-            
-            # Calcola altezze per ogni stream nel subplot envelope
-            n_streams_with_env = len([s for s in active_streams if self._get_stream_envelopes(s)])
-            
-            if n_streams_with_env > 0:
-                gap_ratio = 0.02  # piccolo gap tra stream
-                total_gap = gap_ratio * 2 * (n_streams_with_env)
-                env_slot_height = (1.0 - total_gap) / n_streams_with_env
-                
-                slot_idx = 0
-                for stream in active_streams:
-                    if self._get_stream_envelopes(stream):
-                        # Calcola y_base e y_height per questo stream
 
-                        y_single_stream_with_gap=gap_ratio*2+(env_slot_height)
-                        y_that_stream=y_single_stream_with_gap*slot_idx
-                        
-                        y_base=y_that_stream + gap_ratio
-                        y_height= env_slot_height
-                        # Disegna envelope in questa "corsia"
-                        env_types = self._draw_envelopes(ax_env, stream, y_base, y_height,
-                                                        page_start, page_end)
-                        all_envelope_types.update(env_types)
-                        
-                        # Label stream nella corsia envelope
-                        ax_env.text(
-                            page_start + 0.3, 
-                            y_base + y_height * 0.5,
-                            stream.stream_id,
-                            fontsize=self.config['label_fontsize'] - 2,
-                            verticalalignment='center',
-                            color='gray',
-                            alpha=0.6
-                        )
-                        # ========== LINEE DIVISORIE ==========
-                        # Linea sopra questa corsia (non sulla prima)
-                        if slot_idx > 0:
-                            ax_env.axhline(y=y_that_stream, color='darkgray', 
-                                        linewidth=1, alpha=0.4, linestyle='-')
-                        
-                        slot_idx += 1
-            
+            # Layout condiviso lane/legenda (issue #91): stesso ordinamento e
+            # stesse y, cosi' la legenda non appare mirrorata rispetto alle curve.
+            lanes, legend_entries = self._compute_env_legend_layout(active_streams)
+
+            for slot_idx, lane in enumerate(lanes):
+                stream = lane['stream']
+                y_base = lane['y_base']
+                y_height = lane['y_height']
+
+                # Disegna envelope in questa "corsia"
+                self._draw_envelopes(ax_env, stream, y_base, y_height,
+                                     page_start, page_end)
+
+                # Label stream nella corsia envelope
+                ax_env.text(
+                    page_start + 0.3,
+                    y_base + y_height * 0.5,
+                    stream.stream_id,
+                    fontsize=self.config['label_fontsize'] - 2,
+                    verticalalignment='center',
+                    color='gray',
+                    alpha=0.6
+                )
+                # ========== LINEE DIVISORIE ==========
+                # Linea sopra questa corsia (non sulla prima)
+                if slot_idx > 0:
+                    ax_env.axhline(y=y_base - 0.02, color='darkgray',
+                                   linewidth=1, alpha=0.4, linestyle='-')
+
             # Configura assi envelope
             ax_env.set_xlim(page_start, page_end)
             ax_env.set_ylim(0, 1)
@@ -546,10 +547,10 @@ class ScoreVisualizer:
             ax_env.spines['bottom'].set_position(('axes', 0))  
 
 
-            # Legenda envelope
-            if all_envelope_types:
+            # Legenda envelope (per-lane, allineata alle curve — issue #91)
+            if legend_entries:
                 ax_legend = fig.add_subplot(gs[n_samples, 0])
-                self._draw_envelope_legend(ax_legend, all_envelope_types)
+                self._draw_envelope_legend(ax_legend, legend_entries)
         # =========================================================================
         # TITOLO
         # =========================================================================
@@ -811,6 +812,7 @@ class ScoreVisualizer:
         """
         from envelopes.envelope import Envelope
         from parameters.parameter import Parameter
+        from shared.probability_gate import EnvelopeGate, RandomGate
         from parameters.parameter_schema import (
             STREAM_PARAMETER_SCHEMA, 
             POINTER_PARAMETER_SCHEMA, 
@@ -864,27 +866,49 @@ class ScoreVisualizer:
             # =====================================================================
             # PARTE 2: ESTRAZIONE DEPHASE (PROBABILITA) CON SUFFISSO "_prob"
             # =====================================================================
-            
-            # Se il parametro ha un dephase_key E è un Parameter object
+            # Il dephase oggi e' un ProbabilityGate iniettato in
+            # param._probability_gate (issue #96): EnvelopeGate per curve nel
+            # tempo, RandomGate per probabilita' costante. Never/Always: nessuna
+            # curva da disegnare.
             if spec.dephase_key and isinstance(param, Parameter):
-                mod_prob = getattr(param, '_mod_prob', None)
-                
-                if mod_prob is not None:
-                    # CHIAVE: Usa spec.name + "_prob" come nome nell'envelope
-                    prob_key = f"{spec.name}_prob"
-                    
-                    if isinstance(mod_prob, Envelope):
-                        # Solo envelope dinamici
-                        if len(mod_prob.breakpoints) > 1:
-                            envelopes[prob_key] = mod_prob
-                        # Envelope statici (solo se richiesto)
-                        elif show_static and len(mod_prob.breakpoints) == 1:
-                            val = mod_prob.breakpoints[0][1]
-                            envelopes[prob_key] = Envelope([[0, val], [stream.duration, val]])
-                    
-                    # Probabilita statiche (numero)
-                    elif isinstance(mod_prob, (int, float)) and show_static:
-                        envelopes[prob_key] = Envelope([[0, mod_prob], [stream.duration, mod_prob]])
+                gate = getattr(param, '_probability_gate', None)
+                prob_key = f"{spec.name}_prob"
+
+                if isinstance(gate, EnvelopeGate):
+                    env = gate.envelope
+                    bp_values = [bp[1] for bp in env.breakpoints]
+                    is_static = len(set(bp_values)) == 1
+                    if len(env.breakpoints) > 1 and not is_static:
+                        envelopes[prob_key] = env
+                    elif show_static:
+                        val = bp_values[0]
+                        envelopes[prob_key] = Envelope([[0, val], [stream.duration, val]])
+
+                elif isinstance(gate, RandomGate) and show_static:
+                    prob = gate.probability
+                    envelopes[prob_key] = Envelope([[0, prob], [stream.duration, prob]])
+
+            # =====================================================================
+            # PARTE 3: ESTRAZIONE RANGE (_mod_range) PER SPEC CON range_path
+            # =====================================================================
+            # Per parametri come pointer_deviation il valore base e' un dummy 0
+            # costante (yaml_path='_dummy_fixed_zero_'); la deviazione reale vive
+            # in param._mod_range (issue #96). Chiave = spec.name: sovrascrive il
+            # dummy-0 eventualmente emesso da PARTE 1.
+            if spec.range_path and isinstance(param, Parameter):
+                mod_range = getattr(param, '_mod_range', None)
+
+                if isinstance(mod_range, Envelope):
+                    bp_values = [bp[1] for bp in mod_range.breakpoints]
+                    is_static = len(set(bp_values)) == 1
+                    if len(mod_range.breakpoints) > 1 and not is_static:
+                        envelopes[spec.name] = mod_range
+                    elif show_static:
+                        val = bp_values[0]
+                        envelopes[spec.name] = Envelope([[0, val], [stream.duration, val]])
+
+                elif isinstance(mod_range, (int, float)) and show_static:
+                    envelopes[spec.name] = Envelope([[0, mod_range], [stream.duration, mod_range]])
 
         # =====================================================================
         # PITCH: unit-driven, non più in PITCH_PARAMETER_SCHEMA. Raccolto da
@@ -929,7 +953,122 @@ class ScoreVisualizer:
             elif isinstance(value, (int, float)) and show_static:
                 envelopes[name] = Envelope([[0, value], [stream.duration, value]])
 
+        # =====================================================================
+        # POINTER DEVIATION (issue #96). pointer_deviation NON e' esposto sullo
+        # Stream: il Parameter vive in stream._pointer.deviation (PointerController)
+        # e hasattr(stream,'pointer_deviation') e' False, quindi il ciclo sugli
+        # schemi lo salta. offset_range sta in _mod_range (chiave
+        # 'pointer_deviation'), il dephase nel _probability_gate (chiave
+        # 'pointer_deviation_prob'). Stessa logica di PARTE 2 e PARTE 3.
+        # =====================================================================
+        pointer = getattr(stream, '_pointer', None)
+        deviation = getattr(pointer, 'deviation', None)
+        if isinstance(deviation, Parameter):
+            # offset_range -> chiave 'pointer_deviation'
+            mod_range = deviation._mod_range
+            if isinstance(mod_range, Envelope):
+                bp_values = [bp[1] for bp in mod_range.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(mod_range.breakpoints) > 1 and not is_static:
+                    envelopes['pointer_deviation'] = mod_range
+                elif show_static:
+                    val = bp_values[0]
+                    envelopes['pointer_deviation'] = Envelope([[0, val], [stream.duration, val]])
+            elif isinstance(mod_range, (int, float)) and show_static:
+                envelopes['pointer_deviation'] = Envelope([[0, mod_range], [stream.duration, mod_range]])
+
+            # dephase -> chiave 'pointer_deviation_prob'
+            gate = deviation._probability_gate
+            if isinstance(gate, EnvelopeGate):
+                env = gate.envelope
+                bp_values = [bp[1] for bp in env.breakpoints]
+                is_static = len(set(bp_values)) == 1
+                if len(env.breakpoints) > 1 and not is_static:
+                    envelopes['pointer_deviation_prob'] = env
+                elif show_static:
+                    val = bp_values[0]
+                    envelopes['pointer_deviation_prob'] = Envelope([[0, val], [stream.duration, val]])
+            elif isinstance(gate, RandomGate) and show_static:
+                prob = gate.probability
+                envelopes['pointer_deviation_prob'] = Envelope([[0, prob], [stream.duration, prob]])
+
         return envelopes
+
+    def _full_range(self, param_name):
+        """
+        Range pieno (min, max) di un parametro, o None se non disponibile.
+
+        pitch è unit-driven (bounds dall'unità attiva); gli altri vengono da
+        config['envelope_ranges'].
+        """
+        if param_name == 'pitch':
+            unit = getattr(self, '_current_pitch_unit', None)
+            if unit is not None:
+                b = unit.value_bounds()
+                if b.max_val is not None and b.max_val != b.min_val:
+                    return (b.min_val, b.max_val)
+            return None
+        rng = self.config['envelope_ranges'].get(param_name)
+        if rng is None or rng[0] == rng[1]:
+            return None
+        return (rng[0], rng[1])
+
+    def _compute_display_ranges(self, envelopes, stream, t_start, t_end):
+        """
+        Calcola, per ogni envelope a range ampio, un range di display ristretto
+        all'escursione reale (auto-zoom). Vedi config['envelope_autozoom'].
+
+        Returns:
+            dict {param_name: (disp_min, disp_max)} solo per i parametri zoomati.
+        """
+        cfg = self.config.get('envelope_autozoom', {})
+        if not cfg.get('enabled', False):
+            return {}
+
+        params = cfg.get('params', set())
+        factor = cfg.get('factor', 2.0)
+        min_span_ratio = cfg.get('min_span_ratio', 0.04)
+        stream_start = stream.onset
+
+        result = {}
+        for param_name, envelope in envelopes.items():
+            if param_name == 'pan' or param_name not in params:
+                continue
+            full = self._full_range(param_name)
+            if full is None:
+                continue
+            full_min, full_max = full
+            full_span = full_max - full_min
+
+            # Escursione reale nella finestra visibile: campiona densamente la
+            # curva (cattura overshoot cubic) e includi i breakpoint.
+            t_rel0 = max(0.0, t_start - stream_start)
+            t_rel1 = max(t_rel0, t_end - stream_start)
+            samples = [envelope.evaluate(t) for t in np.linspace(t_rel0, t_rel1, 64)]
+            samples += [v for t, v in envelope.breakpoints if t_rel0 <= t <= t_rel1]
+            if not samples:
+                continue
+            v_min, v_max = min(samples), max(samples)
+            span_real = v_max - v_min
+            center = (v_min + v_max) / 2.0
+
+            floor = min_span_ratio * full_span
+            disp_span = min(max(factor * span_real, floor), full_span)
+            if disp_span >= full_span:
+                continue  # no-op: il movimento riempie già il range pieno
+
+            half = disp_span / 2.0
+            disp_min = center - half
+            disp_max = center + half
+            # Trasla dentro [full_min, full_max] mantenendo l'ampiezza.
+            if disp_min < full_min:
+                disp_min, disp_max = full_min, full_min + disp_span
+            elif disp_max > full_max:
+                disp_min, disp_max = full_max - disp_span, full_max
+
+            result[param_name] = (disp_min, disp_max)
+
+        return result
 
     def _normalize_envelope_value(self, param_name, value):
         """
@@ -951,16 +1090,27 @@ class ScoreVisualizer:
                     return np.clip((value - b.min_val) / (b.max_val - b.min_val), 0, 1)
             return np.clip(value, 0, 1)
 
+        # Auto-zoom: se è attivo un display range per questo parametro, usalo al
+        # posto del range fisso (la curva sfrutta tutta l'altezza della lane).
+        display_ranges = getattr(self, '_current_display_ranges', None) or {}
+        if param_name in display_ranges:
+            min_val, max_val = display_ranges[param_name]
+            if param_name == 'pan':
+                value = ((value + 180) % 360) - 180
+            if max_val != min_val:
+                return np.clip((value - min_val) / (max_val - min_val), 0, 1)
+            return np.clip(value, 0, 1)
+
         ranges = self.config['envelope_ranges']
 
         if param_name in ranges:
             min_val, max_val = ranges[param_name]
-            
+
             # Pan è ciclico: gestisci valori fuori range
             if param_name == 'pan':
                 # Normalizza a -180..180 usando modulo
                 value = ((value + 180) % 360) - 180
-            
+
             # Normalizza
             normalized = (value - min_val) / (max_val - min_val)
             return np.clip(normalized, 0, 1)
@@ -1005,6 +1155,7 @@ class ScoreVisualizer:
         # _annotate_breakpoints per scalare/etichettare la curva 'pitch' (i bounds
         # dipendono dall'unità, non sono statici come gli altri parametri).
         self._current_pitch_unit = getattr(stream, 'pitch_unit', None)
+        self._current_display_ranges = {}
 
         if not envelopes:
             return set()
@@ -1022,7 +1173,11 @@ class ScoreVisualizer:
         
         if t_start >= t_end:
             return set()
-        
+
+        # Auto-zoom: range di display ristretti per i parametri a range ampio.
+        self._current_display_ranges = self._compute_display_ranges(
+            envelopes, stream, t_start, t_end)
+
         for param_name, envelope in envelopes.items():
             # Colore
             color = colors.get(param_name, '#333333')
@@ -1128,8 +1283,11 @@ class ScoreVisualizer:
                                     page_start, page_end)
             
             drawn_types.add(param_name)
-        
-        return drawn_types    
+
+        # Reset: le lane successive ricalcolano i propri display range.
+        self._current_display_ranges = {}
+
+        return drawn_types
 
     def _draw_envelope_per_segment(
         self, ax, envelope, param_name, color,
@@ -1259,37 +1417,111 @@ class ScoreVisualizer:
                          alpha=0.7, edgecolor='none')
             )
 
-    def _draw_envelope_legend(self, ax, envelope_types):
+    def _compute_env_legend_layout(self, active_streams):
+        """
+        Calcola la geometria condivisa tra lane envelope e legenda (issue #91).
+
+        Lane e legenda devono usare lo stesso ordinamento e le stesse y,
+        altrimenti la legenda appare mirrorata rispetto alle curve.
+
+        Returns:
+            (lanes, legend_entries)
+            lanes: list[dict] con {stream, stream_id, y_base, y_height,
+                   env_types}, ordine = impilamento (slot_idx crescente, dal
+                   basso verso l'alto come in render_page).
+            legend_entries: list[(param_name, y, stream_id)], con y interna
+                   alla lane dello stream proprietario.
+        """
+        streams_with_env = [
+            (s, self._get_stream_envelopes(s)) for s in active_streams
+        ]
+        streams_with_env = [(s, e) for s, e in streams_with_env if e]
+
+        lanes = []
+        legend_entries = []
+        n = len(streams_with_env)
+        if n == 0:
+            return lanes, legend_entries
+
+        gap_ratio = 0.02  # coerente con render_page
+        total_gap = gap_ratio * 2 * n
+        env_slot_height = (1.0 - total_gap) / n
+
+        for slot_idx, (stream, envelopes) in enumerate(streams_with_env):
+            y_single_stream_with_gap = gap_ratio * 2 + env_slot_height
+            y_that_stream = y_single_stream_with_gap * slot_idx
+            y_base = y_that_stream + gap_ratio
+            y_height = env_slot_height
+
+            env_types = sorted(envelopes.keys())
+            lanes.append({
+                'stream': stream,
+                'stream_id': stream.stream_id,
+                'y_base': y_base,
+                'y_height': y_height,
+                'env_types': env_types,
+            })
+
+            m = len(env_types)
+            if m == 1:
+                ys = [y_base + y_height * 0.5]
+            else:
+                ys = np.linspace(y_base + y_height * 0.85,
+                                 y_base + y_height * 0.15, m)
+            for param_name, y in zip(env_types, ys):
+                legend_entries.append((param_name, float(y), stream.stream_id))
+
+        return lanes, legend_entries
+
+    # Nomi corti per la legenda: la colonna e' stretta (~6% pagina), i nomi
+    # lunghi sforavano nel plot (issue #96). Mappa solo i nomi lunghi; gli altri
+    # usano replace('_', ' ').
+    _ENV_LEGEND_SHORT = {
+        'pointer_deviation': 'ptr dev',
+        'pointer_speed': 'ptr spd',
+        'pointer_start': 'ptr start',
+        'grain_duration': 'grain dur',
+        'num_voices': 'voices',
+        'voice_pitch_offset': 'v pitch off',
+        'voice_pointer_offset': 'v ptr off',
+        'voice_pointer_range': 'v ptr rng',
+        'effective_density': 'eff density',
+        'distribution': 'distrib',
+        'fill_factor': 'fill',
+    }
+
+    def _legend_display_name(self, param_name):
+        """Nome corto per la legenda. Suffisso '_prob' → ' %' (probabilita')."""
+        if param_name.endswith('_prob'):
+            base = param_name[:-len('_prob')]
+            return f"{self._legend_display_name(base)} %"
+        return self._ENV_LEGEND_SHORT.get(param_name, param_name.replace('_', ' '))
+
+    def _draw_envelope_legend(self, ax, legend_entries):
         """
         Disegna la legenda degli envelope nel subplot dedicato.
+
+        legend_entries: list[(param_name, y, stream_id)] gia' posizionati
+        per-lane da _compute_env_legend_layout (issue #91), allineati alle
+        curve nelle corsie.
         """
         ax.axis('off')
-        
         colors = self.config['envelope_colors']
-        
-        # Ordina per nome
-        sorted_types = sorted(envelope_types)
-        
-        # Posiziona verticalmente
-        n = len(sorted_types)
-        y_positions = np.linspace(0.85, 0.15, n) if n > 1 else [0.5]
-        
-        for i, param_name in enumerate(sorted_types):
+
+        for param_name, y, stream_id in legend_entries:
             color = colors.get(param_name, '#333333')
-            
-            # Linea di esempio
-            ax.plot([0.1, 0.15], [y_positions[i], y_positions[i]], 
-                   color=color, linewidth=2)
-            
-            # Label
-            ax.text(0.4, y_positions[i], param_name.replace('_', ' '),
-                   fontsize=self.config['label_fontsize'] - 2,
-                   verticalalignment='center',
-                   color=color)
-        
+            ax.plot([0.1, 0.15], [y, y], color=color, linewidth=2)
+            # clip_on=True: anche un nome inatteso non sfora mai nel plot,
+            # viene tagliato al bordo della colonna legenda (issue #96).
+            ax.text(0.4, y, self._legend_display_name(param_name),
+                    fontsize=self.config['label_fontsize'] - 2,
+                    verticalalignment='center',
+                    color=color,
+                    clip_on=True)
+
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-    
+
 
 
     # =========================================================================

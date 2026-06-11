@@ -673,3 +673,378 @@ class TestPointerSpeedEnvelopeCollection:
         s = self._stream(Envelope([[0, 1.0], [10, 1.0]]))
         viz = make_viz([s], config={'show_static_params': True})
         assert 'pointer_speed' in viz._get_stream_envelopes(s)
+
+
+class TestModRangeEnvelopeCollection:
+    """issue #96 - i parametri con range_path (volume_range, pan_range,
+    grain.duration_range, offset_range) tengono il range stocastico in
+    Parameter._mod_range, mai estratto dal visualizer. Va raccolto sotto la
+    chiave spec.name. Qui via `volume` (stream-level, raggiungibile dal loop)."""
+
+    def _stream_with_volume_range(self, base, mod_range):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # base scalare statico: PARTE 1 non emette 'volume', isola PARTE 3
+        s.volume = Parameter('volume', base, GRANULAR_PARAMETERS['volume'],
+                             mod_range=mod_range)
+        return s
+
+    def test_dynamic_range_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream_with_volume_range(-6.0, Envelope([[0, 0.0], [10, 12.0]]))
+        assert 'volume' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_dynamic_range_envelope_is_the_mod_range(self):
+        from envelopes.envelope import Envelope
+        env = Envelope([[0, 0.0], [10, 12.0]])
+        s = self._stream_with_volume_range(-6.0, env)
+        assert make_viz([s])._get_stream_envelopes(s)['volume'] is env
+
+    def test_static_range_skipped_without_show_static(self):
+        s = self._stream_with_volume_range(-6.0, 3.0)
+        assert 'volume' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_static_range_collected_with_show_static(self):
+        s = self._stream_with_volume_range(-6.0, 3.0)
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'volume' in viz._get_stream_envelopes(s)
+
+
+class TestDephaseGateEnvelopeCollection:
+    """issue #96 - il dephase oggi e' un ProbabilityGate in
+    Parameter._probability_gate, non piu' in _mod_prob (codice morto). Va letto
+    dal gate sotto la chiave `{spec.name}_prob`. Qui via `volume` (stream-level)."""
+
+    def _stream_with_gate(self, gate):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        p = Parameter('volume', -6.0, GRANULAR_PARAMETERS['volume'])
+        if gate is not None:
+            p.set_probability_gate(gate)
+        s.volume = p
+        return s
+
+    def test_envelope_gate_collected(self):
+        from envelopes.envelope import Envelope
+        from shared.probability_gate import EnvelopeGate
+        s = self._stream_with_gate(EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
+        assert 'volume_prob' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_envelope_gate_curve_is_the_gate_envelope(self):
+        from envelopes.envelope import Envelope
+        from shared.probability_gate import EnvelopeGate
+        env = Envelope([[0, 0.0], [10, 100.0]])
+        s = self._stream_with_gate(EnvelopeGate(env))
+        assert make_viz([s])._get_stream_envelopes(s)['volume_prob'] is env
+
+    def test_random_gate_skipped_without_show_static(self):
+        from shared.probability_gate import RandomGate
+        s = self._stream_with_gate(RandomGate(50.0))
+        assert 'volume_prob' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_random_gate_collected_with_show_static(self):
+        from shared.probability_gate import RandomGate
+        s = self._stream_with_gate(RandomGate(50.0))
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'volume_prob' in viz._get_stream_envelopes(s)
+
+    def test_never_gate_not_collected(self):
+        s = self._stream_with_gate(None)  # default NeverGate
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'volume_prob' not in viz._get_stream_envelopes(s)
+
+
+class TestPointerDeviationEnvelopeCollection:
+    """issue #96 - il vero pointer_deviation NON e' esposto sullo Stream: vive in
+    stream._pointer.deviation (PointerController), offset_range in _mod_range e
+    dephase in _probability_gate. hasattr(stream,'pointer_deviation') e' False:
+    il loop sugli schemi lo salta, serve estrazione esplicita (come pointer_speed,
+    issue #88). Chiavi: `pointer_deviation` (range) e `pointer_deviation_prob`."""
+
+    def _stream(self, mod_range=None, gate=None):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        p = Parameter('pointer_deviation', 0.0,
+                      GRANULAR_PARAMETERS['pointer_deviation'],
+                      mod_range=mod_range)
+        if gate is not None:
+            p.set_probability_gate(gate)
+        pointer = MagicMock()
+        pointer.deviation = p
+        s._pointer = pointer
+        return s
+
+    def test_offset_range_envelope_collected(self):
+        from envelopes.envelope import Envelope
+        s = self._stream(mod_range=Envelope([[0, 0.0], [10, 1.0]]))
+        assert 'pointer_deviation' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_offset_range_envelope_is_the_mod_range(self):
+        from envelopes.envelope import Envelope
+        env = Envelope([[0, 0.0], [10, 1.0]])
+        s = self._stream(mod_range=env)
+        assert make_viz([s])._get_stream_envelopes(s)['pointer_deviation'] is env
+
+    def test_offset_range_static_skipped_without_show_static(self):
+        s = self._stream(mod_range=0.4)
+        assert 'pointer_deviation' not in make_viz([s])._get_stream_envelopes(s)
+
+    def test_offset_range_static_collected_with_show_static(self):
+        s = self._stream(mod_range=0.4)
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_deviation' in viz._get_stream_envelopes(s)
+
+    def test_dephase_envelope_gate_collected(self):
+        from envelopes.envelope import Envelope
+        from shared.probability_gate import EnvelopeGate
+        s = self._stream(gate=EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
+        assert 'pointer_deviation_prob' in make_viz([s])._get_stream_envelopes(s)
+
+    def test_dephase_random_gate_collected_with_show_static(self):
+        from shared.probability_gate import RandomGate
+        s = self._stream(gate=RandomGate(50.0))
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_deviation_prob' in viz._get_stream_envelopes(s)
+
+    def test_dephase_never_gate_not_collected(self):
+        s = self._stream()  # default NeverGate
+        viz = make_viz([s], config={'show_static_params': True})
+        assert 'pointer_deviation_prob' not in viz._get_stream_envelopes(s)
+
+    def test_no_pointer_attr_does_not_crash(self):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        del s._pointer
+        assert make_viz([s])._get_stream_envelopes(s) is not None
+
+
+class TestLegendDisplayName:
+    """issue #96 - i nomi lunghi (pointer_deviation_prob, grain_duration_prob)
+    sforavano dalla colonna legenda (6%) dentro il plot. _legend_display_name
+    abbrevia con nomi corti semantici e suffisso ' %' per le probabilita'."""
+
+    def _viz(self):
+        return make_viz(single_stream_scene())
+
+    def test_prob_suffix_becomes_percent(self):
+        assert self._viz()._legend_display_name('volume_prob') == 'volume %'
+
+    def test_pan_prob(self):
+        assert self._viz()._legend_display_name('pan_prob') == 'pan %'
+
+    def test_pointer_deviation_abbreviated(self):
+        assert self._viz()._legend_display_name('pointer_deviation') == 'ptr dev'
+
+    def test_pointer_deviation_prob_abbreviated(self):
+        assert self._viz()._legend_display_name('pointer_deviation_prob') == 'ptr dev %'
+
+    def test_grain_duration_abbreviated(self):
+        assert self._viz()._legend_display_name('grain_duration') == 'grain dur'
+
+    def test_grain_duration_prob_abbreviated(self):
+        assert self._viz()._legend_display_name('grain_duration_prob') == 'grain dur %'
+
+    def test_unmapped_underscore_becomes_space(self):
+        assert self._viz()._legend_display_name('scatter') == 'scatter'
+
+    def test_all_known_keys_fit_column(self):
+        """Ogni chiave in envelope_colors deve produrre un nome abbastanza corto
+        da non sforare nella colonna legenda stretta."""
+        viz = self._viz()
+        for key in viz.config['envelope_colors']:
+            assert len(viz._legend_display_name(key)) <= 12, key
+
+
+# =============================================================================
+# GROUP - Legenda envelope per-lane (issue #91)
+# =============================================================================
+
+class TestEnvelopeLegendPerLane:
+    """La legenda envelope deve essere allineata per-lane: la voce di legenda di
+    ogni envelope-type cade nella lane dello stream che lo possiede, alla stessa
+    y delle curve. Pre-fix legenda globale alfabetica -> swap apparente."""
+
+    def _two_streams(self):
+        s_low = make_stream('s_low', onset=0.0, duration=10.0)
+        s_high = make_stream('s_high', onset=20.0, duration=10.0)
+        return make_viz([s_low, s_high]), s_low, s_high
+
+    def test_legend_entry_lands_in_owning_lane(self):
+        from envelopes.envelope import Envelope
+        viz, s_low, s_high = self._two_streams()
+        env_low = {'grain_duration': Envelope([[0, 0.01], [10, 0.1]])}
+        env_high = {'pointer_speed': Envelope([[0, -2.0], [10, 4.0]])}
+
+        def fake(stream):
+            return env_low if stream is s_low else env_high
+
+        with patch.object(viz, '_get_stream_envelopes', side_effect=fake):
+            lanes, legend_entries = viz._compute_env_legend_layout(
+                [s_low, s_high])
+
+        lane_by_id = {lane['stream_id']: lane for lane in lanes}
+        for name, y, stream_id in legend_entries:
+            lane = lane_by_id[stream_id]
+            assert lane['y_base'] <= y <= lane['y_base'] + lane['y_height']
+
+        owner = {name: sid for name, y, sid in legend_entries}
+        assert owner['grain_duration'] == 's_low'
+        assert owner['pointer_speed'] == 's_high'
+
+    def test_multiple_types_in_one_lane_stay_within_lane(self):
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        viz = make_viz([s])
+        env = {
+            'grain_duration': Envelope([[0, 0.01], [10, 0.1]]),
+            'pointer_speed': Envelope([[0, -2.0], [10, 4.0]]),
+        }
+        with patch.object(viz, '_get_stream_envelopes', return_value=env):
+            lanes, legend_entries = viz._compute_env_legend_layout([s])
+
+        assert len(lanes) == 1
+        lane = lanes[0]
+        assert len(legend_entries) == 2
+        for name, y, stream_id in legend_entries:
+            assert stream_id == 's1'
+            assert lane['y_base'] <= y <= lane['y_base'] + lane['y_height']
+
+    def test_streams_without_envelopes_excluded(self):
+        viz, s_low, s_high = self._two_streams()
+        with patch.object(viz, '_get_stream_envelopes', return_value={}):
+            lanes, legend_entries = viz._compute_env_legend_layout(
+                [s_low, s_high])
+        assert lanes == []
+        assert legend_entries == []
+
+
+# =============================================================================
+# GROUP - Envelope auto-zoom (range ampi)
+# =============================================================================
+
+class TestEnvelopeAutozoom:
+    """Per i parametri a range ampio, se il movimento reale dell'inviluppo
+    occupa solo una banda stretta del range fisso, la curva va riscalata a un
+    range di display ~2x l'escursione reale (centrato), così il movimento
+    diventa visibile invece di restare schiacciato."""
+
+    def test_normalize_uses_active_display_range(self):
+        """Quando _current_display_ranges contiene il parametro, la
+        normalizzazione usa quel range al posto di quello fisso."""
+        viz = make_viz([make_stream('s1', onset=0.0, duration=10.0)])
+        viz._current_display_ranges = {'pointer_speed': (0.3, 0.7)}
+        assert viz._normalize_envelope_value('pointer_speed', 0.3) == pytest.approx(0.0)
+        assert viz._normalize_envelope_value('pointer_speed', 0.5) == pytest.approx(0.5)
+        assert viz._normalize_envelope_value('pointer_speed', 0.7) == pytest.approx(1.0)
+
+    def test_small_movement_zooms_to_double_span(self):
+        """pointer_speed (range fisso -4..16) che si muove 2.0->6.0:
+        display span = 2x escursione = 8, centrato a 4 -> [0, 8]."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        lo, hi = ranges['pointer_speed']
+        assert (lo, hi) == pytest.approx((0.0, 8.0))
+
+    def test_large_movement_is_noop(self):
+        """Movimento che riempie gran parte del range pieno: 2x supera il range
+        -> nessuno zoom (parametro assente dai display ranges)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pointer_speed': Envelope([[0, -2.0], [10, 14.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert 'pointer_speed' not in ranges
+
+    def test_floor_prevents_extreme_zoom(self):
+        """Micro-movimento: il display span non scende sotto
+        min_span_ratio x range pieno (no divisione per zero, no zoom estremo)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # pointer_speed range pieno 20 -> floor = 0.04*20 = 0.8
+        envelopes = {'pointer_speed': Envelope([[0, 1.0], [10, 1.001]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        lo, hi = ranges['pointer_speed']
+        assert (hi - lo) == pytest.approx(0.8)
+
+    def test_window_clamped_within_full_range(self):
+        """Movimento vicino al bordo del range pieno: la finestra resta dentro
+        i bound mantenendo l'ampiezza."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        # pointer_speed full max = 16; movimento 14->16 span 2, 2x=4
+        envelopes = {'pointer_speed': Envelope([[0, 14.0], [10, 16.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        lo, hi = ranges['pointer_speed']
+        assert hi <= 16.0
+        assert (hi - lo) == pytest.approx(4.0)
+        assert (lo, hi) == pytest.approx((12.0, 16.0))
+
+    def test_pan_excluded(self):
+        """pan è ciclico: mai zoomato."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pan': Envelope([[0, -10.0], [10, 10.0]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert 'pan' not in ranges
+
+    def test_param_not_in_list_excluded(self):
+        """Parametro fuori dalla lista autozoom: range fisso invariato."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        envelopes = {'pointer_deviation': Envelope([[0, 0.4], [10, 0.5]])}
+        ranges = make_viz([s])._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert 'pointer_deviation' not in ranges
+
+    def test_disabled_returns_empty(self):
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        viz = make_viz([s], config={'envelope_autozoom': {'enabled': False}})
+        envelopes = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+        ranges = viz._compute_display_ranges(
+            envelopes, s, s.onset, s.onset + s.duration)
+        assert ranges == {}
+
+    def test_draw_applies_zoom_to_curve(self):
+        """Integrazione: _draw_envelopes attiva lo zoom. Con factor 2 il
+        movimento occupa il 50% centrale della lane (margine sopra/sotto),
+        contro il ~10% schiacciato del range fisso (-4..16)."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        env = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+
+        def span_of(viz):
+            fig, ax = plt.subplots()
+            with patch.object(viz, '_get_stream_envelopes', return_value=env):
+                viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
+                                    page_start=0.0, page_end=10.0)
+            ydata = next(l for l in ax.lines
+                         if l.get_label() == 'pointer_speed').get_ydata()
+            return ydata.max() - ydata.min()
+
+        zoomed = span_of(make_viz([s]))
+        flat = span_of(make_viz([s], config={
+            'envelope_autozoom': {'enabled': False}}))
+        assert zoomed == pytest.approx(0.5)
+        assert zoomed > flat * 2
+
+    def test_draw_resets_display_ranges_after(self):
+        """Dopo il draw, _current_display_ranges torna vuoto: lane successive
+        ricalcolano da zero."""
+        from envelopes.envelope import Envelope
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        viz = make_viz([s])
+        env = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
+        fig, ax = plt.subplots()
+        with patch.object(viz, '_get_stream_envelopes', return_value=env):
+            viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
+                                page_start=0.0, page_end=10.0)
+        assert not viz._current_display_ranges
