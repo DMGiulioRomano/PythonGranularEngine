@@ -10,7 +10,9 @@ Modulo sotto test:
 
 import pytest
 
-from parameters.pitch_unit import EdoUnit, RatioUnit, make_pitch_unit
+from parameters.pitch_unit import (
+    EDO_IMPLICIT_DETUNE_CENTS, EdoUnit, RatioUnit, make_pitch_unit,
+)
 from parameters.parameter_definitions import ParameterBounds
 from shared.exceptions import InvalidFieldValueError
 
@@ -206,9 +208,10 @@ def test_materialize_ratio_non_positive_amount_is_identity(amount):
 # solo nel path dephase senza range esplicito.
 
 @pytest.mark.parametrize("divisions", [12, 24, 48, 1200, 31])
-def test_edo_implicit_detune_is_six_cents(divisions):
-    # ±6 cents per ogni griglia EDO, indipendente dalle divisioni
-    assert EdoUnit(divisions).implicit_detune_cents == 6.0
+def test_edo_implicit_detune_matches_constant(divisions):
+    # stessa semi-ampiezza per ogni griglia EDO, indipendente dalle divisioni
+    assert EdoUnit(divisions).implicit_detune_cents == EDO_IMPLICIT_DETUNE_CENTS
+    assert EDO_IMPLICIT_DETUNE_CENTS > 0
 
 
 def test_ratio_implicit_detune_is_zero():
@@ -218,8 +221,11 @@ def test_ratio_implicit_detune_is_zero():
 
 
 @pytest.mark.parametrize("preset,expected", [
-    ('semitones', 6.0), ('cents', 6.0), ('quarter_tone', 6.0),
-    ('eighth_tone', 6.0), ('ratio', 0.0),
+    ('semitones', EDO_IMPLICIT_DETUNE_CENTS),
+    ('cents', EDO_IMPLICIT_DETUNE_CENTS),
+    ('quarter_tone', EDO_IMPLICIT_DETUNE_CENTS),
+    ('eighth_tone', EDO_IMPLICIT_DETUNE_CENTS),
+    ('ratio', 0.0),
 ])
 def test_preset_implicit_detune(preset, expected):
     assert make_pitch_unit(preset).implicit_detune_cents == expected

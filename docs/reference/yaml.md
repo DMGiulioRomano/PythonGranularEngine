@@ -377,7 +377,7 @@ Quando il pitch è sotto dephase **senza** `range` esplicito, ai grani che il
 gate seleziona si applica un micro-detune continuo:
 
 - unità EDO (`semitones`, `cents`, `quarter_tone`, `eighth_tone`, `edo: N`):
-  ±6 cents uniformi per grano, applicati in ratio-space **dopo** la
+  ±12 cents uniformi per grano, applicati in ratio-space **dopo** la
   quantizzazione di griglia (il ratio risultante resta nei bounds ±3 ottave);
 - `ratio`: jitter implicito ±0.005 sul moltiplicatore (comportamento storico).
 
@@ -385,7 +385,7 @@ gate seleziona si applica un micro-detune continuo:
 pitch:
   semitones: 7            # nessun range dichiarato
 dephase:
-  pitch: 50               # 50% dei grani: 7 st ± max 6 cents (continuo)
+  pitch: 50               # 50% dei grani: 7 st ± max 12 cents (continuo)
 ```
 
 Con `range` esplicito (anche `range: 0`) il detune implicito non si applica:

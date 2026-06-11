@@ -29,7 +29,7 @@ from shared.exceptions import InvalidFieldValueError
 # Non può vivere in default_jitter: il value-space EDO è quantizzato e un
 # jitter sub-grado arrotonderebbe a 0 (no-op), un grado intero sarebbe una
 # trasposizione piena.
-EDO_IMPLICIT_DETUNE_CENTS = 6.0
+EDO_IMPLICIT_DETUNE_CENTS = 12.0
 
 
 class PitchUnit(ABC):

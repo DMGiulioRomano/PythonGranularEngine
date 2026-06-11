@@ -1107,11 +1107,12 @@ class TestUnitPitchImplicitDetune:
     e il gate dephase concede l'apply per il grano.
     """
 
-    # semi-ampiezza ±6 cents -> banda moltiplicativa del ratio
-    BAND = 2.0 ** (6.0 / 1200.0)
+    # semi-ampiezza ±EDO_IMPLICIT_DETUNE_CENTS -> banda moltiplicativa del ratio
+    from parameters.pitch_unit import EDO_IMPLICIT_DETUNE_CENTS as _DETUNE_CENTS
+    BAND = 2.0 ** (_DETUNE_CENTS / 1200.0)
 
     def test_edo_implicit_gated_detunes_within_band(self):
-        """EDO senza range + gate aperto: ratio dentro ±6 cents, non identico."""
+        """EDO senza range + gate aperto: ratio dentro la banda, non identico."""
         param = _make_param(0.0, gate=AlwaysGate())
         strategy = _semitones_strategy(param)
         ratios = [strategy.calculate(0.0) for _ in range(300)]
