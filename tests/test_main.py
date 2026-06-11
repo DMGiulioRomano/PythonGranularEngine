@@ -450,6 +450,54 @@ class TestPlotEnvelopesFlag:
 
 
 # =============================================================================
+# TEST FLAG --page-duration
+# =============================================================================
+
+class TestPageDurationFlag:
+    """
+    --page-duration SECONDI imposta page_duration nella config di
+    ScoreVisualizer. Default: 15.0. Valore non numerico: exit 1.
+    """
+
+    def _get_viz_config(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        _, kwargs = mocks['ScoreVisualizer'].call_args
+        return kwargs['config']
+
+    def test_default_page_duration_is_15(self, mocks):
+        config = self._get_viz_config(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--visualize']
+        )
+        assert config.get('page_duration') == 15.0
+
+    def test_custom_page_duration(self, mocks):
+        config = self._get_viz_config(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--visualize',
+             '--page-duration', '20']
+        )
+        assert config.get('page_duration') == 20.0
+
+    def test_invalid_page_duration_exits_with_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--page-duration', 'abc']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+    def test_non_positive_page_duration_exits_with_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--page-duration', '0']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+
+# =============================================================================
 # TEST GESTIONE ERRORI
 # =============================================================================
 

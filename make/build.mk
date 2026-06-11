@@ -43,6 +43,11 @@ ifneq ($(strip $(PLOT_ENVELOPES)),)
 PYFLAGS += --plot-envelopes $(PLOT_ENVELOPES)
 endif
 
+# 2c. Se PAGE_DURATION e' definito, aggiungi --page-duration
+ifneq ($(strip $(PAGE_DURATION)),)
+PYFLAGS += --page-duration $(PAGE_DURATION)
+endif
+
 # 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
 ifeq ($(REAPER), true)
 PYFLAGS += --reaper
