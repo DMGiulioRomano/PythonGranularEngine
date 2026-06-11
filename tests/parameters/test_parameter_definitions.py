@@ -436,7 +436,7 @@ class TestPointerBounds:
         assert b.max_val == 1.0
         assert b.min_range == 0.0
         assert b.max_range == 1.0
-        assert b.default_jitter == 0.1
+        assert b.default_jitter == 0.05
         assert b.variation_mode == 'additive'
 
     def test_pointer_deviation_normalized(self):
