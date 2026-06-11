@@ -10,6 +10,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Variabile Make `GRAIN_JSON` (default `false`): espone la flag CLI
+  `--grain-json` nel sistema di flag del Makefile, seguendo il pattern delle
+  altre flag (`STEMS`, `CACHE`, `AUTOVISUAL`, ...). Attiva solo con
+  `STEMS=true` (richiede `--per-stream`), vale per entrambi i renderer.
+  Documentata nella tabella "Build Flags" del README. Issue #99.
 - Flag CLI `--grain-json` (attivo solo con `--per-stream`): esporta l'IR
   `Grain` di ogni stream in JSON, scritto come sidecar accanto agli stem `.aif`
   (`{output_dir}/{basename}__{stream_id}__grains.json`). Pensato per client di
