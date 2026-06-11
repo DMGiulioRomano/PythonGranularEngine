@@ -13,6 +13,49 @@ from math import ceil
 # Path samples (stesso del progetto)
 PATHSAMPLES = './refs/'
 
+# Colori di default degli envelope. A livello modulo perche' le sue chiavi
+# sono l'universo dei nomi plottabili: main.py le usa per validare
+# --plot-envelopes (issue #101).
+ENVELOPE_COLORS = {
+    # === OUTPUT ===
+    'volume': '#e41a1c',          # rosso
+    'volume_prob': '#fb9a99',     # rosso chiaro
+    'pan': '#4daf4a',             # verde
+    'pan_prob': '#b2df8a',        # verde chiaro
+
+    # === GRAIN ===
+    'grain_duration': '#377eb8',  # blu
+    'grain_duration_prob': '#a6cee3',  # blu chiaro
+    'reverse': '#999999',         # grigio
+    'reverse_prob': '#cccccc',    # grigio chiarissimo
+
+    # === POINTER ===
+    'pointer_start': '#8dd3c7',   # celeste
+    'pointer_speed': '#a65628',   # marrone
+    'pointer_deviation': '#fb8072',  # salmone
+    'pointer_deviation_prob': '#fdb462',  # arancione chiaro
+    'loop_dur': '#bebada',        # lavanda
+
+    # === PITCH ===
+    'pitch': '#984ea3',           # viola (unit-driven, qualsiasi unità)
+
+    # === DENSITY ===
+    'density': '#ff7f00',         # arancio
+    'fill_factor': '#f781bf',     # rosa
+    'distribution': '#999999',    # grigio
+    'effective_density': '#ffed6f',  # giallo
+
+    # === VOICES ===
+    'num_voices': '#e377c2',      # magenta
+    'scatter': '#17becf',         # teal
+    'voice_pitch_offset': '#c49c94',  # beige
+    'voice_pointer_offset': '#f7b6d2', # rosa chiaro
+    'voice_pointer_range': '#c7c7c7',  # grigio chiaro
+}
+
+# Nomi validi per il filtro --plot-envelopes / envelope_filter (issue #101)
+PLOT_ENVELOPE_KEYS = frozenset(ENVELOPE_COLORS)
+
 
 class ScoreVisualizer:
     """
@@ -41,6 +84,9 @@ class ScoreVisualizer:
         default_config = {
             # Se True, mostra anche i valori costanti
             'show_static_params': False,
+            # Filtro selettivo: None = tutti gli envelope; altrimenti set/lista
+            # di nomi — solo quelli elencati vengono plottati (issue #101)
+            'envelope_filter': None,
             # Paginazione
             'page_duration': 30.0,           # secondi per pagina
             'page_size': (420, 297),         # A3 in mm
@@ -105,42 +151,7 @@ class ScoreVisualizer:
                 'voice_pointer_range': (0.0, 1.0),    # normalizzato
             },
 
-            'envelope_colors': {
-                # === OUTPUT ===
-                'volume': '#e41a1c',          # rosso
-                'volume_prob': '#fb9a99',     # rosso chiaro
-                'pan': '#4daf4a',             # verde
-                'pan_prob': '#b2df8a',        # verde chiaro
-                
-                # === GRAIN ===
-                'grain_duration': '#377eb8',  # blu
-                'grain_duration_prob': '#a6cee3',  # blu chiaro
-                'reverse': '#999999',         # grigio
-                'reverse_prob': '#cccccc',    # grigio chiarissimo
-                
-                # === POINTER ===
-                'pointer_start': '#8dd3c7',   # celeste
-                'pointer_speed': '#a65628',   # marrone
-                'pointer_deviation': '#fb8072',  # salmone
-                'pointer_deviation_prob': '#fdb462',  # arancione chiaro
-                'loop_dur': '#bebada',        # lavanda
-                
-                # === PITCH ===
-                'pitch': '#984ea3',           # viola (unit-driven, qualsiasi unità)
-
-                # === DENSITY ===
-                'density': '#ff7f00',         # arancio
-                'fill_factor': '#f781bf',     # rosa
-                'distribution': '#999999',    # grigio
-                'effective_density': '#ffed6f',  # giallo
-                
-                # === VOICES ===
-                'num_voices': '#e377c2',      # magenta
-                'scatter': '#17becf',         # teal
-                'voice_pitch_offset': '#c49c94',  # beige
-                'voice_pointer_offset': '#f7b6d2', # rosa chiaro
-                'voice_pointer_range': '#c7c7c7',  # grigio chiaro
-            },
+            'envelope_colors': dict(ENVELOPE_COLORS),
             'envelope_panel_ratio': 0.3,      # 30% altezza per envelope
 
             # Auto-zoom degli envelope a range ampio: se il movimento reale
@@ -991,6 +1002,16 @@ class ScoreVisualizer:
             elif isinstance(gate, RandomGate) and show_static:
                 prob = gate.probability
                 envelopes['pointer_deviation_prob'] = Envelope([[0, prob], [stream.duration, prob]])
+
+        # =====================================================================
+        # FILTRO SELETTIVO (issue #101). Applicato sulle chiavi del dict finale
+        # cosi' copre ogni path di estrazione (main, _prob, _mod_range, pitch,
+        # nomi espliciti). Il filtro interseca: non forza la visibilita' degli
+        # statici, che restano governati da show_static_params.
+        # =====================================================================
+        env_filter = self.config.get('envelope_filter')
+        if env_filter is not None:
+            envelopes = {k: v for k, v in envelopes.items() if k in env_filter}
 
         return envelopes
 

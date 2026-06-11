@@ -6,7 +6,7 @@ tags: [cli, flags, make, rendering, export]
 sources:
   - src/main.py
   - make/build.mk
-last_synced_commit: 9ee6b58
+last_synced_commit: 9eb9c14
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -73,6 +73,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--message-level N` | `134` | — | message level di Csound |
 | `--sco-dir DIR` | `generated` | — | destinazione `.sco` (attivo solo con `--keep-sco`) |
 | `--reaper-path FILE` | `{yaml_basename}.rpp` | `REAPER_PATH` | percorso del progetto Reaper |
+| `--plot-envelopes nomi` | tutti | `PLOT_ENVELOPES` | filtro selettivo degli envelope nella partitura: nomi comma-separated (es. `pitch,density,volume_prob`); nome non valido: messaggio con elenco dei validi + exit 1 |
 
 ## Bounds
 
@@ -93,6 +94,12 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (il renderer numpy non produce `.sco`).
 - **`--show-static`** ha effetto solo insieme a `--visualize`.
+- **`--plot-envelopes`** ha effetto solo insieme a `--visualize`; la
+  validazione dei nomi avviene comunque (nome ignoto → exit 1 anche senza
+  `--visualize`). Il filtro è ortogonale a `--show-static`: un parametro
+  statico elencato nel filtro appare solo se c'è anche `--show-static`.
+  Nomi validi = chiavi di `ENVELOPE_COLORS`
+  (`src/rendering/score_visualizer.py`, costante `PLOT_ENVELOPE_KEYS`).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
   la flag viene ignorata senza errore.
 
@@ -111,6 +118,12 @@ make all FILE=brano STEMS=true CACHE=true GRAIN_JSON=true RENDERER=numpy
 
 # Debug csound: conserva gli .sco intermedi
 python src/main.py configs/brano.yml --renderer csound --keep-sco --sco-dir generated
+
+# Partitura con i soli envelope di pitch e density
+python src/main.py configs/brano.yml --visualize --plot-envelopes pitch,density
+
+# Equivalente via Make
+make all FILE=brano AUTOVISUAL=true PLOT_ENVELOPES=pitch,density
 ```
 
 ## Versionato da

@@ -10,6 +10,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Flag CLI `--plot-envelopes nomi,csv` (variabile Make `PLOT_ENVELOPES`):
+  filtro selettivo degli envelope nella partitura PDF. Default (flag assente):
+  tutti gli envelope, come prima. Con flag: solo i nomi elencati vengono
+  plottati, per osservazioni chirurgiche di singoli parametri. Il filtro
+  agisce sulle chiavi del dict di `_get_stream_envelopes` (copre valori
+  principali, `*_prob`, range, `pitch`, parametri voce) ed è ortogonale a
+  `--show-static` (uno statico elencato appare solo con entrambe le flag).
+  Nomi non validi: messaggio con elenco dei validi + exit 1. Universo dei
+  nomi = nuova costante `PLOT_ENVELOPE_KEYS` (chiavi di `ENVELOPE_COLORS`,
+  estratto a livello modulo in `score_visualizer.py`). Issue #101.
 - Variabile Make `GRAIN_JSON` (default `false`): espone la flag CLI
   `--grain-json` nel sistema di flag del Makefile, seguendo il pattern delle
   altre flag (`STEMS`, `CACHE`, `AUTOVISUAL`, ...). Attiva solo con
