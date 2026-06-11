@@ -4,7 +4,9 @@
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.cm import ScalarMappable
 from matplotlib.collections import PatchCollection
+from matplotlib.colors import Normalize
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import soundfile as sf
@@ -94,9 +96,17 @@ class ScoreVisualizer:
             'margins_mm': 20,
             
             # Grani
-            'grain_colormap': 'coolwarm',    # pitch_ratio → colore
+            'grain_colormap': 'turbo',       # pitch_ratio → colore
             'grain_alpha_range': (0.3, 1.0), # volume → alpha
-            'pitch_range': (0.5, 2.0),       # range per normalizzare colori
+            'pitch_range': (0.5, 2.0),       # range fisso (fallback senza autozoom)
+            # Auto-zoom del range colore pitch: normalizza sul min/max in cents
+            # dei grani visibili nel subplot (sample+pagina) invece del range
+            # fisso — rende visibile il micro-detune ±6 cents (issue #95).
+            'pitch_color_autozoom': {
+                'enabled': True,
+                'pad_ratio': 0.1,        # margine per lato: 10% dello span
+                'min_span_cents': 2.0,   # floor: evita div/0 su span nullo
+            },
             'volume_range': (-60, 0),        # dB range per normalizzare alpha
             'min_grain_width_pts': 1,        # larghezza minima visibile
             
@@ -366,10 +376,83 @@ class ScoreVisualizer:
     # MAPPING VISUALI
     # =========================================================================
     
-    def _pitch_to_color(self, pitch_ratio):
-        """Mappa pitch_ratio → colore dal colormap."""
-        p_min, p_max = self.config['pitch_range']
-        normalized = (pitch_ratio - p_min) / (p_max - p_min)
+    def _compute_pitch_color_range(self, streams, page_start, page_end):
+        """
+        Range colore pitch auto-zoomato per il subplot: (lo, hi) in cents
+        calcolato sui grani visibili nella finestra di pagina di TUTTI gli
+        stream del subplot. None se autozoom disabilitato o nessun grano
+        (fallback al range fisso pitch_range).
+        """
+        az = self.config['pitch_color_autozoom']
+        if not az.get('enabled', False):
+            return None
+
+        cents = []
+        for stream in streams:
+            for voice_grains in stream.voices:
+                for g in voice_grains:
+                    if not (g.onset < page_end and (g.onset + g.duration) > page_start):
+                        continue
+                    ratio = abs(g.pitch_ratio)
+                    if ratio <= 0:
+                        continue
+                    cents.append(1200.0 * np.log2(ratio))
+
+        if not cents:
+            return None
+
+        c_min, c_max = min(cents), max(cents)
+        span = max(c_max - c_min, az['min_span_cents'])
+        center = (c_min + c_max) / 2.0
+        half = span / 2.0 + az['pad_ratio'] * span
+        return (center - half, center + half)
+
+    def _add_pitch_colorbar(self, fig, ax, cents_range, streams,
+                            page_start, page_end):
+        """
+        Colorbar compatta con la scala colore pitch del subplot.
+
+        Con cents_range (auto-zoom attivo): scala in cents zoomata.
+        Senza: scala fissa pitch_range in ratio, solo se il subplot ha grani
+        visibili (cents_range None copre anche il caso zero grani).
+        """
+        if cents_range is not None:
+            norm = Normalize(cents_range[0], cents_range[1])
+            label = 'pitch (cents)'
+        else:
+            has_grains = any(
+                g.onset < page_end and (g.onset + g.duration) > page_start
+                for s in streams
+                for voice_grains in s.voices
+                for g in voice_grains
+            )
+            if not has_grains:
+                return
+            p_min, p_max = self.config['pitch_range']
+            norm = Normalize(p_min, p_max)
+            label = 'pitch (ratio)'
+
+        cbar = fig.colorbar(
+            ScalarMappable(norm=norm, cmap=self.cmap),
+            ax=ax, fraction=0.03, pad=0.01
+        )
+        cbar.set_label(label, fontsize=self.config['label_fontsize'] - 1)
+        cbar.ax.tick_params(labelsize=self.config['label_fontsize'] - 2)
+
+    def _pitch_to_color(self, pitch_ratio, cents_range=None):
+        """
+        Mappa pitch_ratio → colore dal colormap.
+
+        cents_range=(lo, hi): normalizza 1200*log2(ratio) nel range zoomato
+        (auto-zoom per-subplot). None: fallback sul range fisso pitch_range.
+        """
+        if cents_range is not None and pitch_ratio > 0:
+            lo, hi = cents_range
+            cents = 1200.0 * np.log2(pitch_ratio)
+            normalized = (cents - lo) / (hi - lo)
+        else:
+            p_min, p_max = self.config['pitch_range']
+            normalized = (pitch_ratio - p_min) / (p_max - p_min)
         normalized = np.clip(normalized, 0, 1)
         return self.cmap(normalized)
     
@@ -481,12 +564,20 @@ class ScoreVisualizer:
             # Disegna waveform UNA VOLTA (usa il primo stream solo per il path)
             self._draw_waveform_full(ax_wave, streams[0], sample_duration)
             
+            # Range colore pitch auto-zoomato sul subplot (tutti gli stream)
+            cents_range = self._compute_pitch_color_range(
+                streams, page_start, page_end)
+
             # Disegna grani di TUTTI gli stream che usano questo sample
             for stream in streams:
                 self._draw_loop_mask(ax_grain, stream, page_start, page_end, sample_duration)
-                self._draw_grains_full(ax_grain, stream, sample_duration, 
-                                    page_start, page_end)
+                self._draw_grains_full(ax_grain, stream, sample_duration,
+                                    page_start, page_end, cents_range)
                 self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
+
+            # Legenda della scala colore pitch (auto-zoomata o fissa)
+            self._add_pitch_colorbar(fig, ax_grain, cents_range,
+                                     streams, page_start, page_end)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
@@ -598,8 +689,12 @@ class ScoreVisualizer:
         )
 
 
-    def _draw_grains_full(self, ax, stream, sample_duration, page_start, page_end):
-        """Disegna grani con coordinate Y assolute nel sample."""
+    def _draw_grains_full(self, ax, stream, sample_duration, page_start,
+                          page_end, cents_range=None):
+        """Disegna grani con coordinate Y assolute nel sample.
+
+        cents_range: range colore auto-zoomato del subplot (vedi
+        _compute_pitch_color_range); None = range fisso."""
         
         all_grains = [grain for voice_grains in stream.voices for grain in voice_grains]
 
@@ -663,7 +758,8 @@ class ScoreVisualizer:
             polygons.append(poly)
             
             # Colore
-            color = list(self._pitch_to_color(abs(grain.pitch_ratio)))
+            color = list(self._pitch_to_color(abs(grain.pitch_ratio),
+                                              cents_range))
             color[3] = self._volume_to_alpha(grain.volume)
             colors.append(color)
         

@@ -1126,3 +1126,166 @@ class TestEnvelopeFilter:
         assert PLOT_ENVELOPE_KEYS == frozenset(viz.config['envelope_colors'])
         assert 'pitch' in PLOT_ENVELOPE_KEYS
         assert 'volume_prob' in PLOT_ENVELOPE_KEYS
+
+
+# =============================================================================
+# GROUP - Pitch color auto-zoom (colormap turbo + range dinamico per-subplot)
+# =============================================================================
+
+class TestPitchColorAutozoom:
+    """Auto-zoom del range colore pitch: il colore dei grani usa min/max in
+    cents dei pitch_ratio visibili nel subplot invece del range fisso
+    pitch_range (0.5, 2.0) — rende visibile il micro-detune ±6 cents."""
+
+    def test_default_colormap_is_turbo(self):
+        viz = make_viz([make_stream()])
+        assert viz.config['grain_colormap'] == 'turbo'
+
+    def test_default_config_has_pitch_color_autozoom(self):
+        viz = make_viz([make_stream()])
+        az = viz.config['pitch_color_autozoom']
+        assert az['enabled'] is True
+        assert az['pad_ratio'] > 0
+        assert az['min_span_cents'] > 0
+
+    def test_range_from_visible_grains_min_max_cents(self):
+        """Range = [min, max] in cents dei grani visibili, con pad per lato."""
+        s = make_stream('s1', n_grains=0)
+        s.voices = [[
+            make_grain(onset=1.0, pitch_ratio=1.0),   # 0 cents
+            make_grain(onset=2.0, pitch_ratio=2.0),   # 1200 cents
+        ]]
+        viz = make_viz([s])
+        lo, hi = viz._compute_pitch_color_range([s], 0.0, 10.0)
+        pad = viz.config['pitch_color_autozoom']['pad_ratio'] * 1200.0
+        assert lo == pytest.approx(0.0 - pad)
+        assert hi == pytest.approx(1200.0 + pad)
+
+    def test_range_floor_on_identical_ratios(self):
+        """Grani tutti allo stesso ratio: span = min_span_cents, centrato."""
+        s = make_stream('s1', n_grains=0)
+        s.voices = [[make_grain(onset=1.0, pitch_ratio=1.5),
+                     make_grain(onset=2.0, pitch_ratio=1.5)]]
+        viz = make_viz([s])
+        lo, hi = viz._compute_pitch_color_range([s], 0.0, 10.0)
+        az = viz.config['pitch_color_autozoom']
+        center = 1200.0 * np.log2(1.5)
+        expected_half = az['min_span_cents'] / 2.0 + az['pad_ratio'] * az['min_span_cents']
+        assert (lo + hi) / 2.0 == pytest.approx(center)
+        assert hi - lo == pytest.approx(2 * expected_half)
+
+    def test_grains_outside_page_excluded(self):
+        """Grano fuori finestra di pagina non influenza il range."""
+        s = make_stream('s1', n_grains=0)
+        s.voices = [[
+            make_grain(onset=1.0, pitch_ratio=1.0),
+            make_grain(onset=50.0, pitch_ratio=4.0),  # fuori pagina [0, 10]
+        ]]
+        viz = make_viz([s])
+        lo, hi = viz._compute_pitch_color_range([s], 0.0, 10.0)
+        # range centrato su 0 cents (ratio 1.0), il grano a 4.0 non conta
+        assert (lo + hi) / 2.0 == pytest.approx(0.0)
+
+    def test_range_spans_multiple_streams(self):
+        """Min/max calcolati su tutti gli stream del subplot."""
+        s1 = make_stream('s1', n_grains=0)
+        s1.voices = [[make_grain(onset=1.0, pitch_ratio=1.0)]]
+        s2 = make_stream('s2', n_grains=0)
+        s2.voices = [[make_grain(onset=2.0, pitch_ratio=2.0)]]
+        viz = make_viz([s1, s2])
+        lo, hi = viz._compute_pitch_color_range([s1, s2], 0.0, 10.0)
+        assert lo < 0.0 < 1200.0 < hi
+
+    def test_disabled_returns_none(self):
+        s = make_stream('s1', n_grains=4)
+        viz = make_viz([s], config={'pitch_color_autozoom': {'enabled': False}})
+        assert viz._compute_pitch_color_range([s], 0.0, 10.0) is None
+
+    def test_no_grains_returns_none(self):
+        s = make_stream('s1', n_grains=0)
+        viz = make_viz([s])
+        assert viz._compute_pitch_color_range([s], 0.0, 10.0) is None
+
+    def test_pitch_to_color_without_range_uses_fixed_fallback(self):
+        """cents_range=None → normalizzazione sul range fisso pitch_range."""
+        viz = make_viz([make_stream()])
+        expected = viz.cmap(np.clip((1.0 - 0.5) / (2.0 - 0.5), 0, 1))
+        assert viz._pitch_to_color(1.0) == expected
+
+    def test_detuned_grains_get_distinct_colors_with_autozoom(self):
+        """Due grani a ±6 cents: colori chiaramente diversi con range zoomato,
+        quasi identici col range fisso."""
+        viz = make_viz([make_stream()])
+        r_lo = 2.0 ** (-6.0 / 1200.0)   # -6 cents
+        r_hi = 2.0 ** (6.0 / 1200.0)    # +6 cents
+
+        # range fisso: indistinguibili
+        c1_fixed = np.array(viz._pitch_to_color(r_lo))
+        c2_fixed = np.array(viz._pitch_to_color(r_hi))
+        assert np.abs(c1_fixed - c2_fixed).max() < 0.05
+
+        # range zoomato su ±6c (con pad): ben distinti
+        cents_range = (-7.2, 7.2)
+        c1 = np.array(viz._pitch_to_color(r_lo, cents_range))
+        c2 = np.array(viz._pitch_to_color(r_hi, cents_range))
+        assert np.abs(c1 - c2).max() > 0.3
+
+    @staticmethod
+    def _detuned_scene():
+        """Stream con due grani a ±6 cents attorno a ratio 1.0."""
+        s = make_stream('s1', onset=0.0, duration=10.0,
+                        sample='piano.wav', n_grains=0)
+        s.voices = [[
+            make_grain(onset=1.0, pitch_ratio=2.0 ** (-6.0 / 1200.0)),
+            make_grain(onset=2.0, pitch_ratio=2.0 ** (6.0 / 1200.0)),
+        ]]
+        return [s]
+
+    @staticmethod
+    def _grain_facecolors(fig):
+        """Facecolors della PatchCollection dei grani (zorder=2)."""
+        from matplotlib.collections import PatchCollection
+        for ax in fig.axes:
+            for coll in ax.collections:
+                if isinstance(coll, PatchCollection) and coll.get_zorder() == 2:
+                    return coll.get_facecolors()
+        return None
+
+    def test_render_page_applies_zoomed_colors(self):
+        """End-to-end: nel PDF i due grani a ±6c hanno colori distinti."""
+        viz = make_viz(self._detuned_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            figs = viz.render_all()
+        colors = self._grain_facecolors(figs[0])
+        assert colors is not None and len(colors) == 2
+        # RGB (no alpha: dipende dal volume) chiaramente diversi
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.3
+
+    def test_render_page_fixed_colors_when_disabled(self):
+        """Autozoom off: i due grani a ±6c restano indistinguibili."""
+        viz = make_viz(self._detuned_scene(),
+                       config={'page_duration': 30.0,
+                               'pitch_color_autozoom': {'enabled': False}})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            figs = viz.render_all()
+        colors = self._grain_facecolors(figs[0])
+        assert colors is not None and len(colors) == 2
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() < 0.05
+
+    @staticmethod
+    def _colorbar_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<colorbar>']
+
+    def test_render_page_adds_pitch_colorbar(self):
+        """Ogni subplot con grani ha una colorbar che mostra la scala pitch."""
+        viz = make_viz(self._detuned_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            figs = viz.render_all()
+        assert len(self._colorbar_axes(figs[0])) == 1
+
+    def test_no_colorbar_without_grains(self):
+        s = make_stream('s1', onset=0.0, duration=10.0, n_grains=0)
+        viz = make_viz([s], config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            figs = viz.render_all()
+        assert len(self._colorbar_axes(figs[0])) == 0
