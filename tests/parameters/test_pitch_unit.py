@@ -10,7 +10,9 @@ Modulo sotto test:
 
 import pytest
 
-from parameters.pitch_unit import EdoUnit, RatioUnit, make_pitch_unit
+from parameters.pitch_unit import (
+    EDO_IMPLICIT_DETUNE_CENTS, EdoUnit, RatioUnit, make_pitch_unit,
+)
 from parameters.parameter_definitions import ParameterBounds
 from shared.exceptions import InvalidFieldValueError
 
@@ -195,6 +197,53 @@ def test_materialize_ratio_non_positive_amount_is_identity(amount):
     # amount<=0 → identità, allineato a EDO (2^(p*0/d) = 1.0)
     assert RatioUnit().materialize(0.5, amount) == pytest.approx(1.0)
     assert RatioUnit().materialize(2.0, amount) == pytest.approx(1.0)
+
+
+# =============================================================================
+# implicit_detune_cents — detune implicito in ratio-space (issue #95)
+# =============================================================================
+# Il detune NON vive in default_jitter (value-space quantizzato: sub-grado
+# arrotonda a 0, un grado intero è una trasposizione enorme). È una costante
+# in cents (semi-ampiezza ±N) applicata da UnitPitchStrategy in ratio-space,
+# solo nel path dephase senza range esplicito.
+
+@pytest.mark.parametrize("divisions", [12, 24, 48, 1200, 31])
+def test_edo_implicit_detune_matches_constant(divisions):
+    # stessa semi-ampiezza per ogni griglia EDO, indipendente dalle divisioni
+    assert EdoUnit(divisions).implicit_detune_cents == EDO_IMPLICIT_DETUNE_CENTS
+    assert EDO_IMPLICIT_DETUNE_CENTS > 0
+
+
+def test_ratio_implicit_detune_is_zero():
+    # RatioUnit ha già il jitter implicito in value-space (default_jitter=0.005):
+    # detune ratio-space a 0 per evitare doppia applicazione
+    assert RatioUnit().implicit_detune_cents == 0.0
+
+
+@pytest.mark.parametrize("preset,expected", [
+    ('semitones', EDO_IMPLICIT_DETUNE_CENTS),
+    ('cents', EDO_IMPLICIT_DETUNE_CENTS),
+    ('quarter_tone', EDO_IMPLICIT_DETUNE_CENTS),
+    ('eighth_tone', EDO_IMPLICIT_DETUNE_CENTS),
+    ('ratio', 0.0),
+])
+def test_preset_implicit_detune(preset, expected):
+    assert make_pitch_unit(preset).implicit_detune_cents == expected
+
+
+def test_edo_default_jitter_stays_zero():
+    # regressione: il detune non passa dai bounds — il path esplicito
+    # quantizzato resta invariato
+    assert EdoUnit(12).value_bounds().default_jitter == 0.0
+
+
+@pytest.mark.parametrize("unit", [EdoUnit(12), EdoUnit(31), RatioUnit()])
+def test_materialize_is_deterministic_no_detune(unit):
+    # regressione issue #95: il detune vive solo in UnitPitchStrategy,
+    # mai nella materializzazione del path voci
+    a = unit.materialize(1.0, 3.0)
+    b = unit.materialize(1.0, 3.0)
+    assert a == b
 
 
 # =============================================================================

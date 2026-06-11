@@ -1,0 +1,171 @@
+# PGE_detune_implicito_test.yml
+#
+# Test empirico del detune implicito ±12 cents (issue #95, branch
+# claude/eloquent-gauss-rmu3v1).
+#
+# Cosa fa la feature:
+#   pitch su unità EDO (semitones/cents/quarter_tone/eighth_tone/edo:N) messo
+#   sotto `dephase` SENZA `range` esplicito → ogni grano selezionato dal gate
+#   riceve un micro-detune continuo uniforme in ±12 cents, applicato in
+#   ratio-space DOPO la quantizzazione di griglia.
+#
+#   Prima era un no-op silenzioso. Ora muove il pitch.
+#
+# Come ascoltare:
+#   density alta + grani sovrapposti → il detune produce uno shimmer/chorus
+#   continuo (battimenti) sui grani toccati. Tutti gli stream usano lo stesso
+#   sample e lo stesso pitch base (+7 st) per confronto A/B onesto.
+#   Stream sfalsati nel tempo: ascolta uno alla volta.
+#
+# Build:  make FILE=PGE_detune_implicito_test
+#   (RENDERER=numpy se non vuoi csound)
+
+composition:
+  title: "detune implicito ±12 cents — test empirico (issue #95)"
+
+duration: 80
+bpm: 120
+
+streams:
+
+  # --- 1. CONTROLLO SECCO — nessun dephase, nessun detune ----------------------
+  # Riferimento: +7 semitoni puliti, pitch fermo. Nessuno shimmer.
+  - stream_id: "1_controllo_secco"
+    onset: 0
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      semitones: 7
+    volume: -6
+
+  # --- 2. FEATURE dephase 50% — metà grani detunati ----------------------------
+  # Stesso +7 st, ma 50% dei grani prende ±12c continuo. Shimmer intermittente.
+  - stream_id: "2_detune_dephase_50"
+    onset: 10
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      semitones: 7            # nessun range → scatta il detune implicito
+    dephase:
+      pitch: 50
+    volume: -6
+
+  # --- 3. FEATURE dephase 100% — TUTTI i grani detunati ------------------------
+  # Caso più udibile: chorus/battimenti continui attorno a +7 st.
+  - stream_id: "3_detune_dephase_100"
+    onset: 20
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      semitones: 7
+    dephase:
+      pitch: 100
+    volume: -6
+
+  # --- 4. CONTROPROVA range:0 — il detune NON deve scattare --------------------
+  # range esplicito (anche 0) disabilita il detune implicito. Deve suonare
+  # IDENTICO allo stream 1 (pitch fermo), nonostante dephase 100.
+  - stream_id: "4_range_zero_no_detune"
+    onset: 30
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      semitones: 7
+      range: 0               # esplicito → niente detune implicito
+    dephase:
+      pitch: 100
+    volume: -6
+
+  # --- 5. CONFRONTO range:1 quantizzato — variazione a gradi interi ------------
+  # Con range esplicito vale la variazione QUANTIZZATA di griglia: salti di
+  # 1 semitono interi, NON micro-detune. Per sentire la differenza di natura
+  # (salti vs shimmer continuo).
+  - stream_id: "5_range_uno_quantizzato"
+    onset: 40
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      semitones: 7
+      range: 1               # ±1 semitono a salti interi
+    dephase:
+      pitch: 100
+    volume: -6
+
+  # --- 6. PATH RATIO — jitter storico ±0.005 (non EDO) -------------------------
+  # ratio non è EDO: implicit_detune_cents=0. Resta il jitter storico ±0.005
+  # sul moltiplicatore. Diverso meccanismo, lasciato invariato dalla feature.
+  - stream_id: "6_ratio_jitter_storico"
+    onset: 50
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      ratio: 1.498           # ~quinta giusta, no range
+    dephase:
+      pitch: 100
+    volume: -6
+
+  # --- 7. EDO ARBITRARIO 31-EDO — detune anche su griglie non standard ---------
+  # Conferma che il detune ±12c vale per qualsiasi unità EDO, non solo semitoni.
+  - stream_id: "7_edo31_detune"
+    onset: 60
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      edo: 31
+      value: 18              # 18 gradi di 31-EDO, no range → detune ±12c
+    dephase:
+      pitch: 100
+    volume: -6
+
+  # --- 8. cents — unità EDO a 1200 divisioni -----------------------------------
+  # +700 cents (= +7 st) sotto dephase 100, no range → ±12c. Confronto diretto
+  # con lo stream 3 (stesso pitch effettivo, unità diversa, stesso detune).
+  - stream_id: "8_cents_detune"
+    onset: 70
+    duration: 8
+    sample: 001-0-27_9.wav
+    density: 40
+    pointer:
+      start: 14
+      speed_ratio: 0
+    grain: {duration: 0.1, envelope: hanning}
+    pitch:
+      cents: 700
+    dephase:
+      pitch: 100
+    volume: -6

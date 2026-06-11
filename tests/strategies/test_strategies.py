@@ -64,6 +64,7 @@ PITCH_RATIO_BOUNDS = ParameterBounds(
 # per usarle come basi dei mock (cosi' isinstance() funziona)
 from parameters.parameter import Parameter as _RealParameter
 from envelopes.envelope import Envelope as _RealEnvelope
+from shared.probability_gate import NeverGate, AlwaysGate
 
 class MockParameter(_RealParameter):
     """
@@ -71,12 +72,17 @@ class MockParameter(_RealParameter):
     NON chiama super().__init__() per evitare side effects.
     """
     def __init__(self, value, name='mock_param', bounds=None,
-                 owner_id='test', **kwargs):
+                 owner_id='test', mod_range=None, gate=None, **kwargs):
         # Bypass completo del costruttore reale
         self._value = value
         self.name = name
         self.bounds = bounds
         self.owner_id = owner_id
+        # Stato dephase: default = nessun range esplicito, gate chiuso.
+        # Con NeverGate i test storici restano passthrough esatti
+        # (nessun detune implicito, issue #95).
+        self._mod_range = mod_range
+        self._probability_gate = gate if gate is not None else NeverGate()
 
     @property
     def value(self):
@@ -176,9 +182,9 @@ from parameters.pitch_unit import EdoUnit, RatioUnit
 # HELPERS
 # =============================================================================
 
-def _make_param(value, name='test_param', bounds=None):
+def _make_param(value, name='test_param', bounds=None, **kwargs):
     """Crea un MockParameter con defaults ragionevoli."""
-    return MockParameter(value=value, name=name, bounds=bounds)
+    return MockParameter(value=value, name=name, bounds=bounds, **kwargs)
 
 
 def _make_envelope_param(breakpoints, name='test_param'):
@@ -1089,6 +1095,86 @@ class TestEdgeCases:
         assert r1 != r2
         assert r1 == pytest.approx(2.0)
         assert r2 == pytest.approx(2 ** (7/12))
+
+# =============================================================================
+# GRUPPO 14: DETUNE IMPLICITO IN RATIO-SPACE (issue #95)
+# =============================================================================
+
+class TestUnitPitchImplicitDetune:
+    """
+    Detune continuo ±implicit_detune_cents applicato da UnitPitchStrategy
+    DOPO la quantizzazione EDO, solo se il param non ha range esplicito
+    e il gate dephase concede l'apply per il grano.
+    """
+
+    # semi-ampiezza ±EDO_IMPLICIT_DETUNE_CENTS -> banda moltiplicativa del ratio
+    from parameters.pitch_unit import EDO_IMPLICIT_DETUNE_CENTS as _DETUNE_CENTS
+    BAND = 2.0 ** (_DETUNE_CENTS / 1200.0)
+
+    def test_edo_implicit_gated_detunes_within_band(self):
+        """EDO senza range + gate aperto: ratio dentro la banda, non identico."""
+        param = _make_param(0.0, gate=AlwaysGate())
+        strategy = _semitones_strategy(param)
+        ratios = [strategy.calculate(0.0) for _ in range(300)]
+        assert all(1.0 / self.BAND <= r <= self.BAND for r in ratios)
+        assert any(r != pytest.approx(1.0, abs=1e-12) for r in ratios)
+
+    def test_detune_is_continuous_not_quantized(self):
+        """Il campionamento è continuo (float uniforme), non a cents interi."""
+        param = _make_param(0.0, gate=AlwaysGate())
+        strategy = _semitones_strategy(param)
+        ratios = {strategy.calculate(0.0) for _ in range(300)}
+        assert len(ratios) > 50
+
+    def test_detune_centered_on_quantized_value(self):
+        """Il detune si sovrappone al valore EDO quantizzato (base 7 st)."""
+        param = _make_param(7.0, gate=AlwaysGate())
+        strategy = _semitones_strategy(param)
+        nominal = 2.0 ** (7.0 / 12.0)
+        for _ in range(300):
+            r = strategy.calculate(0.0)
+            assert nominal / self.BAND <= r <= nominal * self.BAND
+
+    def test_edo_implicit_closed_gate_no_detune(self):
+        """Gate chiuso: passthrough esatto (regressione no-op deliberato)."""
+        param = _make_param(7.0, gate=NeverGate())
+        strategy = _semitones_strategy(param)
+        expected = 2.0 ** (7.0 / 12.0)
+        for _ in range(20):
+            assert strategy.calculate(0.0) == pytest.approx(expected)
+
+    def test_edo_explicit_range_no_detune(self):
+        """Range esplicito: il detune implicito NON scatta (path invariato)."""
+        param = _make_param(7.0, mod_range=2.0, gate=AlwaysGate())
+        strategy = _semitones_strategy(param)
+        expected = 2.0 ** (7.0 / 12.0)
+        for _ in range(20):
+            assert strategy.calculate(0.0) == pytest.approx(expected)
+
+    def test_ratio_unit_no_strategy_detune(self):
+        """RatioUnit: il jitter implicito vive già in value-space
+        (default_jitter), nessun detune aggiuntivo in strategy."""
+        param = _make_param(1.5, gate=AlwaysGate())
+        strategy = _ratio_strategy(param)
+        for _ in range(20):
+            assert strategy.calculate(0.0) == pytest.approx(1.5)
+
+    def test_detune_clamped_at_upper_ratio_bound(self):
+        """Base a +36 st (ratio 8.0): il detune non supera mai il bound."""
+        param = _make_param(36.0, gate=AlwaysGate())
+        strategy = _semitones_strategy(param)
+        ratios = [strategy.calculate(0.0) for _ in range(300)]
+        assert all(r <= 8.0 for r in ratios)
+        assert all(r >= 8.0 / self.BAND for r in ratios)
+
+    def test_detune_clamped_at_lower_ratio_bound(self):
+        """Base a -36 st (ratio 0.125): il detune non scende sotto il bound."""
+        param = _make_param(-36.0, gate=AlwaysGate())
+        strategy = _semitones_strategy(param)
+        ratios = [strategy.calculate(0.0) for _ in range(300)]
+        assert all(r >= 0.125 for r in ratios)
+        assert all(r <= 0.125 * self.BAND for r in ratios)
+
 
 # =============================================================================
 # TEST COPERTURA CORPI ABSTRACT (righe 22, 28, 34, 90, 95)

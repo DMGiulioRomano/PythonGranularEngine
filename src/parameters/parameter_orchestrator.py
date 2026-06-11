@@ -69,9 +69,8 @@ class ParameterOrchestrator:
         param = self._param_factory.create_smart_parameter(param_spec, yaml_data)
 
         # Controlla se range è esplicitato
-        has_explicit_range = False
-        has_explicit_range = param._mod_range is not None
-        
+        has_explicit_range = param.has_explicit_range
+
         # 2. Crea il ProbabilityGate corrispondente
         gate = GateFactory.create_gate(
             dephase=self._config.dephase,       
@@ -112,7 +111,7 @@ class ParameterOrchestrator:
             dephase=self._config.dephase,
             param_key=dephase_key,
             default_prob=DEFAULT_PROB,
-            has_explicit_range=(param._mod_range is not None),
+            has_explicit_range=param.has_explicit_range,
             range_always_active=self._config.range_always_active,
             duration=self._config.context.duration,
             time_mode=self._config.time_mode,

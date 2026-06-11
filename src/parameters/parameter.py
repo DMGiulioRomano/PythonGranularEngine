@@ -65,7 +65,23 @@ class Parameter:
     def set_probability_gate(self, gate: ProbabilityGate):
         """Setter per dependency injection."""
         self._probability_gate = gate
-    
+
+    @property
+    def has_explicit_range(self) -> bool:
+        """True se l'utente ha dichiarato un range esplicito (anche 0):
+        in quel caso il jitter/detune implicito non si applica."""
+        return self._mod_range is not None
+
+    def variation_allowed(self, time: float) -> bool:
+        """
+        Interroga il gate dephase senza applicare la variazione.
+
+        Nota: sui gate stocastici ogni chiamata è un draw indipendente da
+        quello interno a get_value(); nel path implicito EDO quel draw è
+        inerte (ampiezza 0), quindi questo è l'unico effetto osservabile.
+        """
+        return self._probability_gate.should_apply(time)
+
     def get_value(self, time: float) -> float:
         """
         Calcola il valore finale del parametro al tempo specificato.
