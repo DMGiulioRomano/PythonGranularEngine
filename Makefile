@@ -61,6 +61,7 @@ FILE ?= PGE_test
 TEST ?= false
 PRECLEAN ?=true
 STEMS ?= true
+GRAIN_JSON ?= false   # esporta JSON sidecar dei grani (richiede STEMS=true, issue #99)
 RENDERER ?= numpy
 FORMAT ?= aiff
 REAPER ?= true
