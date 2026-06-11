@@ -6,6 +6,7 @@
 
 | Slug | Status | Tags |
 |------|--------|------|
+| [cli](reference/cli.md) | stable | cli, flags, make, rendering, export |
 | [errors](reference/errors.md) | stable | errors, exceptions, user-facing |
 | [yaml](reference/yaml.md) | stable | yaml, syntax, parameters, envelopes |
 
@@ -40,6 +41,8 @@
 | add-variation-strategy | add-variation-strategy |
 | add-voice-strategy | add-voice-strategy |
 | add-window-function | add-window-function |
+| build-flags | cli |
+| cli-flags | cli |
 | envelope-syntax | yaml |
 | error-handling | errors |
 | make-parameter-envelope-aware | make-parameter-envelope-aware |
