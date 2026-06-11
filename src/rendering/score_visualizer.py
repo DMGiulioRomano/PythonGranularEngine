@@ -109,7 +109,7 @@ class ScoreVisualizer:
                 # cents di scarto reale produrrebbe uno span quasi nullo e
                 # quindi un gradiente di colore esagerato (l'intera colormap)
                 # per una differenza musicalmente trascurabile.
-                'min_span_cents': 100.0,
+                'min_span_cents': 50.0,
             },
             'volume_range': (-60, 0),        # dB range per normalizzare alpha
             'min_grain_width_pts': 1,        # larghezza minima visibile
