@@ -125,6 +125,12 @@ class ScoreVisualizer:
             'waveform_color': 'steelblue',
             'waveform_width_ratio': 0.06,    # 3% della larghezza pagina
             'waveform_downsample': 200,      # 1 punto ogni N campioni
+            # Larghezza (frazione della pagina) della colonna dedicata alla
+            # colorbar del pitch. Vive in una colonna propria del GridSpec cosi'
+            # i subplot dei grani e quello degli envelope condividono la colonna
+            # centrale -> stesso bordo destro, niente piu' disallineamento (la
+            # colorbar non ruba larghezza ai soli stream).
+            'colorbar_width_ratio': 0.02,
             # Loop mask
             'loop_mask_color': '#f4a261',    # arancio caldo
             'loop_mask_alpha': 0.18,
@@ -413,14 +419,18 @@ class ScoreVisualizer:
         half = span / 2.0 + az['pad_ratio'] * span
         return (center - half, center + half)
 
-    def _add_pitch_colorbar(self, fig, ax, cents_range, streams,
+    def _add_pitch_colorbar(self, fig, cax_spec, cents_range, streams,
                             page_start, page_end):
         """
-        Colorbar compatta con la scala colore pitch del subplot.
+        Colorbar compatta con la scala colore pitch del subplot, disegnata in una
+        cella dedicata del GridSpec (cax_spec). Con un asse colorbar esplicito
+        (cax=) invece di ax=, non viene rubata larghezza al subplot dei grani:
+        grani ed envelope restano allineati sullo stesso bordo destro.
 
         Con cents_range (auto-zoom attivo): scala in cents zoomata.
         Senza: scala fissa pitch_range in ratio, solo se il subplot ha grani
-        visibili (cents_range None copre anche il caso zero grani).
+        visibili (cents_range None copre anche il caso zero grani). Se non c'e'
+        nulla da disegnare la cella resta vuota (nessun asse creato).
         """
         if cents_range is not None:
             norm = Normalize(cents_range[0], cents_range[1])
@@ -438,12 +448,16 @@ class ScoreVisualizer:
             norm = Normalize(p_min, p_max)
             label = 'pitch (ratio)'
 
+        cax = fig.add_subplot(cax_spec)
         cbar = fig.colorbar(
-            ScalarMappable(norm=norm, cmap=self.cmap),
-            ax=ax, fraction=0.03, pad=0.01
+            ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
         )
         cbar.set_label(label, fontsize=self.config['label_fontsize'] - 1)
         cbar.ax.tick_params(labelsize=self.config['label_fontsize'] - 2)
+        # '<colorbar>' e' la convenzione matplotlib per gli assi colorbar (la
+        # imposta make_axes con ax=...). Con cax= esplicito va messa a mano, cosi'
+        # chi filtra gli assi colorbar (test, consumatori) continua a trovarli.
+        cax.set_label('<colorbar>')
 
     def _pitch_to_color(self, pitch_ratio, cents_range=None):
         """
@@ -526,8 +540,9 @@ class ScoreVisualizer:
         # SETUP GRIDSPEC
         # =========================================================================
         waveform_ratio = self.config['waveform_width_ratio']
+        colorbar_ratio = self.config['colorbar_width_ratio']
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
-        
+
         # Altezza per stream (divisa equamente)
         stream_total_ratio = 1.0 - envelope_ratio
         stream_row_height = stream_total_ratio / n_streams
@@ -539,11 +554,16 @@ class ScoreVisualizer:
         else:
             height_ratios = [stream_row_height] * n_streams
             n_rows = n_streams
-        
-        # GridSpec: n_rows righe × 2 colonne
+
+        # GridSpec: n_rows righe × 3 colonne [waveform, contenuto, colorbar].
+        # La colorbar del pitch ha una colonna propria: i subplot dei grani e
+        # quello degli envelope condividono la colonna centrale (stesso bordo
+        # destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli grani e
+        # il pannello envelope restava piu' largo, disallineato a destra.
+        main_ratio = 1 - waveform_ratio - colorbar_ratio
         gs = fig.add_gridspec(
-            n_rows, 2,
-            width_ratios=[waveform_ratio, 1 - waveform_ratio],
+            n_rows, 3,
+            width_ratios=[waveform_ratio, main_ratio, colorbar_ratio],
             height_ratios=height_ratios,
             wspace=0.02,
             hspace=0.0  # gap verticale tra stream
@@ -584,8 +604,9 @@ class ScoreVisualizer:
                                    page_start, page_end, cents_range)
             self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
 
-            # Legenda della scala colore pitch (auto-zoomata o fissa)
-            self._add_pitch_colorbar(fig, ax_grain, cents_range,
+            # Legenda della scala colore pitch (auto-zoomata o fissa) nella
+            # colonna dedicata gs[i, 2]: non ruba larghezza al subplot dei grani.
+            self._add_pitch_colorbar(fig, gs[i, 2], cents_range,
                                      [stream], page_start, page_end)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
