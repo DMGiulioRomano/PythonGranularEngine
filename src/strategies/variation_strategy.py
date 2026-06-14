@@ -1,4 +1,6 @@
 # variation_strategy.py
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from shared.distribution_strategy import DistributionStrategy
 from shared.exceptions import InvalidParameterError

@@ -13,6 +13,7 @@ ATOMIC INTERFACE:
 Il renderer sa solo renderizzare, non decide la logica di controllo
 (stems vs mix, loop, naming). Questa responsabilità è di RenderMode + RenderingEngine.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List

@@ -4,6 +4,7 @@ distribution_strategy.py - Strategy Pattern per distribuzioni statistiche.
 Implementa diverse distribuzioni di probabilità per la generazione 
 di valori stocastici nei parametri granulari.
 """
+from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod

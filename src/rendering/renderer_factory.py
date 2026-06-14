@@ -9,6 +9,7 @@ flag CLI --renderer:
 
 Usato da main.py per iniettare il renderer in Generator.
 """
+from __future__ import annotations
 
 from typing import Dict, Any
 

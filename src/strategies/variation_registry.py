@@ -3,6 +3,7 @@
 Registry e Factory per le strategie di variazione.
 Segue lo stesso pattern di strategy_registry.py per coerenza.
 """
+from __future__ import annotations
 
 from typing import Dict, Type
 from strategies.variation_strategy import (

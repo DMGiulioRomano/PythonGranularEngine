@@ -12,6 +12,7 @@ Equivalente NumPy di cio' che Csound fa con GEN01 + ftsr():
 
 Qui sf.read() fa entrambe le cose in un colpo solo.
 """
+from __future__ import annotations
 
 import numpy as np
 import soundfile as sf

@@ -133,6 +133,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Versione minima Python abbassata da **3.12 a 3.9** (issue #120). Il vincolo
+  `>= 3.12` era conservativo, non tecnico: il codice non usa feature esclusive
+  di 3.11/3.12. Interventi: (1) `make/test.mk` e `Makefile` (`check-system-deps`)
+  rilassati a `>= 3.9` — `PYTHON_VERSIONS` ora `python3.9..python3.16`, runtime
+  check `sys.version_info >= (3, 9)`; (2) `from __future__ import annotations` in
+  testa a tutti i file di `src/` per differire le union PEP 604 (`X | Y`, valide
+  a runtime solo da 3.10) e prevenire regressioni future; (3) `core/grain.py`:
+  `@dataclass(slots=True)` sostituito da un `__slots__` esplicito (il parametro
+  `slots=` esiste solo da 3.10), mantenendo l'ottimizzazione di memoria; (4) CI
+  estesa alla matrix `3.9..3.14`; (5) commento `requirements.txt` aggiornato.
+  Nessun cambiamento a YAML/CLI/schema/errori. Nessun impatto cross-repo
+  (PGE-ls/PGE-ui): la versione minima dell'engine non è superficie osservabile.
 - Performance: generazione dei grani resa **lazy** (issue #117). `Stream.voices`
   e `Stream.grains` sono ora property che materializzano i grani al primo
   accesso; il `Generator` non chiama piu' `generate_grains()` in fase di

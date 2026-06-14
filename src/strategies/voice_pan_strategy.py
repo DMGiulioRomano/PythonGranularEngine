@@ -23,6 +23,7 @@ Design:
 Coerente con: variation_strategy.py, variation_registry.py,
               distribution_strategy.py, time_distribution.py
 """
+from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod

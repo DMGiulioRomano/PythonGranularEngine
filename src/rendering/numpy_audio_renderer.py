@@ -15,6 +15,7 @@ Template Method interno (comune):
   3. Clamp a [-1.0, 1.0]
   4. Scrivi .aif con soundfile
 """
+from __future__ import annotations
 
 import numpy as np
 import soundfile as sf

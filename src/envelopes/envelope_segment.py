@@ -11,6 +11,7 @@ Each Segment:
 - Delegates interpolation to InterpolationStrategy
 - Knows how to evaluate() and integrate() itself
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any

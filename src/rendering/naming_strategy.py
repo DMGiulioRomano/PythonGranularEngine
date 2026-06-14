@@ -10,6 +10,7 @@ Esempi:
 - DashNamingStrategy: {base}-{stream_id}.aif
 - TimestampNamingStrategy: {base}__{stream_id}_{timestamp}.aif
 """
+from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod

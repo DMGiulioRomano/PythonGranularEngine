@@ -6,6 +6,7 @@ Implementa il modello Truax per la distribuzione temporale:
 - ASYNCHRONOUS (distribution=1): random(0, 2×avg)
 - INTERPOLAZIONE: blend lineare tra i due
 """
+from __future__ import annotations
 
 import random
 from parameters.parameter_schema import DENSITY_PARAMETER_SCHEMA

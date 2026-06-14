@@ -10,6 +10,7 @@ Responsabilità:
 - Coordinare AudioRenderer + NamingStrategy + RenderMode
 - Fornire interfaccia semplice per main.py
 """
+from __future__ import annotations
 
 from typing import List
 from rendering.naming_strategy import NamingStrategy, DefaultNamingStrategy

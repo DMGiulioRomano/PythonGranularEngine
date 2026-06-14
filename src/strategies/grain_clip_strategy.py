@@ -8,6 +8,7 @@ Responsabilita': filtrare grain non validi da stream.voices in post-process,
 prima dell'assegnazione finale a Stream. Rende stream.voices unica fonte di
 verita' su quali grain esistono. Il renderer non ha piu' opinioni sui bounds.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type

@@ -10,6 +10,7 @@ Design Pattern:
 
 Qui definiamo COSA sono i parametri, non COME vengono calcolati.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict

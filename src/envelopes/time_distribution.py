@@ -4,6 +4,7 @@ Time Distribution Strategies per formato compatto envelope.
 
 Design Pattern: Strategy + Factory Method
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Union, Dict, Any

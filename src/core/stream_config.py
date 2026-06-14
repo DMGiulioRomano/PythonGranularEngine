@@ -1,4 +1,6 @@
 # stream_config.py
+from __future__ import annotations
+
 from dataclasses import dataclass,fields
 from typing import Optional, Union
     

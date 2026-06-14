@@ -26,6 +26,7 @@ Layering pointer (da design doc):
                + voice_pointer_offset    # VoicePointerStrategy (qui)
                + grain_jitter(t)         # mod_range per-grano
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional

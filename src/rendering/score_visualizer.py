@@ -2,6 +2,8 @@
 # SCORE VISUALIZER - Partitura grafica per sintesi granulare
 # =============================================================================
 
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.cm import ScalarMappable

@@ -1,6 +1,8 @@
 # =============================================================================
 # logger.py - Gestione logging per envelope clip warnings
 # =============================================================================
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 import os

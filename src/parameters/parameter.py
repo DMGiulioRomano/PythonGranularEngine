@@ -9,6 +9,7 @@ Utilizza un approccio 'Functional Strategy' (Dispatch Dictionary) per gestire
 le diverse modalità di variazione ('additive', 'quantized', 'invert') senza 
 usare catene di if/elif, garantendo estensibilità e pulizia.
 """
+from __future__ import annotations
 
 import random
 from typing import Union, Optional, Callable, Dict

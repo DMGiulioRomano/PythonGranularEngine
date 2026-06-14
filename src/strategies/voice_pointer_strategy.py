@@ -33,6 +33,7 @@ Design:
 
 Coerente con: voice_pitch_strategy.py, voice_onset_strategy.py
 """
+from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod

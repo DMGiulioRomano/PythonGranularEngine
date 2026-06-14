@@ -1,4 +1,6 @@
 # src/controllers/window_controller.py
+from __future__ import annotations
+
 from typing import List
 from controllers.window_registry import WindowRegistry
 from shared.exceptions import InvalidWindowError

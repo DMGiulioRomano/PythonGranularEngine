@@ -6,6 +6,7 @@ Gerarchia EngineError per errori engine destinati a output user-facing pulito
 (issue #33). Ogni eccezione fornisce user_message() per il terminale e
 __str__ per i log.
 """
+from __future__ import annotations
 
 
 class EngineError(Exception):

@@ -52,7 +52,7 @@ sudo apt update
 sudo apt install -y python3.12 python3.12-venv sox csound
 ```
 
-**Debian 12 stable** (python3.12 non in repo standard): usa il `python3` di sistema se >= 3.12, oppure aggiungi il PPA `deadsnakes`, oppure usa `pyenv`. La detection del Makefile rileva automaticamente `python3` generico se la versione è adeguata.
+**Debian 12 stable**: il `python3` di sistema è 3.11, quindi soddisfa già il minimo `>= 3.9` ed è usato direttamente dalla detection del Makefile (fallback `python3` generico). Se ti serve una versione più recente, aggiungi il PPA `deadsnakes` o usa `pyenv`.
 
 > **Note on Csound on Linux:** the version available via `apt` may be older than the one available on the [Csound website](https://csound.com/download.html). If you need a recent version, download the `.deb` package directly from the official releases.
 
@@ -62,7 +62,7 @@ sudo apt install -y python3.12 python3.12-venv sox csound
 sudo pacman -Sy python sox csound
 ```
 
-`pacman -Sy python` installa la versione corrente di sistema (oggi 3.14, verificata >= 3.12). La detection del Makefile riconosce automaticamente `python3.12`..`python3.16` versionati e, in fallback, `python3` generico.
+`pacman -Sy python` installa la versione corrente di sistema (oggi 3.14, ben oltre il minimo >= 3.9). La detection del Makefile riconosce automaticamente `python3.9`..`python3.16` versionati e, in fallback, `python3` generico.
 
 ### Fedora / RHEL / Rocky / AlmaLinux
 
@@ -71,7 +71,9 @@ sudo dnf install -y python3 sox
 ```
 
 - **Fedora 40+** include `python3` >= 3.12 nei repo principali (Fedora 42 → 3.13.x).
-- **RHEL 9 / Rocky 9 / AlmaLinux 9**: il `python3` di sistema è 3.9. Installa esplicitamente `python3.12`:
+- **RHEL 9 / Rocky 9 / AlmaLinux 9**: il `python3` di sistema è 3.9, ora supportato
+  direttamente (`sudo dnf install -y python3 sox`), nessuna installazione aggiuntiva
+  richiesta. Se preferisci una versione più recente puoi comunque installare `python3.12`:
 
   ```bash
   sudo dnf install -y python3.12 sox
@@ -88,12 +90,12 @@ sudo dnf install -y python3 sox
 |---|---|---|---|
 | macOS (Homebrew) | `brew install python@3.12` | 3.12 esatta | `python3.12` versionato |
 | Ubuntu 24.04+ | `apt install python3.12` | 3.12 esatta | `python3.12` versionato |
-| Debian 12 stable | `python3` di sistema (>= 3.12) o `pyenv` | varia | fallback `python3` |
+| Debian 12 stable | `python3` di sistema | 3.11 | fallback `python3` |
 | Arch / Manjaro | `pacman -Sy python` | corrente (3.14+) | `python3.14` versionato o `python3` |
 | Fedora 40+ | `dnf install python3` | 3.12+ (3.13 su F41+) | fallback `python3` |
-| RHEL 9 / Rocky 9 / AlmaLinux 9 | `dnf install python3.12` | 3.12 esatta | `python3.12` versionato |
+| RHEL 9 / Rocky 9 / AlmaLinux 9 | `dnf install python3` (sistema) | 3.9 | fallback `python3` |
 
-Il Makefile cerca nell'ordine `python3.12..python3.16` e poi `python3` generico (se versione >= 3.12). Versioni Python future (3.17+) saranno coperte dal fallback automatico fino al refresh della lista esplicita.
+Il Makefile cerca nell'ordine `python3.9..python3.16` e poi `python3` generico (se versione >= 3.9). Versioni Python future (3.17+) saranno coperte dal fallback automatico fino al refresh della lista esplicita.
 
 ### Verify installation
 

@@ -11,6 +11,7 @@ Questo e' il renderer di default (--renderer csound). Non modifica
 nessun codice esistente: ScoreWriter, FtableManager, main.orc restano
 identici.
 """
+from __future__ import annotations
 
 import os
 import subprocess

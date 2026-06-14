@@ -1,5 +1,7 @@
 # exclusive_selector.py
 
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Tuple
 from parameters.parameter_schema import ParameterSpec
 

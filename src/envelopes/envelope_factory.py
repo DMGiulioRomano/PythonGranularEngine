@@ -7,6 +7,7 @@ Design Pattern: Factory Method
 - Elimina if/elif dispersi nel codebase
 - Facilita l'estensione con nuove strategy
 """
+from __future__ import annotations
 
 from typing import Union
 from envelopes.envelope_interpolation import (

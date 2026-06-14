@@ -11,6 +11,7 @@ MODIFICHE PRINCIPALI:
 2. Offset temporale automatico: la parte compatta parte dall'ultimo breakpoint precedente
 3. Logging completo: sia della trasformazione compatta che dell'envelope finale
 """
+from __future__ import annotations
 
 from typing import List, Union, Tuple, Optional
 
