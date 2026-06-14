@@ -108,8 +108,13 @@ class Stream:
         self.sample_table_num: Optional[int] = None
         self.envelope_table_num: Optional[int] = None
         # === 9. STATO ===
-        self.voices: List[List[Grain]] = []
-        self.grains: List[Grain] = []  # backward compatibility
+        # Generazione lazy dei grani (issue #117): i backing field restano vuoti
+        # finche' qualcuno non legge le property voices/grains, che innescano
+        # generate_grains() al primo accesso. Cosi' il Generator non genera i
+        # grani per gli stream cache-clean (il renderer short-circuita su
+        # is_dirty prima di leggere .voices), risparmiando il costo dominante.
+        self._voices: List[List[Grain]] = []
+        self._grains: List[Grain] = []  # backward compatibility (flat)
         self.generated = False
 
     def _check_required_context_fields(self, params, stream_id):
@@ -444,14 +449,16 @@ class Stream:
         clip_strategy = getattr(self, '_clip_strategy', None)
         if clip_strategy is None:
             clip_strategy = OverflowMarginClipStrategy(margin=0.0)
-        self.voices = clip_strategy.apply(all_voice_grains, self)
+        # Assegna ai backing field, non alle property: il getter di .voices
+        # innescherebbe ricorsivamente generate_grains (generated ancora False).
+        self._voices = clip_strategy.apply(all_voice_grains, self)
         # Flatten e sort per onset (backward compatibility)
-        all_grains = [g for voice in self.voices for g in voice]
+        all_grains = [g for voice in self._voices for g in voice]
         all_grains.sort(key=lambda g: g.onset)
-        self.grains = all_grains
+        self._grains = all_grains
         self.generated = True
 
-        return self.voices
+        return self._voices
     
     def _create_grain(self,
                       elapsed_time: float,
@@ -626,10 +633,46 @@ class Stream:
         return self._scatter
 
     # =========================================================================
+    # GRANI LAZY (issue #117)
+    # =========================================================================
+
+    @property
+    def voices(self) -> List[List[Grain]]:
+        """Grani organizzati per voce. Lazy: genera al primo accesso."""
+        if not self.generated:
+            self.generate_grains()
+        return self._voices
+
+    @voices.setter
+    def voices(self, value: List[List[Grain]]) -> None:
+        """Iniezione esplicita dei grani (test/consumer): materializza lo stato.
+
+        Assegnare voices significa "i grani sono questi": marca generated=True
+        cosi' una lettura successiva non rigenera sovrascrivendo il valore.
+        """
+        self._voices = value
+        self.generated = True
+
+    @property
+    def grains(self) -> List[Grain]:
+        """Vista flat dei grani (backward compat). Lazy: genera al primo accesso."""
+        if not self.generated:
+            self.generate_grains()
+        return self._grains
+
+    @grains.setter
+    def grains(self, value: List[Grain]) -> None:
+        self._grains = value
+        self.generated = True
+
+    # =========================================================================
     # REPR
     # =========================================================================
-    
+
     def __repr__(self) -> str:
         mode = "fill_factor" if self.fill_factor is not None else "density"
+        # NON innescare la generazione lazy: _create_streams stampa {stream} per
+        # ogni stream; leggere la property .grains rigenererebbe tutto.
+        grain_count = len(self._grains) if self.generated else 'lazy'
         return (f"Stream(id={self.stream_id}, onset={self.onset}, "
-                f"dur={self.duration}, mode={mode}, grains={len(self.grains)})")
+                f"dur={self.duration}, mode={mode}, grains={grain_count})")

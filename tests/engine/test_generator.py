@@ -677,8 +677,14 @@ class TestCreateStreams:
 
         assert mock_stream.window_table_map == window_map
 
-    def test_calls_generate_grains(self, gen):
-        """_create_streams chiama generate_grains() su ogni stream."""
+    def test_does_not_call_generate_grains(self, gen):
+        """_create_streams NON chiama generate_grains() (issue #117).
+
+        La generazione dei grani e' lazy: avviene al primo accesso a
+        .voices/.grains, non in fase di creazione. Cosi' gli stream cache-clean
+        (che il renderer short-circuita su is_dirty) non generano mai i grani.
+        Tabelle e costruzione Stream restano invece eager.
+        """
         mock_stream = make_mock_stream_for_generator()
         stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
 
@@ -686,7 +692,7 @@ class TestCreateStreams:
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
-        mock_stream.generate_grains.assert_called_once()
+        mock_stream.generate_grains.assert_not_called()
 
     def test_creates_multiple_streams(self, gen):
         """_create_streams crea piu' stream in sequenza."""

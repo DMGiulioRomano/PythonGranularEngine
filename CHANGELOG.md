@@ -133,6 +133,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Performance: generazione dei grani resa **lazy** (issue #117). `Stream.voices`
+  e `Stream.grains` sono ora property che materializzano i grani al primo
+  accesso; il `Generator` non chiama piu' `generate_grains()` in fase di
+  creazione. In STEMS+CACHE gli stream cache-clean — che il renderer salta su
+  `is_dirty` prima di leggere `.voices` — non generano piu' i grani, evitando il
+  costo dominante (loop tempo×voci). Il loop `--grain-json` scrive il sidecar
+  solo per gli stream effettivamente renderizzati (`generated=True`): gli stream
+  clean mantengono il JSON precedente, ancora valido. Costruzione `Stream` e
+  registrazione tabelle restano eager. Nessun cambiamento a YAML/CLI/schema.
 - Config showcase `configs/PGE_scatter_experiments.yml`: rimosso lo stream
   duplicato `s01_cluster_equidistant1`, ripuliti i flag `solo`/`mute` residui e
   aggiunto `time_mode: normalized` dove mancante. Solo dati di esempio, nessun
