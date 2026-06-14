@@ -134,7 +134,9 @@ class ScoreVisualizer:
             'stream_gap_ratio': 0.05,        # gap tra stream (5% dell'altezza)
             'label_fontsize': 8,
             'title_fontsize': 12,
-            # Envelope ranges (per normalizzazione)
+            # Envelope ranges. Dopo issue #114 (scaling data-driven) solo 'pan'
+            # è ancora consultato per lo scaling delle curve (ciclico, ±180);
+            # le altre entry restano per riferimento/back-compat, non più usate.
             'envelope_ranges': {
                 # === OUTPUT ===
                 'volume': (-90, 0),           # dB
@@ -174,19 +176,13 @@ class ScoreVisualizer:
             'envelope_colors': dict(ENVELOPE_COLORS),
             'envelope_panel_ratio': 0.3,      # 30% altezza per envelope
 
-            # Auto-zoom degli envelope a range ampio: se il movimento reale
-            # occupa una banda stretta del range fisso, restringe il range di
-            # display a `factor` x l'escursione reale (centrato), clampato al
-            # range pieno. floor = min_span_ratio x range pieno (evita zoom
-            # estremo su micro-movimenti). pan sempre escluso (ciclico).
-            'envelope_autozoom': {
-                'enabled': True,
-                'factor': 2.0,
-                'min_span_ratio': 0.04,
-                'params': {
-                    'pointer_speed', 'volume', 'density', 'loop_dur',
-                    'grain_duration', 'pitch', 'voice_pitch_offset',
-                },
+            # Scaling data-driven puro delle curve envelope (issue #114): ogni
+            # curva scala sull'escursione reale dei suoi valori nella finestra
+            # visibile (min/max + padding), senza alcun clamp ai range fissi.
+            # Si applica a tutti i parametri; pan resta ciclico (escluso).
+            'envelope_display': {
+                'pad_ratio': 0.05,      # margine sopra/sotto: 5% dell'escursione
+                'samples': 128,         # densità campionamento (cattura overshoot cubic)
             },
         }
         
@@ -1227,136 +1223,77 @@ class ScoreVisualizer:
 
         return result
 
-    def _full_range(self, param_name):
-        """
-        Range pieno (min, max) di un parametro, o None se non disponibile.
-
-        pitch è unit-driven (bounds dall'unità attiva); gli altri vengono da
-        config['envelope_ranges']. Le chiavi per-voce ('__vN', issue #90) usano
-        il range del parametro base.
-        """
-        param_name = self._base_param_name(param_name)
-        if param_name == 'pitch':
-            unit = getattr(self, '_current_pitch_unit', None)
-            if unit is not None:
-                b = unit.value_bounds()
-                if b.max_val is not None and b.max_val != b.min_val:
-                    return (b.min_val, b.max_val)
-            return None
-        rng = self.config['envelope_ranges'].get(param_name)
-        if rng is None or rng[0] == rng[1]:
-            return None
-        return (rng[0], rng[1])
-
     def _compute_display_ranges(self, envelopes, stream, t_start, t_end):
         """
-        Calcola, per ogni envelope a range ampio, un range di display ristretto
-        all'escursione reale (auto-zoom). Vedi config['envelope_autozoom'].
+        Calcola, per ogni envelope (tranne pan), il range di display data-driven:
+        l'escursione reale (min/max) dei valori nella finestra visibile, più un
+        padding (config['envelope_display']['pad_ratio']). Issue #114.
+
+        Nessun clamp ai range fissi: ogni curva scala sulla propria escursione.
+        pan resta ciclico (escluso, usa il range fisso ±180).
 
         Returns:
-            dict {param_name: (disp_min, disp_max)} solo per i parametri zoomati.
+            dict {param_name: (disp_min, disp_max)} per ogni parametro non-pan.
         """
-        cfg = self.config.get('envelope_autozoom', {})
-        if not cfg.get('enabled', False):
-            return {}
-
-        params = cfg.get('params', set())
-        factor = cfg.get('factor', 2.0)
-        min_span_ratio = cfg.get('min_span_ratio', 0.04)
+        cfg = self.config['envelope_display']
+        pad_ratio = cfg['pad_ratio']
+        n = cfg['samples']
         stream_start = stream.onset
 
         result = {}
         for param_name, envelope in envelopes.items():
-            # Le chiavi per-voce ('__vN', #90) ereditano autozoom/range dal base.
-            base_name = self._base_param_name(param_name)
-            if base_name == 'pan' or base_name not in params:
-                continue
-            full = self._full_range(param_name)
-            if full is None:
-                continue
-            full_min, full_max = full
-            full_span = full_max - full_min
+            # Le chiavi per-voce ('__vN', #90) ereditano dal parametro base.
+            if self._base_param_name(param_name) == 'pan':
+                continue  # pan ciclico: range fisso (-180, 180)
 
             # Escursione reale nella finestra visibile: campiona densamente la
-            # curva (cattura overshoot cubic) e includi i breakpoint.
+            # curva (cattura overshoot cubic) e includi i breakpoint interni.
             t_rel0 = max(0.0, t_start - stream_start)
             t_rel1 = max(t_rel0, t_end - stream_start)
-            samples = [envelope.evaluate(t) for t in np.linspace(t_rel0, t_rel1, 64)]
+            samples = [envelope.evaluate(t) for t in np.linspace(t_rel0, t_rel1, n)]
             samples += [v for t, v in envelope.breakpoints if t_rel0 <= t <= t_rel1]
             if not samples:
                 continue
             v_min, v_max = min(samples), max(samples)
-            span_real = v_max - v_min
-            center = (v_min + v_max) / 2.0
-
-            floor = min_span_ratio * full_span
-            disp_span = min(max(factor * span_real, floor), full_span)
-            if disp_span >= full_span:
-                continue  # no-op: il movimento riempie già il range pieno
-
-            half = disp_span / 2.0
-            disp_min = center - half
-            disp_max = center + half
-            # Trasla dentro [full_min, full_max] mantenendo l'ampiezza.
-            if disp_min < full_min:
-                disp_min, disp_max = full_min, full_min + disp_span
-            elif disp_max > full_max:
-                disp_min, disp_max = full_max - disp_span, full_max
-
-            result[param_name] = (disp_min, disp_max)
+            span = v_max - v_min
+            if span <= 1e-12:
+                pad = max(abs(v_min) * pad_ratio, 1e-6)  # envelope costante: centra
+            else:
+                pad = span * pad_ratio
+            result[param_name] = (v_min - pad, v_max + pad)
 
         return result
 
     def _normalize_envelope_value(self, param_name, value):
         """
-        Normalizza un valore di envelope a 0-1 usando i range fissi.
-        
+        Normalizza un valore di envelope a 0-1 sul range di display data-driven
+        attivo (issue #114). Nessun clamp ai range fissi tranne per pan.
+
         Args:
             param_name: nome del parametro
             value: valore da normalizzare
-            
-        Returns:
-            float: valore normalizzato 0-1
-        """
-        # Le curve per-voce ('__vN', #90) si normalizzano col range del base;
-        # il display range (auto-zoom) resta indicizzato per chiave piena.
-        base_name = self._base_param_name(param_name)
-        # PITCH unit-driven: i bounds vengono dall'unità attiva, non dai range statici.
-        if base_name == 'pitch':
-            unit = getattr(self, '_current_pitch_unit', None)
-            if unit is not None:
-                b = unit.value_bounds()
-                if b.max_val is not None and b.max_val != b.min_val:
-                    return np.clip((value - b.min_val) / (b.max_val - b.min_val), 0, 1)
-            return np.clip(value, 0, 1)
 
-        # Auto-zoom: se è attivo un display range per questo parametro, usalo al
-        # posto del range fisso (la curva sfrutta tutta l'altezza della lane).
+        Returns:
+            float: valore normalizzato (tipicamente 0-1; pan è clippato).
+        """
+        # Le curve per-voce ('__vN', #90) si normalizzano col base.
+        base = self._base_param_name(param_name)
+
+        # pan resta ciclico: wrap modulo su ±180 e clamp (range fisso).
+        if base == 'pan':
+            min_val, max_val = self.config['envelope_ranges']['pan']
+            value = ((value + 180) % 360) - 180
+            return np.clip((value - min_val) / (max_val - min_val), 0, 1)
+
+        # Range di display data-driven (popolato da _draw_envelopes per tutti i
+        # parametri tranne pan). Nessun clip: la curva scala sulla sua escursione.
         display_ranges = getattr(self, '_current_display_ranges', None) or {}
         if param_name in display_ranges:
             min_val, max_val = display_ranges[param_name]
-            if base_name == 'pan':
-                value = ((value + 180) % 360) - 180
             if max_val != min_val:
-                return np.clip((value - min_val) / (max_val - min_val), 0, 1)
-            return np.clip(value, 0, 1)
-
-        ranges = self.config['envelope_ranges']
-
-        if base_name in ranges:
-            min_val, max_val = ranges[base_name]
-
-            # Pan è ciclico: gestisci valori fuori range
-            if base_name == 'pan':
-                # Normalizza a -180..180 usando modulo
-                value = ((value + 180) % 360) - 180
-
-            # Normalizza
-            normalized = (value - min_val) / (max_val - min_val)
-            return np.clip(normalized, 0, 1)
-        else:
-            # Fallback: assume già normalizzato
-            return np.clip(value, 0, 1)
+                return (value - min_val) / (max_val - min_val)   # NESSUN clip
+            return 0.5                                            # costante: centro corsia
+        return 0.5  # fallback difensivo (draw imposta sempre i display range)
 
     @staticmethod
     def _segment_strategy_name(segment) -> str:

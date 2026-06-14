@@ -71,6 +71,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- fix(score-visualizer): curve envelope data-driven, rimosso il clipping ai
+  range fissi (pan resta ciclico). Le curve envelope venivano normalizzate su
+  `envelope_ranges` fissi e clippate a `[0,1]`: quando i valori reali superavano
+  il tetto del range (es. `density` con loop 400↔1000 g/s, tetto fisso 200), ogni
+  valore collassava a 1.0 e la curva appariva piatta pur essendo corretta. Ora
+  ogni curva scala sull'escursione reale dei suoi valori nella finestra visibile
+  (min/max + padding 5%), senza alcun clamp. Generalizza a tutti i parametri
+  l'auto-zoom prima limitato a una whitelist; `pan` resta ciclico su `(-180,180)`
+  con wrap modulo. Config: `envelope_autozoom` sostituito da `envelope_display`
+  (`pad_ratio`, `samples`). Nessun impatto su YAML/CLI/errori/bounds. (issue #114)
 - `ScoreVisualizer`: `offset_range` (deviazione stocastica del pointer) e il
   `dephase` non venivano mai disegnati nel pannello envelope. `_get_stream_envelopes`
   leggeva due attributi obsoleti del refactor parametri: `Parameter._mod_prob`
