@@ -77,6 +77,7 @@ class TestPerSegmentDrawing:
         viz.config = {
             'envelope_ranges': {'density': (0, 100)},
             'envelope_colors': {'density': '#000000'},
+            'envelope_display': {'pad_ratio': 0.05, 'samples': 128},
         }
         viz._get_stream_envelopes = lambda s: {'density': s.density}
         viz._normalize_envelope_value = lambda name, v: v / 100.0
