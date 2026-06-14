@@ -5,7 +5,7 @@ status: stable
 tags: [caching, rendering, csound]
 sources:
   - src/rendering/stream_cache_manager.py
-last_synced_commit: 4c4fee4
+last_synced_commit: c65dfae
 ---
 
 # Stream Cache Manager — caching incrementale
@@ -28,7 +28,7 @@ Caching per-stream con fingerprint contenuto. Attivo solo con `STEMS=true CACHE=
 
 **API:**
 
-- `compute_fingerprint(stream_dict)` — SHA-256 del dict YAML raw dello stream
+- `compute_fingerprint(stream_dict)` — SHA-256 del dict YAML dello stream, escluse le chiavi non-audio in `FINGERPRINT_IGNORE_KEYS` (`solo`, `mute`): toggle di solo/mute cambia *quali* stream renderizzare, non il contenuto del singolo stem, quindi non deve marcarlo dirty (issue #108). `onset` resta invece incluso (divergenza nota col lato JS, PGE-ui #39)
 - `is_dirty(stream_dict, aif_path)` — True se stream_id assente, fingerprint cambiato, o file .aif assente
 - `update_after_build(stream_dicts)` — aggiorna manifest con fingerprint correnti
 - `garbage_collect(current_stream_ids, aif_dir, aif_prefix)` — rimuove dal manifest gli stream non più nel YAML; cancella `.aif` orfani
