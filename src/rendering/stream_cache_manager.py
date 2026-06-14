@@ -5,7 +5,8 @@ StreamCacheManager
 Gestisce il caching incrementale degli stream granulari.
 
 Responsabilita':
-- Calcolare il fingerprint SHA-256 del dict YAML raw di ogni stream
+- Calcolare il fingerprint SHA-256 del dict YAML di ogni stream, escludendo
+  le chiavi non-audio (solo/mute, vedi FINGERPRINT_IGNORE_KEYS)
 - Persistere il manifest {stream_id: fingerprint} su disco come JSON
 - Decidere quali stream sono dirty (fingerprint cambiato o .aif assente)
 - Aggiornare il manifest dopo una build riuscita
@@ -20,6 +21,15 @@ import hashlib
 import json
 import os
 from typing import Dict, List, Optional
+
+
+# Chiavi escluse dal fingerprint: cambiano QUALI stream vengono renderizzati
+# (vedi Generator._filter_solo_mute), non il contenuto audio del singolo stem.
+# Includerle marcherebbe lo stem dirty a ogni toggle, forzando re-render inutili.
+# Allineato al lato JS di PGE-ui (backend.js FP_IGNORE). Issue #108.
+# NOTA: 'onset' resta volutamente FUORI da questo set — l'engine lo include
+# nell'hash (divergenza nota e accettata rispetto al JS, PGE-ui #39).
+FINGERPRINT_IGNORE_KEYS = frozenset({"solo", "mute"})
 
 
 class StreamCacheManager:
@@ -44,13 +54,20 @@ class StreamCacheManager:
         La serializzazione usa sort_keys=True per garantire stabilita'
         indipendentemente dall'ordine delle chiavi nel dict.
 
+        Le chiavi in FINGERPRINT_IGNORE_KEYS (solo/mute) vengono escluse: non
+        influenzano l'audio del singolo stem, solo quali stream renderizzare.
+
         Args:
             stream_dict: dict parametri dello stream dallo YAML
 
         Returns:
             Stringa esadecimale SHA-256 di 64 caratteri
         """
-        serialized = json.dumps(stream_dict, sort_keys=True)
+        filtered = {
+            k: v for k, v in stream_dict.items()
+            if k not in FINGERPRINT_IGNORE_KEYS
+        }
+        serialized = json.dumps(filtered, sort_keys=True)
         return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
 
     # =========================================================================

@@ -127,6 +127,71 @@ class TestFingerprintComputation:
 
 
 # =============================================================================
+# 1b. FINGERPRINT — ESCLUSIONE CHIAVI NON-AUDIO (issue #108)
+# =============================================================================
+
+class TestFingerprintIgnoresMuteSolo:
+    """
+    mute/solo cambiano QUALI stream vengono renderizzati (_filter_solo_mute),
+    non il contenuto audio del singolo stem: non devono entrare nel fingerprint.
+    Altrimenti il toggle del flag marca lo stem dirty e forza un re-render inutile.
+
+    Diventato osservabile da quando PGE-ui serializza mute/solo nello YAML
+    (PGE-ui #63). Riallinea l'engine al lato JS (backend.js FP_IGNORE). Issue #108.
+
+    onset resta FUORI scope: l'engine lo include nell'hash (divergenza nota e
+    accettata, PGE-ui #39).
+    """
+
+    def test_solo_presence_does_not_change_fingerprint(self, manager):
+        """Aggiungere solo:true non cambia il fingerprint dello stream."""
+        base = {'stream_id': 's1', 'volume': -6.0, 'sample': 'a.wav'}
+        with_solo = {**base, 'solo': True}
+        assert (
+            manager.compute_fingerprint(base)
+            == manager.compute_fingerprint(with_solo)
+        )
+
+    def test_mute_presence_does_not_change_fingerprint(self, manager):
+        """Aggiungere mute:true non cambia il fingerprint dello stream."""
+        base = {'stream_id': 's1', 'volume': -6.0, 'sample': 'a.wav'}
+        with_mute = {**base, 'mute': True}
+        assert (
+            manager.compute_fingerprint(base)
+            == manager.compute_fingerprint(with_mute)
+        )
+
+    def test_mute_and_solo_together_do_not_change_fingerprint(self, manager):
+        """mute e solo presenti insieme: nessun impatto sul fingerprint."""
+        base = {'stream_id': 's1', 'volume': -6.0}
+        flagged = {**base, 'mute': True, 'solo': True}
+        assert (
+            manager.compute_fingerprint(base)
+            == manager.compute_fingerprint(flagged)
+        )
+
+    def test_audio_field_change_still_changes_fingerprint(self, manager):
+        """Guardia anti-regressione: un campo audio (volume) cambia comunque
+        l'hash, anche con mute presente in entrambi i dict."""
+        d1 = {'stream_id': 's1', 'volume': -6.0, 'mute': True}
+        d2 = {'stream_id': 's1', 'volume': -12.0, 'mute': True}
+        assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
+
+    def test_toggling_mute_does_not_mark_stream_dirty(self, manager, tmp_path):
+        """Dirty-check end-to-end: aggiungere mute non marca lo stem dirty se
+        il fingerprint precedente (senza mute) e' nel manifest e il .aif esiste.
+        Questo e' il sintomo esatto della issue #108."""
+        aif = str(tmp_path / 's1.aif')
+        open(aif, 'w').close()
+        original = {'stream_id': 's1', 'volume': -6.0}
+        # manifest salvato dal render precedente (prima del toggle)
+        manager.save({'s1': manager.compute_fingerprint(original)})
+        # ora l'utente attiva mute: lo YAML su disco contiene mute:true
+        toggled = {**original, 'mute': True}
+        assert manager.is_dirty(toggled, aif_path=aif) is False
+
+
+# =============================================================================
 # 2. CACHE PERSISTENCE
 # =============================================================================
 
