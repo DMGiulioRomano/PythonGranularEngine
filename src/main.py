@@ -316,7 +316,13 @@ def main():
         if per_stream and use_cache:
             cache_manager = getattr(renderer, 'cache_manager', None)
             if cache_manager is not None:
-                current_ids = [s.stream_id for s in generator.streams]
+                # Usa TUTTI gli stream_id del YAML, non solo quelli creati:
+                # solo/mute filtra generator.streams, ma gli stem degli stream
+                # esclusi NON sono orfani e il GC non deve cancellarli.
+                all_stream_dicts = (generator.data or {}).get('streams', [])
+                current_ids = [
+                    s['stream_id'] for s in all_stream_dicts if 'stream_id' in s
+                ]
                 removed = cache_manager.garbage_collect(
                     current_stream_ids=current_ids,
                     aif_dir=os.path.dirname(os.path.abspath(output_file)),
