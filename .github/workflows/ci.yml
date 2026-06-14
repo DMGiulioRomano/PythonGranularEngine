@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: unit tests (py ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      # pytest.ini fornisce: testpaths=tests, addopts=-m "not e2e", pythonpath=. src.
+      # Si invoca pytest diretto (non `make tests`) per usare davvero la versione
+      # della matrix: la detection del Makefile sceglierebbe sempre python3.12.
+      - run: python -m pytest
+
+  e2e:
+    name: e2e tests (csound + numpy + reaper export)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install native deps
+        run: sudo apt-get update && sudo apt-get install -y csound sox
+      - name: generate input sample refs/pino.wav
+        run: sox -n refs/pino.wav synth 3 sine 440
+      # make e2e-tests fa venv-setup (richiesto: gli e2e lanciano `make all`
+      # come subprocess, che usa .venv/bin/python) e poi pytest -m e2e.
+      - name: run e2e suite
+        run: make e2e-tests
+
+  docs:
+    name: docs lint + index check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python utils/build_docs_index.py --check
+      - run: python utils/lint_docs.py
