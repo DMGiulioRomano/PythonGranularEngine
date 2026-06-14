@@ -1137,10 +1137,16 @@ class TestCacheGarbageCollectionInMain:
     - GC riceve yaml_basename come aif_prefix (es. 'PGE_test')
     """
 
-    def _run_with_gc_mock(self, mocks, argv, stream_ids=None):
+    def _run_with_gc_mock(self, mocks, argv, stream_ids=None, yaml_stream_ids=None):
         """
         Helper: esegue main() con cache_manager mockato.
         Restituisce il mock del cache_manager per assert sulle chiamate.
+
+        Args:
+            stream_ids: stream_id degli stream CREATI (generator.streams),
+                cioe' dopo il filtro solo/mute.
+            yaml_stream_ids: stream_id di TUTTI gli stream nel YAML
+                (generator.data['streams']). Se None, coincide con stream_ids.
         """
         cache_manager_mock = MagicMock(name='cache_manager')
         cache_manager_mock.garbage_collect.return_value = []
@@ -1153,6 +1159,16 @@ class TestCacheGarbageCollectionInMain:
                 s.stream_id = sid
                 streams.append(s)
             mocks['generator_instance'].streams = streams
+
+        # Il GC deve basarsi sull'elenco COMPLETO degli stream nel YAML
+        # (generator.data['streams']), non sugli stream creati che solo/mute
+        # filtra.
+        if yaml_stream_ids is None:
+            yaml_stream_ids = stream_ids
+        if yaml_stream_ids is not None:
+            mocks['generator_instance'].data = {
+                'streams': [{'stream_id': sid} for sid in yaml_stream_ids]
+            }
 
         with patch.object(sys, 'argv', argv):
             mocks['main'].main()
@@ -1197,7 +1213,7 @@ class TestCacheGarbageCollectionInMain:
         cm.garbage_collect.assert_not_called()
 
     def test_gc_receives_correct_stream_ids(self, mocks):
-        """GC riceve gli stream_id estratti da generator.streams."""
+        """GC riceve gli stream_id estratti dal YAML completo."""
         cm = self._run_with_gc_mock(
             mocks,
             ['main.py', 'configs/PGE_test.yml', 'out.aif',
@@ -1206,6 +1222,20 @@ class TestCacheGarbageCollectionInMain:
         )
         call_kwargs = cm.garbage_collect.call_args.kwargs
         assert set(call_kwargs['current_stream_ids']) == {'stream1', 'stream2', 'stream3'}
+
+    def test_gc_uses_full_yaml_streams_not_solo_filtered(self, mocks):
+        """REGRESSIONE: in solo/mute mode generator.streams e' filtrato, ma il
+        GC deve usare TUTTI gli stream del YAML. Altrimenti tratta gli stream
+        esclusi da solo/mute come orfani e ne cancella gli stem da output/."""
+        cm = self._run_with_gc_mock(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'],
+            stream_ids=['s2'],                    # solo s2 creato (in solo)
+            yaml_stream_ids=['s1', 's2', 's3'],   # YAML completo
+        )
+        call_kwargs = cm.garbage_collect.call_args.kwargs
+        assert set(call_kwargs['current_stream_ids']) == {'s1', 's2', 's3'}
 
     def test_gc_receives_yaml_basename_as_prefix(self, mocks):
         """GC riceve yaml_basename ('PGE_test') come aif_prefix."""
