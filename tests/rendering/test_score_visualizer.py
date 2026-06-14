@@ -166,6 +166,18 @@ def gap_scene():
     ]
 
 
+def issue_109_shared_sample_scene():
+    """Caso PGE_pino2.yml (issue #109): 4 stream, tutti onset 0, di cui due
+    (texture2 e stream3) condividono lo stesso sample. Pre-fix: 3 subplot
+    (un sample unico ciascuno) e label di texture2 sovrascritta da stream3."""
+    return [
+        make_stream('texture2', onset=0.0, duration=20.0, sample='001-0_0-3_0.wav'),
+        make_stream('texture3', onset=0.0, duration=20.0, sample='001-29_5-7_5.wav'),
+        make_stream('stream3',  onset=0.0, duration=20.0, sample='001-0_0-3_0.wav'),
+        make_stream('stream4',  onset=0.0, duration=20.0, sample='001-8_5-4_5.wav'),
+    ]
+
+
 # =============================================================================
 # GROUP 1 - Pipeline analyze → render_all (scenario singolo stream)
 # =============================================================================
@@ -480,10 +492,18 @@ class TestConfigPropagation:
 
 
 # =============================================================================
-# GROUP 9 - Multi-sample subplot layout
+# GROUP 9 - Subplot layout: un subplot per STREAM (issue #109)
 # =============================================================================
 
-class TestMultiSampleLayout:
+class TestPerStreamLayout:
+    """issue #109 - il visualizer deve produrre un subplot per ogni STREAM, non
+    per sample unico. Stream che condividono lo stesso sample ottengono subplot
+    separati (waveform ridisegnata in ciascuno); le label non collidono piu'."""
+
+    @staticmethod
+    def _wave_axes(fig):
+        """Assi waveform: uno per subplot/stream (ylabel 'Sample (s)\\n<path>')."""
+        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Sample (s)')]
 
     def test_two_different_samples_produce_at_least_two_axes(self):
         viz = make_viz(two_sample_scene(), config={'page_duration': 30.0})
@@ -492,19 +512,57 @@ class TestMultiSampleLayout:
             fig = viz.render_page(0)
         assert len(fig.axes) >= 2
 
-    def test_two_streams_same_sample_on_single_subplot(self):
+    def test_two_streams_same_sample_produce_two_subplots(self):
+        """Due stream sullo stesso sample → due subplot separati, non piu'
+        collassati in uno solo dal raggruppamento per sample path."""
         viz = make_viz(two_stream_single_sample_scene(),
                        config={'page_duration': 40.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             viz.analyze()
-            fig1 = viz.render_page(0)
-        two_sample_viz = make_viz(two_sample_scene(),
-                                  config={'page_duration': 40.0})
+            fig = viz.render_page(0)
+        assert len(self._wave_axes(fig)) == 2
+
+    def test_subplot_count_equals_stream_count_not_sample_count(self):
+        """Caso PGE_pino2.yml: 4 stream di cui 2 condividono il sample → 4
+        subplot (pre-fix: 3, uno per sample unico)."""
+        viz = make_viz(issue_109_shared_sample_scene(),
+                       config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
-            two_sample_viz.analyze()
-            fig2 = two_sample_viz.render_page(0)
-        # due sample → piu' assi della versione con un solo sample
-        assert len(fig2.axes) >= len(fig1.axes)
+            viz.analyze()
+            fig = viz.render_page(0)
+        assert len(self._wave_axes(fig)) == 4
+
+    def test_each_stream_gets_its_own_subplot(self):
+        """Generale: N stream tutti su sample distinti → N subplot (invariato
+        rispetto al raggruppamento, ma ora garantito dal conteggio stream)."""
+        viz = make_viz(two_sample_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        assert len(self._wave_axes(fig)) == 2
+
+    def test_shared_sample_stream_labels_do_not_collide(self):
+        """Root cause #2: con un subplot per stream ogni label vive su un asse
+        dedicato — due stream con stesso sample e stesso onset non si
+        sovrascrivono piu'."""
+        streams = issue_109_shared_sample_scene()
+        ids = {s.stream_id for s in streams}
+        viz = make_viz(streams, config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        # Per ogni asse, le label-stream presenti come testo.
+        label_sets = []
+        for ax in fig.axes:
+            here = {t.get_text() for t in ax.texts if t.get_text() in ids}
+            if here:
+                label_sets.append(here)
+        # Ogni stream_id compare almeno una volta.
+        assert set().union(*label_sets) == ids
+        # Nessun asse porta piu' di una label-stream (niente collisione).
+        assert all(len(s) == 1 for s in label_sets)
+        # Una label-bearing axis per stream (un subplot per stream).
+        assert len(label_sets) == len(streams)
 
     def test_slot_assignments_populated_for_all_active_streams(self):
         streams = two_stream_single_sample_scene()

@@ -480,7 +480,13 @@ class ScoreVisualizer:
     # =========================================================================
 
     def render_page(self, page_idx):
-        """Renderizza pagina con subplot separati per ogni SAMPLE (non per stream)."""
+        """Renderizza pagina con subplot separati per ogni STREAM (non per sample).
+
+        issue #109: ogni stream ottiene il proprio subplot anche quando piu'
+        stream condividono lo stesso sample (la waveform viene ridisegnata in
+        ciascuno). Cosi' 4 stream producono 4 subplot anche se due puntano allo
+        stesso file, e le label non collidono piu' su un asse condiviso.
+        """
         
         layout = self.page_layouts[page_idx]
         page_start, page_end = layout['time_range']
@@ -500,19 +506,15 @@ class ScoreVisualizer:
         has_envelopes = any(self._get_stream_envelopes(s) for s in active_streams)
         
         # =========================================================================
-        # RAGGRUPPA STREAM PER SAMPLE_PATH
+        # UN SUBPLOT PER STREAM (issue #109)
         # =========================================================================
-        samples_dict = {}
-        for stream in active_streams:
-            path = stream.sample
-            if path not in samples_dict:
-                samples_dict[path] = []
-            samples_dict[path].append(stream)
-        
-        # Numero subplot = numero di sample unici
-        n_samples = len(samples_dict)
-        
-        if n_samples == 0:
+        # Niente raggruppamento per sample: ogni stream ha il proprio subplot.
+        # Stream che condividono lo stesso sample ottengono subplot separati e la
+        # waveform viene ridisegnata in ciascuno (ridondanza accettabile per
+        # leggibilita'); _load_waveform fa cache, quindi nessun re-read del file.
+        n_streams = len(active_streams)
+
+        if n_streams == 0:
             # Pagina vuota
             ax = fig.add_subplot(111)
             ax.text(0.5, 0.5, "Nessuno stream attivo",
@@ -530,17 +532,17 @@ class ScoreVisualizer:
         waveform_ratio = self.config['waveform_width_ratio']
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
         
-        # Altezza per sample (divisa equamente)
+        # Altezza per stream (divisa equamente)
         stream_total_ratio = 1.0 - envelope_ratio
-        sample_row_height = stream_total_ratio / n_samples
-        
+        stream_row_height = stream_total_ratio / n_streams
+
         # Crea height_ratios
         if has_envelopes:
-            height_ratios = [sample_row_height] * n_samples + [envelope_ratio]
-            n_rows = n_samples + 1
+            height_ratios = [stream_row_height] * n_streams + [envelope_ratio]
+            n_rows = n_streams + 1
         else:
-            height_ratios = [sample_row_height] * n_samples
-            n_rows = n_samples
+            height_ratios = [stream_row_height] * n_streams
+            n_rows = n_streams
         
         # GridSpec: n_rows righe × 2 colonne
         gs = fig.add_gridspec(
@@ -548,7 +550,7 @@ class ScoreVisualizer:
             width_ratios=[waveform_ratio, 1 - waveform_ratio],
             height_ratios=height_ratios,
             wspace=0.02,
-            hspace=0.0  # gap verticale tra sample
+            hspace=0.0  # gap verticale tra stream
         )
         
         # Margini
@@ -561,33 +563,34 @@ class ScoreVisualizer:
         )
         
         # =========================================================================
-        # DISEGNA SUBPLOT PER OGNI SAMPLE
+        # DISEGNA UN SUBPLOT PER OGNI STREAM
         # =========================================================================
-        for i, (sample_path, streams) in enumerate(samples_dict.items()):
-            # Crea subplot per questo sample
+        for i, stream in enumerate(active_streams):
+            # Crea subplot per questo stream
             ax_wave = fig.add_subplot(gs[i, 0])
             ax_grain = fig.add_subplot(gs[i, 1])
-            
-            # Ottieni durata sample
-            sample_duration = self._get_sample_duration(sample_path)
-            
-            # Disegna waveform UNA VOLTA (usa il primo stream solo per il path)
-            self._draw_waveform_full(ax_wave, streams[0], sample_duration)
-            
-            # Range colore pitch auto-zoomato sul subplot (tutti gli stream)
-            cents_range = self._compute_pitch_color_range(
-                streams, page_start, page_end)
 
-            # Disegna grani di TUTTI gli stream che usano questo sample
-            for stream in streams:
-                self._draw_loop_mask(ax_grain, stream, page_start, page_end, sample_duration)
-                self._draw_grains_full(ax_grain, stream, sample_duration,
-                                    page_start, page_end, cents_range)
-                self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
+            # Sample e durata dello stream corrente
+            sample_path = stream.sample
+            sample_duration = self._get_sample_duration(sample_path)
+
+            # Disegna waveform del sample dello stream (ridisegnata per ogni
+            # subplot anche se il sample e' condiviso; _load_waveform fa cache).
+            self._draw_waveform_full(ax_wave, stream, sample_duration)
+
+            # Range colore pitch auto-zoomato sui grani di questo stream
+            cents_range = self._compute_pitch_color_range(
+                [stream], page_start, page_end)
+
+            # Disegna grani, loop mask e label dello stream
+            self._draw_loop_mask(ax_grain, stream, page_start, page_end, sample_duration)
+            self._draw_grains_full(ax_grain, stream, sample_duration,
+                                   page_start, page_end, cents_range)
+            self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
 
             # Legenda della scala colore pitch (auto-zoomata o fissa)
             self._add_pitch_colorbar(fig, ax_grain, cents_range,
-                                     streams, page_start, page_end)
+                                     [stream], page_start, page_end)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
@@ -605,8 +608,8 @@ class ScoreVisualizer:
             ax_grain.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
             ax_grain.grid(True, alpha=0.3, linestyle='--')
             
-            # X label solo sull'ultimo sample (se non ci sono envelope)
-            if i == n_samples - 1 and not has_envelopes:
+            # X label solo sull'ultimo stream (se non ci sono envelope)
+            if i == n_streams - 1 and not has_envelopes:
                 ax_grain.set_xlabel("Tempo (s)", fontsize=self.config['label_fontsize'])
             else:
                 ax_grain.set_xticklabels([])
@@ -615,7 +618,7 @@ class ScoreVisualizer:
         # SUBPLOT ENVELOPE (se presenti)
         # =========================================================================
         if has_envelopes:
-            ax_env = fig.add_subplot(gs[n_samples, 1])
+            ax_env = fig.add_subplot(gs[n_streams, 1])
 
             # Layout condiviso lane/legenda (issue #91): stesso ordinamento e
             # stesse y, cosi' la legenda non appare mirrorata rispetto alle curve.
@@ -661,7 +664,7 @@ class ScoreVisualizer:
 
             # Legenda envelope (per-lane, allineata alle curve — issue #91)
             if legend_entries:
-                ax_legend = fig.add_subplot(gs[n_samples, 0])
+                ax_legend = fig.add_subplot(gs[n_streams, 0])
                 self._draw_envelope_legend(ax_legend, legend_entries)
         # =========================================================================
         # TITOLO
