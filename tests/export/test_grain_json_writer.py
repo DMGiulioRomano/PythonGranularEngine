@@ -7,12 +7,13 @@ visualizzazione (PGE-ui). Un file per stream.
 
 Schema JSON prodotto (compatto, senza whitespace):
   {"stream_id":"s1","duration":8.0,"num_voices":4,
-   "grains":[{"t":0.0,"dur":0.08,"vol":-6.0,"ptr":0.34,"v":0}, ...]}
+   "grains":[{"t":0.0,"dur":0.08,"vol":-6.0,"ptr":0.34,"pr":1.0,"v":0}, ...]}
 
   - t   = grain.onset - stream.onset  (relativo allo stream; puo' essere < 0)
   - dur = grain.duration
   - vol = grain.volume
   - ptr = grain.pointer_pos
+  - pr  = grain.pitch_ratio  (cents = 1200*log2(pr))
   - v   = indice voce (da stream.voices)
   grains ordinati per t crescente.
 
@@ -36,12 +37,13 @@ from export.grain_json_writer import GrainJsonWriter
 # FIXTURES
 # =============================================================================
 
-def _make_grain(onset, duration=0.08, volume=-6.0, pointer_pos=0.0):
+def _make_grain(onset, duration=0.08, volume=-6.0, pointer_pos=0.0, pitch_ratio=1.0):
     g = Mock()
     g.onset = onset
     g.duration = duration
     g.volume = volume
     g.pointer_pos = pointer_pos
+    g.pitch_ratio = pitch_ratio
     return g
 
 
@@ -131,6 +133,12 @@ class TestGrainMapping:
                               voices=[[_make_grain(0.0, pointer_pos=0.42)]])
         data = writer.build(stream)
         assert data["grains"][0]["ptr"] == pytest.approx(0.42)
+
+    def test_pr_maps_pitch_ratio(self, writer):
+        stream = _make_stream("s1", onset=0.0, duration=4.0,
+                              voices=[[_make_grain(0.0, pitch_ratio=1.5)]])
+        data = writer.build(stream)
+        assert data["grains"][0]["pr"] == pytest.approx(1.5)
 
     def test_voice_index_recorded(self, writer):
         """Il campo v corrisponde all'indice della voce in stream.voices."""

@@ -17,7 +17,7 @@ Schema JSON prodotto (compatto, senza whitespace):
     "duration": 8.0,
     "num_voices": 4,
     "grains": [
-      {"t": 0.0, "dur": 0.08, "vol": -6.0, "ptr": 0.34, "v": 0},
+      {"t": 0.0, "dur": 0.08, "vol": -6.0, "ptr": 0.34, "pr": 1.0, "v": 0},
       ...
     ]
   }
@@ -28,6 +28,8 @@ Campi grano:
   dur = grain.duration
   vol = grain.volume
   ptr = grain.pointer_pos  (unita' variabile per stream: secondi o frazione)
+  pr  = grain.pitch_ratio  (consumato da PGE-ui per colorare i grani per pitch;
+        cents = 1200*log2(pr))
   v   = indice voce (da stream.voices)
 
 I grani sono ordinati per t crescente. num_voices riflette il numero di voci
@@ -65,6 +67,7 @@ class GrainJsonWriter:
                     "dur": grain.duration,
                     "vol": grain.volume,
                     "ptr": grain.pointer_pos,
+                    "pr": grain.pitch_ratio,
                     "v": voice_index,
                 })
 
