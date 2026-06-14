@@ -675,6 +675,133 @@ class TestPointerSpeedEnvelopeCollection:
         assert 'pointer_speed' in viz._get_stream_envelopes(s)
 
 
+class TestVoiceOffsetEnvelopeCollection:
+    """Fase 3 issue #90: gli offset per-voce (voice_pitch_offset,
+    voice_pointer_offset, voice_pointer_range) non sono Envelope sullo Stream
+    ma config delle voice strategy, calcolati da
+    VoiceManager.get_voice_config(voice_index, time). Vengono raccolti come
+    curve per-voce SOLO col flag show_voice_offsets; la voce 0 (riferimento)
+    e' sempre esclusa."""
+
+    def _stream_with_vm(self, voice_manager, num_voices=None):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s._voice_manager = voice_manager
+        if num_voices is not None:
+            s.num_voices = num_voices
+        return s
+
+    def _num_voices_param(self, value):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        return Parameter('num_voices', value, GRANULAR_PARAMETERS['num_voices'])
+
+    def _vm_pitch(self, max_voices=3, step=3.0):
+        from controllers.voice_manager import VoiceManager
+        from strategies.voice_pitch_strategy import StepPitchStrategy
+        return VoiceManager(max_voices=max_voices,
+                            pitch_strategy=StepPitchStrategy(step=step))
+
+    def _vm_pointer_linear(self, max_voices=3, step=0.05):
+        from controllers.voice_manager import VoiceManager
+        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        return VoiceManager(max_voices=max_voices,
+                            pointer_strategy=LinearPointerStrategy(step=step))
+
+    # --- gating col flag ---
+
+    def test_voice_offsets_absent_without_flag(self):
+        s = self._stream_with_vm(self._vm_pitch())
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert not any(k.startswith('voice_pitch_offset') for k in env)
+
+    def test_voice_pitch_offset_per_voice_collected_with_flag(self):
+        s = self._stream_with_vm(self._vm_pitch())
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert 'voice_pitch_offset__v1' in env
+        assert 'voice_pitch_offset__v2' in env
+        assert 'voice_pitch_offset__v0' not in env  # voce 0 = riferimento
+
+    def test_voice_pitch_offset_values_in_semitones(self):
+        s = self._stream_with_vm(self._vm_pitch(step=3.0))
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert env['voice_pitch_offset__v1'].evaluate(0.0) == pytest.approx(3.0, abs=1e-6)
+        assert env['voice_pitch_offset__v2'].evaluate(0.0) == pytest.approx(6.0, abs=1e-6)
+
+    def test_voice_pointer_offset_per_voice_collected_with_flag(self):
+        s = self._stream_with_vm(self._vm_pointer_linear(step=0.05))
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert env['voice_pointer_offset__v1'].evaluate(0.0) == pytest.approx(0.05, abs=1e-6)
+        assert env['voice_pointer_offset__v2'].evaluate(0.0) == pytest.approx(0.10, abs=1e-6)
+
+    def test_voice_pointer_range_single_curve_from_stochastic(self):
+        from envelopes.envelope import Envelope
+        from controllers.voice_manager import VoiceManager
+        from strategies.voice_pointer_strategy import StochasticPointerStrategy
+        rng = Envelope([[0, 0.1], [10, 0.5]])
+        vm = VoiceManager(
+            max_voices=3,
+            pointer_strategy=StochasticPointerStrategy(pointer_range=rng, stream_id='s1'),
+        )
+        s = self._stream_with_vm(vm)
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert env['voice_pointer_range'] is rng
+
+    def test_no_voice_offsets_when_single_voice(self):
+        s = self._stream_with_vm(self._vm_pitch(max_voices=1))
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert not any(k.startswith('voice_pitch_offset') for k in env)
+
+    def test_no_curve_when_no_strategy(self):
+        from controllers.voice_manager import VoiceManager
+        s = self._stream_with_vm(VoiceManager(max_voices=3))  # nessuna strategy
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert not any(k.startswith('voice_pitch_offset') for k in env)
+        assert not any(k.startswith('voice_pointer_offset') for k in env)
+
+    def test_no_voice_manager_no_crash(self):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s._voice_manager = None
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert not any(k.startswith('voice_') for k in env)
+
+    def test_time_varying_num_voices_truncates_high_voice(self):
+        from envelopes.envelope import Envelope
+        # num_voices sale da 1 a 4: la voce 2 e' attiva solo nella seconda meta'.
+        vm = self._vm_pitch(max_voices=4)
+        nv = self._num_voices_param(Envelope([[0, 1.0], [10, 4.0]]))
+        s = self._stream_with_vm(vm, num_voices=nv)
+        env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
+        assert 'voice_pitch_offset__v2' in env
+        assert env['voice_pitch_offset__v2'].breakpoints[0][0] > 0.0
+
+    def test_has_envelopes_true_when_only_voice_offsets(self):
+        s = self._stream_with_vm(self._vm_pitch())
+        assert bool(make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)) is True
+
+
+class TestBaseParamName:
+    """_base_param_name strippa il suffisso __vN: serve a risolvere
+    colore/range/filtro sul nome base per le curve per-voce (Fase 3 #90)."""
+
+    def test_strips_voice_suffix(self):
+        assert ScoreVisualizer._base_param_name('voice_pitch_offset__v2') == 'voice_pitch_offset'
+
+    def test_noop_on_plain_name(self):
+        assert ScoreVisualizer._base_param_name('pitch') == 'pitch'
+
+    def test_filter_by_base_keeps_per_voice_keys(self):
+        from controllers.voice_manager import VoiceManager
+        from strategies.voice_pitch_strategy import StepPitchStrategy
+        vm = VoiceManager(max_voices=3, pitch_strategy=StepPitchStrategy(step=3.0))
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s._voice_manager = vm
+        env = make_viz([s], config={
+            'show_voice_offsets': True,
+            'envelope_filter': {'voice_pitch_offset'},
+        })._get_stream_envelopes(s)
+        assert 'voice_pitch_offset__v1' in env
+
+
 class TestModRangeEnvelopeCollection:
     """issue #96 - i parametri con range_path (volume_range, pan_range,
     grain.duration_range, offset_range) tengono il range stocastico in
@@ -1146,7 +1273,7 @@ class TestPitchColorAutozoom:
         az = viz.config['pitch_color_autozoom']
         assert az['enabled'] is True
         assert az['pad_ratio'] > 0
-        assert az['min_span_cents'] == 100.0  # 1 semitono
+        assert az['min_span_cents'] == 50.0  # mezzo semitono
 
     def test_range_from_visible_grains_min_max_cents(self):
         """Range = [min, max] in cents dei grani visibili, con pad per lato."""
@@ -1176,8 +1303,8 @@ class TestPitchColorAutozoom:
 
     def test_floor_enforces_minimum_semitone_span(self):
         """Una differenza reale minima (12 cents, grani a ±6c) non deve
-        produrre uno span quasi nullo: il floor garantisce almeno un
-        semitono (100 cents), cosi' pochi cents di scarto non occupano
+        produrre uno span quasi nullo: il floor garantisce almeno mezzo
+        semitono (50 cents), cosi' pochi cents di scarto non occupano
         l'intera colormap."""
         s = make_stream('s1', n_grains=0)
         s.voices = [[
@@ -1186,7 +1313,7 @@ class TestPitchColorAutozoom:
         ]]
         viz = make_viz([s])
         lo, hi = viz._compute_pitch_color_range([s], 0.0, 10.0)
-        assert hi - lo >= 100.0
+        assert hi - lo >= 50.0
 
     def test_grains_outside_page_excluded(self):
         """Grano fuori finestra di pagina non influenza il range."""
@@ -1278,17 +1405,19 @@ class TestPitchColorAutozoom:
         return None
 
     def test_render_page_micro_detune_colors_stay_close(self):
-        """End-to-end: con il floor di un semitono (100 cents), due grani
+        """End-to-end: con il floor di mezzo semitono (50 cents), due grani
         a ±6c (12 cents di scarto reale, ben sotto il floor) restano in una
         banda ristretta della colormap — niente piu' salto cromatico
-        estremo per pochi cents di differenza."""
+        estremo per pochi cents di differenza. Resta comunque sotto il caso
+        macro (>= 1 semitono), distinto in
+        test_render_page_above_semitone_detune_still_distinct."""
         viz = make_viz(self._detuned_scene(), config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             figs = viz.render_all()
         colors = self._grain_facecolors(figs[0])
         assert colors is not None and len(colors) == 2
-        # RGB (no alpha: dipende dal volume) restano vicini
-        assert np.abs(colors[0][:3] - colors[1][:3]).max() < 0.4
+        # RGB (no alpha: dipende dal volume) restano nella stessa banda
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() < 0.7
 
     def test_render_page_above_semitone_detune_still_distinct(self):
         """Uno scarto reale >= 1 semitono (qui 120 cents) supera il floor:

@@ -38,6 +38,11 @@ ifeq ($(SHOWSTATIC), true)
 PYFLAGS += --show-static
 endif
 
+# 2a. Se SHOWVOICEOFFSETS e' true, aggiungi --show-voice-offsets (issue #90)
+ifeq ($(SHOWVOICEOFFSETS), true)
+PYFLAGS += --show-voice-offsets
+endif
+
 # 2b. Se PLOT_ENVELOPES e' non-vuoto, aggiungi --plot-envelopes (issue #101)
 ifneq ($(strip $(PLOT_ENVELOPES)),)
 PYFLAGS += --plot-envelopes $(PLOT_ENVELOPES)
