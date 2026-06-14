@@ -369,6 +369,15 @@ def main():
                 grain_json_dir = os.path.dirname(os.path.abspath(output_file))
                 writer = GrainJsonWriter()
                 for stream in generator.streams:
+                    # Generazione lazy (issue #117): scrivi il grain JSON solo
+                    # per gli stream i cui grani sono stati davvero materializzati
+                    # dal render. Gli stream cache-clean restano generated=False
+                    # (renderer short-circuita su is_dirty) e mantengono il loro
+                    # grain JSON precedente, ancora valido. Senza cache tutti gli
+                    # stream vengono renderizzati → tutti generated=True → tutti
+                    # i JSON scritti come prima.
+                    if not stream.generated:
+                        continue
                     json_path = writer.write(stream, grain_json_dir, yaml_basename)
                     print(f"Grain JSON: {json_path}")
 

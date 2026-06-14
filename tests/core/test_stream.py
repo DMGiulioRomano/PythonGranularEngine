@@ -544,8 +544,11 @@ class TestStreamInit:
 
             assert s.stream_id == 'test_stream'
             assert s.duration == 2.0
-            assert s.voices == []
-            assert s.grains == []
+            # Contratto lazy: la costruzione NON genera i grani. Si ispezionano i
+            # backing field grezzi, non le property voices/grains, che innescano
+            # generate_grains() al primo accesso.
+            assert s._voices == []
+            assert s._grains == []
             assert s.generated is False
             assert s.sample_table_num is None
             assert s.envelope_table_num is None
@@ -556,6 +559,89 @@ class TestStreamInit:
         del params['sample']
         with pytest.raises(ValueError, match="sample"):
             Stream(params)
+
+
+# =============================================================================
+# 5b. TEST GENERAZIONE LAZY DEI GRANI (issue #117)
+# =============================================================================
+
+class TestLazyGrainGeneration:
+    """
+    Contratto lazy: i grani si materializzano alla PRIMA lettura di
+    .voices/.grains, non alla costruzione. Questo permette al Generator di
+    non generare i grani per gli stream cache-clean (il renderer short-circuita
+    su is_dirty prima di leggere .voices), realizzando il risparmio di #117.
+    """
+
+    def test_accessing_voices_triggers_generation(self, stream_factory):
+        """Leggere .voices su uno stream non generato innesca generate_grains."""
+        s = stream_factory(duration=1.0, inter_onset=0.1)
+        assert s.generated is False
+
+        voices = s.voices
+
+        assert s.generated is True
+        assert len(voices) == 1            # max_voices=1
+        assert len(voices[0]) > 0
+
+    def test_accessing_grains_triggers_generation(self, stream_factory):
+        """Leggere .grains su uno stream non generato innesca generate_grains."""
+        s = stream_factory(duration=0.5, inter_onset=0.1)
+        assert s.generated is False
+
+        grains = s.grains
+
+        assert s.generated is True
+        assert len(grains) > 0
+
+    def test_voices_memoized_single_generation(self, stream_factory):
+        """Accessi multipli a .voices generano i grani una sola volta."""
+        s = stream_factory(duration=0.5, inter_onset=0.1)
+
+        calls = []
+        original = s.generate_grains
+
+        def counting():
+            calls.append(1)
+            return original()
+
+        s.generate_grains = counting
+
+        first = s.voices
+        second = s.voices
+
+        assert len(calls) == 1
+        assert first is second
+
+    def test_repr_does_not_trigger_generation(self, stream_factory):
+        """__repr__ NON deve materializzare i grani.
+
+        _create_streams stampa {stream} per ogni stream: se __repr__ leggesse la
+        property .grains, rigenererebbe tutti gli stream annullando il risparmio.
+        """
+        s = stream_factory(duration=0.5, inter_onset=0.1)
+
+        r = repr(s)
+
+        assert s.generated is False
+        assert 'test_stream' in r
+
+    def test_explicit_generate_then_access_no_regeneration(self, stream_factory):
+        """Dopo generate_grains() esplicita, leggere .voices non rigenera."""
+        s = stream_factory(duration=0.5, inter_onset=0.1)
+        s.generate_grains()
+
+        calls = []
+        original = s.generate_grains
+
+        def counting():
+            calls.append(1)
+            return original()
+
+        s.generate_grains = counting
+        _ = s.voices
+
+        assert len(calls) == 0
 
     def test_null_sample_raises_value_error(self):
         """Stream con sample: null -> ValueError leggibile."""

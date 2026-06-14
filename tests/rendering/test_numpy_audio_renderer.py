@@ -581,6 +581,42 @@ class TestNumpyAudioRendererCache:
 
         assert mtime_second > mtime_first
 
+    def test_clean_stream_does_not_access_voices(self, sample_registry, window_registry, table_map, tmp_path):
+        """Guard #117: su cache-hit il renderer ritorna PRIMA di leggere .voices.
+
+        E' l'invariante che rende reale il risparmio della generazione lazy: se
+        lo stream e' clean i grani non vengono mai materializzati, perche' il
+        renderer short-circuita su is_dirty prima di toccare .voices.
+        """
+        cache_path = tmp_path / 'cache.json'
+        r = self._make_renderer_with_cache(cache_path, sample_registry, window_registry, table_map)
+        output_path = str(tmp_path / 's1.aif')
+
+        class _AccessSpyStream:
+            def __init__(self, voices):
+                self.stream_id = 's1'
+                self.onset = 0.0
+                self.duration = 0.2
+                self.sample = 'piano.wav'
+                self._voices = voices
+                self.voices_access_count = 0
+
+            @property
+            def voices(self):
+                self.voices_access_count += 1
+                return self._voices
+
+        stream = _AccessSpyStream([[make_grain(onset=0.0, duration=0.05)]])
+
+        # Prima build: dirty → renderizza, accede a .voices
+        r.render_single_stream(stream, output_path)
+        assert stream.voices_access_count >= 1
+
+        # Seconda build: clean → NON deve accedere a .voices
+        stream.voices_access_count = 0
+        r.render_single_stream(stream, output_path)
+        assert stream.voices_access_count == 0
+
 
 # =============================================================================
 # 8. TEST PASSTHROUGH BUFFER (Plan 002)

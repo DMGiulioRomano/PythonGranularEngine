@@ -223,10 +223,13 @@ class Generator:
             # 3. Pre-registra tutte le finestre possibili
             # CHIAMATA QUI ↓
             stream.window_table_map = self._register_stream_windows(stream_data)
-            
-            # 4. Genera grani
-            stream.generate_grains()
-            
+
+            # 4. Generazione grani LAZY (issue #117): NON si chiama qui
+            # generate_grains(). I grani si materializzano al primo accesso a
+            # stream.voices/.grains (renderer dirty, visualizer, export). Gli
+            # stream cache-clean, che il renderer salta su is_dirty prima di
+            # leggere .voices, non generano mai i grani. Tabelle e costruzione
+            # Stream restano invece eager (numerazione FtableManager).
             self.streams.append(stream)
             print(f"  → Stream '{stream.stream_id}': {stream}")
     

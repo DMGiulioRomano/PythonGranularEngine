@@ -1456,3 +1456,60 @@ class TestFormatFlag:
         naming = engine_call_kwargs.get('naming_strategy')
         assert naming is not None
         assert naming.ext == '.wav'
+
+# =============================================================================
+# TEST GRAIN JSON: solo per stream con grani materializzati (issue #117)
+# =============================================================================
+
+class TestGrainJsonOnlyGeneratedStreams:
+    """
+    Con generazione lazy, il loop grain JSON deve scrivere il sidecar SOLO per
+    gli stream i cui grani sono stati davvero materializzati dal render
+    (stream.generated True). Gli stream cache-clean non vengono renderizzati
+    (renderer short-circuita su is_dirty), restano generated False e il loro
+    grain JSON precedente non va riscritto.
+    """
+
+    def _make_stream(self, stream_id, generated):
+        s = MagicMock()
+        s.stream_id = stream_id
+        s.generated = generated
+        return s
+
+    def test_grain_json_written_only_for_generated_streams(self, mocks):
+        s_gen = self._make_stream('s1', generated=True)
+        s_clean = self._make_stream('s2', generated=False)
+        mocks['generator_instance'].streams = [s_gen, s_clean]
+
+        writer_instance = MagicMock()
+        writer_instance.write.return_value = '/out/x__s1__grains.json'
+        gjw_cls = MagicMock(return_value=writer_instance)
+        gjw_mod = types.ModuleType('export.grain_json_writer')
+        gjw_mod.GrainJsonWriter = gjw_cls
+
+        with patch.dict(sys.modules, {'export.grain_json_writer': gjw_mod}):
+            run_main(mocks, ['main.py', 'in.yml', '/out/test.aif',
+                             '--per-stream', '--grain-json'])
+
+        written_streams = [c.args[0] for c in writer_instance.write.call_args_list]
+        assert s_gen in written_streams
+        assert s_clean not in written_streams
+
+    def test_grain_json_written_for_all_when_all_generated(self, mocks):
+        s1 = self._make_stream('s1', generated=True)
+        s2 = self._make_stream('s2', generated=True)
+        mocks['generator_instance'].streams = [s1, s2]
+
+        writer_instance = MagicMock()
+        writer_instance.write.return_value = '/out/x__grains.json'
+        gjw_cls = MagicMock(return_value=writer_instance)
+        gjw_mod = types.ModuleType('export.grain_json_writer')
+        gjw_mod.GrainJsonWriter = gjw_cls
+
+        with patch.dict(sys.modules, {'export.grain_json_writer': gjw_mod}):
+            run_main(mocks, ['main.py', 'in.yml', '/out/test.aif',
+                             '--per-stream', '--grain-json'])
+
+        written_streams = [c.args[0] for c in writer_instance.write.call_args_list]
+        assert s1 in written_streams
+        assert s2 in written_streams
