@@ -52,6 +52,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 |------|-------|---------|----------------|---------|
 | `--visualize` | `-v` | off | `AUTOVISUAL` | esporta partitura grafica PDF accanto all'output |
 | `--show-static` | `-s` | off | `SHOWSTATIC` | include i parametri statici nella partitura |
+| `--show-voice-offsets` | — | off | `SHOWVOICEOFFSETS` | disegna gli offset per-voce nella partitura: una curva per voce per `voice_pitch_offset` e `voice_pointer_offset`, piu' la curva singola di `voice_pointer_range` (vedi [[yaml]] blocco `voices`) |
 | `--per-stream` | `-p` | off | `STEMS` | un file audio per stream (stems) invece del mix singolo |
 | `--cache` | — | off | `CACHE` | build incrementale per stream (richiede `--per-stream`, vedi [[caching]]) |
 | `--reaper` | — | off | `REAPER` | esporta progetto Reaper `.rpp` (vedi [[reaper]]) |
@@ -94,6 +95,10 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (il renderer numpy non produce `.sco`).
 - **`--show-static`** ha effetto solo insieme a `--visualize`.
+- **`--show-voice-offsets`** ha effetto solo insieme a `--visualize`. Gli
+  offset per-voce vengono campionati dalle voice strategy
+  (`VoiceManager.get_voice_config`) e disegnati come una curva per voce
+  (voce 0 = riferimento, esclusa). Gating indipendente da `--show-static`.
 - **`--plot-envelopes`** ha effetto solo insieme a `--visualize`; la
   validazione dei nomi avviene comunque (nome ignoto → exit 1 anche senza
   `--visualize`). Il filtro è ortogonale a `--show-static`: un parametro

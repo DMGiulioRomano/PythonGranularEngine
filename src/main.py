@@ -122,7 +122,8 @@ def main():
     if len(sys.argv) < 2:
         print(
             "Uso: python main.py <file.yml> [output.aif] "
-            "[--visualize] [--show-static] [--plot-envelopes nomi,csv] "
+            "[--visualize] [--show-static] [--show-voice-offsets] "
+            "[--plot-envelopes nomi,csv] "
             "[--page-duration SECONDI] "
             "[--per-stream] "
             "[--renderer csound|numpy] "
@@ -146,6 +147,9 @@ def main():
 
     do_visualize = '--visualize' in sys.argv or '-v' in sys.argv
     show_static = '--show-static' in sys.argv or '-s' in sys.argv
+    # --show-voice-offsets: disegna gli offset per-voce (una curva per voce)
+    # nella partitura. Issue #90, Fase 3. Ha effetto solo con --visualize.
+    show_voice_offsets = '--show-voice-offsets' in sys.argv
 
     # --page-duration SECONDI: durata (secondi) di una pagina della partitura.
     page_duration = 15.0
@@ -368,6 +372,7 @@ def main():
             viz = ScoreVisualizer(generator, config={
                 'page_duration': page_duration,
                 'show_static_params': show_static,
+                'show_voice_offsets': show_voice_offsets,
                 'envelope_filter': plot_envelopes,
             })
             viz.export_pdf(pdf_file)

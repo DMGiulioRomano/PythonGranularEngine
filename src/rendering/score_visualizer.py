@@ -10,6 +10,7 @@ from matplotlib.colors import Normalize
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import soundfile as sf
+import re
 from math import ceil
 
 # Path samples (stesso del progetto)
@@ -86,6 +87,11 @@ class ScoreVisualizer:
         default_config = {
             # Se True, mostra anche i valori costanti
             'show_static_params': False,
+            # Se True, disegna gli offset per-voce (voice_pitch_offset /
+            # voice_pointer_offset come una curva per voce, voice_pointer_range
+            # come curva singola dello spread). Fase 3 issue #90. Gating
+            # indipendente da show_static_params.
+            'show_voice_offsets': False,
             # Filtro selettivo: None = tutti gli envelope; altrimenti set/lista
             # di nomi — solo quelli elencati vengono plottati (issue #101)
             'envelope_filter': None,
@@ -1104,24 +1110,129 @@ class ScoreVisualizer:
                 envelopes['pointer_deviation_prob'] = Envelope([[0, prob], [stream.duration, prob]])
 
         # =====================================================================
+        # OFFSET PER-VOCE (issue #90, Fase 3). voice_pitch_offset /
+        # voice_pointer_offset / voice_pointer_range non sono Envelope sullo
+        # Stream: sono config delle voice strategy, calcolati on-the-fly da
+        # VoiceManager.get_voice_config(voice_index, time). Raccolti come curve
+        # per-voce solo col flag show_voice_offsets (gating dedicato, non
+        # governato da show_static_params).
+        # =====================================================================
+        if self.config.get('show_voice_offsets'):
+            envelopes.update(self._get_voice_offset_envelopes(stream))
+
+        # =====================================================================
         # FILTRO SELETTIVO (issue #101). Applicato sulle chiavi del dict finale
         # cosi' copre ogni path di estrazione (main, _prob, _mod_range, pitch,
-        # nomi espliciti). Il filtro interseca: non forza la visibilita' degli
-        # statici, che restano governati da show_static_params.
+        # nomi espliciti, offset per-voce). Confronto sul nome base cosi' un
+        # filtro 'voice_pitch_offset' cattura tutte le tracce '__vN'. Il filtro
+        # interseca: non forza la visibilita' degli statici, che restano
+        # governati da show_static_params.
         # =====================================================================
         env_filter = self.config.get('envelope_filter')
         if env_filter is not None:
-            envelopes = {k: v for k, v in envelopes.items() if k in env_filter}
+            envelopes = {
+                k: v for k, v in envelopes.items()
+                if self._base_param_name(k) in env_filter
+            }
 
         return envelopes
+
+    @staticmethod
+    def _base_param_name(key):
+        """Nome base di una chiave envelope: strippa il suffisso per-voce '__vN'
+        (issue #90). 'voice_pitch_offset__v2' -> 'voice_pitch_offset'; chiavi
+        senza suffisso restano invariate. Serve a risolvere colore/range/filtro
+        delle curve per-voce sul parametro base."""
+        return re.sub(r'__v\d+$', '', key)
+
+    def _get_voice_offset_envelopes(self, stream):
+        """
+        Estrae gli offset per-voce come curve disegnabili (issue #90, Fase 3).
+
+        - voice_pitch_offset__vN: una curva per voce (semitoni), campionando
+          VoiceConfig.pitch_factor su una griglia temporale e convertendo il
+          fattore di ratio in semitoni (12*log2). Voce 0 = riferimento, esclusa.
+        - voice_pointer_offset__vN: una curva per voce (offset raw), da
+          VoiceConfig.pointer_offset.
+        - voice_pointer_range: curva singola dello spread, dal parametro
+          pointer_range della pointer strategy stocastica (se presente).
+
+        num_voices time-varying: la voce i appare solo nella finestra in cui e'
+        attiva (int(num_voices(t)) > i), troncando la curva. Le curve
+        identicamente nulle vengono saltate (nessuna informazione).
+        """
+        from envelopes.envelope import Envelope
+
+        vm = getattr(stream, '_voice_manager', None)
+        if vm is None:
+            return {}
+
+        max_voices = int(getattr(vm, 'max_voices', 1))
+        if max_voices < 2 and getattr(vm, '_pointer_strategy', None) is None:
+            return {}
+
+        duration = stream.duration
+        grid = np.linspace(0.0, duration, 33)
+
+        num_voices_param = getattr(stream, 'num_voices', None)
+
+        def active_count(t):
+            if num_voices_param is None:
+                return max_voices
+            try:
+                val = num_voices_param.get_value(t)
+            except AttributeError:
+                val = num_voices_param
+            return max(1, min(max_voices, int(val)))
+
+        has_pitch = getattr(vm, '_pitch_strategy', None) is not None
+        has_pointer = getattr(vm, '_pointer_strategy', None) is not None
+
+        result = {}
+
+        def _nonzero(points):
+            return len(points) >= 2 and any(abs(v) > 1e-9 for _, v in points)
+
+        for i in range(1, max_voices):
+            pitch_pts = []
+            pointer_pts = []
+            for t in grid:
+                if active_count(t) <= i:
+                    continue
+                vc = vm.get_voice_config(i, float(t))
+                if has_pitch:
+                    factor = vc.pitch_factor
+                    semis = float(12.0 * np.log2(factor)) if factor > 0 else 0.0
+                    pitch_pts.append([float(t), semis])
+                if has_pointer:
+                    pointer_pts.append([float(t), float(vc.pointer_offset)])
+            if has_pitch and _nonzero(pitch_pts):
+                result[f'voice_pitch_offset__v{i}'] = Envelope(pitch_pts)
+            if has_pointer and _nonzero(pointer_pts):
+                result[f'voice_pointer_offset__v{i}'] = Envelope(pointer_pts)
+
+        # voice_pointer_range: ampiezza dello spread, esposta dalla pointer
+        # strategy stocastica come parametro pointer_range (float o Envelope).
+        if has_pointer:
+            prange = getattr(vm._pointer_strategy, 'pointer_range', None)
+            if isinstance(prange, Envelope):
+                if any(abs(bp[1]) > 1e-9 for bp in prange.breakpoints):
+                    result['voice_pointer_range'] = prange
+            elif isinstance(prange, (int, float)) and abs(prange) > 1e-9:
+                result['voice_pointer_range'] = Envelope(
+                    [[0, prange], [duration, prange]])
+
+        return result
 
     def _full_range(self, param_name):
         """
         Range pieno (min, max) di un parametro, o None se non disponibile.
 
         pitch è unit-driven (bounds dall'unità attiva); gli altri vengono da
-        config['envelope_ranges'].
+        config['envelope_ranges']. Le chiavi per-voce ('__vN', issue #90) usano
+        il range del parametro base.
         """
+        param_name = self._base_param_name(param_name)
         if param_name == 'pitch':
             unit = getattr(self, '_current_pitch_unit', None)
             if unit is not None:
@@ -1153,7 +1264,9 @@ class ScoreVisualizer:
 
         result = {}
         for param_name, envelope in envelopes.items():
-            if param_name == 'pan' or param_name not in params:
+            # Le chiavi per-voce ('__vN', #90) ereditano autozoom/range dal base.
+            base_name = self._base_param_name(param_name)
+            if base_name == 'pan' or base_name not in params:
                 continue
             full = self._full_range(param_name)
             if full is None:
@@ -1202,8 +1315,11 @@ class ScoreVisualizer:
         Returns:
             float: valore normalizzato 0-1
         """
+        # Le curve per-voce ('__vN', #90) si normalizzano col range del base;
+        # il display range (auto-zoom) resta indicizzato per chiave piena.
+        base_name = self._base_param_name(param_name)
         # PITCH unit-driven: i bounds vengono dall'unità attiva, non dai range statici.
-        if param_name == 'pitch':
+        if base_name == 'pitch':
             unit = getattr(self, '_current_pitch_unit', None)
             if unit is not None:
                 b = unit.value_bounds()
@@ -1216,7 +1332,7 @@ class ScoreVisualizer:
         display_ranges = getattr(self, '_current_display_ranges', None) or {}
         if param_name in display_ranges:
             min_val, max_val = display_ranges[param_name]
-            if param_name == 'pan':
+            if base_name == 'pan':
                 value = ((value + 180) % 360) - 180
             if max_val != min_val:
                 return np.clip((value - min_val) / (max_val - min_val), 0, 1)
@@ -1224,11 +1340,11 @@ class ScoreVisualizer:
 
         ranges = self.config['envelope_ranges']
 
-        if param_name in ranges:
-            min_val, max_val = ranges[param_name]
+        if base_name in ranges:
+            min_val, max_val = ranges[base_name]
 
             # Pan è ciclico: gestisci valori fuori range
-            if param_name == 'pan':
+            if base_name == 'pan':
                 # Normalizza a -180..180 usando modulo
                 value = ((value + 180) % 360) - 180
 
@@ -1300,8 +1416,8 @@ class ScoreVisualizer:
             envelopes, stream, t_start, t_end)
 
         for param_name, envelope in envelopes.items():
-            # Colore
-            color = colors.get(param_name, '#333333')
+            # Colore (curve per-voce '__vN' usano il colore del base, #90)
+            color = colors.get(self._base_param_name(param_name), '#333333')
 
             # Envelope per-segmento eterogeneo (issue #68): rendering per-segmento
             if self._is_per_segment_heterogeneous(envelope):
@@ -1574,7 +1690,11 @@ class ScoreVisualizer:
             y_base = y_that_stream + gap_ratio
             y_height = env_slot_height
 
-            env_types = sorted(envelopes.keys())
+            # Le curve per-voce ('__vN', #90) collassano a una sola voce di
+            # legenda per parametro base: N tracce, una etichetta.
+            env_types = sorted(
+                dict.fromkeys(self._base_param_name(k) for k in envelopes)
+            )
             lanes.append({
                 'stream': stream,
                 'stream_id': stream.stream_id,
@@ -1630,7 +1750,7 @@ class ScoreVisualizer:
         colors = self.config['envelope_colors']
 
         for param_name, y, stream_id in legend_entries:
-            color = colors.get(param_name, '#333333')
+            color = colors.get(self._base_param_name(param_name), '#333333')
             ax.plot([0.1, 0.15], [y, y], color=color, linewidth=2)
             # clip_on=True: anche un nome inatteso non sfora mai nel plot,
             # viene tagliato al bordo della colonna legenda (issue #96).
