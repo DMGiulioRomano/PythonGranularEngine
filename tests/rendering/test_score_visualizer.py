@@ -1528,3 +1528,77 @@ class TestPitchColorAutozoom:
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             figs = viz.render_all()
         assert len(self._colorbar_axes(figs[0])) == 0
+
+
+# =============================================================================
+# GROUP - Allineamento larghezza envelope/stream (colonna colorbar dedicata)
+# =============================================================================
+
+class TestEnvelopeStreamWidthAlignment:
+    """La colorbar del pitch occupa una colonna dedicata del GridSpec: i subplot
+    dei grani (colonna centrale) e il subplot envelope (stessa colonna) condividono
+    lo stesso bordo destro. Pre-fix la colorbar (fig.colorbar(ax=...)) restringeva
+    solo i grani mentre l'envelope restava a piena larghezza -> bordi destri
+    disallineati (la striscia colore del pitch rubava spazio ai soli stream)."""
+
+    @staticmethod
+    def _scene():
+        """Due stream con grani (-> colorbar) e un envelope dinamico
+        (pointer_speed) -> esiste il pannello envelope sotto agli stream."""
+        from envelopes.envelope import Envelope
+        streams = []
+        for sid in ('s1', 's2'):
+            s = make_stream(sid, onset=0.0, duration=10.0, sample='piano.wav')
+            s.pointer_speed = Envelope([[0, -2.0], [10, 4.0]])
+            streams.append(s)
+        return streams
+
+    @staticmethod
+    def _data_axes(fig, page_start, page_end):
+        """Assi-dato (grani + envelope): xlim == (page_start, page_end).
+        Esclude waveform (xlim +-1.1), legenda (xlim 0..1) e colorbar."""
+        out = []
+        for ax in fig.axes:
+            lo, hi = ax.get_xlim()
+            if abs(lo - page_start) < 1e-9 and abs(hi - page_end) < 1e-9:
+                out.append(ax)
+        return out
+
+    def _render(self):
+        viz = make_viz(self._scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        fig.canvas.draw()  # finalizza le posizioni dei subplot
+        return fig
+
+    def test_default_config_has_colorbar_width_ratio(self):
+        viz = make_viz([make_stream()])
+        assert viz.config['colorbar_width_ratio'] > 0
+
+    def test_envelope_right_edge_aligns_with_grain_subplots(self):
+        """Cuore del bug: il bordo destro dell'envelope deve combaciare con
+        quello dei subplot dei grani."""
+        fig = self._render()
+        data_axes = self._data_axes(fig, 0.0, 30.0)
+        assert len(data_axes) >= 3  # 2 grani + 1 envelope
+        x1s = [ax.get_position().x1 for ax in data_axes]
+        assert max(x1s) - min(x1s) < 1e-6
+
+    def test_envelope_left_edge_aligns_with_grain_subplots(self):
+        """Invariante: stessa colonna -> stesso bordo sinistro (x0)."""
+        fig = self._render()
+        data_axes = self._data_axes(fig, 0.0, 30.0)
+        x0s = [ax.get_position().x0 for ax in data_axes]
+        assert max(x0s) - min(x0s) < 1e-6
+
+    def test_colorbar_in_dedicated_column_right_of_content(self):
+        """Le colorbar restano presenti e a destra dell'area dati (colonna
+        dedicata), non sovrapposte ai grani."""
+        fig = self._render()
+        data_axes = self._data_axes(fig, 0.0, 30.0)
+        content_x1 = min(ax.get_position().x1 for ax in data_axes)
+        cbar_axes = [ax for ax in fig.axes if ax.get_label() == '<colorbar>']
+        assert cbar_axes  # almeno una colorbar disegnata
+        for cax in cbar_axes:
+            assert cax.get_position().x0 >= content_x1 - 1e-6
