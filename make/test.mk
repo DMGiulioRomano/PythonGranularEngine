@@ -1,27 +1,27 @@
 # Makefile.test
 # Gestisce esclusivamente Virtual Environment e Unit Testing
-# CONFIGURATO PER PYTHON 3.12
+# CONFIGURATO PER PYTHON >= 3.9
 
 # --- CONFIGURAZIONE VENV ---
 VENV_DIR := .venv
-PYTHON_VERSION := 3.12
+PYTHON_VERSION := 3.9
 
 
-# Detection Python multi-versione (>= 3.12).
+# Detection Python multi-versione (>= 3.9).
 # Strategia a due livelli:
-#   1) cerca binari versionati python3.12..python3.16 nel PATH (foreach + which)
+#   1) cerca binari versionati python3.9..python3.16 nel PATH (foreach + which)
 #   2) se nessuno trovato, fallback a `python3` generico con runtime version check
-#   3) errore esplicito se nessuna opzione soddisfa >= 3.12
+#   3) errore esplicito se nessuna opzione soddisfa >= 3.9
 #
 # TODO(2026-Q4): rivedere lista versioni al rilascio Python 3.17 (ottobre 2026).
 # Il fallback `python3` copre comunque versioni future via runtime check.
-PYTHON_VERSIONS := 3.12 3.13 3.14 3.15 3.16
+PYTHON_VERSIONS := 3.9 3.10 3.11 3.12 3.13 3.14 3.15 3.16
 PYTHON_VERSIONED := $(firstword $(foreach v,$(PYTHON_VERSIONS),$(shell which python$(v) 2>/dev/null)))
 
 ifneq ($(PYTHON_VERSIONED),)
     PYTHON_CMD := $(notdir $(PYTHON_VERSIONED))
 else
-    PYTHON_FALLBACK_CHECK := $(shell python3 -c "import sys; print('OK' if sys.version_info[:2] >= (3, 12) else 'FAIL')" 2>/dev/null)
+    PYTHON_FALLBACK_CHECK := $(shell python3 -c "import sys; print('OK' if sys.version_info[:2] >= (3, 9) else 'FAIL')" 2>/dev/null)
     ifeq ($(PYTHON_FALLBACK_CHECK),OK)
         PYTHON_CMD := python3
     else
@@ -47,7 +47,7 @@ VENV_MARKER := $(VENV_DIR)/.installed
 # Target per verificare la versione Python
 check-python:
 	@echo "🔍 [PYTHON] Verifica versione..."
-	@$(PYTHON_CMD) -c "import sys; print(f'✅ Python {sys.version}'); sys.exit(0) if sys.version_info[:2] >= (3, 12) else (print('❌ Richiesta Python >= 3.12'), sys.exit(1))"
+	@$(PYTHON_CMD) -c "import sys; print(f'✅ Python {sys.version}'); sys.exit(0) if sys.version_info[:2] >= (3, 9) else (print('❌ Richiesta Python >= 3.9'), sys.exit(1))"
 
 
 # Target principale per assicurarsi che l'ambiente sia pronto
@@ -55,13 +55,13 @@ venv-setup: $(VENV_MARKER)
 
 # Regola: se manca il marker o cambia requirements.txt, rifà il setup
 $(VENV_MARKER): $(REQUIREMENTS) check-python
-	@echo "🔧 [VENV] Creazione/aggiornamento Virtual Environment con Python $(PYTHON_VERSION)..."
+	@echo "🔧 [VENV] Creazione/aggiornamento Virtual Environment con Python >= $(PYTHON_VERSION)..."
 	@echo "📦 Python command: $(PYTHON_CMD)"
 	@$(PYTHON_CMD) -m venv $(VENV_DIR)
 	@$(PIP_VENV) install -q --upgrade pip
 	@$(PIP_VENV) install -q -r $(REQUIREMENTS)
 	@touch $(VENV_MARKER)
-	@echo "✅ [VENV] Ambiente Python $(PYTHON_VERSION) pronto."
+	@echo "✅ [VENV] Ambiente Python >= $(PYTHON_VERSION) pronto."
 
 # Test con coverage report
 tests-cov: venv-setup

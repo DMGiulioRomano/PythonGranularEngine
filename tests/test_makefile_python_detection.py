@@ -10,6 +10,8 @@ Strategia:
 - non esegue codice Python reale: i fake rispondono solo a --version e -c
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import textwrap
@@ -139,6 +141,14 @@ def _resolved_python_cmd(make_output: str) -> str | None:
 class TestMakeLevelDetection:
     """Detection Make-level: fake binari nel PATH, verifica selezione PYTHON_CMD."""
 
+    def test_python3_9_versioned_selected(self, tmp_path):
+        """Nuovo minimo supportato: python3.9 versionato → PYTHON_CMD := python3.9."""
+        _make_fake_python(tmp_path, "python3.9", "3.9.18")
+        result = _run_make("check-python", str(tmp_path))
+        assert result.returncode == 0, f"make failed: {result.stderr}"
+        assert _resolved_python_cmd(result.stdout) == "python3.9", \
+            f"expected python3.9, got output:\n{result.stdout}"
+
     def test_python3_12_versioned_selected(self, tmp_path):
         """Happy path classico: python3.12 versionato → PYTHON_CMD := python3.12."""
         _make_fake_python(tmp_path, "python3.12", "3.12.7")
@@ -156,12 +166,27 @@ class TestMakeLevelDetection:
             f"expected python3.14, got output:\n{result.stdout}"
 
     def test_python3_generic_fallback(self, tmp_path):
-        """Edge case: solo `python3` generico (versione >= 3.12) → fallback."""
+        """Edge case: solo `python3` generico (versione >= 3.9) → fallback."""
         _make_fake_python(tmp_path, "python3", "3.13.2")
         result = _run_make("check-python", str(tmp_path))
         assert result.returncode == 0, f"make failed: {result.stderr}"
         assert _resolved_python_cmd(result.stdout) == "python3", \
             f"expected python3 fallback, got output:\n{result.stdout}"
+
+    def test_python3_generic_fallback_at_minimum(self, tmp_path):
+        """Boundary: `python3` generico a 3.9.0 (minimo esatto) → accettato via fallback."""
+        _make_fake_python(tmp_path, "python3", "3.9.0")
+        result = _run_make("check-python", str(tmp_path))
+        assert result.returncode == 0, f"make failed: {result.stderr}"
+        assert _resolved_python_cmd(result.stdout) == "python3", \
+            f"expected python3 fallback, got output:\n{result.stdout}"
+
+    def test_python3_8_generic_rejected(self, tmp_path):
+        """Boundary: `python3` generico a 3.8.x (sotto il minimo) → make $(error)."""
+        _make_fake_python(tmp_path, "python3", "3.8.18")
+        result = _run_make("check-python", str(tmp_path))
+        assert result.returncode != 0, \
+            f"expected failure for python3.8 (< 3.9), got success:\n{result.stdout}"
 
     def test_no_python_in_path_fails(self, tmp_path):
         """Error path: nessun binario Python nel PATH ristretto → make $(error)."""

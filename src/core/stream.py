@@ -12,6 +12,8 @@ Fase 6 del refactoring: questa classe coordina i controller specializzati:
 Mantiene backward compatibility con Generator e ScoreVisualizer.
 Ispirato al DMX-1000 di Barry Truax (1988).
 """
+from __future__ import annotations
+
 import random
 from typing import List, Optional, Union
 

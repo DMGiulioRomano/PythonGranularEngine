@@ -3,6 +3,7 @@
 parameter_orchestrator.py - Coordina ParameterFactory e GateFactory.
 Isola completamente la logica di dephase dal parsing dei parametri.
 """
+from __future__ import annotations
 
 from typing import Dict, Optional
 from parameters.parameter_factory import ParameterFactory

@@ -35,6 +35,7 @@ Campi grano:
 I grani sono ordinati per t crescente. num_voices riflette il numero di voci
 effettivamente generate (len(stream.voices)).
 """
+from __future__ import annotations
 
 import json
 import os

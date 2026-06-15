@@ -2,6 +2,8 @@
 # MAIN
 # =============================================================================
 
+from __future__ import annotations
+
 import traceback
 
 from shared.logger import (

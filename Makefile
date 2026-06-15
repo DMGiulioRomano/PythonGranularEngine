@@ -1,7 +1,7 @@
 # Makefile Principale
 # --- Rilevazione OS ---
 # Nota: PYTHON_CMD definito qui è un placeholder; il valore reale è sovrascritto
-# da make/test.mk con detection multi-versione (Python >= 3.12).
+# da make/test.mk con detection multi-versione (Python >= 3.9).
 OS := $(shell uname -s)
 
 ifeq ($(OS), Darwin)
@@ -142,8 +142,8 @@ help:
 
 check-system-deps:
 	@echo "[CHECK] Verifica dipendenze di sistema..."
-	@$(PYTHON_CMD) -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 12) else 1)" 2>/dev/null || { \
-		echo "ERRORE: Python >= 3.12 richiesto (trovato: $$($(PYTHON_CMD) --version 2>&1 || echo 'nessun python'))."; \
+	@$(PYTHON_CMD) -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 9) else 1)" 2>/dev/null || { \
+		echo "ERRORE: Python >= 3.9 richiesto (trovato: $$($(PYTHON_CMD) --version 2>&1 || echo 'nessun python'))."; \
 		echo "Esegui: make install-system-deps"; \
 		exit 1; \
 	}

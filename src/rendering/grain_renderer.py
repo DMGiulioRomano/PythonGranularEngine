@@ -21,6 +21,7 @@ Corrispondenza con Csound:
   poscil3(aEnv, iFreq, table, phase)  np.interp con indici incrementali
   cos/sin mid-side pan                 identico
 """
+from __future__ import annotations
 
 import numpy as np
 

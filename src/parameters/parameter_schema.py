@@ -14,6 +14,7 @@ parameter_definitions.py risponde a: "Quali sono i limiti di sicurezza?"
 NOTA: I parametri dei Controller (pointer_speed, pitch_ratio, etc.) NON sono qui.
       Quelli sono gestiti direttamente dai rispettivi Controller.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional, Any, List

@@ -9,6 +9,7 @@ Gestisce la posizione di lettura nel sample con:
 
 Ispirato al DMX-1000 di Barry Truax (1988)
 """
+from __future__ import annotations
 
 from typing import Callable
 from envelopes.envelope import Envelope

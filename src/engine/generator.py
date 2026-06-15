@@ -9,6 +9,8 @@ Refactored per separare le responsabilità:
 
 Mantiene backward compatibility con l'API pubblica esistente.
 """
+from __future__ import annotations
+
 import yaml
 import re
 import math

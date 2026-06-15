@@ -10,6 +10,7 @@ Responsabilità:
 3. Normalizzazione Temporale: Scala i tempi degli envelope se richiesto (normalized -> absolute).
 4. Iniezione delle Dipendenze: Assembla l'oggetto Parameter con i suoi Bounds.
 """
+from __future__ import annotations
 
 from typing import Union, Optional, List, Any
 from parameters.parameter import Parameter, ParamInput

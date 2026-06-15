@@ -27,6 +27,7 @@ Design:
 
 Coerente con: voice_pan_strategy.py, variation_strategy.py
 """
+from __future__ import annotations
 
 import math
 import random

@@ -12,6 +12,8 @@ Design:
 - OCP: nuove modalità si aggiungono senza toccare select_window() né le strategie esistenti
 - SRP: ogni classe gestisce un solo algoritmo di selezione
 """
+from __future__ import annotations
+
 import random
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple

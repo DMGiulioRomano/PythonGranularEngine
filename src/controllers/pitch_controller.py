@@ -10,6 +10,7 @@ modalità di variazione. Nessun gruppo esclusivo, nessuna strategy per-preset.
 Fornisce un unico metodo `calculate(t)` che restituisce sempre un ratio.
 Ispirato al DMX-1000 di Barry Truax (1988).
 """
+from __future__ import annotations
 
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from parameters.pitch_unit import make_pitch_unit, PITCH_UNIT_PRESETS

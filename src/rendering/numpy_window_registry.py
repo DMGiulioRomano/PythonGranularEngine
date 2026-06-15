@@ -13,6 +13,7 @@ Un grano di 50ms a 48000 Hz richiede N = 2400 campioni.
 Il NumpyAudioRenderer moltiplica l'audio del grano per la finestra:
     grain_audio = raw_samples * window
 """
+from __future__ import annotations
 
 import numpy as np
 from typing import Dict, List, Tuple

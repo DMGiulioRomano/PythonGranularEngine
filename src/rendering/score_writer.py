@@ -3,6 +3,8 @@
 ScoreWriter: gestione scrittura file .sco Csound.
 Separato dalla logica di orchestrazione.
 """
+from __future__ import annotations
+
 from typing import List
 from core.stream import Stream
 from rendering.ftable_manager import FtableManager

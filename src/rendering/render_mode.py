@@ -9,6 +9,7 @@ Modalità supportate:
 - StemsRenderMode: un file separato per ogni stream
 - MixRenderMode: un file unico con tutti gli stream mixati
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List

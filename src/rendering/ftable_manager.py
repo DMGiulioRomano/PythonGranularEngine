@@ -2,6 +2,8 @@
 FtableManager: gestione centralizzata delle function tables Csound.
 Separato dalla logica di orchestrazione.
 """
+from __future__ import annotations
+
 from typing import Dict, Tuple, Optional
 from controllers.window_registry import WindowRegistry
 

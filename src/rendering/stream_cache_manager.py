@@ -16,6 +16,7 @@ Un stream e' dirty se:
   2. Il fingerprint corrente non corrisponde a quello salvato, oppure
   3. Il file .aif di output non esiste sul disco (con aif_path fornito)
 """
+from __future__ import annotations
 
 import hashlib
 import json

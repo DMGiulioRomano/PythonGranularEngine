@@ -12,6 +12,7 @@ Design Pattern:
 - Factory: Crea oggetti complessi nascondendo i dettagli
 - Facade: Interfaccia semplice verso sottosistemi complessi
 """
+from __future__ import annotations
 
 from typing import Any
 from parameters.parameter import Parameter

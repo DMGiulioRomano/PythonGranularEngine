@@ -1,4 +1,4 @@
-# === Python 3.12 COMPATIBLE ===
+# === Python 3.9+ COMPATIBLE ===
 # Gestione Audio e Dati
 numpy>=1.24.0
 soundfile>=0.12.1

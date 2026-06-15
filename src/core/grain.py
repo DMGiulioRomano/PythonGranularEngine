@@ -1,11 +1,19 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Grain:
     """
     Rappresentazione immutabile di un singolo evento granulare.
-    Usa slots=True per ottimizzare la memoria su grandi quantità di istanze.
+    Usa un __slots__ esplicito per ottimizzare la memoria su grandi quantità di
+    istanze. Equivale a dataclass(slots=True) ma resta compatibile con Python
+    >= 3.9 (il parametro slots= di @dataclass esiste solo da 3.10).
     """
+    __slots__ = (
+        'onset', 'duration', 'pointer_pos', 'pitch_ratio',
+        'volume', 'pan', 'sample_table', 'envelope_table',
+    )
     onset: float
     duration: float
     pointer_pos: float

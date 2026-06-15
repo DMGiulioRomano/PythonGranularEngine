@@ -3,6 +3,7 @@
 Registry pattern: collega nomi di parametri a classi Strategy.
 Permette di aggiungere nuove strategie SENZA modificare controller esistenti.
 """
+from __future__ import annotations
 
 from typing import Dict, Type
 from strategies.strategie import *

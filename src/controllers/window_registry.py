@@ -2,6 +2,8 @@
 EnvelopeRegistry: definizioni dichiarative degli envelope Csound.
 Single source of truth per mapping nome -> GEN routine.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Optional, List
 

@@ -3,6 +3,7 @@
 Definisce le interfacce Strategy per tutti i controller.
 Ogni strategia incapsula completamente il calcolo di un valore.
 """
+from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod

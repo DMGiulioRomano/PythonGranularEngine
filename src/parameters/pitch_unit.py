@@ -16,6 +16,7 @@ Famiglia esponenziale (Equal Division of the Octave):
 Famiglia moltiplicativa:
     ratio = value (RatioUnit)
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, Optional, Union

@@ -25,6 +25,7 @@ Formato prodotto:
 I file .aif sono referenziati per path (non embedded).
 Un TRACK per stream, un ITEM per TRACK.
 """
+from __future__ import annotations
 
 from typing import List
 

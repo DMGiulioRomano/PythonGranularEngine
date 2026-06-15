@@ -7,6 +7,7 @@ Supports:
 - Compact format: [[[x%, y], ...], total_time, n_reps, interp?]
 - Dict format: {'type': 'cubic', 'points': [...]}
 """
+from __future__ import annotations
 
 from typing import Union, List, Dict, Any
 from envelopes.envelope_factory import InterpolationStrategyFactory
