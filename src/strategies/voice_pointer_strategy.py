@@ -35,12 +35,12 @@ Coerente con: voice_pitch_strategy.py, voice_onset_strategy.py
 """
 from __future__ import annotations
 
-import random
 from abc import ABC, abstractmethod
 from typing import Dict, Type
 
 from parameters.parameter import resolve_param, StrategyParam
 from shared.exceptions import StrategyNotFoundError
+from shared.seeding import voice_rng
 
 
 # =============================================================================
@@ -102,10 +102,11 @@ class StochasticPointerStrategy(VoicePointerStrategy):
     Offset fisso per voce entro un singolo run; la magnitudine può variare nel
     tempo se pointer_range è un Envelope.
 
-    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
-    riproducibile fra processi diversi. hash() su stringa è randomizzato
-    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
-    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
+    Seed (issue #81): se `seed` è None il RNG per-voce usa hash(stream_id+vi) —
+    stabile ENTRO un run, NON riproducibile fra processi (hash() randomizzato
+    per-processo, PYTHONHASHSEED non fissato). Se `seed` è valorizzato la
+    derivazione è hashlib (vedi shared.seeding.voice_rng): l'offset diventa
+    riproducibile fra processi diversi.
     _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
     Offset = _cache[vi] * pointer_range(t).
     Voce 0 → sempre 0.0.
@@ -114,9 +115,10 @@ class StochasticPointerStrategy(VoicePointerStrategy):
     diversa nel sample, creando variazione timbrica senza pattern regolari.
     """
 
-    def __init__(self, pointer_range: StrategyParam, stream_id: str):
+    def __init__(self, pointer_range: StrategyParam, stream_id: str, seed=None):
         self.pointer_range = pointer_range
         self.stream_id = stream_id
+        self.seed = seed
         self._cache: Dict[int, float] = {}
 
     def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
@@ -124,8 +126,7 @@ class StochasticPointerStrategy(VoicePointerStrategy):
         if voice_index == 0 or resolved == 0.0:
             return 0.0
         if voice_index not in self._cache:
-            seed = hash(self.stream_id + str(voice_index))
-            rng = random.Random(seed)
+            rng = voice_rng(self.seed, self.stream_id, voice_index)
             self._cache[voice_index] = rng.uniform(-1.0, 1.0)
         return self._cache[voice_index] * resolved
 

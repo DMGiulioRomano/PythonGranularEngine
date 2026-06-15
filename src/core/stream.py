@@ -68,13 +68,19 @@ class Stream:
         grains: List[Grain] - lista flattened (backward compatibility)
     """
     
-    def __init__(self, params: dict):
+    def __init__(self, params: dict, seed=None):
         """
         Inizializza lo stream dai parametri YAML.
-        
+
         Args:
             params: dizionario parametri dallo YAML
+            seed: seed YAML top-level (issue #81), propagato alle voice strategy
+                  stocastiche per la riproducibilità fra processi. None (default)
+                  → comportamento legacy (hash() per-voce).
         """
+        # Seed di riproducibilità: iniettato nelle strategy stocastiche in
+        # _init_voice_manager. None → fallback hash() (retrocompat).
+        self.seed = seed
         # === 3. CONFIGURATION ===
         sample = params.get('sample')
         stream_id = params.get('stream_id', 'unknown')
@@ -284,6 +290,7 @@ class Stream:
             pitch_unit = make_pitch_unit(unit_spec)
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
+                kw['seed'] = self.seed
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             pitch_strategy = VoicePitchStrategyFactory.create(name, **kw)
 
@@ -294,6 +301,7 @@ class Stream:
             name = kw.pop('strategy')
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
+                kw['seed'] = self.seed
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             onset_strategy = VoiceOnsetStrategyFactory.create(name, **kw)
 
@@ -317,6 +325,7 @@ class Stream:
             self._voice_pointer_normalized = raw_normalized
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
+                kw['seed'] = self.seed
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             pointer_strategy = VoicePointerStrategyFactory.create(name, **kw)
 
@@ -329,6 +338,7 @@ class Stream:
             pan_spread = _parse_strategy_kwarg(kw.pop('spread', 0.0), self.duration)
             if name == 'random':
                 kw['stream_id'] = self.stream_id
+                kw['seed'] = self.seed
             pan_strategy = VoicePanStrategyFactory.create(name, **kw)
 
         self._voice_manager = VoiceManager(

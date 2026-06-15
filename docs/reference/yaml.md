@@ -8,6 +8,7 @@ sources:
   - src/parameters/
   - src/strategies/
   - src/envelopes/
+  - src/shared/seeding.py
 last_synced_commit: 836a236
 entry_for: [yaml-syntax, envelope-syntax]
 ---
@@ -31,6 +32,7 @@ Reference completa del formato YAML consumato da `main.py`: sintassi per stream,
 Sezioni rilevanti in questo doc:
 
 - [Minimal Stream](#minimal-stream) — schema minimo
+- [Seed (Riproducibilità)](#seed-riproducibilità) — render NumPy riproducibili
 - [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
 - [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
@@ -66,6 +68,42 @@ streams:
     grain:
       duration: 0.05
 ```
+
+---
+
+## Seed (Riproducibilità)
+
+Chiave **top-level** opzionale (sibling di `streams`) per render riproducibili
+con il renderer NumPy.
+
+```yaml
+seed: 42        # opzionale; assente → comportamento attuale (non riproducibile)
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 30
+    sample: "sample.wav"
+```
+
+- **Assente** (default): comportamento storico. I meccanismi stocastici (IOT
+  async di `distribution`, variazione `_range`, gate di probabilità, selezione
+  finestra, offset stocastici delle voci) cambiano a ogni processo.
+- **Presente**: lo stesso YAML produce lo stesso render NumPy fra processi
+  diversi. Copre due meccanismi:
+  - **random globale dei grani** — `random.seed(seed)` chiamato una volta a
+    inizio `create_elements`, prima della generazione (lazy) dei grani.
+  - **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer}` con
+    `strategy: stochastic`, `voices.pan` con `strategy: random`) — seed derivato
+    via `hashlib.sha256(f"{seed}:{stream_id}:{voice_index}")`, deterministico e
+    indipendente da `PYTHONHASHSEED`.
+
+`seed: 0` è un valore valido e distinto da assente. Sono accettati interi (anche
+negativi) e stringhe.
+
+**Limite (Csound):** `seed` semina solo il `random` di Python (renderer NumPy).
+Csound ha un RNG proprio: con `--renderer csound` i due renderer NON sono
+bit-identici nemmeno col seed. Le tendency mask restano stocastiche per natura —
+l'obiettivo è riprodurre *lo stesso run*, non l'identità bit-a-bit.
 
 ---
 
