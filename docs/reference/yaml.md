@@ -338,7 +338,7 @@ La famiglia EDO (Equal Division of the Octave) converte in ratio con
 | `eighth_tone` | ottavi di tono | 48 | [-144, 144] |
 | `cents` | cents | 1200 | [-3600, 3600] |
 | `edo` (+ `value`) | EDO arbitrario | N | [-3·N, 3·N] |
-| `ratio` | ratio diretto | — | [0.125, 8] |
+| `ratio` | ratio diretto | — | [0.001, 8] |
 
 Più chiavi-unità nello stesso blocco → errore (`InvalidFieldValueError`):
 niente più priorità implicita. Senza alcuna chiave-unità: default `semitones`
@@ -1585,7 +1585,7 @@ un envelope dal YAML al runtime è:
 | `grain_duration` | 0.001 | 10 | 0.05 | secondi |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
-| `pitch_ratio` | 0.125 | 8 | 1.0 | 3 ottave ↓/↑ |
+| `pitch_ratio` | 0.001 | 8 | 1.0 | ratio diretto |
 | `pitch_semitones` | -36 | 36 | 0 | ±3 ottave |
 | `pointer_speed_ratio` | -100 | 100 | 1.0 | negativo = indietro |
 | `pointer_deviation` | -1 | 1 | 0.0 | offset per-grano |
