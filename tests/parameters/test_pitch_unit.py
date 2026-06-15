@@ -145,10 +145,10 @@ def test_edo_value_bounds_three_octaves(divisions, expected):
 
 
 def test_ratio_value_bounds_matches_legacy():
-    # deve coincidere con i vecchi bounds statici di pitch_ratio
+    # bounds del ratio diretto: minimo esteso a 0.001
     b = RatioUnit().value_bounds()
     assert isinstance(b, ParameterBounds)
-    assert b.min_val == 0.125
+    assert b.min_val == 0.001
     assert b.max_val == 8.0
     assert b.min_range == 0.0
     assert b.max_range == 2.0

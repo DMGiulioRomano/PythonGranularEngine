@@ -117,8 +117,8 @@ class EdoUnit(PitchUnit):
 class RatioUnit(PitchUnit):
     """Moltiplicatore diretto: ratio = value.
 
-    Bounds e variazione coincidono con lo storico pitch_ratio
-    ([0.125, 8], variazione additiva continua). Il valore neutro è 1 (×1).
+    Bounds e variazione del ratio diretto
+    ([0.001, 8], variazione additiva continua). Il valore neutro è 1 (×1).
     """
 
     def __init__(self, name: str = 'ratio', symbol: str = 'x'):
@@ -140,7 +140,7 @@ class RatioUnit(PitchUnit):
 
     def value_bounds(self) -> ParameterBounds:
         return ParameterBounds(
-            min_val=0.125,
+            min_val=0.001,
             max_val=8.0,
             min_range=0.0,
             max_range=2.0,

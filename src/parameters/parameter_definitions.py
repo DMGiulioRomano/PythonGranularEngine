@@ -112,7 +112,7 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
     # PITCH
     # =========================================================================
     # I bounds del pitch sono unit-driven: derivano da PitchUnit.value_bounds()
-    # (±3 ottave per la famiglia EDO, [0.125, 8] per ratio) e non sono registrati
+    # (±3 ottave per la famiglia EDO, [0.001, 8] per ratio) e non sono registrati
     # qui. Vedi src/parameters/pitch_unit.py.
 
     # =========================================================================

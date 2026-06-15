@@ -55,7 +55,7 @@ PITCH_SEMITONES_BOUNDS = ParameterBounds(
     variation_mode='quantized'
 )
 PITCH_RATIO_BOUNDS = ParameterBounds(
-    min_val=0.125, max_val=8.0,
+    min_val=0.001, max_val=8.0,
     min_range=0.0, max_range=2.0,
     default_jitter=0.01
 )
@@ -1016,10 +1016,10 @@ class TestEdgeCases:
         assert abs(result - 1.0) < 0.001
 
     def test_ratio_at_boundary_min(self):
-        """Ratio al limite inferiore dei bounds (0.125)."""
-        param = _make_param(0.125)
+        """Ratio al limite inferiore dei bounds (0.001)."""
+        param = _make_param(0.001)
         strategy = _ratio_strategy(param)
-        assert strategy.calculate(0.0) == pytest.approx(0.125)
+        assert strategy.calculate(0.0) == pytest.approx(0.001)
 
     def test_ratio_at_boundary_max(self):
         """Ratio al limite superiore dei bounds (8.0)."""
