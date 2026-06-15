@@ -347,3 +347,54 @@ class TestDynamicPointerParams:
         v0 = abs(s.get_pointer_offset(1, 4, 0.0))
         v1 = abs(s.get_pointer_offset(1, 4, 1.0))
         assert v1 > v0
+
+
+# =============================================================================
+# StochasticPointerStrategy — seed riproducibile (issue #81)
+# =============================================================================
+
+import hashlib
+import random as _random
+
+
+def _seeded_pos(seed, stream_id, vi, lo=-1.0, hi=1.0):
+    """Posizione attesa col seed fissato (hashlib + Mersenne, cross-process)."""
+    h = hashlib.sha256(f"{seed}:{stream_id}:{vi}".encode()).hexdigest()
+    return _random.Random(int(h, 16)).uniform(lo, hi)
+
+
+class TestStochasticPointerSeed:
+
+    def test_seed_produces_deterministic_value(self):
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        s = StochasticPointerStrategy(pointer_range=0.2, stream_id="s1", seed=42)
+        expected = _seeded_pos(42, "s1", 1) * 0.2
+        assert s.get_pointer_offset(1, 4, 0.0) == pytest.approx(expected)
+
+    def test_different_seeds_different_offsets(self):
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        s1 = StochasticPointerStrategy(pointer_range=0.5, stream_id="s1", seed=1)
+        s2 = StochasticPointerStrategy(pointer_range=0.5, stream_id="s1", seed=2)
+        o1 = [s1.get_pointer_offset(i, 4, 0.0) for i in range(1, 4)]
+        o2 = [s2.get_pointer_offset(i, 4, 0.0) for i in range(1, 4)]
+        assert o1 != o2
+
+    def test_seed_none_backward_compatible(self):
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        s = StochasticPointerStrategy(pointer_range=0.3, stream_id="s1", seed=None)
+        for i in range(1, 5):
+            assert -0.3 <= s.get_pointer_offset(i, 5, 0.0) <= 0.3
+
+    def test_seed_zero_accepted(self):
+        _, _, StochasticPointerStrategy, *_ = _get_module()
+        s = StochasticPointerStrategy(pointer_range=0.2, stream_id="s1", seed=0)
+        expected = _seeded_pos(0, "s1", 1) * 0.2
+        assert s.get_pointer_offset(1, 4, 0.0) == pytest.approx(expected)
+
+    def test_factory_propagates_seed(self):
+        *_, VoicePointerStrategyFactory = _get_module()
+        s = VoicePointerStrategyFactory.create(
+            'stochastic', pointer_range=0.2, stream_id='s1', seed=42
+        )
+        expected = _seeded_pos(42, "s1", 1) * 0.2
+        assert s.get_pointer_offset(1, 4, 0.0) == pytest.approx(expected)

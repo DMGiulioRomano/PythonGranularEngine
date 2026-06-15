@@ -414,3 +414,54 @@ class TestDynamicOnsetParams:
         assert v0 >= 0.0
         assert v1 >= 0.0
         assert v1 > v0
+
+
+# =============================================================================
+# StochasticOnsetStrategy — seed riproducibile (issue #81)
+# =============================================================================
+
+import hashlib
+import random as _random
+
+
+def _seeded_pos(seed, stream_id, vi, lo, hi):
+    """Posizione attesa col seed fissato (hashlib + Mersenne, cross-process)."""
+    h = hashlib.sha256(f"{seed}:{stream_id}:{vi}".encode()).hexdigest()
+    return _random.Random(int(h, 16)).uniform(lo, hi)
+
+
+class TestStochasticOnsetSeed:
+
+    def test_seed_produces_deterministic_value(self):
+        _, _, _, StochasticOnsetStrategy, *_ = _get_module()
+        s = StochasticOnsetStrategy(max_offset=0.1, stream_id="s1", seed=42)
+        expected = _seeded_pos(42, "s1", 1, 0.0, 1.0) * 0.1
+        assert s.get_onset_offset(1, 4, 0.0) == pytest.approx(expected)
+
+    def test_different_seeds_different_offsets(self):
+        _, _, _, StochasticOnsetStrategy, *_ = _get_module()
+        s1 = StochasticOnsetStrategy(max_offset=0.5, stream_id="s1", seed=1)
+        s2 = StochasticOnsetStrategy(max_offset=0.5, stream_id="s1", seed=2)
+        o1 = [s1.get_onset_offset(i, 4, 0.0) for i in range(1, 4)]
+        o2 = [s2.get_onset_offset(i, 4, 0.0) for i in range(1, 4)]
+        assert o1 != o2
+
+    def test_seed_none_backward_compatible(self):
+        _, _, _, StochasticOnsetStrategy, *_ = _get_module()
+        s = StochasticOnsetStrategy(max_offset=0.3, stream_id="s1", seed=None)
+        for i in range(1, 5):
+            assert 0.0 <= s.get_onset_offset(i, 5, 0.0) <= 0.3
+
+    def test_seed_zero_accepted(self):
+        _, _, _, StochasticOnsetStrategy, *_ = _get_module()
+        s = StochasticOnsetStrategy(max_offset=0.1, stream_id="s1", seed=0)
+        expected = _seeded_pos(0, "s1", 1, 0.0, 1.0) * 0.1
+        assert s.get_onset_offset(1, 4, 0.0) == pytest.approx(expected)
+
+    def test_factory_propagates_seed(self):
+        *_, VoiceOnsetStrategyFactory = _get_module()
+        s = VoiceOnsetStrategyFactory.create(
+            'stochastic', max_offset=0.1, stream_id='s1', seed=42
+        )
+        expected = _seeded_pos(42, "s1", 1, 0.0, 1.0) * 0.1
+        assert s.get_onset_offset(1, 4, 0.0) == pytest.approx(expected)

@@ -71,7 +71,7 @@ from shared.exceptions import InvalidStrategyConfigError
 
 SAMPLE_DUR = 5.0
 
-def _build_stream(voices_params=None, stream_id='s1'):
+def _build_stream(voices_params=None, stream_id='s1', seed=None):
     """Costruisce uno Stream reale con params YAML minimi + voices block."""
     params = {
         'stream_id': stream_id,
@@ -83,7 +83,9 @@ def _build_stream(voices_params=None, stream_id='s1'):
         params['voices'] = voices_params
 
     with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
-        return Stream(params)
+        if seed is None:
+            return Stream(params)
+        return Stream(params, seed=seed)
 
 
 # =============================================================================
@@ -338,6 +340,68 @@ class TestStochasticStreamIdInjection:
         for i in range(1, 3):
             offset = s._voice_manager.get_voice_config(i, 0.0).pan_offset
             assert -30.0 <= offset <= 30.0
+
+
+# =============================================================================
+# 7b. Seed propagato alle strategy stocastiche (issue #81)
+# =============================================================================
+
+import hashlib
+import random as _random
+
+
+def _seeded_pos(seed, stream_id, vi, lo=-1.0, hi=1.0):
+    h = hashlib.sha256(f"{seed}:{stream_id}:{vi}".encode()).hexdigest()
+    return _random.Random(int(h, 16)).uniform(lo, hi)
+
+
+class TestSeedPropagation:
+
+    def test_seed_injected_into_stochastic_pitch(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
+        }, stream_id='s1', seed=42)
+        assert s._voice_manager._pitch_strategy.seed == 42
+
+    def test_seed_injected_into_stochastic_onset(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'onset_offset': {'strategy': 'stochastic', 'max_offset': 0.2},
+        }, stream_id='s1', seed=42)
+        assert s._voice_manager._onset_strategy.seed == 42
+
+    def test_seed_injected_into_stochastic_pointer(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pointer': {'strategy': 'stochastic', 'pointer_range': 0.1},
+        }, stream_id='s1', seed=42)
+        assert s._voice_manager._pointer_strategy.seed == 42
+
+    def test_seed_injected_into_random_pan(self):
+        s = _build_stream({
+            'num_voices': 3,
+            'pan': {'strategy': 'random', 'spread': 60.0},
+        }, stream_id='s1', seed=42)
+        assert s._voice_manager._pan_strategy.seed == 42
+
+    def test_default_seed_is_none_backward_compatible(self):
+        """Senza seed: strategy.seed è None → fallback hash() (comportamento attuale)."""
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
+        }, stream_id='s1')
+        assert s._voice_manager._pitch_strategy.seed is None
+
+    def test_seed_produces_hashlib_offset(self):
+        """Col seed l'offset è il valore derivato via hashlib (riproducibile)."""
+        s = _build_stream({
+            'num_voices': 3,
+            'pitch': {'strategy': 'stochastic', 'pitch_range': 2.0},
+        }, stream_id='s1', seed=42)
+        expected = EdoUnit(12).materialize(_seeded_pos(42, 's1', 1), 2.0)
+        got = s._voice_manager.get_voice_config(1, 0.0).pitch_factor
+        assert got == pytest.approx(expected)
 
 
 # =============================================================================

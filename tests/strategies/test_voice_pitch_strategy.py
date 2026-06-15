@@ -393,6 +393,72 @@ class TestStochasticPitchStrategy:
 
 
 # =============================================================================
+# 6b. StochasticPitchStrategy — seed riproducibile (issue #81)
+# =============================================================================
+
+import hashlib
+import random as _random
+
+
+def _seeded_pos(seed, stream_id, vi, lo=-1.0, hi=1.0):
+    """Posizione attesa quando il seed è fissato: derivazione hashlib + Mersenne.
+
+    Indipendente da PYTHONHASHSEED (a differenza di hash()), quindi
+    riproducibile fra processi. Replica il contratto documentato.
+    """
+    h = hashlib.sha256(f"{seed}:{stream_id}:{vi}".encode()).hexdigest()
+    return _random.Random(int(h, 16)).uniform(lo, hi)
+
+
+class TestStochasticPitchSeed:
+
+    def test_seed_produces_deterministic_value(self):
+        """Con seed fissato il fattore è il valore derivato via hashlib (cross-process)."""
+        _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="s1", seed=42)
+        expected = ST.materialize(_seeded_pos(42, "s1", 1), 2.0)
+        assert _factor(s, 1, 4, 0.0) == pytest.approx(expected)
+
+    def test_seed_value_independent_of_hash_randomization(self):
+        """Stesso (seed, stream_id, vi) → stesso valore noto a priori, non hash-dipendente."""
+        _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="s1", seed=7)
+        for vi in range(1, 5):
+            expected = ST.materialize(_seeded_pos(7, "s1", vi), 2.0)
+            assert _factor(s, vi, 5, 0.0) == pytest.approx(expected)
+
+    def test_different_seeds_different_offsets(self):
+        _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
+        s1 = StochasticPitchStrategy(pitch_range=5.0, stream_id="s1", seed=1)
+        s2 = StochasticPitchStrategy(pitch_range=5.0, stream_id="s1", seed=2)
+        o1 = [_factor(s1, i, 4, 0.0) for i in range(1, 4)]
+        o2 = [_factor(s2, i, 4, 0.0) for i in range(1, 4)]
+        assert o1 != o2
+
+    def test_seed_none_is_backward_compatible(self):
+        """seed=None (default) → fallback hash(): stabile entro il run, entro range."""
+        _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
+        s = StochasticPitchStrategy(pitch_range=3.0, stream_id="s1", seed=None)
+        for i in range(1, 6):
+            assert -3.0 <= _st(s, i, 6, 0.0) <= 3.0
+
+    def test_seed_zero_accepted(self):
+        """seed: 0 è un valore valido (non confuso con assente)."""
+        _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
+        s = StochasticPitchStrategy(pitch_range=2.0, stream_id="s1", seed=0)
+        expected = ST.materialize(_seeded_pos(0, "s1", 1), 2.0)
+        assert _factor(s, 1, 4, 0.0) == pytest.approx(expected)
+
+    def test_factory_propagates_seed(self):
+        _, _, _, _, _, _, _, VoicePitchStrategyFactory, _ = _get_module()
+        s = VoicePitchStrategyFactory.create(
+            'stochastic', pitch_range=2.0, stream_id='s1', seed=42
+        )
+        expected = ST.materialize(_seeded_pos(42, "s1", 1), 2.0)
+        assert s.get_pitch_factor(1, 4, 0.0, ST) == pytest.approx(expected)
+
+
+# =============================================================================
 # 7. Invariante voce 0 — tutte le strategy
 # =============================================================================
 

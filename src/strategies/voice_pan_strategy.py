@@ -25,7 +25,6 @@ Coerente con: variation_strategy.py, variation_registry.py,
 """
 from __future__ import annotations
 
-import random
 from abc import ABC, abstractmethod
 from typing import Dict, Type
 
@@ -33,6 +32,7 @@ from shared.exceptions import (
     InvalidStrategyConfigError,
     StrategyNotFoundError,
 )
+from shared.seeding import voice_rng
 
 
 # =============================================================================
@@ -128,18 +128,20 @@ class RandomPanStrategy(VoicePanStrategy):
 
     _cache[voice_index] memorizza il fattore normalizzato in [-1, 1].
     Offset = _cache[vi] * spread / 2.
-    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
-    riproducibile fra processi diversi. hash() su stringa è randomizzato
-    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
-    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
+    Seed (issue #81): se `seed` è None il RNG per-voce usa hash(stream_id+vi) —
+    stabile ENTRO un run, NON riproducibile fra processi (hash() randomizzato
+    per-processo, PYTHONHASHSEED non fissato). Se `seed` è valorizzato la
+    derivazione è hashlib (vedi shared.seeding.voice_rng): l'offset diventa
+    riproducibile fra processi diversi.
     Voce 0 → sempre 0.0.
 
     Uso tipico: posizionamento "random but bounded" delle voci, texture
     dove la distribuzione spaziale deve essere imprevedibile ma contenuta.
     """
 
-    def __init__(self, stream_id: str):
+    def __init__(self, stream_id: str, seed=None):
         self.stream_id = stream_id
+        self.seed = seed
         self._cache: Dict[int, float] = {}
 
     def get_pan_offset(
@@ -165,8 +167,7 @@ class RandomPanStrategy(VoicePanStrategy):
             return 0.0
 
         if voice_index not in self._cache:
-            seed = hash(self.stream_id + str(voice_index))
-            rng = random.Random(seed)
+            rng = voice_rng(self.seed, self.stream_id, voice_index)
             self._cache[voice_index] = rng.uniform(-1.0, 1.0)
 
         return self._cache[voice_index] * spread / 2.0

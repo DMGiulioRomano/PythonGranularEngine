@@ -692,3 +692,52 @@ class TestFactoryRegistryIntegration:
         assert strategy.get_pan_offset(1, 4, 100.0, 0.0) == pytest.approx(-50.0)
         assert strategy.get_pan_offset(2, 4, 100.0, 0.0) == pytest.approx(50.0)
         assert strategy.get_pan_offset(3, 4, 100.0, 0.0) == pytest.approx(-50.0)
+
+
+# =============================================================================
+# RandomPanStrategy — seed riproducibile (issue #81)
+# =============================================================================
+
+import hashlib
+import random as _random
+
+
+def _seeded_pos(seed, stream_id, vi, lo=-1.0, hi=1.0):
+    """Posizione attesa col seed fissato (hashlib + Mersenne, cross-process)."""
+    h = hashlib.sha256(f"{seed}:{stream_id}:{vi}".encode()).hexdigest()
+    return _random.Random(int(h, 16)).uniform(lo, hi)
+
+
+class TestRandomPanSeed:
+
+    def test_seed_produces_deterministic_value(self):
+        _, _, RandomPanStrategy, *_ = _get_module()
+        s = RandomPanStrategy(stream_id="s1", seed=42)
+        expected = _seeded_pos(42, "s1", 1) * 180.0 / 2.0
+        assert s.get_pan_offset(1, 4, 180.0, 0.0) == pytest.approx(expected)
+
+    def test_different_seeds_different_offsets(self):
+        _, _, RandomPanStrategy, *_ = _get_module()
+        s1 = RandomPanStrategy(stream_id="s1", seed=1)
+        s2 = RandomPanStrategy(stream_id="s1", seed=2)
+        o1 = [s1.get_pan_offset(i, 4, 180.0, 0.0) for i in range(1, 4)]
+        o2 = [s2.get_pan_offset(i, 4, 180.0, 0.0) for i in range(1, 4)]
+        assert o1 != o2
+
+    def test_seed_none_backward_compatible(self):
+        _, _, RandomPanStrategy, *_ = _get_module()
+        s = RandomPanStrategy(stream_id="s1", seed=None)
+        for i in range(1, 5):
+            assert -90.0 <= s.get_pan_offset(i, 5, 180.0, 0.0) <= 90.0
+
+    def test_seed_zero_accepted(self):
+        _, _, RandomPanStrategy, *_ = _get_module()
+        s = RandomPanStrategy(stream_id="s1", seed=0)
+        expected = _seeded_pos(0, "s1", 1) * 180.0 / 2.0
+        assert s.get_pan_offset(1, 4, 180.0, 0.0) == pytest.approx(expected)
+
+    def test_factory_propagates_seed(self):
+        *_, VoicePanStrategyFactory = _get_module()
+        s = VoicePanStrategyFactory.create('random', stream_id='s1', seed=42)
+        expected = _seeded_pos(42, "s1", 1) * 180.0 / 2.0
+        assert s.get_pan_offset(1, 4, 180.0, 0.0) == pytest.approx(expected)

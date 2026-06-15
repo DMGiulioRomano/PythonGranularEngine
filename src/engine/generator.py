@@ -14,6 +14,7 @@ from __future__ import annotations
 import yaml
 import re
 import math
+import random
 from typing import List, Dict, Any
 
 from core.stream import Stream
@@ -55,6 +56,9 @@ class Generator:
         self.yaml_path = yaml_path
         self.data: Dict[str, Any] = None
         self.streams: List[Stream] = []
+        # Seed di riproducibilità (issue #81): popolato da load_yaml dalla chiave
+        # top-level `seed`. None → comportamento attuale (non riproducibile).
+        self.seed = None
 
         # Delegati specializzati
         self.ftable_manager = FtableManager(start_num=1)
@@ -79,8 +83,10 @@ class Generator:
         """
         with open(self.yaml_path, 'r') as f:
             raw_data = yaml.safe_load(f)
-        
+
         self.data = self._eval_math_expressions(raw_data)
+        # Seed top-level opzionale (issue #81): None se assente.
+        self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
         return self.data
     
     def create_elements(self) -> List[Stream]:
@@ -97,6 +103,14 @@ class Generator:
         """
         if self.data is None:
             raise ValueError("Devi prima caricare il YAML con load_yaml()")
+
+        # Seed del random globale (issue #81, meccanismo 2): semina UNA volta
+        # qui, prima della generazione (lazy) dei grani. Copre tutti i siti
+        # `random.*` consumati durante generate_grains (density async, variazione
+        # _range, probability gate, window selection, ...). Assente → nessun
+        # seeding, comportamento attuale (non riproducibile fra processi).
+        if self.seed is not None:
+            random.seed(self.seed)
 
         # Estrai e filtra stream
         stream_data_list = self.data.get('streams', [])
@@ -216,7 +230,7 @@ class Generator:
             #import json
             #print(f"[DEBUG] PRIMA Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
 
-            stream = Stream(stream_data)
+            stream = Stream(stream_data, seed=self.seed)
             #print(f"[DEBUG] DOPO  Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
             self.stream_data_map[stream_data['stream_id']] = stream_data
             # 2. Registra ftable sample

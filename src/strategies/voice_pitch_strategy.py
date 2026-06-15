@@ -30,7 +30,6 @@ Coerente con: voice_pan_strategy.py, variation_strategy.py
 from __future__ import annotations
 
 import math
-import random
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type
 
@@ -38,6 +37,7 @@ from shared.exceptions import (
     InvalidStrategyConfigError,
     StrategyNotFoundError,
 )
+from shared.seeding import voice_rng
 
 from parameters.parameter import resolve_param, StrategyParam
 
@@ -218,19 +218,21 @@ class StochasticPitchStrategy(VoicePitchStrategy):
     Offset fisso per voce entro un singolo run; la direzione è fissa, la magnitudine
     può variare nel tempo se pitch_range è un Envelope.
 
-    Seed = hash(stream_id + str(voice_index)): stabile ENTRO un run, NON
-    riproducibile fra processi diversi. hash() su stringa è randomizzato
-    per-processo (PYTHONHASHSEED non è fissato in questo repo), quindi l'offset
-    cambia a ogni avvio. Ciò che si conserva fra run è l'andamento, non il valore.
+    Seed (issue #81): se `seed` è None il RNG per-voce usa hash(stream_id+vi) —
+    stabile ENTRO un run, NON riproducibile fra processi (hash() randomizzato
+    per-processo, PYTHONHASHSEED non fissato). Se `seed` è valorizzato la
+    derivazione è hashlib (vedi shared.seeding.voice_rng): l'offset diventa
+    riproducibile fra processi diversi.
     _cache[voice_index] memorizza la posizione normalizzata in [-1, 1].
     Fattore = unit.materialize(position, pitch_range(t)): EDO → ± attorno a 0
     in semitoni; ratio → simmetrico geometrico (es. range=2 → [0.5, 2]).
     Voce 0 (e range 0) → sempre 1.0 (identità).
     """
 
-    def __init__(self, pitch_range: StrategyParam, stream_id: str):
+    def __init__(self, pitch_range: StrategyParam, stream_id: str, seed=None):
         self.pitch_range = pitch_range
         self.stream_id = stream_id
+        self.seed = seed
         self._cache: Dict[int, float] = {}
 
     def get_pitch_factor(self, voice_index, num_voices, time, unit):
@@ -238,8 +240,7 @@ class StochasticPitchStrategy(VoicePitchStrategy):
         if voice_index == 0 or resolved == 0.0:
             return 1.0
         if voice_index not in self._cache:
-            seed = hash(self.stream_id + str(voice_index))
-            rng = random.Random(seed)
+            rng = voice_rng(self.seed, self.stream_id, voice_index)
             self._cache[voice_index] = rng.uniform(-1.0, 1.0)
         return unit.materialize(self._cache[voice_index], resolved)
 

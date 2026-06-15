@@ -110,6 +110,14 @@ class TestGeneratorInit:
             g = Generator('config.yml')
         assert g.streams == []
 
+    def test_init_seed_is_none(self):
+        """seed e' None prima di load_yaml() (issue #81)."""
+        Generator = _get_generator_class()
+        with patch('engine.generator.FtableManager'), \
+             patch('engine.generator.ScoreWriter'):
+            g = Generator('config.yml')
+        assert g.seed is None
+
     def test_init_creates_ftable_manager(self):
         """Il costruttore crea un FtableManager."""
         Generator = _get_generator_class()
@@ -190,6 +198,27 @@ class TestLoadYaml:
             result = gen.load_yaml()
 
         assert result['value'] == 15
+
+    def test_load_yaml_extracts_seed(self, gen):
+        """load_yaml estrae self.seed dalla chiave top-level (issue #81)."""
+        m = mock_open(read_data=yaml.dump({'seed': 42, 'streams': []}))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        assert gen.seed == 42
+
+    def test_load_yaml_seed_absent_is_none(self, gen):
+        """seed assente → self.seed None (comportamento attuale invariato)."""
+        m = mock_open(read_data=yaml.dump({'streams': []}))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        assert gen.seed is None
+
+    def test_load_yaml_seed_zero_preserved(self, gen):
+        """seed: 0 è valido e distinto da assente."""
+        m = mock_open(read_data=yaml.dump({'seed': 0, 'streams': []}))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        assert gen.seed == 0
 
     def test_load_yaml_file_not_found(self, gen):
         """load_yaml solleva FileNotFoundError se file non esiste."""
@@ -610,6 +639,28 @@ class TestCreateElements:
 
         mock_filter.assert_called_once_with([])
 
+    def test_create_elements_seeds_global_random_when_seed_present(self, gen):
+        """Col seed, create_elements semina il random globale (meccanismo 2, issue #81)."""
+        m = mock_open(read_data=yaml.dump({'seed': 42, 'streams': []}))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+             patch.object(gen, '_create_streams'), \
+             patch('engine.generator.random.seed') as mock_seed:
+            gen.create_elements()
+        mock_seed.assert_called_once_with(42)
+
+    def test_create_elements_no_seed_skips_global_random(self, gen):
+        """Senza seed, create_elements NON semina il random globale (retrocompat)."""
+        m = mock_open(read_data=yaml.dump({'streams': []}))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+             patch.object(gen, '_create_streams'), \
+             patch('engine.generator.random.seed') as mock_seed:
+            gen.create_elements()
+        mock_seed.assert_not_called()
+
 # =============================================================================
 # 6. TEST _create_streams()
 # =============================================================================
@@ -626,8 +677,20 @@ class TestCreateStreams:
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
-        MockStream.assert_called_once_with(stream_data[0])
+        MockStream.assert_called_once_with(stream_data[0], seed=None)
         assert len(gen.streams) == 1
+
+    def test_create_streams_passes_seed_to_stream(self, gen):
+        """_create_streams propaga self.seed al costruttore Stream (issue #81)."""
+        gen.seed = 42
+        stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
+        mock_stream = make_mock_stream_for_generator()
+
+        with patch('engine.generator.Stream', return_value=mock_stream) as MockStream, \
+             patch.object(gen, '_register_stream_windows', return_value={}):
+            gen._create_streams(stream_data)
+
+        MockStream.assert_called_once_with(stream_data[0], seed=42)
 
     def test_registers_sample(self, gen):
         """_create_streams registra il sample nel FtableManager."""
@@ -698,7 +761,7 @@ class TestCreateStreams:
         """_create_streams crea piu' stream in sequenza."""
         streams_created = []
 
-        def make_s(data):
+        def make_s(data, seed=None):
             s = make_mock_stream_for_generator(stream_id=data['stream_id'])
             streams_created.append(s)
             return s
@@ -1280,7 +1343,7 @@ class TestStreamDataMap:
         ]
         with patch('engine.generator.Stream') as MockStream, \
              patch('engine.generator.WindowController'):
-            def make_stream(d):
+            def make_stream(d, seed=None):
                 m = Mock()
                 m.stream_id = d['stream_id']
                 m.sample = d['sample']
