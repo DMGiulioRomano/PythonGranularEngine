@@ -494,40 +494,65 @@ class TestCreateGateSpecific:
         )
         assert isinstance(gate, AlwaysGate)
 
-    def test_specific_key_found_none_uses_default(self):
-        """Chiave trovata con valore None → usa default_prob."""
+    def test_specific_key_none_with_range_returns_always(self):
+        """Chiave presente con valore None: trattata come assente → semantica
+        range-only (come dephase:false). Con range esplicito → AlwaysGate."""
         gate = GateFactory.create_gate(
             dephase={"freq": None},
             param_key="freq",
-            default_prob=60.0,
-            has_explicit_range=False,
+            default_prob=60.0,        # ignorato in SPECIFIC
+            has_explicit_range=True,
             range_always_active=False
         )
-        assert isinstance(gate, RandomGate)
-        assert gate.get_probability_value(0.0) == 60.0
+        assert isinstance(gate, AlwaysGate)
 
-    def test_specific_key_not_found_uses_default(self):
-        """Chiave non trovata → usa default_prob."""
+    def test_specific_key_none_without_range_returns_never(self):
+        """Chiave None senza range esplicito → NeverGate (nessun jitter implicito)."""
         gate = GateFactory.create_gate(
-            dephase={"dur": 50},
-            param_key="freq",     # "freq" non è nel dict
-            default_prob=75.0,
-            has_explicit_range=False,
-            range_always_active=False
-        )
-        assert isinstance(gate, RandomGate)
-        assert gate.get_probability_value(0.0) == 75.0
-
-    def test_specific_key_not_found_default_zero(self):
-        """Chiave non trovata + default_prob=0 → NeverGate."""
-        gate = GateFactory.create_gate(
-            dephase={"dur": 50},
+            dephase={"freq": None},
             param_key="freq",
-            default_prob=0.0,
+            default_prob=60.0,        # ignorato in SPECIFIC
             has_explicit_range=False,
             range_always_active=False
         )
         assert isinstance(gate, NeverGate)
+
+    def test_specific_key_not_found_with_range_returns_always(self):
+        """Chiave non elencata + range esplicito → AlwaysGate (range pieno).
+        I parametri non dichiarati nel dict per-param si comportano come
+        dephase:false: riduci la probabilità solo dove la dichiari."""
+        gate = GateFactory.create_gate(
+            dephase={"dur": 50},
+            param_key="freq",     # "freq" non è nel dict
+            default_prob=75.0,    # ignorato in SPECIFIC
+            has_explicit_range=True,
+            range_always_active=False
+        )
+        assert isinstance(gate, AlwaysGate)
+
+    def test_specific_key_not_found_without_range_returns_never(self):
+        """Chiave non elencata senza range → NeverGate: nessun jitter a sorpresa
+        sui parametri mai dichiarati."""
+        gate = GateFactory.create_gate(
+            dephase={"dur": 50},
+            param_key="freq",
+            default_prob=75.0,    # ignorato in SPECIFIC
+            has_explicit_range=False,
+            range_always_active=False
+        )
+        assert isinstance(gate, NeverGate)
+
+    def test_specific_default_prob_ignored_for_missing_keys(self):
+        """In SPECIFIC il default_prob non viene più usato per le chiavi assenti:
+        conta solo has_explicit_range (semantica range-only)."""
+        common = dict(dephase={"dur": 50}, param_key="freq",
+                      range_always_active=False)
+        with_range = GateFactory.create_gate(default_prob=99.0,
+                                              has_explicit_range=True, **common)
+        without_range = GateFactory.create_gate(default_prob=99.0,
+                                                 has_explicit_range=False, **common)
+        assert isinstance(with_range, AlwaysGate)
+        assert isinstance(without_range, NeverGate)
 
     def test_specific_key_envelope_value(self):
         """Chiave con valore envelope → EnvelopeGate (con Envelope reale)."""
@@ -547,17 +572,27 @@ class TestCreateGateSpecific:
         assert gate.get_probability_value(0.0) == pytest.approx(0.0)
         assert gate.get_probability_value(1.0) == pytest.approx(100.0)
 
-    def test_specific_empty_dict_uses_default(self):
-        """Dict vuoto → chiave non trovata → usa default_prob."""
+    def test_specific_empty_dict_with_range_returns_always(self):
+        """Dict vuoto → tutte le chiavi assenti. Con range esplicito → AlwaysGate."""
         gate = GateFactory.create_gate(
             dephase={},
             param_key="freq",
-            default_prob=50.0,
+            default_prob=50.0,        # ignorato in SPECIFIC
+            has_explicit_range=True,
+            range_always_active=False
+        )
+        assert isinstance(gate, AlwaysGate)
+
+    def test_specific_empty_dict_without_range_returns_never(self):
+        """Dict vuoto senza range → NeverGate (equivale a dephase:false)."""
+        gate = GateFactory.create_gate(
+            dephase={},
+            param_key="freq",
+            default_prob=50.0,        # ignorato in SPECIFIC
             has_explicit_range=False,
             range_always_active=False
         )
-        assert isinstance(gate, RandomGate)
-        assert gate.get_probability_value(0.0) == 50.0
+        assert isinstance(gate, NeverGate)
 
 
 # =============================================================================
@@ -887,14 +922,17 @@ class TestGateFactoryIntegration:
             assert gate.get_probability_value(0.0) == 50.0
 
     def test_workflow_specific_dephase_per_param(self):
-        """Scenario: dephase specifico per ogni parametro."""
+        """Scenario: dephase specifico per ogni parametro.
+        Le chiavi elencate usano il loro valore; quelle assenti o null seguono
+        la semantica range-only (come dephase:false): qui has_explicit_range=True
+        per tutte → AlwaysGate, niente jitter implicito."""
         dephase_config = {
             "freq": 90,
             "dur": 30,
-            "amp": None,    # Usa default
-            # "pan" non definito → usa default
+            "amp": None,    # null → range-only (range esplicito → Always)
+            # "pan" non definito → range-only (range esplicito → Always)
         }
-        
+
         gate_freq = GateFactory.create_gate(
             dephase=dephase_config, param_key="freq",
             default_prob=50.0, has_explicit_range=True,
@@ -916,10 +954,12 @@ class TestGateFactoryIntegration:
             range_always_active=False, duration=10.0, time_mode='absolute'
         )
         
+        assert isinstance(gate_freq, RandomGate)
         assert gate_freq.get_probability_value(0.0) == 90.0
+        assert isinstance(gate_dur, RandomGate)
         assert gate_dur.get_probability_value(0.0) == 30.0
-        assert gate_amp.get_probability_value(0.0) == 50.0   # default
-        assert gate_pan.get_probability_value(0.0) == 50.0   # default (chiave mancante)
+        assert isinstance(gate_amp, AlwaysGate)   # null + range esplicito → range pieno
+        assert isinstance(gate_pan, AlwaysGate)   # chiave assente + range esplicito → range pieno
 
     def test_workflow_range_always_active_overrides(self):
         """Scenario: range_always_active=None bypassa tutta la logica dephase."""

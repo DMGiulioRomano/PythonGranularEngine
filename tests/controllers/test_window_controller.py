@@ -389,14 +389,16 @@ class TestWindowControllerGateCreation:
         assert isinstance(ctrl._gate, RandomGate)
         assert ctrl._gate.get_probability_value(0.0) == 80.0
 
-    def test_dephase_specific_key_missing_uses_default_prob(self):
+    def test_dephase_specific_key_missing_is_range_only(self):
+        """Chiave 'pc_rand_envelope' assente dal dict per-param: il gate finestra
+        segue la semantica range-only (come dephase:false). Con più finestre
+        (has_explicit_range=True) → AlwaysGate, non più il default 1%."""
         config = make_config(dephase={'altro_parametro': 80.0})
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
             config=config
         )
-        assert isinstance(ctrl._gate, RandomGate)
-        assert ctrl._gate.get_probability_value(0.0) == DEFAULT_PROB
+        assert isinstance(ctrl._gate, AlwaysGate)
 
     def test_single_element_list_behaves_like_string(self, config_dephase_disabled):
         ctrl = WindowController({'envelope': ['hanning']}, config=config_dephase_disabled)

@@ -9,7 +9,7 @@ sources:
   - src/strategies/
   - src/envelopes/
   - src/shared/seeding.py
-last_synced_commit: 836a236
+last_synced_commit: 2caa8a7
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -407,6 +407,25 @@ dephase:
 dephase:
   volume: [[0, 0], [30, 80]]
   pan: 50
+```
+
+> **Default in modalità per-parametro.** Una chiave **assente** dal dict — o
+> impostata esplicitamente a **`null`** — non viene dephased: si comporta come
+> `dephase: false` per quel parametro (*range-only*). Il suo `_range` esplicito,
+> se presente, resta **sempre attivo** (100% dei grani); senza `_range` non c'è
+> nessuna variazione (niente jitter implicito). Quindi nel dict per-parametro
+> dichiari **solo** i parametri di cui vuoi *ridurre* la probabilità: gli altri
+> applicano il loro range a piena ampiezza. Per ottenere l'1% implicito su un
+> singolo parametro, scrivilo esplicito (es. `pan: 1`).
+>
+> Differisce dalla modalità **globale** (`dephase: 50`), dove un'unica
+> probabilità vale per tutti i parametri indistintamente.
+
+```yaml
+# Solo 'volume' ridotto al 30%. pan/duration/pitch/pointer/reverse/envelope:
+# se hanno un _range dichiarato lo applicano al 100%, altrimenti restano fermi.
+dephase:
+  volume: 30
 ```
 
 ### Detune implicito del pitch (senza `range`)
