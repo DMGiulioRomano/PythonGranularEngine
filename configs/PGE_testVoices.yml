@@ -143,7 +143,7 @@ streams:
     voices:
       num_voices: 4
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ==========================================================================
@@ -232,7 +232,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # --- onset_linear + pointer_linear ---
@@ -266,7 +266,7 @@ streams:
         strategy: stochastic
         max_offset: 0.15
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # --- pointer_linear + pan_linear ---
@@ -283,7 +283,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # --- pitch_range + onset_geometric ---
@@ -318,5 +318,5 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0

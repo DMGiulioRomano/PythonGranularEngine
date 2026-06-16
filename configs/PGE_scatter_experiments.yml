@@ -43,7 +43,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
 
@@ -66,7 +66,7 @@ streams:
       num_voices: 10
       scatter: [[0,0],[.5,1]]
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # S3: scatter totale, distribution=0 — scatter=1, distribution=0
@@ -96,7 +96,7 @@ streams:
         strategy: chord
         chord: maj7
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
     
   # S4: scatter totale + Truax — distribution=1, scatter=1
@@ -143,9 +143,9 @@ streams:
     voices:
       num_voices: 5
       pointer: {strategy: linear, step: .2}
-      pan: {strategy: additive, spread: 80}
       pitch: {strategy: chord, chord: sus4}
       onset_offset: {strategy: linear, step: .3}
+    pan: 80
     pitch:
       semitones: -7
 
@@ -171,9 +171,9 @@ streams:
     voices:
       num_voices: 5
       pointer: {strategy: linear, step: .2}
-      pan: {strategy: additive, spread: 80}
       pitch: {strategy: chord, chord: sus4}
       onset_offset: {strategy: linear, step: .3}
+    pan: 80
     dephase: 50
   # ===========================================================================
   # SEZIONE 2 — SCATTER FISSO, DISTRIBUTION COME ENVELOPE
@@ -198,7 +198,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 45.0
 
   # S6: scatter=0.5, distribution 0→1
@@ -221,7 +221,7 @@ streams:
         strategy: range
         pitch_range: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # S7: scatter=1, distribution 0→1 (scatter non inerte perché distribution cresce)
@@ -246,7 +246,7 @@ streams:
         strategy: linear
         step: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # S8: scatter=1, distribution oscillante (ciclo 0→1→0 ripetuto)
@@ -269,7 +269,7 @@ streams:
         strategy: stochastic
         pitch_range: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -299,7 +299,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # S10: scatter 0→1→0, distribution=1 (pulsazione di coesione)
@@ -320,7 +320,7 @@ streams:
         strategy: range
         pitch_range: 12.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # S11: scatter con forma a gradini, distribution=0.5
@@ -346,7 +346,7 @@ streams:
         step: 0.05
         base: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # S12: scatter oscillante, distribution=0.8
@@ -369,7 +369,7 @@ streams:
         strategy: chord
         chord: "min7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -398,7 +398,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # S14: scatter 1→0, distribution 1→0 (tutto converge verso cluster ordinato)
@@ -418,7 +418,7 @@ streams:
         strategy: range
         pitch_range: 12.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # S15: scatter cresce, distribution decresce (incrocio)
@@ -444,7 +444,7 @@ streams:
         strategy: stochastic
         max_offset: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # S16: scatter e distribution entrambi oscillanti in controfase
@@ -468,7 +468,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -493,7 +493,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 45.0
 
   # S18: density=9, scatter=1, distribution alta — grani sparsi nello spazio
@@ -517,7 +517,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.15
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # S19: density=6→15 (crescente), scatter=0.5 fisso
@@ -537,7 +537,7 @@ streams:
         strategy: range
         pitch_range: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # S20: density=15, scatter envelope 0→1, grain_dur lungo
@@ -561,7 +561,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # ===========================================================================
@@ -584,7 +584,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 50.0
 
   # S22: density=200, scatter=1, distribution=1 — texture continua diffusa
@@ -605,7 +605,7 @@ streams:
         strategy: range
         pitch_range: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # S23: density=50→300 (crescente), scatter 0→1
@@ -625,7 +625,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # S24: density=300→6 (decrescente), scatter 1→0 — da nuvola a pulsazione
@@ -646,7 +646,7 @@ streams:
         strategy: range
         pitch_range: 10.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # ===========================================================================
@@ -671,7 +671,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # S26: num_voices 1→5, scatter 0→1 (entrata progressiva + desincronizzazione)
@@ -694,7 +694,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # S27: num_voices 4→1 (convergenza), scatter 1→0
@@ -714,7 +714,7 @@ streams:
         strategy: range
         pitch_range: 12.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # S28: num_voices 2→6→2, scatter oscillante
@@ -740,7 +740,7 @@ streams:
         strategy: stochastic
         max_offset: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # ===========================================================================
@@ -770,7 +770,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.12
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # S30: Full combo — density alta + scatter oscillante + range pitch + pointer linear
@@ -795,7 +795,7 @@ streams:
         strategy: linear
         step: 0.03
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # S31: Bassa density, tanti grani lunghi, scatter e distribution come envelope
@@ -823,7 +823,7 @@ streams:
         strategy: linear
         step: 0.07
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # S32: Micro-variazione controllata — scatter e distribution minimi, focus su pitch
@@ -845,5 +845,5 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0

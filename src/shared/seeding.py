@@ -4,7 +4,7 @@ seeding.py — derivazione deterministica del RNG per-voce (issue #81).
 
 Singola fonte di verità per il seed locale delle voice strategy stocastiche
 (`StochasticPitchStrategy`, `StochasticOnsetStrategy`, `StochasticPointerStrategy`,
-`RandomPanStrategy`). Mantenere allineate le quattro strategy: tutte delegano qui.
+`StochasticPanStrategy`). Mantenere allineate le quattro strategy: tutte delegano qui.
 
 Due regimi:
 

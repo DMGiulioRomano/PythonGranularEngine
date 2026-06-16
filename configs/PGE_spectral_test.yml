@@ -87,7 +87,7 @@ streams:
       pitch:
         strategy: spectral
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # ==========================================================================

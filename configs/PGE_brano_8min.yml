@@ -113,7 +113,7 @@ streams:
         strategy: step
         step: 1.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 30.0
 
   # Gesto più corposo — il sample si allarga
@@ -149,7 +149,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 35.0
 
   # Strato sottile — emerge da sotto
@@ -185,7 +185,7 @@ streams:
         strategy: linear
         step: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   # ===========================================================================
@@ -212,7 +212,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   # Corrente di fondo — senza voci, muove più veloce
@@ -248,7 +248,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # Silenzio relativo — pochissimo, respiro tra le nuvole
@@ -284,7 +284,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # Micro-canone — onset stagger tra voci
@@ -306,7 +306,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   # Quinta giusta — spazio armonico stabile
@@ -328,7 +328,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   # Fondo che si muove — no voci, più veloce
@@ -364,7 +364,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # Nuvola dom7 + micro-canone — primo incrocio
@@ -389,7 +389,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # Pitch stochastic — prima irregolarità armonica
@@ -411,7 +411,7 @@ streams:
         strategy: stochastic
         pitch_range: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # Sottofondo neutro
@@ -447,7 +447,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   # Pointer lineare tra voci — tessitura sempre più ricca
@@ -469,7 +469,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # Grano piccolo + pitch step — transizione verso addensamento
@@ -494,7 +494,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   # ===========================================================================
@@ -520,7 +520,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "III_25_strato_b"
@@ -541,7 +541,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "III_26_fondo_neutro"
@@ -575,7 +575,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "III_28_quarta_aum"
@@ -596,7 +596,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "III_29_jitter_ptr"
@@ -617,7 +617,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "III_30_dom7_canone"
@@ -641,7 +641,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "III_31_full_primo"
@@ -668,7 +668,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "III_32_stoch_harmony"
@@ -689,7 +689,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "III_33_soffio"
@@ -726,7 +726,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "III_35_maj7_dense"
@@ -747,7 +747,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "III_36_step3"
@@ -768,7 +768,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "III_37_ptr_lin_onset"
@@ -792,7 +792,7 @@ streams:
         strategy: stochastic
         max_offset: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "III_38_stoch_accel"
@@ -813,7 +813,7 @@ streams:
         strategy: stochastic
         pitch_range: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "III_39_vuoto"
@@ -853,7 +853,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "III_41_dom7_finale"
@@ -874,7 +874,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "III_42_step5_dense"
@@ -895,7 +895,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   # Pre-climax — accelera tutto
@@ -923,7 +923,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # ===========================================================================
@@ -955,7 +955,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_45_fulmine_b"
@@ -976,7 +976,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_46_settima_acuta"
@@ -997,7 +997,7 @@ streams:
         strategy: step
         step: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_47_canone_veloce"
@@ -1018,7 +1018,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "IV_48_fondo_neutro"
@@ -1055,7 +1055,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "IV_50_jitter_forte"
@@ -1076,7 +1076,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_51_quinta_rapida"
@@ -1097,7 +1097,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_52_full_forza"
@@ -1124,7 +1124,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.07
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "IV_53_stoch_max"
@@ -1145,7 +1145,7 @@ streams:
         strategy: stochastic
         pitch_range: 8.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "IV_54_maj7_turbo"
@@ -1166,7 +1166,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "IV_55_canone_forte"
@@ -1188,7 +1188,7 @@ streams:
         step: 0.03
         base: 1.5
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "IV_56_pitch_ptr"
@@ -1212,7 +1212,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "IV_57_dom7_esplosione"
@@ -1236,7 +1236,7 @@ streams:
         strategy: linear
         step: 0.03
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "IV_58_microsuono"
@@ -1276,7 +1276,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "IV_60_ottave_veloci"
@@ -1297,7 +1297,7 @@ streams:
         strategy: step
         step: 12.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "IV_61_stoch_climax"
@@ -1318,7 +1318,7 @@ streams:
         strategy: stochastic
         pitch_range: 10.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "IV_62_picco_b"
@@ -1345,7 +1345,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.09
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "IV_63_full_max"
@@ -1372,7 +1372,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.09
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "IV_64_step5_micro"
@@ -1393,7 +1393,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "IV_65_ptr_wide"
@@ -1414,7 +1414,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "IV_66_canone_fine"
@@ -1435,7 +1435,7 @@ streams:
         strategy: linear
         step: 0.03
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_67_dom7_lento_rit"
@@ -1456,7 +1456,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "IV_68_full_lento_rit"
@@ -1483,7 +1483,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "IV_69_step7_rit"
@@ -1504,7 +1504,7 @@ streams:
         strategy: step
         step: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "IV_70_maj7_decrescendo"
@@ -1525,7 +1525,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "IV_71_jitter_decr"
@@ -1546,7 +1546,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "IV_72_bridge_v"
@@ -1573,7 +1573,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.07
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   # Ultimo picco — poi dissoluzione
@@ -1595,7 +1595,7 @@ streams:
         strategy: stochastic
         pitch_range: 9.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # ===========================================================================
@@ -1627,7 +1627,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "V_75_maj7_largo"
@@ -1648,7 +1648,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "V_76_step5_lento"
@@ -1669,7 +1669,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "V_77_ptr_largo"
@@ -1690,7 +1690,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "V_78_dom7_allontana"
@@ -1711,7 +1711,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 72.0
 
   - stream_id: "V_79_canone_largo"
@@ -1732,7 +1732,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "V_80_step3_rallenta"
@@ -1753,7 +1753,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "V_81_soffio_largo"
@@ -1787,7 +1787,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "V_83_ptr_stoch_largo"
@@ -1808,7 +1808,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   - stream_id: "V_84_dom7_distante"
@@ -1829,7 +1829,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 58.0
 
   - stream_id: "V_85_nuvola_sola"
@@ -1863,7 +1863,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 50.0
 
   - stream_id: "V_87_neutro_fine"
@@ -1898,7 +1898,7 @@ streams:
         strategy: linear
         step: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   # ===========================================================================
@@ -1925,7 +1925,7 @@ streams:
         strategy: step
         step: 1.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 30.0
 
   - stream_id: "VI_90_nebula_b"

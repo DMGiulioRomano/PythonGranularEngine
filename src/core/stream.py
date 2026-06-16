@@ -331,14 +331,13 @@ class Stream:
 
         # --- PAN ---
         pan_strategy = None
-        pan_spread = 0.0
         if 'pan' in v:
             kw = dict(v['pan'])
             name = kw.pop('strategy')
-            pan_spread = _parse_strategy_kwarg(kw.pop('spread', 0.0), self.duration)
-            if name == 'random':
+            if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
                 kw['seed'] = self.seed
+            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             pan_strategy = VoicePanStrategyFactory.create(name, **kw)
 
         self._voice_manager = VoiceManager(
@@ -347,7 +346,6 @@ class Stream:
             onset_strategy=onset_strategy,
             pointer_strategy=pointer_strategy,
             pan_strategy=pan_strategy,
-            pan_spread=pan_spread,
             pitch_unit=pitch_unit,
         )
 
