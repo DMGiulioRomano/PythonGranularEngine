@@ -95,6 +95,7 @@ class NumpyWindowRegistry:
         names = list(self._NUMPY_WINDOWS.keys())
         names.append('kaiser')
         names.append('gaussian')
+        names.append('blackman_harris')
         names.extend(self._GEN16_WINDOWS.keys())
         names.append('half_sine')
         names.append('rectangle')
@@ -131,15 +132,21 @@ class NumpyWindowRegistry:
         if name == 'gaussian':
             return self._gaussian(n)
 
-        # 5. Half-sine (GEN09 equivalente)
+        # 5. Blackman-Harris a 4 termini (GEN20 opt 5) — campana stretta con
+        # massima soppressione dei lobi laterali. NumPy non ha un built-in
+        # (np.blackman e' la variante a 3 termini): formula esplicita.
+        if name == 'blackman_harris':
+            return self._blackman_harris(n)
+
+        # 6. Half-sine (GEN09 equivalente)
         if name == 'half_sine':
             return self._half_sine(n)
 
-        # 6. Rectangle (GEN20 opt 8) — finestra piatta
+        # 7. Rectangle (GEN20 opt 8) — finestra piatta
         if name == 'rectangle':
             return np.ones(n, dtype=np.float64)
 
-        # 7. Sinc (GEN20 opt 9) — lobo centrale sin(πx)/(πx)
+        # 8. Sinc (GEN20 opt 9) — lobo centrale sin(πx)/(πx)
         if name == 'sinc':
             return self._sinc(n)
 
@@ -187,6 +194,27 @@ class NumpyWindowRegistry:
         """
         x = np.linspace(-1.0, 1.0, n)
         return np.exp(-0.5 * (x / sigma) ** 2)
+
+    @staticmethod
+    def _blackman_harris(n: int) -> np.ndarray:
+        """
+        Finestra Blackman-Harris a 4 termini (equivalente GEN20 opt 5 Csound).
+
+        w(x) = a0 - a1*cos(2*pi*x) + a2*cos(4*pi*x) - a3*cos(6*pi*x)
+        con x in [0, 1] (= k/(N-1)) e coefficienti
+        a0=0.35875, a1=0.48829, a2=0.14128, a3=0.01168.
+
+        Campana simmetrica molto stretta: ~0 ai bordi, picco 1.0 al centro,
+        lobi laterali soppressi (~ -92 dB). np.blackman e' la variante a 3
+        termini, quindi la calcoliamo esplicitamente come gaussian/sinc.
+        """
+        x = np.linspace(0.0, 1.0, n)
+        return (
+            0.35875
+            - 0.48829 * np.cos(2.0 * np.pi * x)
+            + 0.14128 * np.cos(4.0 * np.pi * x)
+            - 0.01168 * np.cos(6.0 * np.pi * x)
+        )
 
     @staticmethod
     def _half_sine(n: int) -> np.ndarray:

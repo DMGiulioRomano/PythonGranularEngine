@@ -421,3 +421,80 @@ class TestSincWindow:
         """Tutti i valori sono >= 0 (solo lobo centrale, x in [-1,1])."""
         w = registry.get('sinc', 1024)
         assert np.all(w >= -1e-15)
+
+
+# =============================================================================
+# 10. TEST BLACKMAN-HARRIS WINDOW
+# =============================================================================
+
+class TestBlackmanHarrisWindow:
+    """Test per la finestra blackman_harris (GEN20 opt 5 — campana a 4 termini).
+
+    Parita' col registry Csound (WindowRegistry): blackman_harris era definita
+    solo lato Csound, qui colmiamo il gap nel renderer NumPy.
+    """
+
+    def test_blackman_harris_available(self, registry):
+        """blackman_harris e' nella lista delle finestre disponibili."""
+        assert 'blackman_harris' in registry.available_windows()
+
+    def test_blackman_harris_returns_array(self, registry):
+        """get() ritorna un array NumPy della lunghezza richiesta."""
+        w = registry.get('blackman_harris', 1024)
+        assert isinstance(w, np.ndarray)
+        assert len(w) == 1024
+
+    def test_blackman_harris_dtype_float64(self, registry):
+        """Array in float64."""
+        w = registry.get('blackman_harris', 512)
+        assert w.dtype == np.float64
+
+    def test_blackman_harris_starts_near_zero(self, registry):
+        """Inizia vicino a zero (bordo)."""
+        w = registry.get('blackman_harris', 1024)
+        assert w[0] < 0.01
+
+    def test_blackman_harris_ends_near_zero(self, registry):
+        """Finisce vicino a zero (bordo)."""
+        w = registry.get('blackman_harris', 1024)
+        assert w[-1] < 0.01
+
+    def test_blackman_harris_peak_near_one(self, registry):
+        """Picco ~1.0 al centro."""
+        w = registry.get('blackman_harris', 1024)
+        assert np.max(w) > 0.99
+
+    def test_blackman_harris_peak_at_center(self, registry):
+        """Il picco e' vicino al campione centrale."""
+        w = registry.get('blackman_harris', 1024)
+        center = len(w) // 2
+        assert abs(np.argmax(w) - center) <= 1
+
+    def test_blackman_harris_is_symmetric(self, registry):
+        """La finestra e' simmetrica."""
+        w = registry.get('blackman_harris', 1024)
+        np.testing.assert_array_almost_equal(w, w[::-1])
+
+    def test_blackman_harris_all_non_negative(self, registry):
+        """Tutti i valori sono >= 0 (tolleranza floating point)."""
+        w = registry.get('blackman_harris', 1024)
+        assert np.all(w >= -1e-12)
+
+    def test_blackman_harris_all_at_most_one(self, registry):
+        """Tutti i valori sono <= 1.0."""
+        w = registry.get('blackman_harris', 1024)
+        assert np.all(w <= 1.0 + 1e-10)
+
+    def test_blackman_harris_narrower_than_blackman(self, registry):
+        """blackman_harris e' piu' stretta di blackman: a un quarto della
+        finestra ha valore piu' basso (lobi laterali piu' soppressi)."""
+        bh = registry.get('blackman_harris', 1024)
+        bk = registry.get('blackman', 1024)
+        quarter = 256
+        assert bh[quarter] < bk[quarter]
+
+    def test_blackman_harris_cached(self, registry):
+        """Stessa (name, N) ritorna l'oggetto cachato."""
+        w1 = registry.get('blackman_harris', 1024)
+        w2 = registry.get('blackman_harris', 1024)
+        assert w1 is w2

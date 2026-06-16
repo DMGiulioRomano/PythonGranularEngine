@@ -10,6 +10,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Renderer NumPy: supporto alla finestra grano `blackman_harris` (GEN20 opt 5),
+  campana a 4 termini con massima soppressione dei lobi laterali. Colma il gap
+  col registry Csound (`WindowRegistry`), che già la definiva: i due renderer ora
+  espongono lo stesso insieme di 16 finestre e l'espansione `envelope: all` (che
+  enumera le finestre Csound) non fallisce più sotto NumPy. Nessuna modifica a
+  YAML/CLI: `blackman_harris` era già un nome valido a livello di engine.
 - Score visualizer: auto-zoom del range colore pitch per-subplot
   (`pitch_color_autozoom`, default attivo). Il colore dei grani normalizza
   `1200*log2(pitch_ratio)` sul min/max in cents dei grani visibili nel
