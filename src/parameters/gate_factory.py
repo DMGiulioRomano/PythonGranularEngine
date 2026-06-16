@@ -71,7 +71,7 @@ class GateFactory:
         mode = GateFactory._classify_dephase(dephase)
         # Logica basata sullo stato
         if mode == DephaseMode.DISABLED:
-            return AlwaysGate() if has_explicit_range else NeverGate()
+            return GateFactory._range_only_gate(has_explicit_range)
         elif mode == DephaseMode.IMPLICIT:
             return GateFactory._create_probability_gate(default_prob)
         elif mode == DephaseMode.GLOBAL:
@@ -81,10 +81,16 @@ class GateFactory:
             envelope = create_scaled_envelope(dephase, duration, time_mode)
             return EnvelopeGate(envelope)
         elif mode == DephaseMode.SPECIFIC:
+            # Chiave assente o null: il parametro non è dephased esplicitamente e
+            # segue la semantica range-only (come dephase:false). Il range
+            # esplicito, se presente, resta sempre attivo; senza range nessuna
+            # variazione. Così in per-param si riduce la probabilità solo sui
+            # parametri dichiarati, gli altri mantengono il range a piena
+            # applicazione senza jitter implicito a sorpresa.
             if param_key in dephase:
                 raw_value = dephase[param_key]
                 if raw_value is None:
-                    return GateFactory._create_probability_gate(default_prob)
+                    return GateFactory._range_only_gate(has_explicit_range)
                 elif GateFactory._is_envelope_like(raw_value):
                     # Valore envelope per questo parametro specifico
                     envelope = create_scaled_envelope(raw_value, duration, time_mode)
@@ -92,8 +98,20 @@ class GateFactory:
                 else:
                     return GateFactory._parse_raw_value(raw_value, duration, time_mode)
             else:
-                return GateFactory._create_probability_gate(default_prob)        
+                return GateFactory._range_only_gate(has_explicit_range)
         return NeverGate()
+
+    @staticmethod
+    def _range_only_gate(has_explicit_range: bool) -> ProbabilityGate:
+        """Semantica 'range-only' (come dephase:false / DephaseMode.DISABLED).
+
+        Il parametro non viene dephased: se ha un range esplicito lo applica
+        sempre (AlwaysGate), altrimenti nessuna variazione (NeverGate). Riusata
+        in modalità SPECIFIC per le chiavi assenti o null, così i parametri non
+        dichiarati nel dict per-param mantengono il loro range a piena
+        applicazione senza introdurre jitter implicito.
+        """
+        return AlwaysGate() if has_explicit_range else NeverGate()
 
     @staticmethod
     def _create_probability_gate(probability: float) -> ProbabilityGate:
