@@ -21,6 +21,7 @@ from core.stream_config import StreamConfig, StreamContext
 from parameters.parameter import Parameter
 from parameters.parameter_definitions import ParameterBounds
 from envelopes.envelope import Envelope
+from shared.exceptions import InvalidFieldValueError
 
 # =============================================================================
 # FIXTURES
@@ -1547,8 +1548,8 @@ class TestDeviationScaling:
         pos = pointer.calculate(1.0)
         assert pos == pytest.approx(4.5)
 
-    def test_deviation_wraps_outside_loop_bounds(self, mock_config):
-        """Deviation che spinge fuori dal loop viene wrappata."""
+    def test_deviation_confined_inside_loop_bounds(self, mock_config):
+        """Deviation che sforerebbe il loop viene confinata DENTRO (wrap sul loop)."""
         mock_config.context.sample_dur_sec = 10.0
 
         real = _build_real_params(
@@ -1567,13 +1568,11 @@ class TestDeviationScaling:
 
         pointer.calculate(0.0)  # entrata
 
-        # offset = 0.8 * 3.0 = 2.4
-        # pos = 4.5 + 2.4 = 6.9, fuori dal loop [2.0, 5.0)
-        # Bypass semantics: wrap sul sample intero, non sul loop
-        # 6.9 % 10.0 = 6.9 — fuori dal loop, dentro il sample
+        # offset = 0.8 * 3.0 = 2.4 ; esteso = 4.5 + 2.4 = 6.9 (sforerebbe loop_end)
+        # confinamento al loop [2,5): (6.9 - 2.0) % 3.0 = 1.9 -> 2.0 + 1.9 = 3.9
         pos = pointer.calculate(1.0)
-        assert pos == pytest.approx(6.9)
-        assert 0.0 <= pos < 10.0   # dentro il sample
+        assert pos == pytest.approx(3.9)
+        assert 2.0 <= pos < 5.0   # confinato dentro il loop
 
 
 # =============================================================================
@@ -1916,7 +1915,12 @@ class TestGrainReverseOffset:
         assert pos_normal == pytest.approx(pos_reverse)
 
     def test_grain_reverse_wraps_in_loop(self, mock_config):
-        """grain_reverse che spinge oltre loop_end viene wrappato."""
+        """grain_reverse che spinge oltre loop_end resta CONFINATO nel loop.
+
+        Con il confinamento al loop (nuovo default) il punto di partenza del
+        grano reverse e' wrappato modularmente DENTRO [loop_start, loop_end),
+        non piu' sul sample intero (vecchia semantica bypass).
+        """
         mock_config.context.sample_dur_sec = 10.0
         real = _build_real_params(
             start=4.9, speed=0.0,
@@ -1932,12 +1936,11 @@ class TestGrainReverseOffset:
         pointer.calculate(0.0, grain_duration=0.0, grain_reverse=False)
         assert pointer.in_loop is True
 
-        # Con reverse e duration=0.2: 4.9 + 0.2 = 5.1
-        # Wrap sul sample intero: 5.1 % 10.0 = 5.1
-        # Il pointer e' fuori dal loop ma dentro il sample — comportamento bypass
+        # Con reverse e duration=0.2: 4.9 + 0.2 = 5.1 in coordinate estese.
+        # Confinamento al loop [2,5): (5.1 - 2.0) % 3.0 = 0.1 -> 2.0 + 0.1 = 2.1
         pos = pointer.calculate(0.0, grain_duration=0.2, grain_reverse=True)
-        assert pos == pytest.approx(5.1)
-        assert 0.0 <= pos < 10.0 
+        assert pos == pytest.approx(2.1)
+        assert 2.0 <= pos < 5.0
 
     def test_grain_reverse_default_is_false(self, mock_config):
         """Senza parametro grain_reverse, default e' False."""
@@ -2445,3 +2448,202 @@ class TestStartImplicitFromLoopStart:
         """Senza loop, start rimane al default 0.0."""
         pointer = pointer_factory({'speed_ratio': 1.0})
         assert pointer.start == pytest.approx(0.0)
+
+
+# =============================================================================
+# GRUPPO 18: CONFINAMENTO DELLA DEVIAZIONE NEL LOOP (offset_range)
+# =============================================================================
+
+def _fixed_dev(value):
+    """Mock di pointer_deviation con get_value costante.
+
+    Rende la deviazione deterministica per poter asserire la posizione esatta.
+    .value resta 0.0 (non usato da _calculate_linear_position per la deviazione).
+    """
+    dev = Mock()
+    dev.value = 0.0
+    dev.get_value = Mock(return_value=value)
+    return dev
+
+
+class TestLoopConfinement:
+    """offset_range confinata DENTRO la finestra di loop attiva (nuovo default).
+
+    base + deviazione (in coordinate estese) viene wrappato modularmente sulla
+    finestra di loop, poi rimappato sul sample (% sample_dur_sec). Senza loop la
+    finestra coincide col file intero (non-regressione).
+    """
+
+    def test_offset_range_confined_static_loop(self, mock_config):
+        """Deviazione che sforerebbe loop_end resta dentro [loop_start, loop_end)."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=4.0, speed=0.0, loop_start=2.0, loop_end=5.0)
+        real['pointer_deviation'] = _fixed_dev(0.9)  # dev_normalized = 0.9
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 4.0, 'speed_ratio': 0.0, 'loop_start': 2.0, 'loop_end': 5.0}
+        )
+        # base=4.0, esteso = 4.0 + 0.9*3.0 = 6.7 ; (6.7-2.0)%3.0 = 1.7 -> 3.7
+        pos = pointer.calculate(1.0)
+        assert pos == pytest.approx(3.7)
+        assert 2.0 <= pos < 5.0
+
+    def test_offset_range_confined_modular_not_clamped(self, mock_config):
+        """Deviazione negativa grande: wrap modulare, NON clamp ai bordi."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=2.1, speed=0.0, loop_start=2.0, loop_end=5.0)
+        real['pointer_deviation'] = _fixed_dev(-0.9)
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 2.1, 'speed_ratio': 0.0, 'loop_start': 2.0, 'loop_end': 5.0}
+        )
+        # base=2.1, esteso = 2.1 - 0.9*3.0 = -0.6 ; (-0.6-2.0)%3.0 = 0.4 -> 2.4
+        # un clamp darebbe 2.0 (loop_start): 2.4 dimostra il wrap modulare
+        pos = pointer.calculate(1.0)
+        assert pos == pytest.approx(2.4)
+        assert 2.0 <= pos < 5.0
+
+    def test_offset_range_confined_loop_dur(self, mock_config):
+        """Confinamento anche in modalita' loop_dur."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=3.0, speed=0.0, loop_start=2.0, loop_dur=3.0)
+        real['pointer_deviation'] = _fixed_dev(0.9)
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 3.0, 'speed_ratio': 0.0, 'loop_start': 2.0, 'loop_dur': 3.0}
+        )
+        # loop [2,5), base=3.0, esteso = 3.0 + 0.9*3.0 = 5.7 ; (5.7-2.0)%3.0 = 0.7 -> 2.7
+        pos = pointer.calculate(1.0)
+        assert pos == pytest.approx(2.7)
+        assert 2.0 <= pos < 5.0
+
+    def test_offset_range_no_loop_unchanged(self, mock_config):
+        """Non-regressione: senza loop la deviazione scala sul file e wrappa sul file."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=3.0, speed=0.0)
+        real['pointer_deviation'] = _fixed_dev(0.5)
+        pointer = _make_pointer(
+            mock_config, real, {'start': 3.0, 'speed_ratio': 0.0}
+        )
+        # base=3.0, finestra=(0,10), 3.0 + 0.5*10 = 8.0 -> 8.0
+        pos = pointer.calculate(1.0)
+        assert pos == pytest.approx(8.0)
+
+    def test_offset_range_confined_wraparound_loop(self, mock_config):
+        """Cavallo via loop_dur: deviazione confinata dentro [9,10) U [0,2)."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=9.0, speed=0.0, loop_start=9.0, loop_dur=3.0)
+        real['pointer_deviation'] = _fixed_dev(-0.9)
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 9.0, 'speed_ratio': 0.0, 'loop_start': 9.0, 'loop_dur': 3.0}
+        )
+        # loop esteso [9,12), base=9.0, esteso = 9.0 - 0.9*3.0 = 6.3
+        # (6.3-9.0)%3.0 = 0.3 -> 9.3 ; 9.3 % 10 = 9.3 (dentro il cavallo)
+        pos = pointer.calculate(1.0)
+        assert pos == pytest.approx(9.3)
+        assert (9.0 <= pos < 10.0) or (0.0 <= pos < 2.0)
+
+    def test_wraparound_base_movement_unchanged(self, mock_config):
+        """Non-regressione: movimento base a cavallo (deviation=0) invariato."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=9.0, speed=1.0, loop_start=9.0, loop_dur=3.0)
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 9.0, 'speed_ratio': 1.0, 'loop_start': 9.0, 'loop_dur': 3.0}
+        )
+        assert pointer.calculate(0.0) == pytest.approx(9.0)
+        assert pointer.calculate(0.5) == pytest.approx(9.5)
+        assert pointer.calculate(1.0) == pytest.approx(0.0)
+        assert pointer.calculate(1.5) == pytest.approx(0.5)
+        assert pointer.calculate(2.0) == pytest.approx(1.0)
+
+
+class TestVoiceOffsetConfinement:
+    """L'offset di pointer delle voci e' confinato al loop tramite il parametro
+    voice_offset di calculate() (il wrap non vive piu' in Stream)."""
+
+    def test_voice_offset_confined_in_loop(self, mock_config):
+        """voice_offset che sforerebbe il loop viene wrappato dentro la finestra."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=3.0, speed=0.0, loop_start=2.0, loop_end=5.0)
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 3.0, 'speed_ratio': 0.0, 'loop_start': 2.0, 'loop_end': 5.0}
+        )
+        # base=3.0, esteso = 3.0 + 4.0 = 7.0 ; (7.0-2.0)%3.0 = 2.0 -> 4.0
+        pos = pointer.calculate(1.0, voice_offset=4.0)
+        assert pos == pytest.approx(4.0)
+        assert 2.0 <= pos < 5.0
+
+    def test_voice_offset_zero_is_base(self, mock_config):
+        """voice_offset=0.0 (default) non altera la posizione base."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=3.0, speed=0.0, loop_start=2.0, loop_end=5.0)
+        pointer = _make_pointer(
+            mock_config, real,
+            {'start': 3.0, 'speed_ratio': 0.0, 'loop_start': 2.0, 'loop_end': 5.0}
+        )
+        assert pointer.calculate(1.0, voice_offset=0.0) == pytest.approx(3.0)
+
+    def test_voice_offset_no_loop_wraps_on_sample(self, mock_config):
+        """Non-regressione: senza loop, voice_offset wrappa sul sample intero."""
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=8.0, speed=0.0)
+        pointer = _make_pointer(
+            mock_config, real, {'start': 8.0, 'speed_ratio': 0.0}
+        )
+        # base=8.0, esteso = 8.0 + 5.0 = 13.0 ; 13.0 % 10 = 3.0
+        pos = pointer.calculate(1.0, voice_offset=5.0)
+        assert pos == pytest.approx(3.0)
+
+
+class TestLoopBoundsValidation:
+    """loop_end < loop_start (bound statici) -> InvalidFieldValueError (Opzione 1).
+
+    Il cavallo della fine del file resta esprimibile solo via loop_dur; un
+    loop_end minore di loop_start oggi degenera silenziosamente in loop morto,
+    e va invece rifiutato esplicitamente.
+    """
+
+    def test_loop_end_less_than_loop_start_raises(self, mock_config):
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=0.0, speed=1.0, loop_start=5.0, loop_end=2.0)
+        with pytest.raises(InvalidFieldValueError):
+            _make_pointer(
+                mock_config, real,
+                {'start': 0.0, 'speed_ratio': 1.0, 'loop_start': 5.0, 'loop_end': 2.0}
+            )
+
+    def test_loop_end_equal_loop_start_raises(self, mock_config):
+        mock_config.context.sample_dur_sec = 10.0
+        real = _build_real_params(start=0.0, speed=1.0, loop_start=5.0, loop_end=5.0)
+        with pytest.raises(InvalidFieldValueError):
+            _make_pointer(
+                mock_config, real,
+                {'start': 0.0, 'speed_ratio': 1.0, 'loop_start': 5.0, 'loop_end': 5.0}
+            )
+
+    def test_loop_end_envelope_not_validated(self, mock_config):
+        """Bound dinamici (envelope): nessuna validazione d'ordine (puo' variare)."""
+        mock_config.context.sample_dur_sec = 10.0
+        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+            mock_orch = MockOrch.return_value
+            env = Envelope([[0.0, 5.0], [1.0, 1.0]])
+            ls = Mock()
+            ls._value = env
+            ls.get_value = Mock(return_value=env.evaluate(0.0))
+            real = {
+                'pointer_start': 0.0,
+                'pointer_speed_ratio': Mock(value=1.0, get_value=Mock(return_value=1.0)),
+                'pointer_deviation': Mock(value=0.0, get_value=Mock(return_value=0.0)),
+                'loop_start': ls,
+                'loop_end': Mock(_value=3.0, value=3.0, get_value=Mock(return_value=3.0)),
+                'loop_dur': None,
+            }
+            mock_orch.create_all_parameters.return_value = real
+            # loop_start envelope -> non validato, nessuna eccezione
+            pointer = PointerController(
+                {'loop_start': [[0.0, 5.0], [1.0, 1.0]], 'loop_end': 3.0}, mock_config
+            )
+            assert pointer.has_loop is True

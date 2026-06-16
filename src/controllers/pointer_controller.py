@@ -17,6 +17,7 @@ from parameters.parameter_schema import POINTER_PARAMETER_SCHEMA
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from core.stream_config import StreamConfig
 from shared.logger import log_config_warning, log_loop_drift_warning, log_loop_dynamic_mode, log_loop_init
+from shared.exceptions import InvalidFieldValueError
 class PointerController:
     """
     Gestisce il posizionamento della testina di lettura nel sample.
@@ -83,6 +84,8 @@ class PointerController:
             self.loop_end = self._orchestrator.create_constant_parameter(
     'loop_end', self._sample_dur_sec
 )
+        # 4b. Validazione bound statici del loop: loop_end deve essere > loop_start.
+        self._validate_loop_bounds(params)
         # 5. Rileva se il loop e' dinamico (loop_start e' un Envelope).
         #    In modalita' dinamica il pointer entra immediatamente nel loop
         #    a elapsed=0, senza attendere che la posizione lineare
@@ -129,6 +132,40 @@ class PointerController:
                     sample_dur_sec = self._sample_dur_sec
                 )
 
+
+    def _validate_loop_bounds(self, params: dict) -> None:
+        """Rifiuta loop_end <= loop_start per bound statici (Opzione 1).
+
+        Il loop a cavallo della fine del file si esprime SOLO via loop_dur; un
+        loop_end minore o uguale a loop_start degenererebbe in un loop morto
+        (regione invertita), quindi va segnalato come errore esplicito.
+
+        Validato solo quando entrambi i bound sono scalari numerici dichiarati:
+        - modalita' loop_dur            -> nessuna validazione d'ordine
+        - loop_end implicito (fallback) -> nessuna validazione
+        - bound dinamici (Envelope)     -> esentati (l'ordine puo' variare nel tempo)
+        """
+        if not self.has_loop or self.loop_dur is not None:
+            return
+        # Solo se loop_end e' stato dichiarato esplicitamente dall'utente.
+        if params.get('loop_end') is None:
+            return
+        ls_raw = getattr(self.loop_start, '_value', None)
+        le_raw = getattr(self.loop_end, '_value', None)
+        # Valida esclusivamente bound statici (scalari numerici).
+        if not isinstance(ls_raw, (int, float)) or not isinstance(le_raw, (int, float)):
+            return
+        start_v = self.loop_start.get_value(0.0)
+        end_v = self.loop_end.get_value(0.0)
+        if end_v <= start_v:
+            raise InvalidFieldValueError(
+                field='loop_end',
+                value=end_v,
+                hint=(
+                    f"loop_end deve essere maggiore di loop_start ({start_v}). "
+                    "Per un loop a cavallo della fine del file usa loop_dur."
+                ),
+            )
 
     def _pre_normalize_loop_params(self, params: dict) -> dict:
         """
@@ -198,50 +235,66 @@ class PointerController:
         self,
         elapsed_time: float,
         grain_duration: float = 0.0,
-        grain_reverse: bool = False
+        grain_reverse: bool = False,
+        voice_offset: float = 0.0
     ) -> float:
         """
         Calcola la posizione di lettura nel sample per questo grano.
-        
+
         Usa Phase Accumulator per loop con durata dinamica (envelope).
         La fase si accumula incrementalmente, evitando salti quando
         loop_length cambia.
-        
+
+        Con loop attivo la posizione finale (base + deviazione offset_range +
+        offset di voce) e' confinata DENTRO la finestra di loop tramite wrap
+        modulare; il modulo finale su sample_dur_sec gestisce i loop a cavallo
+        della fine del file. Senza loop la finestra coincide col file intero.
+
         Args:
             elapsed_time: secondi trascorsi dall'onset dello stream
-            
+            grain_duration: durata del grano (sommata in reverse, prima del wrap)
+            grain_reverse: se True, grano invertito (offset +grain_duration)
+            voice_offset: offset di pointer della voce, in secondi, confinato
+                al loop insieme alla deviazione (0.0 per la voce di riferimento)
+
         Returns:
-            float: posizione in secondi nel sample sorgente
+            float: posizione in secondi nel sample sorgente, sempre in [0, sample_dur)
         """
         # 1. Calcola movimento lineare (da speed)
         linear_pos = self._calculate_linear_position(elapsed_time)
-        
-        # 2. Ottieni posizione base e finestra di contesto
-        #    - Con loop:    base_pos e' dentro il loop, loop_length e' la sua lunghezza
-        #    - Senza loop:  base_pos e' wrap sul sample, loop_length = sample_dur_sec
-        if self.has_loop:
-            base_pos, loop_length = self._apply_loop(linear_pos, elapsed_time)
-        else:
-            base_pos = linear_pos % self._sample_dur_sec
-            loop_length = self._sample_dur_sec
 
-        # 3. Applica deviazione per-grano (scala rispetto alla finestra attiva)
-        #    La deviazione e' un offset temporaneo: non modifica lo stato del loop.
-        #    Puo' portare il pointer fuori dal loop — il wrap avviene sul sample intero,
-        #    non sul loop (bypass semantics: il grano atterrerra' dove capita nel sample).
+        # 2. Ottieni posizione ESTESA e finestra attiva (window_start, window_length)
+        #    - Con loop:    extended_pos in coordinate estese [loop_start, loop_start+len),
+        #                   window_start = loop_start corrente, window_length = lunghezza loop
+        #    - Senza loop:  finestra = file intero (window_start=0, window_length=sample_dur)
+        if self.has_loop:
+            extended_pos, window_start, window_length = self._apply_loop(linear_pos, elapsed_time)
+        else:
+            extended_pos = linear_pos
+            window_start = 0.0
+            window_length = self._sample_dur_sec
+
+        # 3. Somma deviazione per-grano (scalata sulla finestra) e offset di voce,
+        #    in coordinate estese. Sono spostamenti temporanei: non modificano lo
+        #    stato del loop (il phase accumulator resta intatto).
         dev_normalized = self.deviation.get_value(elapsed_time)
-        final_pos = base_pos + dev_normalized * loop_length
+        final_pos = extended_pos + dev_normalized * window_length + voice_offset
         # 4. Offset per grano invertito (aggiunto prima del wrap)
         if grain_reverse:
             final_pos += grain_duration
-        # 5. Wrap finale sempre sul buffer intero
-        return final_pos % self._sample_dur_sec
+
+        # 5. Confinamento alla finestra attiva (wrap modulare), poi rimappa sul
+        #    buffer intero. Con loop il grano resta DENTRO il loop; il modulo finale
+        #    su sample_dur_sec realizza il loop a cavallo della fine (loop_dur).
+        #    Senza loop collassa nel semplice % sample_dur_sec.
+        rel = (final_pos - window_start) % window_length
+        return (window_start + rel) % self._sample_dur_sec
 
     def _apply_loop(
         self,
         linear_pos: float,
         elapsed_time: float
-    ) -> tuple[float, float, Callable[[float], float]]:
+    ) -> tuple[float, float, float]:
         """
         Applica logica loop con phase accumulator basato su posizione assoluta.
         
@@ -252,12 +305,16 @@ class PointerController:
         - Se loop bounds stabili e pointer supera loop_end → WRAP modulare
         
         Returns:
-            tuple[float, float]: (base_pos, loop_length)
-                base_pos:    posizione corrente nel sample (secondi)
-                loop_length: lunghezza della finestra di loop attiva (secondi).
-                             Usata da calculate() per scalare la deviazione.
-                             Equivale a sample_dur_sec nel pre-loop.
-        
+            tuple[float, float, float]: (extended_pos, window_start, window_length)
+                extended_pos: posizione corrente in coordinate ESTESE, non ancora
+                              modulata sul sample. Dentro il loop vive in
+                              [loop_start, loop_start+loop_length); il modulo finale
+                              su sample_dur_sec (in calculate) realizza il cavallo.
+                window_start: inizio della finestra di loop attiva (loop_start corrente);
+                              0.0 nel pre-loop (finestra = file intero).
+                window_length: lunghezza della finestra attiva (secondi). Usata da
+                               calculate() per scalare la deviazione e per il wrap.
+
         """
         # =========================================================================
         # STEP 1: Valuta loop bounds CORRENTI (possono essere envelope!)
@@ -295,8 +352,8 @@ class PointerController:
                     self._emit_loop_drift_warning(
                         check_pos, current_loop_start, current_loop_end, elapsed_time
                     )
-                    base_pos = linear_pos % self._sample_dur_sec
-                    return base_pos, self._sample_dur_sec
+                    # Pre-loop: finestra = file intero, posizione estesa = lineare grezza
+                    return linear_pos, 0.0, self._sample_dur_sec
 
             # Entrata confermata (statica o dinamica)
             self._in_loop = True
@@ -304,7 +361,7 @@ class PointerController:
             self._last_linear_pos = linear_pos
             self._prev_loop_start = current_loop_start
             self._prev_loop_end = current_loop_end
-            return entry_pos, loop_length
+            return entry_pos, current_loop_start, loop_length
 
         
         # =========================================================================
@@ -378,10 +435,11 @@ class PointerController:
         self._prev_loop_end = current_loop_end
         
         # ---------------------------------------------------------------------
-        # STEP 3e: Restituisci risultato
+        # STEP 3e: Restituisci risultato in coordinate estese
         # ---------------------------------------------------------------------
-        base_pos = self._loop_absolute_pos % self._sample_dur_sec
-        return base_pos, loop_length
+        #    _loop_absolute_pos vive in [loop_start, loop_start+loop_length); il
+        #    modulo finale su sample_dur_sec (in calculate) gestisce il cavallo.
+        return self._loop_absolute_pos, current_loop_start, loop_length
 
     def _emit_loop_drift_warning(
         self,

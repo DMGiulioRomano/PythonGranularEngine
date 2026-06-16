@@ -42,9 +42,15 @@ def _make_mock_parameter(value=0.0, name='mock_param'):
     return p
 
 
-def _make_mock_pointer(return_value=0.5):
+def _make_mock_pointer(return_value=0.5, sample_dur=5.0):
     ptr = Mock()
-    ptr.calculate = Mock(return_value=return_value)
+    # Simula la nuova firma calculate(elapsed, grain_dur, reverse, voice_offset):
+    # il voice offset e' applicato e wrappato DENTRO il PointerController. Senza
+    # loop il confinamento alla finestra coincide col wrap su sample_dur, quindi
+    # (base + voice_offset) % sample_dur (come il controller reale).
+    def _calc(elapsed_time, grain_duration=0.0, grain_reverse=False, voice_offset=0.0):
+        return (return_value + voice_offset) % sample_dur
+    ptr.calculate = Mock(side_effect=_calc)
     ptr.get_speed = Mock(return_value=1.0)
     ptr.speed_ratio = Mock()
     ptr.speed_ratio.value = 1.0
@@ -109,7 +115,7 @@ def _make_stream(
     s.reverse = _make_mock_parameter(0, 'reverse')
     s.grain_envelope = 'hanning'
 
-    s._pointer = _make_mock_pointer(pointer_pos)
+    s._pointer = _make_mock_pointer(pointer_pos, s.sample_dur_sec)
     s._pitch = _make_mock_pitch(pitch_ratio)
     s._window_controller = _make_mock_window_controller()
 

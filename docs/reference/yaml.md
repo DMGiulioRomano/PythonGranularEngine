@@ -304,7 +304,9 @@ pointer:
                           # supporta envelope: [[0, 1.0], [30, 2.0]]
 
   offset_range: 0.0       # deviazione per-grano ∈ [-offset_range, +offset_range]
-                          # scalata rispetto alla finestra di loop attiva
+                          # scalata sulla finestra di loop attiva e CONFINATA al
+                          # suo interno (wrap modulare). Senza loop: scala e wrap
+                          # sull'intero file.
 
   # Loop (opzionale) — richiede almeno loop_start
   loop_start: 1.0         # inizio loop in secondi
@@ -321,6 +323,26 @@ pointer:
 ```
 
 Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
+
+### Confinamento al loop
+
+Con un loop attivo, la posizione finale di ogni grano — base + `offset_range` +
+offset di pointer delle voci — è **confinata dentro la finestra di loop** tramite
+wrap modulare: i grani leggono solo da `[loop_start, loop_end)`, mai dal resto del
+file. Senza loop la finestra coincide con l'intero file (scala e wrap su
+`sample_dur_sec`). La coda di un grano che parte vicino a `loop_end` può comunque
+estendersi oltre il confine per la durata del grano: è confinato il punto di
+lettura, non l'intervallo coperto.
+
+**Loop a cavallo della fine del file:** si esprime solo con `loop_dur`. Se
+`loop_start + loop_dur` supera `sample_dur_sec`, la finestra prosegue dall'inizio
+del file (es. `loop_start: 0.9`, `loop_dur: 0.3`, `loop_unit: normalized` → legge
+`[0.9·dur, dur) ∪ [0, 0.2·dur)`). Con `loop_end` non è possibile: il valore è
+vincolato a `[0, sample_dur_sec]`.
+
+**Validazione:** `loop_end <= loop_start` (bound statici) →
+`InvalidFieldValueError`. Per un loop a cavallo usa `loop_dur`. I bound dinamici
+(envelope) non sono validati sull'ordine, perché può variare nel tempo.
 
 ---
 
