@@ -799,7 +799,8 @@ class ScoreVisualizer:
         collection = PatchCollection(
             polygons,
             facecolors=colors,
-            edgecolors='none',
+            edgecolors='black',
+            linewidths=0.02,
             clip_on=True,
             zorder=2
         )
