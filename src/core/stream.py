@@ -481,7 +481,7 @@ class Stream:
 
         Applica gli offset di VoiceConfig sopra i valori base:
           pitch_ratio  *= pitch_factor   # fattore già materializzato dall'unità
-          pointer_pos  = (base + pointer_offset) % sample_dur_sec
+          pointer_pos  = confinato al loop (base + deviazione + pointer_offset)
           pan          += pan_offset
           onset        += onset_offset
 
@@ -505,15 +505,17 @@ class Stream:
         pitch_ratio = self._pitch.calculate(elapsed_time, grain_reverse=grain_reverse)
         pitch_ratio *= voice_config.pitch_factor
 
-        # === 2. POINTER — base + voice_offset, re-wrap in [0, sample_dur) ===
-        # Il modulo mappa anche offset negativi in [0, sample_dur). Così
-        # grain.pointer_pos è la posizione reale di lettura: audio e partitura
-        # usano lo stesso valore (issue #79).
-        pointer_pos = self._pointer.calculate(elapsed_time, grain_dur, grain_reverse)
+        # === 2. POINTER — base + voice_offset, confinati alla finestra di loop ===
+        # Il voice offset viene passato a PointerController.calculate(): con un loop
+        # attivo viene confinato DENTRO il loop (wrap modulare), altrimenti sul file
+        # intero. calculate() restituisce già la posizione reale di lettura in
+        # [0, sample_dur): audio e partitura usano lo stesso valore (issue #79).
         voice_pointer_offset = voice_config.pointer_offset
         if getattr(self, '_voice_pointer_normalized', False):
             voice_pointer_offset *= self.sample_dur_sec
-        pointer_pos = (pointer_pos + voice_pointer_offset) % self.sample_dur_sec
+        pointer_pos = self._pointer.calculate(
+            elapsed_time, grain_dur, grain_reverse, voice_offset=voice_pointer_offset
+        )
 
         # === 3. VOLUME ===
         volume = self.volume.get_value(elapsed_time)

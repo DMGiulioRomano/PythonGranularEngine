@@ -139,6 +139,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Pointer: la deviazione `offset_range` e l'offset di pointer delle voci
+  (`voices` → `pointer_range`/`step`) sono ora **confinati dentro la finestra di
+  loop** quando un loop è attivo (wrap modulare), invece di poter leggere da tutto
+  il file (vecchia semantica "bypass"). Senza loop il comportamento è invariato
+  (scala e wrap sull'intero file). **Breaking**: composizioni che usano
+  `offset_range` o offset di voce con un loop attivo cambiano resa sonora (i grani
+  restano nel loop). Il loop a cavallo della fine del file resta esprimibile solo
+  via `loop_dur` (`loop_start + loop_dur > sample_dur_sec`), gestito dal wrap
+  finale. `src/controllers/pointer_controller.py` (doppio modulo in `calculate()`,
+  `_apply_loop` espone la finestra estesa), `src/core/stream.py` (l'offset di voce
+  è passato a `calculate()`, non più wrappato in Stream).
+- Pointer: `loop_end <= loop_start` (bound statici) ora solleva
+  `InvalidFieldValueError` invece di degenerare silenziosamente in un loop morto.
+  I bound dinamici (envelope) restano esentati dalla validazione d'ordine.
 - Versione minima Python abbassata da **3.12 a 3.9** (issue #120). Il vincolo
   `>= 3.12` era conservativo, non tecnico: il codice non usa feature esclusive
   di 3.11/3.12. Interventi: (1) `make/test.mk` e `Makefile` (`check-system-deps`)
