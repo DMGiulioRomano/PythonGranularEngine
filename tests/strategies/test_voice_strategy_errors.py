@@ -78,12 +78,12 @@ def test_chord_pitch_strategy_invalid_inversion_raises_invalid_strategy_config()
     assert err.field == "inversion"
 
 
-def test_random_pan_strategy_negative_spread_raises_invalid_strategy_config():
-    from strategies.voice_pan_strategy import RandomPanStrategy
+def test_stochastic_pan_strategy_negative_spread_raises_invalid_strategy_config():
+    from strategies.voice_pan_strategy import StochasticPanStrategy
 
-    strategy = RandomPanStrategy(stream_id="s1")
+    strategy = StochasticPanStrategy(spread=-0.5, stream_id="s1")
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
-        strategy.get_pan_offset(voice_index=1, num_voices=2, spread=-0.5, time=0.0)
+        strategy.get_pan_offset(voice_index=1, num_voices=2, time=0.0)
 
     err = exc_info.value
     assert err.field == "spread"

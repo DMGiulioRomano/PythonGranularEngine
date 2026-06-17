@@ -130,7 +130,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # B2: solo onset_offset:linear — canone temporale micro
@@ -147,7 +147,7 @@ streams:
         strategy: linear
         step: 0.003
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # B3: solo pointer:linear — voci lette in posizioni diverse del sample
@@ -164,7 +164,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # B4: solo pointer:stochastic — texture con dispersione casuale per voce
@@ -181,7 +181,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # B5: pitch:chord + onset:linear — accordo maj7 con canone micro
@@ -201,7 +201,7 @@ streams:
         strategy: linear
         step: 0.003
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # B6: COMBO COMPLETO fill_factor=1.0 — tutti i parametri voce
@@ -224,7 +224,7 @@ streams:
         strategy: linear
         step: 0.03
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -250,7 +250,7 @@ streams:
         strategy: step
         step: 1.5
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # C2: density=50 — IOT=20ms, step=3st (terza minore)
@@ -267,7 +267,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # C3: density=100 — IOT=10ms, step=5st (quarta aumentata) ← punto di fusione
@@ -284,7 +284,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # C4: density=200 — IOT=5ms, step=7st (quinta giusta)
@@ -301,7 +301,7 @@ streams:
         strategy: step
         step: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # C5: density=300 — IOT=3.3ms, step=12st (ottava)
@@ -318,7 +318,7 @@ streams:
         strategy: step
         step: 12.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -350,7 +350,7 @@ streams:
         strategy: linear
         step: 0.02
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # D2: density=50, onset_step=0.05s (250% IOT)
@@ -367,7 +367,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # D3: density=100, onset_step=0.1s
@@ -384,7 +384,7 @@ streams:
         strategy: linear
         step: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # D4: density=200, onset_step=0.2s
@@ -401,7 +401,7 @@ streams:
         strategy: linear
         step: 0.2
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # D5: density=300, onset_step=0.4s
@@ -418,7 +418,7 @@ streams:
         strategy: linear
         step: 0.4
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -443,7 +443,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.01
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # E2: density=50, pointer_range=0.05 (5% del sample)
@@ -460,7 +460,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # E3: density=100, pointer_range=0.1 (10% del sample)
@@ -477,7 +477,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # E4: density=200, pointer_range=0.2 (20% del sample)
@@ -494,7 +494,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.2
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # E5: density=300, pointer_range=0.4 (40% del sample)
@@ -511,7 +511,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.4
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -536,7 +536,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # F2: density=50, chord=dom7
@@ -553,7 +553,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # F3: density=100, chord=dom7
@@ -570,7 +570,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # F4: density=200, chord=dom7
@@ -587,7 +587,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # F5: density=300, chord=dom7
@@ -604,7 +604,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -632,7 +632,7 @@ streams:
         strategy: linear
         step: 0.02
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # G2: density=50, step=3st, onset_step=0.05s
@@ -652,7 +652,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # G3: density=100, step=5st, onset_step=0.1s
@@ -672,7 +672,7 @@ streams:
         strategy: linear
         step: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # G4: density=200, step=7st, onset_step=0.2s
@@ -692,7 +692,7 @@ streams:
         strategy: linear
         step: 0.2
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # G5: density=300, step=12st, onset_step=0.4s
@@ -712,7 +712,7 @@ streams:
         strategy: linear
         step: 0.4
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -740,7 +740,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.01
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # H2: density=50, step=3st, pointer_range=0.05
@@ -760,7 +760,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # H3: density=100, step=5st, pointer_range=0.1
@@ -780,7 +780,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # H4: density=200, step=7st, pointer_range=0.2
@@ -800,7 +800,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.2
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # H5: density=300, step=12st, pointer_range=0.4
@@ -820,7 +820,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.4
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # ===========================================================================
@@ -851,7 +851,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.01
       pan:
-        strategy: linear
+        strategy: range
         spread: 30.0
 
   # I2: density=50 — parametri medi-bassi
@@ -874,7 +874,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 45.0
 
   # I3: density=100 — parametri medi (punto di fusione grain_dur=IOT)
@@ -897,7 +897,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   # I4: density=200 — parametri alti (grains si sovrappongono)
@@ -920,7 +920,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.2
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   # I5: density=300 — tutti i parametri al massimo
@@ -943,5 +943,5 @@ streams:
         strategy: stochastic
         pointer_range: 0.4
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0

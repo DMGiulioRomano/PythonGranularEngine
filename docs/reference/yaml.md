@@ -92,8 +92,8 @@ streams:
   diversi. Copre due meccanismi:
   - **random globale dei grani** — `random.seed(seed)` chiamato una volta a
     inizio `create_elements`, prima della generazione (lazy) dei grani.
-  - **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer}` con
-    `strategy: stochastic`, `voices.pan` con `strategy: random`) — seed derivato
+  - **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer,pan}` con
+    `strategy: stochastic`) — seed derivato
     via `hashlib.sha256(f"{seed}:{stream_id}:{voice_index}")`, deterministico e
     indipendente da `PYTHONHASHSEED`.
 
@@ -631,25 +631,33 @@ l'ambiguità di unità storica (issue #80).
 
 ### voices.pan — Strategie Pan
 
+Nomi e parametri allineati alle altre dimensioni (pitch/onset/pointer):
+`range` e `stochastic` usano `spread`; `step` usa `step`. Tutti i parametri
+accettano scalare o envelope. Voce 0 → sempre offset 0.
+
 ```yaml
-# linear: voci distribuite in [-spread/2, +spread/2]
+# range: voci distribuite equidistanti in [-spread/2, +spread/2]
 voices:
   pan:
-    strategy: linear
+    strategy: range
     spread: 120.0         # gradi totali (scalare o envelope)
 
-# additive: offset fisso identico per tutte le voci (non voce 0)
+# stochastic: offset casuale stabile per voce in [-spread/2, +spread/2] (seeded)
 voices:
   pan:
-    strategy: additive
-    spread: 45.0          # offset in gradi (scalare o envelope)
-
-# random: offset per voce in [-spread/2, +spread/2] (seeded)
-voices:
-  pan:
-    strategy: random
+    strategy: stochastic
     spread: 180.0         # range totale in gradi (scalare o envelope)
+
+# step: voce i → i × step gradi
+voices:
+  pan:
+    strategy: step
+    step: 15.0            # gradi per voce (scalare o envelope; può essere negativo)
 ```
+
+> Per applicare un offset di pan uniforme a tutte le voci usa il parametro
+> `pan` base dello stream (la vecchia strategy `additive` è stata rimossa
+> perché ridondante con esso).
 
 ---
 

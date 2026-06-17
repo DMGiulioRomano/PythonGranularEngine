@@ -44,7 +44,7 @@ streams:
         strategy: geometric
       pan:
         spread: [[0, 60], [0.12144, 55.55], [0.27153, 155.27], [0.57069, 60]]
-        strategy: random
+        strategy: stochastic
     dephase: [[0, 100], [0.4047, 100], [1, 1]]
   - stream_id: stream2
     onset: 0
@@ -103,7 +103,7 @@ streams:
         normalized: true
       pan:
         spread: [[0, 260.68], [0.3154, 274.92], [0.4195, 1.42], [0.4195, 1.42], [1, 60]]
-        strategy: random
+        strategy: stochastic
   - stream_id: stream6
     onset: 0
     duration: 32.374
@@ -187,7 +187,7 @@ streams:
         strategy: linear
       pan:
         spread: 30
-        strategy: linear
+        strategy: range
     dephase:
       volume: [[0, 100], [1, 0]]
       reverse: [[0.00034, 0], [0.87608, 100], [1, 100]]
@@ -243,7 +243,7 @@ streams:
       num_voices: [[[[0, 1], [15.46, 4.53], [29.54, 9.42], [37.71, 2.13], [58.83, 12.09], [87.89, 7.24], [100, 1]], 0.995, 4, step, {type: geometric, ratio: 1.5}]]
       pan:
         spread: 60
-        strategy: random
+        strategy: stochastic
   - stream_id: stream9
     onset: 0
     duration: 17.777

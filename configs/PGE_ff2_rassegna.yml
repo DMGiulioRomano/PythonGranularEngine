@@ -87,7 +87,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "03_spd002_pitch_step5"
@@ -107,7 +107,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "04_spd002_chord_maj7"
@@ -127,7 +127,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "05_spd002_chord_dom7"
@@ -147,7 +147,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "06_spd002_pitch_stoch"
@@ -167,7 +167,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "07_spd002_onset_linear"
@@ -187,7 +187,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "08_spd002_ptr_stoch"
@@ -207,7 +207,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "09_spd002_pitch_onset"
@@ -230,7 +230,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "10_spd002_full"
@@ -256,7 +256,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -293,7 +293,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "13_spd005_pitch_step5"
@@ -313,7 +313,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "14_spd005_chord_maj7"
@@ -333,7 +333,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "15_spd005_chord_dom7"
@@ -353,7 +353,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "16_spd005_pitch_stoch"
@@ -373,7 +373,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "17_spd005_onset_linear"
@@ -393,7 +393,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "18_spd005_ptr_stoch"
@@ -413,7 +413,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "19_spd005_pitch_onset"
@@ -436,7 +436,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "20_spd005_full"
@@ -462,7 +462,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -499,7 +499,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "23_spd010_pitch_step5"
@@ -519,7 +519,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "24_spd010_chord_maj7"
@@ -539,7 +539,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "25_spd010_chord_dom7"
@@ -559,7 +559,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "26_spd010_pitch_stoch"
@@ -579,7 +579,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "27_spd010_onset_linear"
@@ -599,7 +599,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "28_spd010_ptr_stoch"
@@ -619,7 +619,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "29_spd010_pitch_onset"
@@ -642,7 +642,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "30_spd010_full"
@@ -668,7 +668,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -705,7 +705,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "33_spd020_pitch_step5"
@@ -725,7 +725,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "34_spd020_chord_maj7"
@@ -745,7 +745,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "35_spd020_chord_dom7"
@@ -765,7 +765,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "36_spd020_pitch_stoch"
@@ -785,7 +785,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "37_spd020_onset_linear"
@@ -805,7 +805,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "38_spd020_ptr_stoch"
@@ -825,7 +825,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "39_spd020_pitch_onset"
@@ -848,7 +848,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "40_spd020_full"
@@ -874,7 +874,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -911,7 +911,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "43_spd050_pitch_step5"
@@ -931,7 +931,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "44_spd050_chord_maj7"
@@ -951,7 +951,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "45_spd050_chord_dom7"
@@ -971,7 +971,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "46_spd050_pitch_stoch"
@@ -991,7 +991,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "47_spd050_onset_linear"
@@ -1011,7 +1011,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "48_spd050_ptr_stoch"
@@ -1031,7 +1031,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "49_spd050_pitch_onset"
@@ -1054,7 +1054,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "50_spd050_full"
@@ -1080,7 +1080,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -1117,7 +1117,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "53_spd100_pitch_step5"
@@ -1137,7 +1137,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "54_spd100_chord_maj7"
@@ -1157,7 +1157,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "55_spd100_chord_dom7"
@@ -1177,7 +1177,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "56_spd100_pitch_stoch"
@@ -1197,7 +1197,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "57_spd100_onset_linear"
@@ -1217,7 +1217,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "58_spd100_ptr_stoch"
@@ -1237,7 +1237,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "59_spd100_pitch_onset"
@@ -1260,7 +1260,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "60_spd100_full"
@@ -1286,7 +1286,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -1323,7 +1323,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "63_spd150_pitch_step5"
@@ -1343,7 +1343,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "64_spd150_chord_maj7"
@@ -1363,7 +1363,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "65_spd150_chord_dom7"
@@ -1383,7 +1383,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "66_spd150_pitch_stoch"
@@ -1403,7 +1403,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "67_spd150_onset_linear"
@@ -1423,7 +1423,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "68_spd150_ptr_stoch"
@@ -1443,7 +1443,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "69_spd150_pitch_onset"
@@ -1466,7 +1466,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "70_spd150_full"
@@ -1492,7 +1492,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -1529,7 +1529,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "73_spd200_pitch_step5"
@@ -1549,7 +1549,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "74_spd200_chord_maj7"
@@ -1569,7 +1569,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "75_spd200_chord_dom7"
@@ -1589,7 +1589,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "76_spd200_pitch_stoch"
@@ -1609,7 +1609,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "77_spd200_onset_linear"
@@ -1629,7 +1629,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "78_spd200_ptr_stoch"
@@ -1649,7 +1649,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "79_spd200_pitch_onset"
@@ -1672,7 +1672,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "80_spd200_full"
@@ -1698,7 +1698,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -1735,7 +1735,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "83_spd250_pitch_step5"
@@ -1755,7 +1755,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "84_spd250_chord_maj7"
@@ -1775,7 +1775,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "85_spd250_chord_dom7"
@@ -1795,7 +1795,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "86_spd250_pitch_stoch"
@@ -1815,7 +1815,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "87_spd250_onset_linear"
@@ -1835,7 +1835,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "88_spd250_ptr_stoch"
@@ -1855,7 +1855,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "89_spd250_pitch_onset"
@@ -1878,7 +1878,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "90_spd250_full"
@@ -1904,7 +1904,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   # ===========================================================================
@@ -1941,7 +1941,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "93_spd300_pitch_step5"
@@ -1961,7 +1961,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "94_spd300_chord_maj7"
@@ -1981,7 +1981,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "95_spd300_chord_dom7"
@@ -2001,7 +2001,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "96_spd300_pitch_stoch"
@@ -2021,7 +2021,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "97_spd300_onset_linear"
@@ -2041,7 +2041,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "98_spd300_ptr_stoch"
@@ -2061,7 +2061,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "99_spd300_pitch_onset"
@@ -2084,7 +2084,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "100_spd300_full"
@@ -2110,5 +2110,5 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0

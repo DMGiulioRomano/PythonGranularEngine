@@ -18,13 +18,13 @@ Verifica che Stream costruisca correttamente VoiceManager dai parametri YAML:
       strategy: stochastic
       pointer_range: 0.1
     pan:
-      strategy: linear
+      strategy: range
       spread: 60
 
 Principi:
 - voices assente → VoiceManager(max_voices=1, nessuna strategy)
 - stream_id auto-iniettato nelle strategy stochastiche
-- spread estratto dal blocco pan e passato a VoiceManager
+- ogni strategy possiede il proprio parametro (spread/step), risolto internamente
 - strategy names invalidi → ValueError/KeyError
 
 Organizzazione:
@@ -55,7 +55,7 @@ from strategies.voice_onset_strategy import (
 from strategies.voice_pointer_strategy import (
     LinearPointerStrategy, StochasticPointerStrategy,
 )
-from strategies.voice_pan_strategy import LinearPanStrategy
+from strategies.voice_pan_strategy import RangePanStrategy, StochasticPanStrategy, StepPanStrategy
 from parameters.pitch_unit import EdoUnit, RatioUnit
 
 
@@ -252,19 +252,31 @@ class TestVoicesPointerStrategy:
 
 class TestVoicesPanStrategy:
 
-    def test_linear_pan_strategy_with_spread(self):
-        """LinearPanStrategy con 2 voci e spread=60: voce 1 → +30."""
+    def test_range_pan_strategy_with_spread(self):
+        """RangePanStrategy con 2 voci e spread=60: voce 1 → +30."""
         s = _build_stream({
             'num_voices': 2,
-            'pan': {'strategy': 'linear', 'spread': 60.0},
+            'pan': {'strategy': 'range', 'spread': 60.0},
         })
+        assert isinstance(s._voice_manager._pan_strategy, RangePanStrategy)
         assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
         assert s._voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(30.0)
+
+    def test_step_pan_strategy(self):
+        """StepPanStrategy: voce i → i × step gradi."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pan': {'strategy': 'step', 'step': 15.0},
+        })
+        assert isinstance(s._voice_manager._pan_strategy, StepPanStrategy)
+        assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
+        assert s._voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(15.0)
+        assert s._voice_manager.get_voice_config(3, 0.0).pan_offset == pytest.approx(45.0)
 
     def test_spread_zero_all_pan_zero(self):
         s = _build_stream({
             'num_voices': 3,
-            'pan': {'strategy': 'linear', 'spread': 0.0},
+            'pan': {'strategy': 'range', 'spread': 0.0},
         })
         for i in range(3):
             assert s._voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
@@ -273,6 +285,16 @@ class TestVoicesPanStrategy:
         s = _build_stream({'num_voices': 3})
         for i in range(3):
             assert s._voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
+
+    def test_old_pan_names_rejected(self):
+        """I vecchi nomi (linear/random/additive) non sono più accettati."""
+        from shared.exceptions import StrategyNotFoundError
+        for old in ['linear', 'random', 'additive']:
+            with pytest.raises((StrategyNotFoundError, ValueError)):
+                _build_stream({
+                    'num_voices': 2,
+                    'pan': {'strategy': old, 'spread': 60.0},
+                })
 
 
 # =============================================================================
@@ -330,12 +352,13 @@ class TestStochasticStreamIdInjection:
             offset = s._voice_manager.get_voice_config(i, 0.0).pointer_offset
             assert -0.1 <= offset <= 0.1
 
-    def test_random_pan_stream_id_injected(self):
-        """RandomPanStrategy riceve stream_id automaticamente — no TypeError."""
+    def test_stochastic_pan_stream_id_injected(self):
+        """StochasticPanStrategy riceve stream_id automaticamente — no TypeError."""
         s = _build_stream({
             'num_voices': 3,
-            'pan': {'strategy': 'random', 'spread': 60.0},
+            'pan': {'strategy': 'stochastic', 'spread': 60.0},
         }, stream_id='my_stream')
+        assert isinstance(s._voice_manager._pan_strategy, StochasticPanStrategy)
         assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
         for i in range(1, 3):
             offset = s._voice_manager.get_voice_config(i, 0.0).pan_offset
@@ -378,10 +401,10 @@ class TestSeedPropagation:
         }, stream_id='s1', seed=42)
         assert s._voice_manager._pointer_strategy.seed == 42
 
-    def test_seed_injected_into_random_pan(self):
+    def test_seed_injected_into_stochastic_pan(self):
         s = _build_stream({
             'num_voices': 3,
-            'pan': {'strategy': 'random', 'spread': 60.0},
+            'pan': {'strategy': 'stochastic', 'spread': 60.0},
         }, stream_id='s1', seed=42)
         assert s._voice_manager._pan_strategy.seed == 42
 
@@ -674,25 +697,35 @@ class TestStrategyKwargsEnvelope:
         vc_late = s._voice_manager.get_voice_config(1, 10.0)
         assert vc_late.pointer_offset > vc_early.pointer_offset
 
-    # --- pan_spread envelope ---
+    # --- pan spread envelope ---
 
     def test_pan_spread_list_envelope_stored_as_envelope(self):
-        """spread: [[0,0],[10,120]] → _pan_spread è Envelope nel VoiceManager."""
+        """spread: [[0,0],[10,120]] → la strategy pan possiede uno spread Envelope."""
         from envelopes.envelope import Envelope
         s = _build_stream({
             'num_voices': 4,
-            'pan': {'strategy': 'linear', 'spread': [[0, 0], [10, 120]]},
+            'pan': {'strategy': 'range', 'spread': [[0, 0], [10, 120]]},
         })
-        assert isinstance(s._voice_manager._pan_spread, Envelope)
+        assert isinstance(s._voice_manager._pan_strategy.spread, Envelope)
 
     def test_pan_spread_envelope_pan_varies_over_time(self):
         """spread Envelope → pan_offset voce 1 più grande a t=10 che t=0."""
         s = _build_stream({
             'num_voices': 4,
-            'pan': {'strategy': 'linear', 'spread': [[0, 0], [10, 120]]},
+            'pan': {'strategy': 'range', 'spread': [[0, 0], [10, 120]]},
         })
         vc_early = s._voice_manager.get_voice_config(1, 0.0)
         vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        assert abs(vc_late.pan_offset) > abs(vc_early.pan_offset)
+
+    def test_pan_step_envelope_pan_varies_over_time(self):
+        """step Envelope → pan_offset voce 2 più grande a t=10 che t=0."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pan': {'strategy': 'step', 'step': [[0, 0], [10, 30]]},
+        })
+        vc_early = s._voice_manager.get_voice_config(2, 0.0)
+        vc_late = s._voice_manager.get_voice_config(2, 10.0)
         assert abs(vc_late.pan_offset) > abs(vc_early.pan_offset)
 
     # --- dict envelope normalized ---
