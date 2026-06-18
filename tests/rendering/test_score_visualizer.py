@@ -469,6 +469,15 @@ class TestConfigPropagation:
                        config={'grain_colormap': 'viridis'})
         assert viz.config['grain_colormap'] == 'viridis'
 
+    def test_grain_colormap_accepts_colormap_object(self):
+        """grain_colormap robusto: accetta sia una stringa sia un oggetto
+        Colormap gia' costruito (risoluzione in __init__)."""
+        from matplotlib.colors import LinearSegmentedColormap
+        cmap = LinearSegmentedColormap.from_list('custom', ['#000000', '#ffffff'])
+        viz = make_viz(single_stream_scene(),
+                       config={'grain_colormap': cmap})
+        assert viz.cmap is cmap
+
     def test_custom_pitch_range_accepted(self):
         viz = make_viz(single_stream_scene(),
                        config={'pitch_range': (0.25, 4.0)})
@@ -502,8 +511,8 @@ class TestPerStreamLayout:
 
     @staticmethod
     def _wave_axes(fig):
-        """Assi waveform: uno per subplot/stream (ylabel 'Sample (s)\\n<path>')."""
-        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Sample (s)')]
+        """Assi waveform: uno per subplot/stream (ylabel 'Posizione di lettura (s)\\n<path>')."""
+        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Posizione di lettura (s)')]
 
     def test_two_different_samples_produce_at_least_two_axes(self):
         viz = make_viz(two_sample_scene(), config={'page_duration': 30.0})
@@ -1327,7 +1336,7 @@ class TestEnvelopeFilter:
 
 
 # =============================================================================
-# GROUP - Pitch color auto-zoom (colormap turbo + range dinamico per-subplot)
+# GROUP - Pitch color auto-zoom (colormap divergente pitch_div + range dinamico per-subplot)
 # =============================================================================
 
 class TestPitchColorAutozoom:
@@ -1335,9 +1344,11 @@ class TestPitchColorAutozoom:
     cents dei pitch_ratio visibili nel subplot invece del range fisso
     pitch_range (0.5, 2.0) — rende visibile il micro-detune ±6 cents."""
 
-    def test_default_colormap_is_turbo(self):
+    def test_default_colormap_is_pitch_div(self):
         viz = make_viz([make_stream()])
-        assert viz.config['grain_colormap'] == 'turbo'
+        assert viz.config['grain_colormap'] == 'pitch_div'
+        # 'pitch_div' deve risolversi a una Colormap (registrata a livello modulo)
+        assert viz.cmap.name == 'pitch_div'
 
     def test_default_config_has_pitch_color_autozoom(self):
         viz = make_viz([make_stream()])
@@ -1491,14 +1502,18 @@ class TestPitchColorAutozoom:
         assert np.abs(colors[0][:3] - colors[1][:3]).max() < 0.7
 
     def test_render_page_above_semitone_detune_still_distinct(self):
-        """Uno scarto reale >= 1 semitono (qui 120 cents) supera il floor:
-        i colori restano chiaramente distinti, come prima della modifica."""
+        """Uno scarto reale >= 1 semitono (qui 120 cents) supera il floor: i
+        grani cadono ai due estremi della mappa divergente (braccio freddo
+        indaco/blu vs braccio caldo arancio/giallo) e restano cromaticamente
+        ben distinti. Soglia 0.4: pitch_div ha estremi meno saturi su un singolo
+        canale rispetto alla vecchia turbo, ma la separazione freddo/caldo resta
+        netta e ampiamente sopra il caso micro-detune."""
         viz = make_viz(self._semitone_detuned_scene(), config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             figs = viz.render_all()
         colors = self._grain_facecolors(figs[0])
         assert colors is not None and len(colors) == 2
-        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.5
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.4
 
     def test_render_page_fixed_colors_when_disabled(self):
         """Autozoom off: i due grani a ±6c restano indistinguibili."""
@@ -1626,7 +1641,7 @@ class TestSingleBufferTimeAxis:
     @staticmethod
     def _wave_axes(fig):
         return [ax for ax in fig.axes
-                if ax.get_ylabel().startswith('Sample (s)')]
+                if ax.get_ylabel().startswith('Posizione di lettura (s)')]
 
     @staticmethod
     def _grain_axes(fig, page_start=0.0, page_end=30.0):
