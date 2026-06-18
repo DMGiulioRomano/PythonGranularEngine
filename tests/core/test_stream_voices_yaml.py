@@ -173,6 +173,69 @@ class TestVoicesPitchStrategy:
 
 
 # =============================================================================
+# 3b. chord_progression — progression NON interpretata come envelope (issue #86)
+# =============================================================================
+
+class TestChordProgressionYAML:
+
+    def test_progression_not_parsed_as_envelope(self):
+        """`progression` = [[t, str], ...] non deve essere scambiata per envelope."""
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {
+                'strategy': 'chord_progression',
+                'progression': [[0, 'maj7'], [8, 'min7']],
+                'voice_leading': 'positional',
+            },
+        })
+        from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+        assert isinstance(s._voice_manager._pitch_strategy, ChordProgressionPitchStrategy)
+
+    def test_pitch_factor_at_onsets(self):
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {
+                'strategy': 'chord_progression',
+                'progression': [[0, 'maj7'], [8, 'min7']],
+                'voice_leading': 'positional',
+            },
+        })
+        vm = s._voice_manager
+        # maj7 = [0,4,7,11] a t=0
+        assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert vm.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(11.0))
+        # min7 = [0,3,7,10] a t=8
+        assert vm.get_voice_config(1, 8.0).pitch_factor == pytest.approx(_f(3.0))
+        assert vm.get_voice_config(3, 8.0).pitch_factor == pytest.approx(_f(10.0))
+
+    def test_glissando_midpoint(self):
+        s = _build_stream({
+            'num_voices': 4,
+            'pitch': {
+                'strategy': 'chord_progression',
+                'progression': [[0, 'maj7'], [8, 'min7']],
+                'interp': 'linear',
+                'voice_leading': 'positional',
+            },
+        })
+        # v1 a metà (t=4): (4+3)/2 = 3.5 semitoni
+        assert s._voice_manager.get_voice_config(1, 4.0).pitch_factor == pytest.approx(_f(3.5))
+
+    def test_unit_non_semitones_raises(self):
+        """chord_progression è SEMITONE_LOCKED: unit ≠ semitones → errore."""
+        with pytest.raises(InvalidStrategyConfigError) as ei:
+            _build_stream({
+                'num_voices': 4,
+                'pitch': {
+                    'strategy': 'chord_progression',
+                    'progression': [[0, 'maj7']],
+                    'unit': 'ratio',
+                },
+            })
+        assert ei.value.field == 'voices.pitch.unit'
+
+
+# =============================================================================
 # 4. Onset strategy
 # =============================================================================
 

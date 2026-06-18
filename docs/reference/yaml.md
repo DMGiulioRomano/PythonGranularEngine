@@ -514,6 +514,17 @@ voices:
     chord: "dom7"         # nome accordo (vedi lista sotto)
     inversion: 0          # rivolto (0 = root position, default)
 
+# chord_progression: accordo funzione del tempo (envelope di accordi)
+voices:
+  pitch:
+    strategy: chord_progression
+    progression:               # sequenza [tempo_secondi, accordo]
+      - [0,  "maj7"]
+      - [8,  "min7", 1]        # forma compatta [t, chord, inversion]
+      - [16, {chord: "dom7", inversion: 0}]  # forma esplicita
+    interp: linear             # linear|cubic = glissando · step = blocchi (default: linear)
+    voice_leading: nearest     # nearest (default) | positional
+
 # stochastic: offset per voce fisso (seeded), magnitudine time-varying
 voices:
   pitch:
@@ -562,9 +573,22 @@ voices:
     unit: {edo: 31}        # i gradi distribuiti sono interpretati in 31-EDO
 ```
 
-- **Vincolo**: `chord` e `spectral` sono definiti intrinsecamente in semitoni
-  (offset assoluti) e accettano solo `unit: semitones` (o `unit` assente).
-  Altre unità → `InvalidStrategyConfigError`.
+- **Vincolo**: `chord`, `chord_progression` e `spectral` sono definiti
+  intrinsecamente in semitoni (offset assoluti) e accettano solo
+  `unit: semitones` (o `unit` assente). Altre unità → `InvalidStrategyConfigError`.
+
+**`chord_progression` — progressioni armoniche.** Rende l'accordo una funzione
+del tempo: per ogni voce un envelope di offset in semitoni interpola tra i
+voicing della `progression`. Voce 0 → sempre identità (riferimento); il moto di
+radice va messo nell'envelope `pitch` dello stream. Campi:
+
+- `progression` — lista non vuota di `[tempo_secondi, accordo]`, tempi non
+  decrescenti. L'accordo è un nome (vedi tabella sopra), opzionalmente con
+  inversione in forma compatta `[t, chord, inversion]` o esplicita
+  `[t, {chord: ..., inversion: ...}]`.
+- `interp` — `linear`/`cubic` (glissando) · `step` (blocchi). Default `linear`.
+- `voice_leading` — `positional` (voce i = i-esima nota) · `nearest` (default:
+  riabbinamento a minimo movimento con octave-folding e note comuni tenute).
 
 ---
 

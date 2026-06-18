@@ -291,7 +291,17 @@ class Stream:
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
                 kw['seed'] = self.seed
+            # chord_progression: i kwarg strutturali NON sono envelope-like e
+            # vanno estratti prima della comprehension. In particolare
+            # `progression` (lista di [t, str]) verrebbe scambiata per envelope
+            # da is_envelope_like → crash su evaluate.
+            structural = {}
+            if name == 'chord_progression':
+                for key in ('progression', 'interp', 'voice_leading'):
+                    if key in kw:
+                        structural[key] = kw.pop(key)
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
+            kw.update(structural)
             pitch_strategy = VoicePitchStrategyFactory.create(name, **kw)
 
         # --- ONSET ---

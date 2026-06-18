@@ -78,6 +78,36 @@ def test_chord_pitch_strategy_invalid_inversion_raises_invalid_strategy_config()
     assert err.field == "inversion"
 
 
+def test_chord_progression_unknown_chord_raises_invalid_strategy_config():
+    from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+
+    with pytest.raises(InvalidStrategyConfigError) as exc_info:
+        ChordProgressionPitchStrategy(progression=[[0, "bogus_chord"]])
+
+    err = exc_info.value
+    assert isinstance(err, ConfigError)
+    assert err.strategy_kind == "voice_pitch"
+    assert err.field == "chord"
+
+
+def test_chord_progression_invalid_interp_raises_invalid_strategy_config():
+    from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+
+    with pytest.raises(InvalidStrategyConfigError) as exc_info:
+        ChordProgressionPitchStrategy(progression=[[0, "maj"]], interp="bogus")
+
+    assert exc_info.value.field == "interp"
+
+
+def test_chord_progression_invalid_voice_leading_raises_invalid_strategy_config():
+    from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+
+    with pytest.raises(InvalidStrategyConfigError) as exc_info:
+        ChordProgressionPitchStrategy(progression=[[0, "maj"]], voice_leading="bogus")
+
+    assert exc_info.value.field == "voice_leading"
+
+
 def test_stochastic_pan_strategy_negative_spread_raises_invalid_strategy_config():
     from strategies.voice_pan_strategy import StochasticPanStrategy
 
