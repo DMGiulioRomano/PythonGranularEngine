@@ -836,7 +836,7 @@ class ScoreVisualizer:
             polygons,
             facecolors=colors,
             edgecolors='#555555',
-            linewidths=0.3,
+            linewidths=0.01,
             clip_on=True,
             zorder=2
         )
