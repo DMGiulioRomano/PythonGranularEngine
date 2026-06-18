@@ -624,7 +624,11 @@ class ScoreVisualizer:
             ax_grain.set_xlim(page_start, page_end)
             ax_grain.set_ylim(-0.02, sample_duration+0.02)
             ax_grain.set_ylabel("")  # label già nella waveform
-            ax_grain.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
+            # L'asse del tempo del buffer e' descritto una sola volta, sulla
+            # waveform a sinistra. Il subplot dei grani condivide lo stesso ylim
+            # ma non ripete le etichette y (ridondanti): restano solo le tacche
+            # di griglia, niente testo.
+            ax_grain.tick_params(axis='y', labelleft=False, length=0)
             ax_grain.grid(True, alpha=0.3, linestyle='--')
             
             # X label solo sull'ultimo stream (se non ci sono envelope)
