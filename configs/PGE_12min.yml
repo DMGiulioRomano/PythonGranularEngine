@@ -96,7 +96,7 @@ streams:
         strategy: step
         step: 1.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 22.0
 
   - stream_id: "S1_04_fondo_solo"
@@ -146,7 +146,7 @@ streams:
         strategy: linear
         step: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 35.0
 
   - stream_id: "S1_07_bridge_s2"
@@ -168,7 +168,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   # ===========================================================================
@@ -227,7 +227,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S2_04_002_blast_d"
@@ -261,7 +261,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "S2_06_002_blast_f"
@@ -295,7 +295,7 @@ streams:
         strategy: linear
         step: 0.03
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "S2_08_002_blast_h"
@@ -337,7 +337,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "S2_10_picco_b"
@@ -371,7 +371,7 @@ streams:
         strategy: step
         step: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "S2_12_picco_d"
@@ -405,7 +405,7 @@ streams:
         strategy: stochastic
         pitch_range: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "S2_14_picco_f"
@@ -468,7 +468,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S2_18_ritiro_d"
@@ -502,7 +502,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   - stream_id: "S2_20_ritiro_f"
@@ -600,7 +600,7 @@ streams:
         strategy: step
         step: 1.5
       pan:
-        strategy: linear
+        strategy: range
         spread: 28.0
 
   - stream_id: "S3_04_003_secondo"
@@ -634,7 +634,7 @@ streams:
         strategy: linear
         step: 0.07
       pan:
-        strategy: linear
+        strategy: range
         spread: 35.0
 
   # — 3C: Quattro strati verso fine (228-262s) — 3-4 simultanei —
@@ -658,7 +658,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 55.0
 
   - stream_id: "S3_07_densifica_b"
@@ -692,7 +692,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   # ===========================================================================
@@ -736,7 +736,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   - stream_id: "S4_03_008_base_c"
@@ -772,7 +772,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S4_05_008_strato_b"
@@ -806,7 +806,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "S4_07_008_strato_d"
@@ -846,7 +846,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 72.0
 
   - stream_id: "S4_09_crescita_b"
@@ -883,7 +883,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 72.0
 
   - stream_id: "S4_11_crescita_d"
@@ -917,7 +917,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "S4_13_crescita_f"
@@ -957,7 +957,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   # ===========================================================================
@@ -1001,7 +1001,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S5_03_009_a"
@@ -1049,7 +1049,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 70.0
 
   - stream_id: "S5_06_007_b"
@@ -1090,7 +1090,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   # — 5B: Densificazione (387-420s) — 10-14 simultanei —
@@ -1127,7 +1127,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "S5_10_007_c"
@@ -1161,7 +1161,7 @@ streams:
         strategy: stochastic
         pitch_range: 8.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 80.0
 
   - stream_id: "S5_12_010_c"
@@ -1203,7 +1203,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.07
       pan:
-        strategy: linear
+        strategy: range
         spread: 82.0
 
   - stream_id: "S5_14_push_b"
@@ -1237,7 +1237,7 @@ streams:
         strategy: step
         step: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "S5_16_push_d"
@@ -1271,7 +1271,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 85.0
 
   - stream_id: "S5_18_push_f"
@@ -1320,7 +1320,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.08
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "S6_02_002s_26"
@@ -1352,7 +1352,7 @@ streams:
         strategy: stochastic
         pitch_range: 9.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "S6_04_002s_32"
@@ -1384,7 +1384,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_06_002s_44"
@@ -1419,7 +1419,7 @@ streams:
         strategy: linear
         step: 0.02
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "S6_08_002s_56"
@@ -1451,7 +1451,7 @@ streams:
         strategy: step
         step: 12.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_10_002s_63"
@@ -1486,7 +1486,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_12_002s_74"
@@ -1518,7 +1518,7 @@ streams:
         strategy: stochastic
         pitch_range: 10.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_14_002s_80"
@@ -1553,7 +1553,7 @@ streams:
         strategy: stochastic
         max_offset: 0.02
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_16_002s_84"
@@ -1585,7 +1585,7 @@ streams:
         strategy: step
         step: 7.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_18_002s_86"
@@ -1623,7 +1623,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.1
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   - stream_id: "S6_20_002s_37b"
@@ -1655,7 +1655,7 @@ streams:
         strategy: stochastic
         pitch_range: 8.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 88.0
 
   - stream_id: "S6_22_001_65"
@@ -1695,7 +1695,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.09
       pan:
-        strategy: linear
+        strategy: range
         spread: 90.0
 
   # — 6C: Scivolamento verso S7 (484-528s) — 6→3 stream, velocità scende —
@@ -1745,7 +1745,7 @@ streams:
         strategy: step
         step: 3.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   - stream_id: "S6_27_slide_d"
@@ -1817,7 +1817,7 @@ streams:
         strategy: step
         step: 1.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 25.0
 
   - stream_id: "S7_04_011_secondo"
@@ -1851,7 +1851,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 55.0
 
   - stream_id: "S7_06_013_secondo"
@@ -1888,7 +1888,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 60.0
 
   - stream_id: "S7_08_012_terzo"
@@ -1925,7 +1925,7 @@ streams:
         strategy: linear
         step: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S7_10_011_quarto"
@@ -1963,7 +1963,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S7_12_bridge_s8"
@@ -1987,7 +1987,7 @@ streams:
         strategy: linear
         step: 0.05
       pan:
-        strategy: linear
+        strategy: range
         spread: 68.0
 
   # ===========================================================================
@@ -2032,7 +2032,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 45.0
 
   - stream_id: "S8_03_016_a"
@@ -2067,7 +2067,7 @@ streams:
         strategy: chord
         chord: "maj7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 68.0
 
   - stream_id: "S8_05_014_b"
@@ -2104,7 +2104,7 @@ streams:
         strategy: linear
         step: 0.04
       pan:
-        strategy: linear
+        strategy: range
         spread: 72.0
 
   # — 8B: Picco (632-662s) — 10-14 simultanei —
@@ -2141,7 +2141,7 @@ streams:
         strategy: step
         step: 5.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 75.0
 
   - stream_id: "S8_09_015_c"
@@ -2182,7 +2182,7 @@ streams:
         strategy: stochastic
         pointer_range: 0.06
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "S8_11_016_c"
@@ -2203,7 +2203,7 @@ streams:
         strategy: stochastic
         pitch_range: 6.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 78.0
 
   - stream_id: "S8_12_014_d"
@@ -2253,7 +2253,7 @@ streams:
         strategy: chord
         chord: "dom7"
       pan:
-        strategy: linear
+        strategy: range
         spread: 65.0
 
   - stream_id: "S8_15_014_e"
@@ -2287,7 +2287,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 40.0
 
   # ===========================================================================
@@ -2317,7 +2317,7 @@ streams:
         strategy: step
         step: 2.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 50.0
 
   - stream_id: "S9_02_002_ritorno"
@@ -2351,7 +2351,7 @@ streams:
         strategy: step
         step: 1.0
       pan:
-        strategy: linear
+        strategy: range
         spread: 25.0
 
   # — 9B: Rarefazione (695-715s) — 2-4 simultanei —

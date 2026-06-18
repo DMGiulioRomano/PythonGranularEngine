@@ -18,7 +18,7 @@ VoiceManager:
   - Riceve max_voices + le quattro strategy (pitch, pointer, onset, pan)
   - get_voice_config(voice_index, time) computa on-the-fly (non pre-computa)
   - Voce 0 → VoiceConfig(1.0, 0.0, 0.0, 0.0) sempre (pitch identità, offset 0)
-  - pan_strategy usa pan_spread come parametro aggiuntivo (Union[float, Envelope])
+  - ogni strategy possiede il proprio parametro (spread/step) come StrategyParam
 
 Principi:
   - VoiceConfig è frozen (immutabile dopo creazione)
@@ -32,7 +32,7 @@ Organizzazione:
   3.  Voce 0 sempre zeros
   4.  Delega corretta alle strategy
   5.  Strategy opzionali (NullStrategy)
-  6.  pan_spread passato correttamente alla pan strategy
+  6.  pan strategy delega correttamente (parametro interno alla strategy)
   7.  get_voice_config signature e range check
   8.  Time-varying: Envelope come param strategy
   9.  Edge cases
@@ -60,8 +60,8 @@ def _get_strategies():
     from strategies.voice_pitch_strategy import StepPitchStrategy
     from strategies.voice_onset_strategy import LinearOnsetStrategy
     from strategies.voice_pointer_strategy import LinearPointerStrategy
-    from strategies.voice_pan_strategy import LinearPanStrategy, AdditivePanStrategy
-    return StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, LinearPanStrategy, AdditivePanStrategy
+    from strategies.voice_pan_strategy import RangePanStrategy, StepPanStrategy
+    return StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, RangePanStrategy, StepPanStrategy
 
 
 # =============================================================================
@@ -125,14 +125,13 @@ class TestVoiceManagerConstruction:
 
     def test_accepts_all_strategies(self):
         _, VoiceManager = _get_module()
-        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, LinearPanStrategy, _ = _get_strategies()
+        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, RangePanStrategy, _ = _get_strategies()
         vm = VoiceManager(
             max_voices=4,
             pitch_strategy=StepPitchStrategy(step=3.0),
             onset_strategy=LinearOnsetStrategy(step=0.05),
             pointer_strategy=LinearPointerStrategy(step=0.1),
-            pan_strategy=LinearPanStrategy(),
-            pan_spread=60.0,
+            pan_strategy=RangePanStrategy(spread=60.0),
         )
         assert vm is not None
 
@@ -162,14 +161,13 @@ class TestVoiceZeroAlwaysZero:
 
     def test_voice_0_all_zeros_with_strategies(self):
         VoiceConfig, VoiceManager = _get_module()
-        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, LinearPanStrategy, _ = _get_strategies()
+        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, RangePanStrategy, _ = _get_strategies()
         vm = VoiceManager(
             max_voices=4,
             pitch_strategy=StepPitchStrategy(step=7.0),
             onset_strategy=LinearOnsetStrategy(step=1.0),
             pointer_strategy=LinearPointerStrategy(step=0.5),
-            pan_strategy=LinearPanStrategy(),
-            pan_spread=90.0,
+            pan_strategy=RangePanStrategy(spread=90.0),
         )
         vc = vm.get_voice_config(0, 0.0)
         assert vc == VoiceConfig(1.0, 0.0, 0.0, 0.0)
@@ -189,14 +187,13 @@ class TestVoiceZeroAlwaysZero:
     def test_voice_0_zero_at_various_times(self):
         """Invariante voce 0 vale per qualsiasi time."""
         VoiceConfig, VoiceManager = _get_module()
-        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, LinearPanStrategy, _ = _get_strategies()
+        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, RangePanStrategy, _ = _get_strategies()
         vm = VoiceManager(
             max_voices=4,
             pitch_strategy=StepPitchStrategy(step=7.0),
             onset_strategy=LinearOnsetStrategy(step=1.0),
             pointer_strategy=LinearPointerStrategy(step=0.5),
-            pan_strategy=LinearPanStrategy(),
-            pan_spread=90.0,
+            pan_strategy=RangePanStrategy(spread=90.0),
         )
         for t in [0.0, 0.5, 1.0, 10.0]:
             vc = vm.get_voice_config(0, t)
@@ -232,13 +229,12 @@ class TestVoiceManagerDelegation:
         assert vm.get_voice_config(2, 0.0).pointer_offset == pytest.approx(0.10)
 
     def test_pan_delegated_to_strategy_with_spread(self):
-        """LinearPanStrategy con 4 voci e spread=60: voce 0 → 0.0, voce 3 → +30."""
+        """RangePanStrategy con 4 voci e spread=60: voce 0 → 0.0, voce 3 → +30."""
         _, VoiceManager = _get_module()
-        _, _, _, LinearPanStrategy, _ = _get_strategies()
+        _, _, _, RangePanStrategy, _ = _get_strategies()
         vm = VoiceManager(
             max_voices=4,
-            pan_strategy=LinearPanStrategy(),
-            pan_spread=60.0,
+            pan_strategy=RangePanStrategy(spread=60.0),
         )
         assert vm.get_voice_config(0, 0.0).pan_offset == pytest.approx(0.0)
         # voce 1: -30 + 1*(60/3) = -10
@@ -247,19 +243,20 @@ class TestVoiceManagerDelegation:
 
     def test_all_strategies_combined(self):
         VoiceConfig, VoiceManager = _get_module()
-        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, _, AdditivePanStrategy = _get_strategies()
+        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, _, StepPanStrategy = _get_strategies()
         vm = VoiceManager(
             max_voices=3,
             pitch_strategy=StepPitchStrategy(step=4.0),
             onset_strategy=LinearOnsetStrategy(step=0.1),
             pointer_strategy=LinearPointerStrategy(step=0.05),
-            pan_strategy=AdditivePanStrategy(),
-            pan_spread=10.0,
+            pan_strategy=StepPanStrategy(step=10.0),
         )
         vc2 = vm.get_voice_config(2, 0.0)
         assert vc2.pitch_factor == pytest.approx(_f(8.0))
         assert vc2.onset_offset == pytest.approx(0.2)
         assert vc2.pointer_offset == pytest.approx(0.10)
+        # StepPanStrategy: voce 2 → 2 × 10 = 20 gradi
+        assert vc2.pan_offset == pytest.approx(20.0)
 
 
 # =============================================================================
@@ -305,35 +302,37 @@ class TestOptionalStrategies:
 
 
 # =============================================================================
-# 6. pan_spread passato correttamente
+# 6. pan strategy delega correttamente (parametro interno alla strategy)
 # =============================================================================
 
-class TestPanSpread:
+class TestPanDelegation:
 
     def test_pan_spread_zero_all_zero(self):
         _, VoiceManager = _get_module()
-        _, _, _, LinearPanStrategy, _ = _get_strategies()
-        vm = VoiceManager(max_voices=4, pan_strategy=LinearPanStrategy(), pan_spread=0.0)
+        _, _, _, RangePanStrategy, _ = _get_strategies()
+        vm = VoiceManager(max_voices=4, pan_strategy=RangePanStrategy(spread=0.0))
         for i in range(4):
             assert vm.get_voice_config(i, 0.0).pan_offset == 0.0
 
-    def test_pan_spread_passed_to_strategy(self):
-        """pan strategy riceve spread corretto al momento di get_voice_config."""
+    def test_pan_delegation_uses_voice_index_num_voices_time(self):
+        """Il VoiceManager passa solo voice_index/num_voices/time (niente spread)."""
         _, VoiceManager = _get_module()
         mock_pan = MagicMock()
         mock_pan.get_pan_offset.return_value = 15.0
-        vm = VoiceManager(max_voices=3, pan_strategy=mock_pan, pan_spread=45.0)
-        vm.get_voice_config(1, 0.0)
+        vm = VoiceManager(max_voices=3, pan_strategy=mock_pan)
+        vc = vm.get_voice_config(1, 0.0)
         mock_pan.get_pan_offset.assert_called_with(
-            voice_index=1, num_voices=3, spread=45.0, time=0.0
+            voice_index=1, num_voices=3, time=0.0
         )
+        assert vc.pan_offset == 15.0
 
-    def test_default_pan_spread_is_zero(self):
+    def test_step_pan_delegated(self):
+        """StepPanStrategy: voce i → i × step."""
         _, VoiceManager = _get_module()
-        _, _, _, LinearPanStrategy, _ = _get_strategies()
-        vm = VoiceManager(max_voices=4, pan_strategy=LinearPanStrategy())
-        for i in range(4):
-            assert vm.get_voice_config(i, 0.0).pan_offset == 0.0
+        _, _, _, _, StepPanStrategy = _get_strategies()
+        vm = VoiceManager(max_voices=4, pan_strategy=StepPanStrategy(step=12.0))
+        assert vm.get_voice_config(0, 0.0).pan_offset == pytest.approx(0.0)
+        assert vm.get_voice_config(2, 0.0).pan_offset == pytest.approx(24.0)
 
 
 # =============================================================================
@@ -391,15 +390,14 @@ class TestVoiceManagerTimeVarying:
         assert offset_t0 != offset_t1
 
     def test_pan_spread_envelope_varies_pan_offset(self):
-        """pan_spread come Envelope → pan_offset varia con time."""
+        """spread della pan strategy come Envelope → pan_offset varia con time."""
         _, VoiceManager = _get_module()
-        _, _, _, LinearPanStrategy, _ = _get_strategies()
+        _, _, _, RangePanStrategy, _ = _get_strategies()
         from envelopes.envelope import Envelope
         spread_env = Envelope([[0, 0], [1, 120]])
         vm = VoiceManager(
             max_voices=4,
-            pan_strategy=LinearPanStrategy(),
-            pan_spread=spread_env,
+            pan_strategy=RangePanStrategy(spread=spread_env),
         )
         pan_t0 = vm.get_voice_config(1, 0.0).pan_offset
         pan_t1 = vm.get_voice_config(1, 1.0).pan_offset
@@ -408,14 +406,13 @@ class TestVoiceManagerTimeVarying:
     def test_scalar_strategies_constant_over_time(self):
         """Strategy scalari → offset identico a qualsiasi time."""
         _, VoiceManager = _get_module()
-        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, LinearPanStrategy, _ = _get_strategies()
+        StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, RangePanStrategy, _ = _get_strategies()
         vm = VoiceManager(
             max_voices=4,
             pitch_strategy=StepPitchStrategy(step=3.0),
             onset_strategy=LinearOnsetStrategy(step=0.1),
             pointer_strategy=LinearPointerStrategy(step=0.05),
-            pan_strategy=LinearPanStrategy(),
-            pan_spread=60.0,
+            pan_strategy=RangePanStrategy(spread=60.0),
         )
         for t in [0.0, 0.5, 1.0]:
             vc = vm.get_voice_config(2, t)

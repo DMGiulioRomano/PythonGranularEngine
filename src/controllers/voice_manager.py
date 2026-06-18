@@ -19,7 +19,8 @@ Design:
 - Tutte le strategy sono opzionali: se non fornite, offset = 0.0
 - VoiceConfig è frozen (immutabile); ephemeral per chiamata
 - Voice-0 invariant garantito dalle strategy (ogni get_*_offset(0, ...) → 0.0)
-- pan_spread accetta float o Envelope; risolto con resolve_param al momento della call
+- Ogni strategy possiede il proprio parametro (StrategyParam) e lo risolve
+  internamente: il VoiceManager passa solo voice_index/num_voices/time
 
 Layering pointer (da design doc):
   pointer_final = base_pointer(t)        # PointerController
@@ -31,7 +32,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from parameters.parameter import resolve_param, StrategyParam
 from parameters.pitch_unit import PitchUnit, EdoUnit
 from strategies.voice_pitch_strategy import VoicePitchStrategy
 from strategies.voice_onset_strategy import VoiceOnsetStrategy
@@ -84,8 +84,7 @@ class VoiceManager:
         pitch_strategy:   VoicePitchStrategy opzionale
         onset_strategy:   VoiceOnsetStrategy opzionale
         pointer_strategy: VoicePointerStrategy opzionale
-        pan_strategy:     VoicePanStrategy opzionale
-        pan_spread:       spread in gradi per la pan strategy (float o Envelope)
+        pan_strategy:     VoicePanStrategy opzionale (possiede il proprio parametro)
 
     Esempio:
         vm = VoiceManager(
@@ -105,7 +104,6 @@ class VoiceManager:
         onset_strategy: Optional[VoiceOnsetStrategy] = None,
         pointer_strategy: Optional[VoicePointerStrategy] = None,
         pan_strategy: Optional[VoicePanStrategy] = None,
-        pan_spread: StrategyParam = 0.0,
         pitch_unit: Optional[PitchUnit] = None,
     ):
         self.max_voices = max_voices
@@ -113,7 +111,6 @@ class VoiceManager:
         self._onset_strategy = onset_strategy
         self._pointer_strategy = pointer_strategy
         self._pan_strategy = pan_strategy
-        self._pan_spread = pan_spread
         # Unità che possiede la geometria del pitch voci: materializza il
         # fattore di ratio dentro la voice pitch strategy. Default semitoni
         # (EdoUnit(12)), retrocompat.
@@ -162,7 +159,6 @@ class VoiceManager:
             self._pan_strategy.get_pan_offset(
                 voice_index=voice_index,
                 num_voices=self.max_voices,
-                spread=resolve_param(self._pan_spread, time),
                 time=time,
             )
             if self._pan_strategy is not None

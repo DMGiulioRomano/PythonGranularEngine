@@ -219,13 +219,13 @@ streams:
     voices:
       num_voices: 4
       pan:
-        strategy: linear
+        strategy: range
         spread: [[0, 0.0], [10, 180.0]]
 
-  # PAN additive spread — spread cresce da 0 a 90 gradi
-  # Nota: additive sposta TUTTE le voci dello stesso valore → il gruppo
-  # si sposta come blocco verso destra man mano che lo spread cresce.
-  - stream_id: "pan_additive_spread_growing"
+  # PAN step — il passo cresce da 0 a 30 gradi
+  # Nota: step distribuisce le voci a voce_i = i × step → il ventaglio
+  # stereo si apre progressivamente man mano che lo step cresce.
+  - stream_id: "pan_step_growing"
     onset: 144.0
     duration: 10.0
     sample: "weNeedToTalkAboutIt.wav"
@@ -235,14 +235,14 @@ streams:
     voices:
       num_voices: 4
       pan:
-        strategy: additive
-        spread: [[0, 0.0], [10, 90.0]]
+        strategy: step
+        step: [[0, 0.0], [10, 30.0]]
 
-  # PAN random spread — spread cresce da 0 a 180 gradi
+  # PAN stochastic spread — spread cresce da 0 a 180 gradi
   # Invariante: direzione per voce fissa (cache seeded), magnitudine cresce.
   # Cosa ascoltare: voci con posizioni casuali fisse che si amplificano
   # nel panorama stereo nel corso del tempo.
-  - stream_id: "pan_random_spread_growing"
+  - stream_id: "pan_stochastic_spread_growing"
     onset: 156.0
     duration: 10.0
     sample: "weNeedToTalkAboutIt.wav"
@@ -252,7 +252,7 @@ streams:
     voices:
       num_voices: 4
       pan:
-        strategy: random
+        strategy: stochastic
         spread: [[0, 0.0], [10, 180.0]]
 
   # ===========================================================================
@@ -294,7 +294,7 @@ streams:
         strategy: stochastic
         pitch_range: [[0, 0.0], [10, 8.0]]
       pan:
-        strategy: linear
+        strategy: range
         spread: [[0, 0.0], [10, 150.0]]
 
   # TUTTE E QUATTRO LE DIMENSIONI con envelope
@@ -320,7 +320,7 @@ streams:
         strategy: linear
         step: [[0, 0.0], [10, 0.15]]
       pan:
-        strategy: linear
+        strategy: range
         spread: [[0, 0.0], [10, 120.0]]
 
   # ===========================================================================
@@ -365,7 +365,7 @@ streams:
           points: [[0, 0.0], [1, 0.2]]
           time_mode: normalized
       pan:
-        strategy: linear
+        strategy: range
         spread:
           points: [[0, 0.0], [1, 180.0]]
           time_mode: normalized

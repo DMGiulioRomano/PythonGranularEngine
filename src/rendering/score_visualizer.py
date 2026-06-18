@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import PatchCollection
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, Colormap, LinearSegmentedColormap
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import soundfile as sf
@@ -17,6 +17,32 @@ from math import ceil
 
 # Path samples (stesso del progetto)
 PATHSAMPLES = './refs/'
+
+# Colormap divergente per il pitch dei grani. Il pitch in cents e' una grandezza
+# con segno centrata sullo zero (nessun detune = 0 cents): serve una mappa
+# divergente con punto neutro al centro, non una sequenziale come turbo.
+#   - centro (0 cents): grigio medio #777777 — NON bianco, perche' lo sfondo del
+#     plot e' bianco e un grano neutro col centro bianco sparirebbe;
+#   - braccio freddo (detune negativo): indaco -> blu;
+#   - braccio caldo (detune positivo): arancio -> giallo.
+# Bracci a due tinte (non un solo blu/rosso secco) per dare piu' gradazione
+# cromatica all'escursione, mantenendo la lettura intuitiva freddo=cala /
+# caldo=sale. L'autozoom (pitch_color_autozoom) riscala questa mappa
+# sull'escursione reale dei cents: la normalizzazione resta invariata, cambia
+# solo la mappa di colore.
+PITCH_DIVERGING = LinearSegmentedColormap.from_list(
+    'pitch_div', ['#3b1f8b', '#3a8fd6', '#777777', '#f08c00', '#f2d024']
+)
+
+# Registrazione con guardia: idempotente anche su re-import del modulo.
+try:
+    plt.get_cmap('pitch_div')
+except (ValueError, KeyError):
+    try:
+        import matplotlib as mpl
+        mpl.colormaps.register(PITCH_DIVERGING)
+    except (AttributeError, ImportError):
+        plt.register_cmap(cmap=PITCH_DIVERGING)
 
 # Colori di default degli envelope. A livello modulo perche' le sue chiavi
 # sono l'universo dei nomi plottabili: main.py le usa per validare
@@ -104,7 +130,7 @@ class ScoreVisualizer:
             'margins_mm': 20,
             
             # Grani
-            'grain_colormap': 'turbo',       # pitch_ratio → colore
+            'grain_colormap': 'pitch_div',   # pitch_ratio → colore (divergente)
             'grain_alpha_range': (0.3, 1.0), # volume → alpha
             'pitch_range': (0.5, 2.0),       # range fisso (fallback senza autozoom)
             # Auto-zoom del range colore pitch: normalizza sul min/max in cents
@@ -206,8 +232,10 @@ class ScoreVisualizer:
         self.page_count = None
         self.page_layouts = []
         
-        # Colormap
-        self.cmap = plt.get_cmap(self.config['grain_colormap'])
+        # Colormap. grain_colormap accetta sia una stringa (nome registrato,
+        # incluso 'pitch_div') sia un oggetto Colormap gia' costruito.
+        cmap_cfg = self.config['grain_colormap']
+        self.cmap = cmap_cfg if isinstance(cmap_cfg, Colormap) else plt.get_cmap(cmap_cfg)
     
     # =========================================================================
     # ANALISI STRUTTURA
@@ -613,7 +641,7 @@ class ScoreVisualizer:
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
-            ax_wave.set_ylabel(f"Sample (s)\n{sample_path}", 
+            ax_wave.set_ylabel(f"Posizione di lettura (s)\n{sample_path}",
                             fontsize=self.config['label_fontsize'])
             ax_wave.set_xticks([])
             ax_wave.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
@@ -624,7 +652,11 @@ class ScoreVisualizer:
             ax_grain.set_xlim(page_start, page_end)
             ax_grain.set_ylim(-0.02, sample_duration+0.02)
             ax_grain.set_ylabel("")  # label già nella waveform
-            ax_grain.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
+            # L'asse del tempo del buffer e' descritto una sola volta, sulla
+            # waveform a sinistra. Il subplot dei grani condivide lo stesso ylim
+            # ma non ripete le etichette y (ridondanti): restano solo le tacche
+            # di griglia, niente testo.
+            ax_grain.tick_params(axis='y', labelleft=False, length=0)
             ax_grain.grid(True, alpha=0.3, linestyle='--')
             
             # X label solo sull'ultimo stream (se non ci sono envelope)
@@ -796,11 +828,15 @@ class ScoreVisualizer:
             colors.append(color)
         
         # Collection
+        # Contorno sottile per ogni grano: i grani prossimi al neutro (grigio
+        # chiaro della mappa divergente) restano leggibili come forme sul fondo
+        # bianco. Solo il bordo cambia: facecolor e alpha (guidato dal volume)
+        # restano invariati.
         collection = PatchCollection(
             polygons,
             facecolors=colors,
-            edgecolors='black',
-            linewidths=0.02,
+            edgecolors='#555555',
+            linewidths=0.3,
             clip_on=True,
             zorder=2
         )

@@ -286,8 +286,8 @@ class TestGenerateGrainsVoiceZeroReference:
         assert s.voices[0][0].onset == pytest.approx(5.0)
 
     def test_voice_0_pan_unmodified(self):
-        from strategies.voice_pan_strategy import LinearPanStrategy
-        vm = VoiceManager(max_voices=2, pan_strategy=LinearPanStrategy(), pan_spread=60.0)
+        from strategies.voice_pan_strategy import RangePanStrategy
+        vm = VoiceManager(max_voices=2, pan_strategy=RangePanStrategy(spread=60.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
         s.generate_grains()
         voice_0_pans = [g.pan for g in s.voices[0]]
@@ -415,10 +415,10 @@ class TestGenerateGrainsVoiceOneOffsets:
         assert s.voices[1][0].onset == pytest.approx(2.5)
 
     def test_voice_1_pan_offset_applied(self):
-        """Voce 1 con LinearPanStrategy spread=60 → pan = base_pan + pan_offset."""
-        from strategies.voice_pan_strategy import LinearPanStrategy
-        # 2 voci, LinearPanStrategy: voce 0 = -30, voce 1 = +30
-        vm = VoiceManager(max_voices=2, pan_strategy=LinearPanStrategy(), pan_spread=60.0)
+        """Voce 1 con RangePanStrategy spread=60 → pan = base_pan + pan_offset."""
+        from strategies.voice_pan_strategy import RangePanStrategy
+        # 2 voci, RangePanStrategy: voce 0 = 0, voce 1 = +30
+        vm = VoiceManager(max_voices=2, pan_strategy=RangePanStrategy(spread=60.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
         s.generate_grains()
         voice_1_pans = [g.pan for g in s.voices[1]]
