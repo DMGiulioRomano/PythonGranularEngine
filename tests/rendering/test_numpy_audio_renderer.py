@@ -61,6 +61,20 @@ def make_sample_registry():
     return reg
 
 
+def make_dc_sample_registry():
+    """SampleRegistry con un sample a DC offset forte (+0.5) + tono 300 Hz."""
+    reg = SampleRegistry.__new__(SampleRegistry)
+    reg.base_path = './refs/'
+    reg._cache = {}
+
+    sr = OUTPUT_SR
+    n = sr * 2
+    t = np.arange(n) / sr
+    audio = (0.5 + 0.3 * np.sin(2 * np.pi * 300 * t)).astype(np.float32)
+    reg._cache['piano.wav'] = (audio, sr)
+    return reg
+
+
 def make_table_map():
     """Mapping table_num -> (type, name) come FtableManager.tables."""
     return {
@@ -736,6 +750,68 @@ class TestPassthroughBufferSizing:
 
         actual_duration = len(data) / sr
         assert abs(actual_duration - 0.4) < 1e-3
+
+
+class TestDcBlockerAlwaysOn:
+    """
+    Il DC blocker FIR e' sempre attivo a valle dell'overlap-add: l'offset DC
+    accumulato sommando grani a media non nulla viene rimosso. Si applica sia
+    a render_single_stream (STEMS) sia a render_merged_streams (MIX).
+    """
+
+    def _dc_renderer(self, window_registry, table_map):
+        return NumpyAudioRenderer(
+            sample_registry=make_dc_sample_registry(),
+            window_registry=window_registry,
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+        )
+
+    def _dense_grains(self):
+        # Grani corti densi (hop 10ms, durata 20ms) che coprono ~0-0.5s:
+        # l'overlap-add di slice a media positiva crea un DC sostenuto.
+        return [
+            make_grain(onset=i * 0.01, duration=0.02, pointer_pos=0.5)
+            for i in range(50)
+        ]
+
+    def test_single_stream_dc_removed(self, window_registry, table_map, tmp_path):
+        import soundfile as sf
+        r = self._dc_renderer(window_registry, table_map)
+        stream = make_mock_stream(duration=0.6, grains=self._dense_grains())
+        output_path = str(tmp_path / 'dc_single.aif')
+        r.render_single_stream(stream, output_path)
+
+        data, sr = sf.read(output_path)
+        interior = data[int(0.15 * sr):int(0.4 * sr)]
+        peak = np.max(np.abs(interior))
+        assert peak > 0.05, "il segnale deve avere contenuto (tono 300 Hz)"
+        # media interna ~0 -> DC rimosso (senza filtro sarebbe ~ +0.5*gain)
+        assert abs(interior.mean()) < peak * 0.1
+
+    def test_merged_streams_dc_removed(self, window_registry, table_map, tmp_path):
+        import soundfile as sf
+        r = self._dc_renderer(window_registry, table_map)
+        stream = make_mock_stream(onset=0.0, duration=0.6, grains=self._dense_grains())
+        output_path = str(tmp_path / 'dc_merged.aif')
+        r.render_merged_streams([stream], output_path)
+
+        data, sr = sf.read(output_path)
+        interior = data[int(0.15 * sr):int(0.4 * sr)]
+        peak = np.max(np.abs(interior))
+        assert peak > 0.05
+        assert abs(interior.mean()) < peak * 0.1
+
+    def test_dc_block_invoked_on_buffer(self, renderer, tmp_path):
+        """Wiring: il renderer chiama dc_block sul buffer prima di scrivere."""
+        stream = make_mock_stream(duration=0.3)
+        output_path = str(tmp_path / 'wired.aif')
+        with patch('rendering.numpy_audio_renderer.dc_block',
+                   side_effect=lambda buf, sr: buf) as mock_dc:
+            renderer.render_single_stream(stream, output_path)
+            assert mock_dc.called
+            buf_arg = mock_dc.call_args.args[0]
+            assert buf_arg.shape[1] == 2
 
 
 class TestAddGrainAtPositionSignature:
