@@ -9,7 +9,7 @@ sources:
   - src/strategies/
   - src/envelopes/
   - src/shared/seeding.py
-last_synced_commit: 2caa8a7
+last_synced_commit: 79c1a86
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -832,6 +832,16 @@ Internamente l'envelope è composto da:
 
 Per cubic, il sistema pre-calcola le tangenti con l'algoritmo Fritsch-Carlson,
 che garantisce monotonia e previene overshoot tra breakpoint adiacenti.
+
+**Caso a 2 soli punti:** con due breakpoint l'unica informazione disponibile è
+la pendenza del segmento; assegnarla a entrambe le tangenti degenererebbe in una
+retta (indistinguibile da `linear`). Per questo le tangenti agli estremi vengono
+forzate a zero e l'Hermite diventa lo smoothstep simmetrico
+`v(s) = v0 + (v1 - v0)(3s² - 2s³)`: una S con ease-in-out visibile, monotòna e
+senza overshoot. Quindi `type: cubic` su due punti produce sempre una curva, non
+una retta — per la retta usare `type: linear`. Con tre o più punti il
+comportamento Fritsch-Carlson agli estremi (tangente = pendenza del segmento
+adiacente) resta invariato.
 
 ---
 
