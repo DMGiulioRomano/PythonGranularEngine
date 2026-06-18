@@ -1,0 +1,53 @@
+# Demo: cubic a 2 punti -> smoothstep visibile (non piu' retta).
+# Due stream identici tranne il type dell'envelope density:
+#   - stream_cubic:  type cubic  -> S simmetrica ease-in-out
+#   - stream_linear: type linear -> retta (confronto)
+# La differenza e' leggibile nella curva density della partitura grafica.
+
+title: cubic smoothstep demo
+duration: 20
+bpm: 120
+streams:
+  - stream_id: stream_cubic
+    onset: 0
+    duration: 10
+    sample: demo.wav
+    time_mode: normalized
+    distribution_mode: gaussian
+    density:
+      type: cubic
+      points: [[0, 5], [1, 80]]
+    distribution: [[0, 0], [0.5, 1], [1, 0]]
+    grain:
+      duration: [[0, 0.05], [1, 0.05]]
+      duration_range: 0.01
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: [[0, 0], [1, 1]]
+    pitch:
+      semitones: 0
+    pan: 0
+    volume: -6
+
+  - stream_id: stream_linear
+    onset: 0
+    duration: 10
+    sample: demo.wav
+    time_mode: normalized
+    distribution_mode: gaussian
+    density:
+      type: linear
+      points: [[0, 5], [1, 80]]
+    distribution: [[0, 0], [0.5, 1], [1, 0]]
+    grain:
+      duration: [[0, 0.05], [1, 0.05]]
+      duration_range: 0.01
+      envelope: hanning
+    pointer:
+      start: 0
+      speed_ratio: [[0, 0], [1, 1]]
+    pitch:
+      semitones: 0
+    pan: 0
+    volume: -6

@@ -192,7 +192,15 @@ class Envelope:
         n = len(points)
         if n < 2:
             return [0.0] * n
-        
+
+        # Caso 2 punti: l'unica informazione è la slope del segmento, e
+        # assegnarla a entrambe le tangenti degenererebbe in una retta.
+        # Forzando le tangenti a zero l'Hermite diventa lo smoothstep
+        # simmetrico v0+(v1-v0)(3s^2-2s^3): ease-in-out visibile, monotòno,
+        # senza overshoot. Per la retta resta disponibile type: linear.
+        if n == 2:
+            return [0.0, 0.0]
+
         tangents = [0.0] * n
         
         # Pendenze dei segmenti
