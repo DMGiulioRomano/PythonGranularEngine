@@ -10,6 +10,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Renderer NumPy: DC blocker FIR a fase lineare sempre attivo a valle
+  dell'overlap-add (`rendering/dc_blocker.py`). Rimuove l'offset DC che si
+  accumula sommando grani (slice finestrate a media non nulla) sottraendo la
+  media mobile centrata del buffer (`y = x - media_mobile(x)`): null esatto a
+  0 Hz, lunghezza invariata, costo O(n) via somma cumulativa. Cutoff sub-audio
+  di default 20 Hz, applicato sia in STEMS (`render_single_stream`) sia in MIX
+  (`render_merged_streams`). Nessuna modifica a YAML/CLI: l'output audio del
+  renderer NumPy ora è centrato sullo zero.
 - Renderer NumPy: supporto alla finestra grano `blackman_harris` (GEN20 opt 5),
   campana a 4 termini con massima soppressione dei lobi laterali. Colma il gap
   col registry Csound (`WindowRegistry`), che già la definiva: i due renderer ora

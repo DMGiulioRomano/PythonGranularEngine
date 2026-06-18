@@ -26,6 +26,7 @@ from rendering.audio_renderer import AudioRenderer
 from rendering.grain_renderer import GrainRenderer
 from rendering.sample_registry import SampleRegistry
 from rendering.numpy_window_registry import NumpyWindowRegistry
+from rendering.dc_blocker import dc_block
 
 
 class NumpyAudioRenderer(AudioRenderer):
@@ -118,7 +119,10 @@ class NumpyAudioRenderer(AudioRenderer):
             for grain in voice_grains:
                 self._add_grain_relative(buffer, grain, stream.onset)
 
-        # 3. Clamp + scrivi
+        # 3. DC blocker FIR: rimuove l'offset DC accumulato dall'overlap-add
+        buffer = dc_block(buffer, self.output_sr)
+
+        # 4. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
         sf.write(output_path, buffer, self.output_sr,
                  format=self.audio_format.sf_format,
@@ -167,7 +171,10 @@ class NumpyAudioRenderer(AudioRenderer):
                 for grain in voice_grains:
                     self._add_grain_absolute(buffer, grain)
 
-        # 3. Clamp + scrivi
+        # 3. DC blocker FIR: rimuove l'offset DC accumulato dall'overlap-add
+        buffer = dc_block(buffer, self.output_sr)
+
+        # 4. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
         sf.write(output_path, buffer, self.output_sr,
                  format=self.audio_format.sf_format,
