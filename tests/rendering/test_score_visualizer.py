@@ -1602,3 +1602,58 @@ class TestEnvelopeStreamWidthAlignment:
         assert cbar_axes  # almeno una colorbar disegnata
         for cax in cbar_axes:
             assert cax.get_position().x0 >= content_x1 - 1e-6
+
+
+# =============================================================================
+# GROUP - Asse tempo del buffer mostrato una sola volta (a sinistra del buffer)
+# =============================================================================
+
+class TestSingleBufferTimeAxis:
+    """L'asse temporale del buffer (ordinata in secondi del sample) deve
+    comparire una sola volta, sull'asse waveform a sinistra del buffer. Il
+    subplot dei grani condivide lo stesso ylim ma NON deve ripetere le
+    etichette y: pre-fix le stampava una seconda volta, ridondante e visivamente
+    confusa."""
+
+    def _render(self):
+        viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        fig.canvas.draw()  # finalizza tick e visibilita' delle etichette
+        return fig
+
+    @staticmethod
+    def _wave_axes(fig):
+        return [ax for ax in fig.axes
+                if ax.get_ylabel().startswith('Sample (s)')]
+
+    @staticmethod
+    def _grain_axes(fig, page_start=0.0, page_end=30.0):
+        """Subplot grani: xlim == pagina e ylim != (0,1) (esclude l'envelope)."""
+        out = []
+        for ax in fig.axes:
+            lo, hi = ax.get_xlim()
+            ylo, yhi = ax.get_ylim()
+            same_page = abs(lo - page_start) < 1e-9 and abs(hi - page_end) < 1e-9
+            is_envelope = abs(ylo - 0.0) < 1e-9 and abs(yhi - 1.0) < 1e-9
+            if same_page and not is_envelope:
+                out.append(ax)
+        return out
+
+    def test_waveform_keeps_y_tick_labels(self):
+        """L'asse del buffer resta visibile sulla waveform (l'unica descrizione)."""
+        fig = self._render()
+        wave_axes = self._wave_axes(fig)
+        assert wave_axes
+        for ax in wave_axes:
+            assert any(t.get_visible() and t.get_text()
+                       for t in ax.get_yticklabels())
+
+    def test_grain_subplot_hides_y_tick_labels(self):
+        """Il subplot dei grani non ripete le etichette dell'asse del buffer."""
+        fig = self._render()
+        grain_axes = self._grain_axes(fig)
+        assert grain_axes
+        for ax in grain_axes:
+            assert all(not t.get_visible() for t in ax.get_yticklabels())
