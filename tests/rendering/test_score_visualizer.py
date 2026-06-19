@@ -1928,3 +1928,33 @@ class TestMagnifier:
         # ... e diverso dal valore fedele out/zoom (cerchio di partenza = knob a se')
         faithful = 0.012 * min(W, H)
         assert abs(src_ring.radius - faithful) > 0.1 * faithful
+
+    # --- corner per-target: piu' lenti sullo stesso stream senza sovrapporsi ---
+    def test_two_targets_same_stream_distinct_corners(self):
+        # Stessa regione (t, y) ma proiettata in due angoli opposti: i due inset
+        # NON devono cadere nello stesso punto. Prima della fix entrambi leggono
+        # il corner globale -> stessa posizione (rosso).
+        targets = [
+            {'t': 6.0, 'y': 1.5, 'corner': 'top-right'},
+            {'t': 6.0, 'y': 1.5, 'corner': 'bottom-left'},
+        ]
+        fig = self._render(single_stream_scene(),
+                           {'magnify_targets': targets})
+        lenses = self._magnifier_axes(fig)
+        assert len(lenses) == 2
+        pos = [ax.get_position() for ax in lenses]
+        # top sopra bottom, right a destra di left
+        assert pos[0].y0 > pos[1].y0
+        assert pos[0].x0 > pos[1].x0
+
+    def test_target_corner_default_top_right(self):
+        # Senza 'corner' esplicito la lente resta ancorata top-right (back-compat).
+        fig = self._render(single_stream_scene(),
+                           {'magnify_targets': [{'t': 6.0, 'y': 1.5}]})
+        grain_ax = self._grain_ax(fig)
+        gp = grain_ax.get_position()
+        lp = self._magnifier_axes(fig)[0].get_position()
+        # centro dell'inset nella meta' alta-destra del subplot dei grani
+        cx, cy = (lp.x0 + lp.x1) / 2, (lp.y0 + lp.y1) / 2
+        assert cx > (gp.x0 + gp.x1) / 2
+        assert cy > (gp.y0 + gp.y1) / 2

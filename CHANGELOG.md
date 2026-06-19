@@ -10,6 +10,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Score visualizer (magnify): `corner` ora è override per-target in
+  `magnify_targets` (`top-right` | `top-left` | `bottom-right` | `bottom-left`),
+  come già `zoom`/`out`/`src`. Consente più lenti d'ingrandimento sullo stesso
+  stream/subplot senza sovrapporle, ancorandole ad angoli diversi (fino a 4 per
+  subplot). Assente la chiave, si usa il `corner` di `magnify_defaults`
+  (`top-right`): comportamento retrocompatibile, nessun cambiamento a
+  YAML/CLI/output.
 - Score visualizer: moltiplicatore globale `font_scale` (config, default `1.0`)
   applicato a tutte le dimensioni del testo della partitura — etichette assi,
   titolo, legenda envelope, annotazioni dei breakpoint, testo della pagina
