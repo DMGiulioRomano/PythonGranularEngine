@@ -598,12 +598,12 @@ class ScoreVisualizer:
         if n_streams == 0:
             # Pagina vuota
             ax = fig.add_subplot(111)
-            ax.text(0.5, 0.5, "Nessuno stream attivo",
+            ax.text(0.5, 0.5, "No active stream",
                     ha='center', va='center',
                     fontsize=self._fs(self.config['empty_fontsize']), color='gray')
             ax.axis('off')
 
-            title = f"Pagina {page_idx + 1}/{self.page_count} — " \
+            title = f"Page {page_idx + 1}/{self.page_count} — " \
                     f"[{page_start:.1f}s - {page_end:.1f}s]"
             fig.suptitle(title, fontsize=self._fs(self.config['title_fontsize']))
             return fig
@@ -714,7 +714,7 @@ class ScoreVisualizer:
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
-            ax_wave.set_ylabel(f"Posizione di lettura (s)\n{sample_path}",
+            ax_wave.set_ylabel(f"Read position (s)\n{sample_path}",
                             fontsize=self._fs(self.config['label_fontsize']))
             ax_wave.set_xticks([])
             # Scarta i tick estremi dell'asse buffer: con le righe impilate
@@ -743,7 +743,7 @@ class ScoreVisualizer:
             
             # X label solo sull'ultimo stream (se non ci sono envelope)
             if i == n_streams - 1 and not has_envelopes:
-                ax_grain.set_xlabel("Tempo (s)", fontsize=self._fs(self.config['label_fontsize']))
+                ax_grain.set_xlabel("Time (s)", fontsize=self._fs(self.config['label_fontsize']))
             else:
                 ax_grain.set_xticklabels([])
         
@@ -785,7 +785,7 @@ class ScoreVisualizer:
             # Configura assi envelope
             ax_env.set_xlim(page_start, page_end)
             ax_env.set_ylim(0, 1)
-            ax_env.set_xlabel("Tempo (s)", fontsize=self._fs(self.config['label_fontsize']))
+            ax_env.set_xlabel("Time (s)", fontsize=self._fs(self.config['label_fontsize']))
             ax_env.set_ylabel("", fontsize=self._fs(self.config['label_fontsize']))
             ax_env.set_yticklabels([])
             ax_env.tick_params(axis='y', length=0)
@@ -810,7 +810,7 @@ class ScoreVisualizer:
         # =========================================================================
         # TITOLO
         # =========================================================================
-        title = f"Pagina {page_idx + 1}/{self.page_count} — " \
+        title = f"Page {page_idx + 1}/{self.page_count} — " \
                 f"[{page_start:.1f}s - {page_end:.1f}s]"
         # Titolo centrato nella striscia riservata in alto, appena sopra il plot:
         # bordo inferiore del testo a title_gap dal plot (stacco quasi nullo).
@@ -1917,7 +1917,7 @@ class ScoreVisualizer:
             'pointer_speed': 'x',
             'fill_factor': '',
             'distribution': '',
-            'num_voices': ' voci',
+            'num_voices': ' voices',
             'scatter': '',  # normalizzato 0-1, adimensionale
             'scatter': '',  # normalizzato 0-1, adimensionale
             'pc_rand_reverse': '%',
