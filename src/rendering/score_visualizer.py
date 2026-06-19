@@ -498,6 +498,15 @@ class ScoreVisualizer:
         cbar = fig.colorbar(
             ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
         )
+        # Scarta i tick troppo vicini agli estremi del range: con colorbar
+        # impilate (una per stream, hspace=0) il tick di fondo della colorbar
+        # sopra e quello di testa della colorbar sotto cadono sullo stesso bordo
+        # condiviso e si sovrappongono (es. '-30' e '30' -> '3030').
+        span = norm.vmax - norm.vmin
+        if span > 0:
+            inner = [t for t in cbar.get_ticks()
+                     if norm.vmin + 0.04 * span < t < norm.vmax - 0.04 * span]
+            cbar.set_ticks(inner)
         cbar.set_label(label, fontsize=self._fs(self.config['label_fontsize'] - 1))
         cbar.ax.tick_params(labelsize=self._fs(self.config['label_fontsize'] - 2))
         # '<colorbar>' e' la convenzione matplotlib per gli assi colorbar (la
@@ -602,21 +611,20 @@ class ScoreVisualizer:
             height_ratios = [stream_row_height] * n_streams
             n_rows = n_streams
 
-        # GridSpec: n_rows righe × 4 colonne [waveform, contenuto, spacer,
-        # colorbar]. La colorbar del pitch ha una colonna propria: i subplot dei
-        # grani e quello degli envelope condividono la colonna centrale (stesso
-        # bordo destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli
-        # grani e il pannello envelope restava piu' largo, disallineato a destra.
+        # GridSpec: n_rows righe × 3 colonne [waveform, contenuto, colorbar].
+        # La colorbar del pitch ha una colonna propria: i subplot dei grani e
+        # quello degli envelope condividono la colonna centrale (stesso bordo
+        # destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli grani e
+        # il pannello envelope restava piu' largo, disallineato a destra.
         #
-        # wspace=0: la waveform e' attaccata al plot dei grani (condividono l'asse
-        # Y = posizione di lettura, quindi la waveform fa da righello sul fianco
-        # sinistro della tela dei grani, senza striscia di stacco verticale). La
-        # colonna 'spacer' vuota reintroduce solo lo stacco prima della colorbar.
-        spacer_ratio = colorbar_ratio
-        main_ratio = 1 - waveform_ratio - spacer_ratio - colorbar_ratio
+        # wspace=0: niente striscia di stacco verticale tra le colonne. La
+        # waveform fa da righello attaccato al fianco sinistro della tela dei
+        # grani (condividono l'asse Y = posizione di lettura) e la colorbar del
+        # pitch e' attaccata al fianco destro.
+        main_ratio = 1 - waveform_ratio - colorbar_ratio
         gs = fig.add_gridspec(
-            n_rows, 4,
-            width_ratios=[waveform_ratio, main_ratio, spacer_ratio, colorbar_ratio],
+            n_rows, 3,
+            width_ratios=[waveform_ratio, main_ratio, colorbar_ratio],
             height_ratios=height_ratios,
             wspace=0.0,
             hspace=0.0  # gap verticale tra stream
@@ -658,8 +666,8 @@ class ScoreVisualizer:
             self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
 
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
-            # colonna dedicata gs[i, 3]: non ruba larghezza al subplot dei grani.
-            self._add_pitch_colorbar(fig, gs[i, 3], cents_range,
+            # colonna dedicata gs[i, 2]: non ruba larghezza al subplot dei grani.
+            self._add_pitch_colorbar(fig, gs[i, 2], cents_range,
                                      [stream], page_start, page_end)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
@@ -667,6 +675,15 @@ class ScoreVisualizer:
             ax_wave.set_ylabel(f"Posizione di lettura (s)\n{sample_path}",
                             fontsize=self._fs(self.config['label_fontsize']))
             ax_wave.set_xticks([])
+            # Scarta i tick estremi dell'asse buffer: con le righe impilate
+            # (hspace=0) l'inizio (0 s) di una riga e la fine dell'altra cadono
+            # sul bordo condiviso e si sovrappongono. Tieni solo i tick interni.
+            y_lo, y_hi = -0.02, sample_duration + 0.02
+            y_span = y_hi - y_lo
+            inner_yt = [t for t in ax_wave.get_yticks()
+                        if y_lo + 0.04 * y_span < t < y_hi - 0.04 * y_span]
+            ax_wave.set_yticks(inner_yt)
+            ax_wave.set_ylim(-0.02, sample_duration+0.02)  # set_yticks puo' allargare l'ylim
             ax_wave.tick_params(axis='y', labelsize=self._fs(self.config['label_fontsize'] - 1))
             ax_wave.axvline(x=0, color='gray', linewidth=0.5, alpha=0.5, linestyle=':')
             ax_wave.grid(True, alpha=0.2, linestyle=':', axis='y')
