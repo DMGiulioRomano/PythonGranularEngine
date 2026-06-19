@@ -511,8 +511,8 @@ class TestPerStreamLayout:
 
     @staticmethod
     def _wave_axes(fig):
-        """Assi waveform: uno per subplot/stream (ylabel 'Posizione di lettura (s)\\n<path>')."""
-        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Posizione di lettura (s)')]
+        """Assi waveform: uno per subplot/stream (ylabel 'Read position (s)\\n<path>')."""
+        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Read position (s)')]
 
     def test_two_different_samples_produce_at_least_two_axes(self):
         viz = make_viz(two_sample_scene(), config={'page_duration': 30.0})
@@ -1641,7 +1641,7 @@ class TestSingleBufferTimeAxis:
     @staticmethod
     def _wave_axes(fig):
         return [ax for ax in fig.axes
-                if ax.get_ylabel().startswith('Posizione di lettura (s)')]
+                if ax.get_ylabel().startswith('Read position (s)')]
 
     @staticmethod
     def _grain_axes(fig, page_start=0.0, page_end=30.0):
@@ -1694,7 +1694,7 @@ class TestFontScale:
     @staticmethod
     def _wave_ax(fig):
         return next(ax for ax in fig.axes
-                    if ax.get_ylabel().startswith('Posizione di lettura (s)'))
+                    if ax.get_ylabel().startswith('Read position (s)'))
 
     def test_default_config_exposes_font_keys(self):
         """Le nuove chiavi esistono nei default con valori retrocompatibili."""
@@ -1726,7 +1726,7 @@ class TestFontScale:
             viz.analyze()
             fig = viz.render_page(0)
         texts = [t for ax in fig.axes for t in ax.texts
-                 if 'Nessuno stream attivo' in t.get_text()]
+                 if 'No active stream' in t.get_text()]
         assert texts
         assert texts[0].get_fontsize() == 28        # empty_fontsize 14 * 2.0
 
@@ -1751,7 +1751,7 @@ class TestFontScaleLayout:
     @staticmethod
     def _width_ratios(fig):
         ax = next(ax for ax in fig.axes
-                  if ax.get_ylabel().startswith('Posizione di lettura (s)'))
+                  if ax.get_ylabel().startswith('Read position (s)'))
         return list(ax.get_subplotspec().get_gridspec().get_width_ratios())
 
     def test_font_scale_1_preserves_default_columns(self):
