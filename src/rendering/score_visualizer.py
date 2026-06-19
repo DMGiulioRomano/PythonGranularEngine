@@ -51,12 +51,15 @@ ENVELOPE_COLORS = {
     # === OUTPUT ===
     'volume': '#e41a1c',          # rosso
     'volume_prob': '#fb9a99',     # rosso chiaro
+    'volume_range': '#99000d',    # rosso scuro (deviazione per-grano)
     'pan': '#4daf4a',             # verde
     'pan_prob': '#b2df8a',        # verde chiaro
+    'pan_range': '#006d2c',       # verde scuro (deviazione per-grano)
 
     # === GRAIN ===
     'grain_duration': '#377eb8',  # blu
     'grain_duration_prob': '#a6cee3',  # blu chiaro
+    'grain_duration_range': '#08519c',  # blu scuro (deviazione per-grano)
     'reverse': '#999999',         # grigio
     'reverse_prob': '#cccccc',    # grigio chiarissimo
 
@@ -1393,24 +1396,28 @@ class ScoreVisualizer:
             # =====================================================================
             # PARTE 3: ESTRAZIONE RANGE (_mod_range) PER SPEC CON range_path
             # =====================================================================
-            # Per parametri come pointer_deviation il valore base e' un dummy 0
-            # costante (yaml_path='_dummy_fixed_zero_'); la deviazione reale vive
-            # in param._mod_range (issue #96). Chiave = spec.name: sovrascrive il
-            # dummy-0 eventualmente emesso da PARTE 1.
+            # I parametri che arrivano qui (pan, volume, grain_duration) hanno un
+            # valore base REALE gia' emesso da PARTE 1: la deviazione per-grano
+            # vive in param._mod_range (issue #96) e va su una chiave distinta
+            # `spec.name + '_range'` per non sovrascrivere il valore base (issue
+            # #141, es. il loop di pan + pan_range). Stesso pattern del suffisso
+            # '_prob' di PARTE 2. NB: pointer_deviation (base dummy-0) non passa
+            # di qui (hasattr e' False): e' gestito nel blocco dedicato sotto.
             if spec.range_path and isinstance(param, Parameter):
                 mod_range = getattr(param, '_mod_range', None)
+                range_key = f"{spec.name}_range"
 
                 if isinstance(mod_range, Envelope):
                     bp_values = [bp[1] for bp in mod_range.breakpoints]
                     is_static = len(set(bp_values)) == 1
                     if len(mod_range.breakpoints) > 1 and not is_static:
-                        envelopes[spec.name] = mod_range
+                        envelopes[range_key] = mod_range
                     elif show_static:
                         val = bp_values[0]
-                        envelopes[spec.name] = Envelope([[0, val], [stream.duration, val]])
+                        envelopes[range_key] = Envelope([[0, val], [stream.duration, val]])
 
                 elif isinstance(mod_range, (int, float)) and show_static:
-                    envelopes[spec.name] = Envelope([[0, mod_range], [stream.duration, mod_range]])
+                    envelopes[range_key] = Envelope([[0, mod_range], [stream.duration, mod_range]])
 
         # =====================================================================
         # PITCH: unit-driven, non più in PITCH_PARAMETER_SCHEMA. Raccolto da
@@ -2078,14 +2085,23 @@ class ScoreVisualizer:
         'effective_density': 'eff density',
         'distribution': 'distrib',
         'fill_factor': 'fill',
+        # Override compatto: 'grain dur rng' (13) sforerebbe la colonna (issue #141)
+        'grain_duration_range': 'gr dur rng',
     }
 
     def _legend_display_name(self, param_name):
-        """Nome corto per la legenda. Suffisso '_prob' → ' %' (probabilita')."""
+        """Nome corto per la legenda. Un override esplicito in _ENV_LEGEND_SHORT
+        ha precedenza; altrimenti suffisso '_prob' → ' %' (probabilita') e
+        '_range' → ' rng' (deviazione per-grano, issue #141)."""
+        if param_name in self._ENV_LEGEND_SHORT:
+            return self._ENV_LEGEND_SHORT[param_name]
         if param_name.endswith('_prob'):
             base = param_name[:-len('_prob')]
             return f"{self._legend_display_name(base)} %"
-        return self._ENV_LEGEND_SHORT.get(param_name, param_name.replace('_', ' '))
+        if param_name.endswith('_range'):
+            base = param_name[:-len('_range')]
+            return f"{self._legend_display_name(base)} rng"
+        return param_name.replace('_', ' ')
 
     def _draw_envelope_legend(self, ax, legend_entries):
         """

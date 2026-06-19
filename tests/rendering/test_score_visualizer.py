@@ -873,7 +873,8 @@ class TestModRangeEnvelopeCollection:
     """issue #96 - i parametri con range_path (volume_range, pan_range,
     grain.duration_range, offset_range) tengono il range stocastico in
     Parameter._mod_range, mai estratto dal visualizer. Va raccolto sotto la
-    chiave spec.name. Qui via `volume` (stream-level, raggiungibile dal loop)."""
+    chiave `spec.name + '_range'` (issue #141: chiave distinta dal valore base).
+    Qui via `volume` (stream-level, raggiungibile dal loop)."""
 
     def _stream_with_volume_range(self, base, mod_range):
         from parameters.parameter import Parameter
@@ -887,22 +888,63 @@ class TestModRangeEnvelopeCollection:
     def test_dynamic_range_envelope_collected(self):
         from envelopes.envelope import Envelope
         s = self._stream_with_volume_range(-6.0, Envelope([[0, 0.0], [10, 12.0]]))
-        assert 'volume' in make_viz([s])._get_stream_envelopes(s)
+        assert 'volume_range' in make_viz([s])._get_stream_envelopes(s)
 
     def test_dynamic_range_envelope_is_the_mod_range(self):
         from envelopes.envelope import Envelope
         env = Envelope([[0, 0.0], [10, 12.0]])
         s = self._stream_with_volume_range(-6.0, env)
-        assert make_viz([s])._get_stream_envelopes(s)['volume'] is env
+        assert make_viz([s])._get_stream_envelopes(s)['volume_range'] is env
 
     def test_static_range_skipped_without_show_static(self):
         s = self._stream_with_volume_range(-6.0, 3.0)
-        assert 'volume' not in make_viz([s])._get_stream_envelopes(s)
+        assert 'volume_range' not in make_viz([s])._get_stream_envelopes(s)
 
     def test_static_range_collected_with_show_static(self):
         s = self._stream_with_volume_range(-6.0, 3.0)
         viz = make_viz([s], config={'show_static_params': True})
-        assert 'volume' in viz._get_stream_envelopes(s)
+        assert 'volume_range' in viz._get_stream_envelopes(s)
+
+
+class TestValueAndRangeCoexist:
+    """issue #141 - uno stream con valore base reale E range (_mod_range) deve
+    mostrare ENTRAMBE le curve: il valore sotto `spec.name`, il range sotto
+    `spec.name + '_range'`. Prima del fix la PARTE 3 sovrascriveva la chiave del
+    valore base (es. il loop di `pan` perso a favore di `pan_range`)."""
+
+    def _stream_with_pan(self, base, mod_range):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pan = Parameter('pan', base, GRANULAR_PARAMETERS['pan'],
+                          mod_range=mod_range)
+        return s
+
+    def test_pan_loop_preserved_when_pan_range_present(self):
+        from envelopes.envelope import Envelope
+        base = Envelope([[0, 0.0], [10, 360.0]])      # loop rotativo
+        rng = Envelope([[0, 20.0], [10, 170.0]])      # deviazione per-grano
+        s = self._stream_with_pan(base, rng)
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert 'pan' in env
+        assert env['pan'] is base
+
+    def test_pan_range_collected_under_suffixed_key(self):
+        from envelopes.envelope import Envelope
+        base = Envelope([[0, 0.0], [10, 360.0]])
+        rng = Envelope([[0, 20.0], [10, 170.0]])
+        s = self._stream_with_pan(base, rng)
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert 'pan_range' in env
+        assert env['pan_range'] is rng
+
+    def test_pan_value_without_range_unchanged(self):
+        from envelopes.envelope import Envelope
+        base = Envelope([[0, 0.0], [10, 360.0]])
+        s = self._stream_with_pan(base, None)
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert env.get('pan') is base
+        assert 'pan_range' not in env
 
 
 class TestDephaseGateEnvelopeCollection:
@@ -1039,6 +1081,17 @@ class TestLegendDisplayName:
 
     def test_grain_duration_prob_abbreviated(self):
         assert self._viz()._legend_display_name('grain_duration_prob') == 'grain dur %'
+
+    def test_range_suffix_becomes_rng(self):
+        # issue #141: la corsia della deviazione per-grano (_range)
+        assert self._viz()._legend_display_name('pan_range') == 'pan rng'
+
+    def test_volume_range_abbreviated(self):
+        assert self._viz()._legend_display_name('volume_range') == 'volume rng'
+
+    def test_grain_duration_range_override(self):
+        # override compatto per non sforare la colonna (13 char -> 10)
+        assert self._viz()._legend_display_name('grain_duration_range') == 'gr dur rng'
 
     def test_unmapped_underscore_becomes_space(self):
         assert self._viz()._legend_display_name('scatter') == 'scatter'
