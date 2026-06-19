@@ -498,6 +498,15 @@ class ScoreVisualizer:
         cbar = fig.colorbar(
             ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
         )
+        # Scarta i tick troppo vicini agli estremi del range: con colorbar
+        # impilate (una per stream, hspace=0) il tick di fondo della colorbar
+        # sopra e quello di testa della colorbar sotto cadono sullo stesso bordo
+        # condiviso e si sovrappongono (es. '-30' e '30' -> '3030').
+        span = norm.vmax - norm.vmin
+        if span > 0:
+            inner = [t for t in cbar.get_ticks()
+                     if norm.vmin + 0.04 * span < t < norm.vmax - 0.04 * span]
+            cbar.set_ticks(inner)
         cbar.set_label(label, fontsize=self._fs(self.config['label_fontsize'] - 1))
         cbar.ax.tick_params(labelsize=self._fs(self.config['label_fontsize'] - 2))
         # '<colorbar>' e' la convenzione matplotlib per gli assi colorbar (la
@@ -586,7 +595,11 @@ class ScoreVisualizer:
         # =========================================================================
         # SETUP GRIDSPEC
         # =========================================================================
-        waveform_ratio = self.config['waveform_width_ratio']
+        # La colonna waveform ospita la y-label ruotata + i tick e (nella riga
+        # envelope) la legenda con clip al bordo colonna: scala con font_scale
+        # cosi' un testo piu' grande non viene croppato. A fs=1.0 e' identita'.
+        fs = self.config['font_scale']
+        waveform_ratio = self.config['waveform_width_ratio'] * fs
         colorbar_ratio = self.config['colorbar_width_ratio']
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
 
@@ -607,22 +620,37 @@ class ScoreVisualizer:
         # quello degli envelope condividono la colonna centrale (stesso bordo
         # destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli grani e
         # il pannello envelope restava piu' largo, disallineato a destra.
-        main_ratio = 1 - waveform_ratio - colorbar_ratio
+        #
+        # wspace=0: niente striscia di stacco verticale tra le colonne. La
+        # waveform fa da righello attaccato al fianco sinistro della tela dei
+        # grani (condividono l'asse Y = posizione di lettura) e la colorbar del
+        # pitch e' attaccata al fianco destro.
+        # Clamp difensivo: con font_scale estremi le colonne laterali non devono
+        # fagocitare i grani. min_main = (3/7)*side tiene la quota del plot
+        # centrale >= 30% della larghezza utile.
+        side_ratio = waveform_ratio + colorbar_ratio
+        main_ratio = max(1 - side_ratio, (3.0 / 7.0) * side_ratio)
         gs = fig.add_gridspec(
             n_rows, 3,
             width_ratios=[waveform_ratio, main_ratio, colorbar_ratio],
             height_ratios=height_ratios,
-            wspace=0.02,
+            wspace=0.0,
             hspace=0.0  # gap verticale tra stream
         )
-        
-        # Margini
+
+        # Margini: il titolo sta appena sopra il plot (stacco quasi nullo). Lo
+        # spazio vuoto residuo attorno alle parole (sinistra/destra/basso e sopra
+        # il titolo) lo rifila bbox_inches='tight' in fase di export. Riservo in
+        # alto solo l'altezza del titolo (in frazione di figura) + un gap minimo.
+        fig_h_in = page_h_mm / 25.4
+        title_h = (self._fs(self.config['title_fontsize']) / 72.0) / fig_h_in
+        title_gap = 0.006  # stacco titolo-plot quasi nullo
         margin_ratio = margin_mm / page_w_mm
         fig.subplots_adjust(
             left=margin_ratio,
             right=1 - margin_ratio,
-            bottom=margin_ratio + 0.02,
-            top=1 - margin_ratio - 0.03
+            bottom=margin_ratio,
+            top=1.0 - title_h - 2 * title_gap
         )
         
         # =========================================================================
@@ -661,6 +689,15 @@ class ScoreVisualizer:
             ax_wave.set_ylabel(f"Posizione di lettura (s)\n{sample_path}",
                             fontsize=self._fs(self.config['label_fontsize']))
             ax_wave.set_xticks([])
+            # Scarta i tick estremi dell'asse buffer: con le righe impilate
+            # (hspace=0) l'inizio (0 s) di una riga e la fine dell'altra cadono
+            # sul bordo condiviso e si sovrappongono. Tieni solo i tick interni.
+            y_lo, y_hi = -0.02, sample_duration + 0.02
+            y_span = y_hi - y_lo
+            inner_yt = [t for t in ax_wave.get_yticks()
+                        if y_lo + 0.04 * y_span < t < y_hi - 0.04 * y_span]
+            ax_wave.set_yticks(inner_yt)
+            ax_wave.set_ylim(-0.02, sample_duration+0.02)  # set_yticks puo' allargare l'ylim
             ax_wave.tick_params(axis='y', labelsize=self._fs(self.config['label_fontsize'] - 1))
             ax_wave.axvline(x=0, color='gray', linewidth=0.5, alpha=0.5, linestyle=':')
             ax_wave.grid(True, alpha=0.2, linestyle=':', axis='y')
@@ -739,8 +776,12 @@ class ScoreVisualizer:
         # =========================================================================
         title = f"Pagina {page_idx + 1}/{self.page_count} — " \
                 f"[{page_start:.1f}s - {page_end:.1f}s]"
-        fig.suptitle(title, fontsize=self._fs(self.config['title_fontsize']))
-        
+        # Titolo centrato nella striscia riservata in alto, appena sopra il plot:
+        # bordo inferiore del testo a title_gap dal plot (stacco quasi nullo).
+        top_pos = 1.0 - title_h - 2 * title_gap
+        fig.suptitle(title, y=top_pos + title_gap + title_h * 0.5, va='center',
+                     fontsize=self._fs(self.config['title_fontsize']))
+
         return fig
 
     def _draw_waveform_full(self, ax, stream, sample_duration):
@@ -1656,17 +1697,40 @@ class ScoreVisualizer:
             
             # Disegna punto
             ax.plot(t_abs, y_pos, 'o', color=color, markersize=4, alpha=0.9)
-            
-            # Disegna etichetta (offset per evitare sovrapposizione)
+
+            # Lato dell'etichetta scelto dinamicamente in base alla posizione del
+            # breakpoint nel subplot, cosi' il testo resta SEMPRE dentro il plot
+            # dedicato all'envelope (prima un offset fisso in alto-a-destra faceva
+            # sforare i breakpoint vicini al bordo destro o al tetto della corsia).
+            x_span = page_end - page_start
+            x_frac = (t_abs - page_start) / x_span if x_span > 0 else 0.5
+            # ylim del subplot envelope e' (0, 1): y_pos e' gia' la frazione
+            # verticale dentro l'asse.
+            y_frac = y_pos
+
+            # Vicino al bordo destro -> etichetta a sinistra del punto.
+            if x_frac > 0.85:
+                dx, ha = -3, 'right'
+            else:
+                dx, ha = 3, 'left'
+            # Vicino al tetto del subplot -> etichetta sotto il punto.
+            if y_frac > 0.9:
+                dy, va = -3, 'top'
+            else:
+                dy, va = 3, 'bottom'
+
+            # Disegna etichetta (offset dinamico per restare dentro il plot)
             ax.annotate(
                 label,
                 xy=(t_abs, y_pos),
-                xytext=(3, 3),
+                xytext=(dx, dy),
                 textcoords='offset points',
                 fontsize=self._fs(self.config['breakpoint_fontsize']),
                 color=color,
                 alpha=0.9,
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', 
+                ha=ha,
+                va=va,
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
                          alpha=0.7, edgecolor='none')
             )
 
@@ -1804,9 +1868,12 @@ class ScoreVisualizer:
         
         figures = self.render_all()
         
+        # bbox_inches='tight' rifila la tela al contenuto reale: niente bordo
+        # vuoto tra la fine delle parole (y-label, "Tempo (s)", titolo, label
+        # colorbar) e il margine pagina, e nessun crop quando font_scale cresce.
         with PdfPages(output_path) as pdf:
             for fig in figures:
-                pdf.savefig(fig, dpi=150)
+                pdf.savefig(fig, dpi=150, bbox_inches='tight', pad_inches=0.02)
                 plt.close(fig)
         
         print(f"✓ PDF esportato: {output_path}")

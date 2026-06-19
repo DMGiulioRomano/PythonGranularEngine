@@ -1729,3 +1729,80 @@ class TestFontScale:
                  if 'Nessuno stream attivo' in t.get_text()]
         assert texts
         assert texts[0].get_fontsize() == 28        # empty_fontsize 14 * 2.0
+
+
+# =============================================================================
+# FONT SCALE — LAYOUT DINAMICO + STACCO/MARGINI MINIMI
+# =============================================================================
+
+class TestFontScaleLayout:
+    """Con font_scale>1 il testo non deve essere croppato: la colonna
+    waveform/legenda scala con font_scale (la legenda ha clip al bordo colonna)
+    mentre l'area dati centrale si stringe (con clamp). Inoltre il titolo sta
+    appena sopra il plot (stacco quasi nullo) e l'export usa bbox tight per
+    togliere lo spazio attorno alle parole."""
+
+    def _render(self, config):
+        viz = make_viz(single_stream_scene(), config=config)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            return viz.render_page(0)
+
+    @staticmethod
+    def _width_ratios(fig):
+        ax = next(ax for ax in fig.axes
+                  if ax.get_ylabel().startswith('Posizione di lettura (s)'))
+        return list(ax.get_subplotspec().get_gridspec().get_width_ratios())
+
+    def test_font_scale_1_preserves_default_columns(self):
+        """A font_scale=1.0 le colonne restano ai valori di default."""
+        viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
+        wr = self._width_ratios(self._render({'page_duration': 30.0}))
+        assert wr[0] == pytest.approx(viz.config['waveform_width_ratio'])
+        assert wr[2] == pytest.approx(viz.config['colorbar_width_ratio'])
+
+    def test_font_scale_widens_text_columns(self):
+        """font_scale=2.0: colonna waveform/legenda piu' larga; colorbar uguale."""
+        wr_base = self._width_ratios(self._render({'page_duration': 30.0}))
+        wr_big = self._width_ratios(
+            self._render({'page_duration': 30.0, 'font_scale': 2.0}))
+        assert wr_big[0] > wr_base[0]
+        assert wr_big[2] == pytest.approx(wr_base[2])
+
+    def test_font_scale_shrinks_central_plot(self):
+        """font_scale=2.0: la quota normalizzata dell'area dati centrale cala."""
+        share = lambda wr: wr[1] / sum(wr)
+        base = share(self._width_ratios(self._render({'page_duration': 30.0})))
+        big = share(self._width_ratios(
+            self._render({'page_duration': 30.0, 'font_scale': 2.0})))
+        assert big < base
+
+    def test_main_ratio_clamped_at_extreme_font_scale(self):
+        """font_scale estremo non azzera ne' rende negativa l'area dati."""
+        wr = self._width_ratios(
+            self._render({'page_duration': 30.0, 'font_scale': 8.0}))
+        assert all(r > 0 for r in wr)
+        assert wr[1] / sum(wr) >= 0.3
+
+    def test_title_sits_just_above_plot(self):
+        """Lo stacco titolo-plot e' quasi nullo: il plot arriva in alto e il
+        titolo gli sta appena sopra."""
+        fig = self._render({'page_duration': 30.0, 'font_scale': 2.0})
+        top = fig.subplotpars.top
+        title_y = fig._suptitle.get_position()[1]
+        assert top >= 0.9
+        assert 0 <= (title_y - top) < 0.06
+
+    def test_export_pdf_uses_tight_bbox(self):
+        """export_pdf rifila la tela al contenuto (niente margini attorno alle
+        parole) via bbox_inches='tight'."""
+        viz = make_viz(single_stream_scene(),
+                       config={'page_duration': 30.0, 'font_scale': 2.0})
+        inst = MagicMock()
+        ctx = MagicMock()
+        ctx.__enter__ = MagicMock(return_value=inst)
+        ctx.__exit__ = MagicMock(return_value=False)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
+             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+            viz.export_pdf('/tmp/tight_test.pdf')
+        assert inst.savefig.call_args.kwargs.get('bbox_inches') == 'tight'
