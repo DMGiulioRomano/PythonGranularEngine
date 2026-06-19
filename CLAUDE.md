@@ -18,6 +18,12 @@ Inspired by Barry Truax's DMX-1000 (1988).
 CLI, formati) richiede analisi d'impatto su `PGE-ls` e `PGE-ui` ed eventuale
 apertura di issue. Regola completa: @.claude/rules/cross-repo-impact.md
 
+**Sync del paper CIM 2026:** quando una PR su PGE tocca qualcosa usato dagli
+esempi del paper (rendering, score visualizer, superficie usata da
+`render_example.py`), chiedi all'utente se bumpare il submodule PGE nel repo
+`cim2026-granular-engine-paper` e aprire lì una PR. Regola completa:
+@.claude/rules/submodule-sync-cim.md
+
 ## Slash Commands
 
 - `/new-feature <nome>` — apre branch + avvia workflow TDD completo

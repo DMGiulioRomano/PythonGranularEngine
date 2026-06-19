@@ -10,6 +10,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Score visualizer: moltiplicatore globale `font_scale` (config, default `1.0`)
+  applicato a tutte le dimensioni del testo della partitura — etichette assi,
+  titolo, legenda envelope, annotazioni dei breakpoint, testo della pagina
+  vuota. Un unico parametro le ingrandisce in modo coerente (es. `font_scale:
+  1.3` per le figure di stampa). Le due dimensioni prima hardcoded sono ora
+  chiavi config dedicate: `breakpoint_fontsize` (default `6`) ed
+  `empty_fontsize` (default `14`). Modifica puramente additiva e
+  retrocompatibile: nessun cambiamento a YAML/CLI/output, `font_scale: 1.0`
+  riproduce le dimensioni precedenti.
 - Renderer NumPy: DC blocker FIR a fase lineare sempre attivo a valle
   dell'overlap-add (`rendering/dc_blocker.py`). Rimuove l'offset DC che si
   accumula sommando grani (slice finestrate a media non nulla) sottraendo la

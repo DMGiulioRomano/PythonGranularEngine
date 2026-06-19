@@ -168,6 +168,15 @@ class ScoreVisualizer:
             'stream_gap_ratio': 0.05,        # gap tra stream (5% dell'altezza)
             'label_fontsize': 8,
             'title_fontsize': 12,
+            # Dimensioni font prima hardcoded, ora configurabili: annotazione
+            # dei breakpoint envelope e testo della pagina vuota.
+            'breakpoint_fontsize': 6,
+            'empty_fontsize': 14,
+            # Moltiplicatore globale applicato a TUTTE le fontsize del
+            # visualizer (vedi _fs): 1.0 = comportamento invariato; alzarlo
+            # ingrandisce uniformemente assi, titolo, legenda, annotazioni.
+            # Pensato per chi rigenera le figure per la stampa (es. il paper).
+            'font_scale': 1.0,
             # Envelope ranges. Dopo issue #114 (scaling data-driven) solo 'pan'
             # è ancora consultato per lo scaling delle curve (ciclico, ±180);
             # le altre entry restano per riferimento/back-compat, non più usate.
@@ -236,7 +245,14 @@ class ScoreVisualizer:
         # incluso 'pitch_div') sia un oggetto Colormap gia' costruito.
         cmap_cfg = self.config['grain_colormap']
         self.cmap = cmap_cfg if isinstance(cmap_cfg, Colormap) else plt.get_cmap(cmap_cfg)
-    
+
+    def _fs(self, base):
+        """Scala una dimensione font base per il moltiplicatore globale
+        font_scale. Tutte le fontsize del visualizer passano di qui, così un
+        unico parametro le ingrandisce in modo coerente (default 1.0 =
+        invariato)."""
+        return base * self.config['font_scale']
+
     # =========================================================================
     # ANALISI STRUTTURA
     # =========================================================================
@@ -482,8 +498,8 @@ class ScoreVisualizer:
         cbar = fig.colorbar(
             ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
         )
-        cbar.set_label(label, fontsize=self.config['label_fontsize'] - 1)
-        cbar.ax.tick_params(labelsize=self.config['label_fontsize'] - 2)
+        cbar.set_label(label, fontsize=self._fs(self.config['label_fontsize'] - 1))
+        cbar.ax.tick_params(labelsize=self._fs(self.config['label_fontsize'] - 2))
         # '<colorbar>' e' la convenzione matplotlib per gli assi colorbar (la
         # imposta make_axes con ax=...). Con cax= esplicito va messa a mano, cosi'
         # chi filtra gli assi colorbar (test, consumatori) continua a trovarli.
@@ -558,12 +574,13 @@ class ScoreVisualizer:
             # Pagina vuota
             ax = fig.add_subplot(111)
             ax.text(0.5, 0.5, "Nessuno stream attivo",
-                    ha='center', va='center', fontsize=14, color='gray')
+                    ha='center', va='center',
+                    fontsize=self._fs(self.config['empty_fontsize']), color='gray')
             ax.axis('off')
-            
+
             title = f"Pagina {page_idx + 1}/{self.page_count} — " \
                     f"[{page_start:.1f}s - {page_end:.1f}s]"
-            fig.suptitle(title, fontsize=self.config['title_fontsize'])
+            fig.suptitle(title, fontsize=self._fs(self.config['title_fontsize']))
             return fig
         
         # =========================================================================
@@ -642,9 +659,9 @@ class ScoreVisualizer:
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
             ax_wave.set_ylabel(f"Posizione di lettura (s)\n{sample_path}",
-                            fontsize=self.config['label_fontsize'])
+                            fontsize=self._fs(self.config['label_fontsize']))
             ax_wave.set_xticks([])
-            ax_wave.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
+            ax_wave.tick_params(axis='y', labelsize=self._fs(self.config['label_fontsize'] - 1))
             ax_wave.axvline(x=0, color='gray', linewidth=0.5, alpha=0.5, linestyle=':')
             ax_wave.grid(True, alpha=0.2, linestyle=':', axis='y')
             
@@ -661,7 +678,7 @@ class ScoreVisualizer:
             
             # X label solo sull'ultimo stream (se non ci sono envelope)
             if i == n_streams - 1 and not has_envelopes:
-                ax_grain.set_xlabel("Tempo (s)", fontsize=self.config['label_fontsize'])
+                ax_grain.set_xlabel("Tempo (s)", fontsize=self._fs(self.config['label_fontsize']))
             else:
                 ax_grain.set_xticklabels([])
         
@@ -689,7 +706,7 @@ class ScoreVisualizer:
                     page_start + 0.3,
                     y_base + y_height * 0.5,
                     stream.stream_id,
-                    fontsize=self.config['label_fontsize'] - 2,
+                    fontsize=self._fs(self.config['label_fontsize'] - 2),
                     verticalalignment='center',
                     color='gray',
                     alpha=0.6
@@ -703,8 +720,8 @@ class ScoreVisualizer:
             # Configura assi envelope
             ax_env.set_xlim(page_start, page_end)
             ax_env.set_ylim(0, 1)
-            ax_env.set_xlabel("Tempo (s)", fontsize=self.config['label_fontsize'])
-            ax_env.set_ylabel("", fontsize=self.config['label_fontsize'])
+            ax_env.set_xlabel("Tempo (s)", fontsize=self._fs(self.config['label_fontsize']))
+            ax_env.set_ylabel("", fontsize=self._fs(self.config['label_fontsize']))
             ax_env.set_yticklabels([])
             ax_env.tick_params(axis='y', length=0)
             ax_env.grid(True, alpha=0.3, linestyle='--', axis='x')
@@ -722,7 +739,7 @@ class ScoreVisualizer:
         # =========================================================================
         title = f"Pagina {page_idx + 1}/{self.page_count} — " \
                 f"[{page_start:.1f}s - {page_end:.1f}s]"
-        fig.suptitle(title, fontsize=self.config['title_fontsize'])
+        fig.suptitle(title, fontsize=self._fs(self.config['title_fontsize']))
         
         return fig
 
@@ -849,7 +866,7 @@ class ScoreVisualizer:
             label_x, 
             sample_duration * 0.95,  # posizione relativa all'altezza del sample
             stream.stream_id,
-            fontsize=self.config['label_fontsize'] - 1,
+            fontsize=self._fs(self.config['label_fontsize'] - 1),
             verticalalignment='top',
             horizontalalignment='left',
             color='darkblue',
@@ -1646,7 +1663,7 @@ class ScoreVisualizer:
                 xy=(t_abs, y_pos),
                 xytext=(3, 3),
                 textcoords='offset points',
-                fontsize=6,
+                fontsize=self._fs(self.config['breakpoint_fontsize']),
                 color=color,
                 alpha=0.9,
                 bbox=dict(boxstyle='round,pad=0.15', facecolor='white', 
@@ -1754,7 +1771,7 @@ class ScoreVisualizer:
             # clip_on=True: anche un nome inatteso non sfora mai nel plot,
             # viene tagliato al bordo della colonna legenda (issue #96).
             ax.text(0.4, y, self._legend_display_name(param_name),
-                    fontsize=self.config['label_fontsize'] - 2,
+                    fontsize=self._fs(self.config['label_fontsize'] - 2),
                     verticalalignment='center',
                     color=color,
                     clip_on=True)
