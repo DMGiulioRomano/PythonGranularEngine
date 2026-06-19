@@ -1672,3 +1672,60 @@ class TestSingleBufferTimeAxis:
         assert grain_axes
         for ax in grain_axes:
             assert all(not t.get_visible() for t in ax.get_yticklabels())
+
+
+# =============================================================================
+# FONT SCALE (controllo globale dimensione testo dei plot)
+# =============================================================================
+
+class TestFontScale:
+    """font_scale: moltiplicatore globale applicato a TUTTE le fontsize del
+    visualizer (assi, titolo, legenda envelope, annotazioni breakpoint, testo
+    pagina vuota). Default 1.0 = comportamento invariato. Le chiavi
+    breakpoint_fontsize / empty_fontsize rendono configurabili le due
+    dimensioni prima hardcoded (annotazione breakpoint e pagina vuota)."""
+
+    def _render(self, config):
+        viz = make_viz(single_stream_scene(), config=config)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            return viz.render_page(0)
+
+    @staticmethod
+    def _wave_ax(fig):
+        return next(ax for ax in fig.axes
+                    if ax.get_ylabel().startswith('Posizione di lettura (s)'))
+
+    def test_default_config_exposes_font_keys(self):
+        """Le nuove chiavi esistono nei default con valori retrocompatibili."""
+        viz = make_viz(single_stream_scene())
+        assert viz.config['font_scale'] == 1.0
+        assert viz.config['breakpoint_fontsize'] == 6
+        assert viz.config['empty_fontsize'] == 14
+
+    def test_font_scale_default_preserves_sizes(self):
+        """font_scale assente/1.0 → dimensioni identiche a prima della feature."""
+        fig = self._render({'page_duration': 30.0})
+        assert fig._suptitle.get_fontsize() == 12   # title_fontsize default
+        assert self._wave_ax(fig).yaxis.label.get_fontsize() == 8  # label_fontsize
+
+    def test_font_scale_multiplies_title_and_axis_labels(self):
+        """font_scale=2.0 raddoppia titolo ed etichette degli assi."""
+        base = self._render({'page_duration': 30.0})
+        big = self._render({'page_duration': 30.0, 'font_scale': 2.0})
+        assert big._suptitle.get_fontsize() == 2 * base._suptitle.get_fontsize()
+        assert (self._wave_ax(big).yaxis.label.get_fontsize()
+                == 2 * self._wave_ax(base).yaxis.label.get_fontsize())
+
+    def test_font_scale_applies_to_empty_page_text(self):
+        """Anche il testo 'pagina vuota' (prima hardcoded a 14) scala."""
+        # Stream a onset 40s con page_duration 30s → pagina 0 (0-30s) vuota.
+        s = make_stream(onset=40.0, duration=10.0)
+        viz = make_viz([s], config={'page_duration': 30.0, 'font_scale': 2.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        texts = [t for ax in fig.axes for t in ax.texts
+                 if 'Nessuno stream attivo' in t.get_text()]
+        assert texts
+        assert texts[0].get_fontsize() == 28        # empty_fontsize 14 * 2.0
