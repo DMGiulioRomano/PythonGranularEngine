@@ -602,17 +602,23 @@ class ScoreVisualizer:
             height_ratios = [stream_row_height] * n_streams
             n_rows = n_streams
 
-        # GridSpec: n_rows righe × 3 colonne [waveform, contenuto, colorbar].
-        # La colorbar del pitch ha una colonna propria: i subplot dei grani e
-        # quello degli envelope condividono la colonna centrale (stesso bordo
-        # destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli grani e
-        # il pannello envelope restava piu' largo, disallineato a destra.
-        main_ratio = 1 - waveform_ratio - colorbar_ratio
+        # GridSpec: n_rows righe × 4 colonne [waveform, contenuto, spacer,
+        # colorbar]. La colorbar del pitch ha una colonna propria: i subplot dei
+        # grani e quello degli envelope condividono la colonna centrale (stesso
+        # bordo destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli
+        # grani e il pannello envelope restava piu' largo, disallineato a destra.
+        #
+        # wspace=0: la waveform e' attaccata al plot dei grani (condividono l'asse
+        # Y = posizione di lettura, quindi la waveform fa da righello sul fianco
+        # sinistro della tela dei grani, senza striscia di stacco verticale). La
+        # colonna 'spacer' vuota reintroduce solo lo stacco prima della colorbar.
+        spacer_ratio = colorbar_ratio
+        main_ratio = 1 - waveform_ratio - spacer_ratio - colorbar_ratio
         gs = fig.add_gridspec(
-            n_rows, 3,
-            width_ratios=[waveform_ratio, main_ratio, colorbar_ratio],
+            n_rows, 4,
+            width_ratios=[waveform_ratio, main_ratio, spacer_ratio, colorbar_ratio],
             height_ratios=height_ratios,
-            wspace=0.02,
+            wspace=0.0,
             hspace=0.0  # gap verticale tra stream
         )
         
@@ -652,8 +658,8 @@ class ScoreVisualizer:
             self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
 
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
-            # colonna dedicata gs[i, 2]: non ruba larghezza al subplot dei grani.
-            self._add_pitch_colorbar(fig, gs[i, 2], cents_range,
+            # colonna dedicata gs[i, 3]: non ruba larghezza al subplot dei grani.
+            self._add_pitch_colorbar(fig, gs[i, 3], cents_range,
                                      [stream], page_start, page_end)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
@@ -1656,17 +1662,40 @@ class ScoreVisualizer:
             
             # Disegna punto
             ax.plot(t_abs, y_pos, 'o', color=color, markersize=4, alpha=0.9)
-            
-            # Disegna etichetta (offset per evitare sovrapposizione)
+
+            # Lato dell'etichetta scelto dinamicamente in base alla posizione del
+            # breakpoint nel subplot, cosi' il testo resta SEMPRE dentro il plot
+            # dedicato all'envelope (prima un offset fisso in alto-a-destra faceva
+            # sforare i breakpoint vicini al bordo destro o al tetto della corsia).
+            x_span = page_end - page_start
+            x_frac = (t_abs - page_start) / x_span if x_span > 0 else 0.5
+            # ylim del subplot envelope e' (0, 1): y_pos e' gia' la frazione
+            # verticale dentro l'asse.
+            y_frac = y_pos
+
+            # Vicino al bordo destro -> etichetta a sinistra del punto.
+            if x_frac > 0.85:
+                dx, ha = -3, 'right'
+            else:
+                dx, ha = 3, 'left'
+            # Vicino al tetto del subplot -> etichetta sotto il punto.
+            if y_frac > 0.9:
+                dy, va = -3, 'top'
+            else:
+                dy, va = 3, 'bottom'
+
+            # Disegna etichetta (offset dinamico per restare dentro il plot)
             ax.annotate(
                 label,
                 xy=(t_abs, y_pos),
-                xytext=(3, 3),
+                xytext=(dx, dy),
                 textcoords='offset points',
                 fontsize=self._fs(self.config['breakpoint_fontsize']),
                 color=color,
                 alpha=0.9,
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', 
+                ha=ha,
+                va=va,
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
                          alpha=0.7, edgecolor='none')
             )
 
