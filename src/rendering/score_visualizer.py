@@ -227,8 +227,24 @@ class ScoreVisualizer:
                 'pad_ratio': 0.05,      # margine sopra/sotto: 5% dell'escursione
                 'samples': 128,         # densità campionamento (cattura overshoot cubic)
             },
+
+            # === LENTE DI INGRANDIMENTO (magnify) ===
+            # Proietta un cerchio che ingrandisce una regione del piano
+            # tempo×posizione di lettura, con connettori verso la sorgente.
+            # Default disattivata: a flag spenti render_page è identico a prima.
+            'magnify_auto': False,        # lente automatica sul cluster più denso
+            'magnify_targets': [],        # target espliciti: list[dict]
+                                          # (t obbligatorio; y/zoom/out/src/stream opz.)
+            'magnify_defaults': {
+                'zoom': 8.0,              # fattore di ingrandimento del contenuto
+                'out': 0.12,              # raggio cerchio di USCITA (frazione min figura)
+                'src': None,              # raggio cerchio di PARTENZA; None = out/zoom
+                'corner': 'top-right',    # angolo del subplot dove proiettare la lente
+            },
+            'magnify_hist_bins': (40, 16),  # bin (tempo, posizione) per auto-densest
+            'magnify_color': '#c1121f',   # colore marker sorgente + connettori
         }
-        
+
         self.config = default_config
         if config:
             self.config.update(config)
@@ -656,6 +672,11 @@ class ScoreVisualizer:
         # =========================================================================
         # DISEGNA UN SUBPLOT PER OGNI STREAM
         # =========================================================================
+        # Entry per stream raccolte per la lente di ingrandimento (magnify):
+        # l'asse dei grani, la durata del sample e il range colore servono a
+        # ridisegnare il contenuto zoomato nell'inset. Vuoto/inutilizzato quando
+        # magnify è spenta.
+        stream_entries = []
         for i, stream in enumerate(active_streams):
             # Crea subplot per questo stream
             ax_wave = fig.add_subplot(gs[i, 0])
@@ -678,6 +699,13 @@ class ScoreVisualizer:
             self._draw_grains_full(ax_grain, stream, sample_duration,
                                    page_start, page_end, cents_range)
             self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
+
+            stream_entries.append({
+                'stream': stream,
+                'ax': ax_grain,
+                'sample_duration': sample_duration,
+                'cents_range': cents_range,
+            })
 
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
             # colonna dedicata gs[i, 2]: non ruba larghezza al subplot dei grani.
@@ -772,6 +800,14 @@ class ScoreVisualizer:
                 ax_legend = fig.add_subplot(gs[n_streams, 0])
                 self._draw_envelope_legend(ax_legend, legend_entries)
         # =========================================================================
+        # LENTE DI INGRANDIMENTO (magnify)
+        # =========================================================================
+        # Disegnata per ultima, sopra i subplot: l'overlay e gli inset non
+        # alterano il GridSpec. Se magnify è spenta o non ci sono target per la
+        # pagina, non viene creato alcun asse (back-compat).
+        self._render_magnifiers(fig, page_start, page_end, stream_entries)
+
+        # =========================================================================
         # TITOLO
         # =========================================================================
         title = f"Pagina {page_idx + 1}/{self.page_count} — " \
@@ -783,6 +819,234 @@ class ScoreVisualizer:
                      fontsize=self._fs(self.config['title_fontsize']))
 
         return fig
+
+    # =========================================================================
+    # LENTE DI INGRANDIMENTO (magnify)
+    # =========================================================================
+
+    def _render_magnifiers(self, fig, page_start, page_end, stream_entries):
+        """Disegna le lenti attive per questa pagina.
+
+        Risolve i target (auto sul cluster più denso + espliciti che cadono nella
+        finestra di pagina), poi proietta per ciascuno un cerchio zoomato con
+        marker sorgente e connettori. Nessun asse creato se magnify è spenta o
+        non ci sono target (invariante back-compat)."""
+        if not stream_entries:
+            return
+        targets = self._resolve_magnify_targets(
+            page_start, page_end, stream_entries)
+        if not targets:
+            return
+        overlay = self._make_magnify_overlay(fig)
+        for resolved in targets:
+            self._draw_one_magnifier(fig, overlay, resolved)
+
+    def _resolve_magnify_targets(self, page_start, page_end, stream_entries):
+        """Target risolti (concreti) per la pagina: {entry, t, y, zoom, out, src}.
+
+        L'auto (se abilitato) aggiunge la lente sul cluster più denso; gli
+        espliciti la cui 't' cade in [page_start, page_end) vengono risolti su
+        stream e y concreti."""
+        resolved = []
+        if self.config.get('magnify_auto'):
+            auto = self._auto_magnify_target(
+                page_start, page_end, stream_entries)
+            if auto is not None:
+                resolved.append(auto)
+        for target in (self.config.get('magnify_targets') or []):
+            r = self._resolve_explicit_target(
+                target, page_start, page_end, stream_entries)
+            if r is not None:
+                resolved.append(r)
+        return resolved
+
+    def _page_grain_points(self, stream, page_start, page_end):
+        """(onset, pointer_pos) dei grani dello stream visibili nella pagina."""
+        return [
+            (g.onset, g.pointer_pos)
+            for voice_grains in stream.voices
+            for g in voice_grains
+            if g.onset < page_end and (g.onset + g.duration) > page_start
+        ]
+
+    def _auto_magnify_target(self, page_start, page_end, stream_entries):
+        """Target automatico: centroide del bin più denso (tempo×posizione) fra
+        gli stream attivi. None se nessuno stream ha grani in pagina."""
+        nt, ny = self.config['magnify_hist_bins']
+        best = None  # (count, entry, tc, yc)
+        for entry in stream_entries:
+            pts = self._page_grain_points(entry['stream'], page_start, page_end)
+            if not pts:
+                continue
+            ts = np.array([p[0] for p in pts])
+            ys = np.array([p[1] for p in pts])
+            y_hi = max(entry['sample_duration'], 1e-6)
+            H, te, ye = np.histogram2d(
+                ts, ys, bins=[nt, ny],
+                range=[[page_start, page_end], [0.0, y_hi]])
+            i, j = np.unravel_index(int(np.argmax(H)), H.shape)
+            count = H[i, j]
+            if count <= 0:
+                continue
+            # Centro sul centroide dei grani del bin: cade su grani reali, così
+            # la finestra (stretta per via dello zoom) li contiene davvero.
+            in_bin = [(t, y) for t, y in pts
+                      if te[i] <= t <= te[i + 1] and ye[j] <= y <= ye[j + 1]]
+            if not in_bin:
+                continue
+            tc = float(np.mean([t for t, _ in in_bin]))
+            yc = float(np.mean([y for _, y in in_bin]))
+            if best is None or count > best[0]:
+                best = (count, entry, tc, yc)
+        if best is None:
+            return None
+        _, entry, tc, yc = best
+        d = self.config['magnify_defaults']
+        return {'entry': entry, 't': tc, 'y': yc,
+                'zoom': d['zoom'], 'out': d['out'], 'src': d['src']}
+
+    def _resolve_explicit_target(self, target, page_start, page_end,
+                                 stream_entries):
+        """Risolve un target esplicito {t, y?, zoom?, out?, src?, stream?}.
+
+        None se 't' non cade nella pagina. Stream: la chiave 'stream' (per
+        stream_id) o, in mancanza, lo stream più denso in pagina. y: la chiave
+        'y' o il centroide dei pointer_pos vicino a 't' (o metà sample)."""
+        t = target.get('t')
+        if t is None or not (page_start <= t < page_end):
+            return None
+        entry = None
+        sid = target.get('stream')
+        if sid is not None:
+            entry = next((e for e in stream_entries
+                          if e['stream'].stream_id == sid), None)
+        if entry is None:
+            entry = self._densest_stream_entry(
+                page_start, page_end, stream_entries)
+        if entry is None:
+            return None
+        d = self.config['magnify_defaults']
+        y = target.get('y')
+        if y is None:
+            y = self._auto_y_at(entry['stream'], t, page_start, page_end)
+            if y is None:
+                y = entry['sample_duration'] * 0.5
+        return {'entry': entry, 't': float(t), 'y': float(y),
+                'zoom': target.get('zoom', d['zoom']),
+                'out': target.get('out', d['out']),
+                'src': target.get('src', d['src'])}
+
+    def _densest_stream_entry(self, page_start, page_end, stream_entries):
+        """Entry dello stream con più grani visibili in pagina (fallback: primo)."""
+        best, best_n = None, 0
+        for entry in stream_entries:
+            n = len(self._page_grain_points(
+                entry['stream'], page_start, page_end))
+            if n > best_n:
+                best, best_n = entry, n
+        return best or (stream_entries[0] if stream_entries else None)
+
+    def _auto_y_at(self, stream, t, page_start, page_end):
+        """Centroide dei pointer_pos dei grani vicini a 't' (None se nessuno)."""
+        pts = self._page_grain_points(stream, page_start, page_end)
+        if not pts:
+            return None
+        w = 0.05 * (page_end - page_start)  # finestra locale ±5% pagina
+        near = [y for (gt, y) in pts if abs(gt - t) <= w] or [y for _, y in pts]
+        return float(np.mean(near))
+
+    def _make_magnify_overlay(self, fig):
+        """Asse a tutta figura in coordinate pixel: cerchi tondi e linee dritte
+        nonostante l'asse-dato sia anisotropo (X tempo, Y posizione). Etichettato
+        '<magnifier-overlay>' come '<colorbar>', così i consumatori lo filtrano."""
+        W, H = fig.get_size_inches() * fig.dpi
+        ov = fig.add_axes([0, 0, 1, 1], zorder=10)
+        ov.set_label('<magnifier-overlay>')
+        ov.set_xlim(0, W)
+        ov.set_ylim(0, H)
+        ov.set_aspect('equal')
+        ov.axis('off')
+        return ov
+
+    def _draw_one_magnifier(self, fig, overlay, resolved):
+        """Proietta una lente: inset circolare zoomato + marker sorgente +
+        connettori. I quattro controlli (center, zoom, out, src) sono
+        indipendenti; src=None usa il valore fedele out/zoom."""
+        entry = resolved['entry']
+        ax_grain = entry['ax']
+        stream = entry['stream']
+        sample_dur = entry['sample_duration']
+        cents_range = entry['cents_range']
+        tc, yc = float(resolved['t']), float(resolved['y'])
+        zoom = max(float(resolved['zoom']), 1e-6)
+
+        W, H = fig.get_size_inches() * fig.dpi
+        min_dim = min(W, H)
+        out_r_px = float(resolved['out']) * min_dim
+        src = resolved.get('src')
+        src_r_px = (float(src) * min_dim) if src is not None else out_r_px / zoom
+
+        # Scala px/dato dell'asse principale al centro (asse lineare).
+        base = ax_grain.transData.transform((tc, yc))
+        px_per_t = ax_grain.transData.transform((tc + 1.0, yc))[0] - base[0]
+        px_per_y = ax_grain.transData.transform((tc, yc + 1.0))[1] - base[1]
+        px_per_t = px_per_t if abs(px_per_t) > 1e-9 else 1.0
+        px_per_y = px_per_y if abs(px_per_y) > 1e-9 else 1.0
+
+        # Finestra dati mostrata: derivata da (zoom, out) → contenuto × zoom.
+        hwx = out_r_px / (zoom * abs(px_per_t))
+        hwy = out_r_px / (zoom * abs(px_per_y))
+        t0, t1 = tc - hwx, tc + hwx
+        y0, y1 = yc - hwy, yc + hwy
+
+        # Posizione del cerchio di uscita: angolo del subplot (frazione figura).
+        pos = ax_grain.get_position()
+        r_fx, r_fy = out_r_px / W, out_r_px / H
+        corner = self.config['magnify_defaults'].get('corner', 'top-right')
+        pad = 0.012
+        cy = (pos.y1 - r_fy - pad) if 'top' in corner else (pos.y0 + r_fy + pad)
+        cx = (pos.x1 - r_fx - pad) if 'right' in corner else (pos.x0 + r_fx + pad)
+
+        # Inset lente: quadrato in pixel (cerchio tondo), clip a cerchio.
+        lens_ax = fig.add_axes([cx - r_fx, cy - r_fy, 2 * r_fx, 2 * r_fy])
+        lens_ax.set_label('<magnifier>')
+        lens_ax.add_patch(mpatches.Circle(
+            (0.5, 0.5), 0.5, transform=lens_ax.transAxes,
+            facecolor='white', edgecolor='none', zorder=0))
+        self._draw_loop_mask(lens_ax, stream, t0, t1, sample_dur)
+        self._draw_grains_full(lens_ax, stream, sample_dur, t0, t1, cents_range)
+        lens_ax.set_xlim(t0, t1)
+        lens_ax.set_ylim(y0, y1)
+        lens_ax.set_xticks([])
+        lens_ax.set_yticks([])
+        clip = mpatches.Circle((0.5, 0.5), 0.5, transform=lens_ax.transAxes)
+        for art in (list(lens_ax.collections) + list(lens_ax.patches)
+                    + list(lens_ax.lines)):
+            art.set_clip_path(clip)
+        lens_ax.patch.set_visible(False)
+        for sp in lens_ax.spines.values():
+            sp.set_visible(False)
+
+        # Marker sorgente, connettori e anello lente sull'overlay (pixel).
+        lpx, lpy = cx * W, cy * H
+        accent = self.config['magnify_color']
+        direction = np.array([lpx - base[0], lpy - base[1]], float)
+        direction /= (np.hypot(*direction) + 1e-9)
+        perp = np.array([-direction[1], direction[0]])
+        for s in (+1.0, -1.0):
+            a = np.array(base) + s * src_r_px * perp
+            b = np.array([lpx, lpy]) + s * out_r_px * perp
+            line, = overlay.plot([a[0], b[0]], [a[1], b[1]],
+                                 color=accent, lw=1.2, alpha=0.55, zorder=4)
+            line.set_gid('magnify-connector')
+        src_ring = mpatches.Circle((base[0], base[1]), src_r_px, fill=False,
+                                   ec=accent, lw=1.4, zorder=5)
+        src_ring.set_gid('magnify-source')
+        overlay.add_patch(src_ring)
+        lens_ring = mpatches.Circle((lpx, lpy), out_r_px, fill=False,
+                                    ec='#222222', lw=2.2, zorder=6)
+        lens_ring.set_gid('magnify-lens')
+        overlay.add_patch(lens_ring)
 
     def _draw_waveform_full(self, ax, stream, sample_duration):
         """Disegna waveform usando tutto lo spazio verticale dello subplot."""

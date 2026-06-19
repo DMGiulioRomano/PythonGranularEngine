@@ -1513,3 +1513,124 @@ class TestGrainJsonOnlyGeneratedStreams:
         written_streams = [c.args[0] for c in writer_instance.write.call_args_list]
         assert s1 in written_streams
         assert s2 in written_streams
+
+
+# =============================================================================
+# TEST FLAG --magnify / --magnify-at (lente di ingrandimento della partitura)
+# =============================================================================
+
+class TestMagnifyFlags:
+    """
+    --magnify (booleano) abilita la lente automatica sul cluster piu' denso:
+    config['magnify_auto'] = True. Effetto solo con --visualize.
+    --magnify-at "SPEC" aggiunge target espliciti: config['magnify_targets'] e'
+    una lista di dict (chiave 't' obbligatoria; opz. y, zoom, out, src, stream).
+    SPEC = target separati da ';', ciascuno chiave=valore separati da ','.
+    Malformato (t mancante / valore non numerico / chiave ignota): exit 1.
+    """
+
+    def _get_viz_config(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        _, kwargs = mocks['ScoreVisualizer'].call_args
+        return kwargs['config']
+
+    # --- default ---
+    def test_default_magnify_auto_false(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize'])
+        assert config.get('magnify_auto') is False
+
+    def test_default_magnify_targets_empty(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize'])
+        assert config.get('magnify_targets') == []
+
+    # --- --magnify (auto) ---
+    def test_magnify_flag_sets_auto_true(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize', '--magnify'])
+        assert config.get('magnify_auto') is True
+
+    def test_magnify_without_visualize_does_not_create_visualizer(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--magnify']):
+            mocks['main'].main()
+        mocks['ScoreVisualizer'].assert_not_called()
+
+    # --- --magnify-at (esplicito) ---
+    def test_magnify_at_single_target_t(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--magnify-at', 't=5'])
+        targets = config.get('magnify_targets')
+        assert len(targets) == 1
+        assert targets[0]['t'] == 5.0
+
+    def test_magnify_at_full_spec_parsed(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--magnify-at', 't=14,y=2.7,zoom=10,out=0.12,src=0.04'])
+        tgt = config['magnify_targets'][0]
+        assert tgt['t'] == 14.0
+        assert tgt['y'] == 2.7
+        assert tgt['zoom'] == 10.0
+        assert tgt['out'] == 0.12
+        assert tgt['src'] == 0.04
+
+    def test_magnify_at_stream_key_is_string(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--magnify-at', 't=5,stream=texture2'])
+        assert config['magnify_targets'][0]['stream'] == 'texture2'
+
+    def test_magnify_at_multiple_targets(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--magnify-at', 't=5;t=12,zoom=6'])
+        targets = config['magnify_targets']
+        assert len(targets) == 2
+        assert targets[0]['t'] == 5.0
+        assert targets[1]['t'] == 12.0
+        assert targets[1]['zoom'] == 6.0
+
+    def test_magnify_and_magnify_at_combine(self, mocks):
+        """Entrambi: --magnify (auto) + --magnify-at (esplicito)."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--magnify', '--magnify-at', 't=5'])
+        assert config['magnify_auto'] is True
+        assert config['magnify_targets'][0]['t'] == 5.0
+
+    def test_magnify_at_alone_populates_targets(self, mocks):
+        """--magnify-at da solo (senza --magnify) popola comunque i target."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--magnify-at', 't=5'])
+        assert config['magnify_auto'] is False
+        assert config['magnify_targets'][0]['t'] == 5.0
+
+    # --- validazione ---
+    def test_magnify_at_missing_t_exits_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--magnify-at', 'zoom=10']):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
+
+    def test_magnify_at_non_numeric_exits_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--magnify-at', 't=abc']):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
+
+    def test_magnify_at_unknown_key_exits_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--magnify-at', 't=5,foo=1']):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
