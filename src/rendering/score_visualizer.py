@@ -595,7 +595,11 @@ class ScoreVisualizer:
         # =========================================================================
         # SETUP GRIDSPEC
         # =========================================================================
-        waveform_ratio = self.config['waveform_width_ratio']
+        # La colonna waveform ospita la y-label ruotata + i tick e (nella riga
+        # envelope) la legenda con clip al bordo colonna: scala con font_scale
+        # cosi' un testo piu' grande non viene croppato. A fs=1.0 e' identita'.
+        fs = self.config['font_scale']
+        waveform_ratio = self.config['waveform_width_ratio'] * fs
         colorbar_ratio = self.config['colorbar_width_ratio']
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
 
@@ -621,7 +625,11 @@ class ScoreVisualizer:
         # waveform fa da righello attaccato al fianco sinistro della tela dei
         # grani (condividono l'asse Y = posizione di lettura) e la colorbar del
         # pitch e' attaccata al fianco destro.
-        main_ratio = 1 - waveform_ratio - colorbar_ratio
+        # Clamp difensivo: con font_scale estremi le colonne laterali non devono
+        # fagocitare i grani. min_main = (3/7)*side tiene la quota del plot
+        # centrale >= 30% della larghezza utile.
+        side_ratio = waveform_ratio + colorbar_ratio
+        main_ratio = max(1 - side_ratio, (3.0 / 7.0) * side_ratio)
         gs = fig.add_gridspec(
             n_rows, 3,
             width_ratios=[waveform_ratio, main_ratio, colorbar_ratio],
@@ -629,14 +637,20 @@ class ScoreVisualizer:
             wspace=0.0,
             hspace=0.0  # gap verticale tra stream
         )
-        
-        # Margini
+
+        # Margini: il titolo sta appena sopra il plot (stacco quasi nullo). Lo
+        # spazio vuoto residuo attorno alle parole (sinistra/destra/basso e sopra
+        # il titolo) lo rifila bbox_inches='tight' in fase di export. Riservo in
+        # alto solo l'altezza del titolo (in frazione di figura) + un gap minimo.
+        fig_h_in = page_h_mm / 25.4
+        title_h = (self._fs(self.config['title_fontsize']) / 72.0) / fig_h_in
+        title_gap = 0.006  # stacco titolo-plot quasi nullo
         margin_ratio = margin_mm / page_w_mm
         fig.subplots_adjust(
             left=margin_ratio,
             right=1 - margin_ratio,
-            bottom=margin_ratio + 0.02,
-            top=1 - margin_ratio - 0.03
+            bottom=margin_ratio,
+            top=1.0 - title_h - 2 * title_gap
         )
         
         # =========================================================================
@@ -762,8 +776,12 @@ class ScoreVisualizer:
         # =========================================================================
         title = f"Pagina {page_idx + 1}/{self.page_count} — " \
                 f"[{page_start:.1f}s - {page_end:.1f}s]"
-        fig.suptitle(title, fontsize=self._fs(self.config['title_fontsize']))
-        
+        # Titolo centrato nella striscia riservata in alto, appena sopra il plot:
+        # bordo inferiore del testo a title_gap dal plot (stacco quasi nullo).
+        top_pos = 1.0 - title_h - 2 * title_gap
+        fig.suptitle(title, y=top_pos + title_gap + title_h * 0.5, va='center',
+                     fontsize=self._fs(self.config['title_fontsize']))
+
         return fig
 
     def _draw_waveform_full(self, ax, stream, sample_duration):
@@ -1850,9 +1868,12 @@ class ScoreVisualizer:
         
         figures = self.render_all()
         
+        # bbox_inches='tight' rifila la tela al contenuto reale: niente bordo
+        # vuoto tra la fine delle parole (y-label, "Tempo (s)", titolo, label
+        # colorbar) e il margine pagina, e nessun crop quando font_scale cresce.
         with PdfPages(output_path) as pdf:
             for fig in figures:
-                pdf.savefig(fig, dpi=150)
+                pdf.savefig(fig, dpi=150, bbox_inches='tight', pad_inches=0.02)
                 plt.close(fig)
         
         print(f"✓ PDF esportato: {output_path}")
