@@ -1,0 +1,62 @@
+# PGE_grain_shape_window_demo.yml
+# Demo del flag grain_shape='window' dello score visualizer: il bordo
+# superiore ("testa") del grano traccia la curva della finestra/envelope.
+# Cinque stream, una finestra ciascuno (hanning, expodec, exporise, gaussian,
+# bartlett); grani radi e lunghi cosi' la silhouette e' ben leggibile nella
+# partitura.
+streams:
+
+  - stream_id: "s1_hanning"
+    onset: 0.0
+    duration: 6.0
+    sample: "sinus.wav"
+    density: 1.0
+    grain:
+      duration: 0.6
+      envelope: hanning
+    pointer:
+      speed_ratio: {points: [[0.0, 0.3], [6.0, 0.0]]}
+
+  - stream_id: "s2_expodec"
+    onset: 0.0
+    duration: 6.0
+    sample: "sinus.wav"
+    density: 1.0
+    grain:
+      duration: 0.6
+      envelope: expodec
+    pointer:
+      speed_ratio: {points: [[0.0, 0.3], [6.0, 0.0]]}
+
+  - stream_id: "s3_exporise"
+    onset: 0.0
+    duration: 6.0
+    sample: "sinus.wav"
+    density: 1.0
+    grain:
+      duration: 0.6
+      envelope: exporise
+    pointer:
+      speed_ratio: {points: [[0.0, 0.3], [6.0, 0.0]]}
+
+  - stream_id: "s4_gaussian"
+    onset: 0.0
+    duration: 6.0
+    sample: "sinus.wav"
+    density: 1.0
+    grain:
+      duration: 0.6
+      envelope: gaussian
+    pointer:
+      speed_ratio: {points: [[0.0, 0.3], [6.0, 0.0]]}
+
+  - stream_id: "s5_bartlett"
+    onset: 0.0
+    duration: 6.0
+    sample: "sinus.wav"
+    density: 1.0
+    grain:
+      duration: 0.6
+      envelope: bartlett
+    pointer:
+      speed_ratio: {points: [[0.0, 0.3], [6.0, 0.0]]}

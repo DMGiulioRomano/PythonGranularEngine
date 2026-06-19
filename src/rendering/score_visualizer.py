@@ -147,6 +147,23 @@ class ScoreVisualizer:
             },
             'volume_range': (-60, 0),        # dB range per normalizzare alpha
             'min_grain_width_pts': 1,        # larghezza minima visibile
+            # Forma del grano nella partitura:
+            #   'arrow'  -> freccia direzionale (default, comportamento storico);
+            #   'window' -> il bordo superiore ("testa") traccia la curva della
+            #               finestra/envelope del grano, base piatta sul pointer.
+            # La finestra e' altrimenti invisibile nella partitura: due grani con
+            # envelope diversi (hanning vs expodec) hanno la stessa freccia.
+            'grain_shape': 'arrow',
+            # Numero di punti con cui campionare la curva della finestra per la
+            # silhouette (solo grain_shape='window'). La silhouette normalizzata
+            # e' precalcolata e cachata per (nome, risoluzione): il costo per
+            # grano e' solo una trasformazione affine dei vertici.
+            'window_shape_resolution': 32,
+            # Soglia adattiva: se la larghezza del grano sulla pagina e' sotto
+            # questo numero di pixel, la finestra non sarebbe leggibile e il
+            # grano ripiega sulla freccia a 5 vertici (cap al costo vettoriale
+            # sugli score densi).
+            'window_shape_min_px': 3,
             
             # Waveform
             'waveform_alpha': 0.3,
@@ -253,6 +270,12 @@ class ScoreVisualizer:
         
         # Cache waveform
         self.waveform_cache = {}
+
+        # Cache silhouette finestra normalizzata, chiave (nome, risoluzione).
+        # Popolata lazy da _window_silhouette; il registry NumPy e' creato al
+        # primo uso (solo con grain_shape='window').
+        self._window_silhouette_cache = {}
+        self._window_registry = None
         
         # Dati calcolati
         self.total_duration = None
@@ -1080,6 +1103,112 @@ class ScoreVisualizer:
         )
 
 
+    def _grain_arrow_vertices(self, grain):
+        """Vertici della freccia direzionale (forma storica del grano).
+
+        5 vertici: rettangolo [onset, onset+duration] x [pointer, pointer+dur]
+        con punta triangolare verso l'alto (forward) o il basso (reverse)."""
+        x = grain.onset
+        width = grain.duration
+        pointer_y = grain.pointer_pos
+        height = grain.duration
+        arrow_head_width = width * 0.5
+
+        if grain.pitch_ratio < 0:
+            y_top = pointer_y
+            y_bottom = pointer_y - height
+            return [
+                (x, y_top),                               # alto sinistra
+                (x + width, y_top),                       # alto destra
+                (x + width, y_bottom + arrow_head_width), # prima della punta destra
+                (x + width / 2, y_bottom),                # punta centrale (GIU')
+                (x, y_bottom + arrow_head_width),         # prima della punta sinistra
+            ]
+        y_bottom = pointer_y
+        y_top = pointer_y + height
+        return [
+            (x, y_bottom),                                # basso sinistra
+            (x + width, y_bottom),                        # basso destra
+            (x + width, y_top - arrow_head_width),        # prima della punta destra
+            (x + width / 2, y_top),                       # punta centrale (SU)
+            (x, y_top - arrow_head_width),                # prima della punta sinistra
+        ]
+
+    def _grain_window_vertices(self, grain, xs, w):
+        """Vertici della silhouette "testa/bordo": base piatta sul pointer, il
+        bordo superiore segue la curva della finestra w (normalizzata su [0,1]).
+
+        xs, w: arrays normalizzati su [0,1] (vedi _window_silhouette). La
+        direzione (sopra/sotto il pointer) segue il segno di pitch_ratio come
+        per la freccia."""
+        x = grain.onset
+        width = grain.duration
+        pointer_y = grain.pointer_pos
+        height = grain.duration
+
+        xs_abs = x + xs * width
+        if grain.pitch_ratio < 0:
+            edge = pointer_y - height * w
+        else:
+            edge = pointer_y + height * w
+
+        vertices = [(x, pointer_y)]
+        vertices.extend((float(xi), float(yi)) for xi, yi in zip(xs_abs, edge))
+        vertices.append((x + width, pointer_y))
+        return vertices
+
+    def _window_registry_lazy(self):
+        """Istanzia il NumpyWindowRegistry al primo uso (solo grain_shape='window')."""
+        if self._window_registry is None:
+            from rendering.numpy_window_registry import NumpyWindowRegistry
+            self._window_registry = NumpyWindowRegistry()
+        return self._window_registry
+
+    def _window_silhouette(self, name, resolution):
+        """Curva finestra normalizzata su [0,1] in ampiezza e dominio.
+
+        Ritorna (xs, w) con xs = linspace(0,1,resolution) e w la finestra
+        riscalata a picco unitario. Cachata per (name, resolution): la forma di
+        una finestra dato il nome e' sempre la stessa, cambia solo la scala
+        applicata per grano."""
+        key = (name, resolution)
+        cached = self._window_silhouette_cache.get(key)
+        if cached is not None:
+            return cached
+
+        w = self._window_registry_lazy().get(name, resolution)
+        w = np.clip(np.asarray(w, dtype=float), 0.0, None)
+        peak = float(w.max())
+        if peak > 0:
+            w = w / peak
+        xs = np.linspace(0.0, 1.0, resolution)
+        result = (xs, w)
+        self._window_silhouette_cache[key] = result
+        return result
+
+    def _window_name_map(self, stream):
+        """Mappa table_num -> nome finestra invertendo stream.window_table_map.
+
+        Ritorna {} se la mappa non e' disponibile (fallback alla freccia)."""
+        wtm = getattr(stream, 'window_table_map', None)
+        if not wtm:
+            return {}
+        return {num: name for name, num in wtm.items()}
+
+    def _grain_page_width_px(self, ax, grain):
+        """Larghezza del grano sulla pagina in pixel display.
+
+        Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
+        in modo leggibile. Se la trasformazione non e' disponibile (axes non
+        ancora disegnato) ritorna +inf -> nessun fallback."""
+        try:
+            t = ax.transData
+            x0 = t.transform((grain.onset, 0.0))[0]
+            x1 = t.transform((grain.onset + grain.duration, 0.0))[0]
+            return abs(x1 - x0)
+        except Exception:
+            return float('inf')
+
     def _draw_grains_full(self, ax, stream, sample_duration, page_start,
                           page_end, cents_range=None):
         """Disegna grani con coordinate Y assolute nel sample.
@@ -1097,57 +1226,44 @@ class ScoreVisualizer:
         
         if not visible_grains:
             return
-        
+
         polygons = []
         #rectangles = []
         colors = []
-        
+
+        # Modalita' forma del grano. In 'window' il bordo superiore traccia la
+        # curva della finestra; serve la mappa table_num -> nome finestra (una
+        # volta per stream) e la risoluzione di campionamento.
+        grain_shape = self.config.get('grain_shape', 'arrow')
+        window_mode = grain_shape == 'window'
+        if window_mode:
+            name_map = self._window_name_map(stream)
+            resolution = self.config['window_shape_resolution']
+            min_px = self.config['window_shape_min_px']
+            # name_map vuota (window_table_map assente) -> niente nomi da
+            # risolvere: si ripiega interamente sulla freccia.
+            if not name_map:
+                window_mode = False
+
         for grain in visible_grains:
-            # X: tempo partitura
-            x = grain.onset
-            width = grain.duration
-            
-            # Y: posizione assoluta nel sample (in secondi)
-            pointer_y = grain.pointer_pos
-            
-            # Altezza: sample consumato (in secondi)
-            # Considerando durata
-            height = grain.duration # * abs(grain.pitch_ratio)
-
-            # Dimensione punta freccia (% della larghezza)
-            arrow_head_width = width * 0.5  # 30% della larghezza del grano
-
-            # Direzione
-            if grain.pitch_ratio < 0:
-                y_top = pointer_y
-                y_bottom = pointer_y - height
-
-                # 7 punti: rettangolo con punta triangolare in basso
-                vertices = [
-                    (x, y_top),                           # alto sinistra
-                    (x + width, y_top),                   # alto destra
-                    (x + width, y_bottom + arrow_head_width),  # prima della punta destra
-                    (x + width/2, y_bottom),              # punta centrale (GIÙ)
-                    (x, y_bottom + arrow_head_width),     # prima della punta sinistra
-                ]
+            # window_mode con grano abbastanza largo sulla pagina e finestra
+            # risolvibile -> silhouette della finestra; altrimenti freccia.
+            use_window = (
+                window_mode
+                and self._grain_page_width_px(ax, grain) >= min_px
+                and grain.envelope_table in name_map
+            )
+            if use_window:
+                xs, w = self._window_silhouette(
+                    name_map[grain.envelope_table], resolution)
+                vertices = self._grain_window_vertices(grain, xs, w)
             else:
-                # FRECCIA SU (forward)
-                y_bottom = pointer_y
-                y_top = pointer_y + height
-                
-                # 7 punti: rettangolo con punta triangolare in alto
-                vertices = [
-                    (x, y_bottom),                        # basso sinistra
-                    (x + width, y_bottom),                # basso destra
-                    (x + width, y_top - arrow_head_width),  # prima della punta destra
-                    (x + width/2, y_top),                 # punta centrale (SU)
-                    (x, y_top - arrow_head_width),        # prima della punta sinistra
-                ]
-            
+                vertices = self._grain_arrow_vertices(grain)
+
             # Crea poligono
             poly = mpatches.Polygon(vertices, closed=True)
             polygons.append(poly)
-            
+
             # Colore
             color = list(self._pitch_to_color(abs(grain.pitch_ratio),
                                               cents_range))
