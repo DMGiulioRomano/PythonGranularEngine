@@ -53,6 +53,17 @@ ifneq ($(strip $(PAGE_DURATION)),)
 PYFLAGS += --page-duration $(PAGE_DURATION)
 endif
 
+# 2d. Se MAGNIFY e' true, aggiungi --magnify (lente automatica sul cluster denso)
+ifeq ($(MAGNIFY), true)
+PYFLAGS += --magnify
+endif
+
+# 2e. Se MAGNIFY_AT e' non-vuoto, aggiungi --magnify-at (target espliciti).
+# Le virgolette proteggono il ';' fra target dalla shell.
+ifneq ($(strip $(MAGNIFY_AT)),)
+PYFLAGS += --magnify-at "$(MAGNIFY_AT)"
+endif
+
 # 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
 ifeq ($(REAPER), true)
 PYFLAGS += --reaper

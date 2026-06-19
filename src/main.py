@@ -117,6 +117,60 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     )
 
 
+# Chiavi ammesse in un target di --magnify-at. Numeriche (float) e stringa.
+_MAGNIFY_NUMERIC_KEYS = frozenset({'t', 'y', 'zoom', 'out', 'src'})
+_MAGNIFY_STR_KEYS = frozenset({'stream'})
+_MAGNIFY_KEYS = _MAGNIFY_NUMERIC_KEYS | _MAGNIFY_STR_KEYS
+
+
+def _parse_magnify_spec(spec):
+    """Parsa lo SPEC di --magnify-at in una lista di target dict.
+
+    SPEC = target separati da ';'; ogni target = coppie chiave=valore separate
+    da ','. La chiave 't' (tempo in secondi) e' obbligatoria; opzionali y, zoom,
+    out, src (float) e stream (stringa). Come --plot-envelopes, la validazione
+    e' sempre attiva: token malformato, chiave ignota, valore non numerico o 't'
+    mancante stampano un messaggio su stdout ed escono con codice 1.
+    """
+    import sys
+    targets = []
+    for raw in spec.split(';'):
+        raw = raw.strip()
+        if not raw:
+            continue
+        target = {}
+        for pair in raw.split(','):
+            pair = pair.strip()
+            if not pair:
+                continue
+            if '=' not in pair:
+                print(f"--magnify-at: token non valido '{pair}'. "
+                      f"Usa chiave=valore (es. t=14,zoom=10).")
+                sys.exit(1)
+            key, _, value = pair.partition('=')
+            key, value = key.strip(), value.strip()
+            if key not in _MAGNIFY_KEYS:
+                print(f"--magnify-at: chiave ignota '{key}'. "
+                      f"Valide: {', '.join(sorted(_MAGNIFY_KEYS))}.")
+                sys.exit(1)
+            if key in _MAGNIFY_NUMERIC_KEYS:
+                try:
+                    target[key] = float(value)
+                except ValueError:
+                    print(f"--magnify-at: valore non numerico per '{key}': '{value}'.")
+                    sys.exit(1)
+            else:
+                target[key] = value
+        if 't' not in target:
+            print("--magnify-at: ogni target richiede la chiave 't' (tempo in secondi).")
+            sys.exit(1)
+        targets.append(target)
+    if not targets:
+        print("--magnify-at: nessun target valido nello SPEC.")
+        sys.exit(1)
+    return targets
+
+
 def main():
     import sys
     import os
@@ -126,6 +180,7 @@ def main():
             "Uso: python main.py <file.yml> [output.aif] "
             "[--visualize] [--show-static] [--show-voice-offsets] "
             "[--plot-envelopes nomi,csv] "
+            "[--magnify] [--magnify-at SPEC] "
             "[--page-duration SECONDI] "
             "[--per-stream] "
             "[--renderer csound|numpy] "
@@ -185,6 +240,19 @@ def main():
                     f"Validi: {', '.join(sorted(PLOT_ENVELOPE_KEYS))}"
                 )
                 sys.exit(1)
+    # --magnify: lente automatica sul cluster piu' denso (una per pagina).
+    # Effetto solo con --visualize, come --show-static. Token esatto: '--magnify'
+    # non collide con '--magnify-at' (sono elementi distinti di sys.argv).
+    magnify_auto = '--magnify' in sys.argv
+
+    # --magnify-at "SPEC": target espliciti della lente (vedi _parse_magnify_spec).
+    # Validazione sempre attiva; effetto sul rendering solo con --visualize.
+    magnify_targets = []
+    if '--magnify-at' in sys.argv:
+        idx = sys.argv.index('--magnify-at')
+        if idx + 1 < len(sys.argv):
+            magnify_targets = _parse_magnify_spec(sys.argv[idx + 1])
+
     per_stream = '--per-stream' in sys.argv or '-p' in sys.argv
     use_cache = '--cache' in sys.argv
     reaper_export = '--reaper' in sys.argv
@@ -391,6 +459,8 @@ def main():
                 'show_static_params': show_static,
                 'show_voice_offsets': show_voice_offsets,
                 'envelope_filter': plot_envelopes,
+                'magnify_auto': magnify_auto,
+                'magnify_targets': magnify_targets,
             })
             viz.export_pdf(pdf_file)
 

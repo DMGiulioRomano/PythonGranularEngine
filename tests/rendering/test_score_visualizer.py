@@ -1806,3 +1806,125 @@ class TestFontScaleLayout:
              patch('rendering.score_visualizer.PdfPages', return_value=ctx):
             viz.export_pdf('/tmp/tight_test.pdf')
         assert inst.savefig.call_args.kwargs.get('bbox_inches') == 'tight'
+
+
+# =============================================================================
+# GROUP - Lente di ingrandimento proiettata (magnify)
+# =============================================================================
+
+class TestMagnifier:
+    """La partitura puo' proiettare una lente circolare che ingrandisce una
+    regione (tempo x posizione di lettura), col cerchio zoomato affiancato e
+    connettori verso la regione sorgente. Due modalita': auto (cluster piu'
+    denso) ed esplicita (target con center/zoom/out/src indipendenti).
+    Default: disattivata (back-compat con la partitura esistente)."""
+
+    PAGE = 30.0
+
+    @staticmethod
+    def _magnifier_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<magnifier>']
+
+    @staticmethod
+    def _overlay_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<magnifier-overlay>']
+
+    @classmethod
+    def _grain_ax(cls, fig, page_start=0.0, page_end=None):
+        """Asse dei grani: xlim == (page_start, page_end), non lente ne' overlay."""
+        page_end = cls.PAGE if page_end is None else page_end
+        for ax in fig.axes:
+            lo, hi = ax.get_xlim()
+            if (abs(lo - page_start) < 1e-9 and abs(hi - page_end) < 1e-9
+                    and ax.get_label() not in ('<magnifier>', '<magnifier-overlay>')):
+                return ax
+        return None
+
+    def _render(self, streams, config):
+        cfg = {'page_duration': self.PAGE}
+        cfg.update(config)
+        viz = make_viz(streams, config=cfg)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        fig.canvas.draw()  # finalizza transform/posizioni
+        return fig
+
+    # --- back-compat: default OFF ---
+    def test_no_magnifier_by_default(self):
+        fig = self._render(single_stream_scene(), {})
+        assert self._magnifier_axes(fig) == []
+        assert self._overlay_axes(fig) == []
+
+    # --- modalita' auto ---
+    def test_auto_creates_one_magnifier(self):
+        fig = self._render(single_stream_scene(), {'magnify_auto': True})
+        assert len(self._magnifier_axes(fig)) == 1
+        assert len(self._overlay_axes(fig)) == 1
+
+    def test_auto_magnifier_contains_grains(self):
+        from matplotlib.collections import PatchCollection
+        fig = self._render(single_stream_scene(), {'magnify_auto': True})
+        lens = self._magnifier_axes(fig)[0]
+        grain_colls = [c for c in lens.collections
+                       if isinstance(c, PatchCollection) and c.get_zorder() == 2]
+        assert len(grain_colls) == 1
+
+    def test_overlay_has_two_rings_and_two_connectors(self):
+        fig = self._render(single_stream_scene(), {'magnify_auto': True})
+        ov = self._overlay_axes(fig)[0]
+        src = [p for p in ov.patches if p.get_gid() == 'magnify-source']
+        lens = [p for p in ov.patches if p.get_gid() == 'magnify-lens']
+        conn = [ln for ln in ov.lines if ln.get_gid() == 'magnify-connector']
+        assert len(src) == 1 and len(lens) == 1
+        assert len(conn) == 2
+
+    def test_no_magnifier_when_no_grains(self):
+        s = make_stream('s1', onset=0.0, duration=20.0,
+                        sample='piano.wav', n_grains=0)
+        fig = self._render([s], {'magnify_auto': True})
+        assert self._magnifier_axes(fig) == []
+
+    # --- modalita' esplicita: i 4 controlli indipendenti ---
+    def test_explicit_center_positions_window(self):
+        target = {'t': 6.0, 'y': 1.5, 'zoom': 8.0, 'out': 0.12}
+        fig = self._render(single_stream_scene(), {'magnify_targets': [target]})
+        lens = self._magnifier_axes(fig)[0]
+        x0, x1 = lens.get_xlim()
+        y0, y1 = lens.get_ylim()
+        assert (x0 + x1) / 2 == pytest.approx(6.0, abs=1e-6)
+        assert (y0 + y1) / 2 == pytest.approx(1.5, abs=1e-6)
+
+    def test_zoom_factor_respected(self):
+        zoom = 8.0
+        target = {'t': 6.0, 'y': 1.5, 'zoom': zoom, 'out': 0.12}
+        fig = self._render(single_stream_scene(), {'magnify_targets': [target]})
+        lens = self._magnifier_axes(fig)[0]
+        grain_ax = self._grain_ax(fig)
+
+        def px_per_data_x(ax):
+            p0 = ax.transData.transform((0.0, 0.0))
+            p1 = ax.transData.transform((1.0, 0.0))
+            return abs(p1[0] - p0[0])
+
+        magnif = px_per_data_x(lens) / px_per_data_x(grain_ax)
+        assert magnif == pytest.approx(zoom, rel=0.12)
+
+    def test_explicit_target_outside_page_no_lens(self):
+        # multi_page_scene: pagina 0 = [0,30); target a t=45 cade in pagina 1.
+        target = {'t': 45.0, 'y': 1.0, 'zoom': 8.0}
+        fig = self._render(multi_page_scene(), {'magnify_targets': [target]})
+        assert self._magnifier_axes(fig) == []
+
+    def test_src_radius_independent_of_zoom(self):
+        # out=0.12, zoom=10 -> src "fedele" = 0.012; passo src=0.03 esplicito.
+        target = {'t': 6.0, 'y': 1.5, 'zoom': 10.0, 'out': 0.12, 'src': 0.03}
+        fig = self._render(single_stream_scene(), {'magnify_targets': [target]})
+        ov = self._overlay_axes(fig)[0]
+        src_ring = [p for p in ov.patches if p.get_gid() == 'magnify-source'][0]
+        W, H = fig.get_size_inches() * fig.dpi
+        expected = 0.03 * min(W, H)
+        assert src_ring.radius == pytest.approx(expected, rel=0.05)
+        # ... e diverso dal valore fedele out/zoom (cerchio di partenza = knob a se')
+        faithful = 0.012 * min(W, H)
+        assert abs(src_ring.radius - faithful) > 0.1 * faithful
