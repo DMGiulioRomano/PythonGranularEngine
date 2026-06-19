@@ -234,7 +234,9 @@ class ScoreVisualizer:
             # Default disattivata: a flag spenti render_page è identico a prima.
             'magnify_auto': False,        # lente automatica sul cluster più denso
             'magnify_targets': [],        # target espliciti: list[dict]
-                                          # (t obbligatorio; y/zoom/out/src/stream opz.)
+                                          # (t obbligatorio; y/zoom/out/src/stream/corner opz.)
+                                          # corner per-target -> piu' lenti non
+                                          # sovrapposte sullo stesso subplot
             'magnify_defaults': {
                 'zoom': 8.0,              # fattore di ingrandimento del contenuto
                 'out': 0.12,              # raggio cerchio di USCITA (frazione min figura)
@@ -903,7 +905,8 @@ class ScoreVisualizer:
         _, entry, tc, yc = best
         d = self.config['magnify_defaults']
         return {'entry': entry, 't': tc, 'y': yc,
-                'zoom': d['zoom'], 'out': d['out'], 'src': d['src']}
+                'zoom': d['zoom'], 'out': d['out'], 'src': d['src'],
+                'corner': d.get('corner', 'top-right')}
 
     def _resolve_explicit_target(self, target, page_start, page_end,
                                  stream_entries):
@@ -934,7 +937,8 @@ class ScoreVisualizer:
         return {'entry': entry, 't': float(t), 'y': float(y),
                 'zoom': target.get('zoom', d['zoom']),
                 'out': target.get('out', d['out']),
-                'src': target.get('src', d['src'])}
+                'src': target.get('src', d['src']),
+                'corner': target.get('corner', d.get('corner', 'top-right'))}
 
     def _densest_stream_entry(self, page_start, page_end, stream_entries):
         """Entry dello stream con più grani visibili in pagina (fallback: primo)."""
@@ -1002,7 +1006,8 @@ class ScoreVisualizer:
         # Posizione del cerchio di uscita: angolo del subplot (frazione figura).
         pos = ax_grain.get_position()
         r_fx, r_fy = out_r_px / W, out_r_px / H
-        corner = self.config['magnify_defaults'].get('corner', 'top-right')
+        corner = resolved.get('corner') or \
+            self.config['magnify_defaults'].get('corner', 'top-right')
         pad = 0.012
         cy = (pos.y1 - r_fy - pad) if 'top' in corner else (pos.y0 + r_fy + pad)
         cx = (pos.x1 - r_fx - pad) if 'right' in corner else (pos.x0 + r_fx + pad)
