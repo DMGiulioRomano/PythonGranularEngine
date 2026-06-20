@@ -172,7 +172,7 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
     # =========================================================================
     'num_voices': ParameterBounds(
         min_val=1.0,
-        max_val=64.0, # Aumentato per sicurezza
+        max_val=256.0, # Soglia di sicurezza: consente texture a voci molto dense
         variation_mode='quantized' # Le voci sono intere, ma gestite dal manager
     ),
     

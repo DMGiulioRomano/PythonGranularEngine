@@ -122,6 +122,11 @@ class TestNumVoices:
         s = _build_stream({'num_voices': 1})
         assert s._voice_manager.max_voices == 1
 
+    def test_num_voices_high_count_pre_allocates(self):
+        """Voci elevate (256): pre-allocazione di tutti i VoiceConfig."""
+        s = _build_stream({'num_voices': 256})
+        assert s._voice_manager.max_voices == 256
+
     def test_num_voices_default_when_absent(self):
         s = _build_stream({'pitch': {'strategy': 'step', 'step': 3.0}})
         assert s._voice_manager.max_voices == 1
@@ -526,6 +531,16 @@ class TestVoicesYamlIntegration:
         s2.generate_grains()
 
         assert len(s2.grains) == len(s1.grains) * 2
+
+    def test_high_voice_count_renders(self):
+        """Voci elevate (256): generate_grains rende senza errori, una lista per voce."""
+        s = _build_stream({'num_voices': 256})
+        self._prep_for_generate(s)
+
+        s.generate_grains()
+
+        assert len(s.voices) == 256
+        assert len(s.grains) > 0
 
     def test_chord_dom7_pitch_ratios_in_grains(self):
         """Voce 1 con dom7 ha pitch_ratio base × 2^(4/12)."""

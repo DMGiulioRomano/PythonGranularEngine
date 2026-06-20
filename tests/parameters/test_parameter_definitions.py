@@ -33,6 +33,7 @@ from parameters.parameter_definitions import (
     GRANULAR_PARAMETERS,
     get_parameter_definition,
 )
+from parameters.parameter import Parameter
 
 
 # =============================================================================
@@ -523,7 +524,19 @@ class TestVoicesBounds:
     def test_num_voices_bounds(self):
         b = GRANULAR_PARAMETERS['num_voices']
         assert b.min_val == 1.0
-        assert b.max_val == 64.0
+        assert b.max_val == 256.0
+
+    def test_num_voices_accepts_256(self):
+        """256 è dentro il bound (texture a voci molto dense)."""
+        b = GRANULAR_PARAMETERS['num_voices']
+        param = Parameter('num_voices', 256.0, b)
+        assert param.get_value(time=0.0) == 256.0
+
+    def test_num_voices_clamps_above_256(self):
+        """257 viene clampato silenziosamente a 256 (soglia di sicurezza)."""
+        b = GRANULAR_PARAMETERS['num_voices']
+        param = Parameter('num_voices', 257.0, b)
+        assert param.get_value(time=0.0) == 256.0
 
     def test_num_voices_variation_mode_quantized(self):
         """num_voices usa quantized (voci intere)."""
