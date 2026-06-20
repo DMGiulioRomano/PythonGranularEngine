@@ -174,6 +174,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Sample di riferimento dei config rinominato: `weNeedToTalkAboutIt.wav` →
+  `voice.wav` (`refs/voice.wav`). Aggiornati tutti i `configs/*.yml` che lo
+  citavano (`PGE_cim`, `PGE_density_experiment`, `PGE_pitch_units_showcase`,
+  `PGE_scatter_experiments`, `PGE_testVoices`, `PGE_dynamic_strategy_params_test`,
+  `PGE_spectral_test`). Nessuna modifica a codice o API: solo il nome del file
+  audio sorgente e i riferimenti `sample:` negli YAML.
 - Pointer: la deviazione `offset_range` e l'offset di pointer delle voci
   (`voices` → `pointer_range`/`step`) sono ora **confinati dentro la finestra di
   loop** quando un loop è attivo (wrap modulare), invece di poter leggere da tutto
