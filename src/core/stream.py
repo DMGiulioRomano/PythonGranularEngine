@@ -43,14 +43,22 @@ from strategies.grain_clip_strategy import GrainClipStrategyFactory, OverflowMar
 from dataclasses import fields
 
 
-def _parse_strategy_kwarg(value, duration: float):
-    """Converte kwarg YAML strategy: str/int passthrough, envelope-like → Envelope."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)):
+def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute'):
+    """Converte kwarg YAML strategy: str/int passthrough, envelope-like → Envelope.
+
+    Gli envelope-like ereditano il `time_mode` dello stream (issue #144),
+    esattamente come gli envelope diretti via GranularParser. In forma dict il
+    `time_mode` locale sovrascrive quello dello stream; in forma compatta (lista)
+    si applica il time_mode dello stream.
+    """
+    if isinstance(value, (str, int, float)):
         return value
     if Envelope.is_envelope_like(value):
-        if isinstance(value, dict) and value.get('time_mode') == 'normalized':
+        if isinstance(value, dict):
+            tm = value.get('time_mode', stream_time_mode)
+        else:
+            tm = stream_time_mode
+        if tm == 'normalized':
             return create_scaled_envelope(value, duration, 'normalized')
         return Envelope(value)
     return value
@@ -291,7 +299,7 @@ class Stream:
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
                 kw['seed'] = self.seed
-            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
+            kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             pitch_strategy = VoicePitchStrategyFactory.create(name, **kw)
 
         # --- ONSET ---
@@ -302,7 +310,7 @@ class Stream:
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
                 kw['seed'] = self.seed
-            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
+            kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             onset_strategy = VoiceOnsetStrategyFactory.create(name, **kw)
 
         # --- POINTER ---
@@ -326,7 +334,7 @@ class Stream:
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
                 kw['seed'] = self.seed
-            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
+            kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             pointer_strategy = VoicePointerStrategyFactory.create(name, **kw)
 
         # --- PAN ---
@@ -337,7 +345,7 @@ class Stream:
             if name == 'stochastic':
                 kw['stream_id'] = self.stream_id
                 kw['seed'] = self.seed
-            kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
+            kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             pan_strategy = VoicePanStrategyFactory.create(name, **kw)
 
         self._voice_manager = VoiceManager(

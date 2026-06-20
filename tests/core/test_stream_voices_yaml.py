@@ -57,6 +57,8 @@ from strategies.voice_pointer_strategy import (
 )
 from strategies.voice_pan_strategy import RangePanStrategy, StochasticPanStrategy, StepPanStrategy
 from parameters.pitch_unit import EdoUnit, RatioUnit
+from parameters.parameter import resolve_param
+from envelopes.envelope import Envelope
 
 
 def _f(semitones: float) -> float:
@@ -911,3 +913,95 @@ class TestVoicesPitchUnitSemitoneLocked:
             'pitch': {'strategy': 'chord', 'chord': 'dom7', 'unit': 'semitones'},
         })
         assert s._voice_manager.pitch_unit.divisions == 12
+
+
+# =============================================================================
+# 11. time_mode di stream ereditato dagli envelope delle strategy voce (issue #144)
+# =============================================================================
+
+def _build_stream_tm(voices_params, time_mode=None, duration=10.0, stream_id='s1'):
+    """Come _build_stream ma con controllo su time_mode e duration dello stream.
+
+    Serve a verificare che gli envelope delle strategy voce (voices.*) ereditino
+    il time_mode dello stream, come gli envelope diretti (issue #144).
+    """
+    params = {
+        'stream_id': stream_id,
+        'onset': 0.0,
+        'duration': duration,
+        'sample': 'test.wav',
+        'voices': voices_params,
+    }
+    if time_mode is not None:
+        params['time_mode'] = time_mode
+    with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+        return Stream(params)
+
+
+class TestVoiceStrategyTimeModeInheritance:
+    """Issue #144: gli envelope dei parametri delle strategy voce ereditano il
+    `time_mode: normalized` dichiarato a livello di stream, esattamente come gli
+    envelope diretti (density, pan_range, ...). Il time_mode locale (forma dict)
+    sovrascrive quello dello stream."""
+
+    def test_compact_list_inherits_normalized_pan(self):
+        """Lista compatta + stream normalized → tempi scalati su duration.
+
+        step: [[.6, 0], [.7, 60]] con duration=10 normalized → rampa 6s..7s.
+        Pre-fix: rampa entro 0.6..0.7s assoluti (fallisce)."""
+        s = _build_stream_tm(
+            {'num_voices': 2, 'pan': {'strategy': 'step', 'step': [[.6, 0], [.7, 60.0]]}},
+            time_mode='normalized', duration=10.0,
+        )
+        step_env = s._voice_manager._pan_strategy.step
+        assert isinstance(step_env, Envelope)
+        assert resolve_param(step_env, 6.0) == pytest.approx(0.0)
+        assert resolve_param(step_env, 6.5) == pytest.approx(30.0)
+        assert resolve_param(step_env, 7.0) == pytest.approx(60.0)
+
+    def test_compact_list_absolute_unchanged_pan(self):
+        """Stream absolute (time_mode assente): tempi restano assoluti in secondi."""
+        s = _build_stream_tm(
+            {'num_voices': 2, 'pan': {'strategy': 'step', 'step': [[.6, 0], [.7, 60.0]]}},
+            time_mode=None, duration=10.0,
+        )
+        step_env = s._voice_manager._pan_strategy.step
+        assert resolve_param(step_env, 0.6) == pytest.approx(0.0)
+        assert resolve_param(step_env, 0.7) == pytest.approx(60.0)
+        # ben oltre 0.7s la rampa è già finita (assoluto)
+        assert resolve_param(step_env, 6.0) == pytest.approx(60.0)
+
+    def test_dict_local_absolute_overrides_stream_normalized(self):
+        """Forma dict con time_mode locale `absolute` su stream normalized → assoluto."""
+        s = _build_stream_tm(
+            {'num_voices': 2, 'pan': {'strategy': 'step',
+             'step': {'points': [[.6, 0], [.7, 60.0]], 'time_mode': 'absolute'}}},
+            time_mode='normalized', duration=10.0,
+        )
+        step_env = s._voice_manager._pan_strategy.step
+        assert resolve_param(step_env, 0.6) == pytest.approx(0.0)
+        assert resolve_param(step_env, 0.7) == pytest.approx(60.0)
+        assert resolve_param(step_env, 6.0) == pytest.approx(60.0)
+
+    def test_dict_local_normalized_unchanged(self):
+        """Forma dict con time_mode locale normalized → scalato su duration (invariato)."""
+        s = _build_stream_tm(
+            {'num_voices': 2, 'pan': {'strategy': 'step',
+             'step': {'points': [[.6, 0], [.7, 60.0]], 'time_mode': 'normalized'}}},
+            time_mode=None, duration=10.0,
+        )
+        step_env = s._voice_manager._pan_strategy.step
+        assert resolve_param(step_env, 6.0) == pytest.approx(0.0)
+        assert resolve_param(step_env, 7.0) == pytest.approx(60.0)
+
+    def test_compact_list_inherits_normalized_onset(self):
+        """La correzione vale per tutti i blocchi voce, non solo pan: qui onset_offset."""
+        s = _build_stream_tm(
+            {'num_voices': 2, 'onset_offset': {'strategy': 'linear',
+             'step': [[.2, 0.0], [.8, 1.0]]}},
+            time_mode='normalized', duration=10.0,
+        )
+        step_env = s._voice_manager._onset_strategy.step
+        assert isinstance(step_env, Envelope)
+        assert resolve_param(step_env, 2.0) == pytest.approx(0.0)
+        assert resolve_param(step_env, 8.0) == pytest.approx(1.0)

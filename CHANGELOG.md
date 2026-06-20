@@ -101,6 +101,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- fix(stream): gli envelope dei parametri delle strategy voce
+  (`voices.{pitch,onset_offset,pointer,pan}.{step,spread,…}`) ora ereditano il
+  `time_mode: normalized` dichiarato a livello di stream, come già gli envelope
+  diretti (`density`, `pan_range`, …). Prima la forma compatta (lista di
+  breakpoint) restava sempre in secondi assoluti anche su stream `normalized`:
+  lo stesso `time_mode` aveva due semantiche diverse a seconda che l'envelope
+  fosse diretto o dentro `voices.*` (incoerenza silenziosa). `Stream._parse_strategy_kwarg`
+  riceve ora il `time_mode` dello stream; la forma dict con `time_mode`/`time_unit`
+  locale continua a sovrascriverlo. **Breaking change semantico**: chi usava la
+  forma compatta dentro `voices.*` su uno stream `normalized` vedrà i tempi
+  scalati sulla `duration` invece che interpretati in secondi. (issue #144)
 - fix(score-visualizer): curve envelope data-driven, rimosso il clipping ai
   range fissi (pan resta ciclico). Le curve envelope venivano normalizzate su
   `envelope_ranges` fissi e clippate a `[0,1]`: quando i valori reali superavano
