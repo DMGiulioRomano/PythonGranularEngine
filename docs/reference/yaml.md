@@ -1651,7 +1651,7 @@ un envelope dal YAML al runtime è:
 | `loop_start` | 0 | sample_dur | — | secondi |
 | `loop_end` | 0 | sample_dur | — | secondi |
 | `loop_dur` | 0.005 | sample_dur | — | secondi |
-| `num_voices` | 1 | 64 | 1 | intero |
+| `num_voices` | 1 | 256 | 1 | intero |
 | `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
 
 Per la sintassi completa multi-voice, vedere [[multi-voice]].
