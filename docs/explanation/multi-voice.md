@@ -6,7 +6,7 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/strategies/
   - src/core/stream.py
-last_synced_commit: 4c4fee4
+last_synced_commit: 237865c
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -104,12 +104,12 @@ Stream.generate_grains()
   └─ per ogni tick temporale t = voice_cursors[voice_index]:
        └─ per ogni voice_index in [0..N-1]:
             ├─ voice_config = voice_manager.get_voice_config(voice_index, t)
-            │    ├─ pitch_offset   = pitch_strategy.get_pitch_offset(vi, nv, t)
+            │    ├─ pitch_factor   = pitch_strategy.get_pitch_factor(vi, nv, t, unit)
             │    ├─ onset_offset   = onset_strategy.get_onset_offset(vi, nv, t)
             │    ├─ pointer_offset = pointer_strategy.get_pointer_offset(vi, nv, t)
             │    └─ pan_offset     = pan_strategy.get_pan_offset(vi, nv, t)
             └─ _create_grain(t, dur, voice_config)
-                  ├─ pitch_ratio  *= 2^(pitch_offset / 12)
+                  ├─ pitch_ratio  *= pitch_factor
                   ├─ pointer_pos  += pointer_offset
                   ├─ pan          += pan_offset
                   └─ onset        += onset_offset
@@ -169,13 +169,25 @@ class VoiceManager:
 ```python
 @dataclass(frozen=True)
 class VoiceConfig:
-    pitch_offset:   float   # semitoni
+    pitch_factor:   float   # fattore di ratio (1.0 = identità)
     pointer_offset: float   # normalizzato 0.0–1.0
     pan_offset:     float   # gradi
     onset_offset:   float   # secondi
 ```
 
-Dataclass **immutabile** (`frozen=True`). Voce 0 è sempre `VoiceConfig(0.0, 0.0, 0.0, 0.0)`.
+Dataclass **immutabile** (`frozen=True`). Voce 0 è sempre `VoiceConfig(1.0, 0.0, 0.0, 0.0)`
+(pitch all'identità, gli altri offset a zero).
+
+> **Modello unit-driven (PR #84).** Il pitch di voce non è più un offset in
+> semitoni applicato con la formula hardcoded `2^(offset/12)`: la strategy
+> restituisce direttamente un **fattore di ratio** già materializzato dalla
+> `PitchUnit` attiva (`voices.pitch.unit`, default `semitones` = `EdoUnit(12)`).
+> L'unità possiede la geometria (`materialize`/`to_ratio`); `_create_grain` si
+> limita a `pitch_ratio *= voice_config.pitch_factor`. Le unità disponibili sono
+> `semitones`, `cents`, `quarter_tone`, `eighth_tone`, `edo` (EDO arbitrario),
+> `ratio`. Gli esempi numerici qui sotto valgono per l'unità di default
+> (`semitones`); con un'altra unità lo stesso valore di `step`/`pitch_range` è
+> reinterpretato dalla relativa geometria.
 
 ---
 
@@ -186,19 +198,21 @@ Dataclass **immutabile** (`frozen=True`). Voce 0 è sempre `VoiceConfig(0.0, 0.0
 ```python
 class VoicePitchStrategy(ABC):
     @abstractmethod
-    def get_pitch_offset(self, voice_index: int, num_voices: int, time: float) -> float:
-        """Offset in semitoni. Voce 0 → sempre 0.0."""
+    def get_pitch_factor(
+        self, voice_index: int, num_voices: int, time: float, unit: 'PitchUnit'
+    ) -> float:
+        """Fattore di ratio sul pitch base. Voce 0 → sempre 1.0."""
 ```
 
 I parametri scalari di ogni strategia (`step`, `pitch_range`, ecc.) accettano `Union[float, Envelope]`. Con un `Envelope`, il valore viene valutato a `time` tramite `resolve_param(param, time)` — il che consente evoluzione temporale per-grain.
 
-L'offset prodotto da ogni strategia viene applicato in `_create_grain()` come moltiplicatore sul pitch_ratio del grano:
+La strategy non emette più un offset in semitoni: riceve la `PitchUnit` attiva e restituisce un **fattore di ratio** già materializzato dall'unità (`unit.materialize(position, amount)` o `unit.to_ratio(value)`). `_create_grain()` lo applica come semplice moltiplicatore sul pitch_ratio del grano:
 
 ```python
-pitch_ratio *= 2 ** (voice_config.pitch_offset / 12.0)
+pitch_ratio *= voice_config.pitch_factor
 ```
 
-Questa è la formula standard dell'equi-temperamento: ogni semitone corrisponde a un fattore `2^(1/12) ≈ 1.0595`.
+La geometria dell'equi-temperamento (`2^(v/12)` per `semitones`) vive dentro la `PitchUnit`, non più in `_create_grain`: con `unit: cents` la stessa posizione usa `2^(v/1200)`, con `unit: ratio` il valore è un moltiplicatore diretto, e così via. **Vincolo v1:** `chord` e `spectral` sono definiti intrinsecamente in semitoni e accettano solo `unit: semitones` (altre unità → `InvalidStrategyConfigError`).
 
 ---
 
@@ -607,7 +621,7 @@ voices:
     strategy: chord
     chord: "dom7"
 ```
-Risultato pitch: voce 0→1.0, voce 1→2^(4/12)≈1.26, voce 2→2^(7/12)≈1.50, voce 3→2^(10/12)≈1.78
+Risultato pitch (unità di default `semitones`): voce 0→1.0, voce 1→2^(4/12)≈1.26, voce 2→2^(7/12)≈1.50, voce 3→2^(10/12)≈1.78 — fattori prodotti da `unit.to_ratio`. `chord` è semitone-locked.
 
 ---
 
@@ -632,10 +646,10 @@ voices:
   num_voices: 6
   pitch:
     strategy: stochastic
-    range: 0.5
+    pitch_range: 0.5
   pointer:
     strategy: stochastic
-    range: 0.02
+    pointer_range: 0.02
   pan:
     strategy: linear
     spread: 60.0
@@ -704,12 +718,12 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 
 | Invariante | Garanzia |
 |---|---|
-| Voce 0 = riferimento | Sempre `VoiceConfig(0, 0, 0, 0)` a qualsiasi `time`, indipendentemente dalle strategy |
+| Voce 0 = riferimento | Sempre `VoiceConfig(1.0, 0, 0, 0)` a qualsiasi `time` (pitch_factor all'identità), indipendentemente dalle strategy |
 | Onset offset ≥ 0 | Le voci secondarie non precedono mai la voce 0 |
 | Valutazione per-grain | `get_voice_config(voice_index, t)` riceve `voice_cursors[voice_index]` — tempo reale della voce |
 | Direzione stochastic fissa | Per le strategy stochastiche la direzione per-voce è calcolata una volta (seeded cache); solo la magnitudine varia con l'envelope |
 | Riproducibilità stochastic | Seed = `hash(stream_id + voice_index)` → stesso YAML → stesso output |
-| Pitch moltiplicativo | `pitch_ratio *= 2^(offset/12)` → compatibile con ratio audio standard |
+| Pitch moltiplicativo | `pitch_ratio *= pitch_factor` (fattore materializzato dalla `PitchUnit`) → compatibile con ratio audio standard |
 | Backward compatibility | `self.grains` rimane piatto e ordinato per tutti i consumer esistenti; config scalari esistenti validi senza modifiche |
 
 ---
