@@ -107,7 +107,7 @@ streams:
   - stream_id: stream6
     onset: 0
     duration: 32.374
-    sample: weNeedToTalkAboutIt.wav
+    sample: voice.wav
     time_mode: normalized
     distribution_mode: uniform
     density: [[0, 3052.39], [0.1557, 664.47], [0.2605, 2925.48], [0.4461, 598], [0.5274, 172.23], [0.6009, 124.66], [0.6905, 1099.62], [0.7873, 251.58], [0.8629, 2843.29], [0.9318, 116.96], [0.999, 24.7]]
@@ -156,7 +156,7 @@ streams:
   - stream_id: stream5
     onset: 0
     duration: 17.777
-    sample: weNeedToTalkAboutIt.wav
+    sample: voice.wav
     time_mode: normalized
     distribution_mode: uniform
     density:

@@ -1078,6 +1078,45 @@ density: [[[0, 0], [100, 50]], 0.5, 4]
 # 4 ripetizioni distribuite tra 0 e 15s
 ```
 
+#### 3.4 Strategy envelope dei `voices.*`
+
+Gli envelope dei parametri delle strategy voce
+(`voices.{pitch,onset_offset,pointer,pan}.{step,spread,...}`) **ereditano** il
+`time_mode` dello stream esattamente come gli envelope diretti (`density`,
+`pan_range`, …). Una lista compatta di breakpoint su uno stream `normalized`
+viene quindi scalata sulla `duration`:
+
+```yaml
+streams:
+  - stream_id: s1
+    duration: 40.0
+    time_mode: normalized
+    voices:
+      num_voices: 5
+      pan:
+        strategy: step
+        step: [[.6, 0], [.7, 60.0]]   # 0.6 → 24s, 0.7 → 28s (scalati su duration)
+```
+
+Come per gli envelope diretti, la forma dict con `time_mode` (o l'alias
+`time_unit`) locale **sovrascrive** quello dello stream:
+
+```yaml
+    time_mode: normalized
+    voices:
+      pan:
+        strategy: step
+        step:                          # locale absolute → tempi in secondi
+          points: [[.6, 0], [.7, 60.0]]
+          time_mode: absolute
+```
+
+> Nota storica: fino all'issue #144 le strategy envelope in forma compatta
+> restavano sempre in secondi assoluti anche su stream `normalized` (incoerenza
+> silenziosa con gli envelope diretti). Dopo il fix il `time_mode` di stream è
+> onorato — breaking change semantico per chi usava la forma compatta dentro
+> `voices.*` su stream `normalized`.
+
 ---
 
 ### 4. Tipi di interpolazione
@@ -1695,7 +1734,7 @@ un envelope dal YAML al runtime è:
 | `loop_start` | 0 | sample_dur | — | secondi |
 | `loop_end` | 0 | sample_dur | — | secondi |
 | `loop_dur` | 0.005 | sample_dur | — | secondi |
-| `num_voices` | 1 | 64 | 1 | intero |
+| `num_voices` | 1 | 256 | 1 | intero |
 | `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
 
 Per la sintassi completa multi-voice, vedere [[multi-voice]].

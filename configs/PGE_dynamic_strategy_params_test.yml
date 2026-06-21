@@ -17,7 +17,7 @@ streams:
   - stream_id: "pitch_step_widening"
     onset: 0.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -33,7 +33,7 @@ streams:
   - stream_id: "pitch_step_narrowing"
     onset: 12.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -50,7 +50,7 @@ streams:
   - stream_id: "pitch_range_widening"
     onset: 24.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -67,7 +67,7 @@ streams:
   - stream_id: "pitch_stochastic_growing_range"
     onset: 36.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -83,7 +83,7 @@ streams:
   - stream_id: "pitch_step_v_shape"
     onset: 48.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -103,7 +103,7 @@ streams:
   - stream_id: "onset_linear_widening"
     onset: 60.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -120,7 +120,7 @@ streams:
   - stream_id: "onset_geometric_base_growing"
     onset: 72.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -137,7 +137,7 @@ streams:
   - stream_id: "onset_geometric_step_growing"
     onset: 84.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -155,7 +155,7 @@ streams:
   - stream_id: "onset_stochastic_growing"
     onset: 96.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -176,7 +176,7 @@ streams:
   - stream_id: "pointer_linear_widening"
     onset: 108.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -192,7 +192,7 @@ streams:
   - stream_id: "pointer_stochastic_growing"
     onset: 120.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -212,7 +212,7 @@ streams:
   - stream_id: "pan_linear_spread_widening"
     onset: 132.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -228,7 +228,7 @@ streams:
   - stream_id: "pan_step_growing"
     onset: 144.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -245,7 +245,7 @@ streams:
   - stream_id: "pan_stochastic_spread_growing"
     onset: 156.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -265,7 +265,7 @@ streams:
   - stream_id: "combined_pitch_onset_widening"
     onset: 168.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -284,7 +284,7 @@ streams:
   - stream_id: "combined_pitch_stoch_pan_widening"
     onset: 180.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -304,7 +304,7 @@ streams:
   - stream_id: "combined_all_four_widening"
     onset: 192.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -334,7 +334,7 @@ streams:
   - stream_id: "pitch_step_normalized"
     onset: 204.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
@@ -353,7 +353,7 @@ streams:
   - stream_id: "onset_pan_normalized"
     onset: 216.0
     duration: 10.0
-    sample: "weNeedToTalkAboutIt.wav"
+    sample: "voice.wav"
     density: 8
     grain:
       duration: 0.08
