@@ -1,0 +1,32 @@
+# Demo: cambiamento del numero di voci nel tempo.
+# Materiale: sinusoide sintetica 440 Hz (refs/sine440.wav).
+# Il numero di voci oscilla tra 1 e 6 per tre cicli: ogni ciclo l'accordo
+# min11 (A C E G B D a partire da 440 Hz) si costruisce da una sola voce fino
+# a sei e torna indietro. Le voci sono distribuite nel campo stereo (pan range).
+# Questa variante usa interpolazione LINEAR su num_voices: il conteggio sale
+# e scende a rampa, e ogni voce entra/esce in dissolvenza lineare.
+streams:
+  - stream_id: voicechange_linear
+    onset: 0.0
+    duration: 18.0
+    sample: sine440.wav
+    density: 30
+    volume: -12
+    grain:
+      duration: 0.1
+      envelope: hanning
+    pointer:
+      start: 0.0
+      speed_ratio: 1.0
+    pitch:
+      semitones: 0
+    voices:
+      num_voices:
+        type: linear
+        points: [[0, 1], [3, 6], [6, 1], [9, 6], [12, 1], [15, 6], [18, 1]]
+      pitch:
+        strategy: chord
+        chord: min11
+      pan:
+        strategy: range
+        spread: 140.0
