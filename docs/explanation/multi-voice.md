@@ -6,7 +6,7 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/strategies/
   - src/core/stream.py
-last_synced_commit: 4c4fee4
+last_synced_commit: e829fc1
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -537,7 +537,10 @@ def _init_voice_manager(self, params: dict) -> None:
         self._voice_manager = VoiceManager(max_voices=1)
         return
 
-    max_voices = int(v.get('num_voices', 1))
+    # num_voices è un Parameter (scalare o envelope). max_voices = ceil del picco
+    # dei breakpoint (o dello scalare): così la voce di confine frazionaria (fade)
+    # ha sempre uno slot.
+    max_voices = ceil(max_value_of(self._num_voices))
 
     # Per le strategie stochastiche, stream_id viene auto-iniettato
     # per garantire riproducibilità tra sessioni con lo stesso YAML
@@ -564,6 +567,26 @@ self.grains: List[Grain]         # flat, ordinato per onset (backward compat)
 ```
 
 Con N voci e densità costante, `len(self.grains) == N × len(singola_voce)`.
+
+### Fade frazionario di `num_voices`
+
+`num_voices` time-varying viene valutato a ogni tick. La parte frazionaria del
+valore interpolato non viene troncata ma diventa il **gain della voce di
+confine** (quella che si accende o si spegne):
+
+```python
+value  = min(max_v, self.num_voices.get_value(t))
+n_full = floor(value)        # voci 0..n_full-1 a volume pieno (gain 1.0)
+frac   = value - n_full      # gain della voce di confine (indice n_full)
+# voce di confine: volume += 20*log10(frac), clamp a -120 dB; frac==0 → nessun grano
+```
+
+Con interpolazione `step` (breakpoint interi) `frac` è sempre 0 → on/off netto
+come prima. Con `linear`/`cubic` la transizione tra due conteggi interi diventa
+una dissolvenza graduale e deterministica (nessun RNG). Il gain è applicato in
+dB sul campo `volume` del grano, quindi si propaga sia al renderer NumPy sia a
+Csound senza nuovi campi su `Grain`; nella partitura grafica la voce in
+dissolvenza appare più trasparente perché l'opacità segue il volume.
 
 ---
 
@@ -710,7 +733,8 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | Direzione stochastic fissa | Per le strategy stochastiche la direzione per-voce è calcolata una volta (seeded cache); solo la magnitudine varia con l'envelope |
 | Riproducibilità stochastic | Seed = `hash(stream_id + voice_index)` → stesso YAML → stesso output |
 | Pitch moltiplicativo | `pitch_ratio *= 2^(offset/12)` → compatibile con ratio audio standard |
-| Backward compatibility | `self.grains` rimane piatto e ordinato per tutti i consumer esistenti; config scalari esistenti validi senza modifiche |
+| Fade frazionario voci | La parte decimale di `num_voices` interpolato attenua la voce di confine (`volume += 20·log10(frac)`); `step` con breakpoint interi → on/off netto come prima |
+| Backward compatibility | `self.grains` rimane piatto e ordinato per tutti i consumer esistenti; config scalari interi e `step` esistenti invariati |
 
 ---
 

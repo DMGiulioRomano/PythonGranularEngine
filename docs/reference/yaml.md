@@ -5,11 +5,12 @@ status: stable
 tags: [yaml, syntax, parameters, envelopes]
 sources:
   - src/engine/generator.py
+  - src/core/stream.py
   - src/parameters/
   - src/strategies/
   - src/envelopes/
   - src/shared/seeding.py
-last_synced_commit: 79c1a86
+last_synced_commit: e829fc1
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -489,6 +490,49 @@ voices:
 ```
 
 La voce 0 è sempre il riferimento: non riceve offset da nessuna strategia.
+
+---
+
+### voices.num_voices — fade frazionario
+
+`num_voices` è uno scalare o un envelope (bounds `[1, 64]`). Quando il valore
+interpolato è **frazionario**, la parte decimale diventa uno scaler di volume
+sulla voce di confine (quella che si accende o si spegne), invece di un on/off
+netto:
+
+- `floor(value)` voci suonano a volume pieno;
+- la voce di confine (indice `floor(value)`) riceve grani con gain pari alla
+  parte frazionaria `frac = value − floor(value)`, applicato in dB come
+  `volume += 20·log10(frac)` (clampato al floor del bound volume, −120 dB);
+- `frac = 0` → nessuna voce di confine (comportamento storico).
+
+`max_voices` è precomputato come `ceil(picco)` dei breakpoint, così la voce di
+confine in cima ha sempre uno slot anche con picchi frazionari.
+
+Con interpolazione `step` e breakpoint interi il valore è sempre intero
+(`frac = 0`): le voci si accendono/spengono di colpo, come prima. Con
+interpolazione `linear`/`cubic` la transizione tra due conteggi interi diventa
+una dissolvenza graduale.
+
+```yaml
+# La 6ª voce sfuma a zero in 1 s (interpolazione lineare implicita)
+voices:
+  num_voices: [[0, 6], [1, 5]]
+
+# Switch netto (nessun fade): interpolazione step
+voices:
+  num_voices:
+    type: step
+    points: [[0, 6], [1, 5]]
+
+# Conteggio frazionario costante: 2 voci piene + 1 a metà volume
+voices:
+  num_voices: 2.5
+```
+
+Il fade è deterministico (guidato dall'envelope, nessun RNG). Nella partitura
+grafica la voce in dissolvenza appare più trasparente, perché l'opacità del
+grano segue il suo volume.
 
 ---
 
