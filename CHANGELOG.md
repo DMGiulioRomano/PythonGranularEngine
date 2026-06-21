@@ -10,6 +10,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Voci (`num_voices`): fade frazionario della voce di confine. Quando
+  `num_voices` interpola tra due conteggi interi (es. `[[0, 6], [1, 5]]`), la
+  parte frazionaria del valore diventa uno scaler di volume sulla voce che si
+  accende/spegne (`volume += 20·log10(frac)`, clamp a −120 dB) invece di un
+  on/off netto: la voce sfuma gradualmente. Con interpolazione `step` e
+  breakpoint interi il comportamento resta istantaneo come prima. `max_voices`
+  ora è il `ceil` del picco, così picchi/scalari frazionari (es.
+  `num_voices: 2.5`) hanno uno slot per la voce di confine. Deterministico
+  (nessun RNG); nessun cambiamento a YAML/CLI/formati di output né ai config a
+  conteggio intero o `step` esistenti.
 - Score visualizer (magnify): `corner` ora è override per-target in
   `magnify_targets` (`top-right` | `top-left` | `bottom-right` | `bottom-left`),
   come già `zoom`/`out`/`src`. Consente più lenti d'ingrandimento sullo stesso

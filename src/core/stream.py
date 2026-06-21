@@ -15,6 +15,7 @@ Ispirato al DMX-1000 di Barry Truax (1988).
 from __future__ import annotations
 
 import random
+from math import ceil, floor, log10
 from typing import List, Optional, Union
 
 from core.grain import Grain
@@ -245,9 +246,9 @@ class Stream:
         # Se num_voices è un Envelope, max_voices = picco dei breakpoints.
         param_val = self._num_voices.value
         if isinstance(param_val, Envelope):
-            max_voices = int(max(bp[1] for bp in param_val.breakpoints))
+            max_voices = ceil(max(bp[1] for bp in param_val.breakpoints))
         else:
-            max_voices = int(param_val)
+            max_voices = ceil(param_val)
         self._scatter = parser.parse_parameter('scatter', v.get('scatter', 0.0))
 
         # --- PITCH ---
@@ -437,11 +438,29 @@ class Stream:
 
                 # Voice 0 condivide già grain_dur_0 (t == t0), evita doppia chiamata
                 grain_dur = grain_dur_0 if voice_index == 0 else self.grain_duration.get_value(t)
-                active = max(1, min(max_v, int(self.num_voices.get_value(t))))
 
-                if voice_index < active:
+                # num_voices time-varying: la parte frazionaria del valore interpolato
+                # diventa un fade di volume sulla voce di confine (quella che si
+                # accende/spegne), invece di un on/off netto.
+                #   n_full = floor(value)  → voci 0..n_full-1 a volume pieno
+                #   frac   = value - n_full → gain della voce di confine (indice n_full)
+                # value è già clampato a [1,64] dai bounds; ri-clamp a max_v. Con
+                # interpolazione step (breakpoint interi) frac=0 → on/off come prima.
+                value = min(float(max_v), self.num_voices.get_value(t))
+                n_full = floor(value)
+                frac = value - n_full
+
+                if voice_index < n_full:
+                    voice_gain = 1.0
+                elif voice_index == n_full and frac > 0.0:
+                    voice_gain = frac           # voce di confine: fade graduale
+                else:
+                    voice_gain = 0.0            # voce spenta → nessun grano
+
+                if voice_gain > 0.0:
                     voice_config = self._voice_manager.get_voice_config(voice_index, t)
-                    grain = self._create_grain(t, grain_dur, voice_config)
+                    grain = self._create_grain(t, grain_dur, voice_config,
+                                               voice_gain=voice_gain)
                     all_voice_grains[voice_index].append(grain)
 
                 # IOT di questa voce: blend tra sync_iot (condiviso) e indep_iot
@@ -473,7 +492,8 @@ class Stream:
     def _create_grain(self,
                       elapsed_time: float,
                       grain_dur: float,
-                      voice_config: Optional['VoiceConfig'] = None) -> Grain:
+                      voice_config: Optional['VoiceConfig'] = None,
+                      voice_gain: float = 1.0) -> Grain:
         """
         Crea un singolo grano con tutti i parametri calcolati.
 
@@ -487,6 +507,8 @@ class Stream:
             elapsed_time: tempo trascorso dall'inizio dello stream
             grain_dur:    durata del grano
             voice_config: offset per questa voce (None = VoiceConfig(1.0,0,0,0))
+            voice_gain:   scaler lineare di volume in (0,1] per il fade della voce
+                          di confine (1.0 = nessuna attenuazione)
 
         Returns:
             Grain: oggetto grano completo
@@ -517,6 +539,12 @@ class Stream:
 
         # === 3. VOLUME ===
         volume = self.volume.get_value(elapsed_time)
+        # voice_gain in (0,1] dalla parte frazionaria di num_voices: fade della voce
+        # di confine. Applicato in dB (riusa il path dB→lineare di NumPy e Csound,
+        # nessun nuovo campo su Grain). Clamp al floor del bound volume (-120 dB) per
+        # evitare valori assurdi con frac minuscoli. Il chiamante garantisce > 0.
+        if voice_gain != 1.0:
+            volume = max(-120.0, volume + 20.0 * log10(voice_gain))
 
         # === 4. PAN — base + voice_offset ===
         pan = self.pan.get_value(elapsed_time) + voice_config.pan_offset

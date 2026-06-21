@@ -601,6 +601,29 @@ class TestNumVoicesEnvelope:
         assert len(s.voices[3]) < len(s.voices[0])
         assert len(s.voices[3]) > 0  # ma diventa attiva
 
+    def test_envelope_fractional_peak_max_voices_uses_ceil(self):
+        """Picco frazionario → max_voices = ceil(picco), così la voce di confine
+        in cima ha uno slot e può sfumare (prima int() la troncava)."""
+        s = _build_stream({'num_voices': [[0, 1], [5, 3.5]]})
+        assert s._voice_manager.max_voices == 4
+
+    def test_envelope_fractional_boundary_voice_volume_attenuated(self):
+        """La voce di confine frazionaria ha volume < voce piena.
+
+        Envelope 2.9→2.1: value resta in (2,3), quindi la voce 2 è sempre la voce
+        di confine e i suoi grani sono attenuati via +20*log10(frac); la voce 0
+        resta a volume pieno. Esercita il path reale Parameter.get_value+Envelope
+        (non mock): conferma che la parte frazionaria sopravvive fino ai grani.
+        """
+        s = _build_stream({'num_voices': [[0, 2.9], [10, 2.1]]})
+        s._density = type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0)})()
+        s.sample_table_num = 1
+        s.window_table_map = {'hanning': 2}
+        s.generate_grains()
+        assert len(s.voices[2]) > 0
+        full_volume = s.voices[0][0].volume
+        assert all(g.volume < full_volume for g in s.voices[2])
+
 
 # =============================================================================
 # 12. scatter — parsing YAML
