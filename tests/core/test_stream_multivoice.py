@@ -494,6 +494,33 @@ class TestCreateGrainWithVoiceConfig:
         assert g_none.pan == g_zero.pan
         assert g_none.onset == g_zero.onset
 
+    # ── voice_gain: fade frazionario della voce di confine ──────────────────
+
+    def test_voice_gain_default_is_unity(self):
+        """Senza voice_gain il volume resta quello base (firma backward-compatible)."""
+        s = _make_stream()  # s.volume mock → -6.0
+        g = s._create_grain(0.0, 0.05, voice_config=None)
+        assert g.volume == pytest.approx(-6.0)
+
+    def test_voice_gain_unity_no_attenuation(self):
+        """voice_gain=1.0 → volume invariato (guard != 1.0 evita rumore FP)."""
+        s = _make_stream()
+        g = s._create_grain(0.0, 0.05, voice_config=None, voice_gain=1.0)
+        assert g.volume == pytest.approx(-6.0)
+
+    def test_voice_gain_half_attenuates_in_db(self):
+        """voice_gain=0.5 → volume = base + 20*log10(0.5) ≈ base - 6.02 dB."""
+        s = _make_stream()
+        g = s._create_grain(0.0, 0.05, voice_config=None, voice_gain=0.5)
+        expected = -6.0 + 20.0 * math.log10(0.5)
+        assert g.volume == pytest.approx(expected)
+
+    def test_voice_gain_tiny_clamped_to_volume_floor(self):
+        """voice_gain minuscolo → volume clampato al floor del bound volume (-120 dB)."""
+        s = _make_stream()
+        g = s._create_grain(0.0, 0.05, voice_config=None, voice_gain=1e-9)
+        assert g.volume == pytest.approx(-120.0)
+
 
 # =============================================================================
 # 6. Reset e stato
@@ -615,6 +642,87 @@ class TestNumVoicesTimeVarying:
         )
         s.generate_grains()
         assert len(s.voices[0]) == total_ticks
+
+
+# =============================================================================
+# 7b. num_voices frazionario — fade della voce di confine
+# =============================================================================
+
+class TestNumVoicesFractionalFade:
+    """
+    La parte frazionaria di num_voices diventa uno scaler di volume sulla voce di
+    confine (quella che si accende/spegne), invece di un on/off netto.
+
+    Regola: n_full = floor(value) voci a volume pieno (gain 1.0); la voce di
+    confine (indice n_full) riceve grani con gain = frac, applicato in dB come
+    +20*log10(frac). frac == 0 → nessuna voce di confine (comportamento storico).
+    """
+
+    BASE_VOLUME = -6.0  # _make_stream imposta s.volume = _make_mock_parameter(-6.0)
+
+    def test_constant_integer_num_voices_no_fade(self):
+        """num_voices intero costante → voci piene a volume base, nessuna confine."""
+        vm = VoiceManager(max_voices=4)
+        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+                         num_voices_fn=lambda t: 3.0)
+        s.generate_grains()
+        for vi in (0, 1, 2):
+            assert len(s.voices[vi]) > 0
+            assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[vi])
+        assert s.voices[3] == []
+
+    def test_boundary_voice_receives_fractional_gain(self):
+        """num_voices=2.5 → voci 0,1 piene; voce 2 (confine) attenuata di 20*log10(0.5)."""
+        vm = VoiceManager(max_voices=3)
+        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+                         num_voices_fn=lambda t: 2.5)
+        s.generate_grains()
+        assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[0])
+        assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[1])
+        assert len(s.voices[2]) > 0
+        expected = self.BASE_VOLUME + 20.0 * math.log10(0.5)
+        assert all(g.volume == pytest.approx(expected) for g in s.voices[2])
+
+    def test_zero_frac_no_boundary_voice(self):
+        """num_voices=2.0 esatto → frac=0 → voce 2 vuota (nessun grano di confine)."""
+        vm = VoiceManager(max_voices=3)
+        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+                         num_voices_fn=lambda t: 2.0)
+        s.generate_grains()
+        assert len(s.voices[0]) > 0
+        assert len(s.voices[1]) > 0
+        assert s.voices[2] == []
+
+    def test_voices_beyond_boundary_stay_empty(self):
+        """num_voices=2.3, max_v=4 → voce 2 confine (gain 0.3), voce 3 sempre vuota."""
+        vm = VoiceManager(max_voices=4)
+        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+                         num_voices_fn=lambda t: 2.3)
+        s.generate_grains()
+        assert len(s.voices[2]) > 0
+        assert s.voices[3] == []
+
+    def test_full_voices_unaffected_by_fade(self):
+        """Le voci < n_full mantengono esattamente il volume base (gain 1.0)."""
+        vm = VoiceManager(max_voices=3)
+        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+                         num_voices_fn=lambda t: 2.7)
+        s.generate_grains()
+        for vi in (0, 1):
+            assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[vi])
+
+    def test_fade_monotonic_over_time(self):
+        """value 2→3 nel tempo → il volume dei grani della voce di confine (2) cresce."""
+        vm = VoiceManager(max_voices=3)
+        # value sale da 2.0 a 3.0 in 10s: la voce 2 sfuma in ingresso (gain 0→1)
+        s = _make_stream(duration=10.0, inter_onset=1.0, voice_manager=vm,
+                         num_voices_fn=lambda t: min(3.0, 2.0 + t / 10.0))
+        s.generate_grains()
+        v2 = s.voices[2]
+        assert len(v2) >= 3
+        volumes = [g.volume for g in v2]
+        assert volumes == sorted(volumes)   # gain crescente → volume non decrescente
+        assert volumes[-1] > volumes[0]
 
 
 # =============================================================================
