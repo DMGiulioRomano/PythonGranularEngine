@@ -30,6 +30,7 @@
 | [add-window-function](how-to/add-window-function.md) | stable | window, grain, extension |
 | [make-parameter-envelope-aware](how-to/make-parameter-envelope-aware.md) | stable | parameters, envelopes, extension |
 | [reaper](how-to/reaper.md) | stable | reaper, daw, workflow, output |
+| [sonic-visualiser](how-to/sonic-visualiser.md) | stable | sonic-visualiser, export, envelope, output, workflow |
 
 ## Entry points per task
 
@@ -45,6 +46,7 @@
 | cli-flags | cli |
 | envelope-syntax | yaml |
 | error-handling | errors |
+| export-sonic-visualiser | sonic-visualiser |
 | make-parameter-envelope-aware | make-parameter-envelope-aware |
 | reaper-workflow | reaper |
 | yaml-syntax | yaml |
