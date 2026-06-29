@@ -113,7 +113,8 @@ class SVExporter:
             sample_rate, duration_sec = self._read_audio_info(audio_path)
 
         # Raccogli gli envelope di tutti gli stream (MIX): per ogni curva il
-        # nome (disambiguato per stream se >1) e i punti gia' in frame assoluti.
+        # nome (disambiguato per stream se >1), la chiave engine (per il colore)
+        # e i punti gia' in frame assoluti.
         layers = self._collect_layers(streams, sample_rate)
 
         root = ET.Element("sv")
@@ -146,7 +147,7 @@ class SVExporter:
         # --- Un modello + dataset + layer per ogni envelope ---
         layer_records: List[Tuple[str, str, str]] = []  # (layer_id, model_id, name)
         next_id = 3
-        for name, points in layers:
+        for name, key, points in layers:
             model_id = str(next_id); next_id += 1
             dataset_id = str(next_id); next_id += 1
             layer_id = str(next_id); next_id += 1
@@ -162,7 +163,10 @@ class SVExporter:
                     "frame": str(frame), "value": _fmt_value(value), "label": "",
                 })
 
-            colour = ENVELOPE_COLORS.get(base_param_name(name), _FALLBACK_COLOUR)
+            # Colore dalla CHIAVE engine (non dal nome, che con piu' stream e'
+            # prefissato '<stream_id>/'): altrimenti il lookup fallirebbe e ogni
+            # layer cadrebbe sul fallback.
+            colour = ENVELOPE_COLORS.get(base_param_name(key), _FALLBACK_COLOUR)
             ET.SubElement(data, "layer", {
                 "id": layer_id, "type": "timevalues", "name": name,
                 "model": model_id, "plotStyle": _PLOT_STYLE, "verticalScale": "0",
@@ -187,16 +191,17 @@ class SVExporter:
         return info.samplerate, info.frames / float(info.samplerate)
 
     def _collect_layers(self, streams: List, sample_rate: int
-                        ) -> List[Tuple[str, List[Tuple[int, float]]]]:
+                        ) -> List[Tuple[str, str, List[Tuple[int, float]]]]:
         """
         Per ogni stream estrae gli envelope dinamici e converte i breakpoint in
         frame assoluti: frame = round((stream.onset + t_rel) * sample_rate).
 
-        Il nome del layer e' la chiave dell'engine (es. 'density'); con piu'
-        stream e' disambiguato col prefisso '<stream_id>/' per evitare collisioni.
+        Ritorna tuple (name, key, points): `key` e' la chiave engine (es.
+        'density', per il colore); `name` e' il nome del layer, disambiguato col
+        prefisso '<stream_id>/' quando c'e' piu' di uno stream (evita collisioni).
         """
         multi_stream = len(streams) > 1
-        layers: List[Tuple[str, List[Tuple[int, float]]]] = []
+        layers: List[Tuple[str, str, List[Tuple[int, float]]]] = []
         for stream in streams:
             onset = float(getattr(stream, "onset", 0.0) or 0.0)
             envelopes = get_stream_envelopes(stream)
@@ -206,7 +211,7 @@ class SVExporter:
                     (round((onset + t_rel) * sample_rate), value)
                     for t_rel, value in envelope.breakpoints
                 ]
-                layers.append((name, points))
+                layers.append((name, key, points))
         return layers
 
     def _build_display(self, root: ET.Element,

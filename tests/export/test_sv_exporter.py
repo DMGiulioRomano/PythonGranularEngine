@@ -165,6 +165,17 @@ class TestEnvelopeLayers:
                  if l.get('type') == 'timevalues'}
         assert names == {'a/density', 'b/density'}
 
+    def test_multi_stream_colour_from_base_key_not_prefixed_name(self):
+        # Il colore deve venire dalla CHIAVE engine, non dal nome prefissato
+        # '<stream_id>/density': altrimenti cadrebbe sul fallback.
+        from rendering.score_visualizer import ENVELOPE_COLORS
+        s1 = _stream('a', density=_param('density', Envelope([[0, 5.0], [DUR, 1000.0]])))
+        s2 = _stream('b', density=_param('density', Envelope([[0, 1.0], [DUR, 9.0]])))
+        root = _build([s1, s2])
+        for l in root.findall('.//data/layer'):
+            if l.get('type') == 'timevalues':
+                assert l.get('colour') == ENVELOPE_COLORS['density']
+
 
 # =============================================================================
 # 3. AUDIO MODEL
