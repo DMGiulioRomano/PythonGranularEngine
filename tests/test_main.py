@@ -1634,3 +1634,75 @@ class TestMagnifyFlags:
             with pytest.raises(SystemExit) as exc:
                 mocks['main'].main()
         assert exc.value.code == 1
+
+
+# =============================================================================
+# TEST FLAG --export-sv / --sv-path / --sv-layout (issue #150)
+# =============================================================================
+
+class TestExportSvFlag:
+    """Con --export-sv main() esporta una sessione Sonic Visualiser dopo il
+    render (MIX). --sv-path ne fissa il path, --sv-layout il layout (validato).
+    """
+
+    def _sv_mock(self):
+        mod = types.ModuleType('export.sv_exporter')
+        cls = MagicMock(name='SVExporter')
+        mod.SVExporter = cls
+        return mod, cls
+
+    def test_export_sv_invokes_exporter(self, mocks):
+        sv_mod, sv_cls = self._sv_mock()
+        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+            with patch.object(sys, 'argv',
+                              ['main.py', 'test.yml', 'out.aif', '--export-sv']):
+                mocks['main'].main()
+        sv_cls.return_value.export.assert_called_once()
+        kwargs = sv_cls.return_value.export.call_args.kwargs
+        assert kwargs['audio_path'] == '/out/test.aif'   # generated[0]
+        assert kwargs['out_path'] == 'out.sv'             # default da output
+        assert kwargs['layout'] == 'multi'                # default
+
+    def test_export_sv_not_invoked_without_flag(self, mocks):
+        sv_mod, sv_cls = self._sv_mock()
+        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+            with patch.object(sys, 'argv',
+                              ['main.py', 'test.yml', 'out.aif']):
+                mocks['main'].main()
+        sv_cls.assert_not_called()
+
+    def test_sv_path_overrides_default(self, mocks):
+        sv_mod, sv_cls = self._sv_mock()
+        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+            with patch.object(sys, 'argv',
+                              ['main.py', 'test.yml', 'out.aif', '--export-sv',
+                               '--sv-path', 'custom/sess.sv']):
+                mocks['main'].main()
+        assert sv_cls.return_value.export.call_args.kwargs['out_path'] == 'custom/sess.sv'
+
+    def test_sv_layout_single_forwarded(self, mocks):
+        sv_mod, sv_cls = self._sv_mock()
+        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+            with patch.object(sys, 'argv',
+                              ['main.py', 'test.yml', 'out.aif', '--export-sv',
+                               '--sv-layout', 'single']):
+                mocks['main'].main()
+        assert sv_cls.return_value.export.call_args.kwargs['layout'] == 'single'
+
+    def test_invalid_sv_layout_exits_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--export-sv',
+                           '--sv-layout', 'bogus']):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
+
+    def test_export_sv_skipped_in_per_stream(self, mocks, capsys):
+        sv_mod, sv_cls = self._sv_mock()
+        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+            with patch.object(sys, 'argv',
+                              ['main.py', 'test.yml', 'out.aif', '--export-sv',
+                               '--per-stream']):
+                mocks['main'].main()
+        sv_cls.return_value.export.assert_not_called()
+        assert 'export-sv' in capsys.readouterr().out

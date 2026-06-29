@@ -190,7 +190,8 @@ def main():
             "[--keep-sco] [--sco-dir DIR] "
             "[--cache] [--cache-dir DIR] "
             "[--reaper] [--reaper-path FILE] "
-            "[--grain-json]"
+            "[--grain-json] "
+            "[--export-sv] [--sv-path FILE] [--sv-layout multi|single]"
         )
         sys.exit(1)
 
@@ -257,6 +258,27 @@ def main():
     use_cache = '--cache' in sys.argv
     reaper_export = '--reaper' in sys.argv
     grain_json = '--grain-json' in sys.argv
+
+    # --export-sv: esporta una sessione Sonic Visualiser (.sv) accanto all'audio
+    # (issue #150). Modalita' MIX (un audio -> un .sv); ignorato in --per-stream.
+    export_sv = '--export-sv' in sys.argv
+
+    # --sv-path PATH (default: {output_basename}.sv)
+    sv_path = None
+    if '--sv-path' in sys.argv:
+        idx = sys.argv.index('--sv-path')
+        if idx + 1 < len(sys.argv):
+            sv_path = sys.argv[idx + 1]
+
+    # --sv-layout multi|single (default: multi)
+    sv_layout = 'multi'
+    if '--sv-layout' in sys.argv:
+        idx = sys.argv.index('--sv-layout')
+        if idx + 1 < len(sys.argv):
+            sv_layout = sys.argv[idx + 1]
+        if sv_layout not in ('multi', 'single'):
+            print(f"--sv-layout non valido: '{sv_layout}'. Valori: multi, single")
+            sys.exit(1)
 
     # --reaper-path PATH (default: {yaml_basename}.rpp)
     reaper_path = None
@@ -428,6 +450,24 @@ def main():
                 output_path=rpp_out,
             )
             print(f"Reaper project: {rpp_out}")
+
+        if export_sv:
+            if per_stream:
+                # v1 esporta contro un singolo audio (MIX). Lo split STEMS
+                # (un .sv per stem) e' un follow-up.
+                print("[export-sv] ignorato in modalità --per-stream (STEMS): "
+                      "v1 supporta solo MIX")
+            else:
+                from export.sv_exporter import SVExporter
+                sv_out = sv_path if sv_path else output_file.rsplit('.', 1)[0] + '.sv'
+                audio_for_sv = generated[0] if generated else output_file
+                SVExporter().export(
+                    generator.streams,
+                    audio_path=audio_for_sv,
+                    out_path=sv_out,
+                    layout=sv_layout,
+                )
+                print(f"Sonic Visualiser session: {sv_out}")
 
         if grain_json:
             if not per_stream:
