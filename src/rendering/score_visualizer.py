@@ -44,51 +44,11 @@ except (ValueError, KeyError):
     except (AttributeError, ImportError):
         plt.register_cmap(cmap=PITCH_DIVERGING)
 
-# Colori di default degli envelope. A livello modulo perche' le sue chiavi
-# sono l'universo dei nomi plottabili: main.py le usa per validare
-# --plot-envelopes (issue #101).
-ENVELOPE_COLORS = {
-    # === OUTPUT ===
-    'volume': '#e41a1c',          # rosso
-    'volume_prob': '#fb9a99',     # rosso chiaro
-    'volume_range': '#99000d',    # rosso scuro (deviazione per-grano)
-    'pan': '#4daf4a',             # verde
-    'pan_prob': '#b2df8a',        # verde chiaro
-    'pan_range': '#006d2c',       # verde scuro (deviazione per-grano)
-
-    # === GRAIN ===
-    'grain_duration': '#377eb8',  # blu
-    'grain_duration_prob': '#a6cee3',  # blu chiaro
-    'grain_duration_range': '#08519c',  # blu scuro (deviazione per-grano)
-    'reverse': '#999999',         # grigio
-    'reverse_prob': '#cccccc',    # grigio chiarissimo
-
-    # === POINTER ===
-    'pointer_start': '#8dd3c7',   # celeste
-    'pointer_speed': '#a65628',   # marrone
-    'pointer_deviation': '#fb8072',  # salmone
-    'pointer_deviation_prob': '#fdb462',  # arancione chiaro
-    'loop_dur': '#bebada',        # lavanda
-
-    # === PITCH ===
-    'pitch': '#984ea3',           # viola (unit-driven, qualsiasi unità)
-
-    # === DENSITY ===
-    'density': '#ff7f00',         # arancio
-    'fill_factor': '#f781bf',     # rosa
-    'distribution': '#999999',    # grigio
-    'effective_density': '#ffed6f',  # giallo
-
-    # === VOICES ===
-    'num_voices': '#e377c2',      # magenta
-    'scatter': '#17becf',         # teal
-    'voice_pitch_offset': '#c49c94',  # beige
-    'voice_pointer_offset': '#f7b6d2', # rosa chiaro
-    'voice_pointer_range': '#c7c7c7',  # grigio chiaro
-}
-
-# Nomi validi per il filtro --plot-envelopes / envelope_filter (issue #101)
-PLOT_ENVELOPE_KEYS = frozenset(ENVELOPE_COLORS)
+# Colori di default e universo dei nomi plottabili. Definiti nel modulo
+# matplotlib-free rendering.envelope_extractor (issue #150) e ri-esportati qui
+# per retro-compatibilita': main.py importa PLOT_ENVELOPE_KEYS da qui, i test
+# importano ENVELOPE_COLORS da qui.
+from rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
 
 
 class ScoreVisualizer:
