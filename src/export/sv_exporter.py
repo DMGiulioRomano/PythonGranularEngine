@@ -39,9 +39,27 @@ from rendering.envelope_extractor import (
     get_stream_envelopes,
 )
 
-# plotStyle SV: "3" = Lines (segmenti retti tra breakpoint, corretto per
-# envelope lineari).
-_PLOT_STYLE = "3"
+# plotStyle SV per tipo di interpolazione dell'Envelope. I valori sono gli
+# interi dell'enum PlotStyle di TimeValueLayer (svgui), serializzati come stringa
+# nell'attributo plotStyle del layer:
+#   "3" = PlotLines        -> spezzata di segmenti retti tra i breakpoint
+#   "7" = PlotCubicHermite -> curva cubica monotona (Fritsch-Carlson)
+# 'step' non ha uno stile nativo in SV (nessun hold del valore fino al
+# breakpoint successivo): fallback su Lines finche' la visualizzazione a gradini
+# non viene aggiunta a TimeValueLayer.
+_PLOT_STYLE_BY_TYPE = {"linear": "3", "cubic": "7", "step": "3"}
+_PLOT_STYLE_DEFAULT = "3"
+
+
+def _envelope_plot_style(envelope) -> str:
+    """plotStyle SV dal tipo di interpolazione dell'Envelope.
+
+    Legge `envelope.type` (sempre presente, default 'linear'). SV ha un
+    plotStyle per-layer, quindi il tipo globale dell'envelope e' la giusta
+    granularita'; eventuali override per-segmento non sono rappresentabili.
+    """
+    return _PLOT_STYLE_BY_TYPE.get(getattr(envelope, "type", "linear"),
+                                   _PLOT_STYLE_DEFAULT)
 
 # Colore di fallback per chiavi senza voce in ENVELOPE_COLORS (non dovrebbe
 # accadere: l'universo dei nomi e' PLOT_ENVELOPE_KEYS).
@@ -147,7 +165,7 @@ class SVExporter:
         # --- Un modello + dataset + layer per ogni envelope ---
         layer_records: List[Tuple[str, str, str]] = []  # (layer_id, model_id, name)
         next_id = 3
-        for name, key, points in layers:
+        for name, key, points, plot_style in layers:
             model_id = str(next_id); next_id += 1
             dataset_id = str(next_id); next_id += 1
             layer_id = str(next_id); next_id += 1
@@ -169,7 +187,7 @@ class SVExporter:
             colour = ENVELOPE_COLORS.get(base_param_name(key), _FALLBACK_COLOUR)
             ET.SubElement(data, "layer", {
                 "id": layer_id, "type": "timevalues", "name": name,
-                "model": model_id, "plotStyle": _PLOT_STYLE, "verticalScale": "0",
+                "model": model_id, "plotStyle": plot_style, "verticalScale": "0",
                 "colourName": name, "colour": colour, "darkBackground": "true",
             })
             layer_records.append((layer_id, model_id, name))
@@ -191,17 +209,18 @@ class SVExporter:
         return info.samplerate, info.frames / float(info.samplerate)
 
     def _collect_layers(self, streams: List, sample_rate: int
-                        ) -> List[Tuple[str, str, List[Tuple[int, float]]]]:
+                        ) -> List[Tuple[str, str, List[Tuple[int, float]], str]]:
         """
         Per ogni stream estrae gli envelope dinamici e converte i breakpoint in
         frame assoluti: frame = round((stream.onset + t_rel) * sample_rate).
 
-        Ritorna tuple (name, key, points): `key` e' la chiave engine (es.
-        'density', per il colore); `name` e' il nome del layer, disambiguato col
-        prefisso '<stream_id>/' quando c'e' piu' di uno stream (evita collisioni).
+        Ritorna tuple (name, key, points, plot_style): `key` e' la chiave engine
+        (es. 'density', per il colore); `name` e' il nome del layer, disambiguato
+        col prefisso '<stream_id>/' quando c'e' piu' di uno stream (evita
+        collisioni); `plot_style` e' lo stile SV dal tipo di interpolazione.
         """
         multi_stream = len(streams) > 1
-        layers: List[Tuple[str, str, List[Tuple[int, float]]]] = []
+        layers: List[Tuple[str, str, List[Tuple[int, float]], str]] = []
         for stream in streams:
             onset = float(getattr(stream, "onset", 0.0) or 0.0)
             envelopes = get_stream_envelopes(stream)
@@ -211,7 +230,7 @@ class SVExporter:
                     (round((onset + t_rel) * sample_rate), value)
                     for t_rel, value in envelope.breakpoints
                 ]
-                layers.append((name, key, points))
+                layers.append((name, key, points, _envelope_plot_style(envelope)))
         return layers
 
     def _build_display(self, root: ET.Element,

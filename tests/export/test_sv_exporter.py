@@ -90,6 +90,12 @@ def _points(root, layer_name=None):
     return ds.findall('point')
 
 
+def _timevalues_layer(root, name):
+    """Il layer timevalues con quel name (es. 'density')."""
+    return next(l for l in root.findall('.//data/layer')
+                if l.get('type') == 'timevalues' and l.get('name') == name)
+
+
 def _load_ref(name):
     txt = open(os.path.join(FIX_DIR, name)).read()
     body = txt.split('sonic-visualiser>', 1)[1]
@@ -144,12 +150,39 @@ class TestEnvelopeLayers:
                          if l.get('name') == name)
             assert layer.get('colour') == ENVELOPE_COLORS[name]
 
-    def test_plotstyle_lines_and_vertical_scale(self):
+    def test_plotstyle_linear_and_vertical_scale(self):
+        # _e3_stream usa envelope lineari: plotStyle = "3" (PlotLines).
         root = _build([_e3_stream()])
         for l in root.findall('.//data/layer'):
             if l.get('type') == 'timevalues':
                 assert l.get('plotStyle') == '3'      # Lines
                 assert l.get('verticalScale') == '0'
+
+    def test_plotstyle_cubic_maps_to_cubic_hermite(self):
+        # type: cubic -> plotStyle "7" (PlotCubicHermite).
+        s = _stream(density=_param('density', Envelope(
+            {'type': 'cubic', 'points': [[0, 5.0], [DUR, 1000.0]]})))
+        layer = _timevalues_layer(_build([s]), 'density')
+        assert layer.get('plotStyle') == '7'
+
+    def test_plotstyle_step_falls_back_to_lines(self):
+        # type: step -> nessuno stile SV nativo di hold -> fallback "3" (Lines).
+        s = _stream(density=_param('density', Envelope(
+            {'type': 'step', 'points': [[0, 5.0], [DUR, 1000.0]]})))
+        layer = _timevalues_layer(_build([s]), 'density')
+        assert layer.get('plotStyle') == '3'
+
+    def test_plotstyle_per_layer_follows_each_envelope_type(self):
+        # Tipi diversi nello stesso stream -> plotStyle indipendenti per layer.
+        s = _stream(
+            density=_param('density', Envelope(
+                {'type': 'cubic', 'points': [[0, 5.0], [DUR, 1000.0]]})),
+            grain_duration=_param('grain_duration', Envelope(
+                [[0, 0.01], [DUR, 0.05]])),  # linear (default)
+        )
+        root = _build([s])
+        assert _timevalues_layer(root, 'density').get('plotStyle') == '7'
+        assert _timevalues_layer(root, 'grain_duration').get('plotStyle') == '3'
 
     def test_layer_names_are_engine_keys(self):
         root = _build([_e3_stream()])

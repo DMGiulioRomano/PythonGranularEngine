@@ -7,7 +7,7 @@ sources:
   - src/export/sv_exporter.py
   - src/rendering/envelope_extractor.py
   - src/main.py
-last_synced_commit: 1de1947
+last_synced_commit: 2518eab
 entry_for: [export-sonic-visualiser]
 ---
 
@@ -104,7 +104,23 @@ la waveform e ogni curva envelope devono essere allineate sul tempo dell'audio.
   hardcoded.
 - **Colori** dei layer da `ENVELOPE_COLORS` (palette dell'engine, condivisa con
   la partitura). Con piu' stream il nome del layer e' `<stream_id>/<chiave>`.
-- **`plotStyle="3"`** (Lines): segmenti retti tra breakpoint.
+- **`plotStyle` dal tipo di interpolazione** dell'envelope (per-layer, dal
+  `type` globale dell'`Envelope`):
+
+  | `type` envelope | plotStyle SV | Stile |
+  |-----------------|--------------|-------|
+  | `linear` | `3` | PlotLines (segmenti retti tra breakpoint) |
+  | `cubic` | `7` | PlotCubicHermite (curva cubica monotona, Fritsch-Carlson) |
+  | `step` | `3` | fallback PlotLines (vedi nota) |
+
+  Nota: SV non ha uno stile nativo che tenga il valore fino al breakpoint
+  successivo (gradini), quindi `step` ripiega su Lines. Aggiunta di una
+  visualizzazione a gradini a `TimeValueLayer` tracciata in
+  [sonic-visualiser#3](https://github.com/DMGiulioRomano/sonic-visualiser/issues/3).
+  SV applica il
+  `plotStyle` per-layer: il `type` globale dell'envelope e' la granularita'
+  giusta; eventuali override per-segmento (`[t, v, type]`) non sono
+  rappresentabili e seguono il tipo globale.
 - **Solo curve dinamiche**: gli envelope statici non vengono esportati (come la
   partitura di default).
 
