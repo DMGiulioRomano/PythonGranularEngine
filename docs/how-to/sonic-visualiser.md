@@ -7,7 +7,7 @@ sources:
   - src/export/sv_exporter.py
   - src/rendering/envelope_extractor.py
   - src/main.py
-last_synced_commit: 2518eab
+last_synced_commit: a730371
 entry_for: [export-sonic-visualiser]
 ---
 
@@ -111,16 +111,17 @@ la waveform e ogni curva envelope devono essere allineate sul tempo dell'audio.
   |-----------------|--------------|-------|
   | `linear` | `3` | PlotLines (segmenti retti tra breakpoint) |
   | `cubic` | `7` | PlotCubicHermite (curva cubica monotona, Fritsch-Carlson) |
-  | `step` | `3` | fallback PlotLines (vedi nota) |
+  | `step` | `8` | PlotStepped (hold del valore fino al breakpoint successivo, poi salto verticale) |
 
-  Nota: SV non ha uno stile nativo che tenga il valore fino al breakpoint
-  successivo (gradini), quindi `step` ripiega su Lines. Aggiunta di una
-  visualizzazione a gradini a `TimeValueLayer` tracciata in
-  [sonic-visualiser#3](https://github.com/DMGiulioRomano/sonic-visualiser/issues/3).
-  SV applica il
-  `plotStyle` per-layer: il `type` globale dell'envelope e' la granularita'
-  giusta; eventuali override per-segmento (`[t, v, type]`) non sono
-  rappresentabili e seguono il tipo globale.
+  Nota: `PlotStepped` (8) e' stato aggiunto a `TimeValueLayer` di svgui apposta
+  per gli envelope `step`
+  ([sonic-visualiser#3](https://github.com/DMGiulioRomano/sonic-visualiser/issues/3)
+  / svgui#2): non e' piu' un fallback su Lines. Serve un SV compilato con quel
+  svgui (pin repoint aggiornato) perche' il gradino sia disegnato; un SV piu'
+  vecchio ignora lo stile sconosciuto. SV applica il `plotStyle` per-layer: il
+  `type` globale dell'envelope e' la granularita' giusta; eventuali override
+  per-segmento (`[t, v, type]`) non sono rappresentabili e seguono il tipo
+  globale.
 - **Solo curve dinamiche**: gli envelope statici non vengono esportati (come la
   partitura di default).
 

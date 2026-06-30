@@ -165,12 +165,13 @@ class TestEnvelopeLayers:
         layer = _timevalues_layer(_build([s]), 'density')
         assert layer.get('plotStyle') == '7'
 
-    def test_plotstyle_step_falls_back_to_lines(self):
-        # type: step -> nessuno stile SV nativo di hold -> fallback "3" (Lines).
+    def test_plotstyle_step_maps_to_stepped(self):
+        # type: step -> plotStyle "8" (PlotStepped, sample-and-hold):
+        # niente piu' fallback su Lines (sonic-visualiser#3 / svgui#2).
         s = _stream(density=_param('density', Envelope(
             {'type': 'step', 'points': [[0, 5.0], [DUR, 1000.0]]})))
         layer = _timevalues_layer(_build([s]), 'density')
-        assert layer.get('plotStyle') == '3'
+        assert layer.get('plotStyle') == '8'
 
     def test_plotstyle_per_layer_follows_each_envelope_type(self):
         # Tipi diversi nello stesso stream -> plotStyle indipendenti per layer.
