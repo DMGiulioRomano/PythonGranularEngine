@@ -44,10 +44,11 @@ from rendering.envelope_extractor import (
 # nell'attributo plotStyle del layer:
 #   "3" = PlotLines        -> spezzata di segmenti retti tra i breakpoint
 #   "7" = PlotCubicHermite -> curva cubica monotona (Fritsch-Carlson)
-# 'step' non ha uno stile nativo in SV (nessun hold del valore fino al
-# breakpoint successivo): fallback su Lines finche' la visualizzazione a gradini
-# non viene aggiunta a TimeValueLayer.
-_PLOT_STYLE_BY_TYPE = {"linear": "3", "cubic": "7", "step": "3"}
+#   "8" = PlotStepped      -> hold del valore fino al breakpoint successivo,
+#                             poi salto verticale (sample-and-hold)
+# PlotStepped e' stato aggiunto a TimeValueLayer per gli envelope 'step'
+# (sonic-visualiser#3 / svgui#2): non piu' fallback su Lines.
+_PLOT_STYLE_BY_TYPE = {"linear": "3", "cubic": "7", "step": "8"}
 _PLOT_STYLE_DEFAULT = "3"
 
 
