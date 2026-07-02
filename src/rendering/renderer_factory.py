@@ -69,6 +69,7 @@ class RendererFactory:
                 cache_manager=kwargs.get('cache_manager'),
                 stream_data_map=kwargs.get('stream_data_map'),
                 audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
+                jobs=kwargs.get('jobs', 1),
             )
 
         if renderer_type == 'csound':

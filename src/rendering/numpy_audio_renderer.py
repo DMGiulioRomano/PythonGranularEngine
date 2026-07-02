@@ -17,9 +17,12 @@ Template Method interno (comune):
 """
 from __future__ import annotations
 
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
+from typing import Dict, Tuple, List, Optional
+
 import numpy as np
 import soundfile as sf
-from typing import Dict, Tuple, List, Optional
 
 from rendering.audio_format import AudioFormat, DEFAULT_FORMAT
 from rendering.audio_renderer import AudioRenderer
@@ -27,6 +30,14 @@ from rendering.grain_renderer import GrainRenderer
 from rendering.sample_registry import SampleRegistry
 from rendering.numpy_window_registry import NumpyWindowRegistry
 from rendering.dc_blocker import dc_block
+from rendering.numpy_parallel import (
+    DEFAULT_MIN_PARALLEL_GRAINS,
+    chunk_grains,
+    init_worker,
+    render_grain_chunk,
+    resolve_jobs,
+    resolve_table_name,
+)
 
 
 class NumpyAudioRenderer(AudioRenderer):
@@ -44,6 +55,12 @@ class NumpyAudioRenderer(AudioRenderer):
         output_sr: sample rate di output (default: 48000)
         cache_manager: StreamCacheManager opzionale per skip stream invariati
         stream_data_map: dict {stream_id: yaml_dict} per fingerprint cache
+        jobs: worker per l'overlap-add multi-processo. 1 (default) =
+              sequenziale, identico bit a bit al comportamento storico;
+              'auto' = core disponibili - 1 (min 1). Vedi numpy_parallel.
+        min_parallel_grains: sotto questa soglia di grani per chiamata il
+              rendering resta sequenziale anche con jobs > 1 (l'overhead
+              del pool supererebbe il guadagno). None = default di modulo.
     """
 
     def __init__(
@@ -55,6 +72,8 @@ class NumpyAudioRenderer(AudioRenderer):
         cache_manager=None,
         stream_data_map: Optional[Dict[str, dict]] = None,
         audio_format: AudioFormat = DEFAULT_FORMAT,
+        jobs=1,
+        min_parallel_grains: Optional[int] = None,
     ):
         self.sample_registry = sample_registry
         self.window_registry = window_registry
@@ -63,6 +82,14 @@ class NumpyAudioRenderer(AudioRenderer):
         self.cache_manager = cache_manager
         self.stream_data_map = dict(stream_data_map) if stream_data_map is not None else {}
         self.audio_format = audio_format
+        self.jobs = resolve_jobs(jobs)
+        self.min_parallel_grains = (
+            DEFAULT_MIN_PARALLEL_GRAINS if min_parallel_grains is None
+            else min_parallel_grains
+        )
+        # Pool multi-processo: lazy al primo render sopra soglia, riusato per
+        # tutti gli stream della run (STEMS), spento da close().
+        self._executor: Optional[ProcessPoolExecutor] = None
 
         self._grain_renderer = GrainRenderer(
             sample_registry=sample_registry,
@@ -114,10 +141,13 @@ class NumpyAudioRenderer(AudioRenderer):
         n_total = max(1, round(max_end_rel * self.output_sr))
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
-        # 2. Overlap-add con onset RELATIVI
-        for voice_grains in stream.voices:
-            for grain in voice_grains:
-                self._add_grain_relative(buffer, grain, stream.onset)
+        # 2. Overlap-add con onset RELATIVI (all_grains e' gia' in ordine
+        # voice-major: stesso ordine di somma del loop storico)
+        pairs = [
+            (grain, self._relative_onset_sample(grain, stream.onset))
+            for grain in all_grains
+        ]
+        self._overlap_add(buffer, pairs)
 
         # 3. DC blocker FIR: rimuove l'offset DC accumulato dall'overlap-add
         buffer = dc_block(buffer, self.output_sr)
@@ -165,11 +195,13 @@ class NumpyAudioRenderer(AudioRenderer):
         n_total = max(1, round(max_end_time * self.output_sr))
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
-        # 2. Overlap-add con onset ASSOLUTI
-        for stream in streams:
-            for voice_grains in stream.voices:
-                for grain in voice_grains:
-                    self._add_grain_absolute(buffer, grain)
+        # 2. Overlap-add con onset ASSOLUTI (all_grains e' gia' in ordine
+        # stream-major/voice-major: stesso ordine di somma del loop storico)
+        pairs = [
+            (grain, self._absolute_onset_sample(grain))
+            for grain in all_grains
+        ]
+        self._overlap_add(buffer, pairs)
 
         # 3. DC blocker FIR: rimuove l'offset DC accumulato dall'overlap-add
         buffer = dc_block(buffer, self.output_sr)
@@ -186,6 +218,14 @@ class NumpyAudioRenderer(AudioRenderer):
     # INTERNAL - Overlap-add helpers
     # =========================================================================
 
+    def _relative_onset_sample(self, grain, stream_onset: float) -> int:
+        """onset_sample = round((grain.onset - stream_onset) * sr) — STEMS."""
+        return round((grain.onset - stream_onset) * self.output_sr)
+
+    def _absolute_onset_sample(self, grain) -> int:
+        """onset_sample = round(grain.onset * sr) — MIX."""
+        return round(grain.onset * self.output_sr)
+
     def _add_grain_relative(
         self,
         buffer: np.ndarray,
@@ -200,7 +240,7 @@ class NumpyAudioRenderer(AudioRenderer):
         Onset calculation: onset_sample = (grain.onset - stream_onset) * sr
         → grano posizionato relativamente allo stream (parte da 0)
         """
-        onset_sample = round((grain.onset - stream_onset) * self.output_sr)
+        onset_sample = self._relative_onset_sample(grain, stream_onset)
         self._add_grain_at_position(buffer, grain, onset_sample)
 
     def _add_grain_absolute(
@@ -213,8 +253,80 @@ class NumpyAudioRenderer(AudioRenderer):
 
         Usato da: render_merged_streams() (MIX mode)
         """
-        onset_sample = round(grain.onset * self.output_sr)
+        onset_sample = self._absolute_onset_sample(grain)
         self._add_grain_at_position(buffer, grain, onset_sample)
+
+    def _overlap_add(
+        self,
+        buffer: np.ndarray,
+        pairs: List[Tuple[object, int]],
+    ) -> None:
+        """
+        Somma tutti i grani nel buffer, sequenziale o multi-processo.
+
+        Path sequenziale (jobs=1 o poco lavoro): itera le coppie nell'ordine
+        ricevuto — bit-identico al loop storico. Path parallelo: chunk
+        contigui in ordine di onset ai worker, somma dei buffer locali in
+        ordine di chunk fisso (deterministico a jobs fissato; vs sequenziale
+        cambia solo l'ordine delle somme float64, < 1 LSB a 24 bit).
+        """
+        if self.jobs > 1 and len(pairs) >= self.min_parallel_grains:
+            self._overlap_add_parallel(buffer, pairs)
+        else:
+            for grain, onset_sample in pairs:
+                self._add_grain_at_position(buffer, grain, onset_sample)
+
+    def _overlap_add_parallel(
+        self,
+        buffer: np.ndarray,
+        pairs: List[Tuple[object, int]],
+    ) -> None:
+        """Distribuisce l'overlap-add su un pool di processi."""
+        # Ordina per onset (stabile → deterministico): chunk contigui nel
+        # tempo, buffer locali ~1/N dell'extent.
+        ordered = sorted(pairs, key=lambda pair: pair[1])
+        chunks = chunk_grains(ordered, self.jobs)
+        executor = self._ensure_executor()
+        futures = [executor.submit(render_grain_chunk, chunk) for chunk in chunks]
+        # Somma in ordine di submit, non di completamento: output identico
+        # tra run a parita' di jobs.
+        for future in futures:
+            result = future.result()
+            if result is None:
+                continue
+            offset, local = result
+            buffer[offset:offset + local.shape[0]] += local
+
+    def _ensure_executor(self) -> ProcessPoolExecutor:
+        """Crea il pool alla prima necessita' e lo riusa per tutta la run."""
+        if self._executor is None:
+            sample_names = [
+                name for ftype, name in self.table_map.values()
+                if ftype == 'sample'
+            ]
+            config = {
+                'base_path': self.sample_registry.base_path,
+                'sample_names': sample_names,
+                'table_map': self.table_map,
+                'output_sr': self.output_sr,
+            }
+            # spawn esplicito: uniforme macOS/Linux, nessuna eredita' di
+            # stato dal parent (i worker ricostruiscono i registry da disco).
+            ctx = multiprocessing.get_context('spawn')
+            self._executor = ProcessPoolExecutor(
+                max_workers=self.jobs,
+                mp_context=ctx,
+                initializer=init_worker,
+                initargs=(config,),
+            )
+        return self._executor
+
+    def close(self) -> None:
+        """Spegne il pool multi-processo. Idempotente; il renderer resta
+        utilizzabile (un nuovo render sopra soglia ricrea il pool)."""
+        if self._executor is not None:
+            self._executor.shutdown(wait=True)
+            self._executor = None
 
     def _add_grain_at_position(
         self,
@@ -258,28 +370,8 @@ class NumpyAudioRenderer(AudioRenderer):
 
     def _resolve_sample_name(self, table_num: int) -> str:
         """Risolve table_num -> sample name dal table_map."""
-        if table_num not in self.table_map:
-            raise KeyError(
-                f"Table num {table_num} non trovato nel table_map. "
-                f"Disponibili: {list(self.table_map.keys())}"
-            )
-        ftype, name = self.table_map[table_num]
-        if ftype != 'sample':
-            raise KeyError(
-                f"Table {table_num} e' di tipo '{ftype}', atteso 'sample'"
-            )
-        return name
+        return resolve_table_name(self.table_map, table_num, 'sample')
 
     def _resolve_window_name(self, table_num: int) -> str:
         """Risolve table_num -> window name dal table_map."""
-        if table_num not in self.table_map:
-            raise KeyError(
-                f"Table num {table_num} non trovato nel table_map. "
-                f"Disponibili: {list(self.table_map.keys())}"
-            )
-        ftype, name = self.table_map[table_num]
-        if ftype != 'window':
-            raise KeyError(
-                f"Table {table_num} e' di tipo '{ftype}', atteso 'window'"
-            )
-        return name
+        return resolve_table_name(self.table_map, table_num, 'window')
