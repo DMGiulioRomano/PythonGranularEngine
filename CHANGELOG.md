@@ -10,6 +10,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Rendering NumPy multi-processo: flag CLI `--jobs N|auto` (variabile Make
+  `JOBS`) parallelizza l'overlap-add del renderer NumPy su più core. `auto`
+  (default) = core disponibili − 1; `--jobs 1` mantiene il path sequenziale
+  con campioni bit-identici allo storico. La generazione dei grani resta nel
+  parent (riproducibilità del RNG globale). Ignorato con `--renderer csound`;
+  valori non validi → messaggio + exit 1. Nuovo log `Rendering completato in
+  Ns (jobs=N)` a fine render. Determinismo: a parità di `jobs` i campioni
+  sono bit-identici tra run (il file AIFF float no: PEAK chunk con timestamp
+  wall-clock); tra `jobs` diversi la differenza è < 1 LSB a 24 bit.
 - Voci (`num_voices`): fade frazionario della voce di confine. Quando
   `num_voices` interpola tra due conteggi interi (es. `[[0, 6], [1, 5]]`), la
   parte frazionaria del valore diventa uno scaler di volume sulla voce che si
@@ -111,6 +120,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- Rendering parallelo: il test di determinismo `--jobs` confrontava i byte
+  grezzi del file AIFF (flaky su macOS: il PEAK chunk float porta un timestamp
+  wall-clock con granularità 1s, quindi due run in secondi diversi
+  divergevano). Ora confronta i campioni via `soundfile.read`. Documentazione
+  (`cli.md`, `architecture.md`) allineata: il contratto di determinismo vale
+  sui campioni, non sul file byte-a-byte.
 - fix(stream): gli envelope dei parametri delle strategy voce
   (`voices.{pitch,onset_offset,pointer,pan}.{step,spread,…}`) ora ereditano il
   `time_mode: normalized` dichiarato a livello di stream, come già gli envelope

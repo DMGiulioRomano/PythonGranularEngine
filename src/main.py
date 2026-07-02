@@ -463,11 +463,16 @@ def main():
         from rendering.naming_strategy import DefaultNamingStrategy
         engine = RenderingEngine(renderer, naming_strategy=DefaultNamingStrategy(ext=audio_format.extension))
         mode = StemsRenderMode() if per_stream else MixRenderMode()
+        import time
+        _render_t0 = time.perf_counter()
         generated = engine.render(
             streams=generator.streams,
             output_path=output_file,
             mode=mode,
         )
+        _render_dt = time.perf_counter() - _render_t0
+        jobs_note = f" (jobs={renderer.jobs})" if renderer_type == 'numpy' else ""
+        print(f"\n Rendering completato in {_render_dt:.2f}s{jobs_note}")
 
         print(f"\n Generazione completata! {len(generated)} file generati:")
         for path in generated:
