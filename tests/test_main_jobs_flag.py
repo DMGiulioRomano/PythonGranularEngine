@@ -110,3 +110,20 @@ class TestBuildRendererJobsWiring:
         renderer = _build_renderer('numpy', gen, jobs='auto')
         assert isinstance(renderer.jobs, int)
         assert renderer.jobs >= 1
+
+    def test_csound_ignores_jobs(self, tmp_path, monkeypatch):
+        """--renderer csound: jobs viene scartato, non propagato né errore.
+
+        Il ramo csound di _build_renderer non inoltra jobs al factory: il
+        renderer risultante non ha attributo jobs (parallelismo solo NumPy).
+        """
+        from unittest.mock import Mock
+        from main import _build_renderer
+        monkeypatch.chdir(tmp_path)
+
+        gen = Mock()
+        gen.score_writer = Mock()
+        gen.stream_data_map = {}
+        renderer = _build_renderer('csound', gen, jobs=4)
+        assert renderer.__class__.__name__ == 'CsoundRenderer'
+        assert not hasattr(renderer, 'jobs')
