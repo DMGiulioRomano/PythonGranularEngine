@@ -1,25 +1,39 @@
 # src/shared/seeding.py
 """
-seeding.py — derivazione deterministica del RNG per-voce (issue #81).
+seeding.py — derivazione deterministica degli RNG locali (issue #81, #154).
 
-Singola fonte di verità per il seed locale delle voice strategy stocastiche
-(`StochasticPitchStrategy`, `StochasticOnsetStrategy`, `StochasticPointerStrategy`,
-`StochasticPanStrategy`). Mantenere allineate le quattro strategy: tutte delegano qui.
+Singola fonte di verità per la derivazione dei generatori pseudo-casuali:
 
-Due regimi:
+- `voice_rng` (issue #81): RNG per-voce delle voice strategy stocastiche
+  (`StochasticPitchStrategy`, `StochasticOnsetStrategy`,
+  `StochasticPointerStrategy`, `StochasticPanStrategy`).
+- `component_rng` (issue #154): RNG per-componente di tutti gli altri siti
+  stocastici della generazione grani (variazione `_range` dei Parameter,
+  probability gate, IOT async, selezione finestra, detune implicito).
+  Ogni componente pesca dal proprio stream: solo/mute, cache stems e ordine
+  di materializzazione non alterano i draw degli altri componenti.
+- `session_seed` (issue #154): seed di sessione derivato da timestamp per i
+  run senza `seed:` nello YAML — loggato dal Generator, così ogni run resta
+  ricostruibile a posteriori.
 
-- `seed is None` → comportamento legacy: `hash(stream_id + str(voice_index))`.
-  Stabile ENTRO un run, NON riproducibile fra processi: `hash()` su stringa è
-  randomizzato per-processo (PYTHONHASHSEED non è fissato nel repo).
-- `seed` valorizzato (int/str) → derivazione `hashlib.sha256` su
-  `f"{seed}:{stream_id}:{voice_index}"`. `hashlib` è deterministico per
+Regimi di derivazione:
+
+- `seed` valorizzato (int/str) → `hashlib.sha256` su
+  `f"{seed}:{stream_id}:{discriminante}"`. `hashlib` è deterministico per
   costruzione: il valore non dipende da PYTHONHASHSEED, quindi è riproducibile
-  fra processi diversi. Copre `seed: 0` e seed negativi/stringa senza casi speciali.
+  fra processi diversi. Copre `seed: 0` e seed negativi/stringa senza casi
+  speciali.
+- `seed is None` → comportamento legacy, diverso per funzione:
+  `voice_rng` usa `hash(stream_id + str(voice_index))` (stabile ENTRO un run,
+  NON riproducibile fra processi); `component_rng` restituisce il modulo
+  `random` globale (per le costruzioni dirette fuori dal Generator — il
+  Generator non passa mai None: senza seed YAML genera un session seed).
 """
 from __future__ import annotations
 
 import hashlib
 import random
+import time
 
 
 def voice_rng(seed, stream_id: str, voice_index: int) -> random.Random:
@@ -41,3 +55,39 @@ def voice_rng(seed, stream_id: str, voice_index: int) -> random.Random:
         ).hexdigest()
         derived = int(digest, 16)
     return random.Random(derived)
+
+
+def component_rng(seed, stream_id: str, component: str):
+    """Restituisce l'RNG locale per (seed, stream_id, component) — issue #154.
+
+    Componenti in uso: il nome del Parameter (es. `grain_duration`,
+    `pitch_semitones`), `gate:<dephase_key>` per i probability gate, `iot`
+    (distribuzione Truax async), `window` (selezione finestra), `detune`
+    (detune implicito EDO). Componenti distinti → stream RNG indipendenti.
+
+    Args:
+        seed: seed effettivo (YAML o di sessione) oppure None.
+        stream_id: id dello stream proprietario del componente.
+        component: discriminante testuale del sito stocastico.
+
+    Returns:
+        `random.Random` seminato via sha256 se `seed` è valorizzato; il modulo
+        `random` globale se `seed` è None (fallback legacy per costruzioni
+        dirette di Stream/controller fuori dal Generator).
+    """
+    if seed is None:
+        return random
+    digest = hashlib.sha256(
+        f"{seed}:{stream_id}:{component}".encode()
+    ).hexdigest()
+    return random.Random(int(digest, 16))
+
+
+def session_seed() -> int:
+    """Genera il seed di sessione per i run senza `seed:` nello YAML.
+
+    Derivato dal timestamp (ns) e ridotto a 9 cifre per essere comodo da
+    copiare nello YAML (`seed: <valore loggato>`): il run torna riproducibile
+    a posteriori con la stessa derivazione dei seed espliciti.
+    """
+    return time.time_ns() % 1_000_000_000

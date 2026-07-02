@@ -59,10 +59,12 @@ class GateFactory:
         default_prob: float = 0.0,
         has_explicit_range: bool = False,
         range_always_active: bool = False,
-        duration: float = 1.0,       
-        time_mode: str = 'absolute'         
+        duration: float = 1.0,
+        time_mode: str = 'absolute',
+        rng=None,
     ) -> ProbabilityGate:
-
+        """rng: random.Random locale iniettato nei gate stocastici
+        (RandomGate/EnvelopeGate, issue #154); None → random globale."""
         if param_key is None:
             return NeverGate()
         if has_explicit_range and range_always_active is None:
@@ -73,13 +75,13 @@ class GateFactory:
         if mode == DephaseMode.DISABLED:
             return GateFactory._range_only_gate(has_explicit_range)
         elif mode == DephaseMode.IMPLICIT:
-            return GateFactory._create_probability_gate(default_prob)
+            return GateFactory._create_probability_gate(default_prob, rng)
         elif mode == DephaseMode.GLOBAL:
-            return GateFactory._create_probability_gate(float(dephase))
+            return GateFactory._create_probability_gate(float(dephase), rng)
         elif mode == DephaseMode.GLOBAL_ENV:
             # Crea Envelope dai dati grezzi
             envelope = create_scaled_envelope(dephase, duration, time_mode)
-            return EnvelopeGate(envelope)
+            return EnvelopeGate(envelope, rng=rng)
         elif mode == DephaseMode.SPECIFIC:
             # Chiave assente o null: il parametro non è dephased esplicitamente e
             # segue la semantica range-only (come dephase:false). Il range
@@ -94,9 +96,9 @@ class GateFactory:
                 elif GateFactory._is_envelope_like(raw_value):
                     # Valore envelope per questo parametro specifico
                     envelope = create_scaled_envelope(raw_value, duration, time_mode)
-                    return EnvelopeGate(envelope)
+                    return EnvelopeGate(envelope, rng=rng)
                 else:
-                    return GateFactory._parse_raw_value(raw_value, duration, time_mode)
+                    return GateFactory._parse_raw_value(raw_value, duration, time_mode, rng)
             else:
                 return GateFactory._range_only_gate(has_explicit_range)
         return NeverGate()
@@ -114,10 +116,10 @@ class GateFactory:
         return AlwaysGate() if has_explicit_range else NeverGate()
 
     @staticmethod
-    def _create_probability_gate(probability: float) -> ProbabilityGate:
+    def _create_probability_gate(probability: float, rng=None) -> ProbabilityGate:
         """
         Helper per creare gate da valore numerico.
-        
+
         Evita di ripetere la logica 0→Never, 100→Always, altro→Random.
         """
         if probability <= 0:
@@ -125,10 +127,10 @@ class GateFactory:
         elif probability >= 100:
             return AlwaysGate()
         else:
-            return RandomGate(probability)
+            return RandomGate(probability, rng=rng)
 
     @staticmethod
-    def _parse_raw_value(raw_value: Any, duration: float, time_mode: str) -> ProbabilityGate:
+    def _parse_raw_value(raw_value: Any, duration: float, time_mode: str, rng=None) -> ProbabilityGate:
         # Numero
         if isinstance(raw_value, (int, float)):
             prob = float(raw_value)
@@ -137,13 +139,13 @@ class GateFactory:
             elif prob >= 100:
                 return AlwaysGate()
             else:
-                return RandomGate(prob)
-        
+                return RandomGate(prob, rng=rng)
+
         # Envelope (con gestione errori)
         if isinstance(raw_value, (list, dict)):
             try:
                 envelope = create_scaled_envelope(raw_value, duration, time_mode)
-                return EnvelopeGate(envelope)
+                return EnvelopeGate(envelope, rng=rng)
             except Exception as e:
                 # Envelope malformato - fallback con logging
                 import logging

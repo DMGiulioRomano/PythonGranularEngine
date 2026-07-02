@@ -35,6 +35,8 @@ def mock_config():
     config.distribution_mode = 'uniform'
     config.dephase = False
     config.range_always_active = False
+    # issue #154: seed None → fallback legacy sul random globale
+    config.seed = None
 
     return config
 

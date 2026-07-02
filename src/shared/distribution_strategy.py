@@ -19,11 +19,24 @@ from shared.exceptions import (
 class DistributionStrategy(ABC):
     """
     Strategy astratta per distribuzioni statistiche.
-    
+
     Ogni strategia implementa un metodo sample() che genera
     un valore random secondo una specifica distribuzione.
+
+    RNG locale (issue #154): il costruttore accetta un `random.Random`
+    iniettato; i sample pescano da quello, così ogni Parameter ha il proprio
+    stream di draw isolato. Senza rng si usa il modulo `random` globale
+    (comportamento legacy).
     """
-    
+
+    def __init__(self, rng=None):
+        self._rng = rng if rng is not None else random
+
+    @property
+    def rng(self):
+        """RNG locale della strategia (random.Random o modulo random)."""
+        return self._rng
+
     @abstractmethod
     def sample(self, center: float, spread: float) -> float:        # pragma: no cover
         """
@@ -72,13 +85,13 @@ class UniformDistribution(DistributionStrategy):
     def sample(self, center: float, spread: float) -> float:
         """
         Genera valore uniformemente distribuito.
-        
-        Formula: center + random.uniform(-0.5, 0.5) * spread
+
+        Formula: center + rng.uniform(-0.5, 0.5) * spread
         """
         if spread <= 0:
             return center
-        
-        return center + random.uniform(-0.5, 0.5) * spread
+
+        return center + self._rng.uniform(-0.5, 0.5) * spread
     
     @property
     def name(self) -> str:
@@ -111,13 +124,13 @@ class GaussianDistribution(DistributionStrategy):
     def sample(self, center: float, spread: float) -> float:
         """
         Genera valore con distribuzione gaussiana.
-        
-        Formula: random.gauss(μ=center, σ=spread)
+
+        Formula: rng.gauss(μ=center, σ=spread)
         """
         if spread <= 0:
             return center
-        
-        return random.gauss(center, spread)
+
+        return self._rng.gauss(center, spread)
     
     @property
     def name(self) -> str:
@@ -147,16 +160,18 @@ class DistributionFactory:
     }
     
     @classmethod
-    def create(cls, mode: str) -> DistributionStrategy:
+    def create(cls, mode: str, rng=None) -> DistributionStrategy:
         """
         Crea una strategia di distribuzione.
-        
+
         Args:
             mode: Nome della distribuzione ('uniform', 'gaussian')
-        
+            rng: random.Random locale da iniettare (issue #154);
+                 None → modulo random globale (legacy)
+
         Returns:
             Istanza di DistributionStrategy
-        
+
         Raises:
             ValueError: Se mode non è riconosciuto
         """
@@ -166,15 +181,18 @@ class DistributionFactory:
                 name=mode,
                 available=list(cls._registry.keys()),
             )
-        
+
         strategy_class = cls._registry[mode]
-        return strategy_class()
+        return strategy_class(rng=rng)
     
     @classmethod
     def register(cls, name: str, strategy_class: type):
         """
         Registra una nuova distribuzione (estensibilità futura).
-        
+
+        Nota: la classe deve accettare il kwarg `rng` nel costruttore
+        (basta non ridefinire __init__ ed ereditare da DistributionStrategy).
+
         Esempio:
             DistributionFactory.register('triangular', TriangularDistribution)
         """

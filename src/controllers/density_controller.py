@@ -8,11 +8,11 @@ Implementa il modello Truax per la distribuzione temporale:
 """
 from __future__ import annotations
 
-import random
 from parameters.parameter_schema import DENSITY_PARAMETER_SCHEMA
 from strategies.strategy_registry import StrategyFactory, DENSITY_STRATEGIES
 from core.stream_config import StreamConfig
 from parameters.parameter_orchestrator import ParameterOrchestrator
+from shared.seeding import component_rng
 
 class DensityController:
     """
@@ -34,7 +34,14 @@ class DensityController:
         """
         Inizializza il controller di densità.
         """
-                
+        # RNG dedicato all'IOT async (issue #154): i draw della distribuzione
+        # Truax non dipendono dagli altri componenti né dagli altri stream.
+        self._rng = component_rng(
+            getattr(config, 'seed', None),
+            config.context.stream_id,
+            'iot',
+        )
+
         # Create orchestrator
         self._orchestrator = ParameterOrchestrator(config=config)
 
@@ -117,9 +124,9 @@ class DensityController:
             # Sync: IOT costante
             return avg_iot
         else:
-            # Async: random 0..2×avg
-            async_iot = random.uniform(0.0, 2.0 * avg_iot)
-            
+            # Async: random 0..2×avg (RNG locale del componente 'iot')
+            async_iot = self._rng.uniform(0.0, 2.0 * avg_iot)
+
             # Blend lineare tra sync e async
             return (1.0 - dist_val) * avg_iot + dist_val * async_iot
     

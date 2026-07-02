@@ -14,7 +14,6 @@ from __future__ import annotations
 import yaml
 import re
 import math
-import random
 from typing import List, Dict, Any
 
 from core.stream import Stream
@@ -22,6 +21,7 @@ from rendering.ftable_manager import FtableManager
 from rendering.score_writer import ScoreWriter
 from controllers.window_controller import WindowController
 from shared.exceptions import ConfigError, SampleNotFoundError
+from shared.seeding import session_seed
 
 class Generator:
     """
@@ -56,9 +56,11 @@ class Generator:
         self.yaml_path = yaml_path
         self.data: Dict[str, Any] = None
         self.streams: List[Stream] = []
-        # Seed di riproducibilità (issue #81): popolato da load_yaml dalla chiave
-        # top-level `seed`. None → comportamento attuale (non riproducibile).
+        # Seed di riproducibilità (issue #81/#154): popolato da load_yaml dalla
+        # chiave top-level `seed`. Se assente, create_elements genera un seed
+        # di sessione (loggato) e lo assegna qui: seed_is_session=True.
         self.seed = None
+        self.seed_is_session = False
 
         # Delegati specializzati
         self.ftable_manager = FtableManager(start_num=1)
@@ -85,8 +87,10 @@ class Generator:
             raw_data = yaml.safe_load(f)
 
         self.data = self._eval_math_expressions(raw_data)
-        # Seed top-level opzionale (issue #81): None se assente.
+        # Seed top-level opzionale (issue #81): None se assente (il session
+        # seed viene derivato in create_elements, non qui).
         self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
+        self.seed_is_session = False
         return self.data
     
     def create_elements(self) -> List[Stream]:
@@ -104,13 +108,20 @@ class Generator:
         if self.data is None:
             raise ValueError("Devi prima caricare il YAML con load_yaml()")
 
-        # Seed del random globale (issue #81, meccanismo 2): semina UNA volta
-        # qui, prima della generazione (lazy) dei grani. Copre tutti i siti
-        # `random.*` consumati durante generate_grains (density async, variazione
-        # _range, probability gate, window selection, ...). Assente → nessun
-        # seeding, comportamento attuale (non riproducibile fra processi).
-        if self.seed is not None:
-            random.seed(self.seed)
+        # Seed effettivo del run (issue #154): niente random globale. Ogni sito
+        # stocastico riceve un RNG derivato per (seed, stream_id, componente)
+        # via shared.seeding.component_rng — solo/mute, cache stems e ordine di
+        # materializzazione non alterano i grani degli altri stream. Senza
+        # `seed:` nello YAML si genera un seed di sessione, loggato: il run
+        # resta ricostruibile a posteriori copiandolo nello YAML.
+        if self.seed is None:
+            self.seed = session_seed()
+            self.seed_is_session = True
+            print(
+                f"[SEED] Nessun seed nello YAML: seed di sessione {self.seed}. "
+                f"Per riprodurre questo run aggiungi 'seed: {self.seed}' allo YAML.",
+                flush=True,
+            )
 
         # Estrai e filtra stream
         stream_data_list = self.data.get('streams', [])

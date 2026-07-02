@@ -17,6 +17,7 @@ from parameters.parameter import Parameter, ParamInput
 from envelopes.envelope import Envelope, create_scaled_envelope
 from parameters.parameter_definitions import get_parameter_definition
 from shared.exceptions import InvalidParameterError, ParameterBoundError
+from shared.seeding import component_rng
 
 class GranularParser:
     """
@@ -39,6 +40,9 @@ class GranularParser:
         self.sample_dur_sec = config.context.sample_dur_sec
         self.time_mode = config.time_mode
         self.distribution_mode = config.distribution_mode
+        # Seed effettivo del run (issue #154): deriva l'RNG per-parametro.
+        # getattr difensivo: i config parziali dei test possono non averlo.
+        self.seed = getattr(config, 'seed', None)
 
     def parse_parameter(
         self,
@@ -101,14 +105,18 @@ class GranularParser:
             value_type='probability'
         ) if clean_prob is not None else None
 
-        # 4. Assembla e restituisce l'oggetto Smart Parameter
+        # 4. Assembla e restituisce l'oggetto Smart Parameter.
+        # RNG per-componente (issue #154): ogni parametro pesca dal proprio
+        # stream derivato da (seed, stream_id, nome) — i draw di un parametro
+        # non shiftano quelli degli altri (solo/mute e cache invarianti).
         return Parameter(
             name=name,
             value=validated_value,
             bounds=bounds,
             mod_range=validated_range,
             owner_id=self.stream_id,
-            distribution_mode=self.distribution_mode
+            distribution_mode=self.distribution_mode,
+            rng=component_rng(self.seed, self.stream_id, name),
         )
 
     # =========================================================================

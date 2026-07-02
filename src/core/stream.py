@@ -83,12 +83,15 @@ class Stream:
 
         Args:
             params: dizionario parametri dallo YAML
-            seed: seed YAML top-level (issue #81), propagato alle voice strategy
-                  stocastiche per la riproducibilità fra processi. None (default)
-                  → comportamento legacy (hash() per-voce).
+            seed: seed effettivo del run (issue #81/#154): YAML top-level o
+                  session seed del Generator. Propagato alle voice strategy
+                  stocastiche e, via StreamConfig, agli RNG per-componente
+                  (parameter/gate/iot/window/detune). None (default) →
+                  comportamento legacy (hash() per-voce, random globale
+                  per i componenti).
         """
         # Seed di riproducibilità: iniettato nelle strategy stocastiche in
-        # _init_voice_manager. None → fallback hash() (retrocompat).
+        # _init_voice_manager e in StreamConfig per gli RNG per-componente.
         self.seed = seed
         # === 3. CONFIGURATION ===
         sample = params.get('sample')
@@ -106,7 +109,11 @@ class Stream:
             err.stream_id = stream_id
             raise
         self._check_required_context_fields(params, stream_id)
-        config = StreamConfig.from_yaml(params, StreamContext.from_yaml(params, sample_dur_sec=sample_dur))
+        config = StreamConfig.from_yaml(
+            params,
+            StreamContext.from_yaml(params, sample_dur_sec=sample_dur),
+            seed=seed,
+        )
         self._init_stream_context(params)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
