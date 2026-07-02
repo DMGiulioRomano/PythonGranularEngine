@@ -102,8 +102,11 @@ Proprietà:
   entry point CLI/Make) → path sequenziale **bit-identico allo storico**.
 - Sotto `PARALLEL_MIN_GRAINS` grani il render resta sequenziale anche con
   `jobs > 1`: niente pool per render piccoli e per i test.
-- A parità di `jobs` l'output è byte-identico tra run; tra valori diversi di
-  `jobs` cambia solo l'ordine delle somme float64 (< 1 LSB a 24 bit).
+- A parità di `jobs` i **campioni** sono bit-identici tra run; tra valori
+  diversi di `jobs` cambia solo l'ordine delle somme float64 (< 1 LSB a 24
+  bit). Il file AIFF float non è byte-identico tra run: libsndfile scrive un
+  timestamp wall-clock nel PEAK chunk dell'header (confronta i campioni, non
+  i byte).
 - Il pool è lazy, riusato per tutti gli stream della run (STEMS) e spento
   con `close()`; i worker ricostruiscono i registry da disco (`init_worker`).
 - Il check cache (`is_dirty` prima di toccare `.voices`) e la generazione

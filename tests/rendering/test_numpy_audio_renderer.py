@@ -980,7 +980,16 @@ class TestParallelRendering:
             r.close()
 
     def test_parallel_is_deterministic_across_runs(self, tmp_path):
-        """Due run con lo stesso jobs → file byte-identici."""
+        """Due run con lo stesso jobs → campioni bit-identici.
+
+        NB: si confrontano i CAMPIONI, non i byte del file. Il container AIFF
+        float scrive nel PEAK chunk un timestamp wall-clock (granularità 1s):
+        due file con audio identico differiscono nell'header se i render
+        cadono in secondi diversi. Il contratto di determinismo vale sui
+        campioni, non sul file grezzo.
+        """
+        import soundfile as sf
+
         r = self._make_renderer(tmp_path, jobs=2)
         try:
             grains = make_dense_grains()
@@ -990,7 +999,9 @@ class TestParallelRendering:
                 make_mock_stream(duration=0.6, grains=list(grains)), p1)
             r.render_single_stream(
                 make_mock_stream(duration=0.6, grains=list(grains)), p2)
-            assert open(p1, 'rb').read() == open(p2, 'rb').read()
+            d1, _ = sf.read(p1)
+            d2, _ = sf.read(p2)
+            assert np.array_equal(d1, d2)
         finally:
             r.close()
 
@@ -1063,4 +1074,35 @@ class TestParallelRendering:
             assert r._executor is first
         finally:
             r.close()
+
+    def test_clean_cache_never_creates_pool(self, tmp_path):
+        """Cache clean → skip prima dell'overlap-add: nessun pool creato.
+
+        Invariante della seconda run STEMS: se lo stream è invariato il
+        renderer ritorna prima del dispatch, quindi con jobs > 1 il
+        ProcessPoolExecutor non deve mai nascere (né re-render).
+        """
+        from unittest.mock import MagicMock
+
+        reg, table_map = make_disk_sample_env(tmp_path)
+        cache = MagicMock()
+        cache.is_dirty.return_value = False
+        r = NumpyAudioRenderer(
+            sample_registry=reg,
+            window_registry=NumpyWindowRegistry(),
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+            jobs=4,
+            min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'}},
+        )
+        out = str(tmp_path / 's1.aif')
+        result = r.render_single_stream(
+            make_mock_stream('s1', duration=0.6, grains=make_dense_grains()),
+            out)
+        assert result == out
+        assert r._executor is None
+        assert not os.path.exists(out)  # clean → nessun file riscritto
+        cache.update_after_build.assert_not_called()
 
