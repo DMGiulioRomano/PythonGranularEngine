@@ -88,12 +88,13 @@ def _load_manifest(tmp_path) -> dict:
     return json.loads(manifest_path.read_text())
 
 
-def _make_build_stems(tmp_path, cache=True):
+def _make_build_stems(tmp_path, cache=True, jobs=None):
     """
     Invoca `make all STEMS=true RENDERER=numpy` con directory temporanee.
 
     Args:
         cache: se True passa CACHE=true (abilita manifest incrementale)
+        jobs: se valorizzato passa JOBS=<jobs> (rendering multi-processo)
 
     Returns:
         tuple (CompletedProcess, str) — processo e output combinato
@@ -122,6 +123,8 @@ def _make_build_stems(tmp_path, cache=True):
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
     ]
+    if jobs is not None:
+        cmd.append(f'JOBS={jobs}')
 
     result = subprocess.run(
         cmd,
@@ -322,3 +325,56 @@ class TestNumpyStemsCache:
 
         assert "[CACHE] s1: DIRTY" in output2
         assert "[CACHE] s2: clean" in output2
+
+
+# =============================================================================
+# 4. STEMS + JOBS (rendering multi-processo)
+# =============================================================================
+
+# Density alta: abbastanza grani da superare la soglia PARALLEL_MIN_GRAINS
+# e coinvolgere davvero il pool di processi.
+_YAML_DENSE_STREAM = """\
+composition:
+  title: "e2e numpy parallel test"
+
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 2000
+    grain:
+      duration: 0.05
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyStemsParallel:
+    """STEMS=true RENDERER=numpy JOBS=2: pipeline multi-processo via make."""
+
+    def test_parallel_build_creates_files(self, tmp_path):
+        """La build con JOBS=2 completa e produce gli stem attesi."""
+        _write_yaml(tmp_path, _YAML_DENSE_STREAM)
+        result, output = _make_build_stems(tmp_path, cache=False, jobs=2)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert (tmp_path / "output" / "e2e_numpy_test__s1.aif").exists(), \
+            "stem s1 non trovato con JOBS=2"
+
+    def test_parallel_output_matches_sequential(self, tmp_path):
+        """JOBS=2 vs JOBS=1: stessa durata, diff massima < 1 LSB a 24 bit."""
+        import numpy as np
+        import soundfile as sf
+
+        _write_yaml(tmp_path, _YAML_DENSE_STREAM)
+        r1, out1 = _make_build_stems(tmp_path, cache=False, jobs=1)
+        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
+        stem = tmp_path / "output" / "e2e_numpy_test__s1.aif"
+        seq, _ = sf.read(str(stem))
+
+        r2, out2 = _make_build_stems(tmp_path, cache=False, jobs=2)
+        assert r2.returncode == 0, f"make JOBS=2 fallito:\n{out2}"
+        par, _ = sf.read(str(stem))
+
+        assert seq.shape == par.shape
+        assert np.max(np.abs(seq - par)) < 2.0 ** -24

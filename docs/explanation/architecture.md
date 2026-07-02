@@ -6,7 +6,7 @@ tags: [architecture, rendering, ocp]
 sources:
   - src/rendering/
   - src/main.py
-last_synced_commit: 4c4fee4
+last_synced_commit: 9de1079
 ---
 
 # Architettura Renderer
@@ -79,6 +79,35 @@ generated = engine.render(streams=generator.streams, output_path=output_file, mo
 ```
 
 Caching incrementale è componente separato, vedi [[caching]].
+
+### Rendering NumPy multi-processo (`--jobs`)
+
+L'overlap-add del renderer NumPy è parallelizzabile perché il rendering del
+singolo grano è puro (nessun `random`, nessuno stato condiviso:
+`GrainRenderer`). La **generazione** dei grani invece consuma il `random`
+globale seminato una volta in `Generator.create_elements()` e resta nel
+processo parent: l'ordine di consumo è la riproducibilità delle composizioni.
+
+Il parallelismo vive interamente dentro `NumpyAudioRenderer`
+(`RenderMode`/`RenderingEngine`/ABC invariati): le coppie
+`(grain, onset_sample)` vengono ordinate per onset, divise in chunk contigui
+(`src/rendering/numpy_parallel.py`) e affidate a un pool `spawn` di
+`jobs` worker; ogni worker rende il proprio chunk in un buffer locale
+all'extent del chunk e il parent somma i risultati in ordine di chunk fisso,
+poi applica `dc_block`, clamp e scrittura come nel path sequenziale.
+
+Proprietà:
+
+- `jobs=1` (default dell'API; il default `auto` = core-1 è policy del solo
+  entry point CLI/Make) → path sequenziale **bit-identico allo storico**.
+- Sotto `PARALLEL_MIN_GRAINS` grani il render resta sequenziale anche con
+  `jobs > 1`: niente pool per render piccoli e per i test.
+- A parità di `jobs` l'output è byte-identico tra run; tra valori diversi di
+  `jobs` cambia solo l'ordine delle somme float64 (< 1 LSB a 24 bit).
+- Il pool è lazy, riusato per tutti gli stream della run (STEMS) e spento
+  con `close()`; i worker ricostruiscono i registry da disco (`init_worker`).
+- Il check cache (`is_dirty` prima di toccare `.voices`) e la generazione
+  lazy dei grani (issue #117) sono invariati.
 
 ## Trade-off
 

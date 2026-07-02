@@ -6,7 +6,7 @@ tags: [cli, flags, make, rendering, export]
 sources:
   - src/main.py
   - make/build.mk
-last_synced_commit: 9eb9c14
+last_synced_commit: 9de1079
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -65,6 +65,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | Flag | Default | Variabile Make | Descrizione |
 |------|---------|----------------|-------------|
 | `--renderer csound\|numpy` | `csound` | `RENDERER` | motore di rendering; valore non valido solleva `InvalidRendererError` |
+| `--jobs N\|auto` | `auto` | `JOBS` | worker del rendering NumPy multi-processo. `auto` = core disponibili - 1 (min 1, via affinity dove disponibile); `1` = sequenziale byte-identico allo storico; `0`, negativi o non numerici: messaggio + exit 1. Ignorato con `--renderer csound` |
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
@@ -96,6 +97,14 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (il renderer numpy non produce `.sco`).
+- **`--jobs`** ha effetto solo con `--renderer numpy`. Sotto una soglia di
+  grani per render (`PARALLEL_MIN_GRAINS`, `src/rendering/numpy_parallel.py`)
+  il path resta sequenziale anche con `--jobs > 1` (l'overhead del pool
+  supererebbe il guadagno). Contratto di determinismo: a parità di valore di
+  `--jobs` l'output è byte-identico tra run; tra valori diversi cambia solo
+  l'ordine delle somme float64 dell'overlap-add (differenza < 1 LSB a 24
+  bit, non udibile); `--jobs 1` riproduce esattamente, bit a bit, l'output
+  del rendering sequenziale storico.
 - **`--show-static`** ha effetto solo insieme a `--visualize`.
 - **`--show-voice-offsets`** ha effetto solo insieme a `--visualize`. Gli
   offset per-voce vengono campionati dalle voice strategy
@@ -132,6 +141,12 @@ python src/main.py configs/brano.yml output/brano.aif \
 
 # Equivalente via Make
 make all FILE=brano STEMS=true CACHE=true GRAIN_JSON=true RENDERER=numpy
+
+# Rendering sequenziale garantito byte-identico (riproducibilita' esatta)
+python src/main.py configs/brano.yml --renderer numpy --jobs 1
+
+# Numero esplicito di worker via Make (vuoto = auto = core-1)
+make all FILE=brano RENDERER=numpy JOBS=4
 
 # Debug csound: conserva gli .sco intermedi
 python src/main.py configs/brano.yml --renderer csound --keep-sco --sco-dir generated
