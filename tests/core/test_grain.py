@@ -485,3 +485,48 @@ class TestGrainToScoreLineWithOnsetOffset:
         assert result.endswith('\n')
         parts = result.strip().split()
         assert len(parts) == 10
+
+
+# =============================================================================
+# TEST PICKLE (rendering parallelo: i Grain attraversano il confine di processo)
+# =============================================================================
+
+class TestGrainPickle:
+    """Grain deve essere picklable per il rendering multi-processo.
+
+    frozen=True + __slots__ manuale rompe il pickling di default: l'unpickle
+    ripristina lo slot state via setattr, che il __setattr__ frozen rifiuta
+    con FrozenInstanceError. Serve __reduce__ che ricostruisce via __init__.
+    """
+
+    def test_pickle_roundtrip_preserves_equality(self, sample_grain):
+        """dumps → loads restituisce un Grain uguale all'originale."""
+        import pickle
+        restored = pickle.loads(pickle.dumps(sample_grain))
+        assert restored == sample_grain
+
+    def test_pickle_roundtrip_preserves_all_fields(self, sample_grain):
+        """Ogni campo sopravvive al roundtrip con lo stesso valore e tipo."""
+        import pickle
+        restored = pickle.loads(pickle.dumps(sample_grain))
+        for field in sample_grain.__slots__:
+            assert getattr(restored, field) == getattr(sample_grain, field)
+        assert isinstance(restored.sample_table, int)
+        assert isinstance(restored.envelope_table, int)
+
+    def test_pickled_grain_is_still_frozen(self, sample_grain):
+        """Il Grain ricostruito resta immutabile."""
+        import pickle
+        restored = pickle.loads(pickle.dumps(sample_grain))
+        with pytest.raises(FrozenInstanceError):
+            restored.onset = 99.0
+
+    def test_pickle_list_of_grains(self, sample_grain_data):
+        """Una lista di Grain (payload dei worker) fa il roundtrip intera."""
+        import pickle
+        grains = [
+            Grain(**{**sample_grain_data, 'onset': i * 0.01})
+            for i in range(100)
+        ]
+        restored = pickle.loads(pickle.dumps(grains))
+        assert restored == grains
