@@ -213,6 +213,240 @@ class ChordPitchStrategy(VoicePitchStrategy):
         return unit.to_ratio(semitones)
 
 
+class ChordProgressionPitchStrategy(VoicePitchStrategy):
+    """
+    Progressione armonica: l'accordo è funzione del tempo (envelope di accordi).
+
+    Per ogni voce si costruisce un Envelope di offset in semitoni i cui
+    breakpoint sono i target del voicing a ciascun istante della progressione;
+    get_pitch_factor(i, nv, t) restituisce unit.to_ratio(voice_env[i].evaluate(t)).
+    Riusa integralmente l'interpolazione Envelope (linear/cubic/step).
+
+    Modello voicing-relativo: voce 0 → sempre 0.0 (riferimento; il moto di
+    radice vive nell'envelope `pitch` dello stream). La progressione codifica
+    solo la qualità/voicing relativo alla voce 0.
+
+    Transizione (`interp`):
+      - linear/cubic → glissando (interpolazione continua in semitoni);
+      - step → blocchi (cambio istantaneo all'onset di ogni accordo).
+
+    Voice leading (`voice_leading`):
+      - positional → voce i = i-esima nota dell'accordo (extend/inversion come
+        ChordPitchStrategy);
+      - nearest (default) → le voci 1..N-1 sono riabbinate per minimizzare il
+        movimento totale in semitoni tra voicing consecutivi, con octave-folding
+        e note comuni tenute; voce 0 resta pinned a 0. Non fa mai peggio di
+        positional.
+
+    La strategy è SEMITONE_LOCKED: gli offset (anche frazionari dopo interp)
+    sono in semitoni, valida solo con unità `semitones`.
+
+    Sintassi progression (lista [tempo, accordo]):
+      - [t, "maj7"]                       — accordo nominale
+      - [t, "min7", 1]                    — forma compatta [t, chord, inversion]
+      - [t, {"chord": "min7", "inversion": 1}]  — forma esplicita
+
+    Time mode: i tempi seguono il `time_mode` dello stream, come gli envelope.
+    `absolute` (default) → secondi; `normalized` → 0..1 mappati sulla duration
+    (richiede `duration`). Stream inietta time_mode/duration in automatico.
+
+    Gli envelope per-voce sono costruiti lazy alla prima chiamata (num_voices
+    noto a runtime) e messi in cache per num_voices.
+    """
+
+    _VALID_VOICE_LEADING = frozenset({'positional', 'nearest'})
+    # Soglia oltre la quale il riabbinamento brute-force (factorial) diventa
+    # costoso: si ripiega su positional (caso non realistico per voicing reali).
+    _NEAREST_BRUTE_MAX = 8
+
+    def __init__(self, progression, interp: str = 'linear',
+                 voice_leading: str = 'nearest',
+                 time_mode: str = 'absolute', duration: float = None):
+        from envelopes.envelope_builder import EnvelopeBuilder
+
+        if not isinstance(progression, (list, tuple)) or len(progression) == 0:
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="progression",
+                value=progression,
+                hint="progression deve essere una lista non vuota di [tempo, accordo].",
+            )
+        if interp not in EnvelopeBuilder.VALID_INTERP_TYPES:
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="interp",
+                value=interp,
+                hint=f"interp valido: {', '.join(EnvelopeBuilder.VALID_INTERP_TYPES)}.",
+            )
+        if voice_leading not in self._VALID_VOICE_LEADING:
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="voice_leading",
+                value=voice_leading,
+                hint=f"voice_leading valido: {', '.join(sorted(self._VALID_VOICE_LEADING))}.",
+            )
+
+        self._times: List[float] = []
+        self._chords: List[List[int]] = []  # intervalli (già invertiti) per accordo
+        prev_t = None
+        for entry in progression:
+            t, intervals = self._parse_entry(entry)
+            if prev_t is not None and t < prev_t:
+                raise InvalidStrategyConfigError(
+                    strategy_kind="voice_pitch",
+                    field="progression",
+                    value=t,
+                    hint="i tempi della progressione devono essere non decrescenti.",
+                )
+            prev_t = t
+            self._times.append(float(t))
+            self._chords.append(intervals)
+
+        # time_mode normalized: i tempi (0..1) sono mappati sulla duration dello
+        # stream, coerentemente con gli envelope (create_scaled_envelope). Lo
+        # scaling per duration > 0 preserva l'ordinamento già validato sopra.
+        if time_mode == 'normalized':
+            if duration is None:
+                raise InvalidStrategyConfigError(
+                    strategy_kind="voice_pitch",
+                    field="time_mode",
+                    value=time_mode,
+                    hint="time_mode 'normalized' richiede la duration dello stream.",
+                )
+            self._times = [t * float(duration) for t in self._times]
+
+        self.interp = interp
+        self.voice_leading = voice_leading
+        self._env_cache: Dict[int, list] = {}
+
+    @staticmethod
+    def _parse_entry(entry):
+        """Parsa un elemento della progressione → (tempo, intervalli_invertiti)."""
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="progression",
+                value=entry,
+                hint="ogni elemento deve essere [tempo, accordo] (o [tempo, accordo, inversion]).",
+            )
+        t = entry[0]
+        spec = entry[1]
+        inversion = 0
+        if isinstance(spec, dict):
+            chord = spec.get('chord')
+            inversion = spec.get('inversion', 0)
+        else:
+            chord = spec
+            if len(entry) >= 3:
+                inversion = entry[2]
+
+        if chord not in CHORD_INTERVALS:
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="chord",
+                value=chord,
+                hint=f"accordi disponibili: {sorted(CHORD_INTERVALS.keys())}",
+            )
+        base_intervals = CHORD_INTERVALS[chord]
+        n = len(base_intervals)
+        if not (0 <= inversion < n):
+            raise InvalidStrategyConfigError(
+                strategy_kind="voice_pitch",
+                field="inversion",
+                value=inversion,
+                hint=(
+                    f"accordo '{chord}' ha {n} note: inversion deve essere "
+                    f"in [0, {n - 1}]"
+                ),
+            )
+        return t, ChordPitchStrategy._invert(base_intervals, inversion)
+
+    @staticmethod
+    def _extend_targets(intervals: List[int], num_voices: int) -> List[float]:
+        """Estende il voicing all'ottava superiore (come ChordPitchStrategy)."""
+        n = len(intervals)
+        return [float(intervals[i % n] + (i // n) * 12) for i in range(num_voices)]
+
+    @classmethod
+    def _assign_min_motion(cls, prev_upper, target_slots):
+        """
+        Riabbina le voci superiori agli slot del nuovo voicing minimizzando il
+        movimento totale in semitoni, con octave-folding (ogni slot può essere
+        preso nell'ottava più vicina). Brute-force su permutazioni (N piccolo).
+
+        Args:
+            prev_upper: offset correnti delle voci 1..N-1 (lista di float).
+            target_slots: target positional delle voci 1..N-1 del nuovo accordo.
+
+        Returns:
+            Lista di offset assegnati, allineata per indice alle voci superiori.
+        """
+        import itertools
+
+        m = len(prev_upper)
+        if m == 0:
+            return []
+        if m > cls._NEAREST_BRUTE_MAX:
+            # Guardia anti-factorial: ripiega su positional.
+            return [float(t) for t in target_slots]
+
+        best_cost = None
+        best = None
+        for perm in itertools.permutations(range(m)):
+            assigned = [0.0] * m
+            cost = 0.0
+            for i in range(m):
+                target = target_slots[perm[i]]
+                octave = round((prev_upper[i] - target) / 12.0)
+                val = target + 12 * octave
+                cost += abs(prev_upper[i] - val)
+                assigned[i] = float(val)
+            if best_cost is None or cost < best_cost:
+                best_cost = cost
+                best = assigned
+        return best
+
+    def _build_offsets(self, num_voices: int) -> List[List[float]]:
+        """Calcola gli offset per accordo e per voce (offsets[k][i])."""
+        positional = [self._extend_targets(iv, num_voices) for iv in self._chords]
+        if self.voice_leading == 'positional':
+            return positional
+
+        # nearest: primo accordo positional; poi riabbinamento a minimo moto.
+        offsets = [list(positional[0])]
+        for k in range(1, len(positional)):
+            prev = offsets[k - 1]
+            target = positional[k]
+            assigned_upper = self._assign_min_motion(prev[1:], target[1:])
+            offsets.append([0.0] + assigned_upper)
+        return offsets
+
+    def _build_envelopes(self, num_voices: int) -> list:
+        from envelopes.envelope import Envelope
+
+        offsets = self._build_offsets(num_voices)
+        envs = []
+        for i in range(num_voices):
+            pts = [[self._times[k], offsets[k][i]] for k in range(len(self._times))]
+            if len(pts) == 1:
+                # Accordo singolo → costante: duplica il breakpoint per evitare
+                # envelope degenere a un punto solo.
+                pts = [[self._times[0], offsets[0][i]],
+                       [self._times[0] + 1.0, offsets[0][i]]]
+            envs.append(Envelope({'type': self.interp, 'points': pts}))
+        return envs
+
+    def get_pitch_factor(self, voice_index, num_voices, time, unit):
+        if voice_index == 0:
+            return 1.0
+        envs = self._env_cache.get(num_voices)
+        if envs is None:
+            envs = self._build_envelopes(num_voices)
+            self._env_cache[num_voices] = envs
+        offset = envs[voice_index].evaluate(time)
+        return unit.to_ratio(offset)
+
+
 class StochasticPitchStrategy(VoicePitchStrategy):
     """
     Offset fisso per voce entro un singolo run; la direzione è fissa, la magnitudine
@@ -281,17 +515,18 @@ class SpectralPitchStrategy(VoicePitchStrategy):
 # =============================================================================
 
 VOICE_PITCH_STRATEGIES: Dict[str, Type[VoicePitchStrategy]] = {
-    'step':        StepPitchStrategy,
-    'range':       RangePitchStrategy,
-    'chord':       ChordPitchStrategy,
-    'stochastic':  StochasticPitchStrategy,
-    'spectral':    SpectralPitchStrategy,
+    'step':              StepPitchStrategy,
+    'range':             RangePitchStrategy,
+    'chord':             ChordPitchStrategy,
+    'chord_progression': ChordProgressionPitchStrategy,
+    'stochastic':        StochasticPitchStrategy,
+    'spectral':          SpectralPitchStrategy,
 }
 
 # Strategie i cui offset sono intrinsecamente in semitoni (interi da
 # CHORD_INTERVALS / 12*log2): in v1 accettano solo l'unità `semitones`.
 # Singola fonte di verità per la validazione in Stream._init_voice_manager.
-SEMITONE_LOCKED = frozenset({'chord', 'spectral'})
+SEMITONE_LOCKED = frozenset({'chord', 'chord_progression', 'spectral'})
 
 
 def register_voice_pitch_strategy(name: str, cls: Type[VoicePitchStrategy]) -> None:

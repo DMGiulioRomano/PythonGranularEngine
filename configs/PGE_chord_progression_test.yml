@@ -1,0 +1,162 @@
+composition:
+  title: "chord_progression test (issue #86)"
+
+# =============================================================================
+# Suite di verifica empirica per la strategy pitch `chord_progression`.
+# Ogni stream isola UN comportamento. Con STEMS=true ottieni un file per stream
+# (output/PGE_chord_progression_test/<stream_id>.aif); nel mix li senti in fila.
+#
+# Sample tonale sinus.wav (il sample canonico dei test): la trasposizione
+# per voce e' udibile. num_voices 4, density alta = ogni voce riempie il tempo.
+# =============================================================================
+
+streams:
+
+  # A. GLISSANDO (interp: linear) — le voci scivolano con continuita' tra i
+  #    voicing. La qualita' cambia (maj7 -> min7 -> dom7 -> maj7) quindi il
+  #    voicing relativo si muove. Voce 0 resta ferma (riferimento).
+  - stream_id: "A_glissando_linear"
+    onset: 0.0
+    duration: 24.0
+    sample: "sinus.wav"
+    density: 25
+    grain:
+      duration: 0.1
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord_progression
+        interp: linear
+        voice_leading: positional
+        progression:
+          - [0,  "maj7"]
+          - [8,  "min7"]
+          - [16, "dom7"]
+          - [24, "maj7"]
+
+  # B. BLOCCHI (interp: step) — stessa progressione, ma cambio d'accordo
+  #    ISTANTANEO all'onset. Confronta con A: qui niente glissando, l'armonia
+  #    salta a blocchi.
+  - stream_id: "B_blocks_step"
+    onset: 26.0
+    duration: 24.0
+    sample: "sinus.wav"
+    density: 25
+    grain:
+      duration: 0.1
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord_progression
+        interp: step
+        voice_leading: positional
+        progression:
+          - [0,  "maj7"]
+          - [8,  "min7"]
+          - [16, "dom7"]
+          - [24, "maj7"]
+
+  # C. GLISSANDO CUBICO (interp: cubic) — stessa progressione, curva piu' morbida
+  #    (ease-in/out) rispetto al lineare. Differenza sottile ma percepibile
+  #    all'inizio/fine di ogni transizione.
+  - stream_id: "C_glissando_cubic"
+    onset: 52.0
+    duration: 24.0
+    sample: "sinus.wav"
+    density: 25
+    grain:
+      duration: 0.1
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord_progression
+        interp: cubic
+        voice_leading: positional
+        progression:
+          - [0,  "maj7"]
+          - [8,  "min7"]
+          - [16, "dom7"]
+          - [24, "maj7"]
+
+  # D. VOICE LEADING = POSITIONAL — progressione scelta perche' positional
+  #    produce salti ampi e VOICE CROSSING (una voce scende sotto lo 0, cioe'
+  #    sotto voce 0). Moto totale = 34 semitoni. Da confrontare con E.
+  - stream_id: "D_vl_positional"
+    onset: 78.0
+    duration: 24.0
+    sample: "sinus.wav"
+    density: 25
+    grain:
+      duration: 0.1
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord_progression
+        interp: linear
+        voice_leading: positional
+        progression:
+          - [0,  "maj7"]
+          - [6,  "min7", 2]
+          - [12, "dom9", 4]
+          - [18, "maj7"]
+
+  # E. VOICE LEADING = NEAREST — STESSA progressione di D, ma riabbinamento a
+  #    minimo movimento (octave-folding + note comuni tenute). Moto totale = 14
+  #    semitoni: glissandi molto piu' corti, nessun voice crossing. Il contrasto
+  #    D vs E e' il test chiave del voice leading.
+  - stream_id: "E_vl_nearest"
+    onset: 104.0
+    duration: 24.0
+    sample: "sinus.wav"
+    density: 25
+    grain:
+      duration: 0.1
+    volume: -12
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord_progression
+        interp: linear
+        voice_leading: nearest
+        progression:
+          - [0,  "maj7"]
+          - [6,  "min7", 2]
+          - [12, "dom9", 4]
+          - [18, "maj7"]
+
+  # F. PROGRESSIONE COMPLETA CON MOTO DI RADICE (time_mode: normalized) —
+  #    chord_progression dà solo il voicing (qualita'); il moto di radice
+  #    (I-IV-V) vive nell'envelope `pitch` dello stream. Con time_mode
+  #    normalized SIA l'envelope pitch SIA i tempi della progression (0..1)
+  #    sono mappati sulla duration (24s): radice e voicing restano in sync.
+  #    Dimostra il modello "voce 0 = riferimento" + il time_mode normalized.
+  - stream_id: "F_full_with_root_normalized"
+    onset: 130.0
+    duration: 24.0
+    sample: "sinus.wav"
+    density: 25
+    grain:
+      duration: 0.1
+    volume: -12
+    time_mode: normalized
+    pitch:
+      semitones:
+        - [0.0,  0]    # I  (radice 0)
+        - [0.33, 5]    # IV (radice +5)
+        - [0.66, 7]    # V  (radice +7)
+        - [1.0,  0]    # I
+    voices:
+      num_voices: 4
+      pitch:
+        strategy: chord_progression
+        interp: linear
+        voice_leading: nearest
+        progression:                 # tempi in 0..1 (normalized), sync con la radice
+          - [0.0,  "maj7"]
+          - [0.33, "maj7"]
+          - [0.66, "dom7"]
+          - [1.0,  "maj7"]

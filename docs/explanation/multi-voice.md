@@ -294,6 +294,38 @@ i=5 → 5%4=1, 5//4=1  →  intervals[1] + 1×12 = 16
 
 ---
 
+#### `ChordProgressionPitchStrategy`
+
+Rende l'accordo una **funzione del tempo** (envelope di accordi): le voci si muovono lungo una sequenza di voicing con glissando continuo o cambi a blocchi. Per ogni voce si costruisce un `Envelope` di offset in semitoni i cui breakpoint sono i target del voicing a ciascun istante della progressione; `get_pitch_factor(i, nv, t)` restituisce `unit.to_ratio(voice_env[i].evaluate(t))`, riusando integralmente l'interpolazione `Envelope` (linear/cubic/step). Gli envelope per-voce sono costruiti **lazy** alla prima chiamata (con `num_voices` noto a runtime) e messi in cache.
+
+**Modello voicing-relativo:** voce 0 → sempre `0.0` (riferimento; il moto di radice vive nell'envelope `pitch` dello stream). La progressione codifica solo la **qualità/voicing** relativo alla voce 0. Una progressione di sole triadi maggiori (I-IV-V) ha offset di voicing costanti `[0,4,7]`: tutto il moto sta nel base pitch (moto parallelo). Il voicing cambia quando cambia la qualità (maj→min7→dom7…).
+
+**Transizione (`interp`):**
+
+- `linear`/`cubic` → **glissando**: le voci scivolano con continuità tra i voicing (interpolazione lineare in semitoni → esponenziale in frequenza).
+- `step` → **blocchi**: cambio d'accordo istantaneo all'onset di ogni accordo. Prima del primo / dopo l'ultimo accordo: hold (comportamento `Envelope.evaluate`).
+
+**Voice leading (`voice_leading`):**
+
+- `positional` — voce i → i-esima nota dell'accordo (extend/inversion come `ChordPitchStrategy`).
+- `nearest` (default) — le voci 1..N-1 sono riabbinate per minimizzare il movimento totale in semitoni tra voicing consecutivi, con **octave-folding** (ogni slot può essere preso nell'ottava più vicina) e **note comuni tenute**. Voce 0 resta pinned a 0. `nearest` non fa mai peggio di `positional`; per voicing ascendenti spesso coincide con `positional` — il valore distintivo emerge con octave-folding e inversioni. Riabbinamento brute-force sulle permutazioni (N piccolo; oltre 8 voci ripiega su positional).
+
+```
+maj7 [0,4,7,11] → min7 [0,3,7,10], 4 voci, voice_leading: nearest
+  v0: 0  → 0    (riferimento)
+  v1: 4  → 3    (glissa di 1 semitono con interp linear)
+  v2: 7  → 7    (nota comune tenuta)
+  v3: 11 → 10   (glissa di 1 semitono)
+```
+
+**Time mode:** i tempi della `progression` seguono il `time_mode` dello stream, esattamente come gli envelope. Con `time_mode: normalized` i tempi si esprimono in `0..1` e Stream li scala sulla `duration` prima di costruire gli envelope per-voce; con `absolute` (default) sono secondi.
+
+`chord_progression` è **SEMITONE_LOCKED**: accetta solo l'unità `semitones`.
+
+**Effetto audio:** progressioni armoniche evolutive — glissandi corali tra accordi (interp continuo) o armonia a blocchi (step), con voice leading parsimonioso.
+
+---
+
 #### `StochasticPitchStrategy`
 
 ```
@@ -613,7 +645,7 @@ voices:
   num_voices: <int>           # numero totale di voci (inclusa voce 0)
 
   pitch:
-    strategy: <nome>          # step | range | chord | stochastic
+    strategy: <nome>          # step | range | chord | chord_progression | stochastic | spectral
     # parametri specifici della strategy
 
   onset_offset:
@@ -645,6 +677,24 @@ voices:
     chord: "dom7"
 ```
 Risultato pitch (unità di default `semitones`): voce 0→1.0, voce 1→2^(4/12)≈1.26, voce 2→2^(7/12)≈1.50, voce 3→2^(10/12)≈1.78 — fattori prodotti da `unit.to_ratio`. `chord` è semitone-locked.
+
+---
+
+**Progressione armonica con glissando (chord_progression):**
+```yaml
+voices:
+  num_voices: 4
+  pitch:
+    strategy: chord_progression
+    progression:                 # sequenza [tempo_secondi, accordo]
+      - [0,  "maj7"]
+      - [8,  "min7"]
+      - [16, "dom7"]
+      - [24, "maj7"]
+    interp: linear               # linear|cubic = glissando · step = blocchi (default: linear)
+    voice_leading: nearest       # nearest (default) | positional
+```
+Le voci scivolano (glissando) tra i voicing; voce 0 resta riferimento (offset 0). Inversione per-accordo: `[8, "min7", 1]` oppure `[8, {chord: "min7", inversion: 1}]`. Combinando con l'envelope `pitch` dello stream (moto di radice) si ottengono progressioni I–IV–V complete.
 
 ---
 
