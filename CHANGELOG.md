@@ -208,7 +208,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   globale, retrocompatibile). Rimossi i metodi morti
   `Parameter._strategy_additive/_strategy_quantized/_strategy_invert` e la
   docstring obsoleta "Functional Strategy (Dispatch Dictionary)" —
-  la variazione è delegata a `VariationStrategy` dal registry. Issue #154.
+  la variazione è delegata a `VariationStrategy` dal registry. Anche
+  `ChoiceVariation` (selezione da lista discreta) pesca ora dall'RNG
+  per-componente della distribuzione (`distribution.rng.choice`) invece che
+  dal `random` globale: nessun sito stocastico dei grani resta fuori dal
+  seeding per-componente. Issue #154.
 - Sample di riferimento dei config rinominato: `weNeedToTalkAboutIt.wav` →
   `voice.wav` (`refs/voice.wav`). Aggiornati tutti i `configs/*.yml` che lo
   citavano (`PGE_cim`, `PGE_density_experiment`, `PGE_pitch_units_showcase`,
