@@ -5,11 +5,12 @@ status: stable
 tags: [yaml, syntax, parameters, envelopes]
 sources:
   - src/engine/generator.py
+  - src/core/stream.py
   - src/parameters/
   - src/strategies/
   - src/envelopes/
   - src/shared/seeding.py
-last_synced_commit: 2caa8a7
+last_synced_commit: e3b4b35
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -85,22 +86,46 @@ streams:
     sample: "sample.wav"
 ```
 
-- **Assente** (default): comportamento storico. I meccanismi stocastici (IOT
-  async di `distribution`, variazione `_range`, gate di probabilità, selezione
-  finestra, offset stocastici delle voci) cambiano a ogni processo.
 - **Presente**: lo stesso YAML produce lo stesso render NumPy fra processi
-  diversi. Copre due meccanismi:
-  - **random globale dei grani** — `random.seed(seed)` chiamato una volta a
-    inizio `create_elements`, prima della generazione (lazy) dei grani.
-  - **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer,pan}` con
-    `strategy: stochastic`) — seed derivato
-    via `hashlib.sha256(f"{seed}:{stream_id}:{voice_index}")`, deterministico e
-    indipendente da `PYTHONHASHSEED`.
+  diversi.
+- **Assente** (default): il Generator genera un **seed di sessione** dal
+  timestamp e lo logga (`[SEED] ... seed di sessione N`). Il run resta non
+  riproducibile a priori (ogni run ha un seed diverso), ma è **ricostruibile a
+  posteriori**: aggiungendo `seed: N` allo YAML si riottiene lo stesso render.
+
+Tutti i siti stocastici usano **RNG locali derivati per componente**
+(`src/shared/seeding.py`, issue #154): nessun random globale condiviso.
+
+- **RNG per-componente** — ogni sito pesca dal proprio generatore derivato via
+  `hashlib.sha256(f"{seed}:{stream_id}:{componente}")`, deterministico e
+  indipendente da `PYTHONHASHSEED`. Componenti: il nome del parametro per la
+  variazione `_range` (es. `grain_duration`, `pitch_semitones`),
+  `gate:<chiave>` per i gate di probabilità (dephase), `iot` per la
+  distribuzione Truax async, `window` per la selezione finestra, `detune` per
+  il detune implicito EDO.
+- **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer,pan}` con
+  `strategy: stochastic`) — invariato (issue #81): seed derivato via
+  `hashlib.sha256(f"{seed}:{stream_id}:{voice_index}")`.
+
+Conseguenze della derivazione per-componente:
+
+- `solo`/`mute` **non alterano** i grani degli stream superstiti: il solo fa
+  ascoltare in isolamento esattamente quello che suona nel mix.
+- La cache stems (`STEMS=true CACHE=true`) è coerente col seed: i grani di uno
+  stream dirty non dipendono da quali altri stream sono clean in quel run.
+- I render con seed sopravvivono ai refactor che non toccano il componente
+  specifico (aggiungere un draw a un componente non shifta gli altri).
+- Ogni componente è testabile in isolamento con gli stessi valori del render.
 
 `seed: 0` è un valore valido e distinto da assente. Sono accettati interi (anche
 negativi) e stringhe.
 
-**Limite (Csound):** `seed` semina solo il `random` di Python (renderer NumPy).
+**Breaking (issue #154):** i render con `seed:` fissato prodotti col vecchio
+schema (`random.seed` globale, issue #81) NON sono riproducibili dopo il
+passaggio alla derivazione per-componente: i valori per-grano cambiano una
+volta. I render senza seed non cambiano di natura.
+
+**Limite (Csound):** `seed` governa solo il random di Python (renderer NumPy).
 Csound ha un RNG proprio: con `--renderer csound` i due renderer NON sono
 bit-identici nemmeno col seed. Le tendency mask restano stocastiche per natura —
 l'obiettivo è riprodurre *lo stesso run*, non l'identità bit-a-bit.
@@ -492,6 +517,49 @@ La voce 0 è sempre il riferimento: non riceve offset da nessuna strategia.
 
 ---
 
+### voices.num_voices — fade frazionario
+
+`num_voices` è uno scalare o un envelope (bounds `[1, 64]`). Quando il valore
+interpolato è **frazionario**, la parte decimale diventa uno scaler di volume
+sulla voce di confine (quella che si accende o si spegne), invece di un on/off
+netto:
+
+- `floor(value)` voci suonano a volume pieno;
+- la voce di confine (indice `floor(value)`) riceve grani con gain pari alla
+  parte frazionaria `frac = value − floor(value)`, applicato in dB come
+  `volume += 20·log10(frac)` (clampato al floor del bound volume, −120 dB);
+- `frac = 0` → nessuna voce di confine (comportamento storico).
+
+`max_voices` è precomputato come `ceil(picco)` dei breakpoint, così la voce di
+confine in cima ha sempre uno slot anche con picchi frazionari.
+
+Con interpolazione `step` e breakpoint interi il valore è sempre intero
+(`frac = 0`): le voci si accendono/spengono di colpo, come prima. Con
+interpolazione `linear`/`cubic` la transizione tra due conteggi interi diventa
+una dissolvenza graduale.
+
+```yaml
+# La 6ª voce sfuma a zero in 1 s (interpolazione lineare implicita)
+voices:
+  num_voices: [[0, 6], [1, 5]]
+
+# Switch netto (nessun fade): interpolazione step
+voices:
+  num_voices:
+    type: step
+    points: [[0, 6], [1, 5]]
+
+# Conteggio frazionario costante: 2 voci piene + 1 a metà volume
+voices:
+  num_voices: 2.5
+```
+
+Il fade è deterministico (guidato dall'envelope, nessun RNG). Nella partitura
+grafica la voce in dissolvenza appare più trasparente, perché l'opacità del
+grano segue il suo volume.
+
+---
+
 ### voices.pitch — Strategie Pitch
 
 ```yaml
@@ -861,6 +929,16 @@ Internamente l'envelope è composto da:
 Per cubic, il sistema pre-calcola le tangenti con l'algoritmo Fritsch-Carlson,
 che garantisce monotonia e previene overshoot tra breakpoint adiacenti.
 
+**Caso a 2 soli punti:** con due breakpoint l'unica informazione disponibile è
+la pendenza del segmento; assegnarla a entrambe le tangenti degenererebbe in una
+retta (indistinguibile da `linear`). Per questo le tangenti agli estremi vengono
+forzate a zero e l'Hermite diventa lo smoothstep simmetrico
+`v(s) = v0 + (v1 - v0)(3s² - 2s³)`: una S con ease-in-out visibile, monotòna e
+senza overshoot. Quindi `type: cubic` su due punti produce sempre una curva, non
+una retta — per la retta usare `type: linear`. Con tre o più punti il
+comportamento Fritsch-Carlson agli estremi (tangente = pendenza del segmento
+adiacente) resta invariato.
+
 ---
 
 ### 2. Forme di sintassi accettate
@@ -1051,6 +1129,45 @@ density: [[[0, 0], [100, 50]], 0.5, 4]
 # end_time effettivo: 0.5 * 30 = 15s
 # 4 ripetizioni distribuite tra 0 e 15s
 ```
+
+#### 3.4 Strategy envelope dei `voices.*`
+
+Gli envelope dei parametri delle strategy voce
+(`voices.{pitch,onset_offset,pointer,pan}.{step,spread,...}`) **ereditano** il
+`time_mode` dello stream esattamente come gli envelope diretti (`density`,
+`pan_range`, …). Una lista compatta di breakpoint su uno stream `normalized`
+viene quindi scalata sulla `duration`:
+
+```yaml
+streams:
+  - stream_id: s1
+    duration: 40.0
+    time_mode: normalized
+    voices:
+      num_voices: 5
+      pan:
+        strategy: step
+        step: [[.6, 0], [.7, 60.0]]   # 0.6 → 24s, 0.7 → 28s (scalati su duration)
+```
+
+Come per gli envelope diretti, la forma dict con `time_mode` (o l'alias
+`time_unit`) locale **sovrascrive** quello dello stream:
+
+```yaml
+    time_mode: normalized
+    voices:
+      pan:
+        strategy: step
+        step:                          # locale absolute → tempi in secondi
+          points: [[.6, 0], [.7, 60.0]]
+          time_mode: absolute
+```
+
+> Nota storica: fino all'issue #144 le strategy envelope in forma compatta
+> restavano sempre in secondi assoluti anche su stream `normalized` (incoerenza
+> silenziosa con gli envelope diretti). Dopo il fix il `time_mode` di stream è
+> onorato — breaking change semantico per chi usava la forma compatta dentro
+> `voices.*` su stream `normalized`.
 
 ---
 
@@ -1669,7 +1786,7 @@ un envelope dal YAML al runtime è:
 | `loop_start` | 0 | sample_dur | — | secondi |
 | `loop_end` | 0 | sample_dur | — | secondi |
 | `loop_dur` | 0.005 | sample_dur | — | secondi |
-| `num_voices` | 1 | 64 | 1 | intero |
+| `num_voices` | 1 | 256 | 1 | intero |
 | `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
 
 Per la sintassi completa multi-voice, vedere [[multi-voice]].

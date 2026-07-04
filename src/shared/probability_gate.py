@@ -60,13 +60,18 @@ class AlwaysGate(ProbabilityGate):
 
 
 class RandomGate(ProbabilityGate):
-    """Gate con probabilità costante."""
-    
-    def __init__(self, probability: float):
+    """Gate con probabilità costante.
+
+    RNG locale (issue #154): `rng` iniettato isola i draw del gate dagli
+    altri componenti; None → modulo random globale (legacy).
+    """
+
+    def __init__(self, probability: float, rng=None):
         self._probability = min(100.0, max(0.0, probability))
-    
+        self._rng = rng if rng is not None else random
+
     def should_apply(self, time: float) -> bool:
-        return random.uniform(0, 100) < self._probability
+        return self._rng.uniform(0, 100) < self._probability
     
     def get_probability_value(self, time: float) -> float:
         return self._probability
@@ -82,14 +87,19 @@ class RandomGate(ProbabilityGate):
 
 
 class EnvelopeGate(ProbabilityGate):
-    """Gate con probabilità variabile nel tempo (envelope)."""
-    
-    def __init__(self, envelope: Envelope):
+    """Gate con probabilità variabile nel tempo (envelope).
+
+    RNG locale (issue #154): `rng` iniettato isola i draw del gate dagli
+    altri componenti; None → modulo random globale (legacy).
+    """
+
+    def __init__(self, envelope: Envelope, rng=None):
         self._envelope = envelope
-    
+        self._rng = rng if rng is not None else random
+
     def should_apply(self, time: float) -> bool:
         prob = self._envelope.evaluate(time)
-        return random.uniform(0, 100) < prob
+        return self._rng.uniform(0, 100) < prob
     
     def get_probability_value(self, time: float) -> float:
         return self._envelope.evaluate(time)

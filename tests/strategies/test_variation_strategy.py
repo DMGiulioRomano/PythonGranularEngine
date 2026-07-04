@@ -16,7 +16,8 @@ Strategia di mocking:
       delle variation strategy dal campionamento stocastico.
     - WindowRegistry viene mockato tramite sys.modules injection
       per ChoiceVariation quando value=True.
-    - random.choice viene patchato per test deterministici di ChoiceVariation.
+    - l'rng della distribuzione iniettata controlla ChoiceVariation
+      (issue #154): la selezione da lista pesca da distribution.rng.choice.
 """
 
 import sys
@@ -469,9 +470,9 @@ class TestChoiceVariationTrueExpansion:
         fake_module = self._make_mock_registry(window_names)
 
         with patch.dict('sys.modules', {'window_registry': fake_module}):
-            with patch('random.choice', return_value='hamming'):
-                result = choice.apply(True, 1.0, mock_distribution)
-                assert result in window_names
+            mock_distribution.rng.choice.return_value = 'hamming'
+            result = choice.apply(True, 1.0, mock_distribution)
+            assert result == 'hamming'
 
     def test_true_with_mod_range_zero(self, choice, mock_distribution):
         """value=True + mod_range=0 -> ritorna primo elemento (default)."""
@@ -485,16 +486,16 @@ class TestChoiceVariationTrueExpansion:
                 fake_module.WindowRegistry.WINDOWS.keys()
             )[0]
 
-    def test_true_with_positive_mod_range_calls_random_choice(self, choice, mock_distribution):
-        """value=True + mod_range > 0 -> chiama random.choice."""
+    def test_true_with_positive_mod_range_calls_rng_choice(self, choice, mock_distribution):
+        """value=True + mod_range > 0 -> chiama l'rng della distribuzione."""
         window_names = ['hanning', 'hamming']
         fake_module = self._make_mock_registry(window_names)
 
         with patch.dict('sys.modules', {'window_registry': fake_module}):
-            with patch('random.choice', return_value='hamming') as mock_rc:
-                result = choice.apply(True, 1.0, mock_distribution)
-                mock_rc.assert_called_once()
-                assert result == 'hamming'
+            mock_distribution.rng.choice.return_value = 'hamming'
+            result = choice.apply(True, 1.0, mock_distribution)
+            mock_distribution.rng.choice.assert_called_once()
+            assert result == 'hamming'
 
 
 # =============================================================================
@@ -504,7 +505,7 @@ class TestChoiceVariationTrueExpansion:
 class TestChoiceVariationListInput:
     """
     Test con value=lista.
-    Comportamento: se mod_range > 0 -> random.choice(lista),
+    Comportamento: se mod_range > 0 -> distribution.rng.choice(lista),
                    se mod_range == 0 -> ritorna lista[0].
     """
 
@@ -513,13 +514,13 @@ class TestChoiceVariationListInput:
         result = choice.apply(['hanning', 'hamming', 'bartlett'], 0, mock_distribution)
         assert result == 'hanning'
 
-    def test_list_mod_range_positive_random_choice(self, choice, mock_distribution):
-        """mod_range > 0 con lista -> selezione random."""
+    def test_list_mod_range_positive_rng_choice(self, choice, mock_distribution):
+        """mod_range > 0 con lista -> selezione dall'rng della distribuzione."""
         options = ['a', 'b', 'c']
-        with patch('random.choice', return_value='b') as mock_rc:
-            result = choice.apply(options, 1.0, mock_distribution)
-            mock_rc.assert_called_once_with(options)
-            assert result == 'b'
+        mock_distribution.rng.choice.return_value = 'b'
+        result = choice.apply(options, 1.0, mock_distribution)
+        mock_distribution.rng.choice.assert_called_once_with(options)
+        assert result == 'b'
 
     def test_single_element_list_mod_range_zero(self, choice, mock_distribution):
         """Lista con un solo elemento + mod_range=0 -> ritorna quell'elemento."""
@@ -527,27 +528,29 @@ class TestChoiceVariationListInput:
         assert result == 'only_one'
 
     def test_single_element_list_mod_range_positive(self, choice, mock_distribution):
-        """Lista singola + mod_range > 0 -> random.choice comunque."""
-        with patch('random.choice', return_value='only_one'):
-            result = choice.apply(['only_one'], 1.0, mock_distribution)
-            assert result == 'only_one'
+        """Lista singola + mod_range > 0 -> passa comunque dall'rng."""
+        mock_distribution.rng.choice.return_value = 'only_one'
+        result = choice.apply(['only_one'], 1.0, mock_distribution)
+        assert result == 'only_one'
 
     def test_empty_list_mod_range_zero_returns_default(self, choice, mock_distribution):
         """Lista vuota + mod_range=0 -> ritorna 'hanning' (default)."""
         result = choice.apply([], 0, mock_distribution)
         assert result == 'hanning'
 
-    def test_empty_list_mod_range_positive_raises_or_handles(self, choice, mock_distribution):
-        """Lista vuota + mod_range > 0 -> random.choice([]) solleva IndexError."""
+    def test_empty_list_mod_range_positive_raises_or_handles(self, choice):
+        """Lista vuota + mod_range > 0 -> rng.choice([]) solleva IndexError."""
+        from shared.distribution_strategy import UniformDistribution
+        dist = UniformDistribution(rng=random.Random(0))
         with pytest.raises(IndexError):
-            choice.apply([], 1.0, mock_distribution)
+            choice.apply([], 1.0, dist)
 
     def test_list_of_numbers(self, choice, mock_distribution):
         """Lista di numeri funziona."""
         options = [1, 2, 3, 4, 5]
-        with patch('random.choice', return_value=3):
-            result = choice.apply(options, 1.0, mock_distribution)
-            assert result == 3
+        mock_distribution.rng.choice.return_value = 3
+        result = choice.apply(options, 1.0, mock_distribution)
+        assert result == 3
 
     def test_list_mod_range_zero_always_deterministic(self, choice, mock_distribution):
         """mod_range=0 -> sempre primo elemento, nessuna stocasticita'."""
@@ -631,28 +634,68 @@ class TestChoiceVariationStatistical:
     Verifica distribuzione uniforme della selezione.
     """
 
-    def test_list_selection_covers_all_options(self, choice, mock_distribution):
+    def test_list_selection_covers_all_options(self, choice):
         """Con mod_range > 0, tutti gli elementi della lista vengono scelti."""
+        from shared.distribution_strategy import UniformDistribution
+        dist = UniformDistribution(rng=random.Random(42))
         options = ['a', 'b', 'c', 'd']
         results = set()
         for _ in range(500):
-            r = choice.apply(options, 1.0, mock_distribution)
+            r = choice.apply(options, 1.0, dist)
             results.add(r)
         assert results == set(options)
 
-    def test_list_selection_roughly_uniform(self, choice, mock_distribution):
+    def test_list_selection_roughly_uniform(self, choice):
         """La distribuzione e' approssimativamente uniforme."""
+        from shared.distribution_strategy import UniformDistribution
+        dist = UniformDistribution(rng=random.Random(7))
         options = ['a', 'b', 'c']
         counts = {o: 0 for o in options}
         n = 3000
         for _ in range(n):
-            r = choice.apply(options, 1.0, mock_distribution)
+            r = choice.apply(options, 1.0, dist)
             counts[r] += 1
 
         expected = n / len(options)
         for option, count in counts.items():
             assert abs(count - expected) < expected * 0.15, \
                 f"Opzione '{option}': {count} vs atteso ~{expected}"
+
+
+# =============================================================================
+# 10b. TEST ChoiceVariation - Iniezione RNG per-componente (issue #154)
+# =============================================================================
+
+class TestChoiceVariationRngInjection:
+    """
+    issue #154: la scelta pesca dall'rng della distribuzione iniettata
+    (contratto per-componente), non dal random globale. Così anche la
+    selezione da lista rientra nel seeding per (seed, stream_id, componente).
+    """
+
+    def _uniform(self, rng):
+        from shared.distribution_strategy import UniformDistribution
+        return UniformDistribution(rng=rng)
+
+    def test_deterministic_with_injected_rng(self):
+        """Stesso seed sull'rng della distribuzione -> stessa sequenza di scelte."""
+        options = ['a', 'b', 'c', 'd']
+        cv = ChoiceVariation()
+        d1 = self._uniform(random.Random(123))
+        d2 = self._uniform(random.Random(123))
+        seq1 = [cv.apply(options, 1.0, d1) for _ in range(40)]
+        seq2 = [cv.apply(options, 1.0, d2) for _ in range(40)]
+        assert seq1 == seq2
+        assert set(seq1) == set(options)  # davvero stocastico
+
+    def test_does_not_use_global_random(self):
+        """La scelta non tocca il random.choice globale del modulo."""
+        options = ['a', 'b', 'c']
+        cv = ChoiceVariation()
+        d = self._uniform(random.Random(1))
+        with patch('random.choice') as gchoice:
+            cv.apply(options, 1.0, d)
+            gchoice.assert_not_called()
 
 
 # =============================================================================

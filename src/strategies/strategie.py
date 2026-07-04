@@ -51,12 +51,16 @@ class UnitPitchStrategy(PitchStrategy):
     continuo in ±implicit_detune_cents, poi richiuso nei bounds ratio dell'unità.
     Il detune opera sul ratio positivo: l'eventuale negazione reverse resta a
     valle in PitchController.
+
+    RNG locale (issue #154): il detune pesca da `rng` iniettato (componente
+    'detune'), isolato dagli altri siti; None → modulo random globale (legacy).
     """
 
-    def __init__(self, param: Parameter, unit: PitchUnit, name: str):
+    def __init__(self, param: Parameter, unit: PitchUnit, name: str, rng=None):
         self._param = param
         self._unit = unit
         self._name = name
+        self._rng = rng if rng is not None else random
         # bounds in ratio-space: il detune bypassa il clamp value-space di
         # Parameter, va richiuso qui
         bounds = unit.value_bounds()
@@ -69,7 +73,7 @@ class UnitPitchStrategy(PitchStrategy):
         if (cents > 0.0
                 and not self._param.has_explicit_range
                 and self._param.variation_allowed(elapsed_time)):
-            ratio *= 2.0 ** (random.uniform(-cents, cents) / 1200.0)
+            ratio *= 2.0 ** (self._rng.uniform(-cents, cents) / 1200.0)
             ratio = max(self._ratio_min, min(self._ratio_max, ratio))
         return ratio
 

@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from shared.distribution_strategy import DistributionStrategy
 from shared.exceptions import InvalidParameterError
 from typing import Any
-import random
 
 class VariationStrategy(ABC):
     """Strategia di applicazione randomness a un valore base."""
@@ -78,5 +77,7 @@ class ChoiceVariation(VariationStrategy):
         if mod_range == 0:
             return value[0] if value else 'hanning'
         
-        # Altrimenti, scelta random
-        return random.choice(value)
+        # Altrimenti, scelta random dall'RNG per-componente della distribuzione
+        # (issue #154): la selezione rientra nel seeding per (seed, stream_id,
+        # componente) invece di pescare dal random globale condiviso.
+        return distribution.rng.choice(value)

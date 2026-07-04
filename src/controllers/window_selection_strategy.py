@@ -110,17 +110,21 @@ class RandomWindowStrategy(WindowSelectionStrategy):
 
     Corrisponde a: envelope: ['hanning', 'expodec', 'gaussian']
     Con gate chiuso → sempre prima finestra.
-    Con gate aperto → random.choice tra tutte le finestre.
+    Con gate aperto → choice sull'RNG locale tra tutte le finestre.
+
+    RNG locale (issue #154): `rng` iniettato isola la selezione finestra
+    dagli altri componenti; None → modulo random globale (legacy).
     """
 
-    def __init__(self, windows: List[str], gate: ProbabilityGate):
+    def __init__(self, windows: List[str], gate: ProbabilityGate, rng=None):
         self._windows = windows
         self._gate = gate
+        self._rng = rng if rng is not None else random
 
     def select(self, elapsed_time: float) -> str:
         if not self._gate.should_apply(elapsed_time):
             return self._windows[0]
-        return random.choice(self._windows)
+        return self._rng.choice(self._windows)
 
 
 class TransitionWindowStrategy(WindowSelectionStrategy):
@@ -151,6 +155,7 @@ class TransitionWindowStrategy(WindowSelectionStrategy):
         time_mode:   se 'normalized', elapsed_time viene diviso per duration
                      prima di essere passato alla curve; altrimenti usa i secondi
                      assoluti direttamente.
+        rng:         random.Random locale (issue #154); None → random globale.
     """
 
     def __init__(
@@ -161,6 +166,7 @@ class TransitionWindowStrategy(WindowSelectionStrategy):
         duration: float = 1.0,
         time_mode: Optional[str] = None,
         stream_id: str = 'unknown',
+        rng=None,
     ):
         _validate_curve_range(curve, duration, time_mode, stream_id)
         self._from = from_window
@@ -168,12 +174,13 @@ class TransitionWindowStrategy(WindowSelectionStrategy):
         self._curve = curve
         self._duration = duration
         self._time_mode = time_mode
+        self._rng = rng if rng is not None else random
 
     def select(self, elapsed_time: float) -> str:
         t = (elapsed_time / self._duration) if self._time_mode == 'normalized' else elapsed_time
         blend = float(self._curve.evaluate(t))
         blend = max(0.0, min(1.0, blend))  # clamp per sicurezza
-        return self._to if random.random() < blend else self._from
+        return self._to if self._rng.random() < blend else self._from
 
 
 class MultiStateWindowStrategy(WindowSelectionStrategy):
@@ -206,6 +213,7 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
         curve:     Envelope che mappa tempo → valore blend
         duration:  durata totale dello stream (per normalizzazione time_mode)
         time_mode: se 'normalized', elapsed_time viene diviso per duration
+        rng:       random.Random locale (issue #154); None → random globale.
     """
 
     def __init__(
@@ -215,6 +223,7 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
         duration: float = 1.0,
         time_mode: Optional[str] = None,
         stream_id: str = 'unknown',
+        rng=None,
     ):
         if len(states) < 2:
             raise InvalidStrategyConfigError(
@@ -236,6 +245,7 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
         self._curve = curve
         self._duration = duration
         self._time_mode = time_mode
+        self._rng = rng if rng is not None else random
 
     def select(self, elapsed_time: float) -> str:
         t = (elapsed_time / self._duration) if self._time_mode == 'normalized' else elapsed_time
@@ -255,7 +265,7 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
             v_hi, w_hi = self._states[i + 1]
             if v_lo <= v < v_hi:
                 blend = (v - v_lo) / (v_hi - v_lo)
-                return w_hi if random.random() < blend else w_lo
+                return w_hi if self._rng.random() < blend else w_lo
 
         # Fallback (non raggiungibile se states è ordinato e v è clamped)
         return self._states[-1][1]
@@ -322,6 +332,7 @@ class WindowStrategyFactory:
         config,
         windows: List[str],
         gate,
+        rng=None,
     ) -> WindowSelectionStrategy:
         """
         Crea la strategy corretta a partire dalla spec YAML envelope.
@@ -331,6 +342,8 @@ class WindowStrategyFactory:
             config:        StreamConfig con duration, time_mode, stream_id
             windows:       lista di finestre già parsata da parse_window_list()
             gate:          ProbabilityGate creato da WindowController
+            rng:           random.Random locale iniettato nelle strategy
+                           stocastiche (issue #154); None → random globale
 
         Returns:
             Istanza di WindowSelectionStrategy appropriata
@@ -352,6 +365,7 @@ class WindowStrategyFactory:
                 duration=duration,
                 time_mode=time_mode,
                 stream_id=stream_id,
+                rng=rng,
             )
 
         # --- Transition ---
@@ -365,11 +379,12 @@ class WindowStrategyFactory:
                 duration=duration,
                 time_mode=time_mode,
                 stream_id=stream_id,
+                rng=rng,
             )
 
         # --- Random (lista con più finestre) ---
         if len(windows) > 1:
-            return WindowStrategyFactory.create('random', windows=windows, gate=gate)
+            return WindowStrategyFactory.create('random', windows=windows, gate=gate, rng=rng)
 
         # --- Single ---
         return WindowStrategyFactory.create('single', window=windows[0], gate=gate)

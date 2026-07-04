@@ -7,6 +7,7 @@ Coverage:
 2. TestConcreteRendererContract      - sottoclassi concrete devono implementare tutti i metodi
 3. TestRenderSingleStreamContract    - contratto render_single_stream()
 4. TestRenderMergedStreamsContract   - contratto render_merged_streams()
+5. TestRenderStreamsDefault          - default concreto render_streams()
 """
 
 import pytest
@@ -165,3 +166,61 @@ class TestRenderMergedStreamsContract:
     def test_accepts_streams_and_path(self, renderer, mock_streams):
         """render_merged_streams accetta due argomenti posizionali senza errori."""
         renderer.render_merged_streams(mock_streams, 'out.aif')
+
+
+# =============================================================================
+# 5. TEST RENDER_STREAMS (default concreto sull'ABC)
+# =============================================================================
+
+class RecordingRenderer(AudioRenderer):
+    """Renderer che registra le chiamate a render_single_stream."""
+
+    def __init__(self):
+        self.calls = []
+
+    def render_single_stream(self, stream, output_path: str) -> str:
+        self.calls.append((stream, output_path))
+        return output_path
+
+    def render_merged_streams(self, streams, output_path: str) -> str:
+        return output_path
+
+
+class TestRenderStreamsDefault:
+    """
+    render_streams(pairs) e' un metodo CONCRETO dell'ABC: default = loop su
+    render_single_stream, nell'ordine delle coppie. Le sottoclassi (es.
+    NumpyAudioRenderer) possono fare override per parallelizzare gli stream;
+    CsoundRenderer eredita il default senza modifiche (OCP).
+    """
+
+    @pytest.fixture
+    def pairs(self):
+        streams = []
+        for i in range(3):
+            s = MagicMock()
+            s.stream_id = f'stream_{i}'
+            streams.append(s)
+        return [(s, f'/out/base__{s.stream_id}.aif') for s in streams]
+
+    def test_render_streams_is_not_abstract(self):
+        """render_streams NON e' astratto: le sottoclassi esistenti restano valide."""
+        assert 'render_streams' not in AudioRenderer.__abstractmethods__
+
+    def test_default_calls_render_single_stream_per_pair_in_order(self, pairs):
+        """Il default chiama render_single_stream per ogni coppia, nell'ordine."""
+        renderer = RecordingRenderer()
+        renderer.render_streams(pairs)
+        assert renderer.calls == pairs
+
+    def test_default_returns_paths_in_order(self, pairs):
+        """Il default ritorna i path prodotti da render_single_stream, in ordine."""
+        renderer = RecordingRenderer()
+        result = renderer.render_streams(pairs)
+        assert result == [path for _, path in pairs]
+
+    def test_default_with_empty_pairs_returns_empty_list(self):
+        """Nessuno stream → lista vuota, nessuna chiamata."""
+        renderer = RecordingRenderer()
+        assert renderer.render_streams([]) == []
+        assert renderer.calls == []

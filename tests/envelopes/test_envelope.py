@@ -484,10 +484,70 @@ class TestFritschCarlsonTangents:
     def test_tangents_single_point(self):
         """Tangenti con singolo punto."""
         env = Envelope({'type': 'cubic', 'points': [[0, 5]]})
-        
+
         tangents = env.segments[0].context['tangents']
         assert len(tangents) == 1
         assert tangents[0] == pytest.approx(0.0)
+
+
+class TestCubicTwoPointSmoothstep:
+    """
+    Cubic a 2 punti: smoothstep visibile (tangenti 0,0) invece della retta.
+
+    Con 2 soli punti l'unica informazione è la slope del segmento; assegnarla
+    a entrambe le tangenti degenera in retta. Forzando le tangenti agli estremi
+    a zero l'Hermite diventa lo smoothstep simmetrico v0+(v1-v0)(3s^2-2s^3):
+    ease-in-out monotòno e senza overshoot.
+    """
+
+    def test_two_point_cubic_tangents_are_zero(self):
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        tangents = env.segments[0].context['tangents']
+        assert tangents == pytest.approx([0.0, 0.0])
+
+    def test_two_point_cubic_quarter_point_is_smoothstep_not_linear(self):
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        # smoothstep a s=0.25: 3*0.0625 - 2*0.015625 = 0.15625 -> 1.5625
+        assert env.evaluate(0.25) == pytest.approx(1.5625)
+        # ease-in: sotto la retta (che darebbe 2.5)
+        assert env.evaluate(0.25) < 2.5
+
+    def test_two_point_cubic_three_quarter_point_eases_out(self):
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        # smoothstep a s=0.75: 3*0.5625 - 2*0.421875 = 0.84375 -> 8.4375
+        assert env.evaluate(0.75) == pytest.approx(8.4375)
+        # ease-out: sopra la retta (che darebbe 7.5)
+        assert env.evaluate(0.75) > 7.5
+
+    def test_two_point_cubic_midpoint_unchanged(self):
+        # A s=0.5 smoothstep e retta coincidono: il punto medio resta 5.0
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        assert env.evaluate(0.5) == pytest.approx(5.0)
+
+    def test_two_point_cubic_symmetry(self):
+        # Simmetria centrale: f(0.25)+f(0.75) = v0+v1
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        assert env.evaluate(0.25) + env.evaluate(0.75) == pytest.approx(10.0)
+
+    def test_two_point_cubic_stays_within_bounds(self):
+        # Nessun overshoot: valori sempre in [v0, v1]
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        for i in range(11):
+            t = i / 10.0
+            assert 0.0 <= env.evaluate(t) <= 10.0
+
+    def test_two_point_cubic_endpoints_exact(self):
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 10]]})
+        assert env.evaluate(0.0) == pytest.approx(0.0)
+        assert env.evaluate(1.0) == pytest.approx(10.0)
+
+    def test_multipoint_cubic_extrema_tangents_unchanged(self):
+        # Regression: con 3+ punti le tangenti agli estremi restano la slope
+        # Fritsch-Carlson (delta), NON zero.
+        env = Envelope({'type': 'cubic', 'points': [[0, 0], [1, 5], [2, 10]]})
+        tangents = env.segments[0].context['tangents']
+        assert tangents[0] == pytest.approx(5.0)
+        assert tangents[-1] == pytest.approx(5.0)
 
 
 # =============================================================================

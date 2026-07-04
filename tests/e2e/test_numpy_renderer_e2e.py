@@ -88,12 +88,23 @@ def _load_manifest(tmp_path) -> dict:
     return json.loads(manifest_path.read_text())
 
 
-def _make_build_stems(tmp_path, cache=True):
+def _count_cache_status(output: str, status: str) -> int:
+    """Conta le righe di stato cache `[CACHE] <id>: <status>` nell'output.
+
+    Ancorato al prefisso `[CACHE] <id>: ` per non contare la sottostringa
+    altrove (es. il tmp_path di pytest può contenere 'clean' e comparire in
+    ogni path stampato)."""
+    import re
+    return len(re.findall(rf"\[CACHE\] \S+: {re.escape(status)}\b", output))
+
+
+def _make_build_stems(tmp_path, cache=True, jobs=None):
     """
     Invoca `make all STEMS=true RENDERER=numpy` con directory temporanee.
 
     Args:
         cache: se True passa CACHE=true (abilita manifest incrementale)
+        jobs: se valorizzato passa JOBS=<jobs> (rendering multi-processo)
 
     Returns:
         tuple (CompletedProcess, str) — processo e output combinato
@@ -122,6 +133,8 @@ def _make_build_stems(tmp_path, cache=True):
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
     ]
+    if jobs is not None:
+        cmd.append(f'JOBS={jobs}')
 
     result = subprocess.run(
         cmd,
@@ -132,9 +145,13 @@ def _make_build_stems(tmp_path, cache=True):
     return result, result.stdout + result.stderr
 
 
-def _make_build_mix(tmp_path):
+def _make_build_mix(tmp_path, jobs=None):
     """
     Invoca `make all STEMS=false RENDERER=numpy` con directory temporanee.
+
+    Args:
+        jobs: se valorizzato passa JOBS=<jobs>; None lascia JOBS vuoto
+              (build.mk non passa --jobs → default 'auto' di main.py)
 
     Returns:
         tuple (CompletedProcess, str) — processo e output combinato
@@ -160,6 +177,8 @@ def _make_build_mix(tmp_path):
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
     ]
+    if jobs is not None:
+        cmd.append(f'JOBS={jobs}')
 
     result = subprocess.run(
         cmd,
@@ -322,3 +341,208 @@ class TestNumpyStemsCache:
 
         assert "[CACHE] s1: DIRTY" in output2
         assert "[CACHE] s2: clean" in output2
+
+
+# =============================================================================
+# 4. STEMS + JOBS (rendering multi-processo)
+# =============================================================================
+
+# Density alta: abbastanza grani da superare la soglia PARALLEL_MIN_GRAINS
+# e coinvolgere davvero il pool di processi.
+_YAML_DENSE_STREAM = """\
+composition:
+  title: "e2e numpy parallel test"
+
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 2000
+    grain:
+      duration: 0.05
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyStemsParallel:
+    """STEMS=true RENDERER=numpy JOBS=2: pipeline multi-processo via make."""
+
+    def test_parallel_build_creates_files(self, tmp_path):
+        """La build con JOBS=2 completa e produce gli stem attesi."""
+        _write_yaml(tmp_path, _YAML_DENSE_STREAM)
+        result, output = _make_build_stems(tmp_path, cache=False, jobs=2)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert (tmp_path / "output" / "e2e_numpy_test__s1.aif").exists(), \
+            "stem s1 non trovato con JOBS=2"
+
+    def test_parallel_output_matches_sequential(self, tmp_path):
+        """JOBS=2 vs JOBS=1: stessa durata, diff massima < 1 LSB a 24 bit."""
+        import numpy as np
+        import soundfile as sf
+
+        _write_yaml(tmp_path, _YAML_DENSE_STREAM)
+        r1, out1 = _make_build_stems(tmp_path, cache=False, jobs=1)
+        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
+        stem = tmp_path / "output" / "e2e_numpy_test__s1.aif"
+        seq, _ = sf.read(str(stem))
+
+        r2, out2 = _make_build_stems(tmp_path, cache=False, jobs=2)
+        assert r2.returncode == 0, f"make JOBS=2 fallito:\n{out2}"
+        par, _ = sf.read(str(stem))
+
+        assert seq.shape == par.shape
+        assert np.max(np.abs(seq - par)) < 2.0 ** -24
+
+
+# =============================================================================
+# 5. MIX PARALLELO (JOBS default 'auto')
+# =============================================================================
+
+_YAML_DENSE_TWO_STREAMS = """\
+composition:
+  title: "e2e numpy parallel mix test"
+
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+  - stream_id: "s2"
+    onset: 0.5
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyMixParallelAuto:
+    """STEMS=false RENDERER=numpy, JOBS vuoto (default CLI 'auto'):
+    render_merged_streams multi-processo via make."""
+
+    def test_mix_auto_build_creates_file(self, tmp_path):
+        """La build MIX senza JOBS (auto) completa e produce il mix."""
+        _write_yaml(tmp_path, _YAML_DENSE_TWO_STREAMS)
+        result, output = _make_build_mix(tmp_path)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert (tmp_path / "output" / "e2e_numpy_test.aif").exists(), \
+            "file mix non trovato con JOBS=auto"
+
+    def test_mix_auto_matches_sequential(self, tmp_path):
+        """JOBS auto vs JOBS=1 su MIX multi-stream: stessa durata,
+        diff massima < 1 LSB a 24 bit."""
+        import numpy as np
+        import soundfile as sf
+
+        _write_yaml(tmp_path, _YAML_DENSE_TWO_STREAMS)
+        r1, out1 = _make_build_mix(tmp_path, jobs=1)
+        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
+        mix = tmp_path / "output" / "e2e_numpy_test.aif"
+        seq, _ = sf.read(str(mix))
+
+        r2, out2 = _make_build_mix(tmp_path)
+        assert r2.returncode == 0, f"make JOBS=auto fallito:\n{out2}"
+        par, _ = sf.read(str(mix))
+
+        assert seq.shape == par.shape
+        assert np.max(np.abs(seq - par)) < 2.0 ** -24
+
+
+# =============================================================================
+# 6. STEMS PARALLELO A LIVELLO DI STREAM (piu' stream dirty, un task per stream)
+# =============================================================================
+
+# Tre stream densi: >= 2 stream dirty attivano il path stream-level
+# (render_streams override), non solo il chunk path intra-stream.
+_YAML_DENSE_THREE_STREAMS = """\
+composition:
+  title: "e2e numpy stream-parallel test"
+
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+  - stream_id: "s2"
+    onset: 1.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+  - stream_id: "s3"
+    onset: 2.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyStemsStreamParallel:
+    """STEMS=true RENDERER=numpy JOBS=2 con piu' stream densi: il dispatch
+    stream-level produce stem byte-identici a JOBS=1 (contratto rafforzato)."""
+
+    def test_stream_parallel_creates_all_stems(self, tmp_path):
+        """La build con JOBS=2 su 3 stream densi produce tutti gli stem."""
+        _write_yaml(tmp_path, _YAML_DENSE_THREE_STREAMS)
+        result, output = _make_build_stems(tmp_path, cache=False, jobs=2)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        for sid in ('s1', 's2', 's3'):
+            assert (tmp_path / "output" / f"e2e_numpy_test__{sid}.aif").exists(), \
+                f"stem {sid} non trovato con JOBS=2"
+
+    def test_stream_parallel_stems_byte_identical_to_sequential(self, tmp_path):
+        """JOBS=2 vs JOBS=1: ogni stem BYTE-IDENTICO (==), non solo < 1 LSB.
+
+        Nel path stream-level l'ordine delle somme float64 dentro il worker e'
+        quello storico, quindi l'uguaglianza e' esatta sui campioni."""
+        import numpy as np
+        import soundfile as sf
+
+        _write_yaml(tmp_path, _YAML_DENSE_THREE_STREAMS)
+        r1, out1 = _make_build_stems(tmp_path, cache=False, jobs=1)
+        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
+        seq = {sid: sf.read(str(tmp_path / "output" / f"e2e_numpy_test__{sid}.aif"))[0]
+               for sid in ('s1', 's2', 's3')}
+
+        r2, out2 = _make_build_stems(tmp_path, cache=False, jobs=2)
+        assert r2.returncode == 0, f"make JOBS=2 fallito:\n{out2}"
+        for sid in ('s1', 's2', 's3'):
+            par, _ = sf.read(str(tmp_path / "output" / f"e2e_numpy_test__{sid}.aif"))
+            assert seq[sid].shape == par.shape
+            assert np.array_equal(seq[sid], par), \
+                f"stem {sid}: JOBS=2 non byte-identico a JOBS=1"
+
+    def test_second_run_all_clean_with_cache_and_jobs(self, tmp_path):
+        """STEMS+CACHE+JOBS: seconda run tutta clean (nessun re-render).
+
+        La cache clean fa ritornare gli stream prima del dispatch: con jobs>1
+        il path stream-level non deve rigenerare nulla alla seconda run."""
+        _write_yaml(tmp_path, _YAML_DENSE_THREE_STREAMS)
+
+        r1, out1 = _make_build_stems(tmp_path, cache=True, jobs=2)
+        assert r1.returncode == 0, f"prima build fallita:\n{out1}"
+        assert _count_cache_status(out1, "DIRTY") == 3, \
+            f"prima run: attesi 3 DIRTY\n{out1}"
+
+        r2, out2 = _make_build_stems(tmp_path, cache=True, jobs=2)
+        assert r2.returncode == 0, f"seconda build fallita:\n{out2}"
+        assert _count_cache_status(out2, "DIRTY") == 0, \
+            f"seconda run: nessuno stream doveva essere DIRTY\n{out2}"
+        assert _count_cache_status(out2, "clean") == 3, \
+            f"seconda run: attesi 3 clean\n{out2}"

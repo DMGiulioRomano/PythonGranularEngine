@@ -406,13 +406,14 @@ class TestFritschCarlsonTangents:
         tangents = env._compute_fritsch_carlson_tangents([])
         assert tangents == []
 
-    def test_two_points_linear(self):
-        """Due punti: tangente iniziale = tangente finale = pendenza."""
+    def test_two_points_smoothstep(self):
+        """Due punti: tangenti zero -> smoothstep visibile, non retta."""
         env = self._make_cubic_env([[0, 0], [10, 100]])
         tangents = env._compute_fritsch_carlson_tangents([[0, 0], [10, 100]])
-        # Pendenza = 100/10 = 10
-        assert tangents[0] == pytest.approx(10.0)
-        assert tangents[1] == pytest.approx(10.0)
+        # Con 2 soli punti le tangenti agli estremi sono forzate a zero:
+        # l'Hermite diventa lo smoothstep simmetrico (ease-in-out).
+        assert tangents[0] == pytest.approx(0.0)
+        assert tangents[1] == pytest.approx(0.0)
 
     def test_three_points_monotone_increasing(self):
         """Tre punti monotoni crescenti: tangenti interne non-zero."""
@@ -485,13 +486,18 @@ class TestFritschCarlsonTangents:
         assert tangents[3] == pytest.approx(-10.0)
 
     def test_negative_slopes(self):
-        """Pendenze negative: tangenti negative."""
-        points = [[0, 100], [10, 0]]
-        env = self._make_cubic_env([[0, 100], [10, 0]])
+        """Pendenze negative (3+ punti): tangenti negative.
+
+        Con 3 punti gli estremi conservano la slope Fritsch-Carlson; il caso
+        2-punti è coperto a parte da test_two_points_smoothstep.
+        """
+        points = [[0, 100], [5, 50], [10, 0]]
+        env = self._make_cubic_env(points)
         tangents = env._compute_fritsch_carlson_tangents(points)
 
         assert tangents[0] == pytest.approx(-10.0)
         assert tangents[1] == pytest.approx(-10.0)
+        assert tangents[2] == pytest.approx(-10.0)
 
     def test_many_points_all_tangents_computed(self):
         """Con molti punti, ogni punto ottiene una tangente."""

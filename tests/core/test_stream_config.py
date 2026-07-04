@@ -270,20 +270,33 @@ class TestStreamConfigDefaults:
         assert config.time_scale == 1.0
         assert config.clip_strategy == 'overflow_margin'
         assert config.clip_margin == 0.0
+        assert config.seed is None
         assert config.context is None
 
     def test_field_count(self):
-        """StreamConfig ha esattamente 8 campi."""
-        assert len(fields(StreamConfig)) == 8
+        """StreamConfig ha esattamente 9 campi (issue #154: +seed)."""
+        assert len(fields(StreamConfig)) == 9
 
     def test_field_names(self):
         """Nomi campi nell'ordine atteso."""
         names = [f.name for f in fields(StreamConfig)]
         expected = [
             'dephase', 'range_always_active', 'distribution_mode',
-            'time_mode', 'time_scale', 'clip_strategy', 'clip_margin', 'context'
+            'time_mode', 'time_scale', 'clip_strategy', 'clip_margin',
+            'seed', 'context'
         ]
         assert names == expected
+
+    def test_seed_injected_via_from_yaml_kwarg(self, stream_context):
+        """Il seed arriva dal kwarg esplicito (top-level YAML), non dal dict
+        per-stream: una chiave 'seed' nel dict dello stream viene ignorata."""
+        config = StreamConfig.from_yaml({'seed': 99}, context=stream_context, seed=42)
+        assert config.seed == 42
+
+    def test_seed_default_none_from_yaml(self, stream_context):
+        """from_yaml senza kwarg seed → None (fallback legacy)."""
+        config = StreamConfig.from_yaml({}, context=stream_context)
+        assert config.seed is None
 
     def test_clip_strategy_from_yaml_passthrough(self, stream_context):
         """from_yaml legge clip_strategy=passthrough."""

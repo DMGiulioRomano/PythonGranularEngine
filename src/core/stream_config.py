@@ -52,10 +52,15 @@ class StreamConfig:
     time_scale: float = 1.0
     clip_strategy: str = 'overflow_margin'
     clip_margin: float = 0.0
+    # Seed effettivo del run (issue #154): YAML top-level o session seed,
+    # iniettato da Stream (non letto dal dict per-stream). None → fallback
+    # legacy sul random globale nei componenti stocastici.
+    seed: Optional[Union[int, str]] = None
     context: Optional[StreamContext] = None
 
     @classmethod
-    def from_yaml(cls, yaml_data: dict, context: StreamContext, allow_none: bool = True) -> 'StreamConfig':
+    def from_yaml(cls, yaml_data: dict, context: StreamContext, allow_none: bool = True,
+                  seed: Optional[Union[int, str]] = None) -> 'StreamConfig':
         """
         Regole di processo per la sintesi granulare.
         
@@ -73,9 +78,12 @@ class StreamConfig:
         else:
             # Includi solo campi con valori non-None
             kwargs = {
-                name: yaml_data[name] 
-                for name in field_names 
+                name: yaml_data[name]
+                for name in field_names
                 if name in yaml_data and yaml_data[name] is not None
             }
         kwargs['context'] = context
+        # Il seed è top-level nello YAML (non per-stream): arriva dal chiamante
+        # e sovrascrive qualsiasi chiave omonima nel dict dello stream.
+        kwargs['seed'] = seed
         return cls(**kwargs)

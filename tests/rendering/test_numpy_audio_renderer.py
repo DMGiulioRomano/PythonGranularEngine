@@ -61,6 +61,20 @@ def make_sample_registry():
     return reg
 
 
+def make_dc_sample_registry():
+    """SampleRegistry con un sample a DC offset forte (+0.5) + tono 300 Hz."""
+    reg = SampleRegistry.__new__(SampleRegistry)
+    reg.base_path = './refs/'
+    reg._cache = {}
+
+    sr = OUTPUT_SR
+    n = sr * 2
+    t = np.arange(n) / sr
+    audio = (0.5 + 0.3 * np.sin(2 * np.pi * 300 * t)).astype(np.float32)
+    reg._cache['piano.wav'] = (audio, sr)
+    return reg
+
+
 def make_table_map():
     """Mapping table_num -> (type, name) come FtableManager.tables."""
     return {
@@ -738,6 +752,68 @@ class TestPassthroughBufferSizing:
         assert abs(actual_duration - 0.4) < 1e-3
 
 
+class TestDcBlockerAlwaysOn:
+    """
+    Il DC blocker FIR e' sempre attivo a valle dell'overlap-add: l'offset DC
+    accumulato sommando grani a media non nulla viene rimosso. Si applica sia
+    a render_single_stream (STEMS) sia a render_merged_streams (MIX).
+    """
+
+    def _dc_renderer(self, window_registry, table_map):
+        return NumpyAudioRenderer(
+            sample_registry=make_dc_sample_registry(),
+            window_registry=window_registry,
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+        )
+
+    def _dense_grains(self):
+        # Grani corti densi (hop 10ms, durata 20ms) che coprono ~0-0.5s:
+        # l'overlap-add di slice a media positiva crea un DC sostenuto.
+        return [
+            make_grain(onset=i * 0.01, duration=0.02, pointer_pos=0.5)
+            for i in range(50)
+        ]
+
+    def test_single_stream_dc_removed(self, window_registry, table_map, tmp_path):
+        import soundfile as sf
+        r = self._dc_renderer(window_registry, table_map)
+        stream = make_mock_stream(duration=0.6, grains=self._dense_grains())
+        output_path = str(tmp_path / 'dc_single.aif')
+        r.render_single_stream(stream, output_path)
+
+        data, sr = sf.read(output_path)
+        interior = data[int(0.15 * sr):int(0.4 * sr)]
+        peak = np.max(np.abs(interior))
+        assert peak > 0.05, "il segnale deve avere contenuto (tono 300 Hz)"
+        # media interna ~0 -> DC rimosso (senza filtro sarebbe ~ +0.5*gain)
+        assert abs(interior.mean()) < peak * 0.1
+
+    def test_merged_streams_dc_removed(self, window_registry, table_map, tmp_path):
+        import soundfile as sf
+        r = self._dc_renderer(window_registry, table_map)
+        stream = make_mock_stream(onset=0.0, duration=0.6, grains=self._dense_grains())
+        output_path = str(tmp_path / 'dc_merged.aif')
+        r.render_merged_streams([stream], output_path)
+
+        data, sr = sf.read(output_path)
+        interior = data[int(0.15 * sr):int(0.4 * sr)]
+        peak = np.max(np.abs(interior))
+        assert peak > 0.05
+        assert abs(interior.mean()) < peak * 0.1
+
+    def test_dc_block_invoked_on_buffer(self, renderer, tmp_path):
+        """Wiring: il renderer chiama dc_block sul buffer prima di scrivere."""
+        stream = make_mock_stream(duration=0.3)
+        output_path = str(tmp_path / 'wired.aif')
+        with patch('rendering.numpy_audio_renderer.dc_block',
+                   side_effect=lambda buf, sr: buf) as mock_dc:
+            renderer.render_single_stream(stream, output_path)
+            assert mock_dc.called
+            buf_arg = mock_dc.call_args.args[0]
+            assert buf_arg.shape[1] == 2
+
+
 class TestAddGrainAtPositionSignature:
     """U2: _add_grain_at_position non accetta piu' n_total."""
 
@@ -806,4 +882,451 @@ class TestOnsetRounding:
         assert onset_sample == expected, (
             f"onset_sample atteso {expected} (round), ottenuto {onset_sample}"
         )
+
+
+# =============================================================================
+# 9. TEST RENDERING PARALLELO (multi-processo, jobs > 1)
+# =============================================================================
+
+def make_disk_sample_env(tmp_path):
+    """SampleRegistry su file REALE: i worker del pool caricano da disco."""
+    import soundfile as sf
+    sr = OUTPUT_SR
+    n = sr * 2
+    t = np.linspace(0, 2.0, n, endpoint=False)
+    audio = (0.4 * np.sin(2 * np.pi * 330 * t)).astype(np.float32)
+    sf.write(str(tmp_path / 'tone.wav'), audio, sr)
+
+    reg = SampleRegistry(base_path=str(tmp_path) + '/')
+    reg.load('tone.wav')
+    table_map = {1: ('sample', 'tone.wav'), 2: ('window', 'hanning')}
+    return reg, table_map
+
+
+def make_dense_grains(n=48, hop=0.01, dur=0.03):
+    """Grani fitti e sovrapposti: abbastanza lavoro da superare la soglia."""
+    return [make_grain(onset=i * hop, duration=dur, pointer_pos=0.2 + i * 0.001)
+            for i in range(n)]
+
+
+class TestParallelRendering:
+    """Rendering multi-processo: equivalenza, determinismo, fallback."""
+
+    # Tolleranza: 1 LSB a 24 bit. Il parallelo riordina solo somme float64;
+    # qualunque differenza deve sparire sotto il quanto di un file a 24 bit.
+    TOL = 2.0 ** -24
+
+    def _make_renderer(self, tmp_path, jobs, min_parallel_grains=8):
+        reg, table_map = make_disk_sample_env(tmp_path)
+        return NumpyAudioRenderer(
+            sample_registry=reg,
+            window_registry=NumpyWindowRegistry(),
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+            jobs=jobs,
+            min_parallel_grains=min_parallel_grains,
+        )
+
+    def test_jobs_default_is_one(self, sample_registry, window_registry, table_map):
+        """API libreria conservativa: senza jobs espliciti, sequenziale."""
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+        )
+        assert r.jobs == 1
+
+    def test_jobs_accepts_auto(self, sample_registry, window_registry, table_map):
+        """jobs='auto' viene risolto a un intero >= 1 al costruttore."""
+        r = NumpyAudioRenderer(
+            sample_registry=sample_registry,
+            window_registry=window_registry,
+            table_map=table_map,
+            jobs='auto',
+        )
+        assert isinstance(r.jobs, int)
+        assert r.jobs >= 1
+
+    def test_parallel_single_stream_matches_sequential(self, tmp_path):
+        """jobs=2 vs jobs=1 su render_single_stream: diff < 1 LSB 24-bit."""
+        import soundfile as sf
+        grains = make_dense_grains()
+        r_seq = self._make_renderer(tmp_path, jobs=1)
+        r_par = self._make_renderer(tmp_path, jobs=2)
+        try:
+            p_seq = str(tmp_path / 'seq.aif')
+            p_par = str(tmp_path / 'par.aif')
+            r_seq.render_single_stream(
+                make_mock_stream(duration=0.6, grains=list(grains)), p_seq)
+            r_par.render_single_stream(
+                make_mock_stream(duration=0.6, grains=list(grains)), p_par)
+
+            d_seq, _ = sf.read(p_seq)
+            d_par, _ = sf.read(p_par)
+            assert d_seq.shape == d_par.shape
+            assert np.max(np.abs(d_seq - d_par)) < self.TOL
+            assert np.max(np.abs(d_par)) > 1e-4  # non-silente: test significativo
+        finally:
+            r_par.close()
+
+    def test_parallel_render_uses_pool(self, tmp_path):
+        """Sopra soglia con jobs>1 il pool viene creato davvero."""
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            stream = make_mock_stream(duration=0.6, grains=make_dense_grains())
+            r.render_single_stream(stream, str(tmp_path / 'out.aif'))
+            assert r._executor is not None
+        finally:
+            r.close()
+
+    def test_parallel_is_deterministic_across_runs(self, tmp_path):
+        """Due run con lo stesso jobs → campioni bit-identici.
+
+        NB: si confrontano i CAMPIONI, non i byte del file. Il container AIFF
+        float scrive nel PEAK chunk un timestamp wall-clock (granularità 1s):
+        due file con audio identico differiscono nell'header se i render
+        cadono in secondi diversi. Il contratto di determinismo vale sui
+        campioni, non sul file grezzo.
+        """
+        import soundfile as sf
+
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            grains = make_dense_grains()
+            p1 = str(tmp_path / 'run1.aif')
+            p2 = str(tmp_path / 'run2.aif')
+            r.render_single_stream(
+                make_mock_stream(duration=0.6, grains=list(grains)), p1)
+            r.render_single_stream(
+                make_mock_stream(duration=0.6, grains=list(grains)), p2)
+            d1, _ = sf.read(p1)
+            d2, _ = sf.read(p2)
+            assert np.array_equal(d1, d2)
+        finally:
+            r.close()
+
+    def test_parallel_merged_streams_matches_sequential(self, tmp_path):
+        """jobs=2 vs jobs=1 su render_merged_streams (onset assoluti)."""
+        import soundfile as sf
+
+        def _streams():
+            return [
+                make_mock_stream('s1', onset=0.0, duration=0.5,
+                                 grains=make_dense_grains(n=24)),
+                make_mock_stream('s2', onset=0.3, duration=0.5,
+                                 grains=[make_grain(onset=0.3 + i * 0.01,
+                                                    duration=0.03)
+                                         for i in range(24)]),
+            ]
+
+        r_seq = self._make_renderer(tmp_path, jobs=1)
+        r_par = self._make_renderer(tmp_path, jobs=2)
+        try:
+            p_seq = str(tmp_path / 'mix_seq.aif')
+            p_par = str(tmp_path / 'mix_par.aif')
+            r_seq.render_merged_streams(_streams(), p_seq)
+            r_par.render_merged_streams(_streams(), p_par)
+
+            d_seq, _ = sf.read(p_seq)
+            d_par, _ = sf.read(p_par)
+            assert d_seq.shape == d_par.shape
+            assert np.max(np.abs(d_seq - d_par)) < self.TOL
+            assert np.max(np.abs(d_par)) > 1e-4
+        finally:
+            r_par.close()
+
+    def test_below_threshold_stays_sequential(self, tmp_path):
+        """Sotto min_parallel_grains nessun pool: render piccoli senza overhead."""
+        r = self._make_renderer(tmp_path, jobs=4, min_parallel_grains=10_000)
+        stream = make_mock_stream(duration=0.6, grains=make_dense_grains())
+        r.render_single_stream(stream, str(tmp_path / 'out.aif'))
+        assert r._executor is None
+
+    def test_jobs_one_never_creates_pool(self, tmp_path):
+        """jobs=1 esplicito: path sequenziale puro anche sopra soglia."""
+        r = self._make_renderer(tmp_path, jobs=1, min_parallel_grains=8)
+        stream = make_mock_stream(duration=0.6, grains=make_dense_grains())
+        r.render_single_stream(stream, str(tmp_path / 'out.aif'))
+        assert r._executor is None
+
+    def test_close_shuts_down_pool(self, tmp_path):
+        """close() spegne il pool e azzera lo stato."""
+        r = self._make_renderer(tmp_path, jobs=2)
+        stream = make_mock_stream(duration=0.6, grains=make_dense_grains())
+        r.render_single_stream(stream, str(tmp_path / 'out.aif'))
+        assert r._executor is not None
+        r.close()
+        assert r._executor is None
+        # close() idempotente
+        r.close()
+
+    def test_pool_reused_across_streams(self, tmp_path):
+        """STEMS: lo stesso pool serve tutti gli stream della run."""
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            r.render_single_stream(
+                make_mock_stream('s1', duration=0.6, grains=make_dense_grains()),
+                str(tmp_path / 's1.aif'))
+            first = r._executor
+            r.render_single_stream(
+                make_mock_stream('s2', duration=0.6, grains=make_dense_grains()),
+                str(tmp_path / 's2.aif'))
+            assert r._executor is first
+        finally:
+            r.close()
+
+    def test_clean_cache_never_creates_pool(self, tmp_path):
+        """Cache clean → skip prima dell'overlap-add: nessun pool creato.
+
+        Invariante della seconda run STEMS: se lo stream è invariato il
+        renderer ritorna prima del dispatch, quindi con jobs > 1 il
+        ProcessPoolExecutor non deve mai nascere (né re-render).
+        """
+        from unittest.mock import MagicMock
+
+        reg, table_map = make_disk_sample_env(tmp_path)
+        cache = MagicMock()
+        cache.is_dirty.return_value = False
+        r = NumpyAudioRenderer(
+            sample_registry=reg,
+            window_registry=NumpyWindowRegistry(),
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+            jobs=4,
+            min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'}},
+        )
+        out = str(tmp_path / 's1.aif')
+        result = r.render_single_stream(
+            make_mock_stream('s1', duration=0.6, grains=make_dense_grains()),
+            out)
+        assert result == out
+        assert r._executor is None
+        assert not os.path.exists(out)  # clean → nessun file riscritto
+        cache.update_after_build.assert_not_called()
+
+
+# =============================================================================
+# 10. TEST STREAM-PARALLEL (render_streams override, un task per stream)
+# =============================================================================
+
+class TestStreamParallel:
+    """render_streams override: STEMS con un task per stream al pool.
+
+    Contratto rafforzato: ogni stem prodotto dal path stream-parallel e'
+    BYTE-IDENTICO a jobs=1 (dentro il worker l'ordine delle somme float64 e'
+    quello storico), non solo < 1 LSB come il chunk path.
+    """
+
+    def _make_renderer(self, tmp_path, jobs, min_parallel_grains=8,
+                       cache_manager=None, stream_data_map=None):
+        reg, table_map = make_disk_sample_env(tmp_path)
+        return NumpyAudioRenderer(
+            sample_registry=reg,
+            window_registry=NumpyWindowRegistry(),
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+            jobs=jobs,
+            min_parallel_grains=min_parallel_grains,
+            cache_manager=cache_manager,
+            stream_data_map=stream_data_map,
+        )
+
+    def _stems(self):
+        return [
+            make_mock_stream('s1', duration=0.6, grains=make_dense_grains()),
+            make_mock_stream('s2', duration=0.6,
+                             grains=make_dense_grains(n=40, hop=0.012)),
+        ]
+
+    def test_stream_parallel_matches_sequential_bit_exact(self, tmp_path):
+        """jobs=2 vs jobs=1 su render_streams: ogni stem byte-identico."""
+        import soundfile as sf
+
+        r_seq = self._make_renderer(tmp_path, jobs=1)
+        r_par = self._make_renderer(tmp_path, jobs=2)
+        try:
+            seq_pairs = [(s, str(tmp_path / f'seq_{s.stream_id}.aif'))
+                         for s in self._stems()]
+            par_pairs = [(s, str(tmp_path / f'par_{s.stream_id}.aif'))
+                         for s in self._stems()]
+
+            seq_out = r_seq.render_streams(seq_pairs)
+            par_out = r_par.render_streams(par_pairs)
+
+            assert [p for _, p in seq_pairs] == seq_out
+            assert [p for _, p in par_pairs] == par_out
+            for (_, sp), (_, pp) in zip(seq_pairs, par_pairs):
+                d_seq, _ = sf.read(sp)
+                d_par, _ = sf.read(pp)
+                assert d_seq.shape == d_par.shape
+                assert np.array_equal(d_seq, d_par)
+                assert np.max(np.abs(d_par)) > 1e-4  # non-silente
+        finally:
+            r_par.close()
+
+    def test_two_dirty_streams_use_pool(self, tmp_path):
+        """Sopra soglia, 2 stream dirty, jobs>1 → il pool viene creato."""
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+            r.render_streams(pairs)
+            assert r._executor is not None
+        finally:
+            r.close()
+
+    def test_dispatch_is_stream_level_not_per_stream_loop(self, tmp_path):
+        """Sopra soglia, 2+ stream dirty, jobs>1 → dispatch PER STREAM.
+
+        Discrimina il path stream-level dal default dell'ABC: il parent NON
+        chiama render_single_stream (che parallelizzerebbe solo intra-stream,
+        via chunk path). Ogni stream diventa un task per il pool
+        (render_stream_to_file), cosi' overlap-add + dc_block + write girano
+        nel worker.
+        """
+        from unittest.mock import patch
+
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+            with patch.object(
+                r, 'render_single_stream',
+                wraps=r.render_single_stream) as spy:
+                r.render_streams(pairs)
+            spy.assert_not_called()
+            # entrambi gli stem prodotti dal path stream-level
+            assert os.path.exists(pairs[0][1])
+            assert os.path.exists(pairs[1][1])
+        finally:
+            r.close()
+
+    def test_single_stream_falls_back_to_chunk_path(self, tmp_path):
+        """Un solo stream → nessun dispatch stream-level (dirty < 2).
+
+        Il singolo stem resta sul path per-stream (render_single_stream, che
+        sotto ha il chunk path). Output byte-identico a jobs=1.
+        """
+        import soundfile as sf
+
+        r_seq = self._make_renderer(tmp_path, jobs=1)
+        r_par = self._make_renderer(tmp_path, jobs=2)
+        try:
+            s = make_mock_stream('solo', duration=0.6, grains=make_dense_grains())
+            seq_p = str(tmp_path / 'seq.aif')
+            par_p = str(tmp_path / 'par.aif')
+            r_seq.render_streams([(make_mock_stream('solo', duration=0.6,
+                                                    grains=make_dense_grains()), seq_p)])
+            r_par.render_streams([(s, par_p)])
+
+            d_seq, _ = sf.read(seq_p)
+            d_par, _ = sf.read(par_p)
+            assert np.array_equal(d_seq, d_par)
+        finally:
+            r_par.close()
+
+    def test_below_total_threshold_stays_sequential(self, tmp_path):
+        """Grani totali sotto min_parallel_grains → nessun pool stream-level."""
+        r = self._make_renderer(tmp_path, jobs=4, min_parallel_grains=10_000)
+        try:
+            pairs = [(make_mock_stream('s1', duration=0.3,
+                                       grains=make_dense_grains(n=4)),
+                      str(tmp_path / 's1.aif')),
+                     (make_mock_stream('s2', duration=0.3,
+                                       grains=make_dense_grains(n=4)),
+                      str(tmp_path / 's2.aif'))]
+            r.render_streams(pairs)
+            assert r._executor is None
+        finally:
+            r.close()
+
+    def test_clean_streams_not_dispatched(self, tmp_path):
+        """Cache: stream clean non generano e non vengono dispatchati.
+
+        Con un solo stream dirty (l'altro clean) la policy stream-level non
+        scatta (dirty < 2): il dirty passa dal path per-stream, il clean
+        ritorna il suo path senza toccare .voices ne' la cache.
+        """
+        from unittest.mock import MagicMock
+
+        cache = MagicMock()
+        # s1 clean, s2 dirty
+        cache.is_dirty.side_effect = lambda d, p: d['stream_id'] == 's2'
+        r = self._make_renderer(
+            tmp_path, jobs=2, min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'},
+                             's2': {'stream_id': 's2'}})
+        try:
+            p1 = str(tmp_path / 's1.aif')
+            p2 = str(tmp_path / 's2.aif')
+            out = r.render_streams([
+                (make_mock_stream('s1', duration=0.6, grains=make_dense_grains()), p1),
+                (make_mock_stream('s2', duration=0.6, grains=make_dense_grains()), p2),
+            ])
+            assert out == [p1, p2]
+            assert not os.path.exists(p1)  # clean → nessun file
+            assert os.path.exists(p2)      # dirty → prodotto
+            # cache aggiornata solo per lo stream dirty
+            built = [c.args[0] for c in cache.update_after_build.call_args_list]
+            assert [{'stream_id': 's2'}] in built
+            assert [{'stream_id': 's1'}] not in built
+        finally:
+            r.close()
+
+    def test_two_dirty_streams_update_cache_each(self, tmp_path):
+        """Path parallelo: la cache viene aggiornata per ogni stream riuscito."""
+        from unittest.mock import MagicMock
+
+        cache = MagicMock()
+        cache.is_dirty.return_value = True
+        r = self._make_renderer(
+            tmp_path, jobs=2, min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'},
+                             's2': {'stream_id': 's2'}})
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+            r.render_streams(pairs)
+            built = [c.args[0] for c in cache.update_after_build.call_args_list]
+            assert [{'stream_id': 's1'}] in built
+            assert [{'stream_id': 's2'}] in built
+        finally:
+            r.close()
+
+    def test_worker_exception_propagates_and_skips_cache(self, tmp_path):
+        """Eccezione nel worker → propagata da render_streams; la cache dello
+        stream non completato NON viene aggiornata."""
+        from unittest.mock import MagicMock, patch
+
+        cache = MagicMock()
+        cache.is_dirty.return_value = True
+        r = self._make_renderer(
+            tmp_path, jobs=2, min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'},
+                             's2': {'stream_id': 's2'}})
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+
+            class _Boom(RuntimeError):
+                pass
+
+            with patch.object(r, '_ensure_executor') as ens:
+                fake_exec = MagicMock()
+                fut = MagicMock()
+                fut.result.side_effect = _Boom("worker crash")
+                fake_exec.submit.return_value = fut
+                ens.return_value = fake_exec
+
+                with pytest.raises(_Boom):
+                    r.render_streams(pairs)
+
+            cache.update_after_build.assert_not_called()
+        finally:
+            r.close()
 

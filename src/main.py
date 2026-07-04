@@ -77,6 +77,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             cache_manager=cache_manager,
             stream_data_map=generator.stream_data_map,
             audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
+            jobs=kwargs.get('jobs', 'auto'),
         )
 
     if renderer_type == 'csound':
@@ -117,6 +118,90 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     )
 
 
+def _parse_jobs(argv):
+    """Parsa --jobs per il rendering NumPy multi-processo.
+
+    Ritorna 'auto' (default: core disponibili - 1, min 1) oppure un intero
+    >= 1. La risoluzione di 'auto' avviene nel renderer via
+    numpy_parallel.resolve_jobs. Come gli altri flag di main: valore
+    mancante → default; valore non valido → messaggio + exit(1).
+    Con --jobs 1 l'output resta byte-identico al rendering sequenziale.
+    Ignorato dal renderer csound.
+    """
+    import sys
+    if '--jobs' not in argv:
+        return 'auto'
+    idx = argv.index('--jobs')
+    if idx + 1 >= len(argv):
+        return 'auto'
+    raw = argv[idx + 1]
+    if raw.lower() == 'auto':
+        return 'auto'
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"--jobs non valido: '{raw}'. Usa un intero >= 1 oppure 'auto'.")
+        sys.exit(1)
+    if value < 1:
+        print(f"--jobs deve essere >= 1, ricevuto: {value}. Usa 1 per il rendering sequenziale.")
+        sys.exit(1)
+    return value
+
+
+# Chiavi ammesse in un target di --magnify-at. Numeriche (float) e stringa.
+_MAGNIFY_NUMERIC_KEYS = frozenset({'t', 'y', 'zoom', 'out', 'src'})
+_MAGNIFY_STR_KEYS = frozenset({'stream'})
+_MAGNIFY_KEYS = _MAGNIFY_NUMERIC_KEYS | _MAGNIFY_STR_KEYS
+
+
+def _parse_magnify_spec(spec):
+    """Parsa lo SPEC di --magnify-at in una lista di target dict.
+
+    SPEC = target separati da ';'; ogni target = coppie chiave=valore separate
+    da ','. La chiave 't' (tempo in secondi) e' obbligatoria; opzionali y, zoom,
+    out, src (float) e stream (stringa). Come --plot-envelopes, la validazione
+    e' sempre attiva: token malformato, chiave ignota, valore non numerico o 't'
+    mancante stampano un messaggio su stdout ed escono con codice 1.
+    """
+    import sys
+    targets = []
+    for raw in spec.split(';'):
+        raw = raw.strip()
+        if not raw:
+            continue
+        target = {}
+        for pair in raw.split(','):
+            pair = pair.strip()
+            if not pair:
+                continue
+            if '=' not in pair:
+                print(f"--magnify-at: token non valido '{pair}'. "
+                      f"Usa chiave=valore (es. t=14,zoom=10).")
+                sys.exit(1)
+            key, _, value = pair.partition('=')
+            key, value = key.strip(), value.strip()
+            if key not in _MAGNIFY_KEYS:
+                print(f"--magnify-at: chiave ignota '{key}'. "
+                      f"Valide: {', '.join(sorted(_MAGNIFY_KEYS))}.")
+                sys.exit(1)
+            if key in _MAGNIFY_NUMERIC_KEYS:
+                try:
+                    target[key] = float(value)
+                except ValueError:
+                    print(f"--magnify-at: valore non numerico per '{key}': '{value}'.")
+                    sys.exit(1)
+            else:
+                target[key] = value
+        if 't' not in target:
+            print("--magnify-at: ogni target richiede la chiave 't' (tempo in secondi).")
+            sys.exit(1)
+        targets.append(target)
+    if not targets:
+        print("--magnify-at: nessun target valido nello SPEC.")
+        sys.exit(1)
+    return targets
+
+
 def main():
     import sys
     import os
@@ -126,16 +211,19 @@ def main():
             "Uso: python main.py <file.yml> [output.aif] "
             "[--visualize] [--show-static] [--show-voice-offsets] "
             "[--plot-envelopes nomi,csv] "
+            "[--magnify] [--magnify-at SPEC] "
             "[--page-duration SECONDI] "
             "[--per-stream] "
             "[--renderer csound|numpy] "
+            "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
             "[--cache] [--cache-dir DIR] "
             "[--reaper] [--reaper-path FILE] "
-            "[--grain-json]"
+            "[--grain-json] "
+            "[--export-sv] [--sv-path FILE] [--sv-layout multi|single]"
         )
         sys.exit(1)
 
@@ -185,10 +273,44 @@ def main():
                     f"Validi: {', '.join(sorted(PLOT_ENVELOPE_KEYS))}"
                 )
                 sys.exit(1)
+    # --magnify: lente automatica sul cluster piu' denso (una per pagina).
+    # Effetto solo con --visualize, come --show-static. Token esatto: '--magnify'
+    # non collide con '--magnify-at' (sono elementi distinti di sys.argv).
+    magnify_auto = '--magnify' in sys.argv
+
+    # --magnify-at "SPEC": target espliciti della lente (vedi _parse_magnify_spec).
+    # Validazione sempre attiva; effetto sul rendering solo con --visualize.
+    magnify_targets = []
+    if '--magnify-at' in sys.argv:
+        idx = sys.argv.index('--magnify-at')
+        if idx + 1 < len(sys.argv):
+            magnify_targets = _parse_magnify_spec(sys.argv[idx + 1])
+
     per_stream = '--per-stream' in sys.argv or '-p' in sys.argv
     use_cache = '--cache' in sys.argv
     reaper_export = '--reaper' in sys.argv
     grain_json = '--grain-json' in sys.argv
+
+    # --export-sv: esporta una sessione Sonic Visualiser (.sv) accanto all'audio
+    # (issue #150). Modalita' MIX (un audio -> un .sv); ignorato in --per-stream.
+    export_sv = '--export-sv' in sys.argv
+
+    # --sv-path PATH (default: {output_basename}.sv)
+    sv_path = None
+    if '--sv-path' in sys.argv:
+        idx = sys.argv.index('--sv-path')
+        if idx + 1 < len(sys.argv):
+            sv_path = sys.argv[idx + 1]
+
+    # --sv-layout multi|single (default: multi)
+    sv_layout = 'multi'
+    if '--sv-layout' in sys.argv:
+        idx = sys.argv.index('--sv-layout')
+        if idx + 1 < len(sys.argv):
+            sv_layout = sys.argv[idx + 1]
+        if sv_layout not in ('multi', 'single'):
+            print(f"--sv-layout non valido: '{sv_layout}'. Valori: multi, single")
+            sys.exit(1)
 
     # --reaper-path PATH (default: {yaml_basename}.rpp)
     reaper_path = None
@@ -203,6 +325,9 @@ def main():
         idx = sys.argv.index('--renderer')
         if idx + 1 < len(sys.argv):
             renderer_type = sys.argv[idx + 1]
+
+    # --jobs N|auto (default: auto = core-1). Solo renderer numpy.
+    jobs = _parse_jobs(sys.argv)
 
     # --cache-dir DIR
     cache_dir = 'cache'
@@ -300,6 +425,7 @@ def main():
             renderer_type,
             generator,
             output_sr=48000,
+            jobs=jobs,
             orc_path=orc_path,
             incdir=incdir,
             ssdir=ssdir,
@@ -337,11 +463,16 @@ def main():
         from rendering.naming_strategy import DefaultNamingStrategy
         engine = RenderingEngine(renderer, naming_strategy=DefaultNamingStrategy(ext=audio_format.extension))
         mode = StemsRenderMode() if per_stream else MixRenderMode()
+        import time
+        _render_t0 = time.perf_counter()
         generated = engine.render(
             streams=generator.streams,
             output_path=output_file,
             mode=mode,
         )
+        _render_dt = time.perf_counter() - _render_t0
+        jobs_note = f" (jobs={renderer.jobs})" if renderer_type == 'numpy' else ""
+        print(f"\n Rendering completato in {_render_dt:.2f}s{jobs_note}")
 
         print(f"\n Generazione completata! {len(generated)} file generati:")
         for path in generated:
@@ -360,6 +491,24 @@ def main():
                 output_path=rpp_out,
             )
             print(f"Reaper project: {rpp_out}")
+
+        if export_sv:
+            if per_stream:
+                # v1 esporta contro un singolo audio (MIX). Lo split STEMS
+                # (un .sv per stem) e' un follow-up.
+                print("[export-sv] ignorato in modalità --per-stream (STEMS): "
+                      "v1 supporta solo MIX")
+            else:
+                from export.sv_exporter import SVExporter
+                sv_out = sv_path if sv_path else output_file.rsplit('.', 1)[0] + '.sv'
+                audio_for_sv = generated[0] if generated else output_file
+                SVExporter().export(
+                    generator.streams,
+                    audio_path=audio_for_sv,
+                    out_path=sv_out,
+                    layout=sv_layout,
+                )
+                print(f"Sonic Visualiser session: {sv_out}")
 
         if grain_json:
             if not per_stream:
@@ -391,6 +540,8 @@ def main():
                 'show_static_params': show_static,
                 'show_voice_offsets': show_voice_offsets,
                 'envelope_filter': plot_envelopes,
+                'magnify_auto': magnify_auto,
+                'magnify_targets': magnify_targets,
             })
             viz.export_pdf(pdf_file)
 

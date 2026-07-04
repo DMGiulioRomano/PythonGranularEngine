@@ -5,9 +5,15 @@ Definisce la classe Smart Parameter (Model).
 Questa classe incapsula il valore (statico o Envelope), i bounds di sicurezza
 e la logica di variazione stocastica (Randomness).
 
-Utilizza un approccio 'Functional Strategy' (Dispatch Dictionary) per gestire 
-le diverse modalità di variazione ('additive', 'quantized', 'invert') senza 
-usare catene di if/elif, garantendo estensibilità e pulizia.
+La variazione è delegata alle VariationStrategy del registry
+(strategies/variation_registry.py: 'additive', 'quantized', 'invert',
+'choice'), selezionate da bounds.variation_mode; la forma della distribuzione
+è delegata alle DistributionStrategy (shared/distribution_strategy.py).
+
+RNG locale (issue #154): il Parameter riceve alla costruzione un
+`random.Random` derivato per (seed, stream_id, nome) e lo inietta nella
+propria DistributionStrategy: i draw di un parametro non dipendono da quelli
+degli altri componenti. Senza rng si usa il random globale (legacy).
 """
 from __future__ import annotations
 
@@ -45,22 +51,24 @@ class Parameter:
 
     def __init__(
         self,
-        name: str,                       
-        value: ParamInput,               
-        bounds: ParameterBounds,         
-        mod_range: Optional[ParamInput] = None,  
+        name: str,
+        value: ParamInput,
+        bounds: ParameterBounds,
+        mod_range: Optional[ParamInput] = None,
         owner_id: str = "unknown",
-        distribution_mode: str = 'uniform'
+        distribution_mode: str = 'uniform',
+        rng: Optional[random.Random] = None,
     ):
         self.name = name
         self.owner_id = owner_id
-        
+
         self._value = value
         self._bounds = bounds
         self._mod_range = mod_range
         self._probability_gate = NeverGate()
 
-        self._distribution = DistributionFactory.create(distribution_mode)                
+        # RNG locale del parametro (issue #154): None → random globale.
+        self._distribution = DistributionFactory.create(distribution_mode, rng=rng)
         self._variation_strategy = VariationFactory.create(bounds.variation_mode)
         
     def set_probability_gate(self, gate: ProbabilityGate):
@@ -107,42 +115,6 @@ class Parameter:
         )
         # 5. Safety Clamp e Ritorno
         return self._clamp(final_val, time)
-
-    # =========================================================================
-    # STRATEGIE DI VARIAZIONE (Private)
-    # =========================================================================
-
-    def _strategy_additive(self, base: float, rng: float) -> float:
-        """
-        Variazione continua usando DistributionStrategy.
-        
-        Invece di hardcoded uniform, delega alla strategia configurata.
-        """
-        if rng > 0:
-            # ← CAMBIATO: usa distribution strategy invece di random.uniform
-            return self._distribution.sample(base, rng)
-        return base
-
-    def _strategy_quantized(self, base: float, rng: float) -> float:
-        """
-        Variazione discreta.
-        
-        Per gaussiana: genera valore float e arrotonda a intero.
-        """
-        if rng >= 1.0:
-            # Genera campione dalla distribuzione
-            raw_sample = self._distribution.sample(0.0, rng)  # center=0 per simmetria
-            # Arrotonda a intero
-            return base + round(raw_sample)
-        return base
-    
-    def _strategy_invert(self, base: float) -> float:
-        """
-        Variazione booleana: inverte 0.0 <-> 1.0.
-        Usata per: Reverse.
-        Ignora il parametro 'rng' perché comandata solo dalla probabilità.
-        """
-        return 1.0 - base
 
     # =========================================================================
     # HELPERS

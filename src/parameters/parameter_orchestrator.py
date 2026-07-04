@@ -14,6 +14,7 @@ from parameters.parameter_schema import ParameterSpec
 from parameters.parameter_definitions import DEFAULT_PROB
 from parameters.exclusive_selector import ExclusiveGroupSelector
 from core.stream_config import StreamConfig
+from shared.seeding import component_rng
 
 class ParameterOrchestrator:
     """
@@ -72,20 +73,30 @@ class ParameterOrchestrator:
         # Controlla se range è esplicitato
         has_explicit_range = param.has_explicit_range
 
-        # 2. Crea il ProbabilityGate corrispondente
+        # 2. Crea il ProbabilityGate corrispondente, con RNG per-componente
+        # (issue #154): i draw del gate non shiftano gli altri componenti.
         gate = GateFactory.create_gate(
-            dephase=self._config.dephase,       
+            dephase=self._config.dephase,
             param_key=param_spec.dephase_key,
             default_prob=DEFAULT_PROB,
             has_explicit_range=has_explicit_range,
             range_always_active=self._config.range_always_active,
             duration=self._config.context.duration,
-            time_mode=self._config.time_mode
-        )        
+            time_mode=self._config.time_mode,
+            rng=self._gate_rng(param_spec.dephase_key),
+        )
         # 3. Inietta il gate nel Parameter (modifica la classe Parameter)
         param.set_probability_gate(gate)
-        
+
         return param
+
+    def _gate_rng(self, dephase_key: Optional[str]):
+        """RNG locale del gate, derivato da (seed, stream_id, gate:<key>)."""
+        return component_rng(
+            getattr(self._config, 'seed', None),
+            self._config.context.stream_id,
+            f"gate:{dephase_key}",
+        )
     
     def create_pitch_parameter(
         self,
@@ -116,6 +127,7 @@ class ParameterOrchestrator:
             range_always_active=self._config.range_always_active,
             duration=self._config.context.duration,
             time_mode=self._config.time_mode,
+            rng=self._gate_rng(dephase_key),
         )
         param.set_probability_gate(gate)
         return param

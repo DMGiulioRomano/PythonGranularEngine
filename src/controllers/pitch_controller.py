@@ -17,6 +17,7 @@ from parameters.pitch_unit import make_pitch_unit, PITCH_UNIT_PRESETS
 from strategies.strategie import UnitPitchStrategy
 from shared.exceptions import InvalidFieldValueError
 from core.stream_config import StreamConfig
+from shared.seeding import component_rng
 
 # Chiavi-unità riconosciute nel blocco pitch. `edo` è parametrico
 # ({divisions, value}); gli altri sono preset nominali.
@@ -59,7 +60,15 @@ class PitchController:
             bounds=unit.value_bounds(),
             dephase_key='pitch',
         )
-        self._strategy = UnitPitchStrategy(self._active_param, unit, unit.name)
+        # RNG dedicato al detune implicito (issue #154, componente 'detune').
+        self._strategy = UnitPitchStrategy(
+            self._active_param, unit, unit.name,
+            rng=component_rng(
+                getattr(config, 'seed', None),
+                config.context.stream_id,
+                'detune',
+            ),
+        )
 
     # =========================================================================
     # SELEZIONE UNITÀ

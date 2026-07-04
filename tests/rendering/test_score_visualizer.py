@@ -469,6 +469,15 @@ class TestConfigPropagation:
                        config={'grain_colormap': 'viridis'})
         assert viz.config['grain_colormap'] == 'viridis'
 
+    def test_grain_colormap_accepts_colormap_object(self):
+        """grain_colormap robusto: accetta sia una stringa sia un oggetto
+        Colormap gia' costruito (risoluzione in __init__)."""
+        from matplotlib.colors import LinearSegmentedColormap
+        cmap = LinearSegmentedColormap.from_list('custom', ['#000000', '#ffffff'])
+        viz = make_viz(single_stream_scene(),
+                       config={'grain_colormap': cmap})
+        assert viz.cmap is cmap
+
     def test_custom_pitch_range_accepted(self):
         viz = make_viz(single_stream_scene(),
                        config={'pitch_range': (0.25, 4.0)})
@@ -502,8 +511,8 @@ class TestPerStreamLayout:
 
     @staticmethod
     def _wave_axes(fig):
-        """Assi waveform: uno per subplot/stream (ylabel 'Sample (s)\\n<path>')."""
-        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Sample (s)')]
+        """Assi waveform: uno per subplot/stream (ylabel 'Read position (s)\\n<path>')."""
+        return [ax for ax in fig.axes if ax.get_ylabel().startswith('Read position (s)')]
 
     def test_two_different_samples_produce_at_least_two_axes(self):
         viz = make_viz(two_sample_scene(), config={'page_duration': 30.0})
@@ -864,7 +873,8 @@ class TestModRangeEnvelopeCollection:
     """issue #96 - i parametri con range_path (volume_range, pan_range,
     grain.duration_range, offset_range) tengono il range stocastico in
     Parameter._mod_range, mai estratto dal visualizer. Va raccolto sotto la
-    chiave spec.name. Qui via `volume` (stream-level, raggiungibile dal loop)."""
+    chiave `spec.name + '_range'` (issue #141: chiave distinta dal valore base).
+    Qui via `volume` (stream-level, raggiungibile dal loop)."""
 
     def _stream_with_volume_range(self, base, mod_range):
         from parameters.parameter import Parameter
@@ -878,22 +888,63 @@ class TestModRangeEnvelopeCollection:
     def test_dynamic_range_envelope_collected(self):
         from envelopes.envelope import Envelope
         s = self._stream_with_volume_range(-6.0, Envelope([[0, 0.0], [10, 12.0]]))
-        assert 'volume' in make_viz([s])._get_stream_envelopes(s)
+        assert 'volume_range' in make_viz([s])._get_stream_envelopes(s)
 
     def test_dynamic_range_envelope_is_the_mod_range(self):
         from envelopes.envelope import Envelope
         env = Envelope([[0, 0.0], [10, 12.0]])
         s = self._stream_with_volume_range(-6.0, env)
-        assert make_viz([s])._get_stream_envelopes(s)['volume'] is env
+        assert make_viz([s])._get_stream_envelopes(s)['volume_range'] is env
 
     def test_static_range_skipped_without_show_static(self):
         s = self._stream_with_volume_range(-6.0, 3.0)
-        assert 'volume' not in make_viz([s])._get_stream_envelopes(s)
+        assert 'volume_range' not in make_viz([s])._get_stream_envelopes(s)
 
     def test_static_range_collected_with_show_static(self):
         s = self._stream_with_volume_range(-6.0, 3.0)
         viz = make_viz([s], config={'show_static_params': True})
-        assert 'volume' in viz._get_stream_envelopes(s)
+        assert 'volume_range' in viz._get_stream_envelopes(s)
+
+
+class TestValueAndRangeCoexist:
+    """issue #141 - uno stream con valore base reale E range (_mod_range) deve
+    mostrare ENTRAMBE le curve: il valore sotto `spec.name`, il range sotto
+    `spec.name + '_range'`. Prima del fix la PARTE 3 sovrascriveva la chiave del
+    valore base (es. il loop di `pan` perso a favore di `pan_range`)."""
+
+    def _stream_with_pan(self, base, mod_range):
+        from parameters.parameter import Parameter
+        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pan = Parameter('pan', base, GRANULAR_PARAMETERS['pan'],
+                          mod_range=mod_range)
+        return s
+
+    def test_pan_loop_preserved_when_pan_range_present(self):
+        from envelopes.envelope import Envelope
+        base = Envelope([[0, 0.0], [10, 360.0]])      # loop rotativo
+        rng = Envelope([[0, 20.0], [10, 170.0]])      # deviazione per-grano
+        s = self._stream_with_pan(base, rng)
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert 'pan' in env
+        assert env['pan'] is base
+
+    def test_pan_range_collected_under_suffixed_key(self):
+        from envelopes.envelope import Envelope
+        base = Envelope([[0, 0.0], [10, 360.0]])
+        rng = Envelope([[0, 20.0], [10, 170.0]])
+        s = self._stream_with_pan(base, rng)
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert 'pan_range' in env
+        assert env['pan_range'] is rng
+
+    def test_pan_value_without_range_unchanged(self):
+        from envelopes.envelope import Envelope
+        base = Envelope([[0, 0.0], [10, 360.0]])
+        s = self._stream_with_pan(base, None)
+        env = make_viz([s])._get_stream_envelopes(s)
+        assert env.get('pan') is base
+        assert 'pan_range' not in env
 
 
 class TestDephaseGateEnvelopeCollection:
@@ -1030,6 +1081,17 @@ class TestLegendDisplayName:
 
     def test_grain_duration_prob_abbreviated(self):
         assert self._viz()._legend_display_name('grain_duration_prob') == 'grain dur %'
+
+    def test_range_suffix_becomes_rng(self):
+        # issue #141: la corsia della deviazione per-grano (_range)
+        assert self._viz()._legend_display_name('pan_range') == 'pan rng'
+
+    def test_volume_range_abbreviated(self):
+        assert self._viz()._legend_display_name('volume_range') == 'volume rng'
+
+    def test_grain_duration_range_override(self):
+        # override compatto per non sforare la colonna (13 char -> 10)
+        assert self._viz()._legend_display_name('grain_duration_range') == 'gr dur rng'
 
     def test_unmapped_underscore_becomes_space(self):
         assert self._viz()._legend_display_name('scatter') == 'scatter'
@@ -1327,7 +1389,7 @@ class TestEnvelopeFilter:
 
 
 # =============================================================================
-# GROUP - Pitch color auto-zoom (colormap turbo + range dinamico per-subplot)
+# GROUP - Pitch color auto-zoom (colormap divergente pitch_div + range dinamico per-subplot)
 # =============================================================================
 
 class TestPitchColorAutozoom:
@@ -1335,9 +1397,11 @@ class TestPitchColorAutozoom:
     cents dei pitch_ratio visibili nel subplot invece del range fisso
     pitch_range (0.5, 2.0) — rende visibile il micro-detune ±6 cents."""
 
-    def test_default_colormap_is_turbo(self):
+    def test_default_colormap_is_pitch_div(self):
         viz = make_viz([make_stream()])
-        assert viz.config['grain_colormap'] == 'turbo'
+        assert viz.config['grain_colormap'] == 'pitch_div'
+        # 'pitch_div' deve risolversi a una Colormap (registrata a livello modulo)
+        assert viz.cmap.name == 'pitch_div'
 
     def test_default_config_has_pitch_color_autozoom(self):
         viz = make_viz([make_stream()])
@@ -1491,14 +1555,18 @@ class TestPitchColorAutozoom:
         assert np.abs(colors[0][:3] - colors[1][:3]).max() < 0.7
 
     def test_render_page_above_semitone_detune_still_distinct(self):
-        """Uno scarto reale >= 1 semitono (qui 120 cents) supera il floor:
-        i colori restano chiaramente distinti, come prima della modifica."""
+        """Uno scarto reale >= 1 semitono (qui 120 cents) supera il floor: i
+        grani cadono ai due estremi della mappa divergente (braccio freddo
+        indaco/blu vs braccio caldo arancio/giallo) e restano cromaticamente
+        ben distinti. Soglia 0.4: pitch_div ha estremi meno saturi su un singolo
+        canale rispetto alla vecchia turbo, ma la separazione freddo/caldo resta
+        netta e ampiamente sopra il caso micro-detune."""
         viz = make_viz(self._semitone_detuned_scene(), config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             figs = viz.render_all()
         colors = self._grain_facecolors(figs[0])
         assert colors is not None and len(colors) == 2
-        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.5
+        assert np.abs(colors[0][:3] - colors[1][:3]).max() > 0.4
 
     def test_render_page_fixed_colors_when_disabled(self):
         """Autozoom off: i due grani a ±6c restano indistinguibili."""
@@ -1602,3 +1670,344 @@ class TestEnvelopeStreamWidthAlignment:
         assert cbar_axes  # almeno una colorbar disegnata
         for cax in cbar_axes:
             assert cax.get_position().x0 >= content_x1 - 1e-6
+
+
+# =============================================================================
+# GROUP - Asse tempo del buffer mostrato una sola volta (a sinistra del buffer)
+# =============================================================================
+
+class TestSingleBufferTimeAxis:
+    """L'asse temporale del buffer (ordinata in secondi del sample) deve
+    comparire una sola volta, sull'asse waveform a sinistra del buffer. Il
+    subplot dei grani condivide lo stesso ylim ma NON deve ripetere le
+    etichette y: pre-fix le stampava una seconda volta, ridondante e visivamente
+    confusa."""
+
+    def _render(self):
+        viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        fig.canvas.draw()  # finalizza tick e visibilita' delle etichette
+        return fig
+
+    @staticmethod
+    def _wave_axes(fig):
+        return [ax for ax in fig.axes
+                if ax.get_ylabel().startswith('Read position (s)')]
+
+    @staticmethod
+    def _grain_axes(fig, page_start=0.0, page_end=30.0):
+        """Subplot grani: xlim == pagina e ylim != (0,1) (esclude l'envelope)."""
+        out = []
+        for ax in fig.axes:
+            lo, hi = ax.get_xlim()
+            ylo, yhi = ax.get_ylim()
+            same_page = abs(lo - page_start) < 1e-9 and abs(hi - page_end) < 1e-9
+            is_envelope = abs(ylo - 0.0) < 1e-9 and abs(yhi - 1.0) < 1e-9
+            if same_page and not is_envelope:
+                out.append(ax)
+        return out
+
+    def test_waveform_keeps_y_tick_labels(self):
+        """L'asse del buffer resta visibile sulla waveform (l'unica descrizione)."""
+        fig = self._render()
+        wave_axes = self._wave_axes(fig)
+        assert wave_axes
+        for ax in wave_axes:
+            assert any(t.get_visible() and t.get_text()
+                       for t in ax.get_yticklabels())
+
+    def test_grain_subplot_hides_y_tick_labels(self):
+        """Il subplot dei grani non ripete le etichette dell'asse del buffer."""
+        fig = self._render()
+        grain_axes = self._grain_axes(fig)
+        assert grain_axes
+        for ax in grain_axes:
+            assert all(not t.get_visible() for t in ax.get_yticklabels())
+
+
+# =============================================================================
+# FONT SCALE (controllo globale dimensione testo dei plot)
+# =============================================================================
+
+class TestFontScale:
+    """font_scale: moltiplicatore globale applicato a TUTTE le fontsize del
+    visualizer (assi, titolo, legenda envelope, annotazioni breakpoint, testo
+    pagina vuota). Default 1.0 = comportamento invariato. Le chiavi
+    breakpoint_fontsize / empty_fontsize rendono configurabili le due
+    dimensioni prima hardcoded (annotazione breakpoint e pagina vuota)."""
+
+    def _render(self, config):
+        viz = make_viz(single_stream_scene(), config=config)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            return viz.render_page(0)
+
+    @staticmethod
+    def _wave_ax(fig):
+        return next(ax for ax in fig.axes
+                    if ax.get_ylabel().startswith('Read position (s)'))
+
+    def test_default_config_exposes_font_keys(self):
+        """Le nuove chiavi esistono nei default con valori retrocompatibili."""
+        viz = make_viz(single_stream_scene())
+        assert viz.config['font_scale'] == 1.0
+        assert viz.config['breakpoint_fontsize'] == 6
+        assert viz.config['empty_fontsize'] == 14
+
+    def test_font_scale_default_preserves_sizes(self):
+        """font_scale assente/1.0 → dimensioni identiche a prima della feature."""
+        fig = self._render({'page_duration': 30.0})
+        assert fig._suptitle.get_fontsize() == 12   # title_fontsize default
+        assert self._wave_ax(fig).yaxis.label.get_fontsize() == 8  # label_fontsize
+
+    def test_font_scale_multiplies_title_and_axis_labels(self):
+        """font_scale=2.0 raddoppia titolo ed etichette degli assi."""
+        base = self._render({'page_duration': 30.0})
+        big = self._render({'page_duration': 30.0, 'font_scale': 2.0})
+        assert big._suptitle.get_fontsize() == 2 * base._suptitle.get_fontsize()
+        assert (self._wave_ax(big).yaxis.label.get_fontsize()
+                == 2 * self._wave_ax(base).yaxis.label.get_fontsize())
+
+    def test_font_scale_applies_to_empty_page_text(self):
+        """Anche il testo 'pagina vuota' (prima hardcoded a 14) scala."""
+        # Stream a onset 40s con page_duration 30s → pagina 0 (0-30s) vuota.
+        s = make_stream(onset=40.0, duration=10.0)
+        viz = make_viz([s], config={'page_duration': 30.0, 'font_scale': 2.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        texts = [t for ax in fig.axes for t in ax.texts
+                 if 'No active stream' in t.get_text()]
+        assert texts
+        assert texts[0].get_fontsize() == 28        # empty_fontsize 14 * 2.0
+
+
+# =============================================================================
+# FONT SCALE — LAYOUT DINAMICO + STACCO/MARGINI MINIMI
+# =============================================================================
+
+class TestFontScaleLayout:
+    """Con font_scale>1 il testo non deve essere croppato: la colonna
+    waveform/legenda scala con font_scale (la legenda ha clip al bordo colonna)
+    mentre l'area dati centrale si stringe (con clamp). Inoltre il titolo sta
+    appena sopra il plot (stacco quasi nullo) e l'export usa bbox tight per
+    togliere lo spazio attorno alle parole."""
+
+    def _render(self, config):
+        viz = make_viz(single_stream_scene(), config=config)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            return viz.render_page(0)
+
+    @staticmethod
+    def _width_ratios(fig):
+        ax = next(ax for ax in fig.axes
+                  if ax.get_ylabel().startswith('Read position (s)'))
+        return list(ax.get_subplotspec().get_gridspec().get_width_ratios())
+
+    def test_font_scale_1_preserves_default_columns(self):
+        """A font_scale=1.0 le colonne restano ai valori di default."""
+        viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
+        wr = self._width_ratios(self._render({'page_duration': 30.0}))
+        assert wr[0] == pytest.approx(viz.config['waveform_width_ratio'])
+        assert wr[2] == pytest.approx(viz.config['colorbar_width_ratio'])
+
+    def test_font_scale_widens_text_columns(self):
+        """font_scale=2.0: colonna waveform/legenda piu' larga; colorbar uguale."""
+        wr_base = self._width_ratios(self._render({'page_duration': 30.0}))
+        wr_big = self._width_ratios(
+            self._render({'page_duration': 30.0, 'font_scale': 2.0}))
+        assert wr_big[0] > wr_base[0]
+        assert wr_big[2] == pytest.approx(wr_base[2])
+
+    def test_font_scale_shrinks_central_plot(self):
+        """font_scale=2.0: la quota normalizzata dell'area dati centrale cala."""
+        share = lambda wr: wr[1] / sum(wr)
+        base = share(self._width_ratios(self._render({'page_duration': 30.0})))
+        big = share(self._width_ratios(
+            self._render({'page_duration': 30.0, 'font_scale': 2.0})))
+        assert big < base
+
+    def test_main_ratio_clamped_at_extreme_font_scale(self):
+        """font_scale estremo non azzera ne' rende negativa l'area dati."""
+        wr = self._width_ratios(
+            self._render({'page_duration': 30.0, 'font_scale': 8.0}))
+        assert all(r > 0 for r in wr)
+        assert wr[1] / sum(wr) >= 0.3
+
+    def test_title_sits_just_above_plot(self):
+        """Lo stacco titolo-plot e' quasi nullo: il plot arriva in alto e il
+        titolo gli sta appena sopra."""
+        fig = self._render({'page_duration': 30.0, 'font_scale': 2.0})
+        top = fig.subplotpars.top
+        title_y = fig._suptitle.get_position()[1]
+        assert top >= 0.9
+        assert 0 <= (title_y - top) < 0.06
+
+    def test_export_pdf_uses_tight_bbox(self):
+        """export_pdf rifila la tela al contenuto (niente margini attorno alle
+        parole) via bbox_inches='tight'."""
+        viz = make_viz(single_stream_scene(),
+                       config={'page_duration': 30.0, 'font_scale': 2.0})
+        inst = MagicMock()
+        ctx = MagicMock()
+        ctx.__enter__ = MagicMock(return_value=inst)
+        ctx.__exit__ = MagicMock(return_value=False)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
+             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+            viz.export_pdf('/tmp/tight_test.pdf')
+        assert inst.savefig.call_args.kwargs.get('bbox_inches') == 'tight'
+
+
+# =============================================================================
+# GROUP - Lente di ingrandimento proiettata (magnify)
+# =============================================================================
+
+class TestMagnifier:
+    """La partitura puo' proiettare una lente circolare che ingrandisce una
+    regione (tempo x posizione di lettura), col cerchio zoomato affiancato e
+    connettori verso la regione sorgente. Due modalita': auto (cluster piu'
+    denso) ed esplicita (target con center/zoom/out/src indipendenti).
+    Default: disattivata (back-compat con la partitura esistente)."""
+
+    PAGE = 30.0
+
+    @staticmethod
+    def _magnifier_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<magnifier>']
+
+    @staticmethod
+    def _overlay_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<magnifier-overlay>']
+
+    @classmethod
+    def _grain_ax(cls, fig, page_start=0.0, page_end=None):
+        """Asse dei grani: xlim == (page_start, page_end), non lente ne' overlay."""
+        page_end = cls.PAGE if page_end is None else page_end
+        for ax in fig.axes:
+            lo, hi = ax.get_xlim()
+            if (abs(lo - page_start) < 1e-9 and abs(hi - page_end) < 1e-9
+                    and ax.get_label() not in ('<magnifier>', '<magnifier-overlay>')):
+                return ax
+        return None
+
+    def _render(self, streams, config):
+        cfg = {'page_duration': self.PAGE}
+        cfg.update(config)
+        viz = make_viz(streams, config=cfg)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        fig.canvas.draw()  # finalizza transform/posizioni
+        return fig
+
+    # --- back-compat: default OFF ---
+    def test_no_magnifier_by_default(self):
+        fig = self._render(single_stream_scene(), {})
+        assert self._magnifier_axes(fig) == []
+        assert self._overlay_axes(fig) == []
+
+    # --- modalita' auto ---
+    def test_auto_creates_one_magnifier(self):
+        fig = self._render(single_stream_scene(), {'magnify_auto': True})
+        assert len(self._magnifier_axes(fig)) == 1
+        assert len(self._overlay_axes(fig)) == 1
+
+    def test_auto_magnifier_contains_grains(self):
+        from matplotlib.collections import PatchCollection
+        fig = self._render(single_stream_scene(), {'magnify_auto': True})
+        lens = self._magnifier_axes(fig)[0]
+        grain_colls = [c for c in lens.collections
+                       if isinstance(c, PatchCollection) and c.get_zorder() == 2]
+        assert len(grain_colls) == 1
+
+    def test_overlay_has_two_rings_and_two_connectors(self):
+        fig = self._render(single_stream_scene(), {'magnify_auto': True})
+        ov = self._overlay_axes(fig)[0]
+        src = [p for p in ov.patches if p.get_gid() == 'magnify-source']
+        lens = [p for p in ov.patches if p.get_gid() == 'magnify-lens']
+        conn = [ln for ln in ov.lines if ln.get_gid() == 'magnify-connector']
+        assert len(src) == 1 and len(lens) == 1
+        assert len(conn) == 2
+
+    def test_no_magnifier_when_no_grains(self):
+        s = make_stream('s1', onset=0.0, duration=20.0,
+                        sample='piano.wav', n_grains=0)
+        fig = self._render([s], {'magnify_auto': True})
+        assert self._magnifier_axes(fig) == []
+
+    # --- modalita' esplicita: i 4 controlli indipendenti ---
+    def test_explicit_center_positions_window(self):
+        target = {'t': 6.0, 'y': 1.5, 'zoom': 8.0, 'out': 0.12}
+        fig = self._render(single_stream_scene(), {'magnify_targets': [target]})
+        lens = self._magnifier_axes(fig)[0]
+        x0, x1 = lens.get_xlim()
+        y0, y1 = lens.get_ylim()
+        assert (x0 + x1) / 2 == pytest.approx(6.0, abs=1e-6)
+        assert (y0 + y1) / 2 == pytest.approx(1.5, abs=1e-6)
+
+    def test_zoom_factor_respected(self):
+        zoom = 8.0
+        target = {'t': 6.0, 'y': 1.5, 'zoom': zoom, 'out': 0.12}
+        fig = self._render(single_stream_scene(), {'magnify_targets': [target]})
+        lens = self._magnifier_axes(fig)[0]
+        grain_ax = self._grain_ax(fig)
+
+        def px_per_data_x(ax):
+            p0 = ax.transData.transform((0.0, 0.0))
+            p1 = ax.transData.transform((1.0, 0.0))
+            return abs(p1[0] - p0[0])
+
+        magnif = px_per_data_x(lens) / px_per_data_x(grain_ax)
+        assert magnif == pytest.approx(zoom, rel=0.12)
+
+    def test_explicit_target_outside_page_no_lens(self):
+        # multi_page_scene: pagina 0 = [0,30); target a t=45 cade in pagina 1.
+        target = {'t': 45.0, 'y': 1.0, 'zoom': 8.0}
+        fig = self._render(multi_page_scene(), {'magnify_targets': [target]})
+        assert self._magnifier_axes(fig) == []
+
+    def test_src_radius_independent_of_zoom(self):
+        # out=0.12, zoom=10 -> src "fedele" = 0.012; passo src=0.03 esplicito.
+        target = {'t': 6.0, 'y': 1.5, 'zoom': 10.0, 'out': 0.12, 'src': 0.03}
+        fig = self._render(single_stream_scene(), {'magnify_targets': [target]})
+        ov = self._overlay_axes(fig)[0]
+        src_ring = [p for p in ov.patches if p.get_gid() == 'magnify-source'][0]
+        W, H = fig.get_size_inches() * fig.dpi
+        expected = 0.03 * min(W, H)
+        assert src_ring.radius == pytest.approx(expected, rel=0.05)
+        # ... e diverso dal valore fedele out/zoom (cerchio di partenza = knob a se')
+        faithful = 0.012 * min(W, H)
+        assert abs(src_ring.radius - faithful) > 0.1 * faithful
+
+    # --- corner per-target: piu' lenti sullo stesso stream senza sovrapporsi ---
+    def test_two_targets_same_stream_distinct_corners(self):
+        # Stessa regione (t, y) ma proiettata in due angoli opposti: i due inset
+        # NON devono cadere nello stesso punto. Prima della fix entrambi leggono
+        # il corner globale -> stessa posizione (rosso).
+        targets = [
+            {'t': 6.0, 'y': 1.5, 'corner': 'top-right'},
+            {'t': 6.0, 'y': 1.5, 'corner': 'bottom-left'},
+        ]
+        fig = self._render(single_stream_scene(),
+                           {'magnify_targets': targets})
+        lenses = self._magnifier_axes(fig)
+        assert len(lenses) == 2
+        pos = [ax.get_position() for ax in lenses]
+        # top sopra bottom, right a destra di left
+        assert pos[0].y0 > pos[1].y0
+        assert pos[0].x0 > pos[1].x0
+
+    def test_target_corner_default_top_right(self):
+        # Senza 'corner' esplicito la lente resta ancorata top-right (back-compat).
+        fig = self._render(single_stream_scene(),
+                           {'magnify_targets': [{'t': 6.0, 'y': 1.5}]})
+        grain_ax = self._grain_ax(fig)
+        gp = grain_ax.get_position()
+        lp = self._magnifier_axes(fig)[0].get_position()
+        # centro dell'inset nella meta' alta-destra del subplot dei grani
+        cx, cy = (lp.x0 + lp.x1) / 2, (lp.y0 + lp.y1) / 2
+        assert cx > (gp.x0 + gp.x1) / 2
+        assert cy > (gp.y0 + gp.y1) / 2

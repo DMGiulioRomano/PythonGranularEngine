@@ -6,7 +6,7 @@ tags: [cli, flags, make, rendering, export]
 sources:
   - src/main.py
   - make/build.mk
-last_synced_commit: 9eb9c14
+last_synced_commit: 9de1079
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -53,6 +53,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--visualize` | `-v` | off | `AUTOVISUAL` | esporta partitura grafica PDF accanto all'output |
 | `--show-static` | `-s` | off | `SHOWSTATIC` | include i parametri statici nella partitura |
 | `--show-voice-offsets` | — | off | `SHOWVOICEOFFSETS` | disegna gli offset per-voce nella partitura: una curva per voce per `voice_pitch_offset` e `voice_pointer_offset`, piu' la curva singola di `voice_pointer_range` (vedi [[yaml]] blocco `voices`) |
+| `--magnify` | — | off | `MAGNIFY` | lente di ingrandimento automatica nella partitura: proietta un cerchio zoomato sul cluster di grani piu' denso di ogni pagina (vedi `--magnify-at` per il targeting esplicito) |
 | `--per-stream` | `-p` | off | `STEMS` | un file audio per stream (stems) invece del mix singolo |
 | `--cache` | — | off | `CACHE` | build incrementale per stream (richiede `--per-stream`, vedi [[caching]]) |
 | `--reaper` | — | off | `REAPER` | esporta progetto Reaper `.rpp` (vedi [[reaper]]) |
@@ -64,6 +65,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | Flag | Default | Variabile Make | Descrizione |
 |------|---------|----------------|-------------|
 | `--renderer csound\|numpy` | `csound` | `RENDERER` | motore di rendering; valore non valido solleva `InvalidRendererError` |
+| `--jobs N\|auto` | `auto` | `JOBS` | worker del rendering NumPy multi-processo. `auto` = core disponibili - 1 (min 1, via affinity dove disponibile); `1` = sequenziale, campioni bit-identici allo storico; `0`, negativi o non numerici: messaggio + exit 1. Ignorato con `--renderer csound` |
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
@@ -75,6 +77,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--sco-dir DIR` | `generated` | — | destinazione `.sco` (attivo solo con `--keep-sco`) |
 | `--reaper-path FILE` | `{yaml_basename}.rpp` | `REAPER_PATH` | percorso del progetto Reaper |
 | `--plot-envelopes nomi` | tutti | `PLOT_ENVELOPES` | filtro selettivo degli envelope nella partitura: nomi comma-separated (es. `pitch,density,volume_prob`); nome non valido: messaggio con elenco dei validi + exit 1 |
+| `--magnify-at SPEC` | — | `MAGNIFY_AT` | lente/i di ingrandimento esplicite nella partitura. `SPEC` = target separati da `;`, ciascuno coppie `chiave=valore` separate da `,`. Chiave `t` (tempo s) obbligatoria; opzionali `y` (posizione di lettura), `zoom` (fattore), `out` (raggio cerchio di uscita, frazione figura), `src` (raggio cerchio di partenza, frazione figura; default `out/zoom`), `stream` (stream_id). SPEC malformato (`t` mancante, valore non numerico, chiave ignota): messaggio + exit 1 |
 
 ## Bounds
 
@@ -94,6 +97,17 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (il renderer numpy non produce `.sco`).
+- **`--jobs`** ha effetto solo con `--renderer numpy`. Sotto una soglia di
+  grani per render (`PARALLEL_MIN_GRAINS`, `src/rendering/numpy_parallel.py`)
+  il path resta sequenziale anche con `--jobs > 1` (l'overhead del pool
+  supererebbe il guadagno). Contratto di determinismo: a parità di valore di
+  `--jobs` i **campioni** audio sono bit-identici tra run; tra valori diversi
+  cambia solo l'ordine delle somme float64 dell'overlap-add (differenza < 1
+  LSB a 24 bit, non udibile); `--jobs 1` riproduce esattamente, bit a bit, i
+  campioni del rendering sequenziale storico. Nota: il file AIFF float non è
+  byte-identico tra run perché libsndfile scrive un timestamp wall-clock nel
+  PEAK chunk dell'header; confronta i campioni (`soundfile.read`), non i byte
+  grezzi.
 - **`--show-static`** ha effetto solo insieme a `--visualize`.
 - **`--show-voice-offsets`** ha effetto solo insieme a `--visualize`. Gli
   offset per-voce vengono campionati dalle voice strategy
@@ -105,6 +119,16 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   statico elencato nel filtro appare solo se c'è anche `--show-static`.
   Nomi validi = chiavi di `ENVELOPE_COLORS`
   (`src/rendering/score_visualizer.py`, costante `PLOT_ENVELOPE_KEYS`).
+- **`--magnify` / `--magnify-at`** hanno effetto solo insieme a
+  `--visualize` (come `--show-static`); la validazione di `--magnify-at`
+  avviene comunque (SPEC malformato → exit 1 anche senza `--visualize`). Le
+  due si combinano: `--magnify` aggiunge la lente automatica (cluster più
+  denso) e `--magnify-at` i target espliciti, che compaiono solo sulla
+  pagina che contiene il loro `t`. I quattro controlli per target sono
+  indipendenti: coordinate (`t`,`y`), `zoom`, cerchio di uscita (`out`),
+  cerchio di partenza (`src`); con più lenti sulla stessa pagina la
+  proiezione usa l'angolo configurato in `magnify_defaults['corner']` e può
+  sovrapporsi (limite noto dell'MVP).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
   la flag viene ignorata senza errore.
 
@@ -121,6 +145,12 @@ python src/main.py configs/brano.yml output/brano.aif \
 # Equivalente via Make
 make all FILE=brano STEMS=true CACHE=true GRAIN_JSON=true RENDERER=numpy
 
+# Rendering sequenziale: campioni bit-identici allo storico (riproducibilita' esatta)
+python src/main.py configs/brano.yml --renderer numpy --jobs 1
+
+# Numero esplicito di worker via Make (vuoto = auto = core-1)
+make all FILE=brano RENDERER=numpy JOBS=4
+
 # Debug csound: conserva gli .sco intermedi
 python src/main.py configs/brano.yml --renderer csound --keep-sco --sco-dir generated
 
@@ -129,6 +159,16 @@ python src/main.py configs/brano.yml --visualize --plot-envelopes pitch,density
 
 # Equivalente via Make
 make all FILE=brano AUTOVISUAL=true PLOT_ENVELOPES=pitch,density
+
+# Partitura con lente automatica sul cluster piu' denso di ogni pagina
+python src/main.py configs/brano.yml --visualize --magnify
+
+# Lente esplicita (auto + un target a t=14s, posizione 2.7, zoom 10)
+python src/main.py configs/brano.yml --visualize --magnify \
+  --magnify-at "t=14,y=2.7,zoom=10,out=0.12,src=0.04"
+
+# Due lenti esplicite via Make (target separati da ';')
+make all FILE=brano AUTOVISUAL=true MAGNIFY_AT="t=5;t=14,zoom=12"
 ```
 
 ## Versionato da

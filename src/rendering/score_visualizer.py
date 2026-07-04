@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import PatchCollection
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, Colormap, LinearSegmentedColormap
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import soundfile as sf
@@ -18,48 +18,37 @@ from math import ceil
 # Path samples (stesso del progetto)
 PATHSAMPLES = './refs/'
 
-# Colori di default degli envelope. A livello modulo perche' le sue chiavi
-# sono l'universo dei nomi plottabili: main.py le usa per validare
-# --plot-envelopes (issue #101).
-ENVELOPE_COLORS = {
-    # === OUTPUT ===
-    'volume': '#e41a1c',          # rosso
-    'volume_prob': '#fb9a99',     # rosso chiaro
-    'pan': '#4daf4a',             # verde
-    'pan_prob': '#b2df8a',        # verde chiaro
+# Colormap divergente per il pitch dei grani. Il pitch in cents e' una grandezza
+# con segno centrata sullo zero (nessun detune = 0 cents): serve una mappa
+# divergente con punto neutro al centro, non una sequenziale come turbo.
+#   - centro (0 cents): grigio medio #777777 — NON bianco, perche' lo sfondo del
+#     plot e' bianco e un grano neutro col centro bianco sparirebbe;
+#   - braccio freddo (detune negativo): indaco -> blu;
+#   - braccio caldo (detune positivo): arancio -> giallo.
+# Bracci a due tinte (non un solo blu/rosso secco) per dare piu' gradazione
+# cromatica all'escursione, mantenendo la lettura intuitiva freddo=cala /
+# caldo=sale. L'autozoom (pitch_color_autozoom) riscala questa mappa
+# sull'escursione reale dei cents: la normalizzazione resta invariata, cambia
+# solo la mappa di colore.
+PITCH_DIVERGING = LinearSegmentedColormap.from_list(
+    'pitch_div', ['#3b1f8b', '#3a8fd6', '#777777', '#f08c00', '#f2d024']
+)
 
-    # === GRAIN ===
-    'grain_duration': '#377eb8',  # blu
-    'grain_duration_prob': '#a6cee3',  # blu chiaro
-    'reverse': '#999999',         # grigio
-    'reverse_prob': '#cccccc',    # grigio chiarissimo
+# Registrazione con guardia: idempotente anche su re-import del modulo.
+try:
+    plt.get_cmap('pitch_div')
+except (ValueError, KeyError):
+    try:
+        import matplotlib as mpl
+        mpl.colormaps.register(PITCH_DIVERGING)
+    except (AttributeError, ImportError):
+        plt.register_cmap(cmap=PITCH_DIVERGING)
 
-    # === POINTER ===
-    'pointer_start': '#8dd3c7',   # celeste
-    'pointer_speed': '#a65628',   # marrone
-    'pointer_deviation': '#fb8072',  # salmone
-    'pointer_deviation_prob': '#fdb462',  # arancione chiaro
-    'loop_dur': '#bebada',        # lavanda
-
-    # === PITCH ===
-    'pitch': '#984ea3',           # viola (unit-driven, qualsiasi unità)
-
-    # === DENSITY ===
-    'density': '#ff7f00',         # arancio
-    'fill_factor': '#f781bf',     # rosa
-    'distribution': '#999999',    # grigio
-    'effective_density': '#ffed6f',  # giallo
-
-    # === VOICES ===
-    'num_voices': '#e377c2',      # magenta
-    'scatter': '#17becf',         # teal
-    'voice_pitch_offset': '#c49c94',  # beige
-    'voice_pointer_offset': '#f7b6d2', # rosa chiaro
-    'voice_pointer_range': '#c7c7c7',  # grigio chiaro
-}
-
-# Nomi validi per il filtro --plot-envelopes / envelope_filter (issue #101)
-PLOT_ENVELOPE_KEYS = frozenset(ENVELOPE_COLORS)
+# Colori di default e universo dei nomi plottabili. Definiti nel modulo
+# matplotlib-free rendering.envelope_extractor (issue #150) e ri-esportati qui
+# per retro-compatibilita': main.py importa PLOT_ENVELOPE_KEYS da qui, i test
+# importano ENVELOPE_COLORS da qui.
+from rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
 
 
 class ScoreVisualizer:
@@ -104,7 +93,7 @@ class ScoreVisualizer:
             'margins_mm': 20,
             
             # Grani
-            'grain_colormap': 'turbo',       # pitch_ratio → colore
+            'grain_colormap': 'pitch_div',   # pitch_ratio → colore (divergente)
             'grain_alpha_range': (0.3, 1.0), # volume → alpha
             'pitch_range': (0.5, 2.0),       # range fisso (fallback senza autozoom)
             # Auto-zoom del range colore pitch: normalizza sul min/max in cents
@@ -121,6 +110,23 @@ class ScoreVisualizer:
             },
             'volume_range': (-60, 0),        # dB range per normalizzare alpha
             'min_grain_width_pts': 1,        # larghezza minima visibile
+            # Forma del grano nella partitura:
+            #   'arrow'  -> freccia direzionale (default, comportamento storico);
+            #   'window' -> il bordo superiore ("testa") traccia la curva della
+            #               finestra/envelope del grano, base piatta sul pointer.
+            # La finestra e' altrimenti invisibile nella partitura: due grani con
+            # envelope diversi (hanning vs expodec) hanno la stessa freccia.
+            'grain_shape': 'arrow',
+            # Numero di punti con cui campionare la curva della finestra per la
+            # silhouette (solo grain_shape='window'). La silhouette normalizzata
+            # e' precalcolata e cachata per (nome, risoluzione): il costo per
+            # grano e' solo una trasformazione affine dei vertici.
+            'window_shape_resolution': 32,
+            # Soglia adattiva: se la larghezza del grano sulla pagina e' sotto
+            # questo numero di pixel, la finestra non sarebbe leggibile e il
+            # grano ripiega sulla freccia a 5 vertici (cap al costo vettoriale
+            # sugli score densi).
+            'window_shape_min_px': 3,
             
             # Waveform
             'waveform_alpha': 0.3,
@@ -142,6 +148,15 @@ class ScoreVisualizer:
             'stream_gap_ratio': 0.05,        # gap tra stream (5% dell'altezza)
             'label_fontsize': 8,
             'title_fontsize': 12,
+            # Dimensioni font prima hardcoded, ora configurabili: annotazione
+            # dei breakpoint envelope e testo della pagina vuota.
+            'breakpoint_fontsize': 6,
+            'empty_fontsize': 14,
+            # Moltiplicatore globale applicato a TUTTE le fontsize del
+            # visualizer (vedi _fs): 1.0 = comportamento invariato; alzarlo
+            # ingrandisce uniformemente assi, titolo, legenda, annotazioni.
+            # Pensato per chi rigenera le figure per la stampa (es. il paper).
+            'font_scale': 1.0,
             # Envelope ranges. Dopo issue #114 (scaling data-driven) solo 'pan'
             # è ancora consultato per lo scaling delle curve (ciclico, ±180);
             # le altre entry restano per riferimento/back-compat, non più usate.
@@ -192,23 +207,56 @@ class ScoreVisualizer:
                 'pad_ratio': 0.05,      # margine sopra/sotto: 5% dell'escursione
                 'samples': 128,         # densità campionamento (cattura overshoot cubic)
             },
+
+            # === LENTE DI INGRANDIMENTO (magnify) ===
+            # Proietta un cerchio che ingrandisce una regione del piano
+            # tempo×posizione di lettura, con connettori verso la sorgente.
+            # Default disattivata: a flag spenti render_page è identico a prima.
+            'magnify_auto': False,        # lente automatica sul cluster più denso
+            'magnify_targets': [],        # target espliciti: list[dict]
+                                          # (t obbligatorio; y/zoom/out/src/stream/corner opz.)
+                                          # corner per-target -> piu' lenti non
+                                          # sovrapposte sullo stesso subplot
+            'magnify_defaults': {
+                'zoom': 8.0,              # fattore di ingrandimento del contenuto
+                'out': 0.12,              # raggio cerchio di USCITA (frazione min figura)
+                'src': None,              # raggio cerchio di PARTENZA; None = out/zoom
+                'corner': 'top-right',    # angolo del subplot dove proiettare la lente
+            },
+            'magnify_hist_bins': (40, 16),  # bin (tempo, posizione) per auto-densest
+            'magnify_color': '#c1121f',   # colore marker sorgente + connettori
         }
-        
+
         self.config = default_config
         if config:
             self.config.update(config)
         
         # Cache waveform
         self.waveform_cache = {}
+
+        # Cache silhouette finestra normalizzata, chiave (nome, risoluzione).
+        # Popolata lazy da _window_silhouette; il registry NumPy e' creato al
+        # primo uso (solo con grain_shape='window').
+        self._window_silhouette_cache = {}
+        self._window_registry = None
         
         # Dati calcolati
         self.total_duration = None
         self.page_count = None
         self.page_layouts = []
         
-        # Colormap
-        self.cmap = plt.get_cmap(self.config['grain_colormap'])
-    
+        # Colormap. grain_colormap accetta sia una stringa (nome registrato,
+        # incluso 'pitch_div') sia un oggetto Colormap gia' costruito.
+        cmap_cfg = self.config['grain_colormap']
+        self.cmap = cmap_cfg if isinstance(cmap_cfg, Colormap) else plt.get_cmap(cmap_cfg)
+
+    def _fs(self, base):
+        """Scala una dimensione font base per il moltiplicatore globale
+        font_scale. Tutte le fontsize del visualizer passano di qui, così un
+        unico parametro le ingrandisce in modo coerente (default 1.0 =
+        invariato)."""
+        return base * self.config['font_scale']
+
     # =========================================================================
     # ANALISI STRUTTURA
     # =========================================================================
@@ -454,8 +502,17 @@ class ScoreVisualizer:
         cbar = fig.colorbar(
             ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
         )
-        cbar.set_label(label, fontsize=self.config['label_fontsize'] - 1)
-        cbar.ax.tick_params(labelsize=self.config['label_fontsize'] - 2)
+        # Scarta i tick troppo vicini agli estremi del range: con colorbar
+        # impilate (una per stream, hspace=0) il tick di fondo della colorbar
+        # sopra e quello di testa della colorbar sotto cadono sullo stesso bordo
+        # condiviso e si sovrappongono (es. '-30' e '30' -> '3030').
+        span = norm.vmax - norm.vmin
+        if span > 0:
+            inner = [t for t in cbar.get_ticks()
+                     if norm.vmin + 0.04 * span < t < norm.vmax - 0.04 * span]
+            cbar.set_ticks(inner)
+        cbar.set_label(label, fontsize=self._fs(self.config['label_fontsize'] - 1))
+        cbar.ax.tick_params(labelsize=self._fs(self.config['label_fontsize'] - 2))
         # '<colorbar>' e' la convenzione matplotlib per gli assi colorbar (la
         # imposta make_axes con ax=...). Con cax= esplicito va messa a mano, cosi'
         # chi filtra gli assi colorbar (test, consumatori) continua a trovarli.
@@ -529,19 +586,24 @@ class ScoreVisualizer:
         if n_streams == 0:
             # Pagina vuota
             ax = fig.add_subplot(111)
-            ax.text(0.5, 0.5, "Nessuno stream attivo",
-                    ha='center', va='center', fontsize=14, color='gray')
+            ax.text(0.5, 0.5, "No active stream",
+                    ha='center', va='center',
+                    fontsize=self._fs(self.config['empty_fontsize']), color='gray')
             ax.axis('off')
-            
-            title = f"Pagina {page_idx + 1}/{self.page_count} — " \
+
+            title = f"Page {page_idx + 1}/{self.page_count} — " \
                     f"[{page_start:.1f}s - {page_end:.1f}s]"
-            fig.suptitle(title, fontsize=self.config['title_fontsize'])
+            fig.suptitle(title, fontsize=self._fs(self.config['title_fontsize']))
             return fig
         
         # =========================================================================
         # SETUP GRIDSPEC
         # =========================================================================
-        waveform_ratio = self.config['waveform_width_ratio']
+        # La colonna waveform ospita la y-label ruotata + i tick e (nella riga
+        # envelope) la legenda con clip al bordo colonna: scala con font_scale
+        # cosi' un testo piu' grande non viene croppato. A fs=1.0 e' identita'.
+        fs = self.config['font_scale']
+        waveform_ratio = self.config['waveform_width_ratio'] * fs
         colorbar_ratio = self.config['colorbar_width_ratio']
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
 
@@ -562,27 +624,47 @@ class ScoreVisualizer:
         # quello degli envelope condividono la colonna centrale (stesso bordo
         # destro). Prima, fig.colorbar(ax=...) rubava larghezza ai soli grani e
         # il pannello envelope restava piu' largo, disallineato a destra.
-        main_ratio = 1 - waveform_ratio - colorbar_ratio
+        #
+        # wspace=0: niente striscia di stacco verticale tra le colonne. La
+        # waveform fa da righello attaccato al fianco sinistro della tela dei
+        # grani (condividono l'asse Y = posizione di lettura) e la colorbar del
+        # pitch e' attaccata al fianco destro.
+        # Clamp difensivo: con font_scale estremi le colonne laterali non devono
+        # fagocitare i grani. min_main = (3/7)*side tiene la quota del plot
+        # centrale >= 30% della larghezza utile.
+        side_ratio = waveform_ratio + colorbar_ratio
+        main_ratio = max(1 - side_ratio, (3.0 / 7.0) * side_ratio)
         gs = fig.add_gridspec(
             n_rows, 3,
             width_ratios=[waveform_ratio, main_ratio, colorbar_ratio],
             height_ratios=height_ratios,
-            wspace=0.02,
+            wspace=0.0,
             hspace=0.0  # gap verticale tra stream
         )
-        
-        # Margini
+
+        # Margini: il titolo sta appena sopra il plot (stacco quasi nullo). Lo
+        # spazio vuoto residuo attorno alle parole (sinistra/destra/basso e sopra
+        # il titolo) lo rifila bbox_inches='tight' in fase di export. Riservo in
+        # alto solo l'altezza del titolo (in frazione di figura) + un gap minimo.
+        fig_h_in = page_h_mm / 25.4
+        title_h = (self._fs(self.config['title_fontsize']) / 72.0) / fig_h_in
+        title_gap = 0.006  # stacco titolo-plot quasi nullo
         margin_ratio = margin_mm / page_w_mm
         fig.subplots_adjust(
             left=margin_ratio,
             right=1 - margin_ratio,
-            bottom=margin_ratio + 0.02,
-            top=1 - margin_ratio - 0.03
+            bottom=margin_ratio,
+            top=1.0 - title_h - 2 * title_gap
         )
         
         # =========================================================================
         # DISEGNA UN SUBPLOT PER OGNI STREAM
         # =========================================================================
+        # Entry per stream raccolte per la lente di ingrandimento (magnify):
+        # l'asse dei grani, la durata del sample e il range colore servono a
+        # ridisegnare il contenuto zoomato nell'inset. Vuoto/inutilizzato quando
+        # magnify è spenta.
+        stream_entries = []
         for i, stream in enumerate(active_streams):
             # Crea subplot per questo stream
             ax_wave = fig.add_subplot(gs[i, 0])
@@ -606,6 +688,13 @@ class ScoreVisualizer:
                                    page_start, page_end, cents_range)
             self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
 
+            stream_entries.append({
+                'stream': stream,
+                'ax': ax_grain,
+                'sample_duration': sample_duration,
+                'cents_range': cents_range,
+            })
+
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
             # colonna dedicata gs[i, 2]: non ruba larghezza al subplot dei grani.
             self._add_pitch_colorbar(fig, gs[i, 2], cents_range,
@@ -613,10 +702,19 @@ class ScoreVisualizer:
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
-            ax_wave.set_ylabel(f"Sample (s)\n{sample_path}", 
-                            fontsize=self.config['label_fontsize'])
+            ax_wave.set_ylabel(f"Read position (s)\n{sample_path}",
+                            fontsize=self._fs(self.config['label_fontsize']))
             ax_wave.set_xticks([])
-            ax_wave.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
+            # Scarta i tick estremi dell'asse buffer: con le righe impilate
+            # (hspace=0) l'inizio (0 s) di una riga e la fine dell'altra cadono
+            # sul bordo condiviso e si sovrappongono. Tieni solo i tick interni.
+            y_lo, y_hi = -0.02, sample_duration + 0.02
+            y_span = y_hi - y_lo
+            inner_yt = [t for t in ax_wave.get_yticks()
+                        if y_lo + 0.04 * y_span < t < y_hi - 0.04 * y_span]
+            ax_wave.set_yticks(inner_yt)
+            ax_wave.set_ylim(-0.02, sample_duration+0.02)  # set_yticks puo' allargare l'ylim
+            ax_wave.tick_params(axis='y', labelsize=self._fs(self.config['label_fontsize'] - 1))
             ax_wave.axvline(x=0, color='gray', linewidth=0.5, alpha=0.5, linestyle=':')
             ax_wave.grid(True, alpha=0.2, linestyle=':', axis='y')
             
@@ -624,12 +722,16 @@ class ScoreVisualizer:
             ax_grain.set_xlim(page_start, page_end)
             ax_grain.set_ylim(-0.02, sample_duration+0.02)
             ax_grain.set_ylabel("")  # label già nella waveform
-            ax_grain.tick_params(axis='y', labelsize=self.config['label_fontsize'] - 1)
+            # L'asse del tempo del buffer e' descritto una sola volta, sulla
+            # waveform a sinistra. Il subplot dei grani condivide lo stesso ylim
+            # ma non ripete le etichette y (ridondanti): restano solo le tacche
+            # di griglia, niente testo.
+            ax_grain.tick_params(axis='y', labelleft=False, length=0)
             ax_grain.grid(True, alpha=0.3, linestyle='--')
             
             # X label solo sull'ultimo stream (se non ci sono envelope)
             if i == n_streams - 1 and not has_envelopes:
-                ax_grain.set_xlabel("Tempo (s)", fontsize=self.config['label_fontsize'])
+                ax_grain.set_xlabel("Time (s)", fontsize=self._fs(self.config['label_fontsize']))
             else:
                 ax_grain.set_xticklabels([])
         
@@ -657,7 +759,7 @@ class ScoreVisualizer:
                     page_start + 0.3,
                     y_base + y_height * 0.5,
                     stream.stream_id,
-                    fontsize=self.config['label_fontsize'] - 2,
+                    fontsize=self._fs(self.config['label_fontsize'] - 2),
                     verticalalignment='center',
                     color='gray',
                     alpha=0.6
@@ -671,8 +773,8 @@ class ScoreVisualizer:
             # Configura assi envelope
             ax_env.set_xlim(page_start, page_end)
             ax_env.set_ylim(0, 1)
-            ax_env.set_xlabel("Tempo (s)", fontsize=self.config['label_fontsize'])
-            ax_env.set_ylabel("", fontsize=self.config['label_fontsize'])
+            ax_env.set_xlabel("Time (s)", fontsize=self._fs(self.config['label_fontsize']))
+            ax_env.set_ylabel("", fontsize=self._fs(self.config['label_fontsize']))
             ax_env.set_yticklabels([])
             ax_env.tick_params(axis='y', length=0)
             ax_env.grid(True, alpha=0.3, linestyle='--', axis='x')
@@ -686,13 +788,256 @@ class ScoreVisualizer:
                 ax_legend = fig.add_subplot(gs[n_streams, 0])
                 self._draw_envelope_legend(ax_legend, legend_entries)
         # =========================================================================
+        # LENTE DI INGRANDIMENTO (magnify)
+        # =========================================================================
+        # Disegnata per ultima, sopra i subplot: l'overlay e gli inset non
+        # alterano il GridSpec. Se magnify è spenta o non ci sono target per la
+        # pagina, non viene creato alcun asse (back-compat).
+        self._render_magnifiers(fig, page_start, page_end, stream_entries)
+
+        # =========================================================================
         # TITOLO
         # =========================================================================
-        title = f"Pagina {page_idx + 1}/{self.page_count} — " \
+        title = f"Page {page_idx + 1}/{self.page_count} — " \
                 f"[{page_start:.1f}s - {page_end:.1f}s]"
-        fig.suptitle(title, fontsize=self.config['title_fontsize'])
-        
+        # Titolo centrato nella striscia riservata in alto, appena sopra il plot:
+        # bordo inferiore del testo a title_gap dal plot (stacco quasi nullo).
+        top_pos = 1.0 - title_h - 2 * title_gap
+        fig.suptitle(title, y=top_pos + title_gap + title_h * 0.5, va='center',
+                     fontsize=self._fs(self.config['title_fontsize']))
+
         return fig
+
+    # =========================================================================
+    # LENTE DI INGRANDIMENTO (magnify)
+    # =========================================================================
+
+    def _render_magnifiers(self, fig, page_start, page_end, stream_entries):
+        """Disegna le lenti attive per questa pagina.
+
+        Risolve i target (auto sul cluster più denso + espliciti che cadono nella
+        finestra di pagina), poi proietta per ciascuno un cerchio zoomato con
+        marker sorgente e connettori. Nessun asse creato se magnify è spenta o
+        non ci sono target (invariante back-compat)."""
+        if not stream_entries:
+            return
+        targets = self._resolve_magnify_targets(
+            page_start, page_end, stream_entries)
+        if not targets:
+            return
+        overlay = self._make_magnify_overlay(fig)
+        for resolved in targets:
+            self._draw_one_magnifier(fig, overlay, resolved)
+
+    def _resolve_magnify_targets(self, page_start, page_end, stream_entries):
+        """Target risolti (concreti) per la pagina: {entry, t, y, zoom, out, src}.
+
+        L'auto (se abilitato) aggiunge la lente sul cluster più denso; gli
+        espliciti la cui 't' cade in [page_start, page_end) vengono risolti su
+        stream e y concreti."""
+        resolved = []
+        if self.config.get('magnify_auto'):
+            auto = self._auto_magnify_target(
+                page_start, page_end, stream_entries)
+            if auto is not None:
+                resolved.append(auto)
+        for target in (self.config.get('magnify_targets') or []):
+            r = self._resolve_explicit_target(
+                target, page_start, page_end, stream_entries)
+            if r is not None:
+                resolved.append(r)
+        return resolved
+
+    def _page_grain_points(self, stream, page_start, page_end):
+        """(onset, pointer_pos) dei grani dello stream visibili nella pagina."""
+        return [
+            (g.onset, g.pointer_pos)
+            for voice_grains in stream.voices
+            for g in voice_grains
+            if g.onset < page_end and (g.onset + g.duration) > page_start
+        ]
+
+    def _auto_magnify_target(self, page_start, page_end, stream_entries):
+        """Target automatico: centroide del bin più denso (tempo×posizione) fra
+        gli stream attivi. None se nessuno stream ha grani in pagina."""
+        nt, ny = self.config['magnify_hist_bins']
+        best = None  # (count, entry, tc, yc)
+        for entry in stream_entries:
+            pts = self._page_grain_points(entry['stream'], page_start, page_end)
+            if not pts:
+                continue
+            ts = np.array([p[0] for p in pts])
+            ys = np.array([p[1] for p in pts])
+            y_hi = max(entry['sample_duration'], 1e-6)
+            H, te, ye = np.histogram2d(
+                ts, ys, bins=[nt, ny],
+                range=[[page_start, page_end], [0.0, y_hi]])
+            i, j = np.unravel_index(int(np.argmax(H)), H.shape)
+            count = H[i, j]
+            if count <= 0:
+                continue
+            # Centro sul centroide dei grani del bin: cade su grani reali, così
+            # la finestra (stretta per via dello zoom) li contiene davvero.
+            in_bin = [(t, y) for t, y in pts
+                      if te[i] <= t <= te[i + 1] and ye[j] <= y <= ye[j + 1]]
+            if not in_bin:
+                continue
+            tc = float(np.mean([t for t, _ in in_bin]))
+            yc = float(np.mean([y for _, y in in_bin]))
+            if best is None or count > best[0]:
+                best = (count, entry, tc, yc)
+        if best is None:
+            return None
+        _, entry, tc, yc = best
+        d = self.config['magnify_defaults']
+        return {'entry': entry, 't': tc, 'y': yc,
+                'zoom': d['zoom'], 'out': d['out'], 'src': d['src'],
+                'corner': d.get('corner', 'top-right')}
+
+    def _resolve_explicit_target(self, target, page_start, page_end,
+                                 stream_entries):
+        """Risolve un target esplicito {t, y?, zoom?, out?, src?, stream?}.
+
+        None se 't' non cade nella pagina. Stream: la chiave 'stream' (per
+        stream_id) o, in mancanza, lo stream più denso in pagina. y: la chiave
+        'y' o il centroide dei pointer_pos vicino a 't' (o metà sample)."""
+        t = target.get('t')
+        if t is None or not (page_start <= t < page_end):
+            return None
+        entry = None
+        sid = target.get('stream')
+        if sid is not None:
+            entry = next((e for e in stream_entries
+                          if e['stream'].stream_id == sid), None)
+        if entry is None:
+            entry = self._densest_stream_entry(
+                page_start, page_end, stream_entries)
+        if entry is None:
+            return None
+        d = self.config['magnify_defaults']
+        y = target.get('y')
+        if y is None:
+            y = self._auto_y_at(entry['stream'], t, page_start, page_end)
+            if y is None:
+                y = entry['sample_duration'] * 0.5
+        return {'entry': entry, 't': float(t), 'y': float(y),
+                'zoom': target.get('zoom', d['zoom']),
+                'out': target.get('out', d['out']),
+                'src': target.get('src', d['src']),
+                'corner': target.get('corner', d.get('corner', 'top-right'))}
+
+    def _densest_stream_entry(self, page_start, page_end, stream_entries):
+        """Entry dello stream con più grani visibili in pagina (fallback: primo)."""
+        best, best_n = None, 0
+        for entry in stream_entries:
+            n = len(self._page_grain_points(
+                entry['stream'], page_start, page_end))
+            if n > best_n:
+                best, best_n = entry, n
+        return best or (stream_entries[0] if stream_entries else None)
+
+    def _auto_y_at(self, stream, t, page_start, page_end):
+        """Centroide dei pointer_pos dei grani vicini a 't' (None se nessuno)."""
+        pts = self._page_grain_points(stream, page_start, page_end)
+        if not pts:
+            return None
+        w = 0.05 * (page_end - page_start)  # finestra locale ±5% pagina
+        near = [y for (gt, y) in pts if abs(gt - t) <= w] or [y for _, y in pts]
+        return float(np.mean(near))
+
+    def _make_magnify_overlay(self, fig):
+        """Asse a tutta figura in coordinate pixel: cerchi tondi e linee dritte
+        nonostante l'asse-dato sia anisotropo (X tempo, Y posizione). Etichettato
+        '<magnifier-overlay>' come '<colorbar>', così i consumatori lo filtrano."""
+        W, H = fig.get_size_inches() * fig.dpi
+        ov = fig.add_axes([0, 0, 1, 1], zorder=10)
+        ov.set_label('<magnifier-overlay>')
+        ov.set_xlim(0, W)
+        ov.set_ylim(0, H)
+        ov.set_aspect('equal')
+        ov.axis('off')
+        return ov
+
+    def _draw_one_magnifier(self, fig, overlay, resolved):
+        """Proietta una lente: inset circolare zoomato + marker sorgente +
+        connettori. I quattro controlli (center, zoom, out, src) sono
+        indipendenti; src=None usa il valore fedele out/zoom."""
+        entry = resolved['entry']
+        ax_grain = entry['ax']
+        stream = entry['stream']
+        sample_dur = entry['sample_duration']
+        cents_range = entry['cents_range']
+        tc, yc = float(resolved['t']), float(resolved['y'])
+        zoom = max(float(resolved['zoom']), 1e-6)
+
+        W, H = fig.get_size_inches() * fig.dpi
+        min_dim = min(W, H)
+        out_r_px = float(resolved['out']) * min_dim
+        src = resolved.get('src')
+        src_r_px = (float(src) * min_dim) if src is not None else out_r_px / zoom
+
+        # Scala px/dato dell'asse principale al centro (asse lineare).
+        base = ax_grain.transData.transform((tc, yc))
+        px_per_t = ax_grain.transData.transform((tc + 1.0, yc))[0] - base[0]
+        px_per_y = ax_grain.transData.transform((tc, yc + 1.0))[1] - base[1]
+        px_per_t = px_per_t if abs(px_per_t) > 1e-9 else 1.0
+        px_per_y = px_per_y if abs(px_per_y) > 1e-9 else 1.0
+
+        # Finestra dati mostrata: derivata da (zoom, out) → contenuto × zoom.
+        hwx = out_r_px / (zoom * abs(px_per_t))
+        hwy = out_r_px / (zoom * abs(px_per_y))
+        t0, t1 = tc - hwx, tc + hwx
+        y0, y1 = yc - hwy, yc + hwy
+
+        # Posizione del cerchio di uscita: angolo del subplot (frazione figura).
+        pos = ax_grain.get_position()
+        r_fx, r_fy = out_r_px / W, out_r_px / H
+        corner = resolved.get('corner') or \
+            self.config['magnify_defaults'].get('corner', 'top-right')
+        pad = 0.012
+        cy = (pos.y1 - r_fy - pad) if 'top' in corner else (pos.y0 + r_fy + pad)
+        cx = (pos.x1 - r_fx - pad) if 'right' in corner else (pos.x0 + r_fx + pad)
+
+        # Inset lente: quadrato in pixel (cerchio tondo), clip a cerchio.
+        lens_ax = fig.add_axes([cx - r_fx, cy - r_fy, 2 * r_fx, 2 * r_fy])
+        lens_ax.set_label('<magnifier>')
+        lens_ax.add_patch(mpatches.Circle(
+            (0.5, 0.5), 0.5, transform=lens_ax.transAxes,
+            facecolor='white', edgecolor='none', zorder=0))
+        self._draw_loop_mask(lens_ax, stream, t0, t1, sample_dur)
+        self._draw_grains_full(lens_ax, stream, sample_dur, t0, t1, cents_range)
+        lens_ax.set_xlim(t0, t1)
+        lens_ax.set_ylim(y0, y1)
+        lens_ax.set_xticks([])
+        lens_ax.set_yticks([])
+        clip = mpatches.Circle((0.5, 0.5), 0.5, transform=lens_ax.transAxes)
+        for art in (list(lens_ax.collections) + list(lens_ax.patches)
+                    + list(lens_ax.lines)):
+            art.set_clip_path(clip)
+        lens_ax.patch.set_visible(False)
+        for sp in lens_ax.spines.values():
+            sp.set_visible(False)
+
+        # Marker sorgente, connettori e anello lente sull'overlay (pixel).
+        lpx, lpy = cx * W, cy * H
+        accent = self.config['magnify_color']
+        direction = np.array([lpx - base[0], lpy - base[1]], float)
+        direction /= (np.hypot(*direction) + 1e-9)
+        perp = np.array([-direction[1], direction[0]])
+        for s in (+1.0, -1.0):
+            a = np.array(base) + s * src_r_px * perp
+            b = np.array([lpx, lpy]) + s * out_r_px * perp
+            line, = overlay.plot([a[0], b[0]], [a[1], b[1]],
+                                 color=accent, lw=1.2, alpha=0.55, zorder=4)
+            line.set_gid('magnify-connector')
+        src_ring = mpatches.Circle((base[0], base[1]), src_r_px, fill=False,
+                                   ec=accent, lw=1.4, zorder=5)
+        src_ring.set_gid('magnify-source')
+        overlay.add_patch(src_ring)
+        lens_ring = mpatches.Circle((lpx, lpy), out_r_px, fill=False,
+                                    ec='#222222', lw=2.2, zorder=6)
+        lens_ring.set_gid('magnify-lens')
+        overlay.add_patch(lens_ring)
 
     def _draw_waveform_full(self, ax, stream, sample_duration):
         """Disegna waveform usando tutto lo spazio verticale dello subplot."""
@@ -721,6 +1066,112 @@ class ScoreVisualizer:
         )
 
 
+    def _grain_arrow_vertices(self, grain):
+        """Vertici della freccia direzionale (forma storica del grano).
+
+        5 vertici: rettangolo [onset, onset+duration] x [pointer, pointer+dur]
+        con punta triangolare verso l'alto (forward) o il basso (reverse)."""
+        x = grain.onset
+        width = grain.duration
+        pointer_y = grain.pointer_pos
+        height = grain.duration
+        arrow_head_width = width * 0.5
+
+        if grain.pitch_ratio < 0:
+            y_top = pointer_y
+            y_bottom = pointer_y - height
+            return [
+                (x, y_top),                               # alto sinistra
+                (x + width, y_top),                       # alto destra
+                (x + width, y_bottom + arrow_head_width), # prima della punta destra
+                (x + width / 2, y_bottom),                # punta centrale (GIU')
+                (x, y_bottom + arrow_head_width),         # prima della punta sinistra
+            ]
+        y_bottom = pointer_y
+        y_top = pointer_y + height
+        return [
+            (x, y_bottom),                                # basso sinistra
+            (x + width, y_bottom),                        # basso destra
+            (x + width, y_top - arrow_head_width),        # prima della punta destra
+            (x + width / 2, y_top),                       # punta centrale (SU)
+            (x, y_top - arrow_head_width),                # prima della punta sinistra
+        ]
+
+    def _grain_window_vertices(self, grain, xs, w):
+        """Vertici della silhouette "testa/bordo": base piatta sul pointer, il
+        bordo superiore segue la curva della finestra w (normalizzata su [0,1]).
+
+        xs, w: arrays normalizzati su [0,1] (vedi _window_silhouette). La
+        direzione (sopra/sotto il pointer) segue il segno di pitch_ratio come
+        per la freccia."""
+        x = grain.onset
+        width = grain.duration
+        pointer_y = grain.pointer_pos
+        height = grain.duration
+
+        xs_abs = x + xs * width
+        if grain.pitch_ratio < 0:
+            edge = pointer_y - height * w
+        else:
+            edge = pointer_y + height * w
+
+        vertices = [(x, pointer_y)]
+        vertices.extend((float(xi), float(yi)) for xi, yi in zip(xs_abs, edge))
+        vertices.append((x + width, pointer_y))
+        return vertices
+
+    def _window_registry_lazy(self):
+        """Istanzia il NumpyWindowRegistry al primo uso (solo grain_shape='window')."""
+        if self._window_registry is None:
+            from rendering.numpy_window_registry import NumpyWindowRegistry
+            self._window_registry = NumpyWindowRegistry()
+        return self._window_registry
+
+    def _window_silhouette(self, name, resolution):
+        """Curva finestra normalizzata su [0,1] in ampiezza e dominio.
+
+        Ritorna (xs, w) con xs = linspace(0,1,resolution) e w la finestra
+        riscalata a picco unitario. Cachata per (name, resolution): la forma di
+        una finestra dato il nome e' sempre la stessa, cambia solo la scala
+        applicata per grano."""
+        key = (name, resolution)
+        cached = self._window_silhouette_cache.get(key)
+        if cached is not None:
+            return cached
+
+        w = self._window_registry_lazy().get(name, resolution)
+        w = np.clip(np.asarray(w, dtype=float), 0.0, None)
+        peak = float(w.max())
+        if peak > 0:
+            w = w / peak
+        xs = np.linspace(0.0, 1.0, resolution)
+        result = (xs, w)
+        self._window_silhouette_cache[key] = result
+        return result
+
+    def _window_name_map(self, stream):
+        """Mappa table_num -> nome finestra invertendo stream.window_table_map.
+
+        Ritorna {} se la mappa non e' disponibile (fallback alla freccia)."""
+        wtm = getattr(stream, 'window_table_map', None)
+        if not wtm:
+            return {}
+        return {num: name for name, num in wtm.items()}
+
+    def _grain_page_width_px(self, ax, grain):
+        """Larghezza del grano sulla pagina in pixel display.
+
+        Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
+        in modo leggibile. Se la trasformazione non e' disponibile (axes non
+        ancora disegnato) ritorna +inf -> nessun fallback."""
+        try:
+            t = ax.transData
+            x0 = t.transform((grain.onset, 0.0))[0]
+            x1 = t.transform((grain.onset + grain.duration, 0.0))[0]
+            return abs(x1 - x0)
+        except Exception:
+            return float('inf')
+
     def _draw_grains_full(self, ax, stream, sample_duration, page_start,
                           page_end, cents_range=None):
         """Disegna grani con coordinate Y assolute nel sample.
@@ -738,57 +1189,44 @@ class ScoreVisualizer:
         
         if not visible_grains:
             return
-        
+
         polygons = []
         #rectangles = []
         colors = []
-        
+
+        # Modalita' forma del grano. In 'window' il bordo superiore traccia la
+        # curva della finestra; serve la mappa table_num -> nome finestra (una
+        # volta per stream) e la risoluzione di campionamento.
+        grain_shape = self.config.get('grain_shape', 'arrow')
+        window_mode = grain_shape == 'window'
+        if window_mode:
+            name_map = self._window_name_map(stream)
+            resolution = self.config['window_shape_resolution']
+            min_px = self.config['window_shape_min_px']
+            # name_map vuota (window_table_map assente) -> niente nomi da
+            # risolvere: si ripiega interamente sulla freccia.
+            if not name_map:
+                window_mode = False
+
         for grain in visible_grains:
-            # X: tempo partitura
-            x = grain.onset
-            width = grain.duration
-            
-            # Y: posizione assoluta nel sample (in secondi)
-            pointer_y = grain.pointer_pos
-            
-            # Altezza: sample consumato (in secondi)
-            # Considerando durata
-            height = grain.duration # * abs(grain.pitch_ratio)
-
-            # Dimensione punta freccia (% della larghezza)
-            arrow_head_width = width * 0.5  # 30% della larghezza del grano
-
-            # Direzione
-            if grain.pitch_ratio < 0:
-                y_top = pointer_y
-                y_bottom = pointer_y - height
-
-                # 7 punti: rettangolo con punta triangolare in basso
-                vertices = [
-                    (x, y_top),                           # alto sinistra
-                    (x + width, y_top),                   # alto destra
-                    (x + width, y_bottom + arrow_head_width),  # prima della punta destra
-                    (x + width/2, y_bottom),              # punta centrale (GIÙ)
-                    (x, y_bottom + arrow_head_width),     # prima della punta sinistra
-                ]
+            # window_mode con grano abbastanza largo sulla pagina e finestra
+            # risolvibile -> silhouette della finestra; altrimenti freccia.
+            use_window = (
+                window_mode
+                and self._grain_page_width_px(ax, grain) >= min_px
+                and grain.envelope_table in name_map
+            )
+            if use_window:
+                xs, w = self._window_silhouette(
+                    name_map[grain.envelope_table], resolution)
+                vertices = self._grain_window_vertices(grain, xs, w)
             else:
-                # FRECCIA SU (forward)
-                y_bottom = pointer_y
-                y_top = pointer_y + height
-                
-                # 7 punti: rettangolo con punta triangolare in alto
-                vertices = [
-                    (x, y_bottom),                        # basso sinistra
-                    (x + width, y_bottom),                # basso destra
-                    (x + width, y_top - arrow_head_width),  # prima della punta destra
-                    (x + width/2, y_top),                 # punta centrale (SU)
-                    (x, y_top - arrow_head_width),        # prima della punta sinistra
-                ]
-            
+                vertices = self._grain_arrow_vertices(grain)
+
             # Crea poligono
             poly = mpatches.Polygon(vertices, closed=True)
             polygons.append(poly)
-            
+
             # Colore
             color = list(self._pitch_to_color(abs(grain.pitch_ratio),
                                               cents_range))
@@ -796,11 +1234,15 @@ class ScoreVisualizer:
             colors.append(color)
         
         # Collection
+        # Contorno sottile per ogni grano: i grani prossimi al neutro (grigio
+        # chiaro della mappa divergente) restano leggibili come forme sul fondo
+        # bianco. Solo il bordo cambia: facecolor e alpha (guidato dal volume)
+        # restano invariati.
         collection = PatchCollection(
             polygons,
             facecolors=colors,
-            edgecolors='black',
-            linewidths=0.02,
+            edgecolors='#555555',
+            linewidths=0.01,
             clip_on=True,
             zorder=2
         )
@@ -813,7 +1255,7 @@ class ScoreVisualizer:
             label_x, 
             sample_duration * 0.95,  # posizione relativa all'altezza del sample
             stream.stream_id,
-            fontsize=self.config['label_fontsize'] - 1,
+            fontsize=self._fs(self.config['label_fontsize'] - 1),
             verticalalignment='top',
             horizontalalignment='left',
             color='darkblue',
@@ -940,311 +1382,32 @@ class ScoreVisualizer:
     # =========================================================================
 
     def _get_stream_envelopes(self, stream):
+        """Estrae gli Envelope della IR dello stream.
+
+        Delega a rendering.envelope_extractor (single source of truth condivisa
+        con SVExporter, issue #150). I flag di config governano il gating come
+        prima: show_static_params, show_voice_offsets, envelope_filter.
         """
-        Estrae tutti i parametri che sono Envelope dallo stream.
-        
-        Soluzione C: usa gli schema come single source of truth.
-        Suffisso "_prob" per le probabilità dephase.
-        
-        Returns:
-            dict: {nome_parametro: Envelope}
-        """
-        from envelopes.envelope import Envelope
-        from parameters.parameter import Parameter
-        from shared.probability_gate import EnvelopeGate, RandomGate
-        from parameters.parameter_schema import (
-            STREAM_PARAMETER_SCHEMA, 
-            POINTER_PARAMETER_SCHEMA, 
-            PITCH_PARAMETER_SCHEMA,
-            DENSITY_PARAMETER_SCHEMA,
+        from rendering.envelope_extractor import get_stream_envelopes
+        return get_stream_envelopes(
+            stream,
+            show_static=self.config.get('show_static_params', False),
+            show_voice_offsets=self.config.get('show_voice_offsets', False),
+            envelope_filter=self.config.get('envelope_filter'),
         )
-        
-        envelopes = {}
-        show_static = self.config.get('show_static_params', False)
-        
-        # Combina tutti gli schema disponibili
-        all_schemas = (
-            STREAM_PARAMETER_SCHEMA + 
-            POINTER_PARAMETER_SCHEMA + 
-            PITCH_PARAMETER_SCHEMA + 
-            DENSITY_PARAMETER_SCHEMA        )
-        
-        # Itera su tutte le specifiche dei parametri
-        for spec in all_schemas:
-            # Salta se l'attributo non esiste nello stream
-            if not hasattr(stream, spec.name):
-                continue
-            
-            param = getattr(stream, spec.name)
-            
-            # =====================================================================
-            # PARTE 1: ESTRAZIONE VALORE PRINCIPALE
-            # =====================================================================
-            
-            # Determina il valore effettivo (raw o da Parameter)
-            if isinstance(param, Parameter):
-                value = param._value
-            else:
-                value = param
-            
-            # Aggiungi envelope del valore principale
-            if isinstance(value, Envelope):
-                bp_values = [bp[1] for bp in value.breakpoints]
-                is_static = len(set(bp_values)) == 1
-                if len(value.breakpoints) > 1 and not is_static:
-                    envelopes[spec.name] = value
-                elif show_static:
-                    val = bp_values[0]
-                    envelopes[spec.name] = Envelope([[0, val], [stream.duration, val]])
-            
-            # Valori statici (numero)
-            elif isinstance(value, (int, float)) and show_static:
-                if value is not None:
-                    envelopes[spec.name] = Envelope([[0, value], [stream.duration, value]])
-            
-            # =====================================================================
-            # PARTE 2: ESTRAZIONE DEPHASE (PROBABILITA) CON SUFFISSO "_prob"
-            # =====================================================================
-            # Il dephase oggi e' un ProbabilityGate iniettato in
-            # param._probability_gate (issue #96): EnvelopeGate per curve nel
-            # tempo, RandomGate per probabilita' costante. Never/Always: nessuna
-            # curva da disegnare.
-            if spec.dephase_key and isinstance(param, Parameter):
-                gate = getattr(param, '_probability_gate', None)
-                prob_key = f"{spec.name}_prob"
-
-                if isinstance(gate, EnvelopeGate):
-                    env = gate.envelope
-                    bp_values = [bp[1] for bp in env.breakpoints]
-                    is_static = len(set(bp_values)) == 1
-                    if len(env.breakpoints) > 1 and not is_static:
-                        envelopes[prob_key] = env
-                    elif show_static:
-                        val = bp_values[0]
-                        envelopes[prob_key] = Envelope([[0, val], [stream.duration, val]])
-
-                elif isinstance(gate, RandomGate) and show_static:
-                    prob = gate.probability
-                    envelopes[prob_key] = Envelope([[0, prob], [stream.duration, prob]])
-
-            # =====================================================================
-            # PARTE 3: ESTRAZIONE RANGE (_mod_range) PER SPEC CON range_path
-            # =====================================================================
-            # Per parametri come pointer_deviation il valore base e' un dummy 0
-            # costante (yaml_path='_dummy_fixed_zero_'); la deviazione reale vive
-            # in param._mod_range (issue #96). Chiave = spec.name: sovrascrive il
-            # dummy-0 eventualmente emesso da PARTE 1.
-            if spec.range_path and isinstance(param, Parameter):
-                mod_range = getattr(param, '_mod_range', None)
-
-                if isinstance(mod_range, Envelope):
-                    bp_values = [bp[1] for bp in mod_range.breakpoints]
-                    is_static = len(set(bp_values)) == 1
-                    if len(mod_range.breakpoints) > 1 and not is_static:
-                        envelopes[spec.name] = mod_range
-                    elif show_static:
-                        val = bp_values[0]
-                        envelopes[spec.name] = Envelope([[0, val], [stream.duration, val]])
-
-                elif isinstance(mod_range, (int, float)) and show_static:
-                    envelopes[spec.name] = Envelope([[0, mod_range], [stream.duration, mod_range]])
-
-        # =====================================================================
-        # PITCH: unit-driven, non più in PITCH_PARAMETER_SCHEMA. Raccolto da
-        # stream.pitch_value (Envelope o scalare) sotto la chiave 'pitch';
-        # range e simbolo derivano da stream.pitch_unit alla normalizzazione.
-        # =====================================================================
-        pitch_value = getattr(stream, 'pitch_value', None)
-        if isinstance(pitch_value, Envelope):
-            bp_values = [bp[1] for bp in pitch_value.breakpoints]
-            is_static = len(set(bp_values)) == 1
-            if len(pitch_value.breakpoints) > 1 and not is_static:
-                envelopes['pitch'] = pitch_value
-            elif show_static:
-                envelopes['pitch'] = Envelope([[0, bp_values[0]], [stream.duration, bp_values[0]]])
-        elif isinstance(pitch_value, (int, float)) and show_static:
-            envelopes['pitch'] = Envelope([[0, pitch_value], [stream.duration, pitch_value]])
-
-        # =====================================================================
-        # ESTRAZIONE PER NOME ESPLICITO (issue #88). Parametri non raggiungibili
-        # dal ciclo sugli schemi:
-        #   - num_voices / scatter: Parameter privati dello Stream, fuori da ogni
-        #     *_PARAMETER_SCHEMA.
-        #   - pointer_speed: lo schema lo definisce come `pointer_speed_ratio`, ma
-        #     lo Stream espone la property `pointer_speed` → hasattr sul nome di
-        #     schema e' falso e il ciclo lo salta.
-        # Stessa logica del valore principale (PART 1): Parameter → _value; solo
-        # Envelope dinamici, statici solo con show_static.
-        # =====================================================================
-        for name in ('num_voices', 'scatter', 'pointer_speed'):
-            if not hasattr(stream, name):
-                continue
-            param = getattr(stream, name)
-            value = param._value if isinstance(param, Parameter) else param
-            if isinstance(value, Envelope):
-                bp_values = [bp[1] for bp in value.breakpoints]
-                is_static = len(set(bp_values)) == 1
-                if len(value.breakpoints) > 1 and not is_static:
-                    envelopes[name] = value
-                elif show_static:
-                    val = bp_values[0]
-                    envelopes[name] = Envelope([[0, val], [stream.duration, val]])
-            elif isinstance(value, (int, float)) and show_static:
-                envelopes[name] = Envelope([[0, value], [stream.duration, value]])
-
-        # =====================================================================
-        # POINTER DEVIATION (issue #96). pointer_deviation NON e' esposto sullo
-        # Stream: il Parameter vive in stream._pointer.deviation (PointerController)
-        # e hasattr(stream,'pointer_deviation') e' False, quindi il ciclo sugli
-        # schemi lo salta. offset_range sta in _mod_range (chiave
-        # 'pointer_deviation'), il dephase nel _probability_gate (chiave
-        # 'pointer_deviation_prob'). Stessa logica di PARTE 2 e PARTE 3.
-        # =====================================================================
-        pointer = getattr(stream, '_pointer', None)
-        deviation = getattr(pointer, 'deviation', None)
-        if isinstance(deviation, Parameter):
-            # offset_range -> chiave 'pointer_deviation'
-            mod_range = deviation._mod_range
-            if isinstance(mod_range, Envelope):
-                bp_values = [bp[1] for bp in mod_range.breakpoints]
-                is_static = len(set(bp_values)) == 1
-                if len(mod_range.breakpoints) > 1 and not is_static:
-                    envelopes['pointer_deviation'] = mod_range
-                elif show_static:
-                    val = bp_values[0]
-                    envelopes['pointer_deviation'] = Envelope([[0, val], [stream.duration, val]])
-            elif isinstance(mod_range, (int, float)) and show_static:
-                envelopes['pointer_deviation'] = Envelope([[0, mod_range], [stream.duration, mod_range]])
-
-            # dephase -> chiave 'pointer_deviation_prob'
-            gate = deviation._probability_gate
-            if isinstance(gate, EnvelopeGate):
-                env = gate.envelope
-                bp_values = [bp[1] for bp in env.breakpoints]
-                is_static = len(set(bp_values)) == 1
-                if len(env.breakpoints) > 1 and not is_static:
-                    envelopes['pointer_deviation_prob'] = env
-                elif show_static:
-                    val = bp_values[0]
-                    envelopes['pointer_deviation_prob'] = Envelope([[0, val], [stream.duration, val]])
-            elif isinstance(gate, RandomGate) and show_static:
-                prob = gate.probability
-                envelopes['pointer_deviation_prob'] = Envelope([[0, prob], [stream.duration, prob]])
-
-        # =====================================================================
-        # OFFSET PER-VOCE (issue #90, Fase 3). voice_pitch_offset /
-        # voice_pointer_offset / voice_pointer_range non sono Envelope sullo
-        # Stream: sono config delle voice strategy, calcolati on-the-fly da
-        # VoiceManager.get_voice_config(voice_index, time). Raccolti come curve
-        # per-voce solo col flag show_voice_offsets (gating dedicato, non
-        # governato da show_static_params).
-        # =====================================================================
-        if self.config.get('show_voice_offsets'):
-            envelopes.update(self._get_voice_offset_envelopes(stream))
-
-        # =====================================================================
-        # FILTRO SELETTIVO (issue #101). Applicato sulle chiavi del dict finale
-        # cosi' copre ogni path di estrazione (main, _prob, _mod_range, pitch,
-        # nomi espliciti, offset per-voce). Confronto sul nome base cosi' un
-        # filtro 'voice_pitch_offset' cattura tutte le tracce '__vN'. Il filtro
-        # interseca: non forza la visibilita' degli statici, che restano
-        # governati da show_static_params.
-        # =====================================================================
-        env_filter = self.config.get('envelope_filter')
-        if env_filter is not None:
-            envelopes = {
-                k: v for k, v in envelopes.items()
-                if self._base_param_name(k) in env_filter
-            }
-
-        return envelopes
 
     @staticmethod
     def _base_param_name(key):
-        """Nome base di una chiave envelope: strippa il suffisso per-voce '__vN'
-        (issue #90). 'voice_pitch_offset__v2' -> 'voice_pitch_offset'; chiavi
-        senza suffisso restano invariate. Serve a risolvere colore/range/filtro
-        delle curve per-voce sul parametro base."""
-        return re.sub(r'__v\d+$', '', key)
+        """Nome base di una chiave envelope (strip suffisso per-voce '__vN').
+        Delega a rendering.envelope_extractor.base_param_name (issue #150)."""
+        from rendering.envelope_extractor import base_param_name
+        return base_param_name(key)
 
     def _get_voice_offset_envelopes(self, stream):
-        """
-        Estrae gli offset per-voce come curve disegnabili (issue #90, Fase 3).
-
-        - voice_pitch_offset__vN: una curva per voce (semitoni), campionando
-          VoiceConfig.pitch_factor su una griglia temporale e convertendo il
-          fattore di ratio in semitoni (12*log2). Voce 0 = riferimento, esclusa.
-        - voice_pointer_offset__vN: una curva per voce (offset raw), da
-          VoiceConfig.pointer_offset.
-        - voice_pointer_range: curva singola dello spread, dal parametro
-          pointer_range della pointer strategy stocastica (se presente).
-
-        num_voices time-varying: la voce i appare solo nella finestra in cui e'
-        attiva (int(num_voices(t)) > i), troncando la curva. Le curve
-        identicamente nulle vengono saltate (nessuna informazione).
-        """
-        from envelopes.envelope import Envelope
-
-        vm = getattr(stream, '_voice_manager', None)
-        if vm is None:
-            return {}
-
-        max_voices = int(getattr(vm, 'max_voices', 1))
-        if max_voices < 2 and getattr(vm, '_pointer_strategy', None) is None:
-            return {}
-
-        duration = stream.duration
-        grid = np.linspace(0.0, duration, 33)
-
-        num_voices_param = getattr(stream, 'num_voices', None)
-
-        def active_count(t):
-            if num_voices_param is None:
-                return max_voices
-            try:
-                val = num_voices_param.get_value(t)
-            except AttributeError:
-                val = num_voices_param
-            return max(1, min(max_voices, int(val)))
-
-        has_pitch = getattr(vm, '_pitch_strategy', None) is not None
-        has_pointer = getattr(vm, '_pointer_strategy', None) is not None
-
-        result = {}
-
-        def _nonzero(points):
-            return len(points) >= 2 and any(abs(v) > 1e-9 for _, v in points)
-
-        for i in range(1, max_voices):
-            pitch_pts = []
-            pointer_pts = []
-            for t in grid:
-                if active_count(t) <= i:
-                    continue
-                vc = vm.get_voice_config(i, float(t))
-                if has_pitch:
-                    factor = vc.pitch_factor
-                    semis = float(12.0 * np.log2(factor)) if factor > 0 else 0.0
-                    pitch_pts.append([float(t), semis])
-                if has_pointer:
-                    pointer_pts.append([float(t), float(vc.pointer_offset)])
-            if has_pitch and _nonzero(pitch_pts):
-                result[f'voice_pitch_offset__v{i}'] = Envelope(pitch_pts)
-            if has_pointer and _nonzero(pointer_pts):
-                result[f'voice_pointer_offset__v{i}'] = Envelope(pointer_pts)
-
-        # voice_pointer_range: ampiezza dello spread, esposta dalla pointer
-        # strategy stocastica come parametro pointer_range (float o Envelope).
-        if has_pointer:
-            prange = getattr(vm._pointer_strategy, 'pointer_range', None)
-            if isinstance(prange, Envelope):
-                if any(abs(bp[1]) > 1e-9 for bp in prange.breakpoints):
-                    result['voice_pointer_range'] = prange
-            elif isinstance(prange, (int, float)) and abs(prange) > 1e-9:
-                result['voice_pointer_range'] = Envelope(
-                    [[0, prange], [duration, prange]])
-
-        return result
+        """Curve per-voce degli offset (issue #90, Fase 3).
+        Delega a rendering.envelope_extractor.get_voice_offset_envelopes."""
+        from rendering.envelope_extractor import get_voice_offset_envelopes
+        return get_voice_offset_envelopes(stream)
 
     def _compute_display_ranges(self, envelopes, stream, t_start, t_end):
         """
@@ -1559,7 +1722,7 @@ class ScoreVisualizer:
             'pointer_speed': 'x',
             'fill_factor': '',
             'distribution': '',
-            'num_voices': ' voci',
+            'num_voices': ' voices',
             'scatter': '',  # normalizzato 0-1, adimensionale
             'scatter': '',  # normalizzato 0-1, adimensionale
             'pc_rand_reverse': '%',
@@ -1603,17 +1766,40 @@ class ScoreVisualizer:
             
             # Disegna punto
             ax.plot(t_abs, y_pos, 'o', color=color, markersize=4, alpha=0.9)
-            
-            # Disegna etichetta (offset per evitare sovrapposizione)
+
+            # Lato dell'etichetta scelto dinamicamente in base alla posizione del
+            # breakpoint nel subplot, cosi' il testo resta SEMPRE dentro il plot
+            # dedicato all'envelope (prima un offset fisso in alto-a-destra faceva
+            # sforare i breakpoint vicini al bordo destro o al tetto della corsia).
+            x_span = page_end - page_start
+            x_frac = (t_abs - page_start) / x_span if x_span > 0 else 0.5
+            # ylim del subplot envelope e' (0, 1): y_pos e' gia' la frazione
+            # verticale dentro l'asse.
+            y_frac = y_pos
+
+            # Vicino al bordo destro -> etichetta a sinistra del punto.
+            if x_frac > 0.85:
+                dx, ha = -3, 'right'
+            else:
+                dx, ha = 3, 'left'
+            # Vicino al tetto del subplot -> etichetta sotto il punto.
+            if y_frac > 0.9:
+                dy, va = -3, 'top'
+            else:
+                dy, va = 3, 'bottom'
+
+            # Disegna etichetta (offset dinamico per restare dentro il plot)
             ax.annotate(
                 label,
                 xy=(t_abs, y_pos),
-                xytext=(3, 3),
+                xytext=(dx, dy),
                 textcoords='offset points',
-                fontsize=6,
+                fontsize=self._fs(self.config['breakpoint_fontsize']),
                 color=color,
                 alpha=0.9,
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', 
+                ha=ha,
+                va=va,
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
                          alpha=0.7, edgecolor='none')
             )
 
@@ -1692,14 +1878,23 @@ class ScoreVisualizer:
         'effective_density': 'eff density',
         'distribution': 'distrib',
         'fill_factor': 'fill',
+        # Override compatto: 'grain dur rng' (13) sforerebbe la colonna (issue #141)
+        'grain_duration_range': 'gr dur rng',
     }
 
     def _legend_display_name(self, param_name):
-        """Nome corto per la legenda. Suffisso '_prob' → ' %' (probabilita')."""
+        """Nome corto per la legenda. Un override esplicito in _ENV_LEGEND_SHORT
+        ha precedenza; altrimenti suffisso '_prob' → ' %' (probabilita') e
+        '_range' → ' rng' (deviazione per-grano, issue #141)."""
+        if param_name in self._ENV_LEGEND_SHORT:
+            return self._ENV_LEGEND_SHORT[param_name]
         if param_name.endswith('_prob'):
             base = param_name[:-len('_prob')]
             return f"{self._legend_display_name(base)} %"
-        return self._ENV_LEGEND_SHORT.get(param_name, param_name.replace('_', ' '))
+        if param_name.endswith('_range'):
+            base = param_name[:-len('_range')]
+            return f"{self._legend_display_name(base)} rng"
+        return param_name.replace('_', ' ')
 
     def _draw_envelope_legend(self, ax, legend_entries):
         """
@@ -1718,7 +1913,7 @@ class ScoreVisualizer:
             # clip_on=True: anche un nome inatteso non sfora mai nel plot,
             # viene tagliato al bordo della colonna legenda (issue #96).
             ax.text(0.4, y, self._legend_display_name(param_name),
-                    fontsize=self.config['label_fontsize'] - 2,
+                    fontsize=self._fs(self.config['label_fontsize'] - 2),
                     verticalalignment='center',
                     color=color,
                     clip_on=True)
@@ -1751,9 +1946,12 @@ class ScoreVisualizer:
         
         figures = self.render_all()
         
+        # bbox_inches='tight' rifila la tela al contenuto reale: niente bordo
+        # vuoto tra la fine delle parole (y-label, "Tempo (s)", titolo, label
+        # colorbar) e il margine pagina, e nessun crop quando font_scale cresce.
         with PdfPages(output_path) as pdf:
             for fig in figures:
-                pdf.savefig(fig, dpi=150)
+                pdf.savefig(fig, dpi=150, bbox_inches='tight', pad_inches=0.02)
                 plt.close(fig)
         
         print(f"✓ PDF esportato: {output_path}")

@@ -45,6 +45,16 @@ class Grain:
                     f"got {type(value).__name__}"
                 )
 
+    def __reduce__(self):
+        """Pickling frozen+slots: lo slot-state di default viene ripristinato
+        via setattr, che il __setattr__ frozen rifiuta. Ricostruire via
+        __init__ preserva immutabilita' e validazione (necessario per il
+        rendering multi-processo, dove i Grain attraversano il pickle)."""
+        return (self.__class__, (
+            self.onset, self.duration, self.pointer_pos, self.pitch_ratio,
+            self.volume, self.pan, self.sample_table, self.envelope_table,
+        ))
+
     def to_score_line(self, onset_offset: float = 0.0) -> str:
         """Genera la linea di score Csound.
 

@@ -23,6 +23,69 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   stream (con `normalized` i tempi `0..1` sono mappati sulla `duration`, come gli
   envelope). SEMITONE_LOCKED (solo `unit: semitones`). Nessun YAML esistente
   rotto: `chord` statico invariato.
+
+## [v4.1.0] — "Parallel Grains" — 2026-07-04
+
+### Aggiunto
+
+- Rendering NumPy multi-processo **a livello di stream** (STEMS): con
+  `--jobs > 1` e almeno due stream da rendere, ogni stem diventa un task per il
+  pool di processi (overlap-add + `dc_block` + scrittura interamente nel
+  worker), invece del solo overlap-add parallelo dentro un singolo stream. Con
+  molti stem il guadagno passa da ~1.5x a scaling quasi lineare (il lavoro
+  per-stream, prima seriale nel parent, gira ora nei worker). Contratto di
+  determinismo **rafforzato**: ogni stem prodotto è byte-identico a `--jobs 1`
+  (le somme float64 nel worker sono nell'ordine storico), non più solo < 1 LSB
+  a 24 bit. Invarianti preservate: la generazione dei grani resta nel parent in
+  ordine di stream (RNG deterministico), il check cache (`is_dirty`) precede
+  l'accesso ai grani (gli stream *clean* non generano né vengono dispatchati),
+  la cache si aggiorna solo per gli stem completati con successo. Nessun
+  cambiamento a YAML/CLI (`--jobs`/`JOBS` invariati) né ai formati di output.
+  Sotto le soglie (jobs=1, un solo stream dirty, pochi grani) il comportamento
+  resta il path per-stream con overlap-add parallelo intra-stream.
+- Rendering NumPy multi-processo: flag CLI `--jobs N|auto` (variabile Make
+  `JOBS`) parallelizza l'overlap-add del renderer NumPy su più core. `auto`
+  (default) = core disponibili − 1; `--jobs 1` mantiene il path sequenziale
+  con campioni bit-identici allo storico. La generazione dei grani resta nel
+  parent (riproducibilità del RNG globale). Ignorato con `--renderer csound`;
+  valori non validi → messaggio + exit 1. Nuovo log `Rendering completato in
+  Ns (jobs=N)` a fine render. Determinismo: a parità di `jobs` i campioni
+  sono bit-identici tra run (il file AIFF float no: PEAK chunk con timestamp
+  wall-clock); tra `jobs` diversi la differenza è < 1 LSB a 24 bit.
+- Voci (`num_voices`): fade frazionario della voce di confine. Quando
+  `num_voices` interpola tra due conteggi interi (es. `[[0, 6], [1, 5]]`), la
+  parte frazionaria del valore diventa uno scaler di volume sulla voce che si
+  accende/spegne (`volume += 20·log10(frac)`, clamp a −120 dB) invece di un
+  on/off netto: la voce sfuma gradualmente. Con interpolazione `step` e
+  breakpoint interi il comportamento resta istantaneo come prima. `max_voices`
+  ora è il `ceil` del picco, così picchi/scalari frazionari (es.
+  `num_voices: 2.5`) hanno uno slot per la voce di confine. Deterministico
+  (nessun RNG); nessun cambiamento a YAML/CLI/formati di output né ai config a
+  conteggio intero o `step` esistenti.
+- Score visualizer (magnify): `corner` ora è override per-target in
+  `magnify_targets` (`top-right` | `top-left` | `bottom-right` | `bottom-left`),
+  come già `zoom`/`out`/`src`. Consente più lenti d'ingrandimento sullo stesso
+  stream/subplot senza sovrapporle, ancorandole ad angoli diversi (fino a 4 per
+  subplot). Assente la chiave, si usa il `corner` di `magnify_defaults`
+  (`top-right`): comportamento retrocompatibile, nessun cambiamento a
+  YAML/CLI/output.
+- Score visualizer: moltiplicatore globale `font_scale` (config, default `1.0`)
+  applicato a tutte le dimensioni del testo della partitura — etichette assi,
+  titolo, legenda envelope, annotazioni dei breakpoint, testo della pagina
+  vuota. Un unico parametro le ingrandisce in modo coerente (es. `font_scale:
+  1.3` per le figure di stampa). Le due dimensioni prima hardcoded sono ora
+  chiavi config dedicate: `breakpoint_fontsize` (default `6`) ed
+  `empty_fontsize` (default `14`). Modifica puramente additiva e
+  retrocompatibile: nessun cambiamento a YAML/CLI/output, `font_scale: 1.0`
+  riproduce le dimensioni precedenti.
+- Renderer NumPy: DC blocker FIR a fase lineare sempre attivo a valle
+  dell'overlap-add (`rendering/dc_blocker.py`). Rimuove l'offset DC che si
+  accumula sommando grani (slice finestrate a media non nulla) sottraendo la
+  media mobile centrata del buffer (`y = x - media_mobile(x)`): null esatto a
+  0 Hz, lunghezza invariata, costo O(n) via somma cumulativa. Cutoff sub-audio
+  di default 20 Hz, applicato sia in STEMS (`render_single_stream`) sia in MIX
+  (`render_merged_streams`). Nessuna modifica a YAML/CLI: l'output audio del
+  renderer NumPy ora è centrato sullo zero.
 - Renderer NumPy: supporto alla finestra grano `blackman_harris` (GEN20 opt 5),
   campana a 4 termini con massima soppressione dei lobi laterali. Colma il gap
   col registry Csound (`WindowRegistry`), che già la definiva: i due renderer ora
@@ -90,6 +153,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- Rendering parallelo: il test di determinismo `--jobs` confrontava i byte
+  grezzi del file AIFF (flaky su macOS: il PEAK chunk float porta un timestamp
+  wall-clock con granularità 1s, quindi due run in secondi diversi
+  divergevano). Ora confronta i campioni via `soundfile.read`. Documentazione
+  (`cli.md`, `architecture.md`) allineata: il contratto di determinismo vale
+  sui campioni, non sul file byte-a-byte.
+- fix(stream): gli envelope dei parametri delle strategy voce
+  (`voices.{pitch,onset_offset,pointer,pan}.{step,spread,…}`) ora ereditano il
+  `time_mode: normalized` dichiarato a livello di stream, come già gli envelope
+  diretti (`density`, `pan_range`, …). Prima la forma compatta (lista di
+  breakpoint) restava sempre in secondi assoluti anche su stream `normalized`:
+  lo stesso `time_mode` aveva due semantiche diverse a seconda che l'envelope
+  fosse diretto o dentro `voices.*` (incoerenza silenziosa). `Stream._parse_strategy_kwarg`
+  riceve ora il `time_mode` dello stream; la forma dict con `time_mode`/`time_unit`
+  locale continua a sovrascriverlo. **Breaking change semantico**: chi usava la
+  forma compatta dentro `voices.*` su uno stream `normalized` vedrà i tempi
+  scalati sulla `duration` invece che interpretati in secondi. (issue #144)
 - fix(score-visualizer): curve envelope data-driven, rimosso il clipping ai
   range fissi (pan resta ciclico). Le curve envelope venivano normalizzate su
   `envelope_ranges` fissi e clippate a `[0,1]`: quando i valori reali superavano
@@ -152,6 +232,41 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Seeding: il random globale dei grani (`random.seed` in `create_elements`,
+  issue #81 meccanismo 2) è sostituito da **RNG locali derivati per
+  componente** via `sha256(f"{seed}:{stream_id}:{componente}")`
+  (`shared/seeding.py::component_rng`, issue #154). Componenti: nome del
+  parametro per la variazione `_range`, `gate:<chiave>` per i probability
+  gate, `iot` (Truax async), `window` (selezione finestra), `detune` (detune
+  implicito EDO). Con seed fissato: `solo`/`mute` e la cache stems non
+  alterano più i grani degli stream superstiti (il solo suona esattamente ciò
+  che suona nel mix), l'ordine di materializzazione lazy è irrilevante, i
+  render sopravvivono ai refactor che non toccano il componente specifico e
+  ogni strategy è testabile in isolamento con i numeri reali del render.
+  Senza `seed:` nello YAML il Generator genera ora un **seed di sessione**
+  dal timestamp e lo logga (`[SEED] ...`): ogni run resta ricostruibile a
+  posteriori copiando il valore nello YAML (`Generator.seed_is_session`).
+  Le voci stocastiche (issue #81 meccanismo 1) restano invariate.
+  **Breaking**: i render con `seed:` fissato prodotti col vecchio schema
+  cambiano una volta (i valori per-grano sono diversi); i render senza seed
+  non cambiano di natura. Nuovo campo `StreamConfig.seed`; `Parameter`,
+  `DistributionFactory/DistributionStrategy`, `RandomGate`/`EnvelopeGate`,
+  `GateFactory.create_gate`, le window strategy stocastiche e
+  `UnitPitchStrategy` accettano un kwarg opzionale `rng` (default: random
+  globale, retrocompatibile). Rimossi i metodi morti
+  `Parameter._strategy_additive/_strategy_quantized/_strategy_invert` e la
+  docstring obsoleta "Functional Strategy (Dispatch Dictionary)" —
+  la variazione è delegata a `VariationStrategy` dal registry. Anche
+  `ChoiceVariation` (selezione da lista discreta) pesca ora dall'RNG
+  per-componente della distribuzione (`distribution.rng.choice`) invece che
+  dal `random` globale: nessun sito stocastico dei grani resta fuori dal
+  seeding per-componente. Issue #154.
+- Sample di riferimento dei config rinominato: `weNeedToTalkAboutIt.wav` →
+  `voice.wav` (`refs/voice.wav`). Aggiornati tutti i `configs/*.yml` che lo
+  citavano (`PGE_cim`, `PGE_density_experiment`, `PGE_pitch_units_showcase`,
+  `PGE_scatter_experiments`, `PGE_testVoices`, `PGE_dynamic_strategy_params_test`,
+  `PGE_spectral_test`). Nessuna modifica a codice o API: solo il nome del file
+  audio sorgente e i riferimenti `sample:` negli YAML.
 - Pointer: la deviazione `offset_range` e l'offset di pointer delle voci
   (`voices` → `pointer_range`/`step`) sono ora **confinati dentro la finestra di
   loop** quando un loop è attivo (wrap modulare), invece di poter leggere da tutto

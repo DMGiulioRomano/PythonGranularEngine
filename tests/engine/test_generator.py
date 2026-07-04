@@ -639,27 +639,30 @@ class TestCreateElements:
 
         mock_filter.assert_called_once_with([])
 
-    def test_create_elements_seeds_global_random_when_seed_present(self, gen):
-        """Col seed, create_elements semina il random globale (meccanismo 2, issue #81)."""
+    def test_create_elements_keeps_explicit_seed(self, gen):
+        """Col seed YAML, create_elements lo usa così com'è (issue #154):
+        nessun random globale, nessun session seed."""
         m = mock_open(read_data=yaml.dump({'seed': 42, 'streams': []}))
         with patch('builtins.open', m):
             gen.load_yaml()
         with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch('engine.generator.random.seed') as mock_seed:
+             patch.object(gen, '_create_streams'):
             gen.create_elements()
-        mock_seed.assert_called_once_with(42)
+        assert gen.seed == 42
+        assert gen.seed_is_session is False
 
-    def test_create_elements_no_seed_skips_global_random(self, gen):
-        """Senza seed, create_elements NON semina il random globale (retrocompat)."""
+    def test_create_elements_no_seed_generates_session_seed(self, gen, capsys):
+        """Senza seed YAML, create_elements genera un seed di sessione e lo
+        logga (issue #154): il run resta ricostruibile a posteriori."""
         m = mock_open(read_data=yaml.dump({'streams': []}))
         with patch('builtins.open', m):
             gen.load_yaml()
         with patch.object(gen, '_filter_solo_mute', return_value=[]), \
-             patch.object(gen, '_create_streams'), \
-             patch('engine.generator.random.seed') as mock_seed:
+             patch.object(gen, '_create_streams'):
             gen.create_elements()
-        mock_seed.assert_not_called()
+        assert isinstance(gen.seed, int)
+        assert gen.seed_is_session is True
+        assert '[SEED]' in capsys.readouterr().out
 
 # =============================================================================
 # 6. TEST _create_streams()
