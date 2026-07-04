@@ -8,6 +8,8 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+## [v4.1.0] — "Parallel Grains" — 2026-07-04
+
 ### Aggiunto
 
 - Rendering NumPy multi-processo **a livello di stream** (STEMS): con
