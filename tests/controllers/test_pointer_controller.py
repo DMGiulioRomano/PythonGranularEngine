@@ -1250,6 +1250,8 @@ def mock_config():
     config = Mock(spec=StreamConfig)
     config.context = context
     config.time_mode = 'absolute'
+    # issue #154: seed None → fallback legacy sul random globale
+    config.seed = None
 
     return config
 

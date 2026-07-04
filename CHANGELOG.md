@@ -214,6 +214,35 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- Seeding: il random globale dei grani (`random.seed` in `create_elements`,
+  issue #81 meccanismo 2) è sostituito da **RNG locali derivati per
+  componente** via `sha256(f"{seed}:{stream_id}:{componente}")`
+  (`shared/seeding.py::component_rng`, issue #154). Componenti: nome del
+  parametro per la variazione `_range`, `gate:<chiave>` per i probability
+  gate, `iot` (Truax async), `window` (selezione finestra), `detune` (detune
+  implicito EDO). Con seed fissato: `solo`/`mute` e la cache stems non
+  alterano più i grani degli stream superstiti (il solo suona esattamente ciò
+  che suona nel mix), l'ordine di materializzazione lazy è irrilevante, i
+  render sopravvivono ai refactor che non toccano il componente specifico e
+  ogni strategy è testabile in isolamento con i numeri reali del render.
+  Senza `seed:` nello YAML il Generator genera ora un **seed di sessione**
+  dal timestamp e lo logga (`[SEED] ...`): ogni run resta ricostruibile a
+  posteriori copiando il valore nello YAML (`Generator.seed_is_session`).
+  Le voci stocastiche (issue #81 meccanismo 1) restano invariate.
+  **Breaking**: i render con `seed:` fissato prodotti col vecchio schema
+  cambiano una volta (i valori per-grano sono diversi); i render senza seed
+  non cambiano di natura. Nuovo campo `StreamConfig.seed`; `Parameter`,
+  `DistributionFactory/DistributionStrategy`, `RandomGate`/`EnvelopeGate`,
+  `GateFactory.create_gate`, le window strategy stocastiche e
+  `UnitPitchStrategy` accettano un kwarg opzionale `rng` (default: random
+  globale, retrocompatibile). Rimossi i metodi morti
+  `Parameter._strategy_additive/_strategy_quantized/_strategy_invert` e la
+  docstring obsoleta "Functional Strategy (Dispatch Dictionary)" —
+  la variazione è delegata a `VariationStrategy` dal registry. Anche
+  `ChoiceVariation` (selezione da lista discreta) pesca ora dall'RNG
+  per-componente della distribuzione (`distribution.rng.choice`) invece che
+  dal `random` globale: nessun sito stocastico dei grani resta fuori dal
+  seeding per-componente. Issue #154.
 - Sample di riferimento dei config rinominato: `weNeedToTalkAboutIt.wav` →
   `voice.wav` (`refs/voice.wav`). Aggiornati tutti i `configs/*.yml` che lo
   citavano (`PGE_cim`, `PGE_density_experiment`, `PGE_pitch_units_showcase`,

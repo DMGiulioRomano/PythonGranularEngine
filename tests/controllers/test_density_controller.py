@@ -658,8 +658,9 @@ class TestTruaxFormula:
         avg_iot = 0.025
         d = 0.7
 
-        # Mock random per risultato deterministico
-        with patch('controllers.density_controller.random.uniform', return_value=0.03):
+        # Mock dell'RNG locale del componente 'iot' (issue #154)
+        with patch.object(dc, '_rng') as mock_rng:
+            mock_rng.uniform.return_value = 0.03
             result = dc._apply_truax_distribution(avg_iot, 0.0)
 
             # expected = (1-0.7)*0.025 + 0.7*0.03 = 0.0075 + 0.021 = 0.0285
@@ -671,7 +672,8 @@ class TestTruaxFormula:
         params = _build_fill_factor_params(fill_factor=2.0, distribution=1.0)
         dc = _make_density_controller(mock_config, params)
 
-        with patch('controllers.density_controller.random.uniform', return_value=0.0):
+        with patch.object(dc, '_rng') as mock_rng:
+            mock_rng.uniform.return_value = 0.0
             result = dc._apply_truax_distribution(0.025, 0.0)
             # d=1.0: (1-1)*0.025 + 1*0 = 0.0
             assert result == pytest.approx(0.0)
@@ -682,7 +684,8 @@ class TestTruaxFormula:
         dc = _make_density_controller(mock_config, params)
 
         avg_iot = 0.025
-        with patch('controllers.density_controller.random.uniform', return_value=2.0 * avg_iot):
+        with patch.object(dc, '_rng') as mock_rng:
+            mock_rng.uniform.return_value = 2.0 * avg_iot
             result = dc._apply_truax_distribution(avg_iot, 0.0)
             # d=1.0: (1-1)*0.025 + 1*0.05 = 0.05
             assert result == pytest.approx(2.0 * avg_iot)

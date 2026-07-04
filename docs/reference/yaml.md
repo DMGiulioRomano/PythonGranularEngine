@@ -10,7 +10,7 @@ sources:
   - src/strategies/
   - src/envelopes/
   - src/shared/seeding.py
-last_synced_commit: e829fc1
+last_synced_commit: e3b4b35
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -86,22 +86,46 @@ streams:
     sample: "sample.wav"
 ```
 
-- **Assente** (default): comportamento storico. I meccanismi stocastici (IOT
-  async di `distribution`, variazione `_range`, gate di probabilità, selezione
-  finestra, offset stocastici delle voci) cambiano a ogni processo.
 - **Presente**: lo stesso YAML produce lo stesso render NumPy fra processi
-  diversi. Copre due meccanismi:
-  - **random globale dei grani** — `random.seed(seed)` chiamato una volta a
-    inizio `create_elements`, prima della generazione (lazy) dei grani.
-  - **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer,pan}` con
-    `strategy: stochastic`) — seed derivato
-    via `hashlib.sha256(f"{seed}:{stream_id}:{voice_index}")`, deterministico e
-    indipendente da `PYTHONHASHSEED`.
+  diversi.
+- **Assente** (default): il Generator genera un **seed di sessione** dal
+  timestamp e lo logga (`[SEED] ... seed di sessione N`). Il run resta non
+  riproducibile a priori (ogni run ha un seed diverso), ma è **ricostruibile a
+  posteriori**: aggiungendo `seed: N` allo YAML si riottiene lo stesso render.
+
+Tutti i siti stocastici usano **RNG locali derivati per componente**
+(`src/shared/seeding.py`, issue #154): nessun random globale condiviso.
+
+- **RNG per-componente** — ogni sito pesca dal proprio generatore derivato via
+  `hashlib.sha256(f"{seed}:{stream_id}:{componente}")`, deterministico e
+  indipendente da `PYTHONHASHSEED`. Componenti: il nome del parametro per la
+  variazione `_range` (es. `grain_duration`, `pitch_semitones`),
+  `gate:<chiave>` per i gate di probabilità (dephase), `iot` per la
+  distribuzione Truax async, `window` per la selezione finestra, `detune` per
+  il detune implicito EDO.
+- **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer,pan}` con
+  `strategy: stochastic`) — invariato (issue #81): seed derivato via
+  `hashlib.sha256(f"{seed}:{stream_id}:{voice_index}")`.
+
+Conseguenze della derivazione per-componente:
+
+- `solo`/`mute` **non alterano** i grani degli stream superstiti: il solo fa
+  ascoltare in isolamento esattamente quello che suona nel mix.
+- La cache stems (`STEMS=true CACHE=true`) è coerente col seed: i grani di uno
+  stream dirty non dipendono da quali altri stream sono clean in quel run.
+- I render con seed sopravvivono ai refactor che non toccano il componente
+  specifico (aggiungere un draw a un componente non shifta gli altri).
+- Ogni componente è testabile in isolamento con gli stessi valori del render.
 
 `seed: 0` è un valore valido e distinto da assente. Sono accettati interi (anche
 negativi) e stringhe.
 
-**Limite (Csound):** `seed` semina solo il `random` di Python (renderer NumPy).
+**Breaking (issue #154):** i render con `seed:` fissato prodotti col vecchio
+schema (`random.seed` globale, issue #81) NON sono riproducibili dopo il
+passaggio alla derivazione per-componente: i valori per-grano cambiano una
+volta. I render senza seed non cambiano di natura.
+
+**Limite (Csound):** `seed` governa solo il random di Python (renderer NumPy).
 Csound ha un RNG proprio: con `--renderer csound` i due renderer NON sono
 bit-identici nemmeno col seed. Le tendency mask restano stocastiche per natura —
 l'obiettivo è riprodurre *lo stesso run*, non l'identità bit-a-bit.
