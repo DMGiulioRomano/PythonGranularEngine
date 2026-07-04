@@ -16,7 +16,7 @@ Il renderer sa solo renderizzare, non decide la logica di controllo
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
 
 
 class AudioRenderer(ABC):
@@ -26,6 +26,8 @@ class AudioRenderer(ABC):
     Contratto (ATOMICO):
     - render_single_stream(): renderizza UN stream in UN file (onset relativi)
     - render_merged_streams(): renderizza PIÙ stream in UN file (onset assoluti)
+    - render_streams(): CONCRETO — renderizza N stream in N file; default =
+      loop su render_single_stream, override possibile per parallelizzare
 
     Il renderer NON decide:
     - Se fare stems o mix (responsabilità di RenderMode)
@@ -89,3 +91,24 @@ class AudioRenderer(ABC):
             # → file di 15 secondi: s1 a 0-5s, silenzio 5-10s, s2 a 10-15s
         """
         ...
+
+    def render_streams(self, pairs: List[Tuple[object, str]]) -> List[str]:
+        """
+        Renderizza N stream in N file (onset relativi), un file per coppia.
+
+        Usato per: STEMS mode (StemsRenderMode delega qui il loop).
+
+        Metodo CONCRETO, non astratto: il default itera le coppie in ordine
+        e delega a render_single_stream — comportamento identico al loop
+        storico di StemsRenderMode. Le sottoclassi possono fare override per
+        cambiare il COME (es. NumpyAudioRenderer: un task per stream a un
+        pool di processi) senza toccare RenderMode, che continua a decidere
+        il COSA (OCP).
+
+        Args:
+            pairs: coppie (stream, output_path), una per stem
+
+        Returns:
+            Lista dei path prodotti, nell'ordine delle coppie
+        """
+        return [self.render_single_stream(stream, path) for stream, path in pairs]

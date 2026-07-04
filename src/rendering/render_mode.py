@@ -81,18 +81,18 @@ class StemsRenderMode(RenderMode):
 
         Delega a:
         - naming.generate_paths() per ottenere path
-        - renderer.render_single_stream() per ogni stream
+        - renderer.render_streams() per il loop sugli stream
+
+        Il mode decide COSA renderizzare (un file per stream); il renderer
+        decide COME (default dell'ABC: loop sequenziale su
+        render_single_stream; NumpyAudioRenderer: un task per stream a un
+        pool di processi).
         """
         # Genera path per ogni stream
         paths_map = naming.generate_paths(output_path, streams, mode='stems')
 
-        # Renderizza ogni stream separatamente
-        generated = []
-        for stream, path in paths_map:
-            renderer.render_single_stream(stream, path)
-            generated.append(path)
-
-        return generated
+        # Renderizza gli stream (il renderer sceglie seriale o parallelo)
+        return renderer.render_streams(paths_map)
 
 
 class MixRenderMode(RenderMode):

@@ -69,6 +69,10 @@ STEMS ?= true
 GRAIN_JSON ?= false   # esporta JSON sidecar dei grani (richiede STEMS=true, issue #99)
 RENDERER ?= numpy
 FORMAT ?= aiff
+# Worker per il rendering NumPy multi-processo (--jobs): vuoto = auto
+# (core disponibili - 1), N = numero esplicito, 1 = sequenziale
+# byte-identico allo storico. Ignorato con RENDERER=csound.
+JOBS ?=
 REAPER ?= true
 # Default: nome .rpp = nome YAML in $(SFDIR), accanto agli .aif. Multi-tab per YAML (vedi issue #17)
 REAPER_PATH ?= $(SFDIR)/$(FILE).rpp

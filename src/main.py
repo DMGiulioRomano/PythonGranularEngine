@@ -77,6 +77,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             cache_manager=cache_manager,
             stream_data_map=generator.stream_data_map,
             audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
+            jobs=kwargs.get('jobs', 'auto'),
         )
 
     if renderer_type == 'csound':
@@ -115,6 +116,36 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         renderer_type=renderer_type,
         available=["csound", "numpy"],
     )
+
+
+def _parse_jobs(argv):
+    """Parsa --jobs per il rendering NumPy multi-processo.
+
+    Ritorna 'auto' (default: core disponibili - 1, min 1) oppure un intero
+    >= 1. La risoluzione di 'auto' avviene nel renderer via
+    numpy_parallel.resolve_jobs. Come gli altri flag di main: valore
+    mancante → default; valore non valido → messaggio + exit(1).
+    Con --jobs 1 l'output resta byte-identico al rendering sequenziale.
+    Ignorato dal renderer csound.
+    """
+    import sys
+    if '--jobs' not in argv:
+        return 'auto'
+    idx = argv.index('--jobs')
+    if idx + 1 >= len(argv):
+        return 'auto'
+    raw = argv[idx + 1]
+    if raw.lower() == 'auto':
+        return 'auto'
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"--jobs non valido: '{raw}'. Usa un intero >= 1 oppure 'auto'.")
+        sys.exit(1)
+    if value < 1:
+        print(f"--jobs deve essere >= 1, ricevuto: {value}. Usa 1 per il rendering sequenziale.")
+        sys.exit(1)
+    return value
 
 
 # Chiavi ammesse in un target di --magnify-at. Numeriche (float) e stringa.
@@ -184,6 +215,7 @@ def main():
             "[--page-duration SECONDI] "
             "[--per-stream] "
             "[--renderer csound|numpy] "
+            "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
@@ -294,6 +326,9 @@ def main():
         if idx + 1 < len(sys.argv):
             renderer_type = sys.argv[idx + 1]
 
+    # --jobs N|auto (default: auto = core-1). Solo renderer numpy.
+    jobs = _parse_jobs(sys.argv)
+
     # --cache-dir DIR
     cache_dir = 'cache'
     if '--cache-dir' in sys.argv:
@@ -390,6 +425,7 @@ def main():
             renderer_type,
             generator,
             output_sr=48000,
+            jobs=jobs,
             orc_path=orc_path,
             incdir=incdir,
             ssdir=ssdir,
@@ -427,11 +463,16 @@ def main():
         from rendering.naming_strategy import DefaultNamingStrategy
         engine = RenderingEngine(renderer, naming_strategy=DefaultNamingStrategy(ext=audio_format.extension))
         mode = StemsRenderMode() if per_stream else MixRenderMode()
+        import time
+        _render_t0 = time.perf_counter()
         generated = engine.render(
             streams=generator.streams,
             output_path=output_file,
             mode=mode,
         )
+        _render_dt = time.perf_counter() - _render_t0
+        jobs_note = f" (jobs={renderer.jobs})" if renderer_type == 'numpy' else ""
+        print(f"\n Rendering completato in {_render_dt:.2f}s{jobs_note}")
 
         print(f"\n Generazione completata! {len(generated)} file generati:")
         for path in generated:

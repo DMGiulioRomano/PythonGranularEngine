@@ -64,6 +64,12 @@ ifneq ($(strip $(MAGNIFY_AT)),)
 PYFLAGS += --magnify-at "$(MAGNIFY_AT)"
 endif
 
+# 2f. Se JOBS e' non-vuoto, aggiungi --jobs (rendering NumPy multi-processo;
+# main.py lo ignora con --renderer csound). Vuoto = default 'auto' di main.py.
+ifneq ($(strip $(JOBS)),)
+PYFLAGS += --jobs $(JOBS)
+endif
+
 # 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
 ifeq ($(REAPER), true)
 PYFLAGS += --reaper

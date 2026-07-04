@@ -6,7 +6,7 @@ tags: [architecture, rendering, ocp]
 sources:
   - src/rendering/
   - src/main.py
-last_synced_commit: 4c4fee4
+last_synced_commit: d750ba6
 ---
 
 # Architettura Renderer
@@ -80,6 +80,77 @@ generated = engine.render(streams=generator.streams, output_path=output_file, mo
 
 Caching incrementale è componente separato, vedi [[caching]].
 
+### Rendering NumPy multi-processo (`--jobs`)
+
+L'overlap-add del renderer NumPy è parallelizzabile perché il rendering del
+singolo grano è puro (nessun `random`, nessuno stato condiviso:
+`GrainRenderer`). La **generazione** dei grani invece consuma il `random`
+globale seminato una volta in `Generator.create_elements()` e resta nel
+processo parent: l'ordine di consumo è la riproducibilità delle composizioni.
+
+Il parallelismo vive interamente dentro `NumpyAudioRenderer`
+(`RenderMode`/`RenderingEngine`/ABC invariati): le coppie
+`(grain, onset_sample)` vengono ordinate per onset, divise in chunk contigui
+(`src/rendering/numpy_parallel.py`) e affidate a un pool `spawn` di
+`jobs` worker; ogni worker rende il proprio chunk in un buffer locale
+all'extent del chunk e il parent somma i risultati in ordine di chunk fisso,
+poi applica `dc_block`, clamp e scrittura come nel path sequenziale.
+
+Proprietà:
+
+- `jobs=1` (default dell'API; il default `auto` = core-1 è policy del solo
+  entry point CLI/Make) → path sequenziale **bit-identico allo storico**.
+- Sotto `PARALLEL_MIN_GRAINS` grani il render resta sequenziale anche con
+  `jobs > 1`: niente pool per render piccoli e per i test.
+- A parità di `jobs` i **campioni** sono bit-identici tra run; tra valori
+  diversi di `jobs` cambia solo l'ordine delle somme float64 (< 1 LSB a 24
+  bit). Il file AIFF float non è byte-identico tra run: libsndfile scrive un
+  timestamp wall-clock nel PEAK chunk dell'header (confronta i campioni, non
+  i byte).
+- Il pool è lazy, riusato per tutti gli stream della run (STEMS) e spento
+  con `close()`; i worker ricostruiscono i registry da disco (`init_worker`).
+- Il check cache (`is_dirty` prima di toccare `.voices`) e la generazione
+  lazy dei grani (issue #117) sono invariati.
+
+#### Parallelismo a livello di stream (STEMS)
+
+Il chunk path sopra parallelizza l'overlap-add **dentro** un singolo stream.
+In STEMS però il resto del lavoro per-stream (generazione a parte, somma dei
+buffer, `dc_block` sull'intero extent, scrittura) resta seriale nel parent e
+si paga una volta per stream: per Amdahl il guadagno reale sul wall totale si
+ferma a ~1.5x anche quando il render puro scala ~3x.
+
+`NumpyAudioRenderer.render_streams` (override del default concreto dell'ABC
+`AudioRenderer`) sposta il parallelismo **a livello di stream**: quando
+conviene, ogni stem diventa **un task per il pool** (`render_stream_to_file`
+in `numpy_parallel.py`) che esegue overlap-add + `dc_block` + scrittura
+interamente nel worker. Così ~il 100% del lavoro per-stream va in parallelo e
+lo scaling è quasi lineare con molti stem. `StemsRenderMode` delega il loop a
+`renderer.render_streams(pairs)`: il mode decide **cosa** (stems), il renderer
+decide **come** (seriale o parallelo) — `CsoundRenderer` eredita il default
+(loop su `render_single_stream`) senza modifiche.
+
+Sequenza e invarianti:
+
+- **Triage cache prima di `.voices`** (#117): gli stream *clean* ritornano il
+  proprio path senza generare grani né essere dispatchati.
+- **Generazione nel parent, in ordine di stream**: i grani degli stem *dirty*
+  si materializzano nel parent nell'ordine dei pair, identico al loop storico
+  → il consumo del `random` (e quindi la riproducibilità) è invariato. Solo
+  overlap-add/`dc_block`/scrittura vanno nel worker.
+- **IPC di ritorno ~zero**: il worker ritorna la sola stringa `output_path`
+  (scrive lui il file), contro i buffer audio del chunk path.
+- **Determinismo rafforzato**: dentro il worker le somme float64 sono
+  nell'ordine storico → ogni stem è **byte-identico a `jobs=1`** (contratto
+  più forte del chunk path, che garantiva solo < 1 LSB a 24 bit).
+- **Cache aggiornata solo per gli stem completati**: un'eccezione nel worker
+  si propaga da `future.result()` e la cache dello stream non completato non
+  viene toccata.
+- **Policy conservativa**: si parallelizza tra stream solo con `jobs > 1`,
+  almeno due stem *dirty* e grani totali sopra soglia; altrimenti si ricade
+  sul path per-stream (che sotto ha ancora il chunk path per lo stem denso
+  singolo).
+
 ## Trade-off
 
 | Aspetto | Alternativa | Perché questa |
@@ -101,11 +172,11 @@ Caching incrementale è componente separato, vedi [[caching]].
 | Layer | Strumento | Conteggio |
 |-------|-----------|-----------|
 | Unit (mock) | `pytest` / `make tests` | 4149 test |
-| E2E | `pytest -m e2e` / `make e2e-tests` | 21 test |
+| E2E | `pytest -m e2e` / `make e2e-tests` | 24 test |
 
 **E2E Csound** (`tests/e2e/test_cache_e2e.py`, 15 test): pipeline `make → Python → Csound → filesystem` in `STEMS=true CACHE=true`. Copre first build, incremental, partial rebuild, garbage collection.
 
-**E2E NumPy** (`tests/e2e/test_numpy_renderer_e2e.py`, 6 test): pipeline `make → Python → NumPy → filesystem`, no Csound. Copre stems e mix.
+**E2E NumPy** (`tests/e2e/test_numpy_renderer_e2e.py`, 9 test): pipeline `make → Python → NumPy → filesystem`, no Csound. Copre stems, mix, rendering multi-processo (`JOBS`) intra-stream e a livello di stream (stem byte-identici a `JOBS=1`, cache clean).
 
 **Note semantica onset:**
 - Csound/NumPy STEMS: onset relativi allo stream (onset=0 nel file)
