@@ -1106,3 +1106,227 @@ class TestParallelRendering:
         assert not os.path.exists(out)  # clean → nessun file riscritto
         cache.update_after_build.assert_not_called()
 
+
+# =============================================================================
+# 10. TEST STREAM-PARALLEL (render_streams override, un task per stream)
+# =============================================================================
+
+class TestStreamParallel:
+    """render_streams override: STEMS con un task per stream al pool.
+
+    Contratto rafforzato: ogni stem prodotto dal path stream-parallel e'
+    BYTE-IDENTICO a jobs=1 (dentro il worker l'ordine delle somme float64 e'
+    quello storico), non solo < 1 LSB come il chunk path.
+    """
+
+    def _make_renderer(self, tmp_path, jobs, min_parallel_grains=8,
+                       cache_manager=None, stream_data_map=None):
+        reg, table_map = make_disk_sample_env(tmp_path)
+        return NumpyAudioRenderer(
+            sample_registry=reg,
+            window_registry=NumpyWindowRegistry(),
+            table_map=table_map,
+            output_sr=OUTPUT_SR,
+            jobs=jobs,
+            min_parallel_grains=min_parallel_grains,
+            cache_manager=cache_manager,
+            stream_data_map=stream_data_map,
+        )
+
+    def _stems(self):
+        return [
+            make_mock_stream('s1', duration=0.6, grains=make_dense_grains()),
+            make_mock_stream('s2', duration=0.6,
+                             grains=make_dense_grains(n=40, hop=0.012)),
+        ]
+
+    def test_stream_parallel_matches_sequential_bit_exact(self, tmp_path):
+        """jobs=2 vs jobs=1 su render_streams: ogni stem byte-identico."""
+        import soundfile as sf
+
+        r_seq = self._make_renderer(tmp_path, jobs=1)
+        r_par = self._make_renderer(tmp_path, jobs=2)
+        try:
+            seq_pairs = [(s, str(tmp_path / f'seq_{s.stream_id}.aif'))
+                         for s in self._stems()]
+            par_pairs = [(s, str(tmp_path / f'par_{s.stream_id}.aif'))
+                         for s in self._stems()]
+
+            seq_out = r_seq.render_streams(seq_pairs)
+            par_out = r_par.render_streams(par_pairs)
+
+            assert [p for _, p in seq_pairs] == seq_out
+            assert [p for _, p in par_pairs] == par_out
+            for (_, sp), (_, pp) in zip(seq_pairs, par_pairs):
+                d_seq, _ = sf.read(sp)
+                d_par, _ = sf.read(pp)
+                assert d_seq.shape == d_par.shape
+                assert np.array_equal(d_seq, d_par)
+                assert np.max(np.abs(d_par)) > 1e-4  # non-silente
+        finally:
+            r_par.close()
+
+    def test_two_dirty_streams_use_pool(self, tmp_path):
+        """Sopra soglia, 2 stream dirty, jobs>1 → il pool viene creato."""
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+            r.render_streams(pairs)
+            assert r._executor is not None
+        finally:
+            r.close()
+
+    def test_dispatch_is_stream_level_not_per_stream_loop(self, tmp_path):
+        """Sopra soglia, 2+ stream dirty, jobs>1 → dispatch PER STREAM.
+
+        Discrimina il path stream-level dal default dell'ABC: il parent NON
+        chiama render_single_stream (che parallelizzerebbe solo intra-stream,
+        via chunk path). Ogni stream diventa un task per il pool
+        (render_stream_to_file), cosi' overlap-add + dc_block + write girano
+        nel worker.
+        """
+        from unittest.mock import patch
+
+        r = self._make_renderer(tmp_path, jobs=2)
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+            with patch.object(
+                r, 'render_single_stream',
+                wraps=r.render_single_stream) as spy:
+                r.render_streams(pairs)
+            spy.assert_not_called()
+            # entrambi gli stem prodotti dal path stream-level
+            assert os.path.exists(pairs[0][1])
+            assert os.path.exists(pairs[1][1])
+        finally:
+            r.close()
+
+    def test_single_stream_falls_back_to_chunk_path(self, tmp_path):
+        """Un solo stream → nessun dispatch stream-level (dirty < 2).
+
+        Il singolo stem resta sul path per-stream (render_single_stream, che
+        sotto ha il chunk path). Output byte-identico a jobs=1.
+        """
+        import soundfile as sf
+
+        r_seq = self._make_renderer(tmp_path, jobs=1)
+        r_par = self._make_renderer(tmp_path, jobs=2)
+        try:
+            s = make_mock_stream('solo', duration=0.6, grains=make_dense_grains())
+            seq_p = str(tmp_path / 'seq.aif')
+            par_p = str(tmp_path / 'par.aif')
+            r_seq.render_streams([(make_mock_stream('solo', duration=0.6,
+                                                    grains=make_dense_grains()), seq_p)])
+            r_par.render_streams([(s, par_p)])
+
+            d_seq, _ = sf.read(seq_p)
+            d_par, _ = sf.read(par_p)
+            assert np.array_equal(d_seq, d_par)
+        finally:
+            r_par.close()
+
+    def test_below_total_threshold_stays_sequential(self, tmp_path):
+        """Grani totali sotto min_parallel_grains → nessun pool stream-level."""
+        r = self._make_renderer(tmp_path, jobs=4, min_parallel_grains=10_000)
+        try:
+            pairs = [(make_mock_stream('s1', duration=0.3,
+                                       grains=make_dense_grains(n=4)),
+                      str(tmp_path / 's1.aif')),
+                     (make_mock_stream('s2', duration=0.3,
+                                       grains=make_dense_grains(n=4)),
+                      str(tmp_path / 's2.aif'))]
+            r.render_streams(pairs)
+            assert r._executor is None
+        finally:
+            r.close()
+
+    def test_clean_streams_not_dispatched(self, tmp_path):
+        """Cache: stream clean non generano e non vengono dispatchati.
+
+        Con un solo stream dirty (l'altro clean) la policy stream-level non
+        scatta (dirty < 2): il dirty passa dal path per-stream, il clean
+        ritorna il suo path senza toccare .voices ne' la cache.
+        """
+        from unittest.mock import MagicMock
+
+        cache = MagicMock()
+        # s1 clean, s2 dirty
+        cache.is_dirty.side_effect = lambda d, p: d['stream_id'] == 's2'
+        r = self._make_renderer(
+            tmp_path, jobs=2, min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'},
+                             's2': {'stream_id': 's2'}})
+        try:
+            p1 = str(tmp_path / 's1.aif')
+            p2 = str(tmp_path / 's2.aif')
+            out = r.render_streams([
+                (make_mock_stream('s1', duration=0.6, grains=make_dense_grains()), p1),
+                (make_mock_stream('s2', duration=0.6, grains=make_dense_grains()), p2),
+            ])
+            assert out == [p1, p2]
+            assert not os.path.exists(p1)  # clean → nessun file
+            assert os.path.exists(p2)      # dirty → prodotto
+            # cache aggiornata solo per lo stream dirty
+            built = [c.args[0] for c in cache.update_after_build.call_args_list]
+            assert [{'stream_id': 's2'}] in built
+            assert [{'stream_id': 's1'}] not in built
+        finally:
+            r.close()
+
+    def test_two_dirty_streams_update_cache_each(self, tmp_path):
+        """Path parallelo: la cache viene aggiornata per ogni stream riuscito."""
+        from unittest.mock import MagicMock
+
+        cache = MagicMock()
+        cache.is_dirty.return_value = True
+        r = self._make_renderer(
+            tmp_path, jobs=2, min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'},
+                             's2': {'stream_id': 's2'}})
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+            r.render_streams(pairs)
+            built = [c.args[0] for c in cache.update_after_build.call_args_list]
+            assert [{'stream_id': 's1'}] in built
+            assert [{'stream_id': 's2'}] in built
+        finally:
+            r.close()
+
+    def test_worker_exception_propagates_and_skips_cache(self, tmp_path):
+        """Eccezione nel worker → propagata da render_streams; la cache dello
+        stream non completato NON viene aggiornata."""
+        from unittest.mock import MagicMock, patch
+
+        cache = MagicMock()
+        cache.is_dirty.return_value = True
+        r = self._make_renderer(
+            tmp_path, jobs=2, min_parallel_grains=8,
+            cache_manager=cache,
+            stream_data_map={'s1': {'stream_id': 's1'},
+                             's2': {'stream_id': 's2'}})
+        try:
+            pairs = [(s, str(tmp_path / f'{s.stream_id}.aif'))
+                     for s in self._stems()]
+
+            class _Boom(RuntimeError):
+                pass
+
+            with patch.object(r, '_ensure_executor') as ens:
+                fake_exec = MagicMock()
+                fut = MagicMock()
+                fut.result.side_effect = _Boom("worker crash")
+                fake_exec.submit.return_value = fut
+                ens.return_value = fake_exec
+
+                with pytest.raises(_Boom):
+                    r.render_streams(pairs)
+
+            cache.update_after_build.assert_not_called()
+        finally:
+            r.close()
+

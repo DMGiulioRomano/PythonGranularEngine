@@ -32,9 +32,11 @@ from rendering.numpy_window_registry import NumpyWindowRegistry
 from rendering.dc_blocker import dc_block
 from rendering.numpy_parallel import (
     DEFAULT_MIN_PARALLEL_GRAINS,
+    StreamRenderTask,
     chunk_grains,
     init_worker,
     render_grain_chunk,
+    render_stream_to_file,
     resolve_jobs,
     resolve_table_name,
 )
@@ -119,52 +121,172 @@ class NumpyAudioRenderer(AudioRenderer):
         Returns:
             Path del file prodotto
         """
-        # Cache check: skip se stream e' clean
-        if self.cache_manager:
-            stream_dict = self.stream_data_map.get(stream.stream_id)
-            if stream_dict:
-                dirty = self.cache_manager.is_dirty(stream_dict, output_path)
-                status = "DIRTY" if dirty else "clean"
-                print(f"[CACHE] {stream.stream_id}: {status}", flush=True)
-                if not dirty:
-                    return output_path
+        # Cache check: skip se stream e' clean (is_dirty PRIMA di .voices, #117)
+        if self._cache_skip(stream, output_path):
+            return output_path
 
-        # 1. Alloca buffer su extent reale dei grain (Plan 002 U1).
-        # stream.voices e' la fonte di verita' (Plan 001): il renderer si adatta
-        # al contenuto, senza opinioni proprie sui bounds.
-        all_grains = [g for voice in stream.voices for g in voice]
+        # Overlap-add (chunk path intra-stream sopra soglia) + dc_block + write
+        self._render_single_stream_body(stream, output_path)
+
+        # Aggiorna cache dopo build riuscita
+        self._update_cache(stream)
+
+        return output_path
+
+    def render_streams(self, pairs: List[Tuple[object, str]]) -> List[str]:
+        """
+        Renderizza N stream in N file, un task per stream al pool (STEMS).
+
+        Override del default dell'ABC: invece di un loop sequenziale su
+        render_single_stream (che parallelizza solo l'overlap-add DENTRO uno
+        stream, via chunk path), sposta il parallelismo A LIVELLO DI STREAM.
+        Ogni stem diventa un task per il pool: overlap-add + dc_block + write
+        girano interamente nel worker, coprendo ~il 100% del lavoro per-stream
+        e scalando quasi linearmente con molti stream.
+
+        Ordine e determinismo:
+        - Il cache check (is_dirty) precede l'accesso a .voices (#117): gli
+          stream clean ritornano il loro path senza generare ne' dispatchare.
+        - I grani degli stream dirty si materializzano nel parent IN ORDINE DI
+          STREAM (stesso ordine di consumo del `random` del loop storico):
+          la riproducibilita' e' invariata.
+        - Ogni stem prodotto e' byte-identico a jobs=1 (dentro il worker le
+          somme float64 sono nell'ordine storico).
+
+        Policy di dispatch: parallelizza tra stream solo se conviene
+        (jobs > 1, almeno 2 stream dirty, grani totali >= soglia); altrimenti
+        delega al path per-stream (render_single_stream, col chunk path per lo
+        stream denso singolo).
+        """
+        results: List[Optional[str]] = [None] * len(pairs)
+
+        # Fase 1 — triage cache (is_dirty prima di .voices, #117).
+        dirty: List[Tuple[int, object, str]] = []
+        for idx, (stream, path) in enumerate(pairs):
+            if self._cache_skip(stream, path):
+                results[idx] = path
+            else:
+                dirty.append((idx, stream, path))
+
+        # Fase 2 — policy: sotto le condizioni per il parallelismo stream-level
+        # si delega al path per-stream (che a sua volta usa il chunk path per
+        # lo stream denso singolo). Il cache check e' gia' stato fatto sopra,
+        # quindi si chiama direttamente il corpo + update.
+        def _render_dirty_locally() -> None:
+            for idx, stream, path in dirty:
+                self._render_single_stream_body(stream, path)
+                self._update_cache(stream)
+                results[idx] = path
+
+        if self.jobs <= 1 or len(dirty) < 2:
+            _render_dirty_locally()
+            return [p for p in results]
+
+        # Materializza i task in ordine di stream (random deterministico).
+        tasks = [
+            (idx, stream, path, self._build_stream_task(stream, path))
+            for idx, stream, path in dirty
+        ]
+        total_grains = sum(len(task.pairs) for _, _, _, task in tasks)
+
+        if total_grains < self.min_parallel_grains:
+            _render_dirty_locally()
+            return [p for p in results]
+
+        # Fase 3 — dispatch stream-level: un task per stream al pool.
+        executor = self._ensure_executor()
+        futures = [
+            (idx, stream, path, executor.submit(render_stream_to_file, task))
+            for idx, stream, path, task in tasks
+        ]
+        # Raccolta in ordine di submit. Un'eccezione nel worker si propaga da
+        # future.result(): la cache degli stream non completati NON si aggiorna.
+        for idx, stream, path, future in futures:
+            results[idx] = future.result()
+            self._update_cache(stream)
+
+        return [p for p in results]
+
+    # =========================================================================
+    # INTERNAL - Cache + corpo render (riusati da single-stream e stream-level)
+    # =========================================================================
+
+    def _cache_skip(self, stream, output_path: str) -> bool:
+        """Cache check: logga lo stato e ritorna True se lo stream e' clean
+        (build da saltare). is_dirty va chiamato PRIMA di toccare .voices
+        (#117): gli stream clean non devono generare grani."""
+        if not self.cache_manager:
+            return False
+        stream_dict = self.stream_data_map.get(stream.stream_id)
+        if not stream_dict:
+            return False
+        dirty = self.cache_manager.is_dirty(stream_dict, output_path)
+        status = "DIRTY" if dirty else "clean"
+        print(f"[CACHE] {stream.stream_id}: {status}", flush=True)
+        return not dirty
+
+    def _update_cache(self, stream) -> None:
+        """Aggiorna la cache dopo una build riuscita dello stream."""
+        if not self.cache_manager:
+            return
+        stream_dict = self.stream_data_map.get(stream.stream_id)
+        if stream_dict:
+            self.cache_manager.update_after_build([stream_dict])
+
+    def _relative_n_total(self, all_grains, stream) -> int:
+        """Lunghezza buffer (samples) per uno stream con onset RELATIVI.
+
+        Extent reale dei grain (Plan 002 U1): stream.voices e' la fonte di
+        verita' (Plan 001), il renderer si adatta al contenuto."""
         if all_grains:
             max_end_rel = max(g.onset + g.duration for g in all_grains) - stream.onset
             max_end_rel = max(max_end_rel, stream.duration)
         else:
             max_end_rel = stream.duration
-        n_total = max(1, round(max_end_rel * self.output_sr))
+        return max(1, round(max_end_rel * self.output_sr))
+
+    def _render_single_stream_body(self, stream, output_path: str) -> None:
+        """Corpo di render_single_stream senza cache: alloca, overlap-add
+        (chunk path intra-stream sopra soglia), dc_block, clip, write.
+
+        Bit-identico al path storico: stesso extent, stesse pairs, stesso
+        ordine di somma."""
+        all_grains = [g for voice in stream.voices for g in voice]
+        n_total = self._relative_n_total(all_grains, stream)
         buffer = np.zeros((n_total, 2), dtype=np.float64)
 
-        # 2. Overlap-add con onset RELATIVI (all_grains e' gia' in ordine
-        # voice-major: stesso ordine di somma del loop storico)
+        # all_grains e' gia' in ordine voice-major: stesso ordine del loop storico
         pairs = [
             (grain, self._relative_onset_sample(grain, stream.onset))
             for grain in all_grains
         ]
         self._overlap_add(buffer, pairs)
 
-        # 3. DC blocker FIR: rimuove l'offset DC accumulato dall'overlap-add
         buffer = dc_block(buffer, self.output_sr)
-
-        # 4. Clamp + scrivi
         np.clip(buffer, -1.0, 1.0, out=buffer)
         sf.write(output_path, buffer, self.output_sr,
                  format=self.audio_format.sf_format,
                  subtype=self.audio_format.sf_subtype)
 
-        # Aggiorna cache dopo build riuscita
-        if self.cache_manager:
-            stream_dict = self.stream_data_map.get(stream.stream_id)
-            if stream_dict:
-                self.cache_manager.update_after_build([stream_dict])
+    def _build_stream_task(self, stream, output_path: str) -> StreamRenderTask:
+        """Costruisce il task picklable per il worker stream-level.
 
-        return output_path
+        n_total e pairs sono identici a quelli di _render_single_stream_body
+        → lo stem prodotto dal worker e' byte-identico al path sequenziale."""
+        all_grains = [g for voice in stream.voices for g in voice]
+        n_total = self._relative_n_total(all_grains, stream)
+        pairs = [
+            (grain, self._relative_onset_sample(grain, stream.onset))
+            for grain in all_grains
+        ]
+        return StreamRenderTask(
+            pairs=pairs,
+            n_total=n_total,
+            output_path=output_path,
+            sf_format=self.audio_format.sf_format,
+            sf_subtype=self.audio_format.sf_subtype,
+            output_sr=self.output_sr,
+        )
 
     def render_merged_streams(self, streams: List, output_path: str) -> str:
         """
