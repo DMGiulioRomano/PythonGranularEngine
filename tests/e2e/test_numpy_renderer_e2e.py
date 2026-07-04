@@ -88,6 +88,16 @@ def _load_manifest(tmp_path) -> dict:
     return json.loads(manifest_path.read_text())
 
 
+def _count_cache_status(output: str, status: str) -> int:
+    """Conta le righe di stato cache `[CACHE] <id>: <status>` nell'output.
+
+    Ancorato al prefisso `[CACHE] <id>: ` per non contare la sottostringa
+    altrove (es. il tmp_path di pytest può contenere 'clean' e comparire in
+    ogni path stampato)."""
+    import re
+    return len(re.findall(rf"\[CACHE\] \S+: {re.escape(status)}\b", output))
+
+
 def _make_build_stems(tmp_path, cache=True, jobs=None):
     """
     Invoca `make all STEMS=true RENDERER=numpy` con directory temporanee.
@@ -527,9 +537,12 @@ class TestNumpyStemsStreamParallel:
 
         r1, out1 = _make_build_stems(tmp_path, cache=True, jobs=2)
         assert r1.returncode == 0, f"prima build fallita:\n{out1}"
-        assert out1.count("DIRTY") == 3, f"prima run: attesi 3 DIRTY\n{out1}"
+        assert _count_cache_status(out1, "DIRTY") == 3, \
+            f"prima run: attesi 3 DIRTY\n{out1}"
 
         r2, out2 = _make_build_stems(tmp_path, cache=True, jobs=2)
         assert r2.returncode == 0, f"seconda build fallita:\n{out2}"
-        assert "DIRTY" not in out2, f"seconda run: nessuno stream doveva essere DIRTY\n{out2}"
-        assert out2.count("clean") == 3, f"seconda run: attesi 3 clean\n{out2}"
+        assert _count_cache_status(out2, "DIRTY") == 0, \
+            f"seconda run: nessuno stream doveva essere DIRTY\n{out2}"
+        assert _count_cache_status(out2, "clean") == 3, \
+            f"seconda run: attesi 3 clean\n{out2}"
