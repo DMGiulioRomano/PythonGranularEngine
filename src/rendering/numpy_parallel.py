@@ -35,11 +35,13 @@ differenza massima sotto 1 LSB a 24 bit (coperto dai test del renderer).
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 import numpy as np
+import soundfile as sf
 
 from core.grain import Grain
+from rendering.dc_blocker import dc_block
 from rendering.grain_renderer import GrainRenderer
 from rendering.sample_registry import SampleRegistry
 from rendering.numpy_window_registry import NumpyWindowRegistry
@@ -246,3 +248,82 @@ def render_grain_chunk(
         local[start:start + buf.shape[0]] += buf
 
     return offset, local
+
+
+# =============================================================================
+# LATO WORKER - PARALLELISMO A LIVELLO DI STREAM
+# =============================================================================
+
+class StreamRenderTask(NamedTuple):
+    """
+    Task picklable per il rendering di UNO stream nel worker.
+
+    Contiene tutto il necessario per replicare render_single_stream dal punto
+    "buffer allocato" in poi, senza toccare lo stato del parent:
+
+    - pairs:      coppie (grain, onset_sample RELATIVO allo stream), in ordine
+                  voice-major (stesso ordine di somma del loop storico)
+    - n_total:    lunghezza del buffer in samples (calcolata dal parent)
+    - output_path: file .aif/.wav di destinazione
+    - sf_format:  container soundfile (es. 'AIFF')
+    - sf_subtype: sottotipo soundfile (es. 'PCM_24')
+    - output_sr:  sample rate di output (per dc_block e write)
+    """
+    pairs: List[Tuple[Grain, int]]
+    n_total: int
+    output_path: str
+    sf_format: str
+    sf_subtype: str
+    output_sr: int
+
+
+def render_stream_to_file(task: StreamRenderTask) -> str:
+    """
+    Rende UNO stream in UN file, interamente nel worker.
+
+    Replica ESATTAMENTE il path sequenziale di render_single_stream dal
+    buffer in poi: overlap-add di tutte le pairs NELL'ORDINE RICEVUTO (con
+    CLAMP 1 sull'onset negativo), dc_block FIR, clip a [-1, 1], scrittura.
+    L'ordine delle somme float64 e' quello storico → lo stem e' byte-identico
+    a jobs=1 (contratto piu' forte del chunk path, che garantiva solo < 1 LSB).
+
+    L'IPC di ritorno e' la sola stringa output_path: nessun buffer audio
+    attraversa il confine di processo (contro i buffer locali del chunk path).
+
+    Args:
+        task: StreamRenderTask picklable (pairs relative, n_total, output...)
+
+    Returns:
+        Il percorso del file prodotto (task.output_path).
+    """
+    if _worker_grain_renderer is None or _worker_table_map is None:
+        raise RuntimeError(
+            "Worker non inizializzato: chiamare init_worker(config) prima "
+            "di render_stream_to_file (initializer del pool)."
+        )
+
+    buffer = np.zeros((task.n_total, 2), dtype=np.float64)
+    for grain, onset_sample in task.pairs:
+        sample_name = resolve_table_name(
+            _worker_table_map, grain.sample_table, 'sample')
+        window_name = resolve_table_name(
+            _worker_table_map, grain.envelope_table, 'window')
+
+        grain_buffer = _worker_grain_renderer.render(
+            grain, sample_name, window_name)
+
+        # CLAMP 1 — onset negativo: taglia l'inizio del grano.
+        if onset_sample < 0:
+            grain_buffer = grain_buffer[-onset_sample:]
+            onset_sample = 0
+
+        end_sample = onset_sample + grain_buffer.shape[0]
+        if grain_buffer.shape[0] > 0:
+            buffer[onset_sample:end_sample] += grain_buffer
+
+    buffer = dc_block(buffer, task.output_sr)
+    np.clip(buffer, -1.0, 1.0, out=buffer)
+    sf.write(task.output_path, buffer, task.output_sr,
+             format=task.sf_format, subtype=task.sf_subtype)
+
+    return task.output_path

@@ -278,3 +278,126 @@ class TestRenderGrainChunk:
         _, single = npar.render_grain_chunk([(grain, 0)])
         _, double = npar.render_grain_chunk([(grain, 0), (grain, 0)])
         assert np.allclose(double, 2.0 * single)
+
+
+# =============================================================================
+# 6. render_stream_to_file (worker per il parallelismo a livello di stream)
+# =============================================================================
+
+def make_single_stream_renderer(worker_env, jobs=1):
+    """NumpyAudioRenderer sequenziale sugli stessi file: oracolo per l'intero
+    path di render_single_stream (overlap-add + dc_block + write)."""
+    from rendering.numpy_audio_renderer import NumpyAudioRenderer
+    reg = SampleRegistry(base_path=worker_env['base_path'])
+    for name in worker_env['sample_names']:
+        reg.load(name)
+    return NumpyAudioRenderer(
+        sample_registry=reg,
+        window_registry=NumpyWindowRegistry(),
+        table_map=worker_env['table_map'],
+        output_sr=worker_env['output_sr'],
+        jobs=jobs,
+    )
+
+
+def build_stream_task(npar_mod, grains, stream_onset, stream_duration,
+                      output_path, output_sr, sf_format='AIFF',
+                      sf_subtype='FLOAT'):
+    """Costruisce lo StreamRenderTask con le pairs relative, come farebbe il
+    parent in render_streams (onset_sample relativi allo stream)."""
+    onset_samples = [round((g.onset - stream_onset) * output_sr) for g in grains]
+    if grains:
+        max_end_rel = max(g.onset + g.duration for g in grains) - stream_onset
+        max_end_rel = max(max_end_rel, stream_duration)
+    else:
+        max_end_rel = stream_duration
+    n_total = max(1, round(max_end_rel * output_sr))
+    return npar_mod.StreamRenderTask(
+        pairs=list(zip(grains, onset_samples)),
+        n_total=n_total,
+        output_path=output_path,
+        sf_format=sf_format,
+        sf_subtype=sf_subtype,
+        output_sr=output_sr,
+    )
+
+
+class TestRenderStreamToFile:
+    """La primitiva scrive uno stem completo (overlap-add + dc_block + write),
+    byte-identico al path sequenziale di render_single_stream."""
+
+    def test_matches_render_single_stream_bit_exact(self, worker_env, tmp_path):
+        """Stem prodotto dal worker == stem di render_single_stream (campioni)."""
+        from unittest.mock import MagicMock
+        npar.init_worker(worker_env)
+
+        grains = [make_grain(onset=i * 0.01, duration=0.03) for i in range(6)]
+        sr = worker_env['output_sr']
+
+        # Oracolo: render_single_stream sequenziale
+        stream = MagicMock()
+        stream.stream_id = 's1'
+        stream.onset = 0.0
+        stream.duration = 0.2
+        stream.voices = [grains]
+        oracle = make_single_stream_renderer(worker_env)
+        ref_path = str(tmp_path / 'ref.aif')
+        oracle.render_single_stream(stream, ref_path)
+
+        # Worker: stesso task
+        out_path = str(tmp_path / 'worker.aif')
+        task = build_stream_task(npar, grains, 0.0, 0.2, out_path, sr)
+        result = npar.render_stream_to_file(task)
+
+        assert result == out_path
+        d_ref, _ = sf.read(ref_path)
+        d_out, _ = sf.read(out_path)
+        assert d_ref.shape == d_out.shape
+        assert np.array_equal(d_ref, d_out)
+
+    def test_returns_output_path(self, worker_env, tmp_path):
+        npar.init_worker(worker_env)
+        out_path = str(tmp_path / 'out.aif')
+        task = build_stream_task(
+            npar, [make_grain()], 0.0, 0.1, out_path, worker_env['output_sr'])
+        assert npar.render_stream_to_file(task) == out_path
+
+    def test_negative_onset_clamp(self, worker_env, tmp_path):
+        """CLAMP 1: un grano con onset relativo negativo → testa tagliata,
+        stessa semantica del path sequenziale (verificato via oracolo)."""
+        from unittest.mock import MagicMock
+        npar.init_worker(worker_env)
+        sr = worker_env['output_sr']
+
+        # stream.onset > 0, un grano che parte prima dell'onset dello stream
+        grains = [make_grain(onset=0.01, duration=0.05),
+                  make_grain(onset=0.06, duration=0.05)]
+        stream = MagicMock()
+        stream.stream_id = 's1'
+        stream.onset = 0.03  # grano 0 parte a -0.02s relativi → CLAMP 1
+        stream.duration = 0.1
+        stream.voices = [grains]
+        oracle = make_single_stream_renderer(worker_env)
+        ref_path = str(tmp_path / 'ref.aif')
+        oracle.render_single_stream(stream, ref_path)
+
+        out_path = str(tmp_path / 'worker.aif')
+        task = build_stream_task(npar, grains, 0.03, 0.1, out_path, sr)
+        npar.render_stream_to_file(task)
+
+        d_ref, _ = sf.read(ref_path)
+        d_out, _ = sf.read(out_path)
+        assert np.array_equal(d_ref, d_out)
+
+    def test_empty_task_writes_silence(self, worker_env, tmp_path):
+        """Task senza grani → file di n_total campioni (silenzio dopo dc_block)."""
+        npar.init_worker(worker_env)
+        sr = worker_env['output_sr']
+        out_path = str(tmp_path / 'silent.aif')
+        task = build_stream_task(npar, [], 0.0, 0.1, out_path, sr)
+        npar.render_stream_to_file(task)
+
+        d, read_sr = sf.read(out_path)
+        assert read_sr == sr
+        assert d.shape == (round(0.1 * sr), 2)
+        assert np.max(np.abs(d)) == 0.0
