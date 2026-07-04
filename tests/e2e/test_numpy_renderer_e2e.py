@@ -135,9 +135,13 @@ def _make_build_stems(tmp_path, cache=True, jobs=None):
     return result, result.stdout + result.stderr
 
 
-def _make_build_mix(tmp_path):
+def _make_build_mix(tmp_path, jobs=None):
     """
     Invoca `make all STEMS=false RENDERER=numpy` con directory temporanee.
+
+    Args:
+        jobs: se valorizzato passa JOBS=<jobs>; None lascia JOBS vuoto
+              (build.mk non passa --jobs → default 'auto' di main.py)
 
     Returns:
         tuple (CompletedProcess, str) — processo e output combinato
@@ -163,6 +167,8 @@ def _make_build_mix(tmp_path):
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
     ]
+    if jobs is not None:
+        cmd.append(f'JOBS={jobs}')
 
     result = subprocess.run(
         cmd,
@@ -375,6 +381,66 @@ class TestNumpyStemsParallel:
         r2, out2 = _make_build_stems(tmp_path, cache=False, jobs=2)
         assert r2.returncode == 0, f"make JOBS=2 fallito:\n{out2}"
         par, _ = sf.read(str(stem))
+
+        assert seq.shape == par.shape
+        assert np.max(np.abs(seq - par)) < 2.0 ** -24
+
+
+# =============================================================================
+# 5. MIX PARALLELO (JOBS default 'auto')
+# =============================================================================
+
+_YAML_DENSE_TWO_STREAMS = """\
+composition:
+  title: "e2e numpy parallel mix test"
+
+streams:
+  - stream_id: "s1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+  - stream_id: "s2"
+    onset: 0.5
+    duration: 1.0
+    sample: "pino.wav"
+    density: 1500
+    grain:
+      duration: 0.05
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyMixParallelAuto:
+    """STEMS=false RENDERER=numpy, JOBS vuoto (default CLI 'auto'):
+    render_merged_streams multi-processo via make."""
+
+    def test_mix_auto_build_creates_file(self, tmp_path):
+        """La build MIX senza JOBS (auto) completa e produce il mix."""
+        _write_yaml(tmp_path, _YAML_DENSE_TWO_STREAMS)
+        result, output = _make_build_mix(tmp_path)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert (tmp_path / "output" / "e2e_numpy_test.aif").exists(), \
+            "file mix non trovato con JOBS=auto"
+
+    def test_mix_auto_matches_sequential(self, tmp_path):
+        """JOBS auto vs JOBS=1 su MIX multi-stream: stessa durata,
+        diff massima < 1 LSB a 24 bit."""
+        import numpy as np
+        import soundfile as sf
+
+        _write_yaml(tmp_path, _YAML_DENSE_TWO_STREAMS)
+        r1, out1 = _make_build_mix(tmp_path, jobs=1)
+        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
+        mix = tmp_path / "output" / "e2e_numpy_test.aif"
+        seq, _ = sf.read(str(mix))
+
+        r2, out2 = _make_build_mix(tmp_path)
+        assert r2.returncode == 0, f"make JOBS=auto fallito:\n{out2}"
+        par, _ = sf.read(str(mix))
 
         assert seq.shape == par.shape
         assert np.max(np.abs(seq - par)) < 2.0 ** -24
