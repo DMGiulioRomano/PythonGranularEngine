@@ -34,10 +34,20 @@ def make_mock_stream(stream_id='s1', onset=0.0, duration=1.0, voices=None):
 
 
 def make_mock_renderer():
-    """Mock AudioRenderer atomico."""
+    """Mock AudioRenderer atomico.
+
+    render_single_stream rispetta il contratto ABC (ritorna il path
+    prodotto); render_streams replica il default concreto dell'ABC
+    (loop su render_single_stream), cosi' i test sul loop restano validi.
+    """
     renderer = MagicMock()
-    renderer.render_single_stream = MagicMock(return_value='/out/s1.aif')
+    renderer.render_single_stream = MagicMock(side_effect=lambda stream, path: path)
     renderer.render_merged_streams = MagicMock(return_value='/out/mix.aif')
+    renderer.render_streams = MagicMock(
+        side_effect=lambda pairs: [
+            renderer.render_single_stream(stream, path) for stream, path in pairs
+        ]
+    )
     return renderer
 
 
@@ -228,6 +238,29 @@ class TestStemsRenderMode:
 
         assert len(result) == 1
         assert result[0] == '/out/base__solo.aif'
+
+    def test_delegates_loop_to_render_streams(self):
+        """execute delega il loop a renderer.render_streams con le coppie
+        (stream, path) del naming: il mode decide COSA (stems), il renderer
+        decide COME (seriale o parallelo)."""
+        from rendering.render_mode import StemsRenderMode
+        from rendering.naming_strategy import DefaultNamingStrategy
+
+        mode = StemsRenderMode()
+        renderer = make_mock_renderer()
+        naming = DefaultNamingStrategy()
+
+        streams = [make_mock_stream('s1'), make_mock_stream('s2')]
+
+        result = mode.execute(renderer, naming, streams, '/out/base.aif')
+
+        renderer.render_streams.assert_called_once()
+        (pairs,) = renderer.render_streams.call_args.args
+        assert pairs == [
+            (streams[0], '/out/base__s1.aif'),
+            (streams[1], '/out/base__s2.aif'),
+        ]
+        assert result == ['/out/base__s1.aif', '/out/base__s2.aif']
 
 
 # =============================================================================
