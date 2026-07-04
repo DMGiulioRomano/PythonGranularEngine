@@ -300,6 +300,11 @@ class Stream:
                 for key in ('progression', 'interp', 'voice_leading'):
                     if key in kw:
                         structural[key] = kw.pop(key)
+                # I tempi della progressione seguono il time_mode dello stream,
+                # come gli envelope: normalized → 0..1 scalati sulla duration.
+                if config.time_mode == 'normalized':
+                    structural['time_mode'] = 'normalized'
+                    structural['duration'] = self.duration
             kw = {k: _parse_strategy_kwarg(val, self.duration) for k, val in kw.items()}
             kw.update(structural)
             pitch_strategy = VoicePitchStrategyFactory.create(name, **kw)

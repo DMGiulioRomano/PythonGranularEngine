@@ -582,13 +582,17 @@ del tempo: per ogni voce un envelope di offset in semitoni interpola tra i
 voicing della `progression`. Voce 0 → sempre identità (riferimento); il moto di
 radice va messo nell'envelope `pitch` dello stream. Campi:
 
-- `progression` — lista non vuota di `[tempo_secondi, accordo]`, tempi non
+- `progression` — lista non vuota di `[tempo, accordo]`, tempi non
   decrescenti. L'accordo è un nome (vedi tabella sopra), opzionalmente con
   inversione in forma compatta `[t, chord, inversion]` o esplicita
   `[t, {chord: ..., inversion: ...}]`.
 - `interp` — `linear`/`cubic` (glissando) · `step` (blocchi). Default `linear`.
 - `voice_leading` — `positional` (voce i = i-esima nota) · `nearest` (default:
   riabbinamento a minimo movimento con octave-folding e note comuni tenute).
+
+I tempi della `progression` seguono il `time_mode` dello stream, come gli
+envelope: con `time_mode: normalized` i tempi vanno espressi in `0..1` e sono
+mappati sulla `duration` dello stream; con `absolute` (default) sono secondi.
 
 ---
 

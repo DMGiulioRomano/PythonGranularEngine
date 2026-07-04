@@ -294,3 +294,57 @@ class TestRegistry:
         s = ChordProg(progression=[[0, "maj7"], [8, "min7"]])
         # common tone (7) tenuto → segnale che nearest è attivo di default
         assert _st(s, 2, 4, 8.0) == pytest.approx(7)
+
+
+# =============================================================================
+# 7. time_mode normalized — i tempi 0..1 mappati sulla duration dello stream
+# =============================================================================
+
+class TestNormalizedTime:
+
+    def test_normalized_scales_times_by_duration(self):
+        ChordProg, *_ = _get()
+        # progression in 0..1, duration 8 → t=0→maj7, t=8→min7
+        s = ChordProg(
+            progression=[[0.0, "maj7"], [1.0, "min7"]],
+            interp="linear",
+            voice_leading="positional",
+            time_mode="normalized",
+            duration=8.0,
+        )
+        assert _semis(s, 4, 0.0) == pytest.approx([0, 4, 7, 11])
+        assert _semis(s, 4, 8.0) == pytest.approx([0, 3, 7, 10])
+        # glissando: a metà (t=4, cioè norm 0.5) i valori sono interpolati
+        assert _semis(s, 4, 4.0) == pytest.approx([0, 3.5, 7, 10.5])
+
+    def test_normalized_multi_chord(self):
+        ChordProg, *_ = _get()
+        # 0, 0.5, 1.0 con duration 20 → onset a 0, 10, 20
+        s = ChordProg(
+            progression=[[0.0, "maj7"], [0.5, "min7"], [1.0, "dom7"]],
+            interp="step",
+            voice_leading="positional",
+            time_mode="normalized",
+            duration=20.0,
+        )
+        assert _semis(s, 4, 0.0) == pytest.approx([0, 4, 7, 11])
+        assert _semis(s, 4, 10.0) == pytest.approx([0, 3, 7, 10])
+        assert _semis(s, 4, 20.0) == pytest.approx([0, 4, 7, 10])
+
+    def test_normalized_requires_duration(self):
+        ChordProg, *_ = _get()
+        with pytest.raises(InvalidStrategyConfigError) as ei:
+            ChordProg(
+                progression=[[0.0, "maj7"], [1.0, "min7"]],
+                time_mode="normalized",
+            )
+        assert ei.value.field == "time_mode"
+
+    def test_absolute_is_default_and_unchanged(self):
+        ChordProg, *_ = _get()
+        # default (absolute): i tempi restano secondi letterali
+        s = ChordProg(
+            progression=[[0.0, "maj7"], [8.0, "min7"]],
+            voice_leading="positional",
+        )
+        assert _semis(s, 4, 8.0) == pytest.approx([0, 3, 7, 10])

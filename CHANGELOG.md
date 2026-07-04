@@ -13,14 +13,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - Multi-voice: nuova strategy pitch `chord_progression` (issue #86) — progressioni
   armoniche in cui l'accordo è funzione del tempo (envelope di accordi). Per ogni
   voce si costruisce un `Envelope` di offset in semitoni interpolato tra i voicing
-  della `progression` (lista `[tempo_secondi, accordo]`, con inversione per-accordo
+  della `progression` (lista `[tempo, accordo]`, con inversione per-accordo
   in forma compatta `[t, chord, inversion]` o esplicita). `interp: linear|cubic`
   produce glissando, `interp: step` armonia a blocchi (default `linear`).
   `voice_leading: positional` abbina per indice; `voice_leading: nearest` (default)
   riabbina le voci a minimo movimento con octave-folding e note comuni tenute.
   Voce 0 resta sempre riferimento (offset 0); il moto di radice va nell'envelope
-  `pitch` dello stream. SEMITONE_LOCKED (solo `unit: semitones`). Nessun YAML
-  esistente rotto: `chord` statico invariato.
+  `pitch` dello stream. I tempi della `progression` seguono il `time_mode` dello
+  stream (con `normalized` i tempi `0..1` sono mappati sulla `duration`, come gli
+  envelope). SEMITONE_LOCKED (solo `unit: semitones`). Nessun YAML esistente
+  rotto: `chord` statico invariato.
 - Renderer NumPy: supporto alla finestra grano `blackman_harris` (GEN20 opt 5),
   campana a 4 termini con massima soppressione dei lobi laterali. Colma il gap
   col registry Csound (`WindowRegistry`), che già la definiva: i due renderer ora

@@ -304,6 +304,8 @@ maj7 [0,4,7,11] → min7 [0,3,7,10], 4 voci, voice_leading: nearest
   v3: 11 → 10   (glissa di 1 semitono)
 ```
 
+**Time mode:** i tempi della `progression` seguono il `time_mode` dello stream, esattamente come gli envelope. Con `time_mode: normalized` i tempi si esprimono in `0..1` e Stream li scala sulla `duration` prima di costruire gli envelope per-voce; con `absolute` (default) sono secondi.
+
 `chord_progression` è **SEMITONE_LOCKED**: accetta solo l'unità `semitones`.
 
 **Effetto audio:** progressioni armoniche evolutive — glissandi corali tra accordi (interp continuo) o armonia a blocchi (step), con voice leading parsimonioso.

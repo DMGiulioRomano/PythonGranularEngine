@@ -241,10 +241,14 @@ class ChordProgressionPitchStrategy(VoicePitchStrategy):
     La strategy è SEMITONE_LOCKED: gli offset (anche frazionari dopo interp)
     sono in semitoni, valida solo con unità `semitones`.
 
-    Sintassi progression (lista [tempo_secondi, accordo]):
+    Sintassi progression (lista [tempo, accordo]):
       - [t, "maj7"]                       — accordo nominale
       - [t, "min7", 1]                    — forma compatta [t, chord, inversion]
       - [t, {"chord": "min7", "inversion": 1}]  — forma esplicita
+
+    Time mode: i tempi seguono il `time_mode` dello stream, come gli envelope.
+    `absolute` (default) → secondi; `normalized` → 0..1 mappati sulla duration
+    (richiede `duration`). Stream inietta time_mode/duration in automatico.
 
     Gli envelope per-voce sono costruiti lazy alla prima chiamata (num_voices
     noto a runtime) e messi in cache per num_voices.
@@ -256,7 +260,8 @@ class ChordProgressionPitchStrategy(VoicePitchStrategy):
     _NEAREST_BRUTE_MAX = 8
 
     def __init__(self, progression, interp: str = 'linear',
-                 voice_leading: str = 'nearest'):
+                 voice_leading: str = 'nearest',
+                 time_mode: str = 'absolute', duration: float = None):
         from envelopes.envelope_builder import EnvelopeBuilder
 
         if not isinstance(progression, (list, tuple)) or len(progression) == 0:
@@ -296,6 +301,19 @@ class ChordProgressionPitchStrategy(VoicePitchStrategy):
             prev_t = t
             self._times.append(float(t))
             self._chords.append(intervals)
+
+        # time_mode normalized: i tempi (0..1) sono mappati sulla duration dello
+        # stream, coerentemente con gli envelope (create_scaled_envelope). Lo
+        # scaling per duration > 0 preserva l'ordinamento già validato sopra.
+        if time_mode == 'normalized':
+            if duration is None:
+                raise InvalidStrategyConfigError(
+                    strategy_kind="voice_pitch",
+                    field="time_mode",
+                    value=time_mode,
+                    hint="time_mode 'normalized' richiede la duration dello stream.",
+                )
+            self._times = [t * float(duration) for t in self._times]
 
         self.interp = interp
         self.voice_leading = voice_leading

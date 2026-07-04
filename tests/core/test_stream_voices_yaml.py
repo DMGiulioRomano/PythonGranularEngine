@@ -234,6 +234,32 @@ class TestChordProgressionYAML:
             })
         assert ei.value.field == 'voices.pitch.unit'
 
+    def test_time_mode_normalized_scales_progression(self):
+        """time_mode normalized dello stream: i tempi 0..1 mappati sulla duration."""
+        params = {
+            'stream_id': 's1',
+            'onset': 0.0,
+            'duration': 16.0,
+            'sample': 'test.wav',
+            'time_mode': 'normalized',
+            'voices': {
+                'num_voices': 4,
+                'pitch': {
+                    'strategy': 'chord_progression',
+                    'progression': [[0.0, 'maj7'], [1.0, 'min7']],
+                    'voice_leading': 'positional',
+                },
+            },
+        }
+        with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+            s = Stream(params)
+        vm = s._voice_manager
+        # norm 0.0 → t=0 (maj7); norm 1.0 → t=16 (min7)
+        assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert vm.get_voice_config(1, 16.0).pitch_factor == pytest.approx(_f(3.0))
+        # a metà stream (t=8, cioè norm 0.5): glissando lineare → (4+3)/2 = 3.5
+        assert vm.get_voice_config(1, 8.0).pitch_factor == pytest.approx(_f(3.5))
+
 
 # =============================================================================
 # 4. Onset strategy
