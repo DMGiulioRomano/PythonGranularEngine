@@ -1,7 +1,7 @@
 ---
 slug: 2026-07-04-001-feat-parallel-stems
 type: plan
-status: draft
+status: done
 tags: [rendering, numpy, performance, multiprocessing, stems]
 sources:
   - src/rendering/audio_renderer.py
@@ -9,7 +9,7 @@ sources:
   - src/rendering/numpy_audio_renderer.py
   - src/rendering/numpy_parallel.py
   - src/rendering/stream_cache_manager.py
-last_synced_commit: 12228ce
+last_synced_commit: d750ba6
 ---
 
 # Plan: feat — STEMS multi-processo (parallelismo a livello di stream)

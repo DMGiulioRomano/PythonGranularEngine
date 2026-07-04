@@ -10,6 +10,21 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Rendering NumPy multi-processo **a livello di stream** (STEMS): con
+  `--jobs > 1` e almeno due stream da rendere, ogni stem diventa un task per il
+  pool di processi (overlap-add + `dc_block` + scrittura interamente nel
+  worker), invece del solo overlap-add parallelo dentro un singolo stream. Con
+  molti stem il guadagno passa da ~1.5x a scaling quasi lineare (il lavoro
+  per-stream, prima seriale nel parent, gira ora nei worker). Contratto di
+  determinismo **rafforzato**: ogni stem prodotto è byte-identico a `--jobs 1`
+  (le somme float64 nel worker sono nell'ordine storico), non più solo < 1 LSB
+  a 24 bit. Invarianti preservate: la generazione dei grani resta nel parent in
+  ordine di stream (RNG deterministico), il check cache (`is_dirty`) precede
+  l'accesso ai grani (gli stream *clean* non generano né vengono dispatchati),
+  la cache si aggiorna solo per gli stem completati con successo. Nessun
+  cambiamento a YAML/CLI (`--jobs`/`JOBS` invariati) né ai formati di output.
+  Sotto le soglie (jobs=1, un solo stream dirty, pochi grani) il comportamento
+  resta il path per-stream con overlap-add parallelo intra-stream.
 - Rendering NumPy multi-processo: flag CLI `--jobs N|auto` (variabile Make
   `JOBS`) parallelizza l'overlap-add del renderer NumPy su più core. `auto`
   (default) = core disponibili − 1; `--jobs 1` mantiene il path sequenziale
