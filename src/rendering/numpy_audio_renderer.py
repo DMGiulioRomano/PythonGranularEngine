@@ -36,6 +36,7 @@ from rendering.numpy_parallel import (
     StreamRenderTask,
     chunk_grains,
     init_worker,
+    overlap_add_clamped,
     render_grain_chunk,
     render_stream_to_file,
     resolve_jobs,
@@ -418,7 +419,10 @@ class NumpyAudioRenderer(AudioRenderer):
             if result is None:
                 continue
             offset, local = result
-            buffer[offset:offset + local.shape[0]] += local
+            # Somma clampata alla coda: il buffer locale del chunk copre
+            # l'extent dei suoi grani, che con l'arrotondamento puo' finire
+            # 1 campione oltre n_total (vedi overlap_add_clamped).
+            overlap_add_clamped(buffer, local, offset)
 
     def _ensure_executor(self) -> ProcessPoolExecutor:
         """Crea il pool alla prima necessita' e lo riusa per tutta la run."""
@@ -474,18 +478,17 @@ class NumpyAudioRenderer(AudioRenderer):
         window_name = self._resolve_window_name(grain.envelope_table)
 
         grain_buffer = self._grain_renderer.render(grain, sample_name, window_name)
-        grain_len = grain_buffer.shape[0]
 
         # CLAMP 1 — onset negativo: taglia inizio del grano (legittimo, indipendente
         # dai bounds dello stream).
         if onset_sample < 0:
             grain_buffer = grain_buffer[-onset_sample:]
-            grain_len = grain_buffer.shape[0]
             onset_sample = 0
 
-        end_sample = onset_sample + grain_len
-        if grain_buffer.shape[0] > 0:
-            buffer[onset_sample:end_sample] += grain_buffer
+        # Somma clampata alla coda del buffer: l'unico sforo legittimo e'
+        # l'off-by-one da arrotondamento al campione (vedi overlap_add_clamped),
+        # non un clamp semantico (CLAMP 2/3 restano di GrainClipStrategy).
+        overlap_add_clamped(buffer, grain_buffer, onset_sample)
 
     # =========================================================================
     # INTERNAL - Table resolution
