@@ -429,6 +429,20 @@ class Stream:
         if unit == 'seconds':
             return params
 
+        # samples: il default seconds (0.05) NON viene scalato. Se grain.duration
+        # non e' esplicito, la base resterebbe in secondi mentre duration_range
+        # e' in campioni -> due domini diversi nello stesso blocco. Pretendi una
+        # duration esplicita (l'unita' governa base e range insieme).
+        if grain.get('duration') is None:
+            err = MissingFieldError(
+                field='grain.duration',
+                hint=("con grain.duration_unit: samples la durata va indicata "
+                      "esplicitamente in campioni (il default 0.05 e' in "
+                      "secondi e non verrebbe convertito)."),
+            )
+            err.stream_id = self.stream_id
+            raise err
+
         factor = 1.0 / output_sr
         scaled_grain = dict(grain)
         for key in ('duration', 'duration_range'):

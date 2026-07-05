@@ -17,7 +17,11 @@ from unittest.mock import patch
 
 from core.stream import Stream
 from shared.constants import DEFAULT_OUTPUT_SR
-from shared.exceptions import InvalidFieldValueError, ParameterBoundError
+from shared.exceptions import (
+    InvalidFieldValueError,
+    MissingFieldError,
+    ParameterBoundError,
+)
 
 
 SAMPLE_DUR = 10.0
@@ -136,6 +140,27 @@ class TestDurationUnitValidation:
     def test_below_one_sample_in_samples_rejected(self):
         with pytest.raises(ParameterBoundError):
             _make_stream({'duration': 0.5, 'duration_unit': 'samples'})
+
+    def test_samples_without_explicit_duration_rejected(self):
+        """Con duration_unit: samples il default 0.05 (secondi) non e'
+        scalato: base e duration_range vivrebbero in domini diversi
+        (secondi vs campioni). Serve un grain.duration esplicito."""
+        with pytest.raises(MissingFieldError) as exc_info:
+            _make_stream({'duration_range': 96, 'duration_unit': 'samples'})
+        assert 'duration' in str(exc_info.value)
+
+    def test_samples_bare_unit_without_duration_rejected(self):
+        """duration_unit: samples senza alcun valore di durata: stessa regola,
+        il default in secondi non e' un valore in campioni."""
+        with pytest.raises(MissingFieldError):
+            _make_stream({'duration_unit': 'samples'})
+
+    def test_samples_with_explicit_duration_and_range_ok(self):
+        """Il caso valido non regredisce: base e range entrambi in campioni."""
+        s = _make_stream(
+            {'duration': 480, 'duration_range': 96, 'duration_unit': 'samples'},
+        )
+        assert len(s.grains) > 0
 
 
 class TestDurationUnitDoesNotLeak:
