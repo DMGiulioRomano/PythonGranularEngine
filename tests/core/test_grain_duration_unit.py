@@ -147,3 +147,39 @@ class TestDurationUnitDoesNotLeak:
         _make_stream(grain)
         assert grain['duration'] == 480
         assert grain['duration_unit'] == 'samples'
+
+
+class TestSamplesUnitRenderIntegration:
+    """Filiera completa: YAML in campioni -> Stream -> Grain -> render NumPy.
+    Un treno di grani da 1 campione produce impulsi non silenti."""
+
+    def test_one_sample_grains_render_as_impulses(self):
+        import numpy as np
+        from rendering.grain_renderer import GrainRenderer
+        from rendering.sample_registry import SampleRegistry
+        from rendering.numpy_window_registry import NumpyWindowRegistry
+
+        s = _make_stream({
+            'duration': 1,
+            'duration_unit': 'samples',
+            'envelope': 'rectangle',
+        })
+        s.window_table_map = {'rectangle': 2}
+
+        # Sorgente costante a 1.0: qualunque pointer_pos legge segnale pieno
+        reg = SampleRegistry.__new__(SampleRegistry)
+        reg.base_path = './refs/'
+        reg._cache = {
+            'test.wav': (
+                np.ones(int(SAMPLE_DUR * DEFAULT_OUTPUT_SR), dtype=np.float32),
+                DEFAULT_OUTPUT_SR,
+            )
+        }
+        renderer = GrainRenderer(reg, NumpyWindowRegistry(),
+                                 output_sr=DEFAULT_OUTPUT_SR)
+
+        assert len(s.grains) > 0
+        for grain in s.grains[:10]:
+            buf = renderer.render(grain, 'test.wav', 'rectangle')
+            assert buf.shape == (1, 2)          # esattamente 1 frame stereo
+            assert np.abs(buf).max() > 0.5      # impulso non silente
