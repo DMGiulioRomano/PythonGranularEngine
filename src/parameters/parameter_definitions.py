@@ -204,18 +204,26 @@ _LOOP_PARAMS = frozenset({'loop_dur', 'loop_start', 'loop_end'})
 def get_parameter_definition(
     param_name: str,
     sample_dur_sec: float | None = None,
+    output_sr: int | None = None,
 ) -> ParameterBounds:
     """
     Recupera la definizione di un parametro dal registro.
 
     Per loop_dur, loop_start e loop_end, se sample_dur_sec è fornito,
     restituisce un nuovo ParameterBounds con max_val = sample_dur_sec.
-    Tutti gli altri campi (min_val, min_range, ...) rimangono invariati.
+
+    Per grain_duration, se output_sr è fornito, restituisce un nuovo
+    ParameterBounds con min_val = 1 campione (1/output_sr): la durata
+    minima di un grano è la risoluzione temporale del motore.
+
+    Tutti gli altri campi rimangono invariati.
 
     Args:
         param_name: Il nome del parametro (es. 'density')
         sample_dur_sec: Durata del file audio in secondi (opzionale).
             Se fornito, sovrascrive max_val per i parametri loop.
+        output_sr: Sample rate di output del motore (opzionale).
+            Se fornito, sovrascrive min_val per grain_duration.
 
     Returns:
         ParameterBounds: L'oggetto configurazione.
@@ -230,6 +238,15 @@ def get_parameter_definition(
         return ParameterBounds(
             min_val=bounds.min_val,
             max_val=sample_dur_sec,
+            min_range=bounds.min_range,
+            max_range=bounds.max_range,
+            default_jitter=bounds.default_jitter,
+            variation_mode=bounds.variation_mode,
+        )
+    if output_sr is not None and param_name == 'grain_duration':
+        return ParameterBounds(
+            min_val=1.0 / output_sr,
+            max_val=bounds.max_val,
             min_range=bounds.min_range,
             max_range=bounds.max_range,
             default_jitter=bounds.default_jitter,

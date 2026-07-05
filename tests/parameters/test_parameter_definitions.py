@@ -1000,3 +1000,44 @@ class TestLoopParamsNoneMaxVal:
         bounds = ParameterBounds(min_val=0.0, max_val=None)
         assert bounds.max_val is None
         assert bounds.min_val == 0.0
+
+# =============================================================================
+# 16. BOUND MINIMO DINAMICO DI GRAIN_DURATION (1 CAMPIONE)
+# =============================================================================
+
+class TestGrainDurationDynamicMin:
+    """
+    get_parameter_definition('grain_duration', output_sr=SR) deve restituire
+    bounds con min_val = 1 campione (1/SR). Senza output_sr il registry
+    statico resta invariato (retrocompatibilita').
+    """
+
+    def test_min_val_is_one_sample_with_output_sr(self):
+        bounds = get_parameter_definition('grain_duration', output_sr=48000)
+        assert bounds.min_val == pytest.approx(1.0 / 48000)
+
+    @pytest.mark.parametrize("sr", [44100, 48000, 96000, 192000])
+    def test_various_output_srs(self, sr):
+        bounds = get_parameter_definition('grain_duration', output_sr=sr)
+        assert bounds.min_val == pytest.approx(1.0 / sr)
+
+    def test_other_fields_preserved_with_output_sr(self):
+        original = GRANULAR_PARAMETERS['grain_duration']
+        bounds = get_parameter_definition('grain_duration', output_sr=48000)
+        assert bounds.max_val == original.max_val
+        assert bounds.min_range == original.min_range
+        assert bounds.max_range == original.max_range
+        assert bounds.default_jitter == original.default_jitter
+        assert bounds.variation_mode == original.variation_mode
+
+    def test_registry_not_mutated(self):
+        get_parameter_definition('grain_duration', output_sr=48000)
+        assert GRANULAR_PARAMETERS['grain_duration'].min_val == 0.001
+
+    def test_without_output_sr_returns_static_object(self):
+        result = get_parameter_definition('grain_duration')
+        assert result is GRANULAR_PARAMETERS['grain_duration']
+
+    def test_non_duration_param_unaffected_by_output_sr(self):
+        bounds_with = get_parameter_definition('density', output_sr=48000)
+        assert bounds_with is GRANULAR_PARAMETERS['density']

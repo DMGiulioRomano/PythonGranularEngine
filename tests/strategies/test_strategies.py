@@ -614,6 +614,16 @@ class TestFillFactorStrategyClamping:
         result = strategy.calculate_density(0.0, grain_duration=0.001)
         assert result == pytest.approx(4000.0)
 
+    def test_one_sample_grain_duration_clamped_to_max(self):
+        """Grano da 1 campione (grain.duration_unit samples): la density
+        derivata (fill_factor/dur = 96000) resta clampata a 4000."""
+        ff_param = _make_param(2.0)
+        dist_param = _make_param(0.0)
+        strategy = FillFactorStrategy(ff_param, dist_param)
+
+        result = strategy.calculate_density(0.0, grain_duration=1.0 / 48000)
+        assert result == pytest.approx(4000.0)
+
     def test_clamps_to_min_density(self):
         """Risultato clampato al minimo di density (0.01)."""
         ff_param = _make_param(0.001)

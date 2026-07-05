@@ -3,21 +3,36 @@ from __future__ import annotations
 
 from dataclasses import dataclass,fields
 from typing import Optional, Union
-    
+
+from shared.constants import DEFAULT_OUTPUT_SR
+
 @dataclass(frozen=True)
 class StreamContext:
     stream_id: str
     onset: float
     duration: float
     sample: str
-    sample_dur_sec: float          
+    sample_dur_sec: float
+    # Sample rate di output del motore: riferimento per le conversioni
+    # campioni <-> secondi (grain.duration_unit) e per il bound minimo
+    # dinamico di grain_duration (1 campione).
+    output_sr: int = DEFAULT_OUTPUT_SR
 
     @classmethod
     def from_yaml(cls, yaml_data: dict, sample_dur_sec: float, allow_none: bool = True) -> 'StreamConfig':
-        """        
-        Contiene solo configurazioni che determinano il l'identità e il contesto dello stream.        
         """
-        field_names = [f.name for f in fields(cls) if f.name != 'sample_dur_sec']
+        Contiene solo configurazioni che determinano il l'identità e il contesto dello stream.
+        """
+        # Campi NON letti dal dict per-stream:
+        # - sample_dur_sec: derivato dal file audio, mai dal YAML.
+        # - output_sr: config GLOBALE del motore. Deve restare la costante di
+        #   sistema (con cui il renderer viene costruito, main.py): leggerlo
+        #   dallo YAML del singolo stream farebbe divergere la conversione
+        #   samples->secondi e il bound minimo dal sample rate del rendering.
+        #   Resta al default finche' una vera configurabilita' globale non e'
+        #   cablata su entrambi (context E renderer).
+        _engine_global = {'sample_dur_sec', 'output_sr'}
+        field_names = [f.name for f in fields(cls) if f.name not in _engine_global]
 
         
         if allow_none:

@@ -790,3 +790,40 @@ class TestParserDynamicLoopBounds:
         parser = GranularParser(config)
         param = parser.parse_parameter(name, 9999.0)
         assert param.get_value(0) == pytest.approx(9999.0)
+
+# =============================================================================
+# 10. BOUND MINIMO DINAMICO GRAIN_DURATION VIA PARSER (1 CAMPIONE)
+# =============================================================================
+
+class TestParserDynamicGrainDurationMin:
+    """
+    GranularParser deve propagare output_sr dal context ai bounds di
+    grain_duration: durata minima = 1 campione (1/output_sr), non piu' 1 ms.
+    """
+
+    def test_one_sample_duration_is_valid(self):
+        config = make_config()  # context con output_sr di default (48000)
+        parser = GranularParser(config)
+        param = parser.parse_parameter('grain_duration', 1.0 / 48000)
+        assert param.get_value(0) == pytest.approx(1.0 / 48000)
+
+    def test_sub_millisecond_duration_now_valid(self):
+        """Durate sotto il vecchio floor di 1 ms sono accettate."""
+        config = make_config()
+        parser = GranularParser(config)
+        param = parser.parse_parameter('grain_duration', 0.0001)
+        assert param.get_value(0) == pytest.approx(0.0001)
+
+    def test_below_one_sample_raises(self):
+        config = make_config()
+        parser = GranularParser(config)
+        with pytest.raises(ValueError):
+            parser.parse_parameter('grain_duration', 0.5 / 48000)
+
+    def test_envelope_breakpoint_below_one_sample_raises(self):
+        config = make_config()
+        parser = GranularParser(config)
+        with pytest.raises(ValueError):
+            parser.parse_parameter(
+                'grain_duration', [[0.0, 0.05], [5.0, 0.5 / 48000]]
+            )

@@ -439,6 +439,24 @@ class Envelope:
         scaled_raw = Envelope._scale_raw_values_y(raw_data, scale_factor)
         return Envelope(scaled_raw)
 
+
+def scale_raw_param_values(value, scale_factor: float):
+    """
+    Scala un valore parametro grezzo (scalare, envelope-like o altro) per
+    scale_factor, restituendo dati raw nello stesso formato dell'input,
+    compatibili col pipeline parser a valle.
+
+    Punto unico per le conversioni di unita' sui valori Y dei parametri:
+    loop_unit normalized (PointerController) e grain.duration_unit samples
+    (Stream). Tipi non numerici e non envelope-like passano invariati.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value * scale_factor
+    if Envelope.is_envelope_like(value):
+        return Envelope._scale_raw_values_y(value, scale_factor)
+    return value
+
+
 def create_scaled_envelope(
     raw_data: Union[List, Dict],
     duration: float,

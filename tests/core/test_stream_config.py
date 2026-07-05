@@ -88,18 +88,63 @@ class TestStreamContextDirect:
         assert ctx.sample_dur_sec == 3.2
 
     def test_field_count(self):
-        """StreamContext ha esattamente 5 campi."""
-        assert len(fields(StreamContext)) == 5
+        """StreamContext ha esattamente 6 campi."""
+        assert len(fields(StreamContext)) == 6
 
     def test_field_names(self):
         """Nomi campi corretti e nell'ordine atteso."""
         names = [f.name for f in fields(StreamContext)]
-        assert names == ['stream_id', 'onset', 'duration', 'sample', 'sample_dur_sec']
+        assert names == ['stream_id', 'onset', 'duration', 'sample',
+                         'sample_dur_sec', 'output_sr']
 
     def test_missing_required_field_raises(self):
         """Campi mancanti nella costruzione diretta -> TypeError."""
         with pytest.raises(TypeError):
             StreamContext(stream_id='s1', onset=0.0)
+
+
+class TestStreamContextOutputSr:
+    """Il context espone il sample rate di output del motore."""
+
+    def test_default_output_sr_is_engine_constant(self):
+        """Senza indicazioni, output_sr e' la costante di sistema (48000)."""
+        from shared.constants import DEFAULT_OUTPUT_SR
+
+        ctx = StreamContext(
+            stream_id='s1', onset=0.0, duration=5.0,
+            sample='voice.wav', sample_dur_sec=3.2,
+        )
+        assert DEFAULT_OUTPUT_SR == 48000
+        assert ctx.output_sr == DEFAULT_OUTPUT_SR
+
+    def test_from_yaml_defaults_output_sr(self):
+        """from_yaml senza chiave output_sr usa il default di sistema."""
+        from shared.constants import DEFAULT_OUTPUT_SR
+
+        ctx = StreamContext.from_yaml(
+            {'stream_id': 's1', 'onset': 0.0, 'duration': 5.0,
+             'sample': 'voice.wav'},
+            sample_dur_sec=3.2,
+        )
+        assert ctx.output_sr == DEFAULT_OUTPUT_SR
+
+    def test_from_yaml_ignores_per_stream_output_sr(self):
+        """output_sr e' una config GLOBALE del motore, non un campo per-stream:
+        una chiave nello YAML dello stream NON deve entrare nel context.
+
+        Altrimenti divergerebbe dal sample rate con cui il renderer viene
+        costruito (main.py lo passa a DEFAULT_OUTPUT_SR): la conversione
+        samples->secondi e il bound minimo userebbero un SR, il rendering un
+        altro, producendo grani di lunghezza sbagliata.
+        """
+        from shared.constants import DEFAULT_OUTPUT_SR
+
+        ctx = StreamContext.from_yaml(
+            {'stream_id': 's1', 'onset': 0.0, 'duration': 5.0,
+             'sample': 'voice.wav', 'output_sr': 96000},
+            sample_dur_sec=3.2,
+        )
+        assert ctx.output_sr == DEFAULT_OUTPUT_SR
 
 
 # =============================================================================

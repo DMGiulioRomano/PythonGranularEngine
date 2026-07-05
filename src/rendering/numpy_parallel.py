@@ -128,6 +128,38 @@ def chunk_grains(items: Sequence, n_chunks: int) -> List[List]:
 
 
 # =============================================================================
+# OVERLAP-ADD CLAMPATO (condiviso parent/worker)
+# =============================================================================
+
+def overlap_add_clamped(target: np.ndarray, local: np.ndarray, offset: int) -> None:
+    """
+    Somma `local` in `target` a partire da `offset`, troncando la coda che
+    sfora il buffer.
+
+    Necessario per l'arrotondamento al campione: la fine di un grano vale
+    round(onset*sr) + round(dur*sr), mentre il buffer e' dimensionato da un
+    round separato della somma, round((onset+dur)*sr). Quando entrambe le
+    parti frazionarie superano 0.5, round(a) + round(b) == round(a+b) + 1:
+    l'ultimo grano finisce 1 campione oltre il buffer e senza clamp l'overlap-add
+    esplode con un ValueError di broadcast. Il campione tagliato e' a bordo
+    finestra (ampiezza ~0), musicalmente impercettibile.
+
+    Con il vecchio int() (troncamento) la coda non poteva mai sforare
+    (floor(a)+floor(b) <= floor(a+b)); questo helper ripristina quella garanzia
+    di sicurezza per il round(). onset_sample negativo e' gia' gestito a monte
+    (CLAMP 1) dai chiamanti.
+    """
+    n = target.shape[0]
+    if offset >= n or local.shape[0] == 0:
+        return
+    end = offset + local.shape[0]
+    if end > n:
+        local = local[:n - offset]
+        end = n
+    target[offset:end] += local
+
+
+# =============================================================================
 # RISOLUZIONE TABLE (condivisa parent/worker)
 # =============================================================================
 
@@ -317,9 +349,9 @@ def render_stream_to_file(task: StreamRenderTask) -> str:
             grain_buffer = grain_buffer[-onset_sample:]
             onset_sample = 0
 
-        end_sample = onset_sample + grain_buffer.shape[0]
-        if grain_buffer.shape[0] > 0:
-            buffer[onset_sample:end_sample] += grain_buffer
+        # Somma clampata alla coda del buffer (off-by-one da round, vedi
+        # overlap_add_clamped): byte-identica al path sequenziale.
+        overlap_add_clamped(buffer, grain_buffer, onset_sample)
 
     buffer = dc_block(buffer, task.output_sr)
     np.clip(buffer, -1.0, 1.0, out=buffer)

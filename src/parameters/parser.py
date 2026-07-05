@@ -38,6 +38,9 @@ class GranularParser:
         self.stream_id = config.context.stream_id
         self.duration = config.context.duration
         self.sample_dur_sec = config.context.sample_dur_sec
+        # Sample rate di output: bound minimo dinamico di grain_duration
+        # (1 campione). getattr difensivo per i context parziali dei test.
+        self.output_sr = getattr(config.context, 'output_sr', None)
         self.time_mode = config.time_mode
         self.distribution_mode = config.distribution_mode
         # Seed effettivo del run (issue #154): deriva l'RNG per-parametro.
@@ -68,9 +71,12 @@ class GranularParser:
             Un'istanza configurata di Parameter.
         """
         # 1. Recupera la definizione (Bounds & Rules) dal Registry, salvo override.
-        # Per loop_dur/loop_start/loop_end il bound massimo è la durata del file audio.
+        # Per loop_dur/loop_start/loop_end il bound massimo è la durata del file
+        # audio; per grain_duration il bound minimo è 1 campione (1/output_sr).
         bounds = (bounds_override if bounds_override is not None
-                  else get_parameter_definition(name, sample_dur_sec=self.sample_dur_sec))
+                  else get_parameter_definition(name,
+                                                sample_dur_sec=self.sample_dur_sec,
+                                                output_sr=self.output_sr))
 
         # 2. Converte i dati grezzi in formati utilizzabili (float o Envelope)
         # Qui avviene la normalizzazione temporale se necessaria

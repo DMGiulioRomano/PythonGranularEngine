@@ -120,8 +120,8 @@ class TestGrainToScoreLine:
         result = grain.to_score_line()
         
         # Verifica precisione
-        assert '1.234568' in result  # onset a 6 decimali
-        assert '0.987654' in result  # duration a 6 decimali
+        assert '1.23456789' in result  # onset a 8 decimali
+        assert '0.98765432' in result  # duration a 8 decimali
         assert '0.123457' in result  # pointer_pos a 6 decimali
         assert '1.059463' in result  # pitch_ratio a 6 decimali
         assert '-6.54' in result  # volume a 2 decimali
@@ -530,3 +530,40 @@ class TestGrainPickle:
         ]
         restored = pickle.loads(pickle.dumps(grains))
         assert restored == grains
+
+# =============================================================================
+# TEST to_score_line A PRECISIONE DI CAMPIONE (grain.duration_unit samples)
+# =============================================================================
+
+class TestScoreLineSamplePrecision:
+    """p2/p3 serializzati con 8 decimali: un grano da 1 campione deve
+    sopravvivere al roundtrip testo -> float senza errori percettibili."""
+
+    @staticmethod
+    def _make_grain(duration, onset=0.0):
+        return Grain(
+            onset=onset, duration=duration, pointer_pos=0.5,
+            pitch_ratio=1.0, volume=0.0, pan=0.0,
+            sample_table=1, envelope_table=2,
+        )
+
+    @pytest.mark.parametrize("sr", [48000, 96000, 192000])
+    def test_one_sample_duration_roundtrip(self, sr):
+        dur = 1.0 / sr
+        line = self._make_grain(dur).to_score_line()
+        p3 = float(line.split()[3])
+        # errore relativo < 0.1% (con .6f era ~0.8% a 48k, 4% a 96k)
+        assert abs(p3 - dur) / dur < 0.001
+        # ri-quantizzato al sr corrispondente resta 1 campione
+        assert round(p3 * sr) == 1
+
+    def test_onset_sample_precision_roundtrip(self):
+        """Anche p2 (onset) regge la precisione di campione: due grani
+        adiacenti da 1 campione non collassano sullo stesso onset."""
+        sr = 48000
+        line_a = self._make_grain(1.0 / sr, onset=1.0 / sr).to_score_line()
+        line_b = self._make_grain(1.0 / sr, onset=2.0 / sr).to_score_line()
+        p2_a = float(line_a.split()[2])
+        p2_b = float(line_b.split()[2])
+        assert p2_a != p2_b
+        assert round((p2_b - p2_a) * sr) == 1

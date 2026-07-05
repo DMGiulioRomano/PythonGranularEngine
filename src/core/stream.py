@@ -19,7 +19,7 @@ from math import ceil, floor, log10
 from typing import List, Optional, Union
 
 from core.grain import Grain
-from envelopes.envelope import Envelope, create_scaled_envelope
+from envelopes.envelope import Envelope, create_scaled_envelope, scale_raw_param_values
 from controllers.window_controller import WindowController
 from controllers.pointer_controller import PointerController
 from controllers.pitch_controller import PitchController
@@ -41,7 +41,13 @@ from strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from strategies.voice_pan_strategy import VoicePanStrategyFactory
 from strategies.grain_clip_strategy import GrainClipStrategyFactory, OverflowMarginClipStrategy
-from dataclasses import fields
+from dataclasses import fields, MISSING as dataclass_MISSING
+
+
+# Unita' di misura ammesse per grain.duration / grain.duration_range.
+# 'seconds' e' il default storico; 'samples' esprime i valori in campioni
+# alla frequenza di output del motore (StreamContext.output_sr).
+GRAIN_DURATION_UNITS = ('seconds', 'samples')
 
 
 def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute'):
@@ -115,6 +121,10 @@ class Stream:
             seed=seed,
         )
         self._init_stream_context(params)
+        # === 3.5. UNITA' DI MISURA DURATA GRANO ===
+        # Da qui in poi grain.duration/duration_range sono in secondi,
+        # qualunque sia l'unita' dichiarata nello YAML.
+        params = self._pre_normalize_grain_params(params, config.context.output_sr)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
         # === 5. PARAMETRI DIRETTI (riceve config) ===
@@ -141,10 +151,20 @@ class Stream:
         self._grains: List[Grain] = []  # backward compatibility (flat)
         self.generated = False
 
+    @staticmethod
+    def _required_context_fields() -> set:
+        """Campi StreamContext che il YAML deve fornire: quelli senza default
+        (sample_dur_sec escluso: derivato dal file audio, mai dal YAML)."""
+        return {
+            field.name for field in fields(StreamContext)
+            if field.name != 'sample_dur_sec'
+            and field.default is dataclass_MISSING
+            and field.default_factory is dataclass_MISSING
+        }
+
     def _check_required_context_fields(self, params, stream_id):
         """Verifica campi obbligatori StreamContext prima di StreamConfig.from_yaml."""
-        base = {field.name for field in fields(StreamContext) if field.name != 'sample_dur_sec'}
-        missing = base - set(params.keys())
+        missing = self._required_context_fields() - set(params.keys())
         if missing:
             missing_list = sorted(missing)
             err = MissingFieldError(fields=missing_list)
@@ -153,8 +173,7 @@ class Stream:
 
     def _init_stream_context(self, params):
         self._check_required_context_fields(params, params.get('stream_id', 'unknown'))
-        base = {field.name for field in fields(StreamContext) if field.name != 'sample_dur_sec'}
-        for key in base:
+        for key in self._required_context_fields():
             setattr(self, key, params[key])
         self.sample_dur_sec = get_sample_duration(self.sample)
 
@@ -379,6 +398,60 @@ class Stream:
             pan_strategy=pan_strategy,
             pitch_unit=pitch_unit,
         )
+
+    def _pre_normalize_grain_params(self, params: dict, output_sr: int) -> dict:
+        """
+        Conversione di unita' per la durata del grano (modello loop_unit).
+
+        Se grain.duration_unit == 'samples', scala grain.duration e
+        grain.duration_range da campioni a secondi (fattore 1/output_sr),
+        su scalari ed envelope-like (solo i valori Y; l'asse X resta tempo).
+
+        Unico punto del sistema che legge 'duration_unit' dal dizionario
+        grezzo: e' un meta-parametro che controlla l'interpretazione degli
+        altri, non un valore sintetizzabile. Il dict originale non viene
+        mutato (cache fingerprint e stream_data_map leggono i dati grezzi).
+        """
+        grain = params.get('grain')
+        if not isinstance(grain, dict) or 'duration_unit' not in grain:
+            return params
+
+        unit = grain['duration_unit']
+        if unit not in GRAIN_DURATION_UNITS:
+            err = InvalidFieldValueError(
+                field='grain.duration_unit',
+                value=unit,
+                hint=f"unità disponibili: {list(GRAIN_DURATION_UNITS)}",
+            )
+            err.stream_id = self.stream_id
+            raise err
+
+        if unit == 'seconds':
+            return params
+
+        # samples: il default seconds (0.05) NON viene scalato. Se grain.duration
+        # non e' esplicito, la base resterebbe in secondi mentre duration_range
+        # e' in campioni -> due domini diversi nello stesso blocco. Pretendi una
+        # duration esplicita (l'unita' governa base e range insieme).
+        if grain.get('duration') is None:
+            err = MissingFieldError(
+                field='grain.duration',
+                hint=("con grain.duration_unit: samples la durata va indicata "
+                      "esplicitamente in campioni (il default 0.05 e' in "
+                      "secondi e non verrebbe convertito)."),
+            )
+            err.stream_id = self.stream_id
+            raise err
+
+        factor = 1.0 / output_sr
+        scaled_grain = dict(grain)
+        for key in ('duration', 'duration_range'):
+            if key in scaled_grain and scaled_grain[key] is not None:
+                scaled_grain[key] = scale_raw_param_values(scaled_grain[key], factor)
+
+        scaled_params = dict(params)
+        scaled_params['grain'] = scaled_grain
+        return scaled_params
 
     def _init_grain_reverse(self, params: dict) -> None:
         """

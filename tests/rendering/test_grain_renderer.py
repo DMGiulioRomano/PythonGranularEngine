@@ -403,3 +403,41 @@ class TestEdgeCases:
         r_bwd = renderer.render(g_bwd, 'test.wav', 'hanning')
         # Devono essere diversi
         assert not np.allclose(r_fwd, r_bwd)
+
+
+# =============================================================================
+# 9. GRANI A PRECISIONE DI CAMPIONE
+# =============================================================================
+
+class TestSamplePrecisionGrains:
+    """Grani fino a 1 campione: n_out = max(1, round(duration * sr))."""
+
+    def test_one_sample_grain_renders_one_frame(self, renderer):
+        grain = make_grain(duration=1.0 / OUTPUT_SR)
+        result = renderer.render(grain, 'test.wav', 'hanning')
+        assert result.shape == (1, 2)
+
+    def test_one_sample_grain_carries_signal(self, renderer, sample_registry):
+        """Con hanning(1) = [1.0] il singolo campione sopravvive intero:
+        a pan 0 entrambi i canali valgono sample/sqrt(2)."""
+        grain = make_grain(duration=1.0 / OUTPUT_SR, pointer_pos=0.5, pan=0.0)
+        result = renderer.render(grain, 'test.wav', 'hanning')
+
+        samples, sr = sample_registry.get('test.wav')
+        source_value = samples[int(0.5 * sr)]  # pointer 0.5s -> indice 24000
+        expected = source_value / np.sqrt(2.0)
+        assert result[0, 0] == pytest.approx(expected, rel=1e-6)
+        assert result[0, 1] == pytest.approx(expected, rel=1e-6)
+
+    def test_duration_rounds_to_nearest_sample(self, renderer):
+        """100.6 campioni -> 101 frame (round, non troncamento a 100)."""
+        grain = make_grain(duration=100.6 / OUTPUT_SR)
+        result = renderer.render(grain, 'test.wav', 'hanning')
+        assert result.shape[0] == 101
+
+    def test_duration_just_below_one_sample_still_renders(self, renderer):
+        """Anche se la durata scivola sotto 1 campione per errore float,
+        il buffer non e' mai vuoto."""
+        grain = make_grain(duration=0.9 / OUTPUT_SR)
+        result = renderer.render(grain, 'test.wav', 'hanning')
+        assert result.shape[0] == 1

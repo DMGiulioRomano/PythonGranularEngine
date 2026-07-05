@@ -179,6 +179,10 @@ class ScoreWriter:
         # Formatta numero
         try:
             value = float(param) * multiplier
+            # Sotto 0.1 un solo decimale collasserebbe a 0.0 (es. grani da
+            # 1 campione = 0.0208 ms): servono piu' cifre significative.
+            if 0 < abs(value) < 0.1:
+                return f"{value:.4f}{unit}"
             return f"{value:.1f}{unit}"
         except (ValueError, TypeError):
             # Fallback se non è un numero
