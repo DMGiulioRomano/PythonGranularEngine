@@ -498,3 +498,35 @@ class TestBlackmanHarrisWindow:
         w1 = registry.get('blackman_harris', 1024)
         w2 = registry.get('blackman_harris', 1024)
         assert w1 is w2
+
+
+# =============================================================================
+# FINESTRE A LUNGHEZZE MINIME (GRANI A PRECISIONE DI CAMPIONE)
+# =============================================================================
+
+class TestSmallWindows:
+    """Tutte le finestre devono essere generabili per n in {1, 2, 3}:
+    nessuna eccezione, lunghezza esatta, valori finiti e limitati."""
+
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_all_windows_small_n(self, n):
+        registry = NumpyWindowRegistry()
+        for name in registry.available_windows():
+            window = registry.get(name, n)
+            assert len(window) == n, f"{name} n={n}"
+            assert np.all(np.isfinite(window)), f"{name} n={n}"
+            assert np.all(window >= -1e-9), f"{name} n={n}"
+            assert np.all(window <= 1.0 + 1e-9), f"{name} n={n}"
+
+    def test_hanning_single_sample_is_unit(self):
+        """np.hanning(1) = [1.0]: un grano di 1 campione con hanning
+        passa intero, non azzerato."""
+        registry = NumpyWindowRegistry()
+        assert registry.get('hanning', 1)[0] == pytest.approx(1.0)
+
+    def test_rectangle_small_n_is_flat_unit(self):
+        """rectangle e' la finestra consigliata per grani ultra-corti:
+        piatta a 1.0 anche a n minimi."""
+        registry = NumpyWindowRegistry()
+        for n in (1, 2, 3):
+            assert np.all(registry.get('rectangle', n) == 1.0)

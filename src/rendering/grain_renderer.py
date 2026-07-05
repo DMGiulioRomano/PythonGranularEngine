@@ -67,7 +67,11 @@ class GrainRenderer:
             Array NumPy float64 di shape (n_samples, 2) -- stereo L/R
         """
         # --- 1. Parametri dal grano ---
-        n_out = int(grain.duration * self.output_sr)
+        # round: numero di campioni piu' vicino alla durata richiesta
+        # (int troncava, perdendo fino a 1 campione). max(1, ...): un grano
+        # valido non produce mai un buffer vuoto, anche quando la durata
+        # minima (1 campione) scivola sotto 1.0 per errore float.
+        n_out = max(1, round(grain.duration * self.output_sr))
 
         # --- 2. Leggi sample dalla registry ---
         samples, file_sr = self.sample_registry.get(sample_name)
