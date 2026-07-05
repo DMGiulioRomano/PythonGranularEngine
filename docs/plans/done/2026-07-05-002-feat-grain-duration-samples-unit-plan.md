@@ -1,7 +1,7 @@
 ---
 title: "feat: unità 'samples' per grain.duration — durata minima 1 campione"
 type: feat
-status: active
+status: done
 date: 2026-07-05
 issue: null
 ---
