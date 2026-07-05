@@ -482,3 +482,36 @@ class TestTimeUnitWithCompactFormat:
         assert env.breakpoints[0][0] == pytest.approx(0.0)
         assert env.breakpoints[1][0] == pytest.approx(10.0)   # 0.25 * 40
         assert env.breakpoints[2][0] == pytest.approx(40.0)   # 1.0 * 40
+
+# =============================================================================
+# 5. TEST SCALE_RAW_PARAM_VALUES (HELPER CONDIVISO SCALARE/ENVELOPE)
+# =============================================================================
+
+class TestScaleRawParamValues:
+    """
+    Testa envelopes.envelope.scale_raw_param_values: scaling di un valore
+    parametro grezzo che puo' essere scalare, envelope-like o altro.
+    Usato dalla pre-normalizzazione di loop_unit e grain.duration_unit.
+    """
+
+    def test_scalar_is_multiplied(self):
+        from envelopes.envelope import scale_raw_param_values
+        assert scale_raw_param_values(0.5, 10.0) == 5.0
+        assert scale_raw_param_values(512, 1.0 / 48000) == 512 / 48000
+
+    def test_envelope_like_list_scales_y_only(self):
+        from envelopes.envelope import scale_raw_param_values
+        result = scale_raw_param_values([[0.0, 0.5], [2.0, 1.0]], 100.0)
+        assert result == [[0.0, 50.0], [2.0, 100.0]]
+
+    def test_envelope_like_dict_scales_points(self):
+        from envelopes.envelope import scale_raw_param_values
+        raw = {'type': 'linear', 'points': [[0, 0.1], [1, 0.2]]}
+        result = scale_raw_param_values(raw, 10.0)
+        assert result['points'][0][1] == pytest.approx(1.0)
+        assert result['points'][1][1] == pytest.approx(2.0)
+
+    def test_non_envelope_value_passthrough(self):
+        from envelopes.envelope import scale_raw_param_values
+        assert scale_raw_param_values(None, 10.0) is None
+        assert scale_raw_param_values('hanning', 10.0) == 'hanning'

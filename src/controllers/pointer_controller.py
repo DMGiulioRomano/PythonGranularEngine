@@ -12,7 +12,7 @@ Ispirato al DMX-1000 di Barry Truax (1988)
 from __future__ import annotations
 
 from typing import Callable
-from envelopes.envelope import Envelope
+from envelopes.envelope import Envelope, scale_raw_param_values
 from parameters.parameter_schema import POINTER_PARAMETER_SCHEMA
 from parameters.parameter_orchestrator import ParameterOrchestrator
 from core.stream_config import StreamConfig
@@ -206,14 +206,10 @@ class PointerController:
     def _scale_value(self, value, scale: float):
             """
             Scala un valore che puo' essere scalare, envelope, o dict.
-            Restituisce dati raw (stesso formato dell'input) per compatibilita'
-            col pipeline parser a valle.
+            Delega all'helper condiviso scale_raw_param_values (stesso
+            meccanismo di grain.duration_unit).
             """
-            if isinstance(value, (int, float)):
-                return value * scale
-            if Envelope.is_envelope_like(value):
-                return Envelope._scale_raw_values_y(value, scale)
-            return value
+            return scale_raw_param_values(value, scale)
 
 
     def _init_loop_state(self) -> None:
