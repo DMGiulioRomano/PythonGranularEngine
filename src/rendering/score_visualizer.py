@@ -15,6 +15,8 @@ import soundfile as sf
 import re
 from math import ceil
 
+from shared.constants import DEFAULT_OUTPUT_SR
+
 # Path samples (stesso del progetto)
 PATHSAMPLES = './refs/'
 
@@ -168,7 +170,7 @@ class ScoreVisualizer:
                 'pan_prob': (0, 100),         # probabilità %
                 
                 # === GRAIN ===
-                'grain_duration': (1.0 / 48000, 1.0),  # secondi (min 1 campione)
+                'grain_duration': (1.0 / DEFAULT_OUTPUT_SR, 1.0),  # secondi (min 1 campione)
                 'grain_duration_prob': (0, 100),  # probabilità %
                 'reverse': (0, 1),            # boolean
                 'reverse_prob': (0, 100),     # probabilità %

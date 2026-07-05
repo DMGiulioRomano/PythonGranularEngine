@@ -10,30 +10,6 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
-- Grain: nuova meta-chiave `grain.duration_unit` (`seconds` | `samples`) sul
-  modello di `loop_unit`. Con `samples` i valori di `grain.duration` e
-  `grain.duration_range` sono espressi in campioni alla frequenza di output
-  del motore (48000 Hz) e convertiti in secondi al parse, su scalari ed
-  envelope (solo i valori Y). Default `seconds`: nessun YAML esistente cambia
-  comportamento. Unità sconosciuta → `InvalidFieldValueError` con hint.
-- Costante di sistema `DEFAULT_OUTPUT_SR` (`shared/constants.py`) e campo
-  `StreamContext.output_sr`: unica fonte di verità per il sample rate di
-  output, al posto dei letterali 48000 sparsi.
-
-### Modificato
-
-- La durata minima di un grano scende da 1 ms a **1 campione**
-  (`1/output_sr`, ~20.8 µs a 48 kHz), per entrambe le unità: bound dinamico
-  in `get_parameter_definition('grain_duration', output_sr=...)`.
-- Renderer NumPy: `n_out = max(1, round(duration * sr))` — prima il
-  troncamento con `int()` poteva perdere un campione e produrre buffer vuoti
-  su grani da 1 campione. Su durate non esatte i render possono differire di
-  ±1 campione a bordo finestra rispetto alle versioni precedenti.
-- Score Csound: `p2`/`p3` serializzati con 8 decimali (prima 6) per reggere
-  la precisione di campione; l'header formatta i valori sotto 0.1 con 4
-  decimali (un grano da 1 campione appariva `0.0ms`). Il contenuto testuale
-  degli `.sco` generati cambia.
-
 - Multi-voice: nuova strategy pitch `chord_progression` (issue #86) — progressioni
   armoniche in cui l'accordo è funzione del tempo (envelope di accordi). Per ogni
   voce si costruisce un `Envelope` di offset in semitoni interpolato tra i voicing
@@ -47,6 +23,35 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   stream (con `normalized` i tempi `0..1` sono mappati sulla `duration`, come gli
   envelope). SEMITONE_LOCKED (solo `unit: semitones`). Nessun YAML esistente
   rotto: `chord` statico invariato.
+- Grain: nuova meta-chiave `grain.duration_unit` (`seconds` | `samples`) sul
+  modello di `loop_unit`. Con `samples` i valori di `grain.duration` e
+  `grain.duration_range` sono espressi in campioni alla frequenza di output
+  del motore (48000 Hz) e convertiti in secondi al parse, su scalari ed
+  envelope (solo i valori Y). Default `seconds`: nessun YAML esistente cambia
+  comportamento. Unità sconosciuta → `InvalidFieldValueError` con hint; con
+  `samples` la `grain.duration` va indicata esplicitamente (il default 0.05 è
+  in secondi e non verrebbe convertito).
+- Costante di sistema `DEFAULT_OUTPUT_SR` (`shared/constants.py`) e campo
+  `StreamContext.output_sr`: unica fonte di verità per il sample rate di
+  output, al posto dei letterali 48000 sparsi. È una config **globale** del
+  motore: non viene letta dallo YAML del singolo stream (resterebbe divergente
+  dal sample rate con cui il renderer viene costruito).
+
+### Modificato
+
+- La durata minima di un grano scende da 1 ms a **1 campione**
+  (`1/output_sr`, ~20.8 µs a 48 kHz), per entrambe le unità: bound dinamico
+  in `get_parameter_definition('grain_duration', output_sr=...)`.
+- Renderer NumPy: `n_out = max(1, round(duration * sr))` — prima il
+  troncamento con `int()` poteva perdere un campione e produrre buffer vuoti
+  su grani da 1 campione. Su durate non esatte i render possono differire di
+  ±1 campione a bordo finestra rispetto alle versioni precedenti. L'overlap-add
+  ora clampa la coda del grano al buffer: con `round()` la fine poteva sforare
+  di 1 campione e sollevare un `ValueError` di broadcast.
+- Score Csound: `p2`/`p3` serializzati con 8 decimali (prima 6) per reggere
+  la precisione di campione; l'header formatta i valori sotto 0.1 con 4
+  decimali (un grano da 1 campione appariva `0.0ms`). Il contenuto testuale
+  degli `.sco` generati cambia.
 
 ## [v4.1.0] — "Parallel Grains" — 2026-07-04
 
