@@ -128,6 +128,24 @@ class TestStreamContextOutputSr:
         )
         assert ctx.output_sr == DEFAULT_OUTPUT_SR
 
+    def test_from_yaml_ignores_per_stream_output_sr(self):
+        """output_sr e' una config GLOBALE del motore, non un campo per-stream:
+        una chiave nello YAML dello stream NON deve entrare nel context.
+
+        Altrimenti divergerebbe dal sample rate con cui il renderer viene
+        costruito (main.py lo passa a DEFAULT_OUTPUT_SR): la conversione
+        samples->secondi e il bound minimo userebbero un SR, il rendering un
+        altro, producendo grani di lunghezza sbagliata.
+        """
+        from shared.constants import DEFAULT_OUTPUT_SR
+
+        ctx = StreamContext.from_yaml(
+            {'stream_id': 's1', 'onset': 0.0, 'duration': 5.0,
+             'sample': 'voice.wav', 'output_sr': 96000},
+            sample_dur_sec=3.2,
+        )
+        assert ctx.output_sr == DEFAULT_OUTPUT_SR
+
 
 # =============================================================================
 # 2. STREAM CONTEXT - FROM_YAML PARSING
