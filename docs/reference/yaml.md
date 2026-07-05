@@ -322,6 +322,12 @@ grain:
   # ERRORE: reverse: true / reverse: false / reverse: auto
 ```
 
+Con `duration_unit: samples` la `grain.duration` va **sempre indicata
+esplicitamente**: il default `0.05` è in secondi e non verrebbe convertito, per
+cui base (secondi) e `duration_range` (campioni) finirebbero in domini diversi.
+Ometterla → `MissingFieldError`. `output_sr` è una config globale del motore
+(48000 Hz), non impostabile per-stream nello YAML.
+
 Bounds: `grain_duration` ∈ [1 campione (`1/48000` s), 10 s] — in `samples`:
 [1, 480000]. Valori frazionari di campioni sono ammessi: il renderer
 arrotonda al campione più vicino (`n_out = max(1, round(dur * sr))`).
