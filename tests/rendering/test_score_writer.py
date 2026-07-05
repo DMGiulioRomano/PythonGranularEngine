@@ -586,6 +586,13 @@ class TestFormatParam:
         result = writer._format_param(0.05, 1000, "ms")
         assert result == "50.0ms"
 
+    def test_format_sample_precision_value_not_truncated_to_zero(self, writer):
+        """Un grano da 1 campione (0.0208 ms) non deve apparire come 0.0ms
+        nell'header: sotto 0.1 la formattazione aggiunge decimali."""
+        result = writer._format_param(1.0 / 48000, 1000, "ms")
+        assert result != "0.0ms"
+        assert "0.0208" in result
+
     def test_format_float_with_unit(self, writer):
         """Formattazione con unita' di misura."""
         result = writer._format_param(20.0, 1, " g/s")

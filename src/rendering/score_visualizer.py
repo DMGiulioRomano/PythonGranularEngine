@@ -168,7 +168,7 @@ class ScoreVisualizer:
                 'pan_prob': (0, 100),         # probabilità %
                 
                 # === GRAIN ===
-                'grain_duration': (0.001, 1.0),  # secondi
+                'grain_duration': (1.0 / 48000, 1.0),  # secondi (min 1 campione)
                 'grain_duration_prob': (0, 100),  # probabilità %
                 'reverse': (0, 1),            # boolean
                 'reverse_prob': (0, 100),     # probabilità %
