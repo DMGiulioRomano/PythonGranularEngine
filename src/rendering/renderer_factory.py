@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Dict, Any
 
 from rendering.audio_renderer import AudioRenderer
+from shared.constants import DEFAULT_OUTPUT_SR
 from shared.exceptions import InvalidRendererError
 
 
@@ -65,7 +66,7 @@ class RendererFactory:
                 sample_registry=kwargs['sample_registry'],
                 window_registry=kwargs['window_registry'],
                 table_map=kwargs['table_map'],
-                output_sr=kwargs.get('output_sr', 48000),
+                output_sr=kwargs.get('output_sr', DEFAULT_OUTPUT_SR),
                 cache_manager=kwargs.get('cache_manager'),
                 stream_data_map=kwargs.get('stream_data_map'),
                 audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),

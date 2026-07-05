@@ -30,6 +30,7 @@ from rendering.grain_renderer import GrainRenderer
 from rendering.sample_registry import SampleRegistry
 from rendering.numpy_window_registry import NumpyWindowRegistry
 from rendering.dc_blocker import dc_block
+from shared.constants import DEFAULT_OUTPUT_SR
 from rendering.numpy_parallel import (
     DEFAULT_MIN_PARALLEL_GRAINS,
     StreamRenderTask,
@@ -70,7 +71,7 @@ class NumpyAudioRenderer(AudioRenderer):
         sample_registry: SampleRegistry,
         window_registry: NumpyWindowRegistry,
         table_map: Dict[int, Tuple[str, str]],
-        output_sr: int = 48000,
+        output_sr: int = DEFAULT_OUTPUT_SR,
         cache_manager=None,
         stream_data_map: Optional[Dict[str, dict]] = None,
         audio_format: AudioFormat = DEFAULT_FORMAT,

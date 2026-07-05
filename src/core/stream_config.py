@@ -3,14 +3,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass,fields
 from typing import Optional, Union
-    
+
+from shared.constants import DEFAULT_OUTPUT_SR
+
 @dataclass(frozen=True)
 class StreamContext:
     stream_id: str
     onset: float
     duration: float
     sample: str
-    sample_dur_sec: float          
+    sample_dur_sec: float
+    # Sample rate di output del motore: riferimento per le conversioni
+    # campioni <-> secondi (grain.duration_unit) e per il bound minimo
+    # dinamico di grain_duration (1 campione).
+    output_sr: int = DEFAULT_OUTPUT_SR
 
     @classmethod
     def from_yaml(cls, yaml_data: dict, sample_dur_sec: float, allow_none: bool = True) -> 'StreamConfig':

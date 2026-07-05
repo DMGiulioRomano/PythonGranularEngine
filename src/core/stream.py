@@ -41,7 +41,7 @@ from strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from strategies.voice_pan_strategy import VoicePanStrategyFactory
 from strategies.grain_clip_strategy import GrainClipStrategyFactory, OverflowMarginClipStrategy
-from dataclasses import fields
+from dataclasses import fields, MISSING as dataclass_MISSING
 
 
 def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute'):
@@ -141,10 +141,20 @@ class Stream:
         self._grains: List[Grain] = []  # backward compatibility (flat)
         self.generated = False
 
+    @staticmethod
+    def _required_context_fields() -> set:
+        """Campi StreamContext che il YAML deve fornire: quelli senza default
+        (sample_dur_sec escluso: derivato dal file audio, mai dal YAML)."""
+        return {
+            field.name for field in fields(StreamContext)
+            if field.name != 'sample_dur_sec'
+            and field.default is dataclass_MISSING
+            and field.default_factory is dataclass_MISSING
+        }
+
     def _check_required_context_fields(self, params, stream_id):
         """Verifica campi obbligatori StreamContext prima di StreamConfig.from_yaml."""
-        base = {field.name for field in fields(StreamContext) if field.name != 'sample_dur_sec'}
-        missing = base - set(params.keys())
+        missing = self._required_context_fields() - set(params.keys())
         if missing:
             missing_list = sorted(missing)
             err = MissingFieldError(fields=missing_list)
@@ -153,8 +163,7 @@ class Stream:
 
     def _init_stream_context(self, params):
         self._check_required_context_fields(params, params.get('stream_id', 'unknown'))
-        base = {field.name for field in fields(StreamContext) if field.name != 'sample_dur_sec'}
-        for key in base:
+        for key in self._required_context_fields():
             setattr(self, key, params[key])
         self.sample_dur_sec = get_sample_duration(self.sample)
 

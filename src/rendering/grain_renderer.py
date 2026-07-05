@@ -28,6 +28,7 @@ import numpy as np
 from rendering.sample_registry import SampleRegistry
 from rendering.numpy_window_registry import NumpyWindowRegistry
 from core.grain import Grain
+from shared.constants import DEFAULT_OUTPUT_SR
 
 
 class GrainRenderer:
@@ -42,7 +43,7 @@ class GrainRenderer:
         self,
         sample_registry: SampleRegistry,
         window_registry: NumpyWindowRegistry,
-        output_sr: int = 48000,
+        output_sr: int = DEFAULT_OUTPUT_SR,
     ):
         self.sample_registry = sample_registry
         self.window_registry = window_registry

@@ -88,18 +88,45 @@ class TestStreamContextDirect:
         assert ctx.sample_dur_sec == 3.2
 
     def test_field_count(self):
-        """StreamContext ha esattamente 5 campi."""
-        assert len(fields(StreamContext)) == 5
+        """StreamContext ha esattamente 6 campi."""
+        assert len(fields(StreamContext)) == 6
 
     def test_field_names(self):
         """Nomi campi corretti e nell'ordine atteso."""
         names = [f.name for f in fields(StreamContext)]
-        assert names == ['stream_id', 'onset', 'duration', 'sample', 'sample_dur_sec']
+        assert names == ['stream_id', 'onset', 'duration', 'sample',
+                         'sample_dur_sec', 'output_sr']
 
     def test_missing_required_field_raises(self):
         """Campi mancanti nella costruzione diretta -> TypeError."""
         with pytest.raises(TypeError):
             StreamContext(stream_id='s1', onset=0.0)
+
+
+class TestStreamContextOutputSr:
+    """Il context espone il sample rate di output del motore."""
+
+    def test_default_output_sr_is_engine_constant(self):
+        """Senza indicazioni, output_sr e' la costante di sistema (48000)."""
+        from shared.constants import DEFAULT_OUTPUT_SR
+
+        ctx = StreamContext(
+            stream_id='s1', onset=0.0, duration=5.0,
+            sample='voice.wav', sample_dur_sec=3.2,
+        )
+        assert DEFAULT_OUTPUT_SR == 48000
+        assert ctx.output_sr == DEFAULT_OUTPUT_SR
+
+    def test_from_yaml_defaults_output_sr(self):
+        """from_yaml senza chiave output_sr usa il default di sistema."""
+        from shared.constants import DEFAULT_OUTPUT_SR
+
+        ctx = StreamContext.from_yaml(
+            {'stream_id': 's1', 'onset': 0.0, 'duration': 5.0,
+             'sample': 'voice.wav'},
+            sample_dur_sec=3.2,
+        )
+        assert ctx.output_sr == DEFAULT_OUTPUT_SR
 
 
 # =============================================================================

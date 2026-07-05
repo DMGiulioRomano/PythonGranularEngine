@@ -11,6 +11,7 @@ from shared.logger import (
     configure_engine_logger, get_engine_logger, get_engine_log_path,
 )
 from shared.exceptions import EngineError
+from shared.constants import DEFAULT_OUTPUT_SR
 from engine.generator import Generator
 from rendering.score_visualizer import ScoreVisualizer, PLOT_ENVELOPE_KEYS
 
@@ -73,7 +74,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             sample_registry=sample_reg,
             window_registry=window_reg,
             table_map=table_map,
-            output_sr=kwargs.get('output_sr', 48000),
+            output_sr=kwargs.get('output_sr', DEFAULT_OUTPUT_SR),
             cache_manager=cache_manager,
             stream_data_map=generator.stream_data_map,
             audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
@@ -424,7 +425,7 @@ def main():
         renderer = _build_renderer(
             renderer_type,
             generator,
-            output_sr=48000,
+            output_sr=DEFAULT_OUTPUT_SR,
             jobs=jobs,
             orc_path=orc_path,
             incdir=incdir,
