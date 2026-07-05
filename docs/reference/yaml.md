@@ -10,7 +10,7 @@ sources:
   - src/strategies/
   - src/envelopes/
   - src/shared/seeding.py
-last_synced_commit: e3b4b35
+last_synced_commit: c7ad14b
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -286,6 +286,15 @@ grain:
   duration: [[0, 0.02], [30, 0.2]]
   duration_range: 0.01     # ±0.01s randomizzazione
 
+  # Unità di misura per duration e duration_range (default: seconds).
+  # Con 'samples' i valori sono campioni alla frequenza di output del
+  # motore (48000 Hz) e vengono convertiti in secondi al parse; vale per
+  # scalari ed envelope (solo i valori, l'asse tempo resta invariato).
+  duration_unit: samples
+  duration: 512            # 512 campioni = 512/48000 s
+  duration_range: 64       # ±64 campioni
+  duration: [[0, 48], [30, 4800]]   # envelope: Y in campioni
+
   envelope: hanning        # finestra per shape del grano (default: hanning)
   # Vedi sezione "Finestre Disponibili" per tutti i valori validi.
 
@@ -313,7 +322,25 @@ grain:
   # ERRORE: reverse: true / reverse: false / reverse: auto
 ```
 
-Bounds: `grain_duration` ∈ [0.001, 10].
+Bounds: `grain_duration` ∈ [1 campione (`1/48000` s), 10 s] — in `samples`:
+[1, 480000]. Valori frazionari di campioni sono ammessi: il renderer
+arrotonda al campione più vicino (`n_out = max(1, round(dur * sr))`).
+
+Note sui grani a precisione di campione:
+
+- **Finestre simmetriche su grani di 2-3 campioni**: `hanning`, `bartlett`,
+  `blackman`, `half_sine`, `sinc` hanno estremi nulli — a 2 campioni il grano
+  è silenzio, a 3 sopravvive solo il campione centrale. È la matematica della
+  finestra, non un bug. Per grani ultra-corti usare `rectangle` (piatta),
+  `hamming` (estremi 0.08) o la famiglia `expodec` (parte da 1.0).
+- **Divergenza NumPy/Csound**: il renderer NumPy campiona la finestra a
+  `n_out` punti (`hanning` a 1 campione = `[1.0]`, impulso pieno); Csound
+  legge la tabella finestra con `poscil` a `1/p3` Hz e su un grano di 1
+  campione ne legge solo il primo punto (per `hanning` = 0, grano silente).
+  I due renderer non sono mai stati dichiarati bit-equivalenti; a queste
+  durate la scelta della finestra domina il risultato.
+- **Densità derivata**: con `fill_factor` e grani da 1 campione la density
+  `fill_factor/duration` satura al bound massimo (4000 g/s).
 
 ---
 
@@ -1776,7 +1803,7 @@ un envelope dal YAML al runtime è:
 | `density` | 0.01 | 4000 | — | grani/secondo |
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
-| `grain_duration` | 0.001 | 10 | 0.05 | secondi |
+| `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; con `duration_unit: samples` i valori sono campioni |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
 | `pitch_ratio` | 0.001 | 8 | 1.0 | ratio diretto |
