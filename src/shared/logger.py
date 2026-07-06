@@ -161,8 +161,9 @@ def configure_engine_logger(yaml_name: str | None = None, log_dir: str = './logs
     """Configura logger engine: scrive ERROR + traceback su <log_dir>/<yaml_name>_engine.log."""
     global _engine_logger, _engine_log_path
 
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    # Creazione atomica e idempotente: exist_ok=True chiude la finestra di race
+    # (issue #159) quando più worker paralleli tentano di creare log_dir insieme.
+    os.makedirs(log_dir, exist_ok=True)
 
     name = yaml_name if yaml_name else datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f'{name}_engine.log'
