@@ -91,3 +91,44 @@ class TestMainShim:
         )
         assert proc.returncode == 1
         assert proc.stdout.startswith('Uso: python main.py <file.yml>')
+
+
+class TestEditableInstall:
+    """Packaging (Fase 4): pip install -e . funzionante e console script
+    `pge` equivalente a python src/main.py."""
+
+    def test_console_script_pge_usage(self):
+        """Lo script `pge` installato nel venv di sviluppo (make venv-setup
+        installa -e .[dev]) stampa la usage ed esce con rc 1."""
+        import sysconfig
+        scripts_dir = sysconfig.get_path('scripts')
+        pge_bin = os.path.join(scripts_dir, 'pge')
+        assert os.path.exists(pge_bin), (
+            f"console script mancante: {pge_bin} (pip install -e . non "
+            "eseguito nel venv?)")
+        proc = subprocess.run([pge_bin], capture_output=True, text=True)
+        assert proc.returncode == 1
+        assert proc.stdout.startswith('Uso: python main.py <file.yml>')
+
+    @pytest.mark.e2e
+    def test_editable_install_in_clean_venv(self, tmp_path):
+        """In un venv pulito: pip install -e . --no-deps, poi import pge e
+        pge.api da una directory FUORI dal repo."""
+        import venv as venv_mod
+        venv_dir = tmp_path / 'venv'
+        venv_mod.EnvBuilder(with_pip=True).create(str(venv_dir))
+        py = str(venv_dir / 'bin' / 'python')
+        repo_root = os.path.dirname(SRC_DIR)
+
+        install = subprocess.run(
+            [py, '-m', 'pip', 'install', '-q', '-e', repo_root, '--no-deps'],
+            capture_output=True, text=True)
+        assert install.returncode == 0, install.stderr
+
+        check = subprocess.run(
+            [py, '-c', 'import pge, pge.api; print(pge.__version__)'],
+            capture_output=True, text=True,
+            cwd=str(tmp_path),               # fuori dal repo
+            env={k: v for k, v in os.environ.items() if k != 'PYTHONPATH'})
+        assert check.returncode == 0, check.stderr
+        assert check.stdout.strip()

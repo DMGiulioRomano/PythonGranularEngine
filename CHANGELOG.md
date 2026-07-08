@@ -23,6 +23,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- Packaging (Fase 4 del refactor library/CLI): `pyproject.toml` PEP 621
+  (nome distribuzione `pge`, versione `5.0.0.dev0`), install editable
+  `pip install -e ".[dev]"` fatto da `make venv-setup`, console script
+  `pge` come alias della CLI (`pge.cli:main`, stdout identico a
+  `python src/main.py`). `requirements.txt` ridotto a puntatore
+  (`-e .[dev]`); `pge.__version__` via `importlib.metadata` con fallback
+  per l'uso da repository. Pubblicazione su PyPI fuori scope.
 - API programmatica `src/api.py` (Fase 1 del refactor library/CLI,
   `docs/plans/2026-07-08-001-refactor-pge-library-cli-plan.md`): funzioni
   `load_generator`, `build_renderer`, `collect_cache_orphans`, `render`,

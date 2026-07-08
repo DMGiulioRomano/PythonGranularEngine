@@ -53,13 +53,16 @@ check-python:
 # Target principale per assicurarsi che l'ambiente sia pronto
 venv-setup: $(VENV_MARKER)
 
-# Regola: se manca il marker o cambia requirements.txt, rifà il setup
-$(VENV_MARKER): $(REQUIREMENTS) check-python
+# Regola: se manca il marker o cambiano pyproject.toml/requirements.txt,
+# rifà il setup. Le dipendenze vivono in pyproject.toml (Fase 4 refactor
+# library/CLI): l'install editable rende disponibile `import pge` e il
+# console script `pge` dentro il venv.
+$(VENV_MARKER): pyproject.toml $(REQUIREMENTS) check-python
 	@echo "🔧 [VENV] Creazione/aggiornamento Virtual Environment con Python >= $(PYTHON_VERSION)..."
 	@echo "📦 Python command: $(PYTHON_CMD)"
 	@$(PYTHON_CMD) -m venv $(VENV_DIR)
 	@$(PIP_VENV) install -q --upgrade pip
-	@$(PIP_VENV) install -q -r $(REQUIREMENTS)
+	@$(PIP_VENV) install -q -e ".[dev]"
 	@touch $(VENV_MARKER)
 	@echo "✅ [VENV] Ambiente Python >= $(PYTHON_VERSION) pronto."
 
