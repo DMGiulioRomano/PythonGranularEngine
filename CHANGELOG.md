@@ -62,6 +62,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   crashare tutti tranne il primo con `FileExistsError`. La creazione ora è
   atomica e idempotente (`os.makedirs(log_dir, exist_ok=True)`), chiudendo la
   finestra di race.
+- Stessa race TOCTOU corretta anche in `get_clip_logger` (pattern identico
+  sulla stessa dir `./logs`). Rimosso il messaggio console "Creata directory
+  log" che dipendeva dal check non atomico.
 
 ## [v4.1.0] — "Parallel Grains" — 2026-07-04
 
