@@ -72,6 +72,19 @@ class TestAudioRendererABC:
         """AudioRenderer ha esattamente 2 metodi astratti."""
         assert len(AudioRenderer.__abstractmethods__) == 2
 
+    def test_declares_renderer_type_unknown(self):
+        """La base dichiara renderer_type='unknown': i renderer concreti
+        lo sovrascrivono, api.render lo riporta in RenderResult."""
+        assert AudioRenderer.renderer_type == 'unknown'
+
+    def test_concrete_renderers_declare_their_type(self):
+        """I renderer del progetto dichiarano il proprio tipo come
+        attributo di classe (letto da api.render per RenderResult)."""
+        from pge.rendering.numpy_audio_renderer import NumpyAudioRenderer
+        from pge.rendering.csound_renderer import CsoundRenderer
+        assert NumpyAudioRenderer.renderer_type == 'numpy'
+        assert CsoundRenderer.renderer_type == 'csound'
+
 
 # =============================================================================
 # 2. TEST CONCRETE RENDERER CONTRACT

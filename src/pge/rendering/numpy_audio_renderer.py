@@ -67,6 +67,8 @@ class NumpyAudioRenderer(AudioRenderer):
               del pool supererebbe il guadagno). None = default di modulo.
     """
 
+    renderer_type = 'numpy'
+
     def __init__(
         self,
         sample_registry: SampleRegistry,

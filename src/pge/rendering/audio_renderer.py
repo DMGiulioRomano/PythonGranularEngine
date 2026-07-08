@@ -39,6 +39,11 @@ class AudioRenderer(ABC):
     - Gestire onset relativi (single) vs assoluti (merged)
     """
 
+    # Etichetta del tipo di renderer, riportata da api.render in
+    # RenderResult.renderer_type: ogni sottoclasse concreta dichiara la
+    # propria ('numpy', 'csound', ...).
+    renderer_type: str = 'unknown'
+
     @abstractmethod
     def render_single_stream(self, stream, output_path: str) -> str:
         """

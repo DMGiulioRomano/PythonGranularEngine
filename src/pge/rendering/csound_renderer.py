@@ -41,6 +41,8 @@ class CsoundRenderer(AudioRenderer):
                  (utile per debug con --keep-sco); se None usa tempfile
     """
 
+    renderer_type = 'csound'
+
     def __init__(
         self,
         score_writer,
