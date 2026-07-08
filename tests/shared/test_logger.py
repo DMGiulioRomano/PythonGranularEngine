@@ -179,6 +179,31 @@ class TestGetClipLoggerLazyInit:
         l2 = get_clip_logger()
         assert l1 is l2
 
+    def test_creates_log_dir_idempotent_on_existing_dir(self, tmp_path):
+        """La creazione di log_dir e' atomica: nessun FileExistsError sulla race TOCTOU.
+
+        Stessa race di configure_engine_logger (issue #159): la dir esiste sul
+        filesystem ma `os.path.exists` e' forzato a False per simulare il worker
+        che perde la corsa; get_clip_logger non deve sollevare.
+        """
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()  # dir gia' creata dal processo che ha vinto la race
+
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(log_dir),
+            yaml_name='race'
+        )
+        with patch('shared.logger.os.path.exists', return_value=False):
+            result = get_clip_logger()
+
+        assert result is not None
+        log_path = get_clip_log_path()
+        assert log_path is not None
+        assert log_path.endswith('envelope_clips_race.log')
+
     def test_initialized_flag_true_after_call(self, tmp_path):
         configure_clip_logger(
             enabled=True,

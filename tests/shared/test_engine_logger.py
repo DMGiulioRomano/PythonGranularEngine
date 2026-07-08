@@ -10,6 +10,7 @@ con livello ERROR e traceback completo.
 import logging
 import os
 import pytest
+from unittest.mock import patch
 
 from shared.logger import (
     configure_engine_logger,
@@ -17,6 +18,26 @@ from shared.logger import (
     get_engine_log_path,
     get_clip_logger,
 )
+
+
+def test_configure_engine_logger_idempotent_on_existing_dir(tmp_path):
+    """La creazione di log_dir è atomica: nessun FileExistsError sulla race TOCTOU.
+
+    Riproduce la finestra di race (issue #159): più worker paralleli superano il
+    check `not os.path.exists(log_dir)` mentre la dir non esiste ancora, poi
+    chiamano `os.makedirs` — il primo la crea, gli altri la trovano già presente.
+    Qui la dir esiste sul filesystem ma `os.path.exists` è forzato a False per
+    simulare quel momento; la funzione non deve sollevare.
+    """
+    log_dir = tmp_path / '.logs'
+    log_dir.mkdir()  # la dir esiste già (creata dal worker che ha vinto la race)
+
+    with patch('shared.logger.os.path.exists', return_value=False):
+        configure_engine_logger(yaml_name='granstudies', log_dir=str(log_dir))
+
+    log_path = get_engine_log_path()
+    assert log_path is not None
+    assert log_path.endswith('granstudies_engine.log')
 
 
 def test_configure_engine_logger_creates_file_handler(tmp_path):

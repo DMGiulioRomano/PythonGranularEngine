@@ -53,6 +53,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   decimali (un grano da 1 campione appariva `0.0ms`). Il contenuto testuale
   degli `.sco` generati cambia.
 
+### Corretto
+
+- Race condition (TOCTOU) in `configure_engine_logger` (issue #159): con render
+  paralleli subito dopo la rimozione della dir dei log (es. `make clean; make
+  render` con `ProcessPoolExecutor`), i worker superavano insieme il check
+  `not os.path.exists(log_dir)` e chiamavano tutti `os.makedirs`, facendo
+  crashare tutti tranne il primo con `FileExistsError`. La creazione ora è
+  atomica e idempotente (`os.makedirs(log_dir, exist_ok=True)`), chiudendo la
+  finestra di race.
+- Stessa race TOCTOU corretta anche in `get_clip_logger` (pattern identico
+  sulla stessa dir `./logs`). Rimosso il messaggio console "Creata directory
+  log" che dipendeva dal check non atomico.
+
 ## [v4.1.0] — "Parallel Grains" — 2026-07-04
 
 ### Aggiunto
