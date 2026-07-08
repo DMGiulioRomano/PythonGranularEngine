@@ -24,11 +24,11 @@ import pytest
 import logging
 from unittest.mock import patch
 from enum import Enum
-from parameters.gate_factory import GateFactory, DephaseMode
-from shared.probability_gate import (
+from pge.parameters.gate_factory import GateFactory, DephaseMode
+from pge.shared.probability_gate import (
     ProbabilityGate, NeverGate, AlwaysGate, RandomGate, EnvelopeGate
 )
-from envelopes.envelope import Envelope
+from pge.envelopes.envelope import Envelope
 
 
 # =============================================================================

@@ -18,9 +18,9 @@ def test_handle_engine_error_prints_user_message_and_logs_traceback(tmp_path, ca
     """Handler stampa user_message su stdout e logga su file."""
     # Carica handler senza eseguire main()
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import SampleNotFoundError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import SampleNotFoundError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken', log_dir=str(tmp_path))
 
@@ -51,9 +51,9 @@ def test_handle_engine_error_prints_user_message_and_logs_traceback(tmp_path, ca
 def test_handle_engine_error_works_for_missing_field_error(tmp_path, capsys):
     """Handler EngineError gestisce anche MissingFieldError (issue #38)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import MissingFieldError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import MissingFieldError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_cfg', log_dir=str(tmp_path))
 
@@ -83,9 +83,9 @@ def test_handle_engine_error_works_for_missing_field_error(tmp_path, capsys):
 def test_handle_engine_error_works_for_invalid_field_value_error(tmp_path, capsys):
     """Handler EngineError gestisce anche InvalidFieldValueError (issue #38)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import InvalidFieldValueError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import InvalidFieldValueError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_val', log_dir=str(tmp_path))
 
@@ -106,9 +106,9 @@ def test_handle_engine_error_works_for_invalid_field_value_error(tmp_path, capsy
 def test_handle_engine_error_works_for_invalid_parameter_error(tmp_path, capsys):
     """Handler EngineError gestisce InvalidParameterError (issue #38, PR2)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import InvalidParameterError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import InvalidParameterError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_param', log_dir=str(tmp_path))
 
@@ -135,9 +135,9 @@ def test_handle_engine_error_works_for_invalid_parameter_error(tmp_path, capsys)
 def test_handle_engine_error_works_for_parameter_bound_error(tmp_path, capsys):
     """Handler EngineError gestisce ParameterBoundError (issue #38, PR2)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import ParameterBoundError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import ParameterBoundError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_bound', log_dir=str(tmp_path))
 
@@ -168,9 +168,9 @@ def test_handle_engine_error_works_for_parameter_bound_error(tmp_path, capsys):
 def test_handle_engine_error_works_for_strategy_not_found_error(tmp_path, capsys):
     """Handler EngineError gestisce StrategyNotFoundError (issue #38, PR3)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import StrategyNotFoundError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import StrategyNotFoundError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_strategy', log_dir=str(tmp_path))
 
@@ -201,9 +201,9 @@ def test_handle_engine_error_works_for_strategy_not_found_error(tmp_path, capsys
 def test_handle_engine_error_works_for_invalid_strategy_config_error(tmp_path, capsys):
     """Handler EngineError gestisce InvalidStrategyConfigError (issue #38, PR3)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import InvalidStrategyConfigError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import InvalidStrategyConfigError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_strategy_cfg', log_dir=str(tmp_path))
 
@@ -235,9 +235,9 @@ def test_handle_engine_error_works_for_invalid_strategy_config_error(tmp_path, c
 def test_handle_engine_error_works_for_invalid_renderer_error(tmp_path, capsys):
     """Handler EngineError gestisce InvalidRendererError (issue #38, PR4)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import InvalidRendererError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import InvalidRendererError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_renderer', log_dir=str(tmp_path))
 
@@ -265,9 +265,9 @@ def test_handle_engine_error_works_for_invalid_renderer_error(tmp_path, capsys):
 def test_handle_engine_error_works_for_csound_render_error(tmp_path, capsys):
     """Handler EngineError gestisce CsoundRenderError (issue #38, PR4)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import CsoundRenderError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import CsoundRenderError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_csound', log_dir=str(tmp_path))
 
@@ -298,9 +298,9 @@ def test_handle_engine_error_works_for_csound_render_error(tmp_path, capsys):
 def test_handle_engine_error_works_for_invalid_window_error(tmp_path, capsys):
     """Handler EngineError gestisce InvalidWindowError (issue #38, PR4)."""
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-    from main import _handle_engine_error
-    from shared.exceptions import InvalidWindowError
-    from shared.logger import configure_engine_logger, get_engine_log_path
+    from pge.cli import _handle_engine_error
+    from pge.shared.exceptions import InvalidWindowError
+    from pge.shared.logger import configure_engine_logger, get_engine_log_path
 
     configure_engine_logger(yaml_name='broken_window', log_dir=str(tmp_path))
 

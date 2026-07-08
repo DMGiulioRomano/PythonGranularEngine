@@ -42,7 +42,7 @@ import math
 
 import pytest
 
-from parameters.pitch_unit import EdoUnit, RatioUnit
+from pge.parameters.pitch_unit import EdoUnit, RatioUnit
 
 
 # =============================================================================
@@ -50,7 +50,7 @@ from parameters.pitch_unit import EdoUnit, RatioUnit
 # =============================================================================
 
 def _get_module():
-    from strategies.voice_pitch_strategy import (
+    from pge.strategies.voice_pitch_strategy import (
         VoicePitchStrategy,
         StepPitchStrategy,
         RangePitchStrategy,
@@ -373,7 +373,7 @@ class TestStochasticPitchStrategy:
 
     def test_direction_invariant_with_envelope_range(self):
         """Con range envelope, il segno dell'offset rimane invariato."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
         env = Envelope([[0, 1.0], [1, 12.0]])
         s = StochasticPitchStrategy(pitch_range=env, stream_id="s1")
@@ -383,7 +383,7 @@ class TestStochasticPitchStrategy:
 
     def test_envelope_range_varies_magnitude(self):
         """Con range envelope crescente, la magnitudine varia."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, _, _, StochasticPitchStrategy, *_ = _get_module()
         env = Envelope([[0, 1.0], [1, 12.0]])
         s = StochasticPitchStrategy(pitch_range=env, stream_id="s1")
@@ -626,7 +626,7 @@ class TestDynamicPitchParams:
 
     def test_step_envelope_varies_over_time(self):
         """StepPitchStrategy con Envelope: offset varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, StepPitchStrategy, *_ = _get_module()
         env = Envelope([[0, 0.0], [1, 12.0]])
         s = StepPitchStrategy(step=env)
@@ -636,7 +636,7 @@ class TestDynamicPitchParams:
 
     def test_step_envelope_voice_0_always_identity(self):
         """Voice 0 invariant preservato anche con step Envelope."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, StepPitchStrategy, *_ = _get_module()
         env = Envelope([[0, 0.0], [1, 12.0]])
         s = StepPitchStrategy(step=env)
@@ -644,7 +644,7 @@ class TestDynamicPitchParams:
 
     def test_range_envelope_varies_over_time(self):
         """RangePitchStrategy con Envelope: offset varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, RangePitchStrategy, *_ = _get_module()
         env = Envelope([[0, 0.0], [1, 12.0]])
         s = RangePitchStrategy(pitch_range=env)
@@ -722,28 +722,28 @@ class TestJazzChordsExtended:
     # --- 5 voci ---
 
     def test_dom9_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'dom9' in CHORD_INTERVALS
 
     def test_dom9_intervals(self):
         assert self._semis(self._chord('dom9'), 5) == pytest.approx([0, 4, 7, 10, 14])
 
     def test_maj9_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'maj9' in CHORD_INTERVALS
 
     def test_maj9_intervals(self):
         assert self._semis(self._chord('maj9'), 5) == pytest.approx([0, 4, 7, 11, 14])
 
     def test_min9_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'min9' in CHORD_INTERVALS
 
     def test_min9_intervals(self):
         assert self._semis(self._chord('min9'), 5) == pytest.approx([0, 3, 7, 10, 14])
 
     def test_9sus4_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert '9sus4' in CHORD_INTERVALS
 
     def test_9sus4_intervals(self):
@@ -752,21 +752,21 @@ class TestJazzChordsExtended:
     # --- 6 voci ---
 
     def test_dom9s11_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'dom9s11' in CHORD_INTERVALS
 
     def test_dom9s11_intervals(self):
         assert self._semis(self._chord('dom9s11'), 6) == pytest.approx([0, 4, 7, 10, 14, 18])
 
     def test_maj9s11_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'maj9s11' in CHORD_INTERVALS
 
     def test_maj9s11_intervals(self):
         assert self._semis(self._chord('maj9s11'), 6) == pytest.approx([0, 4, 7, 11, 14, 18])
 
     def test_min11_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'min11' in CHORD_INTERVALS
 
     def test_min11_intervals(self):
@@ -775,28 +775,28 @@ class TestJazzChordsExtended:
     # --- 7 voci ---
 
     def test_dom13_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'dom13' in CHORD_INTERVALS
 
     def test_dom13_intervals(self):
         assert self._semis(self._chord('dom13'), 7) == pytest.approx([0, 4, 7, 10, 14, 17, 21])
 
     def test_min13_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'min13' in CHORD_INTERVALS
 
     def test_min13_intervals(self):
         assert self._semis(self._chord('min13'), 7) == pytest.approx([0, 3, 7, 10, 14, 17, 21])
 
     def test_maj13s11_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'maj13s11' in CHORD_INTERVALS
 
     def test_maj13s11_intervals(self):
         assert self._semis(self._chord('maj13s11'), 7) == pytest.approx([0, 4, 7, 11, 14, 18, 21])
 
     def test_altered_in_registry(self):
-        from strategies.voice_pitch_strategy import CHORD_INTERVALS
+        from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
         assert 'altered' in CHORD_INTERVALS
 
     def test_altered_intervals(self):

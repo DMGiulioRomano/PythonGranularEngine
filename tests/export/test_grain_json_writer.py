@@ -30,7 +30,7 @@ import json
 import pytest
 from unittest.mock import Mock
 
-from export.grain_json_writer import GrainJsonWriter
+from pge.export.grain_json_writer import GrainJsonWriter
 
 
 # =============================================================================

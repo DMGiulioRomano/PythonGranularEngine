@@ -15,9 +15,9 @@ duration in secondi qualunque sia l'unita' dichiarata nello YAML.
 import pytest
 from unittest.mock import patch
 
-from core.stream import Stream
-from shared.constants import DEFAULT_OUTPUT_SR
-from shared.exceptions import (
+from pge.core.stream import Stream
+from pge.shared.constants import DEFAULT_OUTPUT_SR
+from pge.shared.exceptions import (
     InvalidFieldValueError,
     MissingFieldError,
     ParameterBoundError,
@@ -37,7 +37,7 @@ def _make_stream(grain_block, **extra):
         'grain': grain_block,
     }
     params.update(extra)
-    with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+    with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
         stream = Stream(params, seed=42)
     # Riferimenti Csound normalmente assegnati dal Generator
     stream.sample_table_num = 1
@@ -180,9 +180,9 @@ class TestSamplesUnitRenderIntegration:
 
     def test_one_sample_grains_render_as_impulses(self):
         import numpy as np
-        from rendering.grain_renderer import GrainRenderer
-        from rendering.sample_registry import SampleRegistry
-        from rendering.numpy_window_registry import NumpyWindowRegistry
+        from pge.rendering.grain_renderer import GrainRenderer
+        from pge.rendering.sample_registry import SampleRegistry
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
 
         s = _make_stream({
             'duration': 1,

@@ -10,8 +10,8 @@ get_sample_duration e arricchirlo con stream_id prima del re-raise.
 """
 import pytest
 
-from core.stream import Stream
-from shared.exceptions import SampleNotFoundError
+from pge.core.stream import Stream
+from pge.shared.exceptions import SampleNotFoundError
 
 
 def test_stream_init_enriches_sample_not_found_with_stream_id():

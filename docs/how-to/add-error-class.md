@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [errors, exceptions, extension]
 sources:
-  - src/shared/exceptions.py
+  - src/pge/shared/exceptions.py
 last_synced_commit: 8c896d8
 entry_for: [add-error-class]
 ---
@@ -23,7 +23,7 @@ Devi sollevare un nuovo tipo di errore con un messaggio utente specifico, non co
 
 ## Passi
 
-1. Eredita dal nodo giusto in `src/shared/exceptions.py`: `ConfigError` per YAML, `EngineRuntimeError` per runtime
+1. Eredita dal nodo giusto in `src/pge/shared/exceptions.py`: `ConfigError` per YAML, `EngineRuntimeError` per runtime
 2. Override `user_message()` (formato: `[ERRORE] head` + righe indentate + `self._context_lines()`)
 3. Solleva con dato locale minimo
 4. Arricchisci `stream_id` / `config_file` nei chiamanti (parser / controller / Generator)
@@ -33,7 +33,7 @@ Devi sollevare un nuovo tipo di errore con un messaggio utente specifico, non co
 
 | Path | Tipo |
 |------|------|
-| `src/shared/exceptions.py` | nuova classe |
+| `src/pge/shared/exceptions.py` | nuova classe |
 | Sito che la solleva | aggiornato |
 | Chiamanti che arricchiscono context | aggiornato |
 

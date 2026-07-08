@@ -4,8 +4,8 @@ type: how-to
 status: stable
 tags: [parameters, schema, extension]
 sources:
-  - src/parameters/parameter_definitions.py
-  - src/parameters/parameter_schema.py
+  - src/pge/parameters/parameter_definitions.py
+  - src/pge/parameters/parameter_schema.py
 last_synced_commit: 8c896d8
 entry_for: [add-parameter]
 ---
@@ -24,8 +24,8 @@ Hai un parametro nuovo da accettare a livello stream o sub-blocco YAML (es. nuov
 
 ## Passi
 
-1. Aggiungi la definizione (bounds) in `src/parameters/parameter_definitions.py`
-2. Aggiungi la entry di schema in `src/parameters/parameter_schema.py` (`STREAM_PARAMETER_SCHEMA` o sotto-schema appropriato)
+1. Aggiungi la definizione (bounds) in `src/pge/parameters/parameter_definitions.py`
+2. Aggiungi la entry di schema in `src/pge/parameters/parameter_schema.py` (`STREAM_PARAMETER_SCHEMA` o sotto-schema appropriato)
 3. Accedi al parametro nel `Stream` o controller via `self.parameter_name.evaluate(time)`
 4. Aggiungi test unit per il bound + test di parsing con valore valido e fuori range
 5. Aggiorna [[yaml]] § Tabella Bounds Parametri con la nuova riga
@@ -34,9 +34,9 @@ Hai un parametro nuovo da accettare a livello stream o sub-blocco YAML (es. nuov
 
 | Path | Tipo |
 |------|------|
-| `src/parameters/parameter_definitions.py` | nuova entry bounds |
-| `src/parameters/parameter_schema.py` | nuova entry schema |
-| `src/core/stream.py` o controller specifico | consumo del parametro |
+| `src/pge/parameters/parameter_definitions.py` | nuova entry bounds |
+| `src/pge/parameters/parameter_schema.py` | nuova entry schema |
+| `src/pge/core/stream.py` o controller specifico | consumo del parametro |
 | `docs/reference/yaml.md` | tabella bounds aggiornata |
 
 ## Test da aggiornare

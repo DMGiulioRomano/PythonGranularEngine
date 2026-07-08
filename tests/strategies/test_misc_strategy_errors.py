@@ -7,7 +7,7 @@ sollevano sotto-classi di ConfigError per config user-facing invalida.
 """
 import pytest
 
-from shared.exceptions import (
+from pge.shared.exceptions import (
     ConfigError,
     InvalidParameterError,
     InvalidStrategyConfigError,
@@ -16,7 +16,7 @@ from shared.exceptions import (
 
 
 def test_grain_clip_factory_unknown_raises_strategy_not_found():
-    from strategies.grain_clip_strategy import GrainClipStrategyFactory
+    from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         GrainClipStrategyFactory.create("bogus")
@@ -27,7 +27,7 @@ def test_grain_clip_factory_unknown_raises_strategy_not_found():
 
 
 def test_distribution_factory_unknown_raises_strategy_not_found():
-    from shared.distribution_strategy import DistributionFactory
+    from pge.shared.distribution_strategy import DistributionFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         DistributionFactory.create("bogus_dist")
@@ -38,7 +38,7 @@ def test_distribution_factory_unknown_raises_strategy_not_found():
 
 
 def test_distribution_register_invalid_subclass_raises_invalid_strategy_config():
-    from shared.distribution_strategy import DistributionFactory
+    from pge.shared.distribution_strategy import DistributionFactory
 
     class NotAStrategy:
         pass
@@ -52,7 +52,7 @@ def test_distribution_register_invalid_subclass_raises_invalid_strategy_config()
 
 
 def test_naming_strategy_unknown_mode_raises_invalid_strategy_config():
-    from rendering.naming_strategy import DefaultNamingStrategy
+    from pge.rendering.naming_strategy import DefaultNamingStrategy
 
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
         DefaultNamingStrategy().generate_paths(
@@ -65,8 +65,8 @@ def test_naming_strategy_unknown_mode_raises_invalid_strategy_config():
 
 
 def test_choice_variation_invalid_type_raises_invalid_parameter_error():
-    from strategies.variation_strategy import ChoiceVariation
-    from shared.distribution_strategy import UniformDistribution
+    from pge.strategies.variation_strategy import ChoiceVariation
+    from pge.shared.distribution_strategy import UniformDistribution
 
     with pytest.raises(InvalidParameterError) as exc_info:
         ChoiceVariation().apply(

@@ -7,9 +7,9 @@ con context arricchito (stream_id) per errori user-facing.
 """
 import pytest
 
-from parameters.parser import GranularParser
-from core.stream_config import StreamConfig, StreamContext
-from shared.exceptions import (
+from pge.parameters.parser import GranularParser
+from pge.core.stream_config import StreamConfig, StreamContext
+from pge.shared.exceptions import (
     ConfigError,
     InvalidParameterError,
     ParameterBoundError,

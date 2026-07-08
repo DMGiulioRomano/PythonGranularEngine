@@ -8,8 +8,51 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Modificato (breaking)
+
+- **Import path**: i nove package flat (`core`, `engine`, `rendering`,
+  `parameters`, `controllers`, `envelopes`, `strategies`, `export`, `shared`)
+  e il modulo `api` vivono ora sotto il package `pge` (Fase 3 del refactor
+  library/CLI): `from rendering.x import ...` diventa
+  `from pge.rendering.x import ...`, `import api` diventa `from pge import
+  api`. Il contenuto di `main.py` e' ora `pge/cli.py`. **La CLI e' invariata**:
+  `python src/main.py` resta lo shim ufficiale (stessi flag, stesso stdout,
+  stessi exit code — golden test `tests/test_cli_contract.py` passati
+  invariati), Makefile e test e2e non cambiano. Script di migrazione
+  ripetibile: `utils/rename_to_pge.py`.
+
 ### Aggiunto
 
+- Packaging (Fase 4 del refactor library/CLI): `pyproject.toml` PEP 621
+  (nome distribuzione `pge`, versione `5.0.0.dev0`), install editable
+  `pip install -e ".[dev]"` fatto da `make venv-setup`, console script
+  `pge` come alias della CLI (`pge.cli:main`, stdout identico a
+  `python src/main.py`). `requirements.txt` ridotto a puntatore
+  (`-e .[dev]`); `pge.__version__` via `importlib.metadata` con fallback
+  per l'uso da repository. Pubblicazione su PyPI fuori scope.
+- API programmatica `src/api.py` (Fase 1 del refactor library/CLI,
+  `docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md`): funzioni
+  `load_generator`, `build_renderer`, `collect_cache_orphans`, `render`,
+  `render_file`, `export_score_pdf`, `export_reaper`, `export_sv`,
+  `export_grain_json` e dataclass `CsoundOptions`/`RenderResult`. Contratto:
+  niente print/sys.exit/sys.argv, errori come eccezioni, lazy import dei
+  moduli pesanti. `main.py` diventa shell sottile che delega l'orchestrazione
+  all'API; la CLI resta invariata (stessi flag, stessi messaggi stdout,
+  stessi exit code — garantito dai golden test `tests/test_cli_contract.py`).
+  `render_file` espone `run_cache_gc` (default `True`): il GC degli stem
+  orfani in STEMS+cache e' rifiutabile anche dalla one-shot API. I renderer
+  dichiarano il proprio tipo con l'attributo di classe
+  `AudioRenderer.renderer_type` (`'numpy'`/`'csound'`, base `'unknown'`),
+  riportato da `api.render` in `RenderResult.renderer_type` al posto
+  dell'euristica sul nome della classe.
+- Iniezione `samples_dir` (Fase 2 del refactor library/CLI): parametro
+  esplicito su `get_sample_duration(base_path=)`, `Stream(samples_dir=)`,
+  `Generator(samples_dir=)`, chiave config `samples_dir` di `ScoreVisualizer`
+  e parametro `samples_dir` nelle funzioni API (`load_generator`,
+  `build_renderer`, `render`, `render_file`, `export_score_pdf`; per csound
+  risolve `SSDIR` se `CsoundOptions.ssdir` è `None`). I globali `PATHSAMPLES`
+  restano come fallback deprecato: i monkey-patch esterni continuano a
+  funzionare durante la transizione. CLI invariata (default `./refs/`).
 - Multi-voice: nuova strategy pitch `chord_progression` (issue #86) — progressioni
   armoniche in cui l'accordo è funzione del tempo (envelope di accordi). Per ogni
   voce si costruisce un `Envelope` di offset in semitoni interpolato tra i voicing

@@ -4,8 +4,8 @@ type: how-to
 status: stable
 tags: [sonic-visualiser, export, envelope, output, workflow]
 sources:
-  - src/export/sv_exporter.py
-  - src/rendering/envelope_extractor.py
+  - src/pge/export/sv_exporter.py
+  - src/pge/rendering/envelope_extractor.py
   - src/main.py
 last_synced_commit: a730371
 entry_for: [export-sonic-visualiser]
@@ -62,8 +62,8 @@ l'editing in DAW usa [[reaper]].
 | Path | Tipo |
 |------|------|
 | `output.sv` (o `--sv-path`) | output (XML bzip2) |
-| `src/export/sv_exporter.py` | renderer |
-| `src/rendering/envelope_extractor.py` | estrazione envelope condivisa |
+| `src/pge/export/sv_exporter.py` | renderer |
+| `src/pge/rendering/envelope_extractor.py` | estrazione envelope condivisa |
 
 ## Test da aggiornare
 

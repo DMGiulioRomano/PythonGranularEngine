@@ -16,12 +16,12 @@ Test Coverage:
 
 import pytest
 from unittest.mock import Mock, patch, call
-from controllers.pointer_controller import PointerController
-from core.stream_config import StreamConfig, StreamContext
-from parameters.parameter import Parameter
-from parameters.parameter_definitions import ParameterBounds
-from envelopes.envelope import Envelope
-from shared.exceptions import InvalidFieldValueError
+from pge.controllers.pointer_controller import PointerController
+from pge.core.stream_config import StreamConfig, StreamContext
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_definitions import ParameterBounds
+from pge.envelopes.envelope import Envelope
+from pge.shared.exceptions import InvalidFieldValueError
 
 # =============================================================================
 # FIXTURES
@@ -37,13 +37,13 @@ def pointer_factory(mock_config):
     Usage:
         pointer = pointer_factory({'start': 0, 'speed_ratio': 1.0})
     """
-    from parameters.parameter import Parameter
+    from pge.parameters.parameter import Parameter
     
     def _create(params: dict, sample_dur: float = None):
         if sample_dur:
             mock_config.context.sample_dur_sec = sample_dur
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             # ParameterBounds reali dal registry
@@ -408,7 +408,7 @@ class TestDirectionAwareReset:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             # Mock parameters
@@ -482,7 +482,7 @@ class TestDirectionAwareReset:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -560,7 +560,7 @@ class TestDirectionAwareReset:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -634,7 +634,7 @@ class TestDirectionReversal:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -705,7 +705,7 @@ class TestDirectionReversal:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -772,7 +772,7 @@ class TestDirectionReversal:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -842,7 +842,7 @@ class TestDynamicLoops:
             'loop_dur': 3.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -907,7 +907,7 @@ class TestDynamicLoops:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -1173,7 +1173,7 @@ class TestIntegration:
             'loop_end': 5.0
         }
         
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             
             mock_params = {}
@@ -1282,7 +1282,7 @@ def bounds_loop_dur():
 
 def _make_pointer(mock_config, real_params, raw_params):
     """Helper: crea PointerController con parametri pre-costruiti."""
-    with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+    with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
         mock_orch = MockOrch.return_value
         mock_orch.create_all_parameters.return_value = real_params
         # Configura create_constant_parameter per restituire un mock valido
@@ -1989,8 +1989,8 @@ class TestScaleValue:
 
             envelope_data = [[0, 0.1], [1.0, 0.5]]
 
-            with patch('controllers.pointer_controller.Envelope.is_envelope_like', return_value=True):
-                with patch('controllers.pointer_controller.Envelope._scale_raw_values_y',
+            with patch('pge.controllers.pointer_controller.Envelope.is_envelope_like', return_value=True):
+                with patch('pge.controllers.pointer_controller.Envelope._scale_raw_values_y',
                                 return_value=[[0, 1.0], [1.0, 5.0]]) as mock_scale:
                     result = pointer._scale_value(envelope_data, 10.0)
                     mock_scale.assert_called_once_with(envelope_data, 10.0)
@@ -2001,7 +2001,7 @@ class TestScaleValue:
         real = _build_real_params()
         pointer = _make_pointer(mock_config, real, {})
 
-        with patch('controllers.pointer_controller.Envelope.is_envelope_like', return_value=False):
+        with patch('pge.controllers.pointer_controller.Envelope.is_envelope_like', return_value=False):
             result = pointer._scale_value("unknown_value", 10.0)
             assert result == "unknown_value"
 
@@ -2236,7 +2236,7 @@ class TestLoopResetLogging:
         pointer.calculate(3.0)
 
         # Bounds cambiano: il pointer sara' fuori [4.0, 5.0)
-        with patch('controllers.pointer_controller.log_config_warning') as mock_log:
+        with patch('pge.controllers.pointer_controller.log_config_warning') as mock_log:
             pointer.calculate(3.5)
             # Verifica che log_config_warning sia stato chiamato
             assert mock_log.called
@@ -2256,7 +2256,7 @@ class TestPointerControllerMissingLines:
         Righe 88-96: _pre_normalize_loop_params con params=None.
         Deve restituire {} senza sollevare eccezioni.
         """
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             mock_orch.create_all_parameters.return_value = {
                 'pointer_start': 0.0,
@@ -2276,7 +2276,7 @@ class TestPointerControllerMissingLines:
         Righe 88-96: _pre_normalize_loop_params con params che non ha 'loop_start'.
         Deve restituire params invariato.
         """
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             mock_orch.create_all_parameters.return_value = {
                 'pointer_start': 0.0,
@@ -2340,7 +2340,7 @@ class TestPointerControllerMissingLines:
         Riga 452: _scale_value con tipo non riconosciuto restituisce value invariato.
         Ne' scalare ne' envelope-like → return value.
         """
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             mock_orch.create_all_parameters.return_value = {
                 'pointer_start': 0.0,
@@ -2366,7 +2366,7 @@ class TestPointerControllerMissingLines:
         Righe 469-471: verifica che _init_loop_state inizializzi tutti i campi.
         Include i campi di drift logging aggiunti di recente.
         """
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             mock_orch.create_all_parameters.return_value = {
                 'pointer_start': 0.0,
@@ -2420,11 +2420,11 @@ class TestStartImplicitFromLoopStart:
 
     def test_start_defaults_to_loop_start_envelope_initial_value(self, mock_config):
         """Con loop_start Envelope, start = loop_start.get_value(0.0)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
 
         env = Envelope([[0.0, 2.5], [1.0, 5.0]])
 
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             mock_config.context.sample_dur_sec = 10.0
 
@@ -2629,7 +2629,7 @@ class TestLoopBoundsValidation:
     def test_loop_end_envelope_not_validated(self, mock_config):
         """Bound dinamici (envelope): nessuna validazione d'ordine (puo' variare)."""
         mock_config.context.sample_dur_sec = 10.0
-        with patch('controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
+        with patch('pge.controllers.pointer_controller.ParameterOrchestrator') as MockOrch:
             mock_orch = MockOrch.return_value
             env = Envelope([[0.0, 5.0], [1.0, 1.0]])
             ls = Mock()

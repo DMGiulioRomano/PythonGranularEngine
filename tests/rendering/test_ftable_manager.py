@@ -33,8 +33,8 @@ from unittest.mock import patch, MagicMock, call
 from dataclasses import dataclass
 from typing import Optional, List
 
-from controllers.window_registry import WindowRegistry, WindowSpec
-from rendering.ftable_manager import FtableManager
+from pge.controllers.window_registry import WindowRegistry, WindowSpec
+from pge.rendering.ftable_manager import FtableManager
 
 
 # =============================================================================
@@ -666,7 +666,7 @@ class TestWriteToFile:
         fm.register_window("hanning")
 
         # Ora patcha WindowRegistry.get per ritornare None
-        with patch('rendering.ftable_manager.WindowRegistry') as mock_wr:
+        with patch('pge.rendering.ftable_manager.WindowRegistry') as mock_wr:
             mock_wr.get.return_value = None
 
             buf = io.StringIO()

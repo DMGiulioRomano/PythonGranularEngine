@@ -29,7 +29,7 @@ Sezioni:
 import pytest
 from unittest.mock import Mock
 
-from export.reaper_project_writer import ReaperProjectWriter
+from pge.export.reaper_project_writer import ReaperProjectWriter
 
 
 # =============================================================================

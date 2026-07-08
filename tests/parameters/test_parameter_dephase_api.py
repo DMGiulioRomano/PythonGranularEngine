@@ -10,9 +10,9 @@ Test dell'API pubblica di Parameter usata dal detune implicito (issue #95):
 
 import pytest
 
-from parameters.parameter import Parameter
-from parameters.parameter_definitions import ParameterBounds
-from shared.probability_gate import NeverGate, AlwaysGate
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_definitions import ParameterBounds
+from pge.shared.probability_gate import NeverGate, AlwaysGate
 
 BOUNDS = ParameterBounds(
     min_val=-36.0, max_val=36.0,

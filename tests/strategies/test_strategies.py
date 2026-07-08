@@ -62,9 +62,9 @@ PITCH_RATIO_BOUNDS = ParameterBounds(
 
 # Salva riferimenti alle classi reali PRIMA del patching
 # per usarle come basi dei mock (cosi' isinstance() funziona)
-from parameters.parameter import Parameter as _RealParameter
-from envelopes.envelope import Envelope as _RealEnvelope
-from shared.probability_gate import NeverGate, AlwaysGate
+from pge.parameters.parameter import Parameter as _RealParameter
+from pge.envelopes.envelope import Envelope as _RealEnvelope
+from pge.shared.probability_gate import NeverGate, AlwaysGate
 
 class MockParameter(_RealParameter):
     """
@@ -166,17 +166,17 @@ with patch.dict(sys.modules, {
     'envelope': mock_envelope_mod,
     'parameter_definitions': mock_paramdef_mod,
 }):
-    from strategies.strategie import (
+    from pge.strategies.strategie import (
         PitchStrategy, UnitPitchStrategy,
         DensityStrategy, FillFactorStrategy, DirectDensityStrategy,
     )
-    from strategies.strategy_registry import (
+    from pge.strategies.strategy_registry import (
         DENSITY_STRATEGIES,
         register_density_strategy,
         StrategyFactory,
     )
 
-from parameters.pitch_unit import EdoUnit, RatioUnit
+from pge.parameters.pitch_unit import EdoUnit, RatioUnit
 
 # =============================================================================
 # HELPERS
@@ -1118,7 +1118,7 @@ class TestUnitPitchImplicitDetune:
     """
 
     # semi-ampiezza ±EDO_IMPLICIT_DETUNE_CENTS -> banda moltiplicativa del ratio
-    from parameters.pitch_unit import EDO_IMPLICIT_DETUNE_CENTS as _DETUNE_CENTS
+    from pge.parameters.pitch_unit import EDO_IMPLICIT_DETUNE_CENTS as _DETUNE_CENTS
     BAND = 2.0 ** (_DETUNE_CENTS / 1200.0)
 
     def test_edo_implicit_gated_detunes_within_band(self):
@@ -1199,7 +1199,7 @@ class TestAbstractMethodBodies:
 
     def test_pitch_strategy_abstract_calculate_body(self):
         """Copre riga 22: corpo pass di PitchStrategy.calculate."""
-        from strategies.strategie import PitchStrategy
+        from pge.strategies.strategie import PitchStrategy
 
         class _Concrete(PitchStrategy):
             def calculate(self, elapsed_time: float) -> float:
@@ -1217,7 +1217,7 @@ class TestAbstractMethodBodies:
 
     def test_pitch_strategy_abstract_name_body(self):
         """Copre riga 28: corpo pass di PitchStrategy.name."""
-        from strategies.strategie import PitchStrategy
+        from pge.strategies.strategie import PitchStrategy
 
         class _Concrete(PitchStrategy):
             def calculate(self, elapsed_time: float) -> float:
@@ -1235,7 +1235,7 @@ class TestAbstractMethodBodies:
 
     def test_pitch_strategy_abstract_base_value_body(self):
         """Copre riga 34: corpo pass di PitchStrategy.base_value."""
-        from strategies.strategie import PitchStrategy
+        from pge.strategies.strategie import PitchStrategy
 
         class _Concrete(PitchStrategy):
             def calculate(self, elapsed_time: float) -> float:
@@ -1253,7 +1253,7 @@ class TestAbstractMethodBodies:
 
     def test_density_strategy_abstract_calculate_density_body(self):
         """Copre riga 90: corpo pass di DensityStrategy.calculate_density."""
-        from strategies.strategie import DensityStrategy
+        from pge.strategies.strategie import DensityStrategy
 
         class _Concrete(DensityStrategy):
             def calculate_density(self, elapsed_time: float, **context) -> float:
@@ -1268,7 +1268,7 @@ class TestAbstractMethodBodies:
 
     def test_density_strategy_abstract_name_body(self):
         """Copre riga 95: corpo pass di DensityStrategy.name."""
-        from strategies.strategie import DensityStrategy
+        from pge.strategies.strategie import DensityStrategy
 
         class _Concrete(DensityStrategy):
             def calculate_density(self, elapsed_time: float, **context) -> float:

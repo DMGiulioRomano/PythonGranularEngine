@@ -98,7 +98,7 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (il renderer numpy non produce `.sco`).
 - **`--jobs`** ha effetto solo con `--renderer numpy`. Sotto una soglia di
-  grani per render (`PARALLEL_MIN_GRAINS`, `src/rendering/numpy_parallel.py`)
+  grani per render (`PARALLEL_MIN_GRAINS`, `src/pge/rendering/numpy_parallel.py`)
   il path resta sequenziale anche con `--jobs > 1` (l'overhead del pool
   supererebbe il guadagno). Contratto di determinismo: a parità di valore di
   `--jobs` i **campioni** audio sono bit-identici tra run; tra valori diversi
@@ -118,7 +118,7 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   `--visualize`). Il filtro è ortogonale a `--show-static`: un parametro
   statico elencato nel filtro appare solo se c'è anche `--show-static`.
   Nomi validi = chiavi di `ENVELOPE_COLORS`
-  (`src/rendering/score_visualizer.py`, costante `PLOT_ENVELOPE_KEYS`).
+  (`src/pge/rendering/score_visualizer.py`, costante `PLOT_ENVELOPE_KEYS`).
 - **`--magnify` / `--magnify-at`** hanno effetto solo insieme a
   `--visualize` (come `--show-static`); la validazione di `--magnify-at`
   avviene comunque (SPEC malformato → exit 1 anche senza `--visualize`). Le

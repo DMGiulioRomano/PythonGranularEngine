@@ -12,7 +12,7 @@ from unittest.mock import Mock
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-from core.stream_config import StreamConfig, StreamContext
+from pge.core.stream_config import StreamConfig, StreamContext
 
 
 @pytest.fixture

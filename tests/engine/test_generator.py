@@ -29,7 +29,7 @@ Strategia di mocking:
 Nota sugli import:
 - Tutti gli import di moduli di produzione avvengono lazy (dentro funzioni)
   per evitare contaminazione di sys.modules con altri test.
-- Si usa patch('engine.generator.XXX') per mockare le dipendenze importate
+- Si usa patch('pge.engine.generator.XXX') per mockare le dipendenze importate
   nel namespace di generator.py.
 """
 
@@ -51,7 +51,7 @@ _import_cache = {}
 def _get_generator_class():
     """Import lazy di Generator."""
     if 'Generator' not in _import_cache:
-        from engine.generator import Generator
+        from pge.engine.generator import Generator
         _import_cache['Generator'] = Generator
     return _import_cache['Generator']
 
@@ -69,8 +69,8 @@ from conftest import make_mock_stream_for_generator
 def gen():
     """Generator con path YAML fittizio e dipendenze mockate."""
     Generator = _get_generator_class()
-    with patch('engine.generator.FtableManager') as MockFtm, \
-         patch('engine.generator.ScoreWriter') as MockSw:
+    with patch('pge.engine.generator.FtableManager') as MockFtm, \
+         patch('pge.engine.generator.ScoreWriter') as MockSw:
         mock_ftm = MockFtm.return_value
         mock_ftm.register_sample = Mock(side_effect=lambda p: hash(p) % 1000)
         mock_ftm.register_window = Mock(side_effect=lambda n: hash(n) % 1000)
@@ -89,64 +89,64 @@ class TestGeneratorInit:
     def test_init_stores_yaml_path(self):
         """Il costruttore salva yaml_path."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager'), \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator('my_config.yml')
         assert g.yaml_path == 'my_config.yml'
 
     def test_init_data_is_none(self):
         """data e' None prima di load_yaml()."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager'), \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator('config.yml')
         assert g.data is None
 
     def test_init_streams_empty(self):
         """streams e' lista vuota all'inizializzazione."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager'), \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator('config.yml')
         assert g.streams == []
 
     def test_init_seed_is_none(self):
         """seed e' None prima di load_yaml() (issue #81)."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager'), \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator('config.yml')
         assert g.seed is None
 
     def test_init_creates_ftable_manager(self):
         """Il costruttore crea un FtableManager."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager') as MockFtm, \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager') as MockFtm, \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator('config.yml')
         MockFtm.assert_called_once_with(start_num=1)
 
     def test_init_creates_score_writer_with_ftm(self):
         """Il costruttore crea un ScoreWriter con il FtableManager."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager') as MockFtm, \
-             patch('engine.generator.ScoreWriter') as MockSw:
+        with patch('pge.engine.generator.FtableManager') as MockFtm, \
+             patch('pge.engine.generator.ScoreWriter') as MockSw:
             g = Generator('config.yml')
         MockSw.assert_called_once_with(MockFtm.return_value)
 
     def test_init_ftable_manager_attribute(self):
         """ftable_manager e' l'istanza creata."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager') as MockFtm, \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager') as MockFtm, \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator('config.yml')
         assert g.ftable_manager is MockFtm.return_value
 
     def test_init_score_writer_attribute(self):
         """score_writer e' l'istanza creata."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter') as MockSw:
+        with patch('pge.engine.generator.FtableManager'), \
+             patch('pge.engine.generator.ScoreWriter') as MockSw:
             g = Generator('config.yml')
         assert g.score_writer is MockSw.return_value
 
@@ -676,11 +676,12 @@ class TestCreateStreams:
         stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
         mock_stream = make_mock_stream_for_generator()
 
-        with patch('engine.generator.Stream', return_value=mock_stream) as MockStream, \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream) as MockStream, \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
-        MockStream.assert_called_once_with(stream_data[0], seed=None)
+        MockStream.assert_called_once_with(stream_data[0], seed=None,
+                                           samples_dir=None)
         assert len(gen.streams) == 1
 
     def test_create_streams_passes_seed_to_stream(self, gen):
@@ -689,18 +690,19 @@ class TestCreateStreams:
         stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
         mock_stream = make_mock_stream_for_generator()
 
-        with patch('engine.generator.Stream', return_value=mock_stream) as MockStream, \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream) as MockStream, \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
-        MockStream.assert_called_once_with(stream_data[0], seed=42)
+        MockStream.assert_called_once_with(stream_data[0], seed=42,
+                                           samples_dir=None)
 
     def test_registers_sample(self, gen):
         """_create_streams registra il sample nel FtableManager."""
         mock_stream = make_mock_stream_for_generator(sample='audio.wav')
         stream_data = [{'stream_id': 's1', 'sample': 'audio.wav', 'grain': {}}]
 
-        with patch('engine.generator.Stream', return_value=mock_stream), \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream), \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
@@ -712,7 +714,7 @@ class TestCreateStreams:
         gen.ftable_manager.register_sample = Mock(return_value=42)
         stream_data = [{'stream_id': 's1', 'sample': 'audio.wav', 'grain': {}}]
 
-        with patch('engine.generator.Stream', return_value=mock_stream), \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream), \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
@@ -725,7 +727,7 @@ class TestCreateStreams:
             {'stream_id': 's1', 'sample': 'a.wav', 'grain': {'envelope': 'hanning'}},
         ]
 
-        with patch('engine.generator.Stream', return_value=mock_stream), \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream), \
              patch.object(gen, '_register_stream_windows', return_value={'hanning': 5}) as mock_rw:
             gen._create_streams(stream_data)
 
@@ -737,7 +739,7 @@ class TestCreateStreams:
         window_map = {'hanning': 5, 'hamming': 6}
         stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
 
-        with patch('engine.generator.Stream', return_value=mock_stream), \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream), \
              patch.object(gen, '_register_stream_windows', return_value=window_map):
             gen._create_streams(stream_data)
 
@@ -754,7 +756,7 @@ class TestCreateStreams:
         mock_stream = make_mock_stream_for_generator()
         stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
 
-        with patch('engine.generator.Stream', return_value=mock_stream), \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream), \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
@@ -764,7 +766,7 @@ class TestCreateStreams:
         """_create_streams crea piu' stream in sequenza."""
         streams_created = []
 
-        def make_s(data, seed=None):
+        def make_s(data, seed=None, samples_dir=None):
             s = make_mock_stream_for_generator(stream_id=data['stream_id'])
             streams_created.append(s)
             return s
@@ -775,7 +777,7 @@ class TestCreateStreams:
             {'stream_id': 's3', 'sample': 'c.wav', 'grain': {}},
         ]
 
-        with patch('engine.generator.Stream', side_effect=make_s), \
+        with patch('pge.engine.generator.Stream', side_effect=make_s), \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
@@ -792,7 +794,7 @@ class TestCreateStreams:
         mock_stream = make_mock_stream_for_generator()
         stream_data = [{'stream_id': 's1', 'sample': 'a.wav', 'grain': {}}]
 
-        with patch('engine.generator.Stream', return_value=mock_stream), \
+        with patch('pge.engine.generator.Stream', return_value=mock_stream), \
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
@@ -815,7 +817,7 @@ class TestRegisterStreamWindows:
             'grain': {'envelope': 'hanning'}
         }
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen._register_stream_windows(stream_data)
 
@@ -831,7 +833,7 @@ class TestRegisterStreamWindows:
             'grain': {'envelope': ['hanning', 'hamming']}
         }
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning', 'hamming']
             gen.ftable_manager.register_window = Mock(
                 side_effect=lambda n: {'hanning': 10, 'hamming': 11}[n]
@@ -844,7 +846,7 @@ class TestRegisterStreamWindows:
         """Ritorna mappa {nome: table_num}."""
         stream_data = {'stream_id': 's1', 'grain': {}}
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen.ftable_manager.register_window = Mock(return_value=5)
             result = gen._register_stream_windows(stream_data)
@@ -856,7 +858,7 @@ class TestRegisterStreamWindows:
         """stream_id default e' 'unknown' se assente."""
         stream_data = {'grain': {'envelope': 'hanning'}}
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen._register_stream_windows(stream_data)
 
@@ -869,7 +871,7 @@ class TestRegisterStreamWindows:
         """Senza chiave 'grain' usa dict vuoto per params."""
         stream_data = {'stream_id': 's1'}
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen._register_stream_windows(stream_data)
 
@@ -882,7 +884,7 @@ class TestRegisterStreamWindows:
         """Lista vuota di finestre produce mappa vuota."""
         stream_data = {'stream_id': 's1', 'grain': {}}
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = []
             result = gen._register_stream_windows(stream_data)
 
@@ -893,7 +895,7 @@ class TestRegisterStreamWindows:
         stream_data = {'stream_id': 's1', 'grain': {'envelope': 'all'}}
         all_windows = ['hanning', 'hamming', 'bartlett']
 
-        with patch('engine.generator.WindowController') as MockWC:
+        with patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = all_windows
             gen.ftable_manager.register_window = Mock(
                 side_effect=lambda n: {'hanning': 10, 'hamming': 11, 'bartlett': 12}[n]
@@ -978,8 +980,8 @@ class TestIntegration:
         mock_stream = make_mock_stream_for_generator()
 
         with patch('builtins.open', mock_open(read_data=yaml_content)), \
-             patch('engine.generator.Stream', return_value=mock_stream), \
-             patch('engine.generator.WindowController') as MockWC:
+             patch('pge.engine.generator.Stream', return_value=mock_stream), \
+             patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen.ftable_manager.register_sample = Mock(return_value=1)
             gen.ftable_manager.register_window = Mock(return_value=2)
@@ -1003,8 +1005,8 @@ class TestIntegration:
         mock_stream = make_mock_stream_for_generator()
 
         with patch('builtins.open', mock_open(read_data=yaml_content)), \
-             patch('engine.generator.Stream', return_value=mock_stream), \
-             patch('engine.generator.WindowController') as MockWC:
+             patch('pge.engine.generator.Stream', return_value=mock_stream), \
+             patch('pge.engine.generator.WindowController') as MockWC:
             MockWC.parse_window_list.return_value = ['hanning']
             gen.ftable_manager.register_sample = Mock(return_value=1)
             gen.ftable_manager.register_window = Mock(return_value=2)
@@ -1152,8 +1154,8 @@ class TestParametrized:
     def test_init_various_paths(self, yaml_path):
         """Vari formati di yaml_path sono accettati."""
         Generator = _get_generator_class()
-        with patch('engine.generator.FtableManager'), \
-             patch('engine.generator.ScoreWriter'):
+        with patch('pge.engine.generator.FtableManager'), \
+             patch('pge.engine.generator.ScoreWriter'):
             g = Generator(yaml_path)
         assert g.yaml_path == yaml_path
 
@@ -1307,8 +1309,8 @@ class TestStreamDataMap:
         stream_data = [
             {'stream_id': 's1', 'onset': 0.0, 'sample': 'a.wav'},
         ]
-        with patch('engine.generator.Stream') as MockStream, \
-             patch('engine.generator.WindowController'):
+        with patch('pge.engine.generator.Stream') as MockStream, \
+             patch('pge.engine.generator.WindowController'):
             mock_stream = Mock()
             mock_stream.stream_id = 's1'
             mock_stream.sample = 'a.wav'
@@ -1325,8 +1327,8 @@ class TestStreamDataMap:
         stream_data = [
             {'stream_id': 's1', 'onset': 0.0, 'sample': 'a.wav'},
         ]
-        with patch('engine.generator.Stream') as MockStream, \
-             patch('engine.generator.WindowController'):
+        with patch('pge.engine.generator.Stream') as MockStream, \
+             patch('pge.engine.generator.WindowController'):
             mock_stream = Mock()
             mock_stream.stream_id = 's1'
             mock_stream.sample = 'a.wav'
@@ -1344,9 +1346,9 @@ class TestStreamDataMap:
             {'stream_id': 's1', 'onset': 0.0, 'sample': 'a.wav'},
             {'stream_id': 's2', 'onset': 5.0, 'sample': 'b.wav'},
         ]
-        with patch('engine.generator.Stream') as MockStream, \
-             patch('engine.generator.WindowController'):
-            def make_stream(d, seed=None):
+        with patch('pge.engine.generator.Stream') as MockStream, \
+             patch('pge.engine.generator.WindowController'):
+            def make_stream(d, seed=None, samples_dir=None):
                 m = Mock()
                 m.stream_id = d['stream_id']
                 m.sample = d['sample']
@@ -1495,3 +1497,46 @@ class TestGenerateScoreFilesPerStreamWithCache:
         # Nessun cache_manager passato: nessun AttributeError atteso
         gen.generate_score_files_per_stream()
         # Se arriviamo qui senza eccezioni, il test passa
+
+
+# =============================================================================
+# TEST samples_dir (Fase 2 refactor library/CLI)
+# =============================================================================
+
+class TestGeneratorSamplesDir:
+    """Generator(yaml, samples_dir=...) propaga la directory sample agli
+    Stream creati; default None = comportamento legacy."""
+
+    def _write_scene(self, tmp_path, seconds=2.0):
+        import numpy as np
+        import soundfile as sf
+        sf.write(str(tmp_path / 'tone.wav'),
+                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+        yml = tmp_path / 'scene.yml'
+        yml.write_text(
+            "composition:\n"
+            "  title: samples_dir test\n"
+            "seed: 42\n"
+            "streams:\n"
+            "  - stream_id: s1\n"
+            "    onset: 0.0\n"
+            "    duration: 1.0\n"
+            "    sample: tone.wav\n"
+        )
+        return str(yml)
+
+    def test_samples_dir_propagated_to_streams(self, tmp_path):
+        yml = self._write_scene(tmp_path, seconds=2.0)
+
+        Generator = _get_generator_class()
+        g = Generator(yml, samples_dir=str(tmp_path))
+        g.load_yaml()
+        g.create_elements()
+
+        assert len(g.streams) == 1
+        assert g.streams[0].sample_dur_sec == pytest.approx(2.0)
+
+    def test_default_samples_dir_is_none(self):
+        Generator = _get_generator_class()
+        g = Generator('whatever.yml')
+        assert g.samples_dir is None

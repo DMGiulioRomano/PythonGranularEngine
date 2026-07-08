@@ -26,13 +26,13 @@ import os
 
 # Aggiungi src al path
 
-from envelopes.envelope_builder import EnvelopeBuilder
-from envelopes.envelope import Envelope
-from envelopes.envelope_segment import NormalSegment
-from envelopes.envelope_interpolation import (
+from pge.envelopes.envelope_builder import EnvelopeBuilder
+from pge.envelopes.envelope import Envelope
+from pge.envelopes.envelope_segment import NormalSegment
+from pge.envelopes.envelope_interpolation import (
     LinearInterpolation, StepInterpolation, CubicInterpolation
 )
-from envelopes.envelope_builder import EnvelopeBuilder
+from pge.envelopes.envelope_builder import EnvelopeBuilder
 from unittest.mock import MagicMock
 
 

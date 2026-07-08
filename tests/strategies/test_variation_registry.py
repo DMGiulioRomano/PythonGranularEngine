@@ -26,15 +26,15 @@ Organizzazione:
 import pytest
 from typing import Dict, Type
 
-from shared.distribution_strategy import DistributionStrategy
-from strategies.variation_strategy import (
+from pge.shared.distribution_strategy import DistributionStrategy
+from pge.strategies.variation_strategy import (
     VariationStrategy,
     AdditiveVariation,
     QuantizedVariation,
     InvertVariation,
     ChoiceVariation,
 )
-from strategies.variation_registry import (
+from pge.strategies.variation_registry import (
     VARIATION_STRATEGIES,
     register_variation_strategy,
     VariationFactory,

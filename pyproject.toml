@@ -1,0 +1,44 @@
+# =============================================================================
+# Packaging PGE (Fase 4 refactor library/CLI).
+#
+# Editable install: pip install -e ".[dev]" (fatto da make venv-setup).
+# Console script `pge` = alias della CLI storica (pge.cli:main); lo shim
+# src/main.py resta il punto d'ingresso di Makefile/e2e/PGE-ui.
+# Il modulo top-level main (shim) NON viene installato: include = ["pge*"].
+# Nota: la pubblicazione su PyPI e' fuori scope (nome distribuzione 'pge'
+# da verificare prima di pubblicare).
+# =============================================================================
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pge"
+version = "5.0.0.dev0"           # allineata al CHANGELOG (Unreleased, breaking import path)
+description = "PythonGranularEngine: compositional system for granular synthesis (YAML -> audio)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    "numpy>=1.24.0",
+    "soundfile>=0.12.1",
+    "matplotlib>=3.7.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+pge = "pge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pge*"]               # esclude il modulo top-level main (shim, non installato)
+
+[tool.setuptools]
+package-dir = { "" = "src" }

@@ -24,7 +24,7 @@ import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 
-from rendering.sample_registry import SampleRegistry
+from pge.rendering.sample_registry import SampleRegistry
 
 
 # =============================================================================
@@ -88,7 +88,7 @@ class TestSampleRegistryInit:
 class TestLoadSample:
     """Test per il caricamento di un file audio."""
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_load_returns_numpy_array(self, mock_read, registry, mono_audio):
         """load() ritorna un array NumPy."""
         audio, sr = mono_audio
@@ -98,7 +98,7 @@ class TestLoadSample:
 
         assert isinstance(samples, np.ndarray)
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_load_returns_sample_rate(self, mock_read, registry, mono_audio):
         """load() ritorna il sample rate nativo del file."""
         audio, sr = mono_audio
@@ -108,7 +108,7 @@ class TestLoadSample:
 
         assert file_sr == sr
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_load_constructs_full_path(self, mock_read, registry, mono_audio):
         """load() costruisce il path completo con base_path."""
         audio, sr = mono_audio
@@ -118,7 +118,7 @@ class TestLoadSample:
 
         mock_read.assert_called_once_with('./refs/piano.wav')
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_load_custom_base_path(self, mock_read, mono_audio):
         """load() usa il base_path custom."""
         audio, sr = mono_audio
@@ -129,7 +129,7 @@ class TestLoadSample:
 
         mock_read.assert_called_once_with('/samples/voice.wav')
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_load_returns_float32(self, mock_read, registry, mono_audio):
         """I campioni caricati sono in float32."""
         audio, sr = mono_audio
@@ -139,7 +139,7 @@ class TestLoadSample:
 
         assert samples.dtype == np.float32
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_load_mono_preserves_shape(self, mock_read, registry, mono_audio):
         """Un file mono ritorna un array 1D."""
         audio, sr = mono_audio
@@ -157,7 +157,7 @@ class TestLoadSample:
 class TestMonoConversion:
     """Test per la conversione stereo -> mono."""
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_stereo_converted_to_mono(self, mock_read, registry, stereo_audio):
         """Un file stereo viene convertito a mono (1D)."""
         audio, sr = stereo_audio
@@ -167,7 +167,7 @@ class TestMonoConversion:
 
         assert samples.ndim == 1
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_stereo_mono_length_matches(self, mock_read, registry, stereo_audio):
         """La lunghezza mono corrisponde al numero di frame originali."""
         audio, sr = stereo_audio
@@ -177,7 +177,7 @@ class TestMonoConversion:
 
         assert len(samples) == audio.shape[0]
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_stereo_mono_is_mean_of_channels(self, mock_read, registry, stereo_audio):
         """La conversione mono usa la media dei canali."""
         audio, sr = stereo_audio
@@ -188,7 +188,7 @@ class TestMonoConversion:
 
         np.testing.assert_array_almost_equal(samples, expected)
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_mono_not_affected(self, mock_read, registry, mono_audio):
         """Un file gia' mono non viene modificato."""
         audio, sr = mono_audio
@@ -206,7 +206,7 @@ class TestMonoConversion:
 class TestCaching:
     """Test per la deduplicazione e il caching."""
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_second_load_uses_cache(self, mock_read, registry, mono_audio):
         """Il secondo load() dello stesso file non rilegge da disco."""
         audio, sr = mono_audio
@@ -217,7 +217,7 @@ class TestCaching:
 
         assert mock_read.call_count == 1
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_cached_returns_same_data(self, mock_read, registry, mono_audio):
         """I dati cachati sono identici a quelli originali."""
         audio, sr = mono_audio
@@ -229,7 +229,7 @@ class TestCaching:
         np.testing.assert_array_equal(samples1, samples2)
         assert sr1 == sr2
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_different_files_loaded_separately(self, mock_read, registry, mono_audio):
         """File diversi vengono caricati separatamente."""
         audio, sr = mono_audio
@@ -240,7 +240,7 @@ class TestCaching:
 
         assert mock_read.call_count == 2
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_len_reflects_cached_count(self, mock_read, registry, mono_audio):
         """len(registry) riflette il numero di file cachati."""
         audio, sr = mono_audio
@@ -262,7 +262,7 @@ class TestCaching:
 class TestSampleRate:
     """Test per la conservazione del file_sr nativo."""
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_preserves_44100(self, mock_read, registry):
         """file_sr = 44100 viene conservato."""
         audio = np.zeros(44100, dtype=np.float32)
@@ -272,7 +272,7 @@ class TestSampleRate:
 
         assert file_sr == 44100
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_preserves_48000(self, mock_read, registry):
         """file_sr = 48000 viene conservato."""
         audio = np.zeros(48000, dtype=np.float32)
@@ -282,7 +282,7 @@ class TestSampleRate:
 
         assert file_sr == 48000
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_preserves_96000(self, mock_read, registry):
         """file_sr = 96000 viene conservato."""
         audio = np.zeros(96000, dtype=np.float32)
@@ -292,7 +292,7 @@ class TestSampleRate:
 
         assert file_sr == 96000
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_different_files_different_rates(self, mock_read, registry):
         """File con sample rate diversi mantengono ciascuno il proprio."""
         audio_44 = np.zeros(44100, dtype=np.float32)
@@ -317,7 +317,7 @@ class TestSampleRate:
 class TestErrorHandling:
     """Test per gestione errori."""
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_file_not_found_raises(self, mock_read, registry):
         """File non trovato solleva FileNotFoundError."""
         mock_read.side_effect = FileNotFoundError("No such file")
@@ -325,7 +325,7 @@ class TestErrorHandling:
         with pytest.raises(FileNotFoundError):
             registry.load('missing.wav')
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_failed_load_not_cached(self, mock_read, registry):
         """Un file che fallisce il caricamento non viene cachato."""
         mock_read.side_effect = FileNotFoundError("No such file")
@@ -335,7 +335,7 @@ class TestErrorHandling:
 
         assert len(registry) == 0
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_runtime_error_propagates(self, mock_read, registry):
         """Errori runtime di soundfile vengono propagati."""
         mock_read.side_effect = RuntimeError("Corrupt file")
@@ -351,7 +351,7 @@ class TestErrorHandling:
 class TestGetSample:
     """Test per l'accesso diretto ai dati cachati senza ricaricare."""
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_get_returns_cached_data(self, mock_read, registry, mono_audio):
         """get() ritorna i dati gia' cachati."""
         audio, sr = mono_audio
@@ -368,7 +368,7 @@ class TestGetSample:
         with pytest.raises(KeyError):
             registry.get('not_loaded.wav')
 
-    @patch('rendering.sample_registry.sf.read')
+    @patch('pge.rendering.sample_registry.sf.read')
     def test_get_does_not_trigger_read(self, mock_read, registry, mono_audio):
         """get() non chiama sf.read (usa solo la cache)."""
         audio, sr = mono_audio

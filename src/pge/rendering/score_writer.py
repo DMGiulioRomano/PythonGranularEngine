@@ -1,0 +1,214 @@
+# src/score_writer.py
+"""
+ScoreWriter: gestione scrittura file .sco Csound.
+Separato dalla logica di orchestrazione.
+"""
+from __future__ import annotations
+
+from typing import List
+from pge.core.stream import Stream
+from pge.rendering.ftable_manager import FtableManager
+from pge.envelopes.envelope import Envelope
+from pge.parameters.parameter import Parameter
+
+
+class ScoreWriter:
+    """
+    Scrive lo score Csound su file.
+
+    Responsabilita:
+    - Formattare header e metadati
+    - Delegare scrittura ftables a FtableManager
+    - Scrivere eventi grani (Stream)
+    - Gestire commenti e statistiche
+    """
+
+    def __init__(self, ftable_manager: FtableManager):
+        """
+        Args:
+            ftable_manager: manager delle function tables
+        """
+        self.ftable_manager = ftable_manager
+
+    def write_score(
+        self,
+        filepath: str,
+        streams: List[Stream],
+        yaml_source: str = None,
+        per_stream: bool = False,
+    ):
+        """
+        Scrive score completo su file.
+
+        Args:
+            filepath: percorso file output .sco
+            streams: lista stream granulari
+            yaml_source: path file YAML sorgente (per header)
+            per_stream: se True, onset dei grani relativo a stream.onset (STEMS mode)
+        """
+        with open(filepath, 'w') as f:
+            self._write_header(f, yaml_source)
+            self.ftable_manager.write_to_file(f)
+            self._write_events(f, streams, per_stream=per_stream)
+            self._write_footer(f)
+
+        self._print_generation_summary(filepath, streams)
+
+    # =========================================================================
+    # SEZIONI PRINCIPALI
+    # =========================================================================
+
+    def _write_header(self, f, yaml_source: str = None):
+        """Scrive intestazione file score."""
+        f.write("; " + "="*77 + "\n")
+        f.write("; CSOUND SCORE\n")
+        if yaml_source:
+            f.write(f"; Generated from: {yaml_source}\n")
+        f.write("; " + "="*77 + "\n\n")
+
+    def _write_events(self, f, streams: List[Stream], per_stream: bool = False):
+        """Scrive tutti gli eventi (grani)."""
+        if streams:
+            self._write_granular_streams(f, streams, per_stream=per_stream)
+
+    def _write_footer(self, f):
+        """Scrive chiusura file score."""
+        f.write("\n; " + "="*77 + "\n")
+        f.write("; End of score\n")
+        f.write("; " + "="*77 + "\n")
+        f.write("e\n")
+
+    # =========================================================================
+    # GRANULAR STREAMS
+    # =========================================================================
+
+    def _write_granular_streams(self, f, streams: List[Stream], per_stream: bool = False):
+        """
+        Scrive sezione stream granulari.
+
+        Per ogni stream:
+        - Intestazione con metadati
+        - Eventi grani organizzati per voice
+        """
+        f.write("; " + "="*77 + "\n")
+        f.write("; GRANULAR STREAMS\n")
+        f.write("; " + "="*77 + "\n\n")
+
+        for stream in streams:
+            onset_offset = stream.onset if per_stream else 0.0
+            self._write_stream_section(f, stream, onset_offset=onset_offset)
+
+    def _write_stream_section(self, f, stream: Stream, onset_offset: float = 0.0):
+        """Scrive sezione completa di uno stream.
+
+        Args:
+            onset_offset: sottratto dall'onset di ogni grain (STEMS mode).
+        """
+        # Header stream
+        f.write(f'; Stream: {stream.stream_id}\n')
+        self._write_stream_metadata(f, stream)
+
+        # Eventi grani per voice
+        for voice_index, voice_grains in enumerate(stream.voices):
+            if voice_grains:  # Solo se la voice ha grani
+                f.write(f';   Voice {voice_index} ({len(voice_grains)} grains)\n')
+
+                for grain in voice_grains:
+                    f.write(grain.to_score_line(onset_offset=onset_offset))
+
+                f.write('\n')  # Separatore tra voices
+
+        f.write('\n')  # Separatore tra streams
+
+    def _write_stream_metadata(self, f, stream: Stream):
+        """
+        Scrive metadati dello stream come commenti.
+
+        Formatta parametri gestendo Envelope e valori dinamici.
+        """
+        # Grain parameters
+        f.write(f'; Grain duration: {self._format_param(stream.grain_duration, 1000, "ms")}\n')
+
+        # Density parameters
+        f.write(f'; Density: {self._format_param(stream.density, 1, " g/s")}\n')
+        f.write(f'; Distribution: {self._format_param(stream.distribution)}\n')
+
+        # Statistiche
+        f.write(f'; Num voices: {self._format_param(stream.num_voices)}\n')
+        total_grains = sum(len(voice_grains) for voice_grains in stream.voices)
+        f.write(f'; Total grains: {total_grains}\n\n')
+
+    # =========================================================================
+    # UTILITY - FORMATTAZIONE PARAMETRI
+    # =========================================================================
+
+    def _format_param(
+        self,
+        param,
+        multiplier: float = 1.0,
+        unit: str = ''
+    ) -> str:
+        """
+        Formatta un parametro per i commenti SCO.
+
+        Gestisce:
+        - Parameter objects (estrae value)
+        - Envelope (indica "dynamic")
+        - None (restituisce "N/A")
+        - Numeri (applica moltiplicatore e unità)
+
+        Args:
+            param: parametro da formattare
+            multiplier: moltiplicatore per conversione unità
+            unit: stringa unità di misura
+
+        Returns:
+            str: parametro formattato per commento
+        """
+        # Estrai valore da Parameter
+        if isinstance(param, Parameter):
+            param = param._value
+
+        # Gestisci casi speciali
+        if param is None:
+            return "N/A"
+
+        if isinstance(param, Envelope):
+            return "dynamic (envelope)"
+
+        # Formatta numero
+        try:
+            value = float(param) * multiplier
+            # Sotto 0.1 un solo decimale collasserebbe a 0.0 (es. grani da
+            # 1 campione = 0.0208 ms): servono piu' cifre significative.
+            if 0 < abs(value) < 0.1:
+                return f"{value:.4f}{unit}"
+            return f"{value:.1f}{unit}"
+        except (ValueError, TypeError):
+            # Fallback se non è un numero
+            return str(param)
+
+    # =========================================================================
+    # UTILITY - STATISTICHE
+    # =========================================================================
+
+    def _print_generation_summary(
+        self,
+        filepath: str,
+        streams: List[Stream],
+    ):
+        """Stampa riepilogo generazione score."""
+        print(f"✓ Score generato: {filepath}")
+
+        # Function tables
+        num_tables = len(self.ftable_manager.get_all_tables())
+        print(f"  - {num_tables} function tables")
+
+        # Streams e grani
+        if streams:
+            total_grains = sum(
+                sum(len(voice_grains) for voice_grains in stream.voices)
+                for stream in streams
+            )
+            print(f"  - {len(streams)} streams granulari")
+            print(f"  - {total_grains} grani totali")

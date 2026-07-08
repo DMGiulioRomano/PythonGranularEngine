@@ -5,7 +5,7 @@ status: stable
 tags: [reaper, daw, workflow, output]
 sources:
   - make/audioFile.mk
-  - src/export/reaper_project_writer.py
+  - src/pge/export/reaper_project_writer.py
 last_synced_commit: 4c4fee4
 entry_for: [reaper-workflow]
 ---

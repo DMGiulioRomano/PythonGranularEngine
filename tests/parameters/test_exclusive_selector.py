@@ -12,8 +12,8 @@ Copre:
 
 import pytest
 
-from parameters.exclusive_selector import ExclusiveGroupSelector
-from parameters.parameter_schema import (
+from pge.parameters.exclusive_selector import ExclusiveGroupSelector
+from pge.parameters.parameter_schema import (
     ParameterSpec,
     DENSITY_PARAMETER_SCHEMA,
     POINTER_PARAMETER_SCHEMA,

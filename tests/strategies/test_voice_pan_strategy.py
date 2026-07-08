@@ -45,7 +45,7 @@ import pytest
 
 def _get_module():
     """Import lazy per permettere RED phase senza errori di import."""
-    from strategies.voice_pan_strategy import (
+    from pge.strategies.voice_pan_strategy import (
         VoicePanStrategy,
         RangePanStrategy,
         StochasticPanStrategy,
@@ -288,7 +288,7 @@ class TestStochasticPanStrategy:
 
     def test_negative_spread_raises(self):
         _, _, StochasticPanStrategy, *_ = _get_module()
-        from shared.exceptions import InvalidStrategyConfigError
+        from pge.shared.exceptions import InvalidStrategyConfigError
         s = StochasticPanStrategy(spread=-10.0, stream_id='s1')
         with pytest.raises(InvalidStrategyConfigError):
             s.get_pan_offset(1, 4, 0.0)
@@ -693,7 +693,7 @@ class TestDynamicPanParams:
 
     def test_range_spread_envelope_varies(self):
         """RangePanStrategy con Envelope: spread varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, RangePanStrategy, *_ = _get_module()
         env = Envelope([[0, 100.0], [1, 200.0]])
         s = RangePanStrategy(spread=env)
@@ -703,7 +703,7 @@ class TestDynamicPanParams:
 
     def test_step_envelope_varies(self):
         """StepPanStrategy con Envelope: step varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, _, StepPanStrategy, *_ = _get_module()
         env = Envelope([[0, 10.0], [1, 30.0]])
         s = StepPanStrategy(step=env)
@@ -712,7 +712,7 @@ class TestDynamicPanParams:
 
     def test_stochastic_spread_envelope_varies_magnitude(self):
         """StochasticPanStrategy con Envelope: magnitudine varia col tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, StochasticPanStrategy, *_ = _get_module()
         env = Envelope([[0, 60.0], [1, 360.0]])
         s = StochasticPanStrategy(spread=env, stream_id='s1')

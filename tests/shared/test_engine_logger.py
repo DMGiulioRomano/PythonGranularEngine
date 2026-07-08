@@ -12,7 +12,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from shared.logger import (
+from pge.shared.logger import (
     configure_engine_logger,
     get_engine_logger,
     get_engine_log_path,
@@ -32,7 +32,7 @@ def test_configure_engine_logger_idempotent_on_existing_dir(tmp_path):
     log_dir = tmp_path / '.logs'
     log_dir.mkdir()  # la dir esiste già (creata dal worker che ha vinto la race)
 
-    with patch('shared.logger.os.path.exists', return_value=False):
+    with patch('pge.shared.logger.os.path.exists', return_value=False):
         configure_engine_logger(yaml_name='granstudies', log_dir=str(log_dir))
 
     log_path = get_engine_log_path()

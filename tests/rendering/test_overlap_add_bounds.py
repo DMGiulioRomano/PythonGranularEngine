@@ -22,11 +22,11 @@ condividono lo stesso helper clampato: qui se ne verifica il contratto.
 import numpy as np
 import pytest
 
-from core.grain import Grain
-from rendering.numpy_audio_renderer import NumpyAudioRenderer
-from rendering.sample_registry import SampleRegistry
-from rendering.numpy_window_registry import NumpyWindowRegistry
-import rendering.numpy_parallel as npar
+from pge.core.grain import Grain
+from pge.rendering.numpy_audio_renderer import NumpyAudioRenderer
+from pge.rendering.sample_registry import SampleRegistry
+from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+import pge.rendering.numpy_parallel as npar
 
 
 OUTPUT_SR = 48000

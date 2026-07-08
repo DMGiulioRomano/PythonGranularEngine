@@ -21,9 +21,9 @@ Coverage:
 import pytest
 import random as stdlib_random
 from unittest.mock import Mock, patch, MagicMock
-from controllers.density_controller import DensityController
-from parameters.parameter import Parameter
-from parameters.parameter_definitions import get_parameter_definition
+from pge.controllers.density_controller import DensityController
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_definitions import get_parameter_definition
 
 # =============================================================================
 # FIXTURES
@@ -40,7 +40,7 @@ def _make_density_controller(mock_config, loaded_params, raw_params=None):
     if raw_params is None:
         raw_params = {}
 
-    with patch('controllers.density_controller.ParameterOrchestrator') as MockOrch:
+    with patch('pge.controllers.density_controller.ParameterOrchestrator') as MockOrch:
         mock_orch = MockOrch.return_value
         mock_orch.create_all_parameters.return_value = loaded_params
         return DensityController(raw_params, mock_config)
@@ -507,7 +507,7 @@ class TestEnvelopeIntegration:
 
     def test_fill_factor_envelope(self, mock_config):
         """fill_factor come Envelope produce density variabile."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
 
         env = Envelope([[0, 1.0], [10, 4.0]])
 
@@ -546,7 +546,7 @@ class TestEnvelopeIntegration:
 
     def test_distribution_envelope(self, mock_config):
         """distribution come Envelope varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
 
         dist_env = Envelope([[0, 0.0], [10, 1.0]])
 
@@ -584,7 +584,7 @@ class TestEnvelopeIntegration:
 
     def test_density_envelope(self, mock_config):
         """density diretta come Envelope."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
 
         dens_env = Envelope([[0, 10.0], [10, 100.0]])
 

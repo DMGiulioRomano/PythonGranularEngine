@@ -9,7 +9,7 @@ import pytest
 
 
 def test_csound_render_error_user_message_and_inheritance():
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         CsoundRenderError,
         EngineError,
         EngineRuntimeError,
@@ -31,8 +31,8 @@ def test_csound_render_error_user_message_and_inheritance():
 
 
 def test_unknown_renderer_raises_invalid_renderer_error():
-    from rendering.renderer_factory import RendererFactory
-    from shared.exceptions import (
+    from pge.rendering.renderer_factory import RendererFactory
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         InvalidRendererError,

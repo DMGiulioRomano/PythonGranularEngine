@@ -6,8 +6,8 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 
-import shared.logger as logger_module
-from shared.logger import (
+import pge.shared.logger as logger_module
+from pge.shared.logger import (
     configure_clip_logger,
     get_clip_logger,
     get_clip_log_path,
@@ -196,7 +196,7 @@ class TestGetClipLoggerLazyInit:
             log_dir=str(log_dir),
             yaml_name='race'
         )
-        with patch('shared.logger.os.path.exists', return_value=False):
+        with patch('pge.shared.logger.os.path.exists', return_value=False):
             result = get_clip_logger()
 
         assert result is not None

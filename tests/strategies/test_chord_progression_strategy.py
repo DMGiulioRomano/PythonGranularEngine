@@ -25,15 +25,15 @@ import math
 
 import pytest
 
-from parameters.pitch_unit import EdoUnit
-from shared.exceptions import InvalidStrategyConfigError
+from pge.parameters.pitch_unit import EdoUnit
+from pge.shared.exceptions import InvalidStrategyConfigError
 
 
 ST = EdoUnit(12)
 
 
 def _get():
-    from strategies.voice_pitch_strategy import (
+    from pge.strategies.voice_pitch_strategy import (
         ChordProgressionPitchStrategy,
         ChordPitchStrategy,
         VOICE_PITCH_STRATEGIES,

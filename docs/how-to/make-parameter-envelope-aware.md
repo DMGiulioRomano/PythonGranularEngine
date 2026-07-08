@@ -4,8 +4,8 @@ type: how-to
 status: stable
 tags: [parameters, envelopes, extension]
 sources:
-  - src/parameters/parameter_schema.py
-  - src/envelopes/envelope.py
+  - src/pge/parameters/parameter_schema.py
+  - src/pge/envelopes/envelope.py
 last_synced_commit: 8c896d8
 entry_for: [make-parameter-envelope-aware]
 ---
@@ -33,7 +33,7 @@ Un parametro esistente accetta solo scalari e vuoi farlo accettare anche envelop
 
 | Path | Tipo |
 |------|------|
-| `src/parameters/parameter_schema.py` | flag `accepts_envelope: True` |
+| `src/pge/parameters/parameter_schema.py` | flag `accepts_envelope: True` |
 | Sito di consumo | uso di `evaluate(time)` |
 
 ## Test da aggiornare
