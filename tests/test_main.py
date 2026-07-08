@@ -478,369 +478,180 @@ class TestPerStreamFlag:
 
 class TestRendererFlag:
     """
-    Verifica il parsing di --renderer e il branching corretto tra
-    ramo csound (default) e ramo numpy.
+    main() delega la costruzione del renderer ad api.build_renderer e il
+    render ad api.render: qui si verifica il parsing di --renderer /
+    --jobs / --format / --cache e la mappa argv -> kwargs dell'API.
 
-    I tre moduli lazy del ramo numpy (RendererFactory, SampleRegistry,
-    NumpyWindowRegistry) vengono patchati a runtime via patch.dict
-    perche' sono importati dentro main() al momento dell'esecuzione,
-    non al caricamento del modulo.
+    I kwargs profondi verso RendererFactory/RenderingEngine sono coperti
+    da tests/test_api.py (equivalenti estratti in Fase 1 del refactor
+    library/CLI).
     """
 
-    # -------------------------------------------------------------------------
-    # HELPER INTERNI
-    # -------------------------------------------------------------------------
+    def _run_delegated(self, mocks, argv, render_side_effect=None):
+        """Esegue main() con api.build_renderer/api.render patchati.
 
-    def _make_numpy_modules(self):
+        Ritorna (build_mock, render_mock, renderer_from_api).
         """
-        Costruisce i moduli mock per il ramo numpy.
-
-        Returns:
-            tuple: (mock_modules_dict, factory_cls, renderer_instance,
-                    sample_reg_cls, sample_reg_instance,
-                    window_reg_cls, window_reg_instance,
-                    engine_cls, engine_instance,
-                    stems_mode_cls, stems_mode_instance,
-                    mix_mode_cls, mix_mode_instance)
-        """
-        # RendererFactory
-        factory_cls = MagicMock(name='RendererFactory')
-        renderer_instance = MagicMock(name='renderer_instance')
-        factory_cls.create.return_value = renderer_instance
-
-        factory_mod = types.ModuleType('rendering.renderer_factory')
-        factory_mod.RendererFactory = factory_cls
-
-        # SampleRegistry
-        sample_reg_cls = MagicMock(name='SampleRegistry')
-        sample_reg_instance = MagicMock(name='sample_reg_instance')
-        sample_reg_cls.return_value = sample_reg_instance
-
-        sample_reg_mod = types.ModuleType('rendering.sample_registry')
-        sample_reg_mod.SampleRegistry = sample_reg_cls
-
-        # NumpyWindowRegistry
-        window_reg_cls = MagicMock(name='NumpyWindowRegistry')
-        window_reg_instance = MagicMock(name='window_reg_instance')
-        window_reg_cls.return_value = window_reg_instance
-
-        window_reg_mod = types.ModuleType('rendering.numpy_window_registry')
-        window_reg_mod.NumpyWindowRegistry = window_reg_cls
-
-        # RenderingEngine
-        engine_cls = MagicMock(name='RenderingEngine')
-        engine_instance = MagicMock(name='engine_instance')
-        engine_instance.render.return_value = ['/out/test.aif']
-        engine_cls.return_value = engine_instance
-
-        rendering_engine_mod = types.ModuleType('rendering.rendering_engine')
-        rendering_engine_mod.RenderingEngine = engine_cls
-
-        # RenderMode classes
-        stems_mode_cls = MagicMock(name='StemsRenderMode')
-        stems_mode_instance = MagicMock(name='stems_mode_instance')
-        stems_mode_cls.return_value = stems_mode_instance
-
-        mix_mode_cls = MagicMock(name='MixRenderMode')
-        mix_mode_instance = MagicMock(name='mix_mode_instance')
-        mix_mode_cls.return_value = mix_mode_instance
-
-        render_mode_mod = types.ModuleType('rendering.render_mode')
-        render_mode_mod.StemsRenderMode = stems_mode_cls
-        render_mode_mod.MixRenderMode = mix_mode_cls
-
-        modules = {
-            'rendering.renderer_factory': factory_mod,
-            'rendering.sample_registry': sample_reg_mod,
-            'rendering.numpy_window_registry': window_reg_mod,
-            'rendering.rendering_engine': rendering_engine_mod,
-            'rendering.render_mode': render_mode_mod,
-        }
-
-        return (
-            modules,
-            factory_cls, renderer_instance,
-            sample_reg_cls, sample_reg_instance,
-            window_reg_cls, window_reg_instance,
-            engine_cls, engine_instance,
-            stems_mode_cls, stems_mode_instance,
-            mix_mode_cls, mix_mode_instance,
+        api_mod = mocks['main'].api
+        renderer = MagicMock(name='renderer_from_api')
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'],
+            elapsed_seconds=0.0,
+            renderer_type='csound',
+            per_stream=False,
         )
-
-    def _setup_generator_for_numpy(self, mocks, table_map=None, streams=None):
-        """
-        Configura il generator_instance mock per il ramo numpy.
-
-        Args:
-            table_map: dict {int: (ftype, key)} da restituire da get_all_tables().
-                       Default: {1: ('sample', 'voice.wav'), 2: ('window', 'hanning')}
-            streams:   lista di stream mock. Default: un solo stream con stream_id='s1'
-        """
-        if table_map is None:
-            table_map = {
-                1: ('sample', 'voice.wav'),
-                2: ('window', 'hanning'),
-            }
-        if streams is None:
-            mock_stream = MagicMock()
-            mock_stream.stream_id = 's1'
-            streams = [mock_stream]
-
-        mocks['generator_instance'].ftable_manager.get_all_tables.return_value = table_map
-        mocks['generator_instance'].streams = streams
-        return streams
+        with patch.object(api_mod, 'build_renderer',
+                          return_value=renderer) as build_mock, \
+             patch.object(api_mod, 'render') as render_mock:
+            if render_side_effect is not None:
+                render_mock.side_effect = render_side_effect
+            else:
+                render_mock.return_value = result
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
+        return build_mock, render_mock, renderer
 
     # -------------------------------------------------------------------------
-    # TEST DEFAULT E PARSING
+    # DELEGA A api.build_renderer: tipo renderer
     # -------------------------------------------------------------------------
 
     def test_default_renderer_is_csound(self, mocks):
-        """Senza --renderer, RendererFactory.create viene chiamato con 'csound'."""
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            mocks['main'].main()
-        call_args = mocks['RendererFactory'].create.call_args
-        assert call_args.args[0] == 'csound'
+        """Senza --renderer, api.build_renderer riceve 'csound'."""
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert build_mock.call_args.args[0] == 'csound'
 
     def test_renderer_csound_explicit(self, mocks):
-        """--renderer csound esplicito chiama RendererFactory.create('csound')."""
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--renderer', 'csound']):
-            mocks['main'].main()
-        call_args = mocks['RendererFactory'].create.call_args
-        assert call_args.args[0] == 'csound'
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--renderer', 'csound'])
+        assert build_mock.call_args.args[0] == 'csound'
 
-    def test_renderer_csound_calls_renderer_factory(self, mocks):
-        """Con --renderer csound, RendererFactory.create viene chiamato."""
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            mocks['main'].main()
-        mocks['RendererFactory'].create.assert_called_once()
+    def test_renderer_numpy_flag(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy'])
+        assert build_mock.call_args.args[0] == 'numpy'
+
+    def test_generator_forwarded_to_build(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert build_mock.call_args.args[1] is mocks['generator_instance']
 
     def test_renderer_numpy_does_not_call_generate_score_file(self, mocks):
         """Con --renderer numpy, generate_score_file NON viene chiamato."""
-        modules, *_ = self._make_numpy_modules()
-        self._setup_generator_for_numpy(mocks)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy']):
-                mocks['main'].main()
-
+        self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy'])
         mocks['generator_instance'].generate_score_file.assert_not_called()
 
     # -------------------------------------------------------------------------
-    # TEST RAMO NUMPY: COSTRUZIONE RENDERER
+    # DELEGA A api.build_renderer: kwargs derivati da argv
     # -------------------------------------------------------------------------
 
-    def test_renderer_numpy_calls_renderer_factory_create(self, mocks):
-        """Con --renderer numpy, RendererFactory.create viene chiamato una volta."""
-        modules, factory_cls, *_ = self._make_numpy_modules()
-        self._setup_generator_for_numpy(mocks)
+    def test_default_jobs_is_auto(self, mocks):
+        """Policy CLI: jobs default 'auto' (il default API e' 1)."""
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert build_mock.call_args.kwargs['jobs'] == 'auto'
 
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
+    def test_jobs_flag_forwarded(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--jobs', '3'])
+        assert build_mock.call_args.kwargs['jobs'] == 3
 
-        factory_cls.create.assert_called_once()
+    def test_output_sr_is_default_constant(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert build_mock.call_args.kwargs['output_sr'] == 48000
 
-    def test_renderer_numpy_factory_receives_numpy_type(self, mocks):
-        """RendererFactory.create riceve 'numpy' come primo argomento."""
-        modules, factory_cls, *_ = self._make_numpy_modules()
-        self._setup_generator_for_numpy(mocks)
+    def test_default_audio_format_aif(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert build_mock.call_args.kwargs['audio_format'].extension == '.aif'
 
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
+    def test_format_wav_forwarded(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--format', 'wav'])
+        assert build_mock.call_args.kwargs['audio_format'].extension == '.wav'
 
-        call_args = factory_cls.create.call_args
-        assert call_args.args[0] == 'numpy'
+    def test_no_cache_manifest_none(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert build_mock.call_args.kwargs['cache_manifest_path'] is None
 
-    def test_renderer_numpy_factory_receives_output_sr_48000(self, mocks):
-        """RendererFactory.create riceve output_sr=48000."""
-        modules, factory_cls, *_ = self._make_numpy_modules()
-        self._setup_generator_for_numpy(mocks)
+    def test_cache_manifest_composed_from_cache_dir_and_yaml(self, mocks, capsys):
+        """--cache: la CLI compone cache_dir/{yaml_basename}.json e stampa
+        [CACHE] Manifest: (policy CLI, l'API non stampa)."""
+        import os
+        build_mock, _, _ = self._run_delegated(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--cache', '--cache-dir', 'mycache'])
+        expected = os.path.join('mycache', 'PGE_test.json')
+        assert build_mock.call_args.kwargs['cache_manifest_path'] == expected
+        assert f"[CACHE] Manifest: {expected}\n" in capsys.readouterr().out
 
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        call_kwargs = factory_cls.create.call_args.kwargs
-        assert call_kwargs.get('output_sr') == 48000
-
-    def test_renderer_numpy_factory_receives_table_map(self, mocks):
-        """RendererFactory.create riceve il table_map da ftable_manager."""
-        modules, factory_cls, *_ = self._make_numpy_modules()
-        table_map = {1: ('sample', 'piano.wav')}
-        self._setup_generator_for_numpy(mocks, table_map=table_map)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        call_kwargs = factory_cls.create.call_args.kwargs
-        assert call_kwargs.get('table_map') == table_map
-
-    # -------------------------------------------------------------------------
-    # TEST RAMO NUMPY: CARICAMENTO SAMPLE
-    # -------------------------------------------------------------------------
-
-    def test_renderer_numpy_loads_sample_entries(self, mocks):
-        """sample_reg.load viene chiamato per ogni entry 'sample' nel table_map."""
-        modules, _, _, sample_reg_cls, sample_reg_instance, *_ = self._make_numpy_modules()
-        table_map = {
-            1: ('sample', 'voice.wav'),
-            2: ('sample', 'piano.wav'),
-            3: ('window', 'hanning'),
-        }
-        self._setup_generator_for_numpy(mocks, table_map=table_map)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        assert sample_reg_instance.load.call_count == 2
-        loaded_args = [c.args[0] for c in sample_reg_instance.load.call_args_list]
-        assert 'voice.wav' in loaded_args
-        assert 'piano.wav' in loaded_args
-
-    def test_renderer_numpy_does_not_load_window_entries(self, mocks):
-        """sample_reg.load NON viene chiamato per entry 'window' nel table_map."""
-        modules, _, _, sample_reg_cls, sample_reg_instance, *_ = self._make_numpy_modules()
-        table_map = {
-            1: ('window', 'hanning'),
-            2: ('window', 'expodec'),
-        }
-        self._setup_generator_for_numpy(mocks, table_map=table_map)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        sample_reg_instance.load.assert_not_called()
-
-    def test_renderer_numpy_empty_table_map_no_load(self, mocks):
-        """table_map vuoto: sample_reg.load non viene mai chiamato."""
-        modules, _, _, sample_reg_cls, sample_reg_instance, *_ = self._make_numpy_modules()
-        self._setup_generator_for_numpy(mocks, table_map={})
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        sample_reg_instance.load.assert_not_called()
+    def test_csound_none_for_numpy(self, mocks):
+        build_mock, _, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy'])
+        assert build_mock.call_args.kwargs['csound'] is None
 
     # -------------------------------------------------------------------------
-    # TEST RAMO NUMPY: RENDERING ENGINE
+    # DELEGA A api.render
     # -------------------------------------------------------------------------
 
-    def test_renderer_numpy_creates_rendering_engine_with_renderer(self, mocks):
-        """RenderingEngine viene istanziato con il renderer e una naming_strategy."""
-        r = self._make_numpy_modules()
-        modules, renderer_instance, engine_cls = r[0], r[2], r[7]
-        self._setup_generator_for_numpy(mocks)
+    def test_render_receives_generator_output_and_renderer(self, mocks):
+        _, render_mock, renderer = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        call = render_mock.call_args
+        assert call.args[0] is mocks['generator_instance']
+        assert call.args[1] == 'out.aif'
+        assert call.kwargs['renderer'] is renderer
 
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
+    def test_render_gc_disabled_from_cli(self, mocks):
+        """La CLI esegue il GC esplicitamente prima: run_cache_gc=False."""
+        _, render_mock, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert render_mock.call_args.kwargs['run_cache_gc'] is False
 
-        engine_cls.assert_called_once()
-        call_args = engine_cls.call_args
-        assert call_args.args[0] is renderer_instance
-        assert call_args.kwargs.get('naming_strategy') is not None
+    def test_render_mix_by_default(self, mocks):
+        _, render_mock, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert render_mock.call_args.kwargs['per_stream'] is False
 
-    def test_renderer_numpy_default_uses_mix_mode(self, mocks):
-        """Senza --per-stream, engine.render viene chiamato con MixRenderMode."""
-        r = self._make_numpy_modules()
-        modules = r[0]
-        engine_instance, stems_mode_cls, mix_mode_cls, mix_mode_instance = r[8], r[9], r[11], r[12]
-        self._setup_generator_for_numpy(mocks)
+    def test_render_per_stream_forwarded(self, mocks):
+        _, render_mock, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--per-stream'])
+        assert render_mock.call_args.kwargs['per_stream'] is True
 
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        mix_mode_cls.assert_called_once()
-        stems_mode_cls.assert_not_called()
-        assert engine_instance.render.call_args.kwargs['mode'] is mix_mode_instance
-
-    def test_renderer_numpy_per_stream_uses_stems_mode(self, mocks):
-        """Con --per-stream, engine.render viene chiamato con StemsRenderMode."""
-        r = self._make_numpy_modules()
-        modules = r[0]
-        engine_instance, stems_mode_cls, stems_mode_instance, mix_mode_cls = r[8], r[9], r[10], r[11]
-        self._setup_generator_for_numpy(mocks)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy', '--per-stream']):
-                mocks['main'].main()
-
-        stems_mode_cls.assert_called_once()
-        mix_mode_cls.assert_not_called()
-        assert engine_instance.render.call_args.kwargs['mode'] is stems_mode_instance
-
-    def test_renderer_numpy_engine_render_called_with_streams(self, mocks):
-        """engine.render riceve la lista di streams dal generator."""
-        r = self._make_numpy_modules()
-        modules, engine_instance = r[0], r[8]
-        s1 = MagicMock(); s1.stream_id = 's1'
-        s2 = MagicMock(); s2.stream_id = 's2'
-        self._setup_generator_for_numpy(mocks, streams=[s1, s2])
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        assert engine_instance.render.call_args.kwargs['streams'] == [s1, s2]
-
-    def test_renderer_numpy_engine_render_called_with_output_path(self, mocks):
-        """engine.render riceve l'output_path dall'argv."""
-        r = self._make_numpy_modules()
-        modules, engine_instance = r[0], r[8]
-        self._setup_generator_for_numpy(mocks)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy']):
-                mocks['main'].main()
-
-        assert engine_instance.render.call_args.kwargs['output_path'] == 'out.aif'
+    def test_render_audio_format_forwarded(self, mocks):
+        _, render_mock, _ = self._run_delegated(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--format', 'flac'])
+        assert render_mock.call_args.kwargs['audio_format'].extension == '.flac'
 
     # -------------------------------------------------------------------------
-    # TEST COMPATIBILITA' CON ALTRI FLAG
+    # GESTIONE ERRORI
     # -------------------------------------------------------------------------
 
-    def test_renderer_csound_with_per_stream_uses_stems_mode(self, mocks):
-        """--renderer csound + --per-stream usa StemsRenderMode."""
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--renderer', 'csound', '--per-stream']):
-            mocks['main'].main()
-        mocks['StemsRenderMode'].assert_called_once()
-        mocks['MixRenderMode'].assert_not_called()
-
-    # -------------------------------------------------------------------------
-    # TEST GESTIONE ERRORI
-    # -------------------------------------------------------------------------
-
-    def test_renderer_numpy_exception_exits_with_1(self, mocks):
-        """Un errore durante engine.render nel ramo numpy causa sys.exit(1)."""
-        r = self._make_numpy_modules()
-        modules, engine_instance = r[0], r[8]
-        engine_instance.render.side_effect = RuntimeError("render failed")
-        self._setup_generator_for_numpy(mocks)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.sco', '--renderer', 'numpy']):
-                with pytest.raises(SystemExit) as exc_info:
-                    mocks['main'].main()
-
+    def test_render_exception_exits_with_1(self, mocks):
+        """Un errore durante api.render causa sys.exit(1)."""
+        with pytest.raises(SystemExit) as exc_info:
+            self._run_delegated(
+                mocks, ['main.py', 'test.yml', 'out.aif'],
+                render_side_effect=RuntimeError("render failed"))
         assert exc_info.value.code == 1
 
-    def test_renderer_numpy_factory_exception_exits_with_1(self, mocks):
-        """Un errore in RendererFactory.create causa sys.exit(1)."""
-        modules, factory_cls, *_ = self._make_numpy_modules()
-        factory_cls.create.side_effect = ValueError("unknown renderer")
-        self._setup_generator_for_numpy(mocks)
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy']):
+    def test_invalid_renderer_error_exits_with_1(self, mocks):
+        """InvalidRendererError da api.build_renderer -> exit(1) via
+        _handle_engine_error (e' una EngineError)."""
+        from shared.exceptions import InvalidRendererError
+        api_mod = mocks['main'].api
+        err = InvalidRendererError(renderer_type='bogus',
+                                   available=['csound', 'numpy'])
+        with patch.object(api_mod, 'build_renderer', side_effect=err):
+            with patch.object(sys, 'argv',
+                              ['main.py', 'test.yml', 'out.aif',
+                               '--renderer', 'bogus']):
                 with pytest.raises(SystemExit) as exc_info:
                     mocks['main'].main()
-
         assert exc_info.value.code == 1
 
 
@@ -850,140 +661,93 @@ class TestRendererFlag:
 
 class TestCsoundArgs:
     """
-    Verifica il parsing dei CLI args specifici per il renderer csound
-    e che vengano passati correttamente a RendererFactory.create.
+    Verifica il parsing dei CLI args specifici per il renderer csound e la
+    loro mappa su api.CsoundOptions (la composizione del csound_config
+    profondo e' coperta da tests/test_api.py).
     """
 
-    def _get_factory_kwargs(self, mocks, argv):
-        """Helper: esegue main e restituisce i kwargs di RendererFactory.create."""
-        with patch.object(sys, 'argv', argv):
-            mocks['main'].main()
-        return mocks['RendererFactory'].create.call_args.kwargs
+    def _get_csound_options(self, mocks, argv):
+        """Helper: esegue main con api patchata e ritorna il CsoundOptions
+        passato ad api.build_renderer."""
+        api_mod = mocks['main'].api
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='csound', per_stream=False)
+        with patch.object(api_mod, 'build_renderer') as build_mock, \
+             patch.object(api_mod, 'render', return_value=result):
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
+        return build_mock.call_args.kwargs['csound']
 
-    def test_orc_path_default(self, mocks):
-        """--orc-path default e' 'csound/main.orc'."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        csound_config = kwargs['csound_config']
-        assert csound_config['orc_path'] == 'csound/main.orc'
+    def test_default_csound_options(self, mocks):
+        """Senza flag: default storici della CLI, ssdir esplicito 'refs'."""
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        api_mod = mocks['main'].api
+        assert opts == api_mod.CsoundOptions(
+            orc_path='csound/main.orc',
+            incdir='src',
+            ssdir='refs',
+            sfdir='output',
+            log_dir='logs',
+            message_level=134,
+            sco_dir=None,
+        )
 
     def test_orc_path_custom(self, mocks):
-        """--orc-path custom viene passato a csound_config."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--orc-path', 'custom/orch.orc']
-        )
-        assert kwargs['csound_config']['orc_path'] == 'custom/orch.orc'
-
-    def test_incdir_default(self, mocks):
-        """--incdir default e' 'src'."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        assert kwargs['csound_config']['env_vars']['INCDIR'] == 'src'
+        opts = self._get_csound_options(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--orc-path', 'custom/orch.orc'])
+        assert opts.orc_path == 'custom/orch.orc'
 
     def test_incdir_custom(self, mocks):
-        """--incdir custom viene passato a env_vars['INCDIR']."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--incdir', '/custom/src']
-        )
-        assert kwargs['csound_config']['env_vars']['INCDIR'] == '/custom/src'
-
-    def test_ssdir_default(self, mocks):
-        """--ssdir default e' 'refs'."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        assert kwargs['csound_config']['env_vars']['SSDIR'] == 'refs'
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--incdir', '/custom/src'])
+        assert opts.incdir == '/custom/src'
 
     def test_ssdir_custom(self, mocks):
-        """--ssdir custom viene passato a env_vars['SSDIR']."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--ssdir', '/audio/refs']
-        )
-        assert kwargs['csound_config']['env_vars']['SSDIR'] == '/audio/refs'
-
-    def test_sfdir_default(self, mocks):
-        """--sfdir default e' 'output'."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        assert kwargs['csound_config']['env_vars']['SFDIR'] == 'output'
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--ssdir', '/audio/refs'])
+        assert opts.ssdir == '/audio/refs'
 
     def test_sfdir_custom(self, mocks):
-        """--sfdir custom viene passato a env_vars['SFDIR']."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--sfdir', '/audio/output']
-        )
-        assert kwargs['csound_config']['env_vars']['SFDIR'] == '/audio/output'
-
-    def test_log_dir_default(self, mocks):
-        """--log-dir default e' 'logs'."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        assert kwargs['csound_config']['log_dir'] == 'logs'
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--sfdir', '/audio/output'])
+        assert opts.sfdir == '/audio/output'
 
     def test_log_dir_custom(self, mocks):
-        """--log-dir custom viene passato a csound_config."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--log-dir', '/custom/logs']
-        )
-        assert kwargs['csound_config']['log_dir'] == '/custom/logs'
-
-    def test_message_level_default(self, mocks):
-        """--message-level default e' 134."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        assert kwargs['csound_config']['message_level'] == 134
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--log-dir', '/custom/logs'])
+        assert opts.log_dir == '/custom/logs'
 
     def test_message_level_custom(self, mocks):
-        """--message-level custom viene passato a csound_config."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--message-level', '7']
-        )
-        assert kwargs['csound_config']['message_level'] == 7
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--message-level', '7'])
+        assert opts.message_level == 7
 
     def test_keep_sco_false_by_default(self, mocks):
-        """Senza --keep-sco, sco_dir e' None."""
-        kwargs = self._get_factory_kwargs(mocks, ['main.py', 'test.yml', 'out.aif'])
-        assert kwargs.get('sco_dir') is None
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert opts.sco_dir is None
 
     def test_keep_sco_sets_sco_dir_to_generated(self, mocks):
-        """--keep-sco imposta sco_dir='generated' (default)."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--keep-sco']
-        )
-        assert kwargs.get('sco_dir') == 'generated'
+        opts = self._get_csound_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--keep-sco'])
+        assert opts.sco_dir == 'generated'
 
     def test_keep_sco_with_custom_sco_dir(self, mocks):
-        """--keep-sco --sco-dir custom imposta sco_dir al valore custom."""
-        kwargs = self._get_factory_kwargs(
-            mocks, ['main.py', 'test.yml', 'out.aif', '--keep-sco', '--sco-dir', '/tmp/sco']
-        )
-        assert kwargs.get('sco_dir') == '/tmp/sco'
-
-    def test_csound_passes_score_writer_from_generator(self, mocks):
-        """RendererFactory.create riceve score_writer dal generator."""
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            mocks['main'].main()
-        kwargs = mocks['RendererFactory'].create.call_args.kwargs
-        assert kwargs['score_writer'] is mocks['generator_instance'].score_writer
-
-    def test_csound_passes_stream_data_map_from_generator(self, mocks):
-        """RendererFactory.create riceve stream_data_map dal generator."""
-        sdm = {'s1': {'stream_id': 's1'}}
-        mocks['generator_instance'].stream_data_map = sdm
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            mocks['main'].main()
-        kwargs = mocks['RendererFactory'].create.call_args.kwargs
-        assert kwargs['stream_data_map'] is sdm
+        opts = self._get_csound_options(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--keep-sco', '--sco-dir', '/tmp/sco'])
+        assert opts.sco_dir == '/tmp/sco'
 
     def test_csound_args_ignored_for_numpy(self, mocks):
-        """I CLI args csound non vengono passati se renderer e' numpy."""
-        modules, factory_cls, *_ = TestRendererFlag._make_numpy_modules(TestRendererFlag())
-        mocks['generator_instance'].ftable_manager.get_all_tables.return_value = {}
-        mocks['generator_instance'].streams = []
-
-        with patch.dict(sys.modules, modules):
-            with patch.object(
-                sys, 'argv',
-                ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy',
-                 '--orc-path', 'should/be/ignored.orc']
-            ):
-                mocks['main'].main()
-
-        call_args = factory_cls.create.call_args
-        assert 'csound_config' not in (call_args.kwargs or {})
+        """I CLI args csound non producono CsoundOptions se renderer e' numpy."""
+        opts = self._get_csound_options(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy',
+             '--orc-path', 'should/be/ignored.orc'])
+        assert opts is None
 
 
 # =============================================================================
@@ -992,158 +756,96 @@ class TestCsoundArgs:
 
 class TestCacheGarbageCollectionInMain:
     """
-    Verifica che garbage_collect() venga invocato correttamente da main()
-    solo in modalita' STEMS+CACHE (--per-stream --cache).
+    Verifica che main() deleghi il GC ad api.collect_cache_orphans SOLO in
+    modalita' STEMS+CACHE (--per-stream --cache), PRIMA di api.render, e
+    che stampi la riga [CACHE] GC solo quando ci sono orfani rimossi.
 
-    Casi estremi:
-    - STEMS+CACHE: GC chiamata con stream_ids corretti, sfdir, yaml_basename
-    - STEMS senza CACHE: GC NON chiamata
-    - CACHE senza STEMS: GC NON chiamata
-    - Senza ne' STEMS ne' CACHE: GC NON chiamata
-    - GC riceve gli stream_id estratti da generator.streams
-    - GC riceve sfdir custom da --sfdir
-    - GC riceve yaml_basename come aif_prefix (es. 'PGE_test')
+    Le asserzioni profonde su garbage_collect (stream_ids dal YAML
+    completo, aif_dir, aif_prefix, ext) sono in tests/test_api.py.
     """
 
-    def _run_with_gc_mock(self, mocks, argv, stream_ids=None, yaml_stream_ids=None):
-        """
-        Helper: esegue main() con cache_manager mockato.
-        Restituisce il mock del cache_manager per assert sulle chiamate.
+    def _run_with_gc_delegated(self, mocks, argv, removed=None):
+        """Esegue main() con api patchata; ritorna (gc_mock, render_mock,
+        renderer_from_api, manager) dove manager registra l'ordine delle
+        chiamate api.collect_cache_orphans/api.render."""
+        api_mod = mocks['main'].api
+        renderer = MagicMock(name='renderer_from_api')
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='csound', per_stream=False)
 
-        Args:
-            stream_ids: stream_id degli stream CREATI (generator.streams),
-                cioe' dopo il filtro solo/mute.
-            yaml_stream_ids: stream_id di TUTTI gli stream nel YAML
-                (generator.data['streams']). Se None, coincide con stream_ids.
-        """
-        cache_manager_mock = MagicMock(name='cache_manager')
-        cache_manager_mock.garbage_collect.return_value = []
-        mocks['renderer_instance'].cache_manager = cache_manager_mock
+        manager = MagicMock(name='call_order')
+        with patch.object(api_mod, 'build_renderer', return_value=renderer), \
+             patch.object(api_mod, 'collect_cache_orphans',
+                          return_value=removed or []) as gc_mock, \
+             patch.object(api_mod, 'render', return_value=result) as render_mock:
+            manager.attach_mock(gc_mock, 'collect_cache_orphans')
+            manager.attach_mock(render_mock, 'render')
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
 
-        if stream_ids is not None:
-            streams = []
-            for sid in stream_ids:
-                s = MagicMock()
-                s.stream_id = sid
-                streams.append(s)
-            mocks['generator_instance'].streams = streams
-
-        # Il GC deve basarsi sull'elenco COMPLETO degli stream nel YAML
-        # (generator.data['streams']), non sugli stream creati che solo/mute
-        # filtra.
-        if yaml_stream_ids is None:
-            yaml_stream_ids = stream_ids
-        if yaml_stream_ids is not None:
-            mocks['generator_instance'].data = {
-                'streams': [{'stream_id': sid} for sid in yaml_stream_ids]
-            }
-
-        with patch.object(sys, 'argv', argv):
-            mocks['main'].main()
-
-        return cache_manager_mock
+        return gc_mock, render_mock, renderer, manager
 
     def test_gc_called_in_stems_and_cache_mode(self, mocks):
-        """Con --per-stream --cache, garbage_collect() viene chiamata."""
-        cm = self._run_with_gc_mock(
+        gc_mock, _, _, _ = self._run_with_gc_delegated(
             mocks,
             ['main.py', 'configs/PGE_test.yml', 'out.aif',
-             '--per-stream', '--cache', '--cache-dir', 'cache'],
-            stream_ids=['s1', 's2'],
-        )
-        cm.garbage_collect.assert_called_once()
+             '--per-stream', '--cache'])
+        gc_mock.assert_called_once()
 
     def test_gc_not_called_without_cache(self, mocks):
-        """Senza --cache, garbage_collect() NON viene chiamata."""
-        cm = self._run_with_gc_mock(
+        gc_mock, _, _, _ = self._run_with_gc_delegated(
             mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--per-stream'],
-            stream_ids=['s1'],
-        )
-        cm.garbage_collect.assert_not_called()
+            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--per-stream'])
+        gc_mock.assert_not_called()
 
     def test_gc_not_called_without_per_stream(self, mocks):
-        """Senza --per-stream (MIX mode), garbage_collect() NON viene chiamata."""
-        cm = self._run_with_gc_mock(
-            mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif', '--cache'],
-            stream_ids=['s1'],
-        )
-        cm.garbage_collect.assert_not_called()
+        gc_mock, _, _, _ = self._run_with_gc_delegated(
+            mocks, ['main.py', 'configs/PGE_test.yml', 'out.aif', '--cache'])
+        gc_mock.assert_not_called()
 
     def test_gc_not_called_without_stems_nor_cache(self, mocks):
-        """Senza ne' --per-stream ne' --cache, garbage_collect() NON viene chiamata."""
-        cm = self._run_with_gc_mock(
-            mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif'],
-            stream_ids=['s1'],
-        )
-        cm.garbage_collect.assert_not_called()
+        gc_mock, _, _, _ = self._run_with_gc_delegated(
+            mocks, ['main.py', 'configs/PGE_test.yml', 'out.aif'])
+        gc_mock.assert_not_called()
 
-    def test_gc_receives_correct_stream_ids(self, mocks):
-        """GC riceve gli stream_id estratti dal YAML completo."""
-        cm = self._run_with_gc_mock(
-            mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif',
-             '--per-stream', '--cache'],
-            stream_ids=['stream1', 'stream2', 'stream3'],
-        )
-        call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert set(call_kwargs['current_stream_ids']) == {'stream1', 'stream2', 'stream3'}
-
-    def test_gc_uses_full_yaml_streams_not_solo_filtered(self, mocks):
-        """REGRESSIONE: in solo/mute mode generator.streams e' filtrato, ma il
-        GC deve usare TUTTI gli stream del YAML. Altrimenti tratta gli stream
-        esclusi da solo/mute come orfani e ne cancella gli stem da output/."""
-        cm = self._run_with_gc_mock(
-            mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif',
-             '--per-stream', '--cache'],
-            stream_ids=['s2'],                    # solo s2 creato (in solo)
-            yaml_stream_ids=['s1', 's2', 's3'],   # YAML completo
-        )
-        call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert set(call_kwargs['current_stream_ids']) == {'s1', 's2', 's3'}
-
-    def test_gc_receives_yaml_basename_as_prefix(self, mocks):
-        """GC riceve yaml_basename ('PGE_test') come aif_prefix."""
-        cm = self._run_with_gc_mock(
-            mocks,
-            ['main.py', 'configs/PGE_test.yml', 'out.aif',
-             '--per-stream', '--cache'],
-            stream_ids=['s1'],
-        )
-        call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert call_kwargs['aif_prefix'] == 'PGE_test'
-
-    def test_gc_receives_output_file_directory(self, mocks):
-        """GC riceve la directory del file di output come aif_dir.
-
-        Usa os.path.dirname(os.path.abspath(output_file)) invece di --sfdir
-        per garantire il path corretto indipendentemente da come --sfdir
-        viene costruito dal Makefile (es. con PWD_DIR prefisso).
-        """
-        import os
-        cm = self._run_with_gc_mock(
+    def test_gc_receives_generator_renderer_output_and_format(self, mocks):
+        gc_mock, _, renderer, _ = self._run_with_gc_delegated(
             mocks,
             ['main.py', 'configs/PGE_test.yml', '/custom/output/mix.aif',
-             '--per-stream', '--cache'],
-            stream_ids=['s1'],
-        )
-        call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert call_kwargs['aif_dir'] == os.path.abspath('/custom/output')
+             '--per-stream', '--cache', '--format', 'wav'])
+        call = gc_mock.call_args
+        assert call.args[0] is mocks['generator_instance']
+        assert call.args[1] is renderer
+        assert call.args[2] == '/custom/output/mix.aif'
+        assert call.kwargs['audio_format'].extension == '.wav'
 
-    def test_gc_aif_dir_derived_from_output_file_not_sfdir(self, mocks):
-        """aif_dir viene da output_file, non da --sfdir (anche se diversi)."""
-        import os
-        cm = self._run_with_gc_mock(
+    def test_gc_runs_before_render(self, mocks):
+        """Ordine stdout: il GC (e il suo print) precede api.render."""
+        _, _, _, manager = self._run_with_gc_delegated(
             mocks,
-            ['main.py', 'configs/PGE_test.yml', '/actual/out/mix.aif',
-             '--per-stream', '--cache', '--sfdir', '/ignored/sfdir'],
-            stream_ids=['s1'],
-        )
-        call_kwargs = cm.garbage_collect.call_args.kwargs
-        assert call_kwargs['aif_dir'] == os.path.abspath('/actual/out')
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'])
+        names = [c[0] for c in manager.mock_calls]
+        assert names.index('collect_cache_orphans') < names.index('render')
+
+    def test_gc_print_when_orphans_removed(self, mocks, capsys):
+        self._run_with_gc_delegated(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'],
+            removed=['orfano1', 'orfano2'])
+        out = capsys.readouterr().out
+        assert ("[CACHE] GC: rimossi 2 stream orfani: "
+                "['orfano1', 'orfano2']\n") in out
+
+    def test_no_gc_print_when_nothing_removed(self, mocks, capsys):
+        self._run_with_gc_delegated(
+            mocks,
+            ['main.py', 'configs/PGE_test.yml', 'out.aif',
+             '--per-stream', '--cache'],
+            removed=[])
+        assert '[CACHE] GC' not in capsys.readouterr().out
 
 
 # =============================================================================

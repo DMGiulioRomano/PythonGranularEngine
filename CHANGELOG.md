@@ -10,6 +10,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- API programmatica `src/api.py` (Fase 1 del refactor library/CLI,
+  `docs/plans/2026-07-08-001-refactor-pge-library-cli-plan.md`): funzioni
+  `load_generator`, `build_renderer`, `collect_cache_orphans`, `render`,
+  `render_file`, `export_score_pdf`, `export_reaper`, `export_sv`,
+  `export_grain_json` e dataclass `CsoundOptions`/`RenderResult`. Contratto:
+  niente print/sys.exit/sys.argv, errori come eccezioni, lazy import dei
+  moduli pesanti. `main.py` diventa shell sottile che delega l'orchestrazione
+  all'API; la CLI resta invariata (stessi flag, stessi messaggi stdout,
+  stessi exit code — garantito dai golden test `tests/test_cli_contract.py`).
 - Multi-voice: nuova strategy pitch `chord_progression` (issue #86) — progressioni
   armoniche in cui l'accordo è funzione del tempo (envelope di accordi). Per ogni
   voce si costruisce un `Envelope` di offset in semitoni interpolato tra i voicing
