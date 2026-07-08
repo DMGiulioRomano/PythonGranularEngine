@@ -20,6 +20,14 @@ def make_mock_generator_module():
     mock_cls = MagicMock()
     mock_instance = MagicMock()
     mock_cls.return_value = mock_instance
+
+    # Come il Generator reale: il costruttore registra yaml_path
+    # sull'istanza (api.collect_cache_orphans ne deriva l'aif_prefix).
+    def _ctor(yaml_path, *args, **kwargs):
+        mock_instance.yaml_path = yaml_path
+        return mock_instance
+
+    mock_cls.side_effect = _ctor
     mod.Generator = mock_cls
     return mod, mock_cls, mock_instance
 

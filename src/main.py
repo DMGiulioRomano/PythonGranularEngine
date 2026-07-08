@@ -15,6 +15,8 @@ from shared.constants import DEFAULT_OUTPUT_SR
 from engine.generator import Generator
 from rendering.score_visualizer import ScoreVisualizer, PLOT_ENVELOPE_KEYS
 
+import api
+
 
 def _handle_engine_error(err: EngineError) -> None:
     """Stampa user_message su stdout e persiste traceback nel file engine log."""
@@ -28,10 +30,12 @@ def _handle_engine_error(err: EngineError) -> None:
 
 def _build_renderer(renderer_type: str, generator, **kwargs):
     """
-    Crea il renderer appropriato in base al tipo.
+    Crea il renderer appropriato in base al tipo, delegando ad api.build_renderer.
 
-    Lazy imports per evitare dipendenze al caricamento del modulo
-    e per consentire il mocking nei test.
+    Adapter CLI -> API (Fase 1 refactor library/CLI): mappa i kwargs storici
+    della CLI (use_cache/cache_dir/yaml_basename, orc_path/incdir/...) sulla
+    firma keyword-only dell'API e conserva qui il print `[CACHE] Manifest:`
+    (i print sono policy CLI, l'API non stampa).
 
     Args:
         renderer_type: 'csound' o 'numpy'
@@ -42,80 +46,40 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         Istanza di AudioRenderer configurata
 
     Raises:
-        ValueError: se renderer_type non e' supportato
+        InvalidRendererError: se renderer_type non e' supportato
     """
-    from rendering.renderer_factory import RendererFactory
+    from rendering.audio_format import DEFAULT_FORMAT
 
-    if renderer_type == 'numpy':
-        from rendering.sample_registry import SampleRegistry
-        from rendering.numpy_window_registry import NumpyWindowRegistry
+    # Il print del manifest avveniva dentro i rami numpy/csound: per un tipo
+    # ignoto l'errore arrivava senza print. Parita' preservata col guard.
+    cache_manifest_path = None
+    if renderer_type in ('numpy', 'csound') and kwargs.get('use_cache'):
+        import os as _os
+        yaml_basename = kwargs['yaml_basename']
+        cache_dir = kwargs.get('cache_dir', 'cache')
+        cache_manifest_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
+        print(f"[CACHE] Manifest: {cache_manifest_path}")
 
-        table_map = generator.ftable_manager.get_all_tables()
-        sample_reg = SampleRegistry()
-        window_reg = NumpyWindowRegistry()
-
-        for _, (ftype, name) in table_map.items():
-            if ftype == 'sample':
-                sample_reg.load(name)
-
-        cache_manager = None
-        if kwargs.get('use_cache'):
-            import os as _os
-            from rendering.stream_cache_manager import StreamCacheManager
-            yaml_basename = kwargs['yaml_basename']
-            cache_dir = kwargs.get('cache_dir', 'cache')
-            cache_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
-            cache_manager = StreamCacheManager(cache_path=cache_path)
-            print(f"[CACHE] Manifest: {cache_path}")
-
-        from rendering.audio_format import DEFAULT_FORMAT
-        return RendererFactory.create(
-            'numpy',
-            sample_registry=sample_reg,
-            window_registry=window_reg,
-            table_map=table_map,
-            output_sr=kwargs.get('output_sr', DEFAULT_OUTPUT_SR),
-            cache_manager=cache_manager,
-            stream_data_map=generator.stream_data_map,
-            audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
-            jobs=kwargs.get('jobs', 'auto'),
-        )
-
+    csound_options = None
     if renderer_type == 'csound':
-        csound_config = {
-            'orc_path': kwargs.get('orc_path', 'csound/main.orc'),
-            'env_vars': {
-                'INCDIR': kwargs.get('incdir', 'src'),
-                'SSDIR': kwargs.get('ssdir', 'refs'),
-                'SFDIR': kwargs.get('sfdir', 'output'),
-            },
-            'log_dir': kwargs.get('log_dir', 'logs'),
-            'message_level': kwargs.get('message_level', 134),
-        }
-
-        cache_manager = None
-        if kwargs.get('use_cache'):
-            import os as _os
-            from rendering.stream_cache_manager import StreamCacheManager
-            yaml_basename = kwargs['yaml_basename']
-            cache_dir = kwargs.get('cache_dir', 'cache')
-            cache_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
-            cache_manager = StreamCacheManager(cache_path=cache_path)
-            print(f"[CACHE] Manifest: {cache_path}")
-
-        return RendererFactory.create(
-            'csound',
-            score_writer=generator.score_writer,
-            csound_config=csound_config,
-            cache_manager=cache_manager,
-            stream_data_map=generator.stream_data_map,
+        csound_options = api.CsoundOptions(
+            orc_path=kwargs.get('orc_path', 'csound/main.orc'),
+            incdir=kwargs.get('incdir', 'src'),
+            ssdir=kwargs.get('ssdir', 'refs'),
+            sfdir=kwargs.get('sfdir', 'output'),
+            log_dir=kwargs.get('log_dir', 'logs'),
+            message_level=kwargs.get('message_level', 134),
             sco_dir=kwargs.get('sco_dir'),
         )
 
-    from shared.exceptions import InvalidRendererError
-    raise InvalidRendererError(
-        renderer_type=renderer_type,
-        available=["csound", "numpy"],
+    return api.build_renderer(
+        renderer_type,
+        generator,
+        output_sr=kwargs.get('output_sr', DEFAULT_OUTPUT_SR),
+        jobs=kwargs.get('jobs', 'auto'),
+        audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
+        cache_manifest_path=cache_manifest_path,
+        csound=csound_options,
     )
 
 
@@ -419,9 +383,6 @@ def main():
         print("Generazione streams...")
         generator.create_elements()
 
-        from rendering.rendering_engine import RenderingEngine
-        from rendering.render_mode import StemsRenderMode, MixRenderMode
-
         renderer = _build_renderer(
             renderer_type,
             generator,
@@ -441,56 +402,35 @@ def main():
         )
 
         # Garbage collection: rimuove stream orfani (rimossi/rinominati nel YAML)
-        # Solo in STEMS+CACHE mode: è l'unico caso con build incrementale per stream.
+        # Solo in STEMS+CACHE mode: è l'unico caso con build incrementale per
+        # stream. Il GC va eseguito PRIMA del render (e stampato qui, prima
+        # dei print del render): per questo la CLI lo chiama esplicitamente
+        # e passa run_cache_gc=False ad api.render.
         if per_stream and use_cache:
-            cache_manager = getattr(renderer, 'cache_manager', None)
-            if cache_manager is not None:
-                # Usa TUTTI gli stream_id del YAML, non solo quelli creati:
-                # solo/mute filtra generator.streams, ma gli stem degli stream
-                # esclusi NON sono orfani e il GC non deve cancellarli.
-                all_stream_dicts = (generator.data or {}).get('streams', [])
-                current_ids = [
-                    s['stream_id'] for s in all_stream_dicts if 'stream_id' in s
-                ]
-                removed = cache_manager.garbage_collect(
-                    current_stream_ids=current_ids,
-                    aif_dir=os.path.dirname(os.path.abspath(output_file)),
-                    aif_prefix=yaml_basename,
-                    ext=audio_format.extension,
-                )
-                if removed:
-                    print(f"[CACHE] GC: rimossi {len(removed)} stream orfani: {removed}")
+            removed = api.collect_cache_orphans(
+                generator, renderer, output_file, audio_format=audio_format)
+            if removed:
+                print(f"[CACHE] GC: rimossi {len(removed)} stream orfani: {removed}")
 
-        from rendering.naming_strategy import DefaultNamingStrategy
-        engine = RenderingEngine(renderer, naming_strategy=DefaultNamingStrategy(ext=audio_format.extension))
-        mode = StemsRenderMode() if per_stream else MixRenderMode()
-        import time
-        _render_t0 = time.perf_counter()
-        generated = engine.render(
-            streams=generator.streams,
-            output_path=output_file,
-            mode=mode,
+        result = api.render(
+            generator,
+            output_file,
+            renderer=renderer,
+            per_stream=per_stream,
+            audio_format=audio_format,
+            run_cache_gc=False,
         )
-        _render_dt = time.perf_counter() - _render_t0
+        generated = result.audio_paths
         jobs_note = f" (jobs={renderer.jobs})" if renderer_type == 'numpy' else ""
-        print(f"\n Rendering completato in {_render_dt:.2f}s{jobs_note}")
+        print(f"\n Rendering completato in {result.elapsed_seconds:.2f}s{jobs_note}")
 
         print(f"\n Generazione completata! {len(generated)} file generati:")
         for path in generated:
             print(f"    {path}")
 
         if reaper_export:
-            from export.reaper_project_writer import ReaperProjectWriter
             rpp_out = reaper_path if reaper_path else f"{yaml_basename}.rpp"
-            # In MIX mode generated contiene 1 solo file per N stream:
-            # ogni TRACK punta al mix con onset/duration del proprio stream.
-            n = len(generator.streams)
-            aif_paths = generated if len(generated) == n else [generated[0]] * n
-            ReaperProjectWriter().write(
-                streams=generator.streams,
-                aif_paths=aif_paths,
-                output_path=rpp_out,
-            )
+            api.export_reaper(generator, generated, rpp_out)
             print(f"Reaper project: {rpp_out}")
 
         if export_sv:
@@ -500,43 +440,26 @@ def main():
                 print("[export-sv] ignorato in modalità --per-stream (STEMS): "
                       "v1 supporta solo MIX")
             else:
-                from export.sv_exporter import SVExporter
                 sv_out = sv_path if sv_path else output_file.rsplit('.', 1)[0] + '.sv'
                 audio_for_sv = generated[0] if generated else output_file
-                SVExporter().export(
-                    generator.streams,
-                    audio_path=audio_for_sv,
-                    out_path=sv_out,
-                    layout=sv_layout,
-                )
+                api.export_sv(generator, audio_for_sv, sv_out, layout=sv_layout)
                 print(f"Sonic Visualiser session: {sv_out}")
 
         if grain_json:
             if not per_stream:
                 print("[grain-json] ignorato: richiede --per-stream")
             else:
-                from export.grain_json_writer import GrainJsonWriter
                 # Sidecar accanto agli stem .aif: PGE-ui trova grain JSON e
                 # audio nella stessa directory dell'output STEMS.
                 grain_json_dir = os.path.dirname(os.path.abspath(output_file))
-                writer = GrainJsonWriter()
-                for stream in generator.streams:
-                    # Generazione lazy (issue #117): scrivi il grain JSON solo
-                    # per gli stream i cui grani sono stati davvero materializzati
-                    # dal render. Gli stream cache-clean restano generated=False
-                    # (renderer short-circuita su is_dirty) e mantengono il loro
-                    # grain JSON precedente, ancora valido. Senza cache tutti gli
-                    # stream vengono renderizzati → tutti generated=True → tutti
-                    # i JSON scritti come prima.
-                    if not stream.generated:
-                        continue
-                    json_path = writer.write(stream, grain_json_dir, yaml_basename)
+                for json_path in api.export_grain_json(
+                        generator, grain_json_dir, yaml_basename):
                     print(f"Grain JSON: {json_path}")
 
         if do_visualize:
             print("\nGenerazione partitura grafica...")
             pdf_file = output_file.rsplit('.', 1)[0] + '.pdf'
-            viz = ScoreVisualizer(generator, config={
+            api.export_score_pdf(generator, pdf_file, config={
                 'page_duration': page_duration,
                 'show_static_params': show_static,
                 'show_voice_offsets': show_voice_offsets,
@@ -544,7 +467,6 @@ def main():
                 'magnify_auto': magnify_auto,
                 'magnify_targets': magnify_targets,
             })
-            viz.export_pdf(pdf_file)
 
         print(f"Log: {get_clip_log_path()}")
 
