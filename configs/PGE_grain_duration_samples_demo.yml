@@ -15,10 +15,13 @@ streams:
   - stream_id: "s1_click_train_1sample"
     onset: 0.0
     duration: 4.0
-    sample: "sinus.wav"
-    density: 200.0
+    sample: "pino.wav"
+    density: 20.0
+    pointer:
+      start: .3
+      speed_ratio: 0.03
     grain:
-      duration: 1            # 1 campione = impulso
+      duration: [[0.0, 1], [4.0, 10]]
       duration_unit: samples
       envelope: hamming
 
@@ -29,8 +32,7 @@ streams:
     sample: "sinus.wav"
     density: 40.0
     grain:
-      duration: 512         # ~10.7 ms
-      duration_range: 128   # +-128 campioni, stessa unita'
+      duration: 2         # ~10.7 ms
       duration_unit: samples
       envelope: hanning
 
@@ -44,6 +46,7 @@ streams:
     grain:
       duration: [[0.0, 48], [4.0, 4800]]
       duration_unit: samples
+      duration_range: 30   # +-128 campioni, stessa unita'
       envelope: gaussian
 
   # 4. Controprova retrocompatibile: stessi ~512 campioni ma in secondi.
