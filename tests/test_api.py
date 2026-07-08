@@ -790,3 +790,34 @@ class TestSamplesDirFlow:
 
         cfg = api_mocks['ScoreVisualizer'].call_args.kwargs['config']
         assert 'samples_dir' not in cfg
+
+
+class TestSamplesDirNormalization:
+    """L'API garantisce il separatore finale dove serve la concatenazione
+    base + filename (SampleRegistry, config del visualizer), come faceva
+    engine_bridge di granulation-studies."""
+
+    def test_sample_registry_base_path_gets_trailing_sep(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = {}
+
+        api_mocks['api'].build_renderer('numpy', gen, samples_dir='/campioni')
+
+        sample_reg_cls = sys.modules['pge.rendering.sample_registry'].SampleRegistry
+        sample_reg_cls.assert_called_once_with(base_path='/campioni/')
+
+    def test_export_score_pdf_config_gets_trailing_sep(self, api_mocks):
+        gen = api_mocks['generator_instance']
+
+        api_mocks['api'].export_score_pdf(gen, 'f.pdf', samples_dir='/campioni')
+
+        cfg = api_mocks['ScoreVisualizer'].call_args.kwargs['config']
+        assert cfg['samples_dir'] == '/campioni/'
+
+    def test_ssdir_still_without_trailing_sep(self, api_mocks):
+        """Convenzione csound: SSDIR senza slash finale anche se samples_dir
+        arriva gia' normalizzato."""
+        gen = api_mocks['generator_instance']
+        api_mocks['api'].build_renderer('csound', gen, samples_dir='/campioni')
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['csound_config']['env_vars']['SSDIR'] == '/campioni'

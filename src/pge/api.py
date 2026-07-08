@@ -77,6 +77,15 @@ def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
     return generator
 
 
+def _with_trailing_sep(samples_dir):
+    """Garantisce il separatore finale dove serve la concatenazione
+    base + filename (SampleRegistry, config del visualizer)."""
+    import os
+    if samples_dir and not samples_dir.endswith(('/', os.sep)):
+        return samples_dir + '/'
+    return samples_dir
+
+
 def _make_cache_manager(cache_manifest_path: Optional[str]):
     """StreamCacheManager sul manifest esplicito; None = cache disattiva."""
     if cache_manifest_path is None:
@@ -113,7 +122,7 @@ def build_renderer(
 
         table_map = generator.ftable_manager.get_all_tables()
         if samples_dir is not None:
-            sample_reg = SampleRegistry(base_path=samples_dir)
+            sample_reg = SampleRegistry(base_path=_with_trailing_sep(samples_dir))
         else:
             sample_reg = SampleRegistry()
         window_reg = NumpyWindowRegistry()
@@ -344,7 +353,7 @@ def export_score_pdf(
     if config:
         merged.update(config)
     if samples_dir is not None:
-        merged['samples_dir'] = samples_dir
+        merged['samples_dir'] = _with_trailing_sep(samples_dir)
 
     from pge.rendering.score_visualizer import ScoreVisualizer
 
