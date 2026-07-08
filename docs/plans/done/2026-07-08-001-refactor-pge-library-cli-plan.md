@@ -1,7 +1,7 @@
 ---
 title: "refactor: PGE come libreria installabile `pge` con CLI sottile"
 type: refactor
-status: active
+status: done
 date: 2026-07-08
 issue: null
 ---
