@@ -2011,3 +2011,49 @@ class TestMagnifier:
         cx, cy = (lp.x0 + lp.x1) / 2, (lp.y0 + lp.y1) / 2
         assert cx > (gp.x0 + gp.x1) / 2
         assert cy > (gp.y0 + gp.y1) / 2
+
+
+# =============================================================================
+# TEST config['samples_dir'] (Fase 2 refactor library/CLI)
+# =============================================================================
+
+class TestSamplesDirConfig:
+    """La chiave config 'samples_dir' pilota _load_waveform; assente ->
+    fallback sul globale PATHSAMPLES (parita' col comportamento storico)."""
+
+    def _write_wav(self, directory, name='tone.wav', seconds=2.0):
+        import numpy as np
+        import soundfile as sf
+        import os
+        sf.write(os.path.join(str(directory), name),
+                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+
+    def test_load_waveform_uses_config_samples_dir(self, tmp_path):
+        self._write_wav(tmp_path, seconds=2.0)
+        viz = make_viz([make_stream(sample='tone.wav')],
+                       config={'samples_dir': str(tmp_path) + '/'})
+
+        _, _, duration = viz._load_waveform('tone.wav')
+
+        assert duration == pytest.approx(2.0)
+
+    def test_default_falls_back_to_pathsamples(self, tmp_path, monkeypatch):
+        self._write_wav(tmp_path, seconds=1.0)
+        import rendering.score_visualizer as sv_mod
+        monkeypatch.setattr(sv_mod, 'PATHSAMPLES', str(tmp_path) + '/')
+        viz = make_viz([make_stream(sample='tone.wav')])
+
+        _, _, duration = viz._load_waveform('tone.wav')
+
+        assert duration == pytest.approx(1.0)
+
+    def test_get_sample_duration_follows_samples_dir(self, tmp_path):
+        self._write_wav(tmp_path, seconds=2.0)
+        viz = make_viz([make_stream(sample='tone.wav')],
+                       config={'samples_dir': str(tmp_path) + '/'})
+
+        assert viz._get_sample_duration('tone.wav') == pytest.approx(2.0)
+
+    def test_default_config_key_is_none(self):
+        viz = make_viz([make_stream()])
+        assert viz.config['samples_dir'] is None

@@ -682,3 +682,111 @@ class TestExportScorePdf:
         api_mocks['api'].export_score_pdf(
             api_mocks['generator_instance'], 'score.pdf')
         assert capsys.readouterr().out == ''
+
+
+# =============================================================================
+# samples_dir (Fase 2 refactor library/CLI)
+# =============================================================================
+
+class TestSamplesDirFlow:
+    """samples_dir fluisce da api a Generator / SampleRegistry / SSDIR /
+    export_score_pdf; assente -> parita' col comportamento storico."""
+
+    def test_load_generator_forwards_samples_dir(self, api_mocks):
+        api_mocks['api'].load_generator('test.yml', samples_dir='/campioni/')
+        api_mocks['Generator'].assert_called_once_with(
+            'test.yml', samples_dir='/campioni/')
+
+    def test_load_generator_without_samples_dir_keeps_legacy_call(self, api_mocks):
+        """Senza samples_dir la chiamata resta Generator(yaml): compatibile
+        con firme Generator precedenti (submodule non aggiornati)."""
+        api_mocks['api'].load_generator('test.yml')
+        api_mocks['Generator'].assert_called_once_with('test.yml')
+
+    def test_build_renderer_numpy_injects_sample_registry_base_path(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = {}
+
+        api_mocks['api'].build_renderer('numpy', gen, samples_dir='/campioni/')
+
+        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls.assert_called_once_with(base_path='/campioni/')
+
+    def test_build_renderer_numpy_without_samples_dir_keeps_default(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = {}
+
+        api_mocks['api'].build_renderer('numpy', gen)
+
+        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls.assert_called_once_with()
+
+    def test_csound_ssdir_from_samples_dir_normalized(self, api_mocks):
+        """CsoundOptions.ssdir None -> samples_dir senza slash finale."""
+        gen = api_mocks['generator_instance']
+
+        api_mocks['api'].build_renderer('csound', gen, samples_dir='/campioni/')
+
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['csound_config']['env_vars']['SSDIR'] == '/campioni'
+
+    def test_csound_explicit_ssdir_wins_over_samples_dir(self, api_mocks):
+        api = api_mocks['api']
+        gen = api_mocks['generator_instance']
+
+        api.build_renderer('csound', gen, samples_dir='/campioni/',
+                           csound=api.CsoundOptions(ssdir='/altro/refs'))
+
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['csound_config']['env_vars']['SSDIR'] == '/altro/refs'
+
+    def test_csound_no_samples_dir_falls_back_to_refs(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        api_mocks['api'].build_renderer('csound', gen)
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['csound_config']['env_vars']['SSDIR'] == 'refs'
+
+    def test_render_forwards_samples_dir_to_build(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.streams = []
+        gen.ftable_manager.get_all_tables.return_value = {}
+
+        api_mocks['api'].render(gen, 'out.aif', renderer='numpy',
+                                samples_dir='/campioni/')
+
+        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls.assert_called_once_with(base_path='/campioni/')
+
+    def test_render_file_forwards_samples_dir(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.streams = []
+        gen.ftable_manager.get_all_tables.return_value = {}
+
+        api_mocks['api'].render_file('test.yml', 'out.aif', renderer='numpy',
+                                     samples_dir='/campioni/')
+
+        api_mocks['Generator'].assert_called_once_with(
+            'test.yml', samples_dir='/campioni/')
+        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls.assert_called_once_with(base_path='/campioni/')
+
+    def test_export_score_pdf_injects_samples_dir_in_config(self, api_mocks):
+        gen = api_mocks['generator_instance']
+
+        api_mocks['api'].export_score_pdf(gen, 'score.pdf',
+                                          samples_dir='/campioni/')
+
+        cfg = api_mocks['ScoreVisualizer'].call_args.kwargs['config']
+        assert cfg['samples_dir'] == '/campioni/'
+        assert cfg['page_duration'] == 15.0   # default preservato
+
+    def test_export_score_pdf_without_samples_dir_keeps_cli_config(self, api_mocks):
+        """Senza samples_dir la config resta quella storica della CLI
+        (nessuna chiave samples_dir iniettata: il default None vive nel
+        default_config del visualizer)."""
+        gen = api_mocks['generator_instance']
+
+        api_mocks['api'].export_score_pdf(gen, 'score.pdf')
+
+        cfg = api_mocks['ScoreVisualizer'].call_args.kwargs['config']
+        assert 'samples_dir' not in cfg

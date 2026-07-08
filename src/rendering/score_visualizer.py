@@ -78,6 +78,9 @@ class ScoreVisualizer:
         
         # Configurazione con defaults
         default_config = {
+            # Directory dei sample audio per waveform/durate (Fase 2 refactor
+            # library/CLI). None -> fallback sul globale PATHSAMPLES.
+            'samples_dir': None,
             # Se True, mostra anche i valori costanti
             'show_static_params': False,
             # Se True, disegna gli offset per-voce (voice_pitch_offset /
@@ -232,7 +235,11 @@ class ScoreVisualizer:
         self.config = default_config
         if config:
             self.config.update(config)
-        
+
+        # Directory sample effettiva: config esplicita o fallback globale
+        # (deprecato, mantenuto per compatibilita' coi monkey-patch esterni).
+        self.samples_dir = self.config['samples_dir'] or PATHSAMPLES
+
         # Cache waveform
         self.waveform_cache = {}
 
@@ -396,8 +403,8 @@ class ScoreVisualizer:
         if sample_path in self.waveform_cache:
             return self.waveform_cache[sample_path]
         
-        # Costruisci path completo
-        full_path = PATHSAMPLES + sample_path
+        # Costruisci path completo (samples_dir iniettato o fallback globale)
+        full_path = self.samples_dir + sample_path
         
         try:
             # Carica audio

@@ -485,3 +485,49 @@ class TestPerformance:
         # Con 10k campioni, tolleranza ±2%
         assert 4800 <= true_count <= 5200, \
             f"50% con 10k campioni fuori range: {true_count}/10000"
+
+# =============================================================================
+# TEST get_sample_duration(base_path=...) — iniezione samples_dir (Fase 2
+# refactor library/CLI): base_path esplicito, fallback PATHSAMPLES deprecato
+# =============================================================================
+
+class TestGetSampleDurationBasePath:
+    """base_path esplicito legge dalla directory data; None -> fallback sul
+    globale PATHSAMPLES (monkey-patch esterni ancora efficaci)."""
+
+    def _write_wav(self, directory, name='tone.wav', seconds=1.0):
+        import numpy as np
+        import soundfile as sf
+        path = str(directory / name)
+        sf.write(path, np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+        return path
+
+    def test_reads_from_base_path(self, tmp_path):
+        self._write_wav(tmp_path, seconds=2.0)
+        dur = get_sample_duration('tone.wav', base_path=str(tmp_path))
+        assert dur == pytest.approx(2.0)
+
+    def test_base_path_trailing_slash_equivalent(self, tmp_path):
+        self._write_wav(tmp_path, seconds=1.0)
+        dur = get_sample_duration('tone.wav', base_path=str(tmp_path) + '/')
+        assert dur == pytest.approx(1.0)
+
+    def test_fallback_to_pathsamples_monkeypatch(self, tmp_path, monkeypatch):
+        """Senza base_path il globale (monkey-patchato) resta efficace."""
+        self._write_wav(tmp_path, seconds=1.5)
+        monkeypatch.setattr('shared.utils.PATHSAMPLES', str(tmp_path) + '/')
+        dur = get_sample_duration('tone.wav')
+        assert dur == pytest.approx(1.5)
+
+    def test_search_path_reports_effective_base_path(self, tmp_path):
+        from shared.exceptions import SampleNotFoundError
+        with pytest.raises(SampleNotFoundError) as exc_info:
+            get_sample_duration('missing.wav', base_path=str(tmp_path))
+        assert str(tmp_path) in exc_info.value.search_path
+
+    def test_search_path_default_is_pathsamples(self, tmp_path, monkeypatch):
+        from shared.exceptions import SampleNotFoundError
+        monkeypatch.setattr('shared.utils.PATHSAMPLES', str(tmp_path) + '/')
+        with pytest.raises(SampleNotFoundError) as exc_info:
+            get_sample_duration('missing.wav')
+        assert str(tmp_path) in exc_info.value.search_path

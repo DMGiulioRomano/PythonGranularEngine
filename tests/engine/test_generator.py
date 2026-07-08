@@ -680,7 +680,8 @@ class TestCreateStreams:
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
-        MockStream.assert_called_once_with(stream_data[0], seed=None)
+        MockStream.assert_called_once_with(stream_data[0], seed=None,
+                                           samples_dir=None)
         assert len(gen.streams) == 1
 
     def test_create_streams_passes_seed_to_stream(self, gen):
@@ -693,7 +694,8 @@ class TestCreateStreams:
              patch.object(gen, '_register_stream_windows', return_value={}):
             gen._create_streams(stream_data)
 
-        MockStream.assert_called_once_with(stream_data[0], seed=42)
+        MockStream.assert_called_once_with(stream_data[0], seed=42,
+                                           samples_dir=None)
 
     def test_registers_sample(self, gen):
         """_create_streams registra il sample nel FtableManager."""
@@ -764,7 +766,7 @@ class TestCreateStreams:
         """_create_streams crea piu' stream in sequenza."""
         streams_created = []
 
-        def make_s(data, seed=None):
+        def make_s(data, seed=None, samples_dir=None):
             s = make_mock_stream_for_generator(stream_id=data['stream_id'])
             streams_created.append(s)
             return s
@@ -1346,7 +1348,7 @@ class TestStreamDataMap:
         ]
         with patch('engine.generator.Stream') as MockStream, \
              patch('engine.generator.WindowController'):
-            def make_stream(d, seed=None):
+            def make_stream(d, seed=None, samples_dir=None):
                 m = Mock()
                 m.stream_id = d['stream_id']
                 m.sample = d['sample']
@@ -1495,3 +1497,46 @@ class TestGenerateScoreFilesPerStreamWithCache:
         # Nessun cache_manager passato: nessun AttributeError atteso
         gen.generate_score_files_per_stream()
         # Se arriviamo qui senza eccezioni, il test passa
+
+
+# =============================================================================
+# TEST samples_dir (Fase 2 refactor library/CLI)
+# =============================================================================
+
+class TestGeneratorSamplesDir:
+    """Generator(yaml, samples_dir=...) propaga la directory sample agli
+    Stream creati; default None = comportamento legacy."""
+
+    def _write_scene(self, tmp_path, seconds=2.0):
+        import numpy as np
+        import soundfile as sf
+        sf.write(str(tmp_path / 'tone.wav'),
+                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+        yml = tmp_path / 'scene.yml'
+        yml.write_text(
+            "composition:\n"
+            "  title: samples_dir test\n"
+            "seed: 42\n"
+            "streams:\n"
+            "  - stream_id: s1\n"
+            "    onset: 0.0\n"
+            "    duration: 1.0\n"
+            "    sample: tone.wav\n"
+        )
+        return str(yml)
+
+    def test_samples_dir_propagated_to_streams(self, tmp_path):
+        yml = self._write_scene(tmp_path, seconds=2.0)
+
+        Generator = _get_generator_class()
+        g = Generator(yml, samples_dir=str(tmp_path))
+        g.load_yaml()
+        g.create_elements()
+
+        assert len(g.streams) == 1
+        assert g.streams[0].sample_dur_sec == pytest.approx(2.0)
+
+    def test_default_samples_dir_is_none(self):
+        Generator = _get_generator_class()
+        g = Generator('whatever.yml')
+        assert g.samples_dir is None

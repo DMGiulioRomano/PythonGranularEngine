@@ -46,14 +46,18 @@ class Generator:
         score_writer: scrittore file score
     """
     
-    def __init__(self, yaml_path: str):
+    def __init__(self, yaml_path: str, samples_dir=None):
         """
         Inizializza il Generator.
-        
+
         Args:
             yaml_path: percorso file YAML di configurazione
+            samples_dir: directory dei sample audio, propagata agli Stream
+                (Fase 2 refactor library/CLI). None (default) → fallback
+                sul globale PATHSAMPLES (comportamento legacy).
         """
         self.yaml_path = yaml_path
+        self.samples_dir = samples_dir
         self.data: Dict[str, Any] = None
         self.streams: List[Stream] = []
         # Seed di riproducibilità (issue #81/#154): popolato da load_yaml dalla
@@ -241,7 +245,8 @@ class Generator:
             #import json
             #print(f"[DEBUG] PRIMA Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
 
-            stream = Stream(stream_data, seed=self.seed)
+            stream = Stream(stream_data, seed=self.seed,
+                            samples_dir=self.samples_dir)
             #print(f"[DEBUG] DOPO  Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
             self.stream_data_map[stream_data['stream_id']] = stream_data
             # 2. Registra ftable sample

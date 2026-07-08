@@ -1313,3 +1313,47 @@ class TestStreamParametrized:
         s.generate_grains()
 
         assert len(s.voices) == max_voices
+
+# =============================================================================
+# 16. TEST samples_dir (Fase 2 refactor library/CLI)
+# =============================================================================
+
+class TestStreamSamplesDir:
+    """Stream(params, samples_dir=...) risolve il sample dalla directory
+    data invece del globale PATHSAMPLES; default None = comportamento legacy."""
+
+    def _write_wav(self, directory, name='tone.wav', seconds=2.0):
+        import numpy as np
+        import soundfile as sf
+        sf.write(str(directory / name),
+                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+
+    def test_samples_dir_resolves_sample_from_custom_dir(self, tmp_path):
+        self._write_wav(tmp_path, seconds=2.0)
+        params = _minimal_yaml_params(sample='tone.wav')
+
+        s = Stream(params, samples_dir=str(tmp_path))
+
+        assert s.sample_dur_sec == pytest.approx(2.0)
+
+    def test_default_none_uses_pathsamples_fallback(self, tmp_path, monkeypatch):
+        """Senza samples_dir vale il globale (parita' col comportamento
+        storico, monkey-patch ancora efficace)."""
+        self._write_wav(tmp_path, seconds=1.0)
+        monkeypatch.setattr('shared.utils.PATHSAMPLES', str(tmp_path) + '/')
+        params = _minimal_yaml_params(sample='tone.wav')
+
+        s = Stream(params)
+
+        assert s.sample_dur_sec == pytest.approx(1.0)
+
+    def test_missing_sample_reports_custom_search_path(self, tmp_path):
+        from shared.exceptions import SampleNotFoundError
+        params = _minimal_yaml_params(sample='missing.wav')
+
+        with pytest.raises(SampleNotFoundError) as exc_info:
+            Stream(params, samples_dir=str(tmp_path))
+
+        err = exc_info.value
+        assert str(tmp_path) in err.search_path
+        assert err.stream_id == 'test_stream'

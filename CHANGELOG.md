@@ -19,6 +19,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   moduli pesanti. `main.py` diventa shell sottile che delega l'orchestrazione
   all'API; la CLI resta invariata (stessi flag, stessi messaggi stdout,
   stessi exit code — garantito dai golden test `tests/test_cli_contract.py`).
+- Iniezione `samples_dir` (Fase 2 del refactor library/CLI): parametro
+  esplicito su `get_sample_duration(base_path=)`, `Stream(samples_dir=)`,
+  `Generator(samples_dir=)`, chiave config `samples_dir` di `ScoreVisualizer`
+  e parametro `samples_dir` nelle funzioni API (`load_generator`,
+  `build_renderer`, `render`, `render_file`, `export_score_pdf`; per csound
+  risolve `SSDIR` se `CsoundOptions.ssdir` è `None`). I globali `PATHSAMPLES`
+  restano come fallback deprecato: i monkey-patch esterni continuano a
+  funzionare durante la transizione. CLI invariata (default `./refs/`).
 - Multi-voice: nuova strategy pitch `chord_progression` (issue #86) — progressioni
   armoniche in cui l'accordo è funzione del tempo (envelope di accordi). Per ogni
   voce si costruisce un `Envelope` di offset in semitoni interpolato tra i voicing

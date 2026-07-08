@@ -83,7 +83,7 @@ class Stream:
         grains: List[Grain] - lista flattened (backward compatibility)
     """
     
-    def __init__(self, params: dict, seed=None):
+    def __init__(self, params: dict, seed=None, samples_dir=None):
         """
         Inizializza lo stream dai parametri YAML.
 
@@ -95,10 +95,16 @@ class Stream:
                   (parameter/gate/iot/window/detune). None (default) →
                   comportamento legacy (hash() per-voce, random globale
                   per i componenti).
+            samples_dir: directory dei sample audio (Fase 2 refactor
+                  library/CLI). None (default) → fallback sul globale
+                  PATHSAMPLES (comportamento legacy).
         """
         # Seed di riproducibilità: iniettato nelle strategy stocastiche in
         # _init_voice_manager e in StreamConfig per gli RNG per-componente.
         self.seed = seed
+        # Directory sample iniettata: usata nei due call-site di
+        # get_sample_duration (qui e in _init_stream_context).
+        self.samples_dir = samples_dir
         # === 3. CONFIGURATION ===
         sample = params.get('sample')
         stream_id = params.get('stream_id', 'unknown')
@@ -110,7 +116,7 @@ class Stream:
             err.stream_id = stream_id
             raise err
         try:
-            sample_dur = get_sample_duration(sample)
+            sample_dur = get_sample_duration(sample, base_path=samples_dir)
         except SampleNotFoundError as err:
             err.stream_id = stream_id
             raise
@@ -175,7 +181,10 @@ class Stream:
         self._check_required_context_fields(params, params.get('stream_id', 'unknown'))
         for key in self._required_context_fields():
             setattr(self, key, params[key])
-        self.sample_dur_sec = get_sample_duration(self.sample)
+        # getattr: il metodo e' esercitato nei test anche su istanze create
+        # con object.__new__ (bypass di __init__), dove samples_dir manca.
+        self.sample_dur_sec = get_sample_duration(
+            self.sample, base_path=getattr(self, 'samples_dir', None))
 
     def _init_stream_parameters(self, params: dict, config: StreamConfig) -> None:
         """

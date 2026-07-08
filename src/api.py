@@ -52,8 +52,14 @@ class RenderResult:
     gc_removed: List[str] = field(default_factory=list)  # stream orfani rimossi dal GC
 
 
-def load_generator(yaml_path: str):
+def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
     """Generator(yaml) + load_yaml() + create_elements().
+
+    Args:
+        samples_dir: directory dei sample audio; None -> default storico
+            ('./refs/', via fallback PATHSAMPLES). Quando None la chiamata
+            resta Generator(yaml): compatibile con firme Generator
+            precedenti (submodule non ancora aggiornati).
 
     Raises:
         FileNotFoundError, yaml.YAMLError, EngineError (SampleNotFoundError,
@@ -62,7 +68,10 @@ def load_generator(yaml_path: str):
     """
     from engine.generator import Generator
 
-    generator = Generator(yaml_path)
+    if samples_dir is not None:
+        generator = Generator(yaml_path, samples_dir=samples_dir)
+    else:
+        generator = Generator(yaml_path)
     generator.load_yaml()
     generator.create_elements()
     return generator
@@ -83,6 +92,7 @@ def build_renderer(
     output_sr: int = DEFAULT_OUTPUT_SR,
     jobs: Union[int, str] = 1,                   # 1 = default API; 'auto' e' policy CLI
     audio_format=DEFAULT_FORMAT,
+    samples_dir: Optional[str] = None,           # -> SampleRegistry(base_path=...)/SSDIR
     cache_manifest_path: Optional[str] = None,   # None = cache disattiva
     csound: Optional[CsoundOptions] = None,      # None -> CsoundOptions() se serve
 ):
@@ -102,7 +112,10 @@ def build_renderer(
         from rendering.numpy_window_registry import NumpyWindowRegistry
 
         table_map = generator.ftable_manager.get_all_tables()
-        sample_reg = SampleRegistry()
+        if samples_dir is not None:
+            sample_reg = SampleRegistry(base_path=samples_dir)
+        else:
+            sample_reg = SampleRegistry()
         window_reg = NumpyWindowRegistry()
 
         for _, (ftype, name) in table_map.items():
@@ -123,7 +136,14 @@ def build_renderer(
 
     if renderer_type == 'csound':
         opts = csound if csound is not None else CsoundOptions()
-        ssdir = opts.ssdir if opts.ssdir is not None else 'refs'
+        # SSDIR: opzione esplicita > samples_dir (senza slash finale,
+        # convenzione csound) > default storico 'refs'
+        if opts.ssdir is not None:
+            ssdir = opts.ssdir
+        elif samples_dir is not None:
+            ssdir = samples_dir.rstrip('/')
+        else:
+            ssdir = 'refs'
         csound_config = {
             'orc_path': opts.orc_path,
             'env_vars': {
@@ -195,6 +215,7 @@ def render(
     # forward a build_renderer quando renderer e' una stringa:
     output_sr: int = DEFAULT_OUTPUT_SR,
     jobs: Union[int, str] = 1,
+    samples_dir: Optional[str] = None,
     cache_manifest_path: Optional[str] = None,
     csound: Optional[CsoundOptions] = None,
 ) -> RenderResult:
@@ -213,6 +234,7 @@ def render(
             output_sr=output_sr,
             jobs=jobs,
             audio_format=audio_format,
+            samples_dir=samples_dir,
             cache_manifest_path=cache_manifest_path,
             csound=csound,
         )
@@ -266,6 +288,7 @@ def render_file(
     output_sr: int = DEFAULT_OUTPUT_SR,
     jobs: Union[int, str] = 1,
     audio_format=DEFAULT_FORMAT,                 # AudioFormat | str (lookup FORMATS)
+    samples_dir: Optional[str] = None,
     cache_manifest_path: Optional[str] = None,
     csound: Optional[CsoundOptions] = None,
 ) -> RenderResult:
@@ -282,7 +305,7 @@ def render_file(
             )
         audio_format = FORMATS[audio_format]
 
-    generator = load_generator(yaml_path)
+    generator = load_generator(yaml_path, samples_dir=samples_dir)
     return render(
         generator,
         output_path,
@@ -291,6 +314,7 @@ def render_file(
         audio_format=audio_format,
         output_sr=output_sr,
         jobs=jobs,
+        samples_dir=samples_dir,
         cache_manifest_path=cache_manifest_path,
         csound=csound,
     )
@@ -301,10 +325,13 @@ def export_score_pdf(
     pdf_path: str,
     *,
     config: Optional[dict] = None,     # merge sui default equivalenti alla CLI
+    samples_dir: Optional[str] = None, # -> config['samples_dir'] del visualizer
 ) -> str:
     """Esporta la partitura grafica in PDF; ritorna pdf_path.
 
     I default di config sono identici a quelli della CLI (main.py).
+    samples_dir, se dato, entra come chiave config del visualizer (il cui
+    default None mantiene il fallback storico su PATHSAMPLES).
     """
     merged = {
         'page_duration': 15.0,
@@ -316,6 +343,8 @@ def export_score_pdf(
     }
     if config:
         merged.update(config)
+    if samples_dir is not None:
+        merged['samples_dir'] = samples_dir
 
     from rendering.score_visualizer import ScoreVisualizer
 
