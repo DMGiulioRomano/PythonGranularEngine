@@ -31,7 +31,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   (`-e .[dev]`); `pge.__version__` via `importlib.metadata` con fallback
   per l'uso da repository. Pubblicazione su PyPI fuori scope.
 - API programmatica `src/api.py` (Fase 1 del refactor library/CLI,
-  `docs/plans/2026-07-08-001-refactor-pge-library-cli-plan.md`): funzioni
+  `docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md`): funzioni
   `load_generator`, `build_renderer`, `collect_cache_orphans`, `render`,
   `render_file`, `export_score_pdf`, `export_reaper`, `export_sv`,
   `export_grain_json` e dataclass `CsoundOptions`/`RenderResult`. Contratto:
@@ -39,6 +39,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   moduli pesanti. `main.py` diventa shell sottile che delega l'orchestrazione
   all'API; la CLI resta invariata (stessi flag, stessi messaggi stdout,
   stessi exit code — garantito dai golden test `tests/test_cli_contract.py`).
+  `render_file` espone `run_cache_gc` (default `True`): il GC degli stem
+  orfani in STEMS+cache e' rifiutabile anche dalla one-shot API. I renderer
+  dichiarano il proprio tipo con l'attributo di classe
+  `AudioRenderer.renderer_type` (`'numpy'`/`'csound'`, base `'unknown'`),
+  riportato da `api.render` in `RenderResult.renderer_type` al posto
+  dell'euristica sul nome della classe.
 - Iniezione `samples_dir` (Fase 2 del refactor library/CLI): parametro
   esplicito su `get_sample_duration(base_path=)`, `Stream(samples_dir=)`,
   `Generator(samples_dir=)`, chiave config `samples_dir` di `ScoreVisualizer`
