@@ -21,9 +21,9 @@ Coverage:
 
 import pytest
 import math
-from controllers.pitch_controller import PitchController
-from envelopes.envelope import Envelope
-from shared.exceptions import InvalidFieldValueError
+from pge.controllers.pitch_controller import PitchController
+from pge.envelopes.envelope import Envelope
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 def _pc(mock_config, params):
@@ -342,7 +342,7 @@ class TestEdgeCases:
 
     def test_cents_beyond_three_octaves_raises(self, mock_config):
         # strict validation: 5000 cents > 3600 (bound EDO 1200) → errore
-        from shared.exceptions import ParameterBoundError
+        from pge.shared.exceptions import ParameterBoundError
         with pytest.raises(ParameterBoundError):
             _pc(mock_config, {'cents': 5000.0})
 

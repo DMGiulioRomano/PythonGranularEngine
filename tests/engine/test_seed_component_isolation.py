@@ -27,18 +27,18 @@ import pytest
 import yaml
 from unittest.mock import patch
 
-from engine.generator import Generator
-from core.stream_config import StreamConfig, StreamContext
-from shared.distribution_strategy import DistributionFactory
-from shared.probability_gate import AlwaysGate, RandomGate, EnvelopeGate
-from controllers.density_controller import DensityController
-from controllers.window_selection_strategy import (
+from pge.engine.generator import Generator
+from pge.core.stream_config import StreamConfig, StreamContext
+from pge.shared.distribution_strategy import DistributionFactory
+from pge.shared.probability_gate import AlwaysGate, RandomGate, EnvelopeGate
+from pge.controllers.density_controller import DensityController
+from pge.controllers.window_selection_strategy import (
     RandomWindowStrategy,
     TransitionWindowStrategy,
     MultiStateWindowStrategy,
 )
-from envelopes.envelope import Envelope
-from parameters.parser import GranularParser
+from pge.envelopes.envelope import Envelope
+from pge.parameters.parser import GranularParser
 
 
 # =============================================================================
@@ -81,7 +81,7 @@ def _render_streams(tmp_path, yaml_data, filename='iso.yml'):
     cfg.write_text(yaml.safe_dump(yaml_data))
     gen = Generator(str(cfg))
     gen.load_yaml()
-    with patch('core.stream.get_sample_duration', return_value=10.0):
+    with patch('pge.core.stream.get_sample_duration', return_value=10.0):
         gen.create_elements()
         for s in gen.streams:
             _ = s.grains  # materializza (lazy)
@@ -169,7 +169,7 @@ class TestLazyOrderInvariance:
         cfg.write_text(yaml.safe_dump(data))
         gen_a = Generator(str(cfg))
         gen_a.load_yaml()
-        with patch('core.stream.get_sample_duration', return_value=10.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen_a.create_elements()
             _ = gen_a.streams[0].grains  # s1 prima
             _ = gen_a.streams[1].grains
@@ -178,7 +178,7 @@ class TestLazyOrderInvariance:
         cfg_b.write_text(yaml.safe_dump(data))
         gen_b = Generator(str(cfg_b))
         gen_b.load_yaml()
-        with patch('core.stream.get_sample_duration', return_value=10.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen_b.create_elements()
             _ = gen_b.streams[1].grains  # s2 prima (come con s1 cache-clean)
             _ = gen_b.streams[0].grains
@@ -296,9 +296,9 @@ class TestImplicitDetuneRng:
 
     def test_detune_deterministic_with_injected_rng(self):
         """Il detune implicito EDO (issue #95) usa l'RNG iniettato."""
-        from strategies.strategie import UnitPitchStrategy
-        from parameters.pitch_unit import make_pitch_unit
-        from parameters.parameter import Parameter
+        from pge.strategies.strategie import UnitPitchStrategy
+        from pge.parameters.pitch_unit import make_pitch_unit
+        from pge.parameters.parameter import Parameter
 
         unit = make_pitch_unit({'edo': 12})
 
@@ -383,7 +383,7 @@ class TestSessionSeedGenerator:
     def test_no_seed_generates_session_seed(self, tmp_path, capsys):
         """Senza `seed:` il Generator genera un seed di sessione e lo logga."""
         gen = self._make_generator(tmp_path, _yaml_data([_stream_dict('s1')], seed=None))
-        with patch('core.stream.get_sample_duration', return_value=10.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen.create_elements()
         assert isinstance(gen.seed, int)
         assert gen.seed_is_session is True
@@ -394,7 +394,7 @@ class TestSessionSeedGenerator:
     def test_explicit_seed_is_not_session(self, tmp_path, capsys):
         """Con `seed:` esplicito nessun session seed viene generato."""
         gen = self._make_generator(tmp_path, _yaml_data([_stream_dict('s1')], seed=42))
-        with patch('core.stream.get_sample_duration', return_value=10.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen.create_elements()
         assert gen.seed == 42
         assert gen.seed_is_session is False
@@ -406,14 +406,14 @@ class TestSessionSeedGenerator:
         gen1 = self._make_generator(
             tmp_path, _yaml_data([_stream_dict('s1')], seed=None), 'run1.yml'
         )
-        with patch('core.stream.get_sample_duration', return_value=10.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen1.create_elements()
             sig1 = _signature_of(gen1, 's1')
 
         gen2 = self._make_generator(
             tmp_path, _yaml_data([_stream_dict('s1')], seed=gen1.seed), 'run2.yml'
         )
-        with patch('core.stream.get_sample_duration', return_value=10.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen2.create_elements()
             sig2 = _signature_of(gen2, 's1')
 

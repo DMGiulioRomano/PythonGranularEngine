@@ -27,13 +27,13 @@ Organizzazione:
 import pytest
 from dataclasses import fields, FrozenInstanceError
 
-from parameters.parameter_definitions import (
+from pge.parameters.parameter_definitions import (
     ParameterBounds,
     DEFAULT_PROB,
     GRANULAR_PARAMETERS,
     get_parameter_definition,
 )
-from parameters.parameter import Parameter
+from pge.parameters.parameter import Parameter
 
 
 # =============================================================================
@@ -783,7 +783,7 @@ class TestIntegrationWithParameterSchema:
     def test_stream_schema_params_have_bounds(self):
         """Ogni parametro nello STREAM schema ha bounds definiti."""
         try:
-            from parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
+            from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
             for spec in STREAM_PARAMETER_SCHEMA:
                 if spec.is_smart:
                     assert spec.name in GRANULAR_PARAMETERS, (
@@ -794,7 +794,7 @@ class TestIntegrationWithParameterSchema:
 
     def test_pointer_schema_params_have_bounds(self):
         try:
-            from parameters.parameter_schema import POINTER_PARAMETER_SCHEMA
+            from pge.parameters.parameter_schema import POINTER_PARAMETER_SCHEMA
             for spec in POINTER_PARAMETER_SCHEMA:
                 if spec.is_smart:
                     assert spec.name in GRANULAR_PARAMETERS, (
@@ -805,7 +805,7 @@ class TestIntegrationWithParameterSchema:
 
     def test_pitch_schema_params_have_bounds(self):
         try:
-            from parameters.parameter_schema import PITCH_PARAMETER_SCHEMA
+            from pge.parameters.parameter_schema import PITCH_PARAMETER_SCHEMA
             for spec in PITCH_PARAMETER_SCHEMA:
                 if spec.is_smart:
                     assert spec.name in GRANULAR_PARAMETERS, (
@@ -816,7 +816,7 @@ class TestIntegrationWithParameterSchema:
 
     def test_density_schema_params_have_bounds(self):
         try:
-            from parameters.parameter_schema import DENSITY_PARAMETER_SCHEMA
+            from pge.parameters.parameter_schema import DENSITY_PARAMETER_SCHEMA
             for spec in DENSITY_PARAMETER_SCHEMA:
                 if spec.is_smart:
                     assert spec.name in GRANULAR_PARAMETERS, (

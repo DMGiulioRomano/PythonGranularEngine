@@ -8,6 +8,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Modificato (breaking)
+
+- **Import path**: i nove package flat (`core`, `engine`, `rendering`,
+  `parameters`, `controllers`, `envelopes`, `strategies`, `export`, `shared`)
+  e il modulo `api` vivono ora sotto il package `pge` (Fase 3 del refactor
+  library/CLI): `from rendering.x import ...` diventa
+  `from pge.rendering.x import ...`, `import api` diventa `from pge import
+  api`. Il contenuto di `main.py` e' ora `pge/cli.py`. **La CLI e' invariata**:
+  `python src/main.py` resta lo shim ufficiale (stessi flag, stesso stdout,
+  stessi exit code — golden test `tests/test_cli_contract.py` passati
+  invariati), Makefile e test e2e non cambiano. Script di migrazione
+  ripetibile: `utils/rename_to_pge.py`.
+
 ### Aggiunto
 
 - API programmatica `src/api.py` (Fase 1 del refactor library/CLI,

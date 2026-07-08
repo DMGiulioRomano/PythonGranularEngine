@@ -4,8 +4,8 @@ type: explanation
 status: stable
 tags: [voices, strategy, dmx-1000, granular]
 sources:
-  - src/strategies/
-  - src/core/stream.py
+  - src/pge/strategies/
+  - src/pge/core/stream.py
 last_synced_commit: e829fc1
 ---
 
@@ -41,9 +41,9 @@ Vedi [Architettura](#2-architettura) per il modello completo, [Componenti princi
 
 ## Implicazioni codice
 
-- `src/strategies/` — un file per strategy + factory per asse
-- `src/core/stream.py` — `_init_voice_manager`, `_parse_strategy_kwarg` (envelope auto-detect)
-- `src/core/voice_manager.py` — `VoiceManager`, `VoiceConfig`
+- `src/pge/strategies/` — un file per strategy + factory per asse
+- `src/pge/core/stream.py` — `_init_voice_manager`, `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/pge/core/voice_manager.py` — `VoiceManager`, `VoiceConfig`
 - Estensione: vedi [[add-voice-strategy]]
 - Errori specifici: `StrategyNotFoundError`, `InvalidStrategyConfigError` (vedi [[errors]])
 
@@ -139,7 +139,7 @@ Stream.generate_grains()
 
 ### 3.1 VoiceManager
 
-**File:** `src/controllers/voice_manager.py`
+**File:** `src/pge/controllers/voice_manager.py`
 
 Orchestratore centrale. Compone le quattro strategie e calcola `VoiceConfig` on-the-fly per ogni grain al tempo reale della voce.
 
@@ -193,7 +193,7 @@ Dataclass **immutabile** (`frozen=True`). Voce 0 è sempre `VoiceConfig(1.0, 0.0
 
 ### 3.3 Strategie Pitch
 
-**File:** `src/strategies/voice_pitch_strategy.py`
+**File:** `src/pge/strategies/voice_pitch_strategy.py`
 
 ```python
 class VoicePitchStrategy(ABC):
@@ -354,7 +354,7 @@ stream_id="pad", range=0.5, 4 voci → es. [0.0, +0.31, -0.18, +0.47]
 
 ### 3.4 Strategie Onset
 
-**File:** `src/strategies/voice_onset_strategy.py`
+**File:** `src/pge/strategies/voice_onset_strategy.py`
 
 ```python
 class VoiceOnsetStrategy(ABC):
@@ -434,7 +434,7 @@ stream_id="pad", max_offset=0.1, 4 voci → es. [0.0, 0.073, 0.021, 0.089]
 
 ### 3.5 Strategie Pointer
 
-**File:** `src/strategies/voice_pointer_strategy.py`
+**File:** `src/pge/strategies/voice_pointer_strategy.py`
 
 ```python
 class VoicePointerStrategy(ABC):
@@ -503,7 +503,7 @@ Con `range` piccolo (0.01–0.05) le voci rimangono nella stessa zona del sample
 
 ### 3.6 Strategie Pan
 
-**File:** `src/strategies/voice_pan_strategy.py`
+**File:** `src/pge/strategies/voice_pan_strategy.py`
 
 ```python
 class VoicePanStrategy(ABC):
@@ -574,7 +574,7 @@ step=15, 4 voci → [0, 15, 30, 45]
 
 ### Parsing YAML → `_init_voice_manager()`
 
-`src/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`:
+`src/pge/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`:
 
 ```python
 def _init_voice_manager(self, params: dict) -> None:

@@ -19,7 +19,7 @@ import random
 
 import pytest
 
-from shared.seeding import voice_rng, component_rng, session_seed
+from pge.shared.seeding import voice_rng, component_rng, session_seed
 
 
 # =============================================================================

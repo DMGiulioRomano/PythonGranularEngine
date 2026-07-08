@@ -52,15 +52,15 @@ def _f(semitones: float) -> float:
 # =============================================================================
 
 def _get_module():
-    from controllers.voice_manager import VoiceConfig, VoiceManager
+    from pge.controllers.voice_manager import VoiceConfig, VoiceManager
     return VoiceConfig, VoiceManager
 
 
 def _get_strategies():
-    from strategies.voice_pitch_strategy import StepPitchStrategy
-    from strategies.voice_onset_strategy import LinearOnsetStrategy
-    from strategies.voice_pointer_strategy import LinearPointerStrategy
-    from strategies.voice_pan_strategy import RangePanStrategy, StepPanStrategy
+    from pge.strategies.voice_pitch_strategy import StepPitchStrategy
+    from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
+    from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
+    from pge.strategies.voice_pan_strategy import RangePanStrategy, StepPanStrategy
     return StepPitchStrategy, LinearOnsetStrategy, LinearPointerStrategy, RangePanStrategy, StepPanStrategy
 
 
@@ -370,7 +370,7 @@ class TestVoiceManagerTimeVarying:
         """StepPitchStrategy(Envelope) → fattore diverso a t=0 e t=1."""
         _, VoiceManager = _get_module()
         StepPitchStrategy, *_ = _get_strategies()
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0, 0], [1, 12]])
         vm = VoiceManager(max_voices=4, pitch_strategy=StepPitchStrategy(step=env))
         factor_t0 = vm.get_voice_config(1, 0.0).pitch_factor
@@ -382,7 +382,7 @@ class TestVoiceManagerTimeVarying:
     def test_onset_offset_varies_with_time_when_envelope(self):
         _, VoiceManager = _get_module()
         _, LinearOnsetStrategy, *_ = _get_strategies()
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0, 0], [1, 1.0]])
         vm = VoiceManager(max_voices=4, onset_strategy=LinearOnsetStrategy(step=env))
         offset_t0 = vm.get_voice_config(1, 0.0).onset_offset
@@ -393,7 +393,7 @@ class TestVoiceManagerTimeVarying:
         """spread della pan strategy come Envelope → pan_offset varia con time."""
         _, VoiceManager = _get_module()
         _, _, _, RangePanStrategy, _ = _get_strategies()
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         spread_env = Envelope([[0, 0], [1, 120]])
         vm = VoiceManager(
             max_voices=4,
@@ -435,7 +435,7 @@ class TestEdgeCases:
     def test_chord_strategy_with_voice_manager(self):
         """Integrazione ChordPitchStrategy con VoiceManager."""
         _, VoiceManager = _get_module()
-        from strategies.voice_pitch_strategy import ChordPitchStrategy
+        from pge.strategies.voice_pitch_strategy import ChordPitchStrategy
         vm = VoiceManager(max_voices=4, pitch_strategy=ChordPitchStrategy(chord="dom7"))
         assert vm.get_voice_config(0, 0.0).pitch_factor == 1.0
         assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
@@ -444,7 +444,7 @@ class TestEdgeCases:
 
     def test_stochastic_pitch_with_voice_manager(self):
         _, VoiceManager = _get_module()
-        from strategies.voice_pitch_strategy import StochasticPitchStrategy
+        from pge.strategies.voice_pitch_strategy import StochasticPitchStrategy
         s = StochasticPitchStrategy(pitch_range=2.0, stream_id="test")
         vm = VoiceManager(max_voices=4, pitch_strategy=s)
         assert vm.get_voice_config(0, 0.0).pitch_factor == 1.0

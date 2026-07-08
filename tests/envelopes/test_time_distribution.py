@@ -10,7 +10,7 @@ Coverage:
 """
 
 import pytest
-from envelopes.time_distribution import (
+from pge.envelopes.time_distribution import (
     TimeDistributionFactory,
     LinearDistribution,
     ExponentialDistribution,

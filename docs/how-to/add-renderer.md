@@ -4,8 +4,8 @@ type: how-to
 status: stable
 tags: [renderer, ocp, extension]
 sources:
-  - src/rendering/renderer_factory.py
-  - src/rendering/audio_renderer.py
+  - src/pge/rendering/renderer_factory.py
+  - src/pge/rendering/audio_renderer.py
 last_synced_commit: 8c896d8
 entry_for: [add-renderer]
 ---
@@ -24,9 +24,9 @@ Devi sostituire o affiancare i renderer Csound / NumPy con un backend audio nuov
 
 ## Passi
 
-1. Crea il modulo in `src/rendering/<nome>_renderer.py` ed eredita `AudioRenderer`
+1. Crea il modulo in `src/pge/rendering/<nome>_renderer.py` ed eredita `AudioRenderer`
 2. Implementa `render_single_stream(stream, output_path)` e `render_merged_streams(streams, output_path)`
-3. Registra in `src/rendering/renderer_factory.py` aggiungendo entry a `REGISTRY`
+3. Registra in `src/pge/rendering/renderer_factory.py` aggiungendo entry a `REGISTRY`
 4. Niente da modificare in `main.py` (OCP)
 5. Aggiungi test unit + e2e per il nuovo renderer
 
@@ -34,8 +34,8 @@ Devi sostituire o affiancare i renderer Csound / NumPy con un backend audio nuov
 
 | Path | Tipo |
 |------|------|
-| `src/rendering/<nome>_renderer.py` | nuovo file |
-| `src/rendering/renderer_factory.py` | aggiunta a REGISTRY |
+| `src/pge/rendering/<nome>_renderer.py` | nuovo file |
+| `src/pge/rendering/renderer_factory.py` | aggiunta a REGISTRY |
 | `tests/rendering/test_<nome>_renderer.py` | nuovi test |
 
 ## Test da aggiornare

@@ -22,7 +22,7 @@ Coverage:
 import pytest
 import numpy as np
 
-from rendering.numpy_window_registry import NumpyWindowRegistry
+from pge.rendering.numpy_window_registry import NumpyWindowRegistry
 
 
 # =============================================================================

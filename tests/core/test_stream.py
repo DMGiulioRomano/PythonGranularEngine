@@ -31,8 +31,8 @@ import pytest
 import math
 from unittest.mock import Mock, patch, MagicMock, PropertyMock, call
 from dataclasses import dataclass
-from core.stream_config import StreamContext, StreamConfig
-from core.stream import Stream
+from pge.core.stream_config import StreamContext, StreamConfig
+from pge.core.stream import Stream
 
 
 # =============================================================================
@@ -86,7 +86,7 @@ def _make_mock_density(inter_onset=0.1):
 
 def _make_mock_voice_manager(max_voices=1):
     """Crea un mock VoiceManager compatibile con la nuova interfaccia VoiceConfig."""
-    from controllers.voice_manager import VoiceConfig
+    from pge.controllers.voice_manager import VoiceConfig
     vm = Mock()
     vm.max_voices = max_voices
     # get_voice_config(voice_index, time) → VoiceConfig(0,0,0,0) per tutti
@@ -197,7 +197,7 @@ def stream_factory():
 
         # Clip strategy: passthrough per test (preserva semantiche pre-U2).
         # Test specifici per clipping iniettano la strategy esplicitamente.
-        from strategies.grain_clip_strategy import PassthroughClipStrategy
+        from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
         s._clip_strategy = PassthroughClipStrategy()
 
         # Stato
@@ -226,7 +226,7 @@ class TestInitStreamContext:
         s2 = object.__new__(Stream)
         params = _minimal_yaml_params()
 
-        with patch('core.stream.get_sample_duration', return_value=5.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
             s2._init_stream_context(params)
 
         assert s2.stream_id == 'test_stream'
@@ -242,7 +242,7 @@ class TestInitStreamContext:
         params = {'onset': 0.0, 'duration': 1.0, 'sample': 'test.wav'}
         # Manca stream_id
 
-        with patch('core.stream.get_sample_duration', return_value=5.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
             with pytest.raises(ValueError, match="Campo obbligatorio mancante"):
                 s._init_stream_context(params)
 
@@ -253,7 +253,7 @@ class TestInitStreamContext:
         params = {'sample': 'test.wav'}
         # Mancano stream_id, onset, duration
 
-        with patch('core.stream.get_sample_duration', return_value=5.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
             with pytest.raises(ValueError, match="Campi obbligatori mancanti"):
                 s._init_stream_context(params)
 
@@ -262,7 +262,7 @@ class TestInitStreamContext:
         
         s = object.__new__(Stream)
 
-        with patch('core.stream.get_sample_duration', return_value=5.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
             with pytest.raises(ValueError):
                 s._init_stream_context({})
 
@@ -274,7 +274,7 @@ class TestInitStreamContext:
         params['extra_field'] = 'ignored'
         params['another'] = 42
 
-        with patch('core.stream.get_sample_duration', return_value=5.0):
+        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
             s._init_stream_context(params)
 
         assert s.stream_id == 'test_stream'
@@ -286,7 +286,7 @@ class TestInitStreamContext:
         s = object.__new__(Stream)
         params = _minimal_yaml_params()
 
-        with patch('core.stream.get_sample_duration', return_value=3.14):
+        with patch('pge.core.stream.get_sample_duration', return_value=3.14):
             s._init_stream_context(params)
 
         assert s.sample_dur_sec == 3.14
@@ -391,7 +391,7 @@ class TestInitStreamParameters:
 
         config = Mock()
 
-        with patch('core.stream.ParameterOrchestrator') as MockOrch:
+        with patch('pge.core.stream.ParameterOrchestrator') as MockOrch:
             mock_orch_inst = MockOrch.return_value
             mock_orch_inst.create_all_parameters.return_value = mock_params
 
@@ -408,14 +408,14 @@ class TestInitStreamParameters:
 
         config = Mock()
 
-        with patch('core.stream.ParameterOrchestrator') as MockOrch:
+        with patch('pge.core.stream.ParameterOrchestrator') as MockOrch:
             mock_orch_inst = MockOrch.return_value
             mock_orch_inst.create_all_parameters.return_value = {}
 
             s._init_stream_parameters({}, config)
 
         call_args = mock_orch_inst.create_all_parameters.call_args
-        from parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
+        from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
         assert call_args.kwargs['schema'] is STREAM_PARAMETER_SCHEMA \
             or call_args[1].get('schema') is STREAM_PARAMETER_SCHEMA \
             or call_args[0][1] is STREAM_PARAMETER_SCHEMA
@@ -443,10 +443,10 @@ class TestInitControllers:
             'fill_factor': 2.0,
         }
 
-        with patch('core.stream.PointerController') as MockPtr, \
-             patch('core.stream.PitchController') as MockPitch, \
-             patch('core.stream.DensityController') as MockDens, \
-             patch('core.stream.WindowController') as MockWin:
+        with patch('pge.core.stream.PointerController') as MockPtr, \
+             patch('pge.core.stream.PitchController') as MockPitch, \
+             patch('pge.core.stream.DensityController') as MockDens, \
+             patch('pge.core.stream.WindowController') as MockWin:
 
             s._init_controllers(params, config)
 
@@ -463,10 +463,10 @@ class TestInitControllers:
         config = Mock()
         params = {'pointer': {'start': 5.0}}
 
-        with patch('core.stream.PointerController') as MockPtr, \
-             patch('core.stream.PitchController'), \
-             patch('core.stream.DensityController'), \
-             patch('core.stream.WindowController'):
+        with patch('pge.core.stream.PointerController') as MockPtr, \
+             patch('pge.core.stream.PitchController'), \
+             patch('pge.core.stream.DensityController'), \
+             patch('pge.core.stream.WindowController'):
             s._init_controllers(params, config)
 
         call_kwargs = MockPtr.call_args
@@ -480,10 +480,10 @@ class TestInitControllers:
         config = Mock()
         params = {}  # Nessuna sotto-chiave
 
-        with patch('core.stream.PointerController') as MockPtr, \
-             patch('core.stream.PitchController') as MockPitch, \
-             patch('core.stream.DensityController'), \
-             patch('core.stream.WindowController') as MockWin:
+        with patch('pge.core.stream.PointerController') as MockPtr, \
+             patch('pge.core.stream.PitchController') as MockPitch, \
+             patch('pge.core.stream.DensityController'), \
+             patch('pge.core.stream.WindowController') as MockWin:
 
             s._init_controllers(params, config)
 
@@ -516,17 +516,17 @@ class TestStreamInit:
                 self_stream.sample = p['sample']
                 self_stream.sample_dur_sec = 5.0
 
-            with patch('core.stream.get_sample_duration', return_value=5.0), \
-                patch('core.stream.StreamContext') as MockSCtx, \
-                patch('core.stream.StreamConfig') as MockSC, \
+            with patch('pge.core.stream.get_sample_duration', return_value=5.0), \
+                patch('pge.core.stream.StreamContext') as MockSCtx, \
+                patch('pge.core.stream.StreamConfig') as MockSC, \
                 patch.object(Stream, '_init_stream_context', fake_init_ctx), \
                 patch.object(Stream, '_check_required_context_fields', lambda *a, **k: None), \
-                patch('core.stream.ParameterOrchestrator') as MockOrch, \
-                patch('core.stream.PointerController'), \
-                patch('core.stream.PitchController'), \
-                patch('core.stream.DensityController'), \
-                patch('core.stream.WindowController'), \
-                patch('core.stream.GrainClipStrategyFactory') as MockClipFactory:
+                patch('pge.core.stream.ParameterOrchestrator') as MockOrch, \
+                patch('pge.core.stream.PointerController'), \
+                patch('pge.core.stream.PitchController'), \
+                patch('pge.core.stream.DensityController'), \
+                patch('pge.core.stream.WindowController'), \
+                patch('pge.core.stream.GrainClipStrategyFactory') as MockClipFactory:
                 MockSCtx.from_yaml.return_value = Mock()
                 MockSC.from_yaml.return_value = Mock()
                 MockClipFactory.create.return_value = Mock()
@@ -791,7 +791,7 @@ class TestCreateGrain:
 
     def test_creates_grain_object(self, stream_factory):
         """_create_grain ritorna un oggetto Grain."""
-        from core.grain import Grain
+        from pge.core.grain import Grain
         s = stream_factory()
 
         grain = s._create_grain(elapsed_time=0.0, grain_dur=0.05)
@@ -1340,7 +1340,7 @@ class TestStreamSamplesDir:
         """Senza samples_dir vale il globale (parita' col comportamento
         storico, monkey-patch ancora efficace)."""
         self._write_wav(tmp_path, seconds=1.0)
-        monkeypatch.setattr('shared.utils.PATHSAMPLES', str(tmp_path) + '/')
+        monkeypatch.setattr('pge.shared.utils.PATHSAMPLES', str(tmp_path) + '/')
         params = _minimal_yaml_params(sample='tone.wav')
 
         s = Stream(params)
@@ -1348,7 +1348,7 @@ class TestStreamSamplesDir:
         assert s.sample_dur_sec == pytest.approx(1.0)
 
     def test_missing_sample_reports_custom_search_path(self, tmp_path):
-        from shared.exceptions import SampleNotFoundError
+        from pge.shared.exceptions import SampleNotFoundError
         params = _minimal_yaml_params(sample='missing.wav')
 
         with pytest.raises(SampleNotFoundError) as exc_info:

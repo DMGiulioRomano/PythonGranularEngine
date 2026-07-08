@@ -10,8 +10,8 @@ con config_file (yaml_path) prima del re-raise.
 """
 import pytest
 
-from engine.generator import Generator
-from shared.exceptions import SampleNotFoundError
+from pge.engine.generator import Generator
+from pge.shared.exceptions import SampleNotFoundError
 
 
 MINIMAL_YAML_WITH_MISSING_SAMPLE = """\

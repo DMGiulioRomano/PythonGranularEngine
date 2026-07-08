@@ -78,35 +78,35 @@ def build_mock_modules():
     engine_instance = MagicMock(name='engine_instance')
     engine_instance.render.return_value = ['/out/test.aif']
     engine_cls.return_value = engine_instance
-    rendering_engine_mod = types.ModuleType('rendering.rendering_engine')
+    rendering_engine_mod = types.ModuleType('pge.rendering.rendering_engine')
     rendering_engine_mod.RenderingEngine = engine_cls
 
     stems_mode_cls = MagicMock(name='StemsRenderMode')
     mix_mode_cls = MagicMock(name='MixRenderMode')
-    render_mode_mod = types.ModuleType('rendering.render_mode')
+    render_mode_mod = types.ModuleType('pge.rendering.render_mode')
     render_mode_mod.StemsRenderMode = stems_mode_cls
     render_mode_mod.MixRenderMode = mix_mode_cls
 
     factory_cls = MagicMock(name='RendererFactory')
     factory_cls.create.return_value = renderer_instance
-    factory_mod = types.ModuleType('rendering.renderer_factory')
+    factory_mod = types.ModuleType('pge.rendering.renderer_factory')
     factory_mod.RendererFactory = factory_cls
 
-    sample_reg_mod = types.ModuleType('rendering.sample_registry')
+    sample_reg_mod = types.ModuleType('pge.rendering.sample_registry')
     sample_reg_mod.SampleRegistry = MagicMock(name='SampleRegistry')
 
-    window_reg_mod = types.ModuleType('rendering.numpy_window_registry')
+    window_reg_mod = types.ModuleType('pge.rendering.numpy_window_registry')
     window_reg_mod.NumpyWindowRegistry = MagicMock(name='NumpyWindowRegistry')
 
     mock_modules = {
-        'engine.generator': gen_mod,
-        'rendering.score_visualizer': viz_mod,
-        'shared.logger': log_mod,
-        'rendering.rendering_engine': rendering_engine_mod,
-        'rendering.render_mode': render_mode_mod,
-        'rendering.renderer_factory': factory_mod,
-        'rendering.sample_registry': sample_reg_mod,
-        'rendering.numpy_window_registry': window_reg_mod,
+        'pge.engine.generator': gen_mod,
+        'pge.rendering.score_visualizer': viz_mod,
+        'pge.shared.logger': log_mod,
+        'pge.rendering.rendering_engine': rendering_engine_mod,
+        'pge.rendering.render_mode': render_mode_mod,
+        'pge.rendering.renderer_factory': factory_mod,
+        'pge.rendering.sample_registry': sample_reg_mod,
+        'pge.rendering.numpy_window_registry': window_reg_mod,
         # dipendenze transitive
         'yaml': types.ModuleType('yaml'),
         'soundfile': types.ModuleType('soundfile'),
@@ -143,12 +143,11 @@ def mocks():
     with patch.dict(sys.modules, mock_modules):
         # Forza reimport di main (e di api, la seam estratta in Fase 1)
         # in ogni test per avere stato pulito
-        if 'main' in sys.modules:
-            del sys.modules['main']
-        sys.modules.pop('api', None)
+        for mod_name in ('pge.cli', 'pge.api', 'main'):
+            sys.modules.pop(mod_name, None)
 
         import importlib
-        main_mod = importlib.import_module('main')
+        main_mod = importlib.import_module('pge.cli')
 
         yield {'main': main_mod, **refs}
 

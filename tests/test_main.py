@@ -81,7 +81,7 @@ class TestNormalFlow:
         mocks['generator_instance'].create_elements.assert_called_once()
 
     def test_engine_render_called_with_output_path(self, mocks):
-        """engine.render viene chiamato con output_path specificato."""
+        """pge.engine.render viene chiamato con output_path specificato."""
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
             mocks['main'].main()
         call_kwargs = mocks['engine_instance'].render.call_args.kwargs
@@ -642,7 +642,7 @@ class TestRendererFlag:
     def test_invalid_renderer_error_exits_with_1(self, mocks):
         """InvalidRendererError da api.build_renderer -> exit(1) via
         _handle_engine_error (e' una EngineError)."""
-        from shared.exceptions import InvalidRendererError
+        from pge.shared.exceptions import InvalidRendererError
         api_mod = mocks['main'].api
         err = InvalidRendererError(renderer_type='bogus',
                                    available=['csound', 'numpy'])
@@ -875,10 +875,10 @@ class TestReaperExport:
         writer_instance = MagicMock(name='reaper_writer_instance')
         writer_cls = MagicMock(name='ReaperProjectWriter', return_value=writer_instance)
 
-        reaper_mod = types.ModuleType('export.reaper_project_writer')
+        reaper_mod = types.ModuleType('pge.export.reaper_project_writer')
         reaper_mod.ReaperProjectWriter = writer_cls
 
-        with patch.dict(sys.modules, {'export.reaper_project_writer': reaper_mod}):
+        with patch.dict(sys.modules, {'pge.export.reaper_project_writer': reaper_mod}):
             with patch.object(sys, 'argv', argv):
                 mocks['main'].main()
 
@@ -1054,10 +1054,10 @@ class TestGrainJsonOnlyGeneratedStreams:
         writer_instance = MagicMock()
         writer_instance.write.return_value = '/out/x__s1__grains.json'
         gjw_cls = MagicMock(return_value=writer_instance)
-        gjw_mod = types.ModuleType('export.grain_json_writer')
+        gjw_mod = types.ModuleType('pge.export.grain_json_writer')
         gjw_mod.GrainJsonWriter = gjw_cls
 
-        with patch.dict(sys.modules, {'export.grain_json_writer': gjw_mod}):
+        with patch.dict(sys.modules, {'pge.export.grain_json_writer': gjw_mod}):
             run_main(mocks, ['main.py', 'in.yml', '/out/test.aif',
                              '--per-stream', '--grain-json'])
 
@@ -1073,10 +1073,10 @@ class TestGrainJsonOnlyGeneratedStreams:
         writer_instance = MagicMock()
         writer_instance.write.return_value = '/out/x__grains.json'
         gjw_cls = MagicMock(return_value=writer_instance)
-        gjw_mod = types.ModuleType('export.grain_json_writer')
+        gjw_mod = types.ModuleType('pge.export.grain_json_writer')
         gjw_mod.GrainJsonWriter = gjw_cls
 
-        with patch.dict(sys.modules, {'export.grain_json_writer': gjw_mod}):
+        with patch.dict(sys.modules, {'pge.export.grain_json_writer': gjw_mod}):
             run_main(mocks, ['main.py', 'in.yml', '/out/test.aif',
                              '--per-stream', '--grain-json'])
 
@@ -1216,14 +1216,14 @@ class TestExportSvFlag:
     """
 
     def _sv_mock(self):
-        mod = types.ModuleType('export.sv_exporter')
+        mod = types.ModuleType('pge.export.sv_exporter')
         cls = MagicMock(name='SVExporter')
         mod.SVExporter = cls
         return mod, cls
 
     def test_export_sv_invokes_exporter(self, mocks):
         sv_mod, sv_cls = self._sv_mock()
-        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': sv_mod}):
             with patch.object(sys, 'argv',
                               ['main.py', 'test.yml', 'out.aif', '--export-sv']):
                 mocks['main'].main()
@@ -1235,7 +1235,7 @@ class TestExportSvFlag:
 
     def test_export_sv_not_invoked_without_flag(self, mocks):
         sv_mod, sv_cls = self._sv_mock()
-        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': sv_mod}):
             with patch.object(sys, 'argv',
                               ['main.py', 'test.yml', 'out.aif']):
                 mocks['main'].main()
@@ -1243,7 +1243,7 @@ class TestExportSvFlag:
 
     def test_sv_path_overrides_default(self, mocks):
         sv_mod, sv_cls = self._sv_mock()
-        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': sv_mod}):
             with patch.object(sys, 'argv',
                               ['main.py', 'test.yml', 'out.aif', '--export-sv',
                                '--sv-path', 'custom/sess.sv']):
@@ -1252,7 +1252,7 @@ class TestExportSvFlag:
 
     def test_sv_layout_single_forwarded(self, mocks):
         sv_mod, sv_cls = self._sv_mock()
-        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': sv_mod}):
             with patch.object(sys, 'argv',
                               ['main.py', 'test.yml', 'out.aif', '--export-sv',
                                '--sv-layout', 'single']):
@@ -1269,7 +1269,7 @@ class TestExportSvFlag:
 
     def test_export_sv_skipped_in_per_stream(self, mocks, capsys):
         sv_mod, sv_cls = self._sv_mock()
-        with patch.dict(sys.modules, {'export.sv_exporter': sv_mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': sv_mod}):
             with patch.object(sys, 'argv',
                               ['main.py', 'test.yml', 'out.aif', '--export-sv',
                                '--per-stream']):

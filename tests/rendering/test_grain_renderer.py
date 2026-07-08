@@ -25,10 +25,10 @@ import pytest
 import numpy as np
 from unittest.mock import MagicMock
 
-from core.grain import Grain
-from rendering.grain_renderer import GrainRenderer
-from rendering.sample_registry import SampleRegistry
-from rendering.numpy_window_registry import NumpyWindowRegistry
+from pge.core.grain import Grain
+from pge.rendering.grain_renderer import GrainRenderer
+from pge.rendering.sample_registry import SampleRegistry
+from pge.rendering.numpy_window_registry import NumpyWindowRegistry
 
 
 # =============================================================================

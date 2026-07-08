@@ -224,7 +224,7 @@ class TestEngineErrorPathGolden:
     """EngineError durante il flusso: user_message() + riga Dettagli + exit 1."""
 
     def test_engine_error_prints_user_message_and_details(self, mocks, capsys):
-        from shared.exceptions import SampleNotFoundError
+        from pge.shared.exceptions import SampleNotFoundError
         err = SampleNotFoundError(filename='pino.wav', search_path='./refs/')
         mocks['generator_instance'].load_yaml.side_effect = err
 

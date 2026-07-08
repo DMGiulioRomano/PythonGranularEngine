@@ -35,7 +35,7 @@ import pytest
 # =============================================================================
 
 def _get_module():
-    from strategies.voice_pointer_strategy import (
+    from pge.strategies.voice_pointer_strategy import (
         VoicePointerStrategy,
         LinearPointerStrategy,
         StochasticPointerStrategy,
@@ -202,7 +202,7 @@ class TestStochasticPointerStrategy:
 
     def test_direction_invariant_with_envelope_range(self):
         """Con range envelope, il segno dell'offset rimane invariato."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, StochasticPointerStrategy, *_ = _get_module()
         env = Envelope([[0, 0.1], [1, 0.5]])
         s = StochasticPointerStrategy(pointer_range=env, stream_id="s1")
@@ -331,7 +331,7 @@ class TestDynamicPointerParams:
 
     def test_linear_step_envelope_varies(self):
         """LinearPointerStrategy con Envelope: step varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, LinearPointerStrategy, *_ = _get_module()
         env = Envelope([[0, 0.0], [1, 0.2]])
         s = LinearPointerStrategy(step=env)
@@ -340,7 +340,7 @@ class TestDynamicPointerParams:
 
     def test_stochastic_envelope_varies_magnitude(self):
         """StochasticPointerStrategy con Envelope: magnitudine varia."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, StochasticPointerStrategy, *_ = _get_module()
         env = Envelope([[0, 0.1], [1, 0.5]])
         s = StochasticPointerStrategy(pointer_range=env, stream_id="s1")

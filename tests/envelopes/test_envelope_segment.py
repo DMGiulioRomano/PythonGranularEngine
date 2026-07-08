@@ -10,8 +10,8 @@ Organizzazione:
 """
 
 import pytest
-from envelopes.envelope_segment import Segment, NormalSegment
-from envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
+from pge.envelopes.envelope_segment import Segment, NormalSegment
+from pge.envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
 
 
 # =============================================================================

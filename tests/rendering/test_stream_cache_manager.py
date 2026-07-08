@@ -25,7 +25,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from rendering.stream_cache_manager import StreamCacheManager
+from pge.rendering.stream_cache_manager import StreamCacheManager
 
 
 # =============================================================================

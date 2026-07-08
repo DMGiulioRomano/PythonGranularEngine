@@ -48,7 +48,7 @@ _param_schema_mod.PITCH_PARAMETER_SCHEMA = []
 _param_schema_mod.DENSITY_PARAMETER_SCHEMA = []
 sys.modules.setdefault('parameter_schema', _param_schema_mod)
 
-from rendering.score_visualizer import ScoreVisualizer  # noqa: E402
+from pge.rendering.score_visualizer import ScoreVisualizer  # noqa: E402
 
 # =============================================================================
 # COSTANTI AUDIO FAKE
@@ -322,7 +322,7 @@ class TestWaveformCachingIntegration:
 
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)) as mock_sf:
             viz.render_all()
-            with patch('rendering.score_visualizer.PdfPages', return_value=mock_ctx):
+            with patch('pge.rendering.score_visualizer.PdfPages', return_value=mock_ctx):
                 viz.export_pdf('/tmp/cache_test.pdf')
         # piano.wav caricato una volta sola in totale
         piano_calls = [c for c in mock_sf.call_args_list
@@ -347,7 +347,7 @@ class TestExportPdfIntegration:
         viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
         ctx, inst = self._make_pdf_context()
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+             patch('pge.rendering.score_visualizer.PdfPages', return_value=ctx):
             viz.export_pdf('/tmp/test_single.pdf')
         assert inst.savefig.call_count == 1
 
@@ -355,7 +355,7 @@ class TestExportPdfIntegration:
         viz = make_viz(multi_page_scene(), config={'page_duration': 30.0})
         ctx, inst = self._make_pdf_context()
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+             patch('pge.rendering.score_visualizer.PdfPages', return_value=ctx):
             viz.export_pdf('/tmp/test_multi.pdf')
         assert inst.savefig.call_count == 2
 
@@ -363,7 +363,7 @@ class TestExportPdfIntegration:
         viz = make_viz(gap_scene(), config={'page_duration': 30.0})
         ctx, inst = self._make_pdf_context()
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+             patch('pge.rendering.score_visualizer.PdfPages', return_value=ctx):
             viz.export_pdf('/tmp/test_gap.pdf')
         assert inst.savefig.call_count == 3
 
@@ -371,7 +371,7 @@ class TestExportPdfIntegration:
         viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
         ctx, _ = self._make_pdf_context()
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.PdfPages', return_value=ctx) as mock_pdf:
+             patch('pge.rendering.score_visualizer.PdfPages', return_value=ctx) as mock_pdf:
             viz.export_pdf('/tmp/my_score.pdf')
         mock_pdf.assert_called_once_with('/tmp/my_score.pdf')
 
@@ -379,7 +379,7 @@ class TestExportPdfIntegration:
         viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
         ctx, inst = self._make_pdf_context()
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+             patch('pge.rendering.score_visualizer.PdfPages', return_value=ctx):
             viz.export_pdf('/tmp/auto_analyze.pdf')
         assert inst.savefig.call_count == 1
 
@@ -429,14 +429,14 @@ class TestShowIntegration:
     def test_show_calls_plt_show(self):
         viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.plt.show') as mock_show:
+             patch('pge.rendering.score_visualizer.plt.show') as mock_show:
             viz.show(page_idx=0)
         mock_show.assert_called_once()
 
     def test_show_returns_figure(self):
         viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.plt.show'):
+             patch('pge.rendering.score_visualizer.plt.show'):
             result = viz.show(page_idx=0)
         assert isinstance(result, plt.Figure)
 
@@ -444,7 +444,7 @@ class TestShowIntegration:
         viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
         assert not getattr(viz, 'page_layouts', None)
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.plt.show'):
+             patch('pge.rendering.score_visualizer.plt.show'):
             viz.show(0)
         assert viz.page_layouts is not None
 
@@ -635,24 +635,24 @@ class TestPitchEnvelopeCollection:
     stream.pitch_value, per QUALSIASI unità (regressione visualizer)."""
 
     def _stream_with_pitch(self, pitch_value, unit_spec):
-        from parameters.pitch_unit import make_pitch_unit
+        from pge.parameters.pitch_unit import make_pitch_unit
         s = make_stream('s1', onset=0.0, duration=10.0)
         s.pitch_value = pitch_value
         s.pitch_unit = make_pitch_unit(unit_spec)
         return s
 
     def test_semitones_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream_with_pitch(Envelope([[0, 0.0], [10, 12.0]]), 'semitones')
         assert 'pitch' in make_viz([s])._get_stream_envelopes(s)
 
     def test_cents_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream_with_pitch(Envelope([[0, 0.0], [10, 1200.0]]), 'cents')
         assert 'pitch' in make_viz([s])._get_stream_envelopes(s)
 
     def test_edo_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream_with_pitch(Envelope([[0, 0.0], [10, 31.0]]), {'edo': 31})
         assert 'pitch' in make_viz([s])._get_stream_envelopes(s)
 
@@ -672,8 +672,8 @@ class TestVoiceScatterEnvelopeCollection:
     altrimenti i loro envelope non vengono mai disegnati."""
 
     def _param(self, name, value):
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
         return Parameter(name, value, GRANULAR_PARAMETERS[name])
 
     def _stream(self, num_voices=None, scatter=None):
@@ -686,22 +686,22 @@ class TestVoiceScatterEnvelopeCollection:
         return s
 
     def test_scatter_dynamic_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.0], [10, 1.0]])))
         assert 'scatter' in make_viz([s])._get_stream_envelopes(s)
 
     def test_num_voices_dynamic_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(num_voices=self._param('num_voices', Envelope([[0, 1.0], [10, 8.0]])))
         assert 'num_voices' in make_viz([s])._get_stream_envelopes(s)
 
     def test_static_scatter_skipped_without_show_static(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.3], [10, 0.3]])))
         assert 'scatter' not in make_viz([s])._get_stream_envelopes(s)
 
     def test_static_scatter_collected_with_show_static(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.3], [10, 0.3]])))
         viz = make_viz([s], config={'show_static_params': True})
         assert 'scatter' in viz._get_stream_envelopes(s)
@@ -709,7 +709,7 @@ class TestVoiceScatterEnvelopeCollection:
     def test_has_envelopes_true_when_only_scatter_modulated(self):
         """Regressione issue #88: il pannello envelope deve esistere anche se
         l'unica modulazione time-varying e' scatter/num_voices."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(scatter=self._param('scatter', Envelope([[0, 0.0], [10, 1.0]])))
         assert bool(make_viz([s])._get_stream_envelopes(s)) is True
 
@@ -726,17 +726,17 @@ class TestPointerSpeedEnvelopeCollection:
         return s
 
     def test_pointer_speed_dynamic_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(Envelope([[0, -2.0], [10, 4.0]]))
         assert 'pointer_speed' in make_viz([s])._get_stream_envelopes(s)
 
     def test_static_pointer_speed_skipped_without_show_static(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(Envelope([[0, 1.0], [10, 1.0]]))
         assert 'pointer_speed' not in make_viz([s])._get_stream_envelopes(s)
 
     def test_static_pointer_speed_collected_with_show_static(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(Envelope([[0, 1.0], [10, 1.0]]))
         viz = make_viz([s], config={'show_static_params': True})
         assert 'pointer_speed' in viz._get_stream_envelopes(s)
@@ -758,19 +758,19 @@ class TestVoiceOffsetEnvelopeCollection:
         return s
 
     def _num_voices_param(self, value):
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
         return Parameter('num_voices', value, GRANULAR_PARAMETERS['num_voices'])
 
     def _vm_pitch(self, max_voices=3, step=3.0):
-        from controllers.voice_manager import VoiceManager
-        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.controllers.voice_manager import VoiceManager
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         return VoiceManager(max_voices=max_voices,
                             pitch_strategy=StepPitchStrategy(step=step))
 
     def _vm_pointer_linear(self, max_voices=3, step=0.05):
-        from controllers.voice_manager import VoiceManager
-        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        from pge.controllers.voice_manager import VoiceManager
+        from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         return VoiceManager(max_voices=max_voices,
                             pointer_strategy=LinearPointerStrategy(step=step))
 
@@ -801,9 +801,9 @@ class TestVoiceOffsetEnvelopeCollection:
         assert env['voice_pointer_offset__v2'].evaluate(0.0) == pytest.approx(0.10, abs=1e-6)
 
     def test_voice_pointer_range_single_curve_from_stochastic(self):
-        from envelopes.envelope import Envelope
-        from controllers.voice_manager import VoiceManager
-        from strategies.voice_pointer_strategy import StochasticPointerStrategy
+        from pge.envelopes.envelope import Envelope
+        from pge.controllers.voice_manager import VoiceManager
+        from pge.strategies.voice_pointer_strategy import StochasticPointerStrategy
         rng = Envelope([[0, 0.1], [10, 0.5]])
         vm = VoiceManager(
             max_voices=3,
@@ -819,7 +819,7 @@ class TestVoiceOffsetEnvelopeCollection:
         assert not any(k.startswith('voice_pitch_offset') for k in env)
 
     def test_no_curve_when_no_strategy(self):
-        from controllers.voice_manager import VoiceManager
+        from pge.controllers.voice_manager import VoiceManager
         s = self._stream_with_vm(VoiceManager(max_voices=3))  # nessuna strategy
         env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
         assert not any(k.startswith('voice_pitch_offset') for k in env)
@@ -832,7 +832,7 @@ class TestVoiceOffsetEnvelopeCollection:
         assert not any(k.startswith('voice_') for k in env)
 
     def test_time_varying_num_voices_truncates_high_voice(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         # num_voices sale da 1 a 4: la voce 2 e' attiva solo nella seconda meta'.
         vm = self._vm_pitch(max_voices=4)
         nv = self._num_voices_param(Envelope([[0, 1.0], [10, 4.0]]))
@@ -857,8 +857,8 @@ class TestBaseParamName:
         assert ScoreVisualizer._base_param_name('pitch') == 'pitch'
 
     def test_filter_by_base_keeps_per_voice_keys(self):
-        from controllers.voice_manager import VoiceManager
-        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.controllers.voice_manager import VoiceManager
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=3, pitch_strategy=StepPitchStrategy(step=3.0))
         s = make_stream('s1', onset=0.0, duration=10.0)
         s._voice_manager = vm
@@ -877,8 +877,8 @@ class TestModRangeEnvelopeCollection:
     Qui via `volume` (stream-level, raggiungibile dal loop)."""
 
     def _stream_with_volume_range(self, base, mod_range):
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
         s = make_stream('s1', onset=0.0, duration=10.0)
         # base scalare statico: PARTE 1 non emette 'volume', isola PARTE 3
         s.volume = Parameter('volume', base, GRANULAR_PARAMETERS['volume'],
@@ -886,12 +886,12 @@ class TestModRangeEnvelopeCollection:
         return s
 
     def test_dynamic_range_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream_with_volume_range(-6.0, Envelope([[0, 0.0], [10, 12.0]]))
         assert 'volume_range' in make_viz([s])._get_stream_envelopes(s)
 
     def test_dynamic_range_envelope_is_the_mod_range(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0, 0.0], [10, 12.0]])
         s = self._stream_with_volume_range(-6.0, env)
         assert make_viz([s])._get_stream_envelopes(s)['volume_range'] is env
@@ -913,15 +913,15 @@ class TestValueAndRangeCoexist:
     valore base (es. il loop di `pan` perso a favore di `pan_range`)."""
 
     def _stream_with_pan(self, base, mod_range):
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
         s = make_stream('s1', onset=0.0, duration=10.0)
         s.pan = Parameter('pan', base, GRANULAR_PARAMETERS['pan'],
                           mod_range=mod_range)
         return s
 
     def test_pan_loop_preserved_when_pan_range_present(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         base = Envelope([[0, 0.0], [10, 360.0]])      # loop rotativo
         rng = Envelope([[0, 20.0], [10, 170.0]])      # deviazione per-grano
         s = self._stream_with_pan(base, rng)
@@ -930,7 +930,7 @@ class TestValueAndRangeCoexist:
         assert env['pan'] is base
 
     def test_pan_range_collected_under_suffixed_key(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         base = Envelope([[0, 0.0], [10, 360.0]])
         rng = Envelope([[0, 20.0], [10, 170.0]])
         s = self._stream_with_pan(base, rng)
@@ -939,7 +939,7 @@ class TestValueAndRangeCoexist:
         assert env['pan_range'] is rng
 
     def test_pan_value_without_range_unchanged(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         base = Envelope([[0, 0.0], [10, 360.0]])
         s = self._stream_with_pan(base, None)
         env = make_viz([s])._get_stream_envelopes(s)
@@ -953,8 +953,8 @@ class TestDephaseGateEnvelopeCollection:
     dal gate sotto la chiave `{spec.name}_prob`. Qui via `volume` (stream-level)."""
 
     def _stream_with_gate(self, gate):
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
         s = make_stream('s1', onset=0.0, duration=10.0)
         p = Parameter('volume', -6.0, GRANULAR_PARAMETERS['volume'])
         if gate is not None:
@@ -963,25 +963,25 @@ class TestDephaseGateEnvelopeCollection:
         return s
 
     def test_envelope_gate_collected(self):
-        from envelopes.envelope import Envelope
-        from shared.probability_gate import EnvelopeGate
+        from pge.envelopes.envelope import Envelope
+        from pge.shared.probability_gate import EnvelopeGate
         s = self._stream_with_gate(EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
         assert 'volume_prob' in make_viz([s])._get_stream_envelopes(s)
 
     def test_envelope_gate_curve_is_the_gate_envelope(self):
-        from envelopes.envelope import Envelope
-        from shared.probability_gate import EnvelopeGate
+        from pge.envelopes.envelope import Envelope
+        from pge.shared.probability_gate import EnvelopeGate
         env = Envelope([[0, 0.0], [10, 100.0]])
         s = self._stream_with_gate(EnvelopeGate(env))
         assert make_viz([s])._get_stream_envelopes(s)['volume_prob'] is env
 
     def test_random_gate_skipped_without_show_static(self):
-        from shared.probability_gate import RandomGate
+        from pge.shared.probability_gate import RandomGate
         s = self._stream_with_gate(RandomGate(50.0))
         assert 'volume_prob' not in make_viz([s])._get_stream_envelopes(s)
 
     def test_random_gate_collected_with_show_static(self):
-        from shared.probability_gate import RandomGate
+        from pge.shared.probability_gate import RandomGate
         s = self._stream_with_gate(RandomGate(50.0))
         viz = make_viz([s], config={'show_static_params': True})
         assert 'volume_prob' in viz._get_stream_envelopes(s)
@@ -1000,8 +1000,8 @@ class TestPointerDeviationEnvelopeCollection:
     issue #88). Chiavi: `pointer_deviation` (range) e `pointer_deviation_prob`."""
 
     def _stream(self, mod_range=None, gate=None):
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
         s = make_stream('s1', onset=0.0, duration=10.0)
         p = Parameter('pointer_deviation', 0.0,
                       GRANULAR_PARAMETERS['pointer_deviation'],
@@ -1014,12 +1014,12 @@ class TestPointerDeviationEnvelopeCollection:
         return s
 
     def test_offset_range_envelope_collected(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = self._stream(mod_range=Envelope([[0, 0.0], [10, 1.0]]))
         assert 'pointer_deviation' in make_viz([s])._get_stream_envelopes(s)
 
     def test_offset_range_envelope_is_the_mod_range(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0, 0.0], [10, 1.0]])
         s = self._stream(mod_range=env)
         assert make_viz([s])._get_stream_envelopes(s)['pointer_deviation'] is env
@@ -1034,13 +1034,13 @@ class TestPointerDeviationEnvelopeCollection:
         assert 'pointer_deviation' in viz._get_stream_envelopes(s)
 
     def test_dephase_envelope_gate_collected(self):
-        from envelopes.envelope import Envelope
-        from shared.probability_gate import EnvelopeGate
+        from pge.envelopes.envelope import Envelope
+        from pge.shared.probability_gate import EnvelopeGate
         s = self._stream(gate=EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
         assert 'pointer_deviation_prob' in make_viz([s])._get_stream_envelopes(s)
 
     def test_dephase_random_gate_collected_with_show_static(self):
-        from shared.probability_gate import RandomGate
+        from pge.shared.probability_gate import RandomGate
         s = self._stream(gate=RandomGate(50.0))
         viz = make_viz([s], config={'show_static_params': True})
         assert 'pointer_deviation_prob' in viz._get_stream_envelopes(s)
@@ -1119,7 +1119,7 @@ class TestEnvelopeLegendPerLane:
         return make_viz([s_low, s_high]), s_low, s_high
 
     def test_legend_entry_lands_in_owning_lane(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         viz, s_low, s_high = self._two_streams()
         env_low = {'grain_duration': Envelope([[0, 0.01], [10, 0.1]])}
         env_high = {'pointer_speed': Envelope([[0, -2.0], [10, 4.0]])}
@@ -1141,7 +1141,7 @@ class TestEnvelopeLegendPerLane:
         assert owner['pointer_speed'] == 's_high'
 
     def test_multiple_types_in_one_lane_stay_within_lane(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         viz = make_viz([s])
         env = {
@@ -1189,7 +1189,7 @@ class TestEnvelopeDisplayRange:
     def test_small_movement_data_driven_with_padding(self):
         """pointer_speed che si muove 2.0->6.0: range data-driven sull'escursione
         reale (span 4) con padding 5% -> (1.8, 6.2)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         envelopes = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
         ranges = make_viz([s])._compute_display_ranges(
@@ -1200,7 +1200,7 @@ class TestEnvelopeDisplayRange:
     def test_large_movement_also_data_driven(self):
         """Movimento ampio: niente più no-op. Il range segue l'escursione reale
         (span 16) col padding 5% -> (-2.8, 14.8)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         envelopes = {'pointer_speed': Envelope([[0, -2.0], [10, 14.0]])}
         ranges = make_viz([s])._compute_display_ranges(
@@ -1211,7 +1211,7 @@ class TestEnvelopeDisplayRange:
     def test_range_exceeds_legacy_ceiling(self):
         """density con loop 400<->1000 g/s: il range data-driven supera il vecchio
         tetto fisso (1, 200), prova diretta del bug. span 600, padding 5% -> 30."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         envelopes = {'density': Envelope([[0, 400.0], [10, 1000.0]])}
         ranges = make_viz([s])._compute_display_ranges(
@@ -1223,7 +1223,7 @@ class TestEnvelopeDisplayRange:
     def test_param_now_data_driven(self):
         """Qualsiasi parametro (non solo la vecchia whitelist) ottiene un range
         data-driven: pointer_deviation 0.4->0.5 -> (0.395, 0.505)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         envelopes = {'pointer_deviation': Envelope([[0, 0.4], [10, 0.5]])}
         ranges = make_viz([s])._compute_display_ranges(
@@ -1233,7 +1233,7 @@ class TestEnvelopeDisplayRange:
 
     def test_pan_excluded(self):
         """pan è ciclico: mai data-driven (resta sul range fisso -180..180)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         envelopes = {'pan': Envelope([[0, -10.0], [10, 10.0]])}
         ranges = make_viz([s])._compute_display_ranges(
@@ -1253,7 +1253,7 @@ class TestEnvelopeDisplayRange:
     def test_constant_envelope_centered(self):
         """Envelope costante: il valore si normalizza al centro corsia (0.5),
         sia via display range degenere sia via padding minimo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         viz = make_viz([s])
         envelopes = {'density': Envelope([[0, 50.0], [10, 50.0]])}
@@ -1271,7 +1271,7 @@ class TestEnvelopeDisplayRange:
     def test_pitch_now_data_driven(self):
         """pitch non è più unit-driven nella normalizzazione: ottiene un range
         data-driven dai suoi valori, senza clip."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         envelopes = {'pitch': Envelope([[0, 0.0], [10, 12.0]])}
         ranges = make_viz([s])._compute_display_ranges(
@@ -1282,7 +1282,7 @@ class TestEnvelopeDisplayRange:
     def test_draw_applies_data_driven_scaling(self):
         """Integrazione: _draw_envelopes scala la curva data-driven. La curva
         occupa ~1/(1+2*pad) = 0.909 della lane (margine pad sopra/sotto)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         env = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
 
@@ -1299,7 +1299,7 @@ class TestEnvelopeDisplayRange:
     def test_draw_resets_display_ranges_after(self):
         """Dopo il draw, _current_display_ranges torna vuoto: lane successive
         ricalcolano da zero."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         viz = make_viz([s])
         env = {'pointer_speed': Envelope([[0, 2.0], [10, 6.0]])}
@@ -1320,8 +1320,8 @@ class TestEnvelopeFilter:
 
     def _stream(self):
         """Stream con due envelope dinamici: pitch e pointer_speed."""
-        from envelopes.envelope import Envelope
-        from parameters.pitch_unit import make_pitch_unit
+        from pge.envelopes.envelope import Envelope
+        from pge.parameters.pitch_unit import make_pitch_unit
         s = make_stream('s1', onset=0.0, duration=10.0)
         s.pitch_value = Envelope([[0, 0.0], [10, 12.0]])
         s.pitch_unit = make_pitch_unit('semitones')
@@ -1342,14 +1342,14 @@ class TestEnvelopeFilter:
     def test_filter_does_not_force_static_visibility(self):
         """Il filtro interseca: uno statico elencato resta fuori senza
         show_static_params (la distinzione STATIC e' ortogonale)."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         s.pointer_speed = Envelope([[0, 1.0], [10, 1.0]])  # statico
         viz = make_viz([s], config={'envelope_filter': {'pointer_speed'}})
         assert 'pointer_speed' not in viz._get_stream_envelopes(s)
 
     def test_filter_with_show_static_keeps_listed_static(self):
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = make_stream('s1', onset=0.0, duration=10.0)
         s.pointer_speed = Envelope([[0, 1.0], [10, 1.0]])  # statico
         viz = make_viz([s], config={'envelope_filter': {'pointer_speed'},
@@ -1359,10 +1359,10 @@ class TestEnvelopeFilter:
     def test_filter_applies_to_prob_keys(self):
         """Le chiavi derivate (`*_prob`, dal ProbabilityGate) sono filtrabili
         come le altre: il filtro agisce sul dict finale."""
-        from envelopes.envelope import Envelope
-        from parameters.parameter import Parameter
-        from parameters.parameter_definitions import GRANULAR_PARAMETERS
-        from shared.probability_gate import EnvelopeGate
+        from pge.envelopes.envelope import Envelope
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.shared.probability_gate import EnvelopeGate
         s = make_stream('s1', onset=0.0, duration=10.0)
         p = Parameter('volume', Envelope([[0, -20.0], [10, 0.0]]),
                       GRANULAR_PARAMETERS['volume'])
@@ -1381,7 +1381,7 @@ class TestEnvelopeFilter:
     def test_plot_envelope_keys_is_the_color_universe(self):
         """PLOT_ENVELOPE_KEYS (usata da main.py per validare --plot-envelopes)
         coincide con le chiavi di envelope_colors: unica fonte dei nomi."""
-        from rendering.score_visualizer import PLOT_ENVELOPE_KEYS
+        from pge.rendering.score_visualizer import PLOT_ENVELOPE_KEYS
         viz = make_viz([make_stream()])
         assert PLOT_ENVELOPE_KEYS == frozenset(viz.config['envelope_colors'])
         assert 'pitch' in PLOT_ENVELOPE_KEYS
@@ -1613,7 +1613,7 @@ class TestEnvelopeStreamWidthAlignment:
     def _scene():
         """Due stream con grani (-> colorbar) e un envelope dinamico
         (pointer_speed) -> esiste il pannello envelope sotto agli stream."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         streams = []
         for sid in ('s1', 's2'):
             s = make_stream(sid, onset=0.0, duration=10.0, sample='piano.wav')
@@ -1856,7 +1856,7 @@ class TestFontScaleLayout:
         ctx.__enter__ = MagicMock(return_value=inst)
         ctx.__exit__ = MagicMock(return_value=False)
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)), \
-             patch('rendering.score_visualizer.PdfPages', return_value=ctx):
+             patch('pge.rendering.score_visualizer.PdfPages', return_value=ctx):
             viz.export_pdf('/tmp/tight_test.pdf')
         assert inst.savefig.call_args.kwargs.get('bbox_inches') == 'tight'
 
@@ -2039,7 +2039,7 @@ class TestSamplesDirConfig:
 
     def test_default_falls_back_to_pathsamples(self, tmp_path, monkeypatch):
         self._write_wav(tmp_path, seconds=1.0)
-        import rendering.score_visualizer as sv_mod
+        import pge.rendering.score_visualizer as sv_mod
         monkeypatch.setattr(sv_mod, 'PATHSAMPLES', str(tmp_path) + '/')
         viz = make_viz([make_stream(sample='tone.wav')])
 

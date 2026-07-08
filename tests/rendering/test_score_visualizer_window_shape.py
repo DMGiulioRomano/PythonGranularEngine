@@ -31,7 +31,7 @@ _sf_mod.read = MagicMock()
 _sf_mod.info = MagicMock()
 sys.modules.setdefault('soundfile', _sf_mod)
 
-from rendering.score_visualizer import ScoreVisualizer  # noqa: E402
+from pge.rendering.score_visualizer import ScoreVisualizer  # noqa: E402
 
 
 # =============================================================================

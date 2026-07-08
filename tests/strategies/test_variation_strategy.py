@@ -27,8 +27,8 @@ import random
 from unittest.mock import Mock, patch, MagicMock
 from abc import ABC
 
-from shared.distribution_strategy import DistributionStrategy
-from strategies.variation_strategy import (
+from pge.shared.distribution_strategy import DistributionStrategy
+from pge.strategies.variation_strategy import (
     VariationStrategy,
     AdditiveVariation,
     QuantizedVariation,
@@ -540,7 +540,7 @@ class TestChoiceVariationListInput:
 
     def test_empty_list_mod_range_positive_raises_or_handles(self, choice):
         """Lista vuota + mod_range > 0 -> rng.choice([]) solleva IndexError."""
-        from shared.distribution_strategy import UniformDistribution
+        from pge.shared.distribution_strategy import UniformDistribution
         dist = UniformDistribution(rng=random.Random(0))
         with pytest.raises(IndexError):
             choice.apply([], 1.0, dist)
@@ -571,32 +571,32 @@ class TestChoiceVariationInvalidType:
 
     def test_integer_raises_type_error(self, choice, mock_distribution):
         """value=int -> TypeError."""
-        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
+        with pytest.raises(__import__('pge.shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(42, 1.0, mock_distribution)
 
     def test_float_raises_type_error(self, choice, mock_distribution):
         """value=float -> TypeError."""
-        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
+        with pytest.raises(__import__('pge.shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(3.14, 1.0, mock_distribution)
 
     def test_none_raises_type_error(self, choice, mock_distribution):
         """value=None -> TypeError."""
-        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
+        with pytest.raises(__import__('pge.shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(None, 1.0, mock_distribution)
 
     def test_dict_raises_type_error(self, choice, mock_distribution):
         """value=dict -> TypeError."""
-        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
+        with pytest.raises(__import__('pge.shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply({'key': 'val'}, 1.0, mock_distribution)
 
     def test_tuple_raises_type_error(self, choice, mock_distribution):
         """value=tuple -> TypeError (non e' lista)."""
-        with pytest.raises(__import__('shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
+        with pytest.raises(__import__('pge.shared.exceptions', fromlist=['InvalidParameterError']).InvalidParameterError, match="ChoiceVariation"):
             choice.apply(('a', 'b'), 1.0, mock_distribution)
 
     def test_error_message_contains_value(self, choice, mock_distribution):
         """Il messaggio di errore contiene il valore ricevuto."""
-        from shared.exceptions import InvalidParameterError
+        from pge.shared.exceptions import InvalidParameterError
         with pytest.raises(InvalidParameterError, match="42"):
             choice.apply(42, 1.0, mock_distribution)
 
@@ -636,7 +636,7 @@ class TestChoiceVariationStatistical:
 
     def test_list_selection_covers_all_options(self, choice):
         """Con mod_range > 0, tutti gli elementi della lista vengono scelti."""
-        from shared.distribution_strategy import UniformDistribution
+        from pge.shared.distribution_strategy import UniformDistribution
         dist = UniformDistribution(rng=random.Random(42))
         options = ['a', 'b', 'c', 'd']
         results = set()
@@ -647,7 +647,7 @@ class TestChoiceVariationStatistical:
 
     def test_list_selection_roughly_uniform(self, choice):
         """La distribuzione e' approssimativamente uniforme."""
-        from shared.distribution_strategy import UniformDistribution
+        from pge.shared.distribution_strategy import UniformDistribution
         dist = UniformDistribution(rng=random.Random(7))
         options = ['a', 'b', 'c']
         counts = {o: 0 for o in options}
@@ -674,7 +674,7 @@ class TestChoiceVariationRngInjection:
     """
 
     def _uniform(self, rng):
-        from shared.distribution_strategy import UniformDistribution
+        from pge.shared.distribution_strategy import UniformDistribution
         return UniformDistribution(rng=rng)
 
     def test_deterministic_with_injected_rng(self):

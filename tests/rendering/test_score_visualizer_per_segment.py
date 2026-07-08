@@ -15,11 +15,11 @@ matplotlib.use('Agg')
 # Block heavy deps
 sys.modules.setdefault('soundfile', types.ModuleType('soundfile'))
 
-from envelopes.envelope import Envelope
-from envelopes.envelope_interpolation import (
+from pge.envelopes.envelope import Envelope
+from pge.envelopes.envelope_interpolation import (
     StepInterpolation, LinearInterpolation, CubicInterpolation
 )
-from rendering.score_visualizer import ScoreVisualizer
+from pge.rendering.score_visualizer import ScoreVisualizer
 
 
 class TestHeterogeneousDetection:
@@ -108,7 +108,7 @@ class TestPerSegmentDrawing:
         # orizzontale invece di diagonale.
         # Repro: stream_start grande (precisione persa) + compact 3 reps con
         # pattern step→linear→step→linear→step→linear.
-        from envelopes.envelope import create_scaled_envelope
+        from pge.envelopes.envelope import create_scaled_envelope
         env = create_scaled_envelope(
             [[[0, 5, 'step'], [50, 30, 'linear'], [100, 5]], 1.0, 3, 'cubic'],
             duration=4.0,

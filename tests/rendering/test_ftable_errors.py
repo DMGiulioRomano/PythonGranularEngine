@@ -12,8 +12,8 @@ import pytest
 
 
 def test_register_window_unknown_raises_invalid_window_error():
-    from rendering.ftable_manager import FtableManager
-    from shared.exceptions import ConfigError, InvalidWindowError
+    from pge.rendering.ftable_manager import FtableManager
+    from pge.shared.exceptions import ConfigError, InvalidWindowError
 
     mgr = FtableManager()
     with pytest.raises(InvalidWindowError) as exc_info:
@@ -28,8 +28,8 @@ def test_register_window_unknown_raises_invalid_window_error():
 
 
 def test_write_to_file_corrupt_window_raises_ftable_error():
-    from rendering.ftable_manager import FtableManager
-    from shared.exceptions import ConfigError, FtableError
+    from pge.rendering.ftable_manager import FtableManager
+    from pge.shared.exceptions import ConfigError, FtableError
 
     mgr = FtableManager()
     # Inject inconsistent state: table references a window not in WindowRegistry

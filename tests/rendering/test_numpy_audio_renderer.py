@@ -26,12 +26,12 @@ import pytest
 import numpy as np
 from unittest.mock import MagicMock, patch
 
-from core.grain import Grain
-from rendering.audio_renderer import AudioRenderer
-from rendering.numpy_audio_renderer import NumpyAudioRenderer
-from rendering.sample_registry import SampleRegistry
-from rendering.numpy_window_registry import NumpyWindowRegistry
-from rendering.grain_renderer import GrainRenderer
+from pge.core.grain import Grain
+from pge.rendering.audio_renderer import AudioRenderer
+from pge.rendering.numpy_audio_renderer import NumpyAudioRenderer
+from pge.rendering.sample_registry import SampleRegistry
+from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+from pge.rendering.grain_renderer import GrainRenderer
 
 
 # =============================================================================
@@ -177,12 +177,12 @@ class TestNumpyAudioRendererInit:
 
     def test_default_audio_format_is_aiff(self, renderer):
         """audio_format di default e' AIFF."""
-        from rendering.audio_format import DEFAULT_FORMAT
+        from pge.rendering.audio_format import DEFAULT_FORMAT
         assert renderer.audio_format == DEFAULT_FORMAT
 
     def test_accepts_wav_format(self, sample_registry, window_registry, table_map):
         """Accetta audio_format WAV."""
-        from rendering.audio_format import FORMATS
+        from pge.rendering.audio_format import FORMATS
         r = NumpyAudioRenderer(
             sample_registry=sample_registry,
             window_registry=window_registry,
@@ -201,7 +201,7 @@ class TestAudioFormatOutput:
 
     def test_wav_format_passed_to_sf_write(self, sample_registry, window_registry, table_map, tmp_path):
         """Con FORMATS['wav'], sf.write riceve format='WAV'."""
-        from rendering.audio_format import FORMATS
+        from pge.rendering.audio_format import FORMATS
         r = NumpyAudioRenderer(
             sample_registry=sample_registry,
             window_registry=window_registry,
@@ -210,14 +210,14 @@ class TestAudioFormatOutput:
         )
         stream = make_mock_stream()
         output_path = str(tmp_path / 'test.wav')
-        with patch('rendering.numpy_audio_renderer.sf.write') as mock_write:
+        with patch('pge.rendering.numpy_audio_renderer.sf.write') as mock_write:
             r.render_single_stream(stream, output_path)
             _, _, _, kwargs = mock_write.call_args[0], mock_write.call_args[0], mock_write.call_args[0], mock_write.call_args[1]
             assert kwargs.get('format') == 'WAV'
 
     def test_flac_format_and_subtype_passed_to_sf_write(self, sample_registry, window_registry, table_map, tmp_path):
         """Con FORMATS['flac'], sf.write riceve format='FLAC' e subtype='PCM_24'."""
-        from rendering.audio_format import FORMATS
+        from pge.rendering.audio_format import FORMATS
         r = NumpyAudioRenderer(
             sample_registry=sample_registry,
             window_registry=window_registry,
@@ -226,7 +226,7 @@ class TestAudioFormatOutput:
         )
         stream = make_mock_stream()
         output_path = str(tmp_path / 'test.flac')
-        with patch('rendering.numpy_audio_renderer.sf.write') as mock_write:
+        with patch('pge.rendering.numpy_audio_renderer.sf.write') as mock_write:
             r.render_single_stream(stream, output_path)
             kwargs = mock_write.call_args[1]
             assert kwargs.get('format') == 'FLAC'
@@ -234,7 +234,7 @@ class TestAudioFormatOutput:
 
     def test_merged_streams_wav_format(self, sample_registry, window_registry, table_map, tmp_path):
         """render_merged_streams usa format WAV con FORMATS['wav']."""
-        from rendering.audio_format import FORMATS
+        from pge.rendering.audio_format import FORMATS
         r = NumpyAudioRenderer(
             sample_registry=sample_registry,
             window_registry=window_registry,
@@ -243,7 +243,7 @@ class TestAudioFormatOutput:
         )
         streams = [make_mock_stream('s1', onset=0.0), make_mock_stream('s2', onset=0.5)]
         output_path = str(tmp_path / 'mix.wav')
-        with patch('rendering.numpy_audio_renderer.sf.write') as mock_write:
+        with patch('pge.rendering.numpy_audio_renderer.sf.write') as mock_write:
             r.render_merged_streams(streams, output_path)
             kwargs = mock_write.call_args[1]
             assert kwargs.get('format') == 'WAV'
@@ -481,7 +481,7 @@ class TestNumpyAudioRendererCache:
     """Cache incrementale: stesso comportamento di CsoundRenderer."""
 
     def _make_renderer_with_cache(self, cache_path, sample_registry, window_registry, table_map, stream_data_map=None):
-        from rendering.stream_cache_manager import StreamCacheManager
+        from pge.rendering.stream_cache_manager import StreamCacheManager
         cm = StreamCacheManager(cache_path=str(cache_path))
         return NumpyAudioRenderer(
             sample_registry=sample_registry,
@@ -562,7 +562,7 @@ class TestNumpyAudioRendererCache:
     def test_manifest_updated_after_build(self, sample_registry, window_registry, table_map, tmp_path):
         """Il manifest viene aggiornato con il fingerprint dopo la build."""
         import json
-        from rendering.stream_cache_manager import StreamCacheManager
+        from pge.rendering.stream_cache_manager import StreamCacheManager
         cache_path = tmp_path / 'cache.json'
         stream_dict = {'stream_id': 's1', 'duration': 1.0}
         r = self._make_renderer_with_cache(
@@ -806,7 +806,7 @@ class TestDcBlockerAlwaysOn:
         """Wiring: il renderer chiama dc_block sul buffer prima di scrivere."""
         stream = make_mock_stream(duration=0.3)
         output_path = str(tmp_path / 'wired.aif')
-        with patch('rendering.numpy_audio_renderer.dc_block',
+        with patch('pge.rendering.numpy_audio_renderer.dc_block',
                    side_effect=lambda buf, sr: buf) as mock_dc:
             renderer.render_single_stream(stream, output_path)
             assert mock_dc.called

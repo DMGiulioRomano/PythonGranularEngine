@@ -29,7 +29,7 @@ Organizzazione:
 import pytest
 from dataclasses import fields, FrozenInstanceError
 
-from parameters.parameter_schema import (
+from pge.parameters.parameter_schema import (
     ParameterSpec,
     STREAM_PARAMETER_SCHEMA,
     POINTER_PARAMETER_SCHEMA,

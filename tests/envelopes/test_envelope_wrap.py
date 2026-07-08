@@ -10,8 +10,8 @@ wrap=False (default): comportamento attuale (hold implicito).
 """
 
 import pytest
-from envelopes.envelope_builder import EnvelopeBuilder
-from envelopes.envelope import Envelope
+from pge.envelopes.envelope_builder import EnvelopeBuilder
+from pge.envelopes.envelope import Envelope
 
 
 # =============================================================================

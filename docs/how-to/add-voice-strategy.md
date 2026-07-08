@@ -4,8 +4,8 @@ type: how-to
 status: stable
 tags: [voices, strategy, extension]
 sources:
-  - src/strategies/
-  - src/core/stream.py
+  - src/pge/strategies/
+  - src/pge/core/stream.py
 last_synced_commit: 8c896d8
 entry_for: [add-voice-strategy]
 ---
@@ -25,19 +25,19 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 
 ## Passi
 
-1. Sottoclasse l'ABC giusta in `src/strategies/`
+1. Sottoclasse l'ABC giusta in `src/pge/strategies/`
 2. Implementa `get_<axis>_offset(voice_index, num_voices, time)`
 3. Registra nella factory `Voice<Axis>StrategyFactory.REGISTRY`
-4. Se i parametri richiedono parsing custom (es. envelope auto-detect), estendi `_build_<axis>_strategy` in `src/core/stream.py` via `_parse_strategy_kwarg`
+4. Se i parametri richiedono parsing custom (es. envelope auto-detect), estendi `_build_<axis>_strategy` in `src/pge/core/stream.py` via `_parse_strategy_kwarg`
 5. Test: `tests/strategies/test_voice_<axis>_strategy.py` con voice-0 invariant + envelope param + (per le stochastiche) determinismo dal `stream_id`
 
 ## File toccati
 
 | Path | Tipo |
 |------|------|
-| `src/strategies/voice_<axis>_<nome>.py` | nuovo file |
-| `src/strategies/voice_<axis>_factory.py` | aggiunta a REGISTRY |
-| `src/core/stream.py` | eventuale parsing kwarg |
+| `src/pge/strategies/voice_<axis>_<nome>.py` | nuovo file |
+| `src/pge/strategies/voice_<axis>_factory.py` | aggiunta a REGISTRY |
+| `src/pge/core/stream.py` | eventuale parsing kwarg |
 | `tests/strategies/test_voice_<axis>_strategy.py` | nuovi test |
 
 ## Test da aggiornare

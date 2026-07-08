@@ -1,0 +1,419 @@
+# =============================================================================
+# API programmatica del granular engine (Fase 1 refactor library/CLI).
+#
+# Contratto del modulo (docs/plans/2026-07-08-001-refactor-pge-library-cli-plan.md,
+# sez. B.1):
+# - nessun print, nessun sys.exit, nessuna lettura di sys.argv;
+# - errori -> eccezioni (EngineError e sottoclassi, FileNotFoundError,
+#   ValueError per argomenti API invalidi);
+# - import lazy dei moduli pesanti dentro le funzioni (stesso stile di
+#   main.py): mantiene mockabile via sys.modules e non paga matplotlib
+#   all'import;
+# - ogni default filesystem e' un parametro esplicito overridabile.
+#
+# Divisione delle policy: l'API sceglie default deterministici e senza
+# dipendenze esterne (jobs=1, renderer='numpy', path manifest esplicito);
+# messaggi utente, derivazione dei nomi file e policy 'auto' restano in
+# main.py.
+# =============================================================================
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import List, Optional, Union
+
+from pge.shared.constants import DEFAULT_OUTPUT_SR
+from pge.rendering.audio_format import DEFAULT_FORMAT, FORMATS
+
+DEFAULT_SAMPLES_DIR = './refs/'   # default storico, ora esplicito e overridabile
+
+
+@dataclass(frozen=True)
+class CsoundOptions:
+    """Opzioni renderer Csound. I default replicano quelli odierni della CLI."""
+    orc_path: str = 'csound/main.orc'
+    incdir: str = 'src'
+    ssdir: Optional[str] = None        # None -> samples dir di default ('refs')
+    sfdir: str = 'output'
+    log_dir: str = 'logs'
+    message_level: int = 134
+    sco_dir: Optional[str] = None      # None -> .sco temporanei (--keep-sco off)
+
+
+@dataclass
+class RenderResult:
+    """Esito di un render: tutto cio' che serve alla CLI per i suoi print."""
+    audio_paths: List[str]             # 1 file in MIX, N in STEMS
+    elapsed_seconds: float             # durata della sola engine.render
+    renderer_type: str                 # 'numpy' | 'csound'
+    per_stream: bool
+    jobs: Optional[int] = None         # jobs risolti (renderer.jobs); None per csound
+    cache_manifest_path: Optional[str] = None
+    gc_removed: List[str] = field(default_factory=list)  # stream orfani rimossi dal GC
+
+
+def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
+    """Generator(yaml) + load_yaml() + create_elements().
+
+    Args:
+        samples_dir: directory dei sample audio; None -> default storico
+            ('./refs/', via fallback PATHSAMPLES). Quando None la chiamata
+            resta Generator(yaml): compatibile con firme Generator
+            precedenti (submodule non ancora aggiornati).
+
+    Raises:
+        FileNotFoundError, yaml.YAMLError, EngineError (SampleNotFoundError,
+        ConfigError, ...). Nessun print proprio (quelli interni di Generator
+        restano).
+    """
+    from pge.engine.generator import Generator
+
+    if samples_dir is not None:
+        generator = Generator(yaml_path, samples_dir=samples_dir)
+    else:
+        generator = Generator(yaml_path)
+    generator.load_yaml()
+    generator.create_elements()
+    return generator
+
+
+def _make_cache_manager(cache_manifest_path: Optional[str]):
+    """StreamCacheManager sul manifest esplicito; None = cache disattiva."""
+    if cache_manifest_path is None:
+        return None
+    from pge.rendering.stream_cache_manager import StreamCacheManager
+    return StreamCacheManager(cache_path=cache_manifest_path)
+
+
+def build_renderer(
+    renderer_type: str,                          # 'numpy' | 'csound'
+    generator,
+    *,
+    output_sr: int = DEFAULT_OUTPUT_SR,
+    jobs: Union[int, str] = 1,                   # 1 = default API; 'auto' e' policy CLI
+    audio_format=DEFAULT_FORMAT,
+    samples_dir: Optional[str] = None,           # -> SampleRegistry(base_path=...)/SSDIR
+    cache_manifest_path: Optional[str] = None,   # None = cache disattiva
+    csound: Optional[CsoundOptions] = None,      # None -> CsoundOptions() se serve
+):
+    """Compone l'AudioRenderer per il generator dato.
+
+    Estrazione 1:1 di main._build_renderer, senza print: il path del
+    manifest e' esplicito (la CLI lo compone da cache_dir+basename e lo
+    stampa lei).
+
+    Raises:
+        InvalidRendererError: se renderer_type non e' supportato.
+    """
+    from pge.rendering.renderer_factory import RendererFactory
+
+    if renderer_type == 'numpy':
+        from pge.rendering.sample_registry import SampleRegistry
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+
+        table_map = generator.ftable_manager.get_all_tables()
+        if samples_dir is not None:
+            sample_reg = SampleRegistry(base_path=samples_dir)
+        else:
+            sample_reg = SampleRegistry()
+        window_reg = NumpyWindowRegistry()
+
+        for _, (ftype, name) in table_map.items():
+            if ftype == 'sample':
+                sample_reg.load(name)
+
+        return RendererFactory.create(
+            'numpy',
+            sample_registry=sample_reg,
+            window_registry=window_reg,
+            table_map=table_map,
+            output_sr=output_sr,
+            cache_manager=_make_cache_manager(cache_manifest_path),
+            stream_data_map=generator.stream_data_map,
+            audio_format=audio_format,
+            jobs=jobs,
+        )
+
+    if renderer_type == 'csound':
+        opts = csound if csound is not None else CsoundOptions()
+        # SSDIR: opzione esplicita > samples_dir (senza slash finale,
+        # convenzione csound) > default storico 'refs'
+        if opts.ssdir is not None:
+            ssdir = opts.ssdir
+        elif samples_dir is not None:
+            ssdir = samples_dir.rstrip('/')
+        else:
+            ssdir = 'refs'
+        csound_config = {
+            'orc_path': opts.orc_path,
+            'env_vars': {
+                'INCDIR': opts.incdir,
+                'SSDIR': ssdir,
+                'SFDIR': opts.sfdir,
+            },
+            'log_dir': opts.log_dir,
+            'message_level': opts.message_level,
+        }
+
+        return RendererFactory.create(
+            'csound',
+            score_writer=generator.score_writer,
+            csound_config=csound_config,
+            cache_manager=_make_cache_manager(cache_manifest_path),
+            stream_data_map=generator.stream_data_map,
+            sco_dir=opts.sco_dir,
+        )
+
+    from pge.shared.exceptions import InvalidRendererError
+    raise InvalidRendererError(
+        renderer_type=renderer_type,
+        available=["csound", "numpy"],
+    )
+
+
+def collect_cache_orphans(
+    generator,
+    renderer,
+    output_path: str,
+    *,
+    audio_format=DEFAULT_FORMAT,
+) -> List[str]:
+    """GC del manifest cache: rimuove stream orfani (rimossi/rinominati
+    nel YAML).
+
+    Usa TUTTI gli stream_id di generator.data (solo/mute non rende orfani
+    gli esclusi), aif_dir = dirname(output_path), prefix = basename del
+    riferimento yaml. No-op ([]) se renderer.cache_manager e' None.
+    """
+    import os
+
+    cache_manager = getattr(renderer, 'cache_manager', None)
+    if cache_manager is None:
+        return []
+
+    all_stream_dicts = (generator.data or {}).get('streams', [])
+    current_ids = [
+        s['stream_id'] for s in all_stream_dicts if 'stream_id' in s
+    ]
+    aif_prefix = os.path.splitext(os.path.basename(generator.yaml_path))[0]
+    return cache_manager.garbage_collect(
+        current_stream_ids=current_ids,
+        aif_dir=os.path.dirname(os.path.abspath(output_path)),
+        aif_prefix=aif_prefix,
+        ext=audio_format.extension,
+    )
+
+
+def render(
+    generator,
+    output_path: str,
+    *,
+    renderer='numpy',                            # str | AudioRenderer
+    per_stream: bool = False,
+    audio_format=DEFAULT_FORMAT,
+    run_cache_gc: bool = True,                   # GC prima del render (STEMS+cache)
+    # forward a build_renderer quando renderer e' una stringa:
+    output_sr: int = DEFAULT_OUTPUT_SR,
+    jobs: Union[int, str] = 1,
+    samples_dir: Optional[str] = None,
+    cache_manifest_path: Optional[str] = None,
+    csound: Optional[CsoundOptions] = None,
+) -> RenderResult:
+    """Renderizza gli stream del generator in output_path, cronometrato.
+
+    `renderer` accetta un'istanza gia' costruita (escape hatch: la CLI la
+    costruisce prima per poter stampare jobs/manifest) oppure il tipo come
+    stringa, nel qual caso viene composta via build_renderer.
+    """
+    import time
+
+    if isinstance(renderer, str):
+        renderer_type = renderer
+        renderer_obj = build_renderer(
+            renderer, generator,
+            output_sr=output_sr,
+            jobs=jobs,
+            audio_format=audio_format,
+            samples_dir=samples_dir,
+            cache_manifest_path=cache_manifest_path,
+            csound=csound,
+        )
+    else:
+        renderer_obj = renderer
+        renderer_type = (
+            'csound' if 'csound' in type(renderer_obj).__name__.lower()
+            else 'numpy'
+        )
+
+    gc_removed: List[str] = []
+    if run_cache_gc and per_stream:
+        gc_removed = collect_cache_orphans(
+            generator, renderer_obj, output_path, audio_format=audio_format)
+
+    from pge.rendering.rendering_engine import RenderingEngine
+    from pge.rendering.render_mode import StemsRenderMode, MixRenderMode
+    from pge.rendering.naming_strategy import DefaultNamingStrategy
+
+    engine = RenderingEngine(
+        renderer_obj,
+        naming_strategy=DefaultNamingStrategy(ext=audio_format.extension),
+    )
+    mode = StemsRenderMode() if per_stream else MixRenderMode()
+
+    t0 = time.perf_counter()
+    generated = engine.render(
+        streams=generator.streams,
+        output_path=output_path,
+        mode=mode,
+    )
+    elapsed = time.perf_counter() - t0
+
+    return RenderResult(
+        audio_paths=list(generated),
+        elapsed_seconds=elapsed,
+        renderer_type=renderer_type,
+        per_stream=per_stream,
+        jobs=getattr(renderer_obj, 'jobs', None),
+        cache_manifest_path=cache_manifest_path,
+        gc_removed=gc_removed,
+    )
+
+
+def render_file(
+    yaml_path: str,
+    output_path: str,
+    *,
+    renderer: str = 'numpy',
+    per_stream: bool = False,
+    output_sr: int = DEFAULT_OUTPUT_SR,
+    jobs: Union[int, str] = 1,
+    audio_format=DEFAULT_FORMAT,                 # AudioFormat | str (lookup FORMATS)
+    samples_dir: Optional[str] = None,
+    cache_manifest_path: Optional[str] = None,
+    csound: Optional[CsoundOptions] = None,
+) -> RenderResult:
+    """One-shot YAML -> audio: load_generator + render.
+
+    `audio_format` come stringa viene risolto via FORMATS; una stringa
+    ignota solleva ValueError con l'elenco dei formati validi.
+    """
+    if isinstance(audio_format, str):
+        if audio_format not in FORMATS:
+            raise ValueError(
+                f"Formato audio non supportato: {audio_format!r}. "
+                f"Validi: {', '.join(sorted(FORMATS))}."
+            )
+        audio_format = FORMATS[audio_format]
+
+    generator = load_generator(yaml_path, samples_dir=samples_dir)
+    return render(
+        generator,
+        output_path,
+        renderer=renderer,
+        per_stream=per_stream,
+        audio_format=audio_format,
+        output_sr=output_sr,
+        jobs=jobs,
+        samples_dir=samples_dir,
+        cache_manifest_path=cache_manifest_path,
+        csound=csound,
+    )
+
+
+def export_score_pdf(
+    generator,
+    pdf_path: str,
+    *,
+    config: Optional[dict] = None,     # merge sui default equivalenti alla CLI
+    samples_dir: Optional[str] = None, # -> config['samples_dir'] del visualizer
+) -> str:
+    """Esporta la partitura grafica in PDF; ritorna pdf_path.
+
+    I default di config sono identici a quelli della CLI (main.py).
+    samples_dir, se dato, entra come chiave config del visualizer (il cui
+    default None mantiene il fallback storico su PATHSAMPLES).
+    """
+    merged = {
+        'page_duration': 15.0,
+        'show_static_params': False,
+        'show_voice_offsets': False,
+        'envelope_filter': None,
+        'magnify_auto': False,
+        'magnify_targets': [],
+    }
+    if config:
+        merged.update(config)
+    if samples_dir is not None:
+        merged['samples_dir'] = samples_dir
+
+    from pge.rendering.score_visualizer import ScoreVisualizer
+
+    viz = ScoreVisualizer(generator, config=merged)
+    viz.export_pdf(pdf_path)
+    return pdf_path
+
+
+def export_reaper(
+    generator,
+    audio_paths: List[str],
+    output_path: str,
+) -> str:
+    """Scrive il progetto Reaper (.rpp); ritorna output_path.
+
+    Replica del blocco --reaper della CLI incluso il padding MIX: se
+    len(audio_paths) != len(streams), ogni TRACK punta al mix
+    (audio_paths[0]) con onset/duration del proprio stream.
+    """
+    from pge.export.reaper_project_writer import ReaperProjectWriter
+
+    n = len(generator.streams)
+    aif_paths = (
+        audio_paths if len(audio_paths) == n else [audio_paths[0]] * n
+    )
+    ReaperProjectWriter().write(
+        streams=generator.streams,
+        aif_paths=aif_paths,
+        output_path=output_path,
+    )
+    return output_path
+
+
+def export_sv(
+    generator,
+    audio_path: str,
+    output_path: str,
+    *,
+    layout: str = 'multi',
+) -> str:
+    """Esporta una sessione Sonic Visualiser (.sv); ritorna output_path.
+
+    Solo MIX: la policy 'ignora in STEMS' resta nella CLI (e' un
+    messaggio utente).
+    """
+    from pge.export.sv_exporter import SVExporter
+
+    SVExporter().export(
+        generator.streams,
+        audio_path=audio_path,
+        out_path=output_path,
+        layout=layout,
+    )
+    return output_path
+
+
+def export_grain_json(
+    generator,
+    output_dir: str,
+    base_name: str,
+) -> List[str]:
+    """Scrive il grain JSON per i soli stream con .generated True
+    (generazione lazy, issue #117). Ritorna i path scritti."""
+    from pge.export.grain_json_writer import GrainJsonWriter
+
+    writer = GrainJsonWriter()
+    paths = []
+    for stream in generator.streams:
+        if not stream.generated:
+            continue
+        paths.append(writer.write(stream, output_dir, base_name))
+    return paths

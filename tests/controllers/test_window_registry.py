@@ -23,7 +23,7 @@ Struttura:
 """
 
 import pytest
-from controllers.window_registry import WindowSpec, WindowRegistry
+from pge.controllers.window_registry import WindowSpec, WindowRegistry
 
 
 # ===========================================================================

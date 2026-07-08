@@ -12,7 +12,7 @@ import pytest
 
 def test_sample_not_found_user_message_contains_filename_and_path():
     """SampleNotFoundError espone un messaggio leggibile con file e path cercato."""
-    from shared.exceptions import SampleNotFoundError
+    from pge.shared.exceptions import SampleNotFoundError
 
     err = SampleNotFoundError(filename="pino.wav", search_path="./refs/")
 
@@ -23,7 +23,7 @@ def test_sample_not_found_user_message_contains_filename_and_path():
 
 def test_sample_not_found_is_engine_error():
     """SampleNotFoundError è catturabile come EngineError (handler unico in main)."""
-    from shared.exceptions import EngineError, SampleNotFoundError
+    from pge.shared.exceptions import EngineError, SampleNotFoundError
 
     err = SampleNotFoundError(filename="x.wav", search_path="./refs/")
     assert isinstance(err, EngineError)
@@ -32,7 +32,7 @@ def test_sample_not_found_is_engine_error():
 
 def test_sample_not_found_user_message_includes_optional_context():
     """Quando stream_id e config_file sono settati, compaiono nel messaggio."""
-    from shared.exceptions import SampleNotFoundError
+    from pge.shared.exceptions import SampleNotFoundError
 
     err = SampleNotFoundError(filename="pino.wav", search_path="./refs/")
     err.stream_id = "drone_a"
@@ -45,7 +45,7 @@ def test_sample_not_found_user_message_includes_optional_context():
 
 def test_sample_not_found_user_message_omits_missing_context():
     """Senza context arricchito, il messaggio non mostra righe vuote."""
-    from shared.exceptions import SampleNotFoundError
+    from pge.shared.exceptions import SampleNotFoundError
 
     err = SampleNotFoundError(filename="x.wav", search_path="./refs/")
     msg = err.user_message()
@@ -60,7 +60,7 @@ def test_sample_not_found_user_message_omits_missing_context():
 
 def test_missing_field_error_inherits_engine_error_and_value_error():
     """MissingFieldError ereditare da EngineError e ValueError per compat catch."""
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         MissingFieldError,
@@ -74,7 +74,7 @@ def test_missing_field_error_inherits_engine_error_and_value_error():
 
 def test_missing_field_error_user_message_single_field():
     """MissingFieldError espone messaggio pulito con field name."""
-    from shared.exceptions import MissingFieldError
+    from pge.shared.exceptions import MissingFieldError
 
     err = MissingFieldError(field="sample")
     msg = err.user_message()
@@ -84,7 +84,7 @@ def test_missing_field_error_user_message_single_field():
 
 def test_missing_field_error_user_message_includes_optional_context():
     """stream_id e config_file appaiono in user_message quando settati."""
-    from shared.exceptions import MissingFieldError
+    from pge.shared.exceptions import MissingFieldError
 
     err = MissingFieldError(field="sample")
     err.stream_id = "drone_a"
@@ -97,7 +97,7 @@ def test_missing_field_error_user_message_includes_optional_context():
 
 def test_missing_field_error_user_message_omits_missing_context():
     """Senza context arricchito, niente righe vuote."""
-    from shared.exceptions import MissingFieldError
+    from pge.shared.exceptions import MissingFieldError
 
     err = MissingFieldError(field="sample")
     msg = err.user_message()
@@ -107,7 +107,7 @@ def test_missing_field_error_user_message_omits_missing_context():
 
 def test_missing_field_error_supports_multiple_fields():
     """MissingFieldError accetta lista di fields per casi multi-campo."""
-    from shared.exceptions import MissingFieldError
+    from pge.shared.exceptions import MissingFieldError
 
     err = MissingFieldError(fields=["foo", "bar"])
     msg = err.user_message()
@@ -117,7 +117,7 @@ def test_missing_field_error_supports_multiple_fields():
 
 def test_invalid_field_value_error_inherits_engine_and_value_error():
     """InvalidFieldValueError catturabile come EngineError e ValueError."""
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         InvalidFieldValueError,
@@ -131,7 +131,7 @@ def test_invalid_field_value_error_inherits_engine_and_value_error():
 
 def test_invalid_field_value_error_user_message_contains_field_and_value():
     """user_message mostra field e valore invalido."""
-    from shared.exceptions import InvalidFieldValueError
+    from pge.shared.exceptions import InvalidFieldValueError
 
     err = InvalidFieldValueError(field="grain.reverse", value=True, hint="lascia vuoto")
     msg = err.user_message()
@@ -142,7 +142,7 @@ def test_invalid_field_value_error_user_message_contains_field_and_value():
 
 def test_invalid_field_value_error_includes_optional_context():
     """stream_id e config_file appaiono quando settati."""
-    from shared.exceptions import InvalidFieldValueError
+    from pge.shared.exceptions import InvalidFieldValueError
 
     err = InvalidFieldValueError(field="x", value=1)
     err.stream_id = "s1"
@@ -159,7 +159,7 @@ def test_invalid_field_value_error_includes_optional_context():
 
 def test_invalid_parameter_error_inherits_config_error():
     """InvalidParameterError catturabile come ConfigError/EngineError/ValueError."""
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         InvalidParameterError,
@@ -173,7 +173,7 @@ def test_invalid_parameter_error_inherits_config_error():
 
 def test_invalid_parameter_error_user_message_contains_param_and_value():
     """user_message mostra param_name e value, formato pulito."""
-    from shared.exceptions import InvalidParameterError
+    from pge.shared.exceptions import InvalidParameterError
 
     err = InvalidParameterError(
         param_name="density.value",
@@ -188,7 +188,7 @@ def test_invalid_parameter_error_user_message_contains_param_and_value():
 
 def test_invalid_parameter_error_includes_optional_context():
     """stream_id e config_file compaiono quando settati."""
-    from shared.exceptions import InvalidParameterError
+    from pge.shared.exceptions import InvalidParameterError
 
     err = InvalidParameterError(param_name="dephase", value=object())
     err.stream_id = "s1"
@@ -200,7 +200,7 @@ def test_invalid_parameter_error_includes_optional_context():
 
 def test_parameter_bound_error_inherits_config_error():
     """ParameterBoundError catturabile come ConfigError/EngineError/ValueError."""
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         ParameterBoundError,
@@ -220,7 +220,7 @@ def test_parameter_bound_error_inherits_config_error():
 
 def test_parameter_bound_error_user_message_shows_violation():
     """user_message mostra param, valore trovato, bounds."""
-    from shared.exceptions import ParameterBoundError
+    from pge.shared.exceptions import ParameterBoundError
 
     err = ParameterBoundError(
         param_name="density",
@@ -237,7 +237,7 @@ def test_parameter_bound_error_user_message_shows_violation():
 
 
 def test_parameter_bound_error_includes_optional_context():
-    from shared.exceptions import ParameterBoundError
+    from pge.shared.exceptions import ParameterBoundError
 
     err = ParameterBoundError(
         param_name="density",
@@ -255,7 +255,7 @@ def test_parameter_bound_error_includes_optional_context():
 
 def test_parameter_bound_error_supports_envelope_violations():
     """ParameterBoundError accetta lista violazioni per envelope."""
-    from shared.exceptions import ParameterBoundError
+    from pge.shared.exceptions import ParameterBoundError
 
     err = ParameterBoundError(
         param_name="density",
@@ -275,7 +275,7 @@ def test_parameter_bound_error_supports_envelope_violations():
 
 
 def test_strategy_not_found_error_inherits_config_error():
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         StrategyNotFoundError,
@@ -292,7 +292,7 @@ def test_strategy_not_found_error_inherits_config_error():
 
 
 def test_strategy_not_found_user_message_lists_available():
-    from shared.exceptions import StrategyNotFoundError
+    from pge.shared.exceptions import StrategyNotFoundError
 
     err = StrategyNotFoundError(
         strategy_kind="variation",
@@ -308,7 +308,7 @@ def test_strategy_not_found_user_message_lists_available():
 
 
 def test_strategy_not_found_includes_optional_context():
-    from shared.exceptions import StrategyNotFoundError
+    from pge.shared.exceptions import StrategyNotFoundError
 
     err = StrategyNotFoundError(
         strategy_kind="pitch", name="x", available=["a"],
@@ -321,7 +321,7 @@ def test_strategy_not_found_includes_optional_context():
 
 
 def test_invalid_strategy_config_error_inherits_config_error():
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         InvalidStrategyConfigError,
@@ -338,7 +338,7 @@ def test_invalid_strategy_config_error_inherits_config_error():
 
 
 def test_invalid_strategy_config_user_message_contains_field_and_value():
-    from shared.exceptions import InvalidStrategyConfigError
+    from pge.shared.exceptions import InvalidStrategyConfigError
 
     err = InvalidStrategyConfigError(
         strategy_kind="pitch",
@@ -355,7 +355,7 @@ def test_invalid_strategy_config_user_message_contains_field_and_value():
 
 
 def test_invalid_strategy_config_includes_optional_context():
-    from shared.exceptions import InvalidStrategyConfigError
+    from pge.shared.exceptions import InvalidStrategyConfigError
 
     err = InvalidStrategyConfigError(
         strategy_kind="pan", field="spread", value=-1.0,
@@ -372,7 +372,7 @@ def test_invalid_strategy_config_includes_optional_context():
 # =============================================================================
 
 def test_invalid_renderer_error_is_config_error():
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError, EngineError, InvalidRendererError,
     )
     err = InvalidRendererError(renderer_type="bogus", available=["numpy", "csound"])
@@ -382,7 +382,7 @@ def test_invalid_renderer_error_is_config_error():
 
 
 def test_invalid_renderer_user_message_lists_available():
-    from shared.exceptions import InvalidRendererError
+    from pge.shared.exceptions import InvalidRendererError
     err = InvalidRendererError(renderer_type="bogus", available=["numpy", "csound"])
     msg = err.user_message()
     assert "[ERRORE]" in msg
@@ -392,7 +392,7 @@ def test_invalid_renderer_user_message_lists_available():
 
 
 def test_invalid_window_error_name_form():
-    from shared.exceptions import ConfigError, InvalidWindowError
+    from pge.shared.exceptions import ConfigError, InvalidWindowError
     err = InvalidWindowError(name="bogus", available=["hanning", "hamming"])
     assert isinstance(err, ConfigError)
     msg = err.user_message()
@@ -401,7 +401,7 @@ def test_invalid_window_error_name_form():
 
 
 def test_invalid_window_error_param_form():
-    from shared.exceptions import InvalidWindowError
+    from pge.shared.exceptions import InvalidWindowError
     err = InvalidWindowError(param="n", value=0)
     msg = err.user_message()
     assert "[ERRORE]" in msg
@@ -410,7 +410,7 @@ def test_invalid_window_error_param_form():
 
 
 def test_ftable_error_is_config_error():
-    from shared.exceptions import ConfigError, FtableError
+    from pge.shared.exceptions import ConfigError, FtableError
     err = FtableError(key="hanning", reason="Window non trovata nel registry")
     assert isinstance(err, ConfigError)
     msg = err.user_message()
@@ -419,7 +419,7 @@ def test_ftable_error_is_config_error():
 
 
 def test_engine_runtime_error_is_engine_error():
-    from shared.exceptions import EngineError, EngineRuntimeError
+    from pge.shared.exceptions import EngineError, EngineRuntimeError
     err = EngineRuntimeError("boom")
     assert isinstance(err, EngineError)
     assert err.stream_id is None
@@ -427,7 +427,7 @@ def test_engine_runtime_error_is_engine_error():
 
 
 def test_csound_render_error_inheritance_and_message():
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         CsoundRenderError, EngineError, EngineRuntimeError,
     )
     err = CsoundRenderError(
@@ -445,7 +445,7 @@ def test_csound_render_error_inheritance_and_message():
 
 
 def test_csound_render_error_context_lines():
-    from shared.exceptions import CsoundRenderError
+    from pge.shared.exceptions import CsoundRenderError
     err = CsoundRenderError(returncode=2, command=["csound"], stderr="x")
     err.stream_id = "drone_a"
     err.config_file = "configs/x.yml"
@@ -460,11 +460,11 @@ def test_csound_render_error_context_lines():
 
 def test_window_curve_range_violation_is_invalid_strategy_config():
     """Curve breakpoint oltre range valido -> InvalidStrategyConfigError."""
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError, EngineError, InvalidStrategyConfigError,
     )
-    from controllers.window_selection_strategy import _validate_curve_range
-    from envelopes.envelope import Envelope
+    from pge.controllers.window_selection_strategy import _validate_curve_range
+    from pge.envelopes.envelope import Envelope
 
     curve = Envelope([[0.0, 0.0], [2.5, 1.0]])
     with pytest.raises(InvalidStrategyConfigError) as excinfo:
@@ -482,9 +482,9 @@ def test_window_curve_range_violation_is_invalid_strategy_config():
 
 def test_multistate_too_few_states_is_invalid_strategy_config():
     """MultiStateWindowStrategy con <2 stati -> InvalidStrategyConfigError."""
-    from shared.exceptions import InvalidStrategyConfigError
-    from controllers.window_selection_strategy import MultiStateWindowStrategy
-    from envelopes.envelope import Envelope
+    from pge.shared.exceptions import InvalidStrategyConfigError
+    from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
+    from pge.envelopes.envelope import Envelope
 
     curve = Envelope([[0.0, 0.0], [1.0, 1.0]])
     with pytest.raises(InvalidStrategyConfigError) as excinfo:
@@ -498,9 +498,9 @@ def test_multistate_too_few_states_is_invalid_strategy_config():
 
 def test_multistate_unsorted_states_is_invalid_strategy_config():
     """Stati non in ordine crescente -> InvalidStrategyConfigError."""
-    from shared.exceptions import InvalidStrategyConfigError
-    from controllers.window_selection_strategy import MultiStateWindowStrategy
-    from envelopes.envelope import Envelope
+    from pge.shared.exceptions import InvalidStrategyConfigError
+    from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
+    from pge.envelopes.envelope import Envelope
 
     curve = Envelope([[0.0, 0.0], [1.0, 1.0]])
     with pytest.raises(InvalidStrategyConfigError) as excinfo:
@@ -516,10 +516,10 @@ def test_multistate_unsorted_states_is_invalid_strategy_config():
 
 def test_window_strategy_factory_unknown_name_is_strategy_not_found():
     """Factory.create con nome ignoto -> StrategyNotFoundError (non KeyError)."""
-    from shared.exceptions import (
+    from pge.shared.exceptions import (
         ConfigError, EngineError, StrategyNotFoundError,
     )
-    from controllers.window_selection_strategy import WindowStrategyFactory
+    from pge.controllers.window_selection_strategy import WindowStrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as excinfo:
         WindowStrategyFactory.create('bogus_strategy_name_xyz')
@@ -534,8 +534,8 @@ def test_window_strategy_factory_unknown_name_is_strategy_not_found():
 
 def test_window_registry_generate_unknown_is_invalid_window():
     """generate_ftable_statement con nome ignoto -> InvalidWindowError."""
-    from shared.exceptions import ConfigError, InvalidWindowError
-    from controllers.window_registry import WindowRegistry
+    from pge.shared.exceptions import ConfigError, InvalidWindowError
+    from pge.controllers.window_registry import WindowRegistry
 
     with pytest.raises(InvalidWindowError) as excinfo:
         WindowRegistry.generate_ftable_statement(1, 'totally_fake_window_xyz')
@@ -549,8 +549,8 @@ def test_window_registry_generate_unknown_is_invalid_window():
 
 def test_pitch_controller_multiple_units_is_invalid_field_value(mock_config):
     """>1 chiave-unità nel blocco pitch -> InvalidFieldValueError."""
-    from shared.exceptions import ConfigError, InvalidFieldValueError
-    from controllers.pitch_controller import PitchController
+    from pge.shared.exceptions import ConfigError, InvalidFieldValueError
+    from pge.controllers.pitch_controller import PitchController
 
     with pytest.raises(InvalidFieldValueError) as excinfo:
         PitchController({'semitones': 12, 'ratio': 2.0}, mock_config)
@@ -564,8 +564,8 @@ def test_pitch_controller_multiple_units_is_invalid_field_value(mock_config):
 
 def test_density_controller_exclusive_group_violation_is_invalid_field_value():
     """0 o >1 param density -> InvalidFieldValueError."""
-    from shared.exceptions import ConfigError, InvalidFieldValueError
-    from controllers.density_controller import DensityController
+    from pge.shared.exceptions import ConfigError, InvalidFieldValueError
+    from pge.controllers.density_controller import DensityController
 
     dc = DensityController.__new__(DensityController)
     dc._loaded_params = {}
@@ -585,9 +585,9 @@ def test_density_controller_exclusive_group_violation_is_invalid_field_value():
 
 def test_envelope_segment_empty_breakpoints_is_invalid_field_value():
     """Segment senza breakpoint -> InvalidFieldValueError."""
-    from shared.exceptions import ConfigError, InvalidFieldValueError
-    from envelopes.envelope_segment import NormalSegment
-    from envelopes.envelope_interpolation import LinearInterpolation
+    from pge.shared.exceptions import ConfigError, InvalidFieldValueError
+    from pge.envelopes.envelope_segment import NormalSegment
+    from pge.envelopes.envelope_interpolation import LinearInterpolation
 
     with pytest.raises(InvalidFieldValueError) as excinfo:
         NormalSegment(breakpoints=[], strategy=LinearInterpolation())
@@ -601,8 +601,8 @@ def test_envelope_segment_empty_breakpoints_is_invalid_field_value():
 
 def test_time_distribution_invalid_n_reps_is_parameter_bound():
     """n_reps < 1 -> ParameterBoundError."""
-    from shared.exceptions import ConfigError, ParameterBoundError
-    from envelopes.time_distribution import LinearDistribution
+    from pge.shared.exceptions import ConfigError, ParameterBoundError
+    from pge.envelopes.time_distribution import LinearDistribution
 
     dist = LinearDistribution()
     with pytest.raises(ParameterBoundError) as excinfo:
@@ -618,8 +618,8 @@ def test_time_distribution_invalid_n_reps_is_parameter_bound():
 
 def test_time_distribution_invalid_total_time_is_parameter_bound():
     """total_time <= 0 -> ParameterBoundError."""
-    from shared.exceptions import ParameterBoundError
-    from envelopes.time_distribution import LinearDistribution
+    from pge.shared.exceptions import ParameterBoundError
+    from pge.envelopes.time_distribution import LinearDistribution
 
     dist = LinearDistribution()
     with pytest.raises(ParameterBoundError) as excinfo:
@@ -633,8 +633,8 @@ def test_time_distribution_invalid_total_time_is_parameter_bound():
 
 def test_exponential_distribution_invalid_rate_is_parameter_bound():
     """rate <= 0 -> ParameterBoundError."""
-    from shared.exceptions import ParameterBoundError
-    from envelopes.time_distribution import ExponentialDistribution
+    from pge.shared.exceptions import ParameterBoundError
+    from pge.envelopes.time_distribution import ExponentialDistribution
 
     with pytest.raises(ParameterBoundError) as excinfo:
         ExponentialDistribution(rate=0.0)

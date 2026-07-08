@@ -20,7 +20,7 @@ Contratto:
 import pytest
 from types import SimpleNamespace
 
-from core.grain import Grain
+from pge.core.grain import Grain
 
 
 def make_grain(onset: float, duration: float = 0.05) -> Grain:
@@ -48,7 +48,7 @@ def make_stream(onset: float = 0.0, duration: float = 1.0):
 class TestOverflowMarginClipStrategy:
 
     def test_grain_completely_inside_stream_is_kept(self):
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=0.0, duration=1.0)
         grain = make_grain(onset=0.5, duration=0.05)
@@ -59,7 +59,7 @@ class TestOverflowMarginClipStrategy:
 
     def test_grain_with_onset_at_or_past_stream_end_is_excluded(self):
         """R1: grain.onset >= stream_end -> escluso (strict <)."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=0.0, duration=1.0)
         g_at = make_grain(onset=1.0, duration=0.05)
@@ -71,7 +71,7 @@ class TestOverflowMarginClipStrategy:
 
     def test_grain_tail_overflows_with_zero_margin_is_excluded(self):
         """R2: onset < stream_end ma onset+duration > stream_end+margin (margin=0) -> escluso."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=0.0, duration=1.0)
         grain = make_grain(onset=0.99, duration=0.05)  # tail = 1.04 > 1.0
@@ -82,7 +82,7 @@ class TestOverflowMarginClipStrategy:
 
     def test_grain_tail_within_margin_is_kept(self):
         """Grain coda dentro margin -> incluso."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.5)
         stream = make_stream(onset=0.0, duration=1.0)
         grain = make_grain(onset=0.99, duration=0.05)  # tail 1.04 <= 1.5
@@ -93,7 +93,7 @@ class TestOverflowMarginClipStrategy:
 
     def test_grain_tail_exactly_equals_stream_end_is_kept(self):
         """Boundary: onset + duration == stream_end -> incluso (<= su limit)."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=0.0, duration=1.0)
         grain = make_grain(onset=0.95, duration=0.05)  # tail = 1.0 esatto
@@ -103,7 +103,7 @@ class TestOverflowMarginClipStrategy:
         assert result == [[grain]]
 
     def test_empty_voice_returns_empty(self):
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=0.0, duration=1.0)
 
@@ -113,7 +113,7 @@ class TestOverflowMarginClipStrategy:
 
     def test_filters_each_voice_independently(self):
         """Multi-voice: solo voice non valide filtrate, struttura preservata."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=0.0, duration=1.0)
         v0_keep = make_grain(onset=0.1, duration=0.05)
@@ -126,7 +126,7 @@ class TestOverflowMarginClipStrategy:
 
     def test_stream_with_nonzero_onset(self):
         """stream.onset != 0: bounds calcolati su offset assoluto."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         strategy = OverflowMarginClipStrategy(margin=0.0)
         stream = make_stream(onset=10.0, duration=1.0)  # stream_end=11.0
         g_in = make_grain(onset=10.5, duration=0.05)
@@ -145,7 +145,7 @@ class TestPassthroughClipStrategy:
 
     def test_passes_all_grains_unchanged(self):
         """R5: tutti i grain restituiti, inclusi quelli che sforano."""
-        from strategies.grain_clip_strategy import PassthroughClipStrategy
+        from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
         strategy = PassthroughClipStrategy()
         stream = make_stream(onset=0.0, duration=1.0)
         g_in = make_grain(onset=0.1)
@@ -157,7 +157,7 @@ class TestPassthroughClipStrategy:
         assert result == [[g_in, g_tail, g_out]]
 
     def test_preserves_voice_structure(self):
-        from strategies.grain_clip_strategy import PassthroughClipStrategy
+        from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
         strategy = PassthroughClipStrategy()
         stream = make_stream()
         voices = [[make_grain(0.1)], [], [make_grain(0.2), make_grain(5.0)]]
@@ -177,7 +177,7 @@ class TestPassthroughClipStrategy:
 class TestGrainClipStrategyFactory:
 
     def test_creates_overflow_margin_default(self):
-        from strategies.grain_clip_strategy import (
+        from pge.strategies.grain_clip_strategy import (
             GrainClipStrategyFactory, OverflowMarginClipStrategy,
         )
         s = GrainClipStrategyFactory.create('overflow_margin')
@@ -185,23 +185,23 @@ class TestGrainClipStrategyFactory:
         assert s.margin == 0.0
 
     def test_creates_overflow_margin_with_margin(self):
-        from strategies.grain_clip_strategy import GrainClipStrategyFactory
+        from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
         s = GrainClipStrategyFactory.create('overflow_margin', margin=1.0)
         assert s.margin == 1.0
 
     def test_creates_passthrough(self):
-        from strategies.grain_clip_strategy import (
+        from pge.strategies.grain_clip_strategy import (
             GrainClipStrategyFactory, PassthroughClipStrategy,
         )
         s = GrainClipStrategyFactory.create('passthrough')
         assert isinstance(s, PassthroughClipStrategy)
 
     def test_unknown_name_raises(self):
-        from strategies.grain_clip_strategy import GrainClipStrategyFactory
+        from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
         with pytest.raises(ValueError, match="grain_clip"):
             GrainClipStrategyFactory.create('bogus')
 
     def test_registry_contains_both_strategies(self):
-        from strategies.grain_clip_strategy import GRAIN_CLIP_STRATEGIES
+        from pge.strategies.grain_clip_strategy import GRAIN_CLIP_STRATEGIES
         assert 'overflow_margin' in GRAIN_CLIP_STRATEGIES
         assert 'passthrough' in GRAIN_CLIP_STRATEGIES

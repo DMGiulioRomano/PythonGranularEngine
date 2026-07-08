@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [caching, rendering, csound]
 sources:
-  - src/rendering/stream_cache_manager.py
+  - src/pge/rendering/stream_cache_manager.py
 last_synced_commit: c65dfae
 ---
 
@@ -52,9 +52,9 @@ Caching per-stream con fingerprint contenuto. Attivo solo con `STEMS=true CACHE=
 
 ## Implicazioni codice
 
-- `src/rendering/stream_cache_manager.py` — implementazione
-- `src/rendering/rendering_engine.py` — orchestrazione (GC + dirty check + update)
-- `src/rendering/csound_renderer.py` — usa cache via `render_single_stream`
+- `src/pge/rendering/stream_cache_manager.py` — implementazione
+- `src/pge/rendering/rendering_engine.py` — orchestrazione (GC + dirty check + update)
+- `src/pge/rendering/csound_renderer.py` — usa cache via `render_single_stream`
 - `tests/e2e/test_cache_e2e.py` — copertura E2E (15 test): first build, incremental, partial rebuild, GC
 
 **Trappola:** cambi di sample/audio sorgente NON sono coperti dal fingerprint del dict YAML. Se il file `.wav` referenziato cambia ma il YAML no, lo stream resta `clean`. Workaround: cambia un campo dummy (es. commento o flag) per forzare dirty.

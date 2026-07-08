@@ -18,7 +18,7 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-from main import _parse_jobs
+from pge.cli import _parse_jobs
 
 
 class TestParseJobs:
@@ -84,7 +84,7 @@ class TestBuildRendererJobsWiring:
         return gen
 
     def test_jobs_reaches_renderer(self, tmp_path, monkeypatch):
-        from main import _build_renderer
+        from pge.cli import _build_renderer
         monkeypatch.chdir(tmp_path)
         # SampleRegistry default base_path='./refs/'
         (tmp_path / 'refs').mkdir()
@@ -98,7 +98,7 @@ class TestBuildRendererJobsWiring:
         assert renderer.jobs == 3
 
     def test_auto_resolved_to_positive_int(self, tmp_path, monkeypatch):
-        from main import _build_renderer
+        from pge.cli import _build_renderer
         monkeypatch.chdir(tmp_path)
         (tmp_path / 'refs').mkdir()
         import soundfile as sf
@@ -118,7 +118,7 @@ class TestBuildRendererJobsWiring:
         renderer risultante non ha attributo jobs (parallelismo solo NumPy).
         """
         from unittest.mock import Mock
-        from main import _build_renderer
+        from pge.cli import _build_renderer
         monkeypatch.chdir(tmp_path)
 
         gen = Mock()

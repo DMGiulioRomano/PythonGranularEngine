@@ -14,7 +14,7 @@ import pytest
 from abc import ABC
 from unittest.mock import MagicMock
 
-from rendering.audio_renderer import AudioRenderer
+from pge.rendering.audio_renderer import AudioRenderer
 
 
 # =============================================================================

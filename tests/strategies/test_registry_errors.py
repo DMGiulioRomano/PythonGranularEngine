@@ -7,14 +7,14 @@ Issue #38, PR3 — registry strategy sollevano StrategyNotFoundError
 """
 import pytest
 
-from shared.exceptions import (
+from pge.shared.exceptions import (
     ConfigError,
     StrategyNotFoundError,
 )
 
 
 def test_strategy_factory_density_not_found_raises_strategy_not_found_error():
-    from strategies.strategy_registry import StrategyFactory
+    from pge.strategies.strategy_registry import StrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         StrategyFactory.create_density_strategy("bogus", None, {})
@@ -25,7 +25,7 @@ def test_strategy_factory_density_not_found_raises_strategy_not_found_error():
 
 
 def test_variation_factory_unknown_mode_raises_strategy_not_found_error():
-    from strategies.variation_registry import VariationFactory
+    from pge.strategies.variation_registry import VariationFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         VariationFactory.create("bogus_mode")

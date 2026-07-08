@@ -7,8 +7,8 @@ malformato (tipo non supportato o valore non parsabile).
 """
 import pytest
 
-from parameters.gate_factory import GateFactory
-from shared.exceptions import ConfigError, InvalidParameterError
+from pge.parameters.gate_factory import GateFactory
+from pge.shared.exceptions import ConfigError, InvalidParameterError
 
 
 def test_classify_dephase_invalid_type_raises_invalid_parameter_error():

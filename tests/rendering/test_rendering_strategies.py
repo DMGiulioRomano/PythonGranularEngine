@@ -60,7 +60,7 @@ class TestDefaultNamingStrategy:
 
     def test_generates_stems_paths(self):
         """Mode 'stems': genera un path per stream con suffisso __streamid."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [
@@ -76,7 +76,7 @@ class TestDefaultNamingStrategy:
 
     def test_generates_mix_path(self):
         """Mode 'mix': genera un solo path per tutti gli stream."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [
@@ -93,7 +93,7 @@ class TestDefaultNamingStrategy:
 
     def test_handles_path_with_extension(self):
         """Gestisce correttamente path con estensione."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [make_mock_stream('test')]
@@ -104,7 +104,7 @@ class TestDefaultNamingStrategy:
 
     def test_handles_path_without_extension(self):
         """Gestisce correttamente path senza estensione."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [make_mock_stream('test')]
@@ -115,7 +115,7 @@ class TestDefaultNamingStrategy:
 
     def test_invalid_mode_raises_error(self):
         """Mode non valido solleva ValueError."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [make_mock_stream()]
@@ -125,7 +125,7 @@ class TestDefaultNamingStrategy:
 
     def test_stems_wav_extension(self):
         """ext='.wav' genera path con estensione .wav."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy(ext='.wav')
         streams = [make_mock_stream('s1'), make_mock_stream('s2')]
@@ -137,7 +137,7 @@ class TestDefaultNamingStrategy:
 
     def test_stems_flac_extension(self):
         """ext='.flac' genera path con estensione .flac."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy(ext='.flac')
         streams = [make_mock_stream('s1')]
@@ -148,7 +148,7 @@ class TestDefaultNamingStrategy:
 
     def test_default_extension_unchanged(self):
         """Senza parametri ext, default rimane .aif."""
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [make_mock_stream('s1')]
@@ -164,7 +164,7 @@ class TestDefaultNamingStrategy:
         stem.split('__') restituisce sempre ['basename', 'stream_id']
         anche se basename o stream_id contengono singoli underscores.
         """
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         naming = DefaultNamingStrategy()
         streams = [make_mock_stream('s1')]
@@ -188,8 +188,8 @@ class TestStemsRenderMode:
 
     def test_calls_render_single_stream_for_each_stream(self):
         """Chiama render_single_stream per ogni stream."""
-        from rendering.render_mode import StemsRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import StemsRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = StemsRenderMode()
         renderer = make_mock_renderer()
@@ -208,8 +208,8 @@ class TestStemsRenderMode:
 
     def test_returns_list_of_generated_paths(self):
         """Ritorna lista di path generati."""
-        from rendering.render_mode import StemsRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import StemsRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = StemsRenderMode()
         renderer = make_mock_renderer()
@@ -225,8 +225,8 @@ class TestStemsRenderMode:
 
     def test_works_with_single_stream(self):
         """Funziona con un solo stream."""
-        from rendering.render_mode import StemsRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import StemsRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = StemsRenderMode()
         renderer = make_mock_renderer()
@@ -243,8 +243,8 @@ class TestStemsRenderMode:
         """execute delega il loop a renderer.render_streams con le coppie
         (stream, path) del naming: il mode decide COSA (stems), il renderer
         decide COME (seriale o parallelo)."""
-        from rendering.render_mode import StemsRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import StemsRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = StemsRenderMode()
         renderer = make_mock_renderer()
@@ -272,8 +272,8 @@ class TestMixRenderMode:
 
     def test_calls_render_merged_streams_once(self):
         """Chiama render_merged_streams una sola volta con tutti gli stream."""
-        from rendering.render_mode import MixRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import MixRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = MixRenderMode()
         renderer = make_mock_renderer()
@@ -291,8 +291,8 @@ class TestMixRenderMode:
 
     def test_returns_single_path(self):
         """Ritorna una lista con un solo path."""
-        from rendering.render_mode import MixRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import MixRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = MixRenderMode()
         renderer = make_mock_renderer()
@@ -307,8 +307,8 @@ class TestMixRenderMode:
 
     def test_does_not_call_render_single_stream(self):
         """NON chiama render_single_stream (solo render_merged_streams)."""
-        from rendering.render_mode import MixRenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.render_mode import MixRenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         mode = MixRenderMode()
         renderer = make_mock_renderer()
@@ -330,7 +330,7 @@ class TestRenderingEngine:
 
     def test_creates_with_renderer(self):
         """RenderingEngine si crea con un renderer."""
-        from rendering.rendering_engine import RenderingEngine
+        from pge.rendering.rendering_engine import RenderingEngine
 
         renderer = make_mock_renderer()
         engine = RenderingEngine(renderer)
@@ -339,8 +339,8 @@ class TestRenderingEngine:
 
     def test_creates_with_default_naming_strategy(self):
         """Usa DefaultNamingStrategy se non specificata."""
-        from rendering.rendering_engine import RenderingEngine
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.rendering_engine import RenderingEngine
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         renderer = make_mock_renderer()
         engine = RenderingEngine(renderer)
@@ -349,7 +349,7 @@ class TestRenderingEngine:
 
     def test_accepts_custom_naming_strategy(self):
         """Accetta naming strategy custom."""
-        from rendering.rendering_engine import RenderingEngine
+        from pge.rendering.rendering_engine import RenderingEngine
 
         renderer = make_mock_renderer()
         custom_naming = MagicMock()
@@ -360,7 +360,7 @@ class TestRenderingEngine:
 
     def test_render_delegates_to_mode(self):
         """render() delega l'esecuzione al RenderMode."""
-        from rendering.rendering_engine import RenderingEngine
+        from pge.rendering.rendering_engine import RenderingEngine
 
         renderer = make_mock_renderer()
         engine = RenderingEngine(renderer)
@@ -380,7 +380,7 @@ class TestRenderingEngine:
 
     def test_render_returns_mode_result(self):
         """render() ritorna il risultato del mode."""
-        from rendering.rendering_engine import RenderingEngine
+        from pge.rendering.rendering_engine import RenderingEngine
 
         renderer = make_mock_renderer()
         engine = RenderingEngine(renderer)
@@ -403,9 +403,9 @@ class TestOCPCompliance:
 
     def test_custom_naming_strategy_works(self):
         """Una custom NamingStrategy funziona senza modifiche al codice."""
-        from rendering.rendering_engine import RenderingEngine
-        from rendering.render_mode import StemsRenderMode
-        from rendering.naming_strategy import NamingStrategy
+        from pge.rendering.rendering_engine import RenderingEngine
+        from pge.rendering.render_mode import StemsRenderMode
+        from pge.rendering.naming_strategy import NamingStrategy
 
         # Custom naming: usa trattino invece di underscore
         class DashNamingStrategy(NamingStrategy):
@@ -431,9 +431,9 @@ class TestOCPCompliance:
 
     def test_new_render_mode_works(self):
         """Un nuovo RenderMode funziona senza modifiche al codice."""
-        from rendering.rendering_engine import RenderingEngine
-        from rendering.render_mode import RenderMode
-        from rendering.naming_strategy import DefaultNamingStrategy
+        from pge.rendering.rendering_engine import RenderingEngine
+        from pge.rendering.render_mode import RenderMode
+        from pge.rendering.naming_strategy import DefaultNamingStrategy
 
         # Custom mode: renderizza solo il primo stream
         class FirstStreamOnlyMode(RenderMode):

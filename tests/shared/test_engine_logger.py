@@ -11,7 +11,7 @@ import logging
 import os
 import pytest
 
-from shared.logger import (
+from pge.shared.logger import (
     configure_engine_logger,
     get_engine_logger,
     get_engine_log_path,

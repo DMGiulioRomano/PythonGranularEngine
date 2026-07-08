@@ -6,8 +6,8 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 
-import shared.logger as logger_module
-from shared.logger import (
+import pge.shared.logger as logger_module
+from pge.shared.logger import (
     configure_clip_logger,
     get_clip_logger,
     get_clip_log_path,

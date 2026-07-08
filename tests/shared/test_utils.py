@@ -14,7 +14,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from typing import Any
 
-from shared.utils import get_sample_duration, random_percent, get_nested, PATHSAMPLES
+from pge.shared.utils import get_sample_duration, random_percent, get_nested, PATHSAMPLES
 
 # =============================================================================
 # 1. TEST GET_SAMPLE_DURATION
@@ -26,10 +26,10 @@ class TestGetSampleDuration:
     @pytest.fixture(autouse=True)
     def _mock_path_exists(self):
         """Default: simula sample esistente. Test specifici override via patch locale."""
-        with patch('shared.utils.os.path.exists', return_value=True):
+        with patch('pge.shared.utils.os.path.exists', return_value=True):
             yield
 
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_get_duration_normal_file(self, mock_info):
         """File audio normale restituisce durata corretta."""
         mock_info.return_value = Mock(duration=2.5)
@@ -39,7 +39,7 @@ class TestGetSampleDuration:
         assert result == 2.5
         mock_info.assert_called_once_with('./refs/test.wav')
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_get_duration_zero_length(self, mock_info):
         """File audio di lunghezza zero."""
         mock_info.return_value = Mock(duration=0.0)
@@ -48,7 +48,7 @@ class TestGetSampleDuration:
         
         assert result == 0.0
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_get_duration_very_short(self, mock_info):
         """File audio molto breve (< 1ms)."""
         mock_info.return_value = Mock(duration=0.0001)
@@ -57,7 +57,7 @@ class TestGetSampleDuration:
         
         assert result == pytest.approx(0.0001)
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_get_duration_very_long(self, mock_info):
         """File audio molto lungo (ore)."""
         mock_info.return_value = Mock(duration=3600.0)
@@ -66,7 +66,7 @@ class TestGetSampleDuration:
         
         assert result == 3600.0
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_path_construction(self, mock_info):
         """Verifica che il path sia costruito correttamente."""
         mock_info.return_value = Mock(duration=1.0)
@@ -75,7 +75,7 @@ class TestGetSampleDuration:
         
         mock_info.assert_called_once_with('./refs/subfolder/file.wav')
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_different_extensions(self, mock_info):
         """Funziona con diverse estensioni audio."""
         mock_info.return_value = Mock(duration=1.0)
@@ -87,27 +87,27 @@ class TestGetSampleDuration:
         
         assert mock_info.call_count == len(extensions)
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_file_not_found_error(self, mock_info):
         """File esistente ma sf.info fallisce con FileNotFoundError → propaga."""
         mock_info.side_effect = FileNotFoundError("File not found")
-        with patch('shared.utils.os.path.exists', return_value=True):
+        with patch('pge.shared.utils.os.path.exists', return_value=True):
             with pytest.raises(FileNotFoundError):
                 get_sample_duration('nonexistent.wav')
     
-    @patch('shared.utils.sf.info')
+    @patch('pge.shared.utils.sf.info')
     def test_invalid_audio_file(self, mock_info):
         """File non valido solleva errore soundfile."""
         mock_info.side_effect = RuntimeError("Invalid audio file")
-        with patch('shared.utils.os.path.exists', return_value=True):
+        with patch('pge.shared.utils.os.path.exists', return_value=True):
             with pytest.raises(RuntimeError):
                 get_sample_duration('invalid.wav')
 
     def test_missing_sample_raises_sample_not_found_error(self):
         """File assente in PATHSAMPLES → SampleNotFoundError con filename e path."""
-        from shared.exceptions import SampleNotFoundError
+        from pge.shared.exceptions import SampleNotFoundError
 
-        with patch('shared.utils.os.path.exists', return_value=False):
+        with patch('pge.shared.utils.os.path.exists', return_value=False):
             with pytest.raises(SampleNotFoundError) as exc_info:
                 get_sample_duration('pino.wav')
 
@@ -377,8 +377,8 @@ class TestGetNested:
 class TestUtilsIntegration:
     """Test di integrazione tra le funzioni utilities."""
     
-    @patch('shared.utils.sf.info')
-    @patch('shared.utils.os.path.exists', return_value=True)
+    @patch('pge.shared.utils.sf.info')
+    @patch('pge.shared.utils.os.path.exists', return_value=True)
     def test_chaining_functions(self, mock_exists, mock_info):
         """Test concatenazione funzioni utils."""
         mock_info.return_value = Mock(duration=2.5)
@@ -430,8 +430,8 @@ class TestPathSamplesConstant:
         
         assert PATHSAMPLES == './refs/'
     
-    @patch('shared.utils.sf.info')
-    @patch('shared.utils.os.path.exists', return_value=True)
+    @patch('pge.shared.utils.sf.info')
+    @patch('pge.shared.utils.os.path.exists', return_value=True)
     def test_pathsamples_used_in_get_duration(self, mock_exists, mock_info):
         """get_sample_duration usa PATHSAMPLES."""
         mock_info.return_value = Mock(duration=1.0)
@@ -515,19 +515,19 @@ class TestGetSampleDurationBasePath:
     def test_fallback_to_pathsamples_monkeypatch(self, tmp_path, monkeypatch):
         """Senza base_path il globale (monkey-patchato) resta efficace."""
         self._write_wav(tmp_path, seconds=1.5)
-        monkeypatch.setattr('shared.utils.PATHSAMPLES', str(tmp_path) + '/')
+        monkeypatch.setattr('pge.shared.utils.PATHSAMPLES', str(tmp_path) + '/')
         dur = get_sample_duration('tone.wav')
         assert dur == pytest.approx(1.5)
 
     def test_search_path_reports_effective_base_path(self, tmp_path):
-        from shared.exceptions import SampleNotFoundError
+        from pge.shared.exceptions import SampleNotFoundError
         with pytest.raises(SampleNotFoundError) as exc_info:
             get_sample_duration('missing.wav', base_path=str(tmp_path))
         assert str(tmp_path) in exc_info.value.search_path
 
     def test_search_path_default_is_pathsamples(self, tmp_path, monkeypatch):
-        from shared.exceptions import SampleNotFoundError
-        monkeypatch.setattr('shared.utils.PATHSAMPLES', str(tmp_path) + '/')
+        from pge.shared.exceptions import SampleNotFoundError
+        monkeypatch.setattr('pge.shared.utils.PATHSAMPLES', str(tmp_path) + '/')
         with pytest.raises(SampleNotFoundError) as exc_info:
             get_sample_duration('missing.wav')
         assert str(tmp_path) in exc_info.value.search_path

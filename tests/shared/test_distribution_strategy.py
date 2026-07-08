@@ -21,7 +21,7 @@ import sys
 import os
 from abc import ABC
 
-from shared.distribution_strategy import (
+from pge.shared.distribution_strategy import (
     DistributionStrategy,
     UniformDistribution,
     GaussianDistribution,
@@ -411,7 +411,7 @@ class TestDistributionFactory:
     
     def test_register_invalid_class_raises_error(self):
         """Registrazione classe non-DistributionStrategy solleva InvalidStrategyConfigError."""
-        from shared.exceptions import InvalidStrategyConfigError
+        from pge.shared.exceptions import InvalidStrategyConfigError
 
         class NotADistribution:
             pass

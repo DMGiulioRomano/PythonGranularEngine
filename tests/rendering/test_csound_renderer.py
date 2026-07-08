@@ -19,9 +19,9 @@ Coverage:
 import pytest
 from unittest.mock import MagicMock, patch, call
 
-from rendering.audio_renderer import AudioRenderer
-from rendering.csound_renderer import CsoundRenderer
-from rendering.renderer_factory import RendererFactory
+from pge.rendering.audio_renderer import AudioRenderer
+from pge.rendering.csound_renderer import CsoundRenderer
+from pge.rendering.renderer_factory import RendererFactory
 
 
 # =============================================================================
@@ -101,7 +101,7 @@ class TestCsoundRendererInit:
 class TestCsoundRendererRenderStream:
     """Test per render_single_stream: ScoreWriter + subprocess csound (singolo stream)."""
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_calls_score_writer(self, mock_run, renderer, mock_stream):
         """render_single_stream delega la scrittura .sco a ScoreWriter."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -110,7 +110,7 @@ class TestCsoundRendererRenderStream:
 
         renderer.score_writer.write_score.assert_called_once()
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_score_writer_receives_stream(self, mock_run, renderer, mock_stream):
         """ScoreWriter riceve lo stream nella lista."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -120,7 +120,7 @@ class TestCsoundRendererRenderStream:
         call_kwargs = renderer.score_writer.write_score.call_args.kwargs
         assert mock_stream in call_kwargs['streams']
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_calls_subprocess_csound(self, mock_run, renderer, mock_stream):
         """render_single_stream invoca csound via subprocess."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -131,7 +131,7 @@ class TestCsoundRendererRenderStream:
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == 'csound'
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_csound_receives_orc_path(self, mock_run, renderer, mock_stream):
         """Il comando csound include il path dell'orchestra."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -141,7 +141,7 @@ class TestCsoundRendererRenderStream:
         cmd = mock_run.call_args[0][0]
         assert 'csound/main.orc' in cmd
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_csound_receives_output_flag(self, mock_run, renderer, mock_stream):
         """Il comando csound include -o con il path output."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -153,7 +153,7 @@ class TestCsoundRendererRenderStream:
         o_idx = cmd.index('-o')
         assert cmd[o_idx + 1] == '/output/test.aif'
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_returns_output_path(self, mock_run, renderer, mock_stream):
         """render_single_stream ritorna il path del file prodotto."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -170,7 +170,7 @@ class TestCsoundRendererRenderStream:
 class TestCsoundRendererRenderMergedStreams:
     """Test per render_merged_streams: ScoreWriter + subprocess csound (piu' stream)."""
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_calls_score_writer_with_all_streams(self, mock_run, renderer, mock_stream):
         """render_merged_streams passa tutti gli stream a ScoreWriter."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -181,7 +181,7 @@ class TestCsoundRendererRenderMergedStreams:
         call_kwargs = renderer.score_writer.write_score.call_args.kwargs
         assert call_kwargs['streams'] == streams
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_returns_output_path(self, mock_run, renderer, mock_stream):
         """render_merged_streams ritorna il path del file prodotto."""
         mock_run.return_value = MagicMock(returncode=0)
@@ -198,7 +198,7 @@ class TestCsoundRendererRenderMergedStreams:
 class TestCsoundRendererErrors:
     """Test per gestione errori."""
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_csound_failure_raises(self, mock_run, renderer, mock_stream):
         """Csound con returncode != 0 solleva RuntimeError."""
         mock_run.return_value = MagicMock(returncode=1, stderr='error')
@@ -206,7 +206,7 @@ class TestCsoundRendererErrors:
         with pytest.raises(RuntimeError, match="Csound"):
             renderer.render_single_stream(mock_stream, '/output/test.aif')
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_csound_not_found_raises(self, mock_run, renderer, mock_stream):
         """Csound non installato solleva FileNotFoundError."""
         mock_run.side_effect = FileNotFoundError("csound not found")
@@ -224,9 +224,9 @@ class TestRendererFactoryCreate:
 
     def test_create_numpy_returns_numpy_renderer(self):
         """create('numpy', ...) ritorna NumpyAudioRenderer."""
-        from rendering.numpy_audio_renderer import NumpyAudioRenderer
-        from rendering.sample_registry import SampleRegistry
-        from rendering.numpy_window_registry import NumpyWindowRegistry
+        from pge.rendering.numpy_audio_renderer import NumpyAudioRenderer
+        from pge.rendering.sample_registry import SampleRegistry
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
 
         renderer = RendererFactory.create(
             renderer_type='numpy',
@@ -364,7 +364,7 @@ class TestCsoundRendererCache:
         )
         return renderer, cache_manager
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_render_single_stream_skips_if_cache_clean(
         self, mock_run, mock_score_writer, csound_config
     ):
@@ -380,7 +380,7 @@ class TestCsoundRendererCache:
         mock_run.assert_not_called()
         assert result == '/out/s1.aif'
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_render_single_stream_renders_if_cache_dirty(
         self, mock_run, mock_score_writer, csound_config
     ):
@@ -395,7 +395,7 @@ class TestCsoundRendererCache:
 
         mock_run.assert_called_once()
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_render_single_stream_updates_cache_after_build(
         self, mock_run, mock_score_writer, csound_config
     ):
@@ -412,7 +412,7 @@ class TestCsoundRendererCache:
 
         cache_manager.update_after_build.assert_called_once()
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_render_single_stream_no_cache_always_renders(
         self, mock_run, mock_score_writer, csound_config, mock_stream
     ):
@@ -424,7 +424,7 @@ class TestCsoundRendererCache:
 
         mock_run.assert_called_once()
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_cache_not_updated_if_skipped(
         self, mock_run, mock_score_writer, csound_config
     ):
@@ -449,7 +449,7 @@ class TestCsoundRendererCache:
 class TestCsoundRendererKeepSco:
     """Test per il flag --keep-sco (sco_dir): gestione file .sco intermedi."""
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_no_sco_dir_uses_temp_file(
         self, mock_run, mock_score_writer, csound_config, mock_stream
     ):
@@ -465,7 +465,7 @@ class TestCsoundRendererKeepSco:
         # Deve essere in tempdir, non in 'generated'
         assert 'generated' not in sco_path
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_sco_dir_saves_sco_with_deterministic_path(
         self, mock_run, mock_score_writer, csound_config, mock_stream, tmp_path
     ):
@@ -485,7 +485,7 @@ class TestCsoundRendererKeepSco:
         assert sco_path.startswith(sco_dir)
         assert sco_path.endswith('piece_s1.sco')
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_sco_dir_for_merged_streams(
         self, mock_run, mock_score_writer, csound_config, tmp_path
     ):
@@ -553,7 +553,7 @@ class TestRendererFactoryCreateNewKwargs:
 class TestCsoundRendererPerStream:
     """render_single_stream deve passare per_stream=True a score_writer.write_score."""
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_render_single_stream_passes_per_stream_true(
         self, mock_run, mock_score_writer, csound_config
     ):
@@ -571,7 +571,7 @@ class TestCsoundRendererPerStream:
         call_kwargs = mock_score_writer.write_score.call_args.kwargs
         assert call_kwargs.get('per_stream') is True
 
-    @patch('rendering.csound_renderer.subprocess.run')
+    @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_render_merged_streams_does_not_pass_per_stream(
         self, mock_run, mock_score_writer, csound_config
     ):

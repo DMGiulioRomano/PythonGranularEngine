@@ -21,7 +21,7 @@ Coverage:
 import numpy as np
 import pytest
 
-from rendering.dc_blocker import dc_block, DEFAULT_CUTOFF_HZ
+from pge.rendering.dc_blocker import dc_block, DEFAULT_CUTOFF_HZ
 
 
 SR = 48000

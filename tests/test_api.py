@@ -28,10 +28,10 @@ def api_mocks():
     mock_modules, refs = build_mock_modules()
 
     with patch.dict(sys.modules, mock_modules):
-        sys.modules.pop('api', None)
+        sys.modules.pop('pge.api', None)
 
         import importlib
-        api_mod = importlib.import_module('api')
+        api_mod = importlib.import_module('pge.api')
 
         yield {'api': api_mod, **refs}
 
@@ -41,7 +41,7 @@ def _make_scm_module():
     scm_cls = MagicMock(name='StreamCacheManager')
     scm_instance = MagicMock(name='scm_instance')
     scm_cls.return_value = scm_instance
-    mod = types.ModuleType('rendering.stream_cache_manager')
+    mod = types.ModuleType('pge.rendering.stream_cache_manager')
     mod.StreamCacheManager = scm_cls
     return mod, scm_cls, scm_instance
 
@@ -90,7 +90,7 @@ class TestBuildRendererNumpy:
         }
         api_mocks['api'].build_renderer('numpy', gen)
 
-        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls = sys.modules['pge.rendering.sample_registry'].SampleRegistry
         sample_reg = sample_reg_cls.return_value
         loaded = [c.args[0] for c in sample_reg.load.call_args_list]
         assert sorted(loaded) == ['piano.wav', 'voice.wav']
@@ -167,7 +167,7 @@ class TestBuildRendererCache:
         gen.ftable_manager.get_all_tables.return_value = {}
 
         with patch.dict(sys.modules,
-                        {'rendering.stream_cache_manager': scm_mod}):
+                        {'pge.rendering.stream_cache_manager': scm_mod}):
             api_mocks['api'].build_renderer(
                 'numpy', gen, cache_manifest_path='cache/x.json')
 
@@ -181,7 +181,7 @@ class TestBuildRendererCache:
         gen = api_mocks['generator_instance']
 
         with patch.dict(sys.modules,
-                        {'rendering.stream_cache_manager': scm_mod}):
+                        {'pge.rendering.stream_cache_manager': scm_mod}):
             api_mocks['api'].build_renderer(
                 'csound', gen, cache_manifest_path='cache/y.json')
 
@@ -195,7 +195,7 @@ class TestBuildRendererUnknownType:
     """Tipo ignoto -> InvalidRendererError (e NON SystemExit)."""
 
     def test_raises_invalid_renderer_error(self, api_mocks):
-        from shared.exceptions import InvalidRendererError
+        from pge.shared.exceptions import InvalidRendererError
         with pytest.raises(InvalidRendererError):
             api_mocks['api'].build_renderer(
                 'bogus', api_mocks['generator_instance'])
@@ -276,7 +276,7 @@ class TestCollectCacheOrphans:
         assert kwargs['aif_prefix'] == 'PGE_test'
 
     def test_ext_from_audio_format(self, api_mocks):
-        from rendering.audio_format import FORMATS
+        from pge.rendering.audio_format import FORMATS
         gen = self._gen_with_yaml(api_mocks, ['s1'])
         renderer = self._renderer_with_cache()
 
@@ -330,7 +330,7 @@ class TestRender:
         assert naming.ext == '.aif'   # DefaultNamingStrategy reale
 
     def test_naming_strategy_ext_follows_format(self, api_mocks):
-        from rendering.audio_format import FORMATS
+        from pge.rendering.audio_format import FORMATS
         gen = self._gen(api_mocks)
         api_mocks['api'].render(
             gen, 'out.wav', renderer='numpy', audio_format=FORMATS['wav'])
@@ -456,7 +456,7 @@ class TestLoadGenerator:
         assert gen is inst
 
     def test_propagates_engine_error(self, api_mocks):
-        from shared.exceptions import SampleNotFoundError
+        from pge.shared.exceptions import SampleNotFoundError
         err = SampleNotFoundError(filename='x.wav', search_path='./refs/')
         api_mocks['generator_instance'].load_yaml.side_effect = err
 
@@ -525,7 +525,7 @@ class TestExportReaper:
         writer_instance = MagicMock(name='reaper_writer_instance')
         writer_cls = MagicMock(name='ReaperProjectWriter',
                                return_value=writer_instance)
-        mod = types.ModuleType('export.reaper_project_writer')
+        mod = types.ModuleType('pge.export.reaper_project_writer')
         mod.ReaperProjectWriter = writer_cls
         return mod, writer_instance
 
@@ -535,7 +535,7 @@ class TestExportReaper:
         gen.streams = [MagicMock(), MagicMock()]
         paths = ['/out/s1.aif', '/out/s2.aif']
 
-        with patch.dict(sys.modules, {'export.reaper_project_writer': mod}):
+        with patch.dict(sys.modules, {'pge.export.reaper_project_writer': mod}):
             out = api_mocks['api'].export_reaper(gen, paths, 'proj.rpp')
 
         kwargs = writer.write.call_args.kwargs
@@ -550,7 +550,7 @@ class TestExportReaper:
         gen = api_mocks['generator_instance']
         gen.streams = [MagicMock(), MagicMock(), MagicMock()]
 
-        with patch.dict(sys.modules, {'export.reaper_project_writer': mod}):
+        with patch.dict(sys.modules, {'pge.export.reaper_project_writer': mod}):
             api_mocks['api'].export_reaper(gen, ['/out/mix.aif'], 'p.rpp')
 
         kwargs = writer.write.call_args.kwargs
@@ -560,7 +560,7 @@ class TestExportReaper:
         mod, _ = self._writer_mock()
         gen = api_mocks['generator_instance']
         gen.streams = [MagicMock()]
-        with patch.dict(sys.modules, {'export.reaper_project_writer': mod}):
+        with patch.dict(sys.modules, {'pge.export.reaper_project_writer': mod}):
             api_mocks['api'].export_reaper(gen, ['/out/mix.aif'], 'p.rpp')
         assert capsys.readouterr().out == ''
 
@@ -570,7 +570,7 @@ class TestExportSv:
     La policy 'ignora in STEMS' resta nella CLI."""
 
     def _sv_mock(self):
-        mod = types.ModuleType('export.sv_exporter')
+        mod = types.ModuleType('pge.export.sv_exporter')
         cls = MagicMock(name='SVExporter')
         mod.SVExporter = cls
         return mod, cls
@@ -580,7 +580,7 @@ class TestExportSv:
         gen = api_mocks['generator_instance']
         gen.streams = [MagicMock()]
 
-        with patch.dict(sys.modules, {'export.sv_exporter': mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': mod}):
             out = api_mocks['api'].export_sv(
                 gen, '/out/mix.aif', 'sess.sv', layout='single')
 
@@ -595,7 +595,7 @@ class TestExportSv:
         mod, cls = self._sv_mock()
         gen = api_mocks['generator_instance']
 
-        with patch.dict(sys.modules, {'export.sv_exporter': mod}):
+        with patch.dict(sys.modules, {'pge.export.sv_exporter': mod}):
             api_mocks['api'].export_sv(gen, 'a.aif', 's.sv')
 
         assert cls.return_value.export.call_args.kwargs['layout'] == 'multi'
@@ -610,7 +610,7 @@ class TestExportGrainJson:
         writer_instance.write.side_effect = (
             lambda stream, d, b: f"{d}/{b}__{stream.stream_id}__grains.json")
         cls = MagicMock(return_value=writer_instance)
-        mod = types.ModuleType('export.grain_json_writer')
+        mod = types.ModuleType('pge.export.grain_json_writer')
         mod.GrainJsonWriter = cls
         return mod, writer_instance
 
@@ -627,7 +627,7 @@ class TestExportGrainJson:
         s_clean = self._stream('s2', False)
         gen.streams = [s_gen, s_clean]
 
-        with patch.dict(sys.modules, {'export.grain_json_writer': mod}):
+        with patch.dict(sys.modules, {'pge.export.grain_json_writer': mod}):
             paths = api_mocks['api'].export_grain_json(gen, '/out', 'base')
 
         written = [c.args[0] for c in writer.write.call_args_list]
@@ -639,7 +639,7 @@ class TestExportGrainJson:
         gen = api_mocks['generator_instance']
         gen.streams = [self._stream('s1', True), self._stream('s2', True)]
 
-        with patch.dict(sys.modules, {'export.grain_json_writer': mod}):
+        with patch.dict(sys.modules, {'pge.export.grain_json_writer': mod}):
             paths = api_mocks['api'].export_grain_json(gen, '/out', 'base')
 
         assert len(paths) == 2
@@ -709,7 +709,7 @@ class TestSamplesDirFlow:
 
         api_mocks['api'].build_renderer('numpy', gen, samples_dir='/campioni/')
 
-        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls = sys.modules['pge.rendering.sample_registry'].SampleRegistry
         sample_reg_cls.assert_called_once_with(base_path='/campioni/')
 
     def test_build_renderer_numpy_without_samples_dir_keeps_default(self, api_mocks):
@@ -718,7 +718,7 @@ class TestSamplesDirFlow:
 
         api_mocks['api'].build_renderer('numpy', gen)
 
-        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls = sys.modules['pge.rendering.sample_registry'].SampleRegistry
         sample_reg_cls.assert_called_once_with()
 
     def test_csound_ssdir_from_samples_dir_normalized(self, api_mocks):
@@ -754,7 +754,7 @@ class TestSamplesDirFlow:
         api_mocks['api'].render(gen, 'out.aif', renderer='numpy',
                                 samples_dir='/campioni/')
 
-        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls = sys.modules['pge.rendering.sample_registry'].SampleRegistry
         sample_reg_cls.assert_called_once_with(base_path='/campioni/')
 
     def test_render_file_forwards_samples_dir(self, api_mocks):
@@ -767,7 +767,7 @@ class TestSamplesDirFlow:
 
         api_mocks['Generator'].assert_called_once_with(
             'test.yml', samples_dir='/campioni/')
-        sample_reg_cls = sys.modules['rendering.sample_registry'].SampleRegistry
+        sample_reg_cls = sys.modules['pge.rendering.sample_registry'].SampleRegistry
         sample_reg_cls.assert_called_once_with(base_path='/campioni/')
 
     def test_export_score_pdf_injects_samples_dir_in_config(self, api_mocks):

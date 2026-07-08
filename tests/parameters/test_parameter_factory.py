@@ -22,14 +22,14 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 # Import reali per test su create_constant_parameter
-from shared.probability_gate import ProbabilityGate
-from core.stream_config import StreamConfig, StreamContext
-from parameters.parameter import Parameter
-from parameters.parameter_schema import ParameterSpec
-from parameters.exclusive_selector import ExclusiveGroupSelector
-from parameters.parser import GranularParser
-from parameters.parameter_factory import ParameterFactory
-from parameters.parameter_orchestrator import ParameterOrchestrator
+from pge.shared.probability_gate import ProbabilityGate
+from pge.core.stream_config import StreamConfig, StreamContext
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_schema import ParameterSpec
+from pge.parameters.exclusive_selector import ExclusiveGroupSelector
+from pge.parameters.parser import GranularParser
+from pge.parameters.parameter_factory import ParameterFactory
+from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 # =============================================================================
 # MOCK CLASSES E STRUCTURES
 # =============================================================================

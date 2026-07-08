@@ -14,14 +14,14 @@ import pytest
 import random as random_module
 from unittest.mock import patch
 
-from controllers.window_selection_strategy import (
+from pge.controllers.window_selection_strategy import (
     WindowSelectionStrategy,
     SingleWindowStrategy,
     RandomWindowStrategy,
     TransitionWindowStrategy,
 )
-from shared.probability_gate import NeverGate, AlwaysGate, RandomGate
-from envelopes.envelope import Envelope
+from pge.shared.probability_gate import NeverGate, AlwaysGate, RandomGate
+from pge.envelopes.envelope import Envelope
 
 
 # =============================================================================
@@ -31,7 +31,7 @@ from envelopes.envelope import Envelope
 class TestSingleWindowStrategy:
 
     def _make(self, window='hanning'):
-        from shared.probability_gate import NeverGate
+        from pge.shared.probability_gate import NeverGate
         return SingleWindowStrategy(window, gate=NeverGate())
 
     def test_always_returns_configured_window(self):
@@ -82,7 +82,7 @@ class TestRandomWindowStrategy:
 
     def test_elapsed_time_passed_to_gate(self):
         from unittest.mock import Mock
-        from shared.probability_gate import ProbabilityGate
+        from pge.shared.probability_gate import ProbabilityGate
         mock_gate = Mock(spec=ProbabilityGate)
         mock_gate.should_apply.return_value = False
         s = RandomWindowStrategy(['hanning', 'expodec'], mock_gate)

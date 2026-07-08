@@ -887,9 +887,9 @@ def _import_real_parameter():
     if src_path not in _sys.path:
         _sys.path.insert(0, src_path)
     # Force-reimport per evitare conflitti con mock class Parameter sopra
-    if 'parameters.parameter' in _sys.modules:
-        return _sys.modules['parameters.parameter']
-    return importlib.import_module('parameters.parameter')
+    if 'pge.parameters.parameter' in _sys.modules:
+        return _sys.modules['pge.parameters.parameter']
+    return importlib.import_module('pge.parameters.parameter')
 
 
 class TestResolveParam:
@@ -900,7 +900,7 @@ class TestResolveParam:
         mod = _import_real_parameter()
         self.resolve_param = mod.resolve_param
         self.StrategyParam = mod.StrategyParam
-        from envelopes.envelope import Envelope as RealEnvelope
+        from pge.envelopes.envelope import Envelope as RealEnvelope
         self.Envelope = RealEnvelope
 
     def test_float_returns_float(self):
@@ -936,8 +936,8 @@ class TestResolveParam:
     def test_regression_evaluate_input_delegates(self):
         """Parameter._evaluate_input delega a resolve_param — stesso risultato."""
         mod = _import_real_parameter()
-        from envelopes.envelope import Envelope as RealEnvelope
-        from parameters.parameter_definitions import ParameterBounds
+        from pge.envelopes.envelope import Envelope as RealEnvelope
+        from pge.parameters.parameter_definitions import ParameterBounds
         env = RealEnvelope([[0, 0], [1, 10]])
         bounds = ParameterBounds(min_val=-1000.0, max_val=1000.0, variation_mode='additive')
         param = mod.Parameter(name='test', value=env, bounds=bounds)

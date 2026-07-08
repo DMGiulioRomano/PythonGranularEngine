@@ -14,14 +14,14 @@ import pytest
 from unittest.mock import Mock, patch
 import random as random_module
 
-from controllers.window_registry import WindowRegistry, WindowSpec
-from shared.probability_gate import (
+from pge.controllers.window_registry import WindowRegistry, WindowSpec
+from pge.shared.probability_gate import (
     ProbabilityGate, NeverGate, AlwaysGate, RandomGate, EnvelopeGate
 )
-from core.stream_config import StreamContext, StreamConfig
-from parameters.gate_factory import GateFactory
-from parameters.parameter_definitions import DEFAULT_PROB
-from controllers.window_controller import WindowController
+from pge.core.stream_config import StreamContext, StreamConfig
+from pge.parameters.gate_factory import GateFactory
+from pge.parameters.parameter_definitions import DEFAULT_PROB
+from pge.controllers.window_controller import WindowController
 
 
 # =============================================================================
@@ -118,7 +118,7 @@ class TestParseWindowListDefaults:
         assert result == ['hanning']
 
     def test_default_stream_id_in_error_is_unknown(self):
-        from shared.exceptions import InvalidWindowError
+        from pge.shared.exceptions import InvalidWindowError
         with pytest.raises(InvalidWindowError) as exc_info:
             WindowController.parse_window_list({'envelope': 'NONEXISTENT'})
         assert exc_info.value.stream_id == "unknown"
@@ -190,7 +190,7 @@ class TestParseWindowListExplicit:
             WindowController.parse_window_list({'envelope': []})
 
     def test_empty_list_error_contains_stream_id(self):
-        from shared.exceptions import InvalidWindowError
+        from pge.shared.exceptions import InvalidWindowError
         with pytest.raises(InvalidWindowError) as exc_info:
             WindowController.parse_window_list({'envelope': []}, stream_id="stream_B")
         assert exc_info.value.stream_id == "stream_B"
@@ -251,7 +251,7 @@ class TestParseWindowListTypeErrors:
             WindowController.parse_window_list({'envelope': bad_spec})
 
     def test_error_includes_stream_id(self):
-        from shared.exceptions import InvalidWindowError
+        from pge.shared.exceptions import InvalidWindowError
         with pytest.raises(InvalidWindowError) as exc_info:
             WindowController.parse_window_list({'envelope': 123}, stream_id="stream_X")
         assert exc_info.value.stream_id == "stream_X"
@@ -284,7 +284,7 @@ class TestWindowControllerInit:
         assert len(ctrl._windows) == len(WindowRegistry.WINDOWS)
 
     def test_init_uses_stream_id_from_context(self, config_with_stream_id):
-        from shared.exceptions import InvalidWindowError
+        from pge.shared.exceptions import InvalidWindowError
         with pytest.raises(InvalidWindowError) as exc_info:
             WindowController({'envelope': 'NONEXISTENT'}, config=config_with_stream_id)
         assert exc_info.value.stream_id == "my_stream_42"
@@ -739,19 +739,19 @@ class TestWindowControllerTransitionInit:
         assert ctrl._windows == ['hanning', 'bartlett']
 
     def test_transition_init_sets_strategy(self, default_config):
-        from controllers.window_selection_strategy import TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import TransitionWindowStrategy
         params = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
         ctrl = WindowController(params, config=default_config)
         assert isinstance(ctrl._strategy, TransitionWindowStrategy)
 
     def test_non_transition_strategy_is_none_or_not_transition(self, default_config):
-        from controllers.window_selection_strategy import TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import TransitionWindowStrategy
         ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
         assert not isinstance(ctrl._strategy, TransitionWindowStrategy)
 
     def test_transition_init_without_curve_uses_default(self, default_config):
         """curve assente → default [[0,0],[1,1]] (linear 0→1 con time normalizzato)."""
-        from controllers.window_selection_strategy import TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import TransitionWindowStrategy
         params = {'envelope': {'from': 'hanning', 'to': 'bartlett'}}
         ctrl = WindowController(params, config=default_config)
         assert isinstance(ctrl._strategy, TransitionWindowStrategy)
@@ -766,7 +766,7 @@ class TestSelectWindowTransition:
     def _make_transition_ctrl(self, from_w, to_w, curve_pts, duration=10.0,
                                time_mode=None):
         """Helper: crea controller in modalità transizione."""
-        from core.stream_config import StreamContext, StreamConfig
+        from pge.core.stream_config import StreamContext, StreamConfig
         ctx = StreamContext(
             stream_id='t_stream',
             onset=0.0,
@@ -889,7 +889,7 @@ class TestWindowControllerMultiStateInit:
         return StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
 
     def test_multistate_init_sets_strategy(self):
-        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
         params = {'envelope': {'states': [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'gaussian']]}}
         ctrl = WindowController(params, config=self._make_config())
         assert isinstance(ctrl._strategy, MultiStateWindowStrategy)
@@ -901,20 +901,20 @@ class TestWindowControllerMultiStateInit:
 
     def test_multistate_without_curve_uses_default(self):
         """curve assente → default [[0,0],[1,1]]."""
-        from controllers.window_selection_strategy import MultiStateWindowStrategy
+        from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
         params = {'envelope': {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}}
         ctrl = WindowController(params, config=self._make_config())
         assert isinstance(ctrl._strategy, MultiStateWindowStrategy)
 
     def test_multistate_is_not_transition(self):
-        from controllers.window_selection_strategy import TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import TransitionWindowStrategy
         params = {'envelope': {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}}
         ctrl = WindowController(params, config=self._make_config())
         assert not isinstance(ctrl._strategy, TransitionWindowStrategy)
 
     def test_transition_dict_still_works(self, default_config):
         """from/to rimane invariato (backward compat)."""
-        from controllers.window_selection_strategy import TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import TransitionWindowStrategy
         params = {'envelope': {'from': 'hanning', 'to': 'bartlett'}}
         ctrl = WindowController(params, config=default_config)
         assert isinstance(ctrl._strategy, TransitionWindowStrategy)
@@ -1050,8 +1050,8 @@ class TestMultiStateWindowStrategyUnit:
     """Test unitari sulla strategia isolata, senza WindowController."""
 
     def _make_strategy(self, states, curve_pts=None, duration=1.0, time_mode=None):
-        from controllers.window_selection_strategy import MultiStateWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
+        from pge.envelopes.envelope import Envelope
         curve = Envelope(curve_pts or [[0, 0], [1, 1]])
         return MultiStateWindowStrategy(
             states=states,
@@ -1089,8 +1089,8 @@ class TestMultiStateWindowStrategyUnit:
         assert 'hanning' not in results
 
     def test_less_than_two_states_raises(self):
-        from controllers.window_selection_strategy import MultiStateWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
+        from pge.envelopes.envelope import Envelope
         with pytest.raises(ValueError):
             MultiStateWindowStrategy(
                 states=[[0.0, 'hanning']],
@@ -1098,8 +1098,8 @@ class TestMultiStateWindowStrategyUnit:
             )
 
     def test_states_not_sorted_raises(self):
-        from controllers.window_selection_strategy import MultiStateWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
+        from pge.envelopes.envelope import Envelope
         with pytest.raises(ValueError):
             MultiStateWindowStrategy(
                 states=[[1.0, 'hanning'], [0.0, 'bartlett']],
@@ -1119,8 +1119,8 @@ class TestCurveRangeValidation:
     """
 
     def _make_transition(self, curve_pts, duration=10.0, time_mode=None):
-        from controllers.window_selection_strategy import TransitionWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import TransitionWindowStrategy
+        from pge.envelopes.envelope import Envelope
         return TransitionWindowStrategy(
             from_window='hanning',
             to_window='bartlett',
@@ -1130,8 +1130,8 @@ class TestCurveRangeValidation:
         )
 
     def _make_multistate(self, curve_pts, duration=10.0, time_mode=None):
-        from controllers.window_selection_strategy import MultiStateWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
+        from pge.envelopes.envelope import Envelope
         return MultiStateWindowStrategy(
             states=[[0.0, 'hanning'], [1.0, 'bartlett']],
             curve=Envelope(curve_pts),
@@ -1177,21 +1177,21 @@ class TestCurveRangeValidation:
     def test_transition_normalized_curve_ends_early_warns(self):
         """Curve finisce a t=0.5 < 1.0 → warning loggato."""
         from unittest.mock import patch
-        with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
+        with patch('pge.controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
             self._make_transition([[0, 0], [0.5, 1]], time_mode='normalized')
             mock_warn.assert_called_once()
 
     def test_multistate_absolute_curve_ends_early_warns(self):
         """Curve finisce a t=5 < duration=10 → warning loggato."""
         from unittest.mock import patch
-        with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
+        with patch('pge.controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
             self._make_multistate([[0, 0], [5, 1]], duration=10.0)
             mock_warn.assert_called_once()
 
     def test_transition_no_warning_when_curve_covers_full_range(self):
         """Curve che copre esattamente il range → nessun warning."""
         from unittest.mock import patch
-        with patch('controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
+        with patch('pge.controllers.window_selection_strategy.log_window_curve_warning') as mock_warn:
             self._make_transition([[0, 0], [10, 1]], duration=10.0)
             mock_warn.assert_not_called()
 
@@ -1207,8 +1207,8 @@ class TestSingleWindowStrategyGate:
     """
 
     def _make(self, gate=None):
-        from controllers.window_selection_strategy import SingleWindowStrategy
-        from shared.probability_gate import NeverGate
+        from pge.controllers.window_selection_strategy import SingleWindowStrategy
+        from pge.shared.probability_gate import NeverGate
         return SingleWindowStrategy(window='hanning', gate=gate or NeverGate())
 
     def test_single_strategy_has_gate_attribute(self):
@@ -1216,22 +1216,22 @@ class TestSingleWindowStrategyGate:
         assert hasattr(s, '_gate')
 
     def test_single_strategy_gate_is_the_one_passed_in(self):
-        from shared.probability_gate import AlwaysGate
+        from pge.shared.probability_gate import AlwaysGate
         g = AlwaysGate()
         s = self._make(gate=g)
         assert s._gate is g
 
     def test_single_strategy_select_never_calls_gate(self):
         mock_gate = Mock(spec=ProbabilityGate)
-        from controllers.window_selection_strategy import SingleWindowStrategy
+        from pge.controllers.window_selection_strategy import SingleWindowStrategy
         s = SingleWindowStrategy(window='hanning', gate=mock_gate)
         s.select(0.0)
         s.select(5.0)
         mock_gate.should_apply.assert_not_called()
 
     def test_single_strategy_select_returns_window_regardless_of_gate(self):
-        from controllers.window_selection_strategy import SingleWindowStrategy
-        from shared.probability_gate import NeverGate, AlwaysGate
+        from pge.controllers.window_selection_strategy import SingleWindowStrategy
+        from pge.shared.probability_gate import NeverGate, AlwaysGate
         for gate in [NeverGate(), AlwaysGate()]:
             s = SingleWindowStrategy(window='bartlett', gate=gate)
             assert s.select(0.0) == 'bartlett'
@@ -1248,31 +1248,31 @@ class TestWindowStrategyRegistry:
     """
 
     def test_registry_exists(self):
-        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY
+        from pge.controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY
         assert isinstance(WINDOW_STRATEGY_REGISTRY, dict)
 
     def test_registry_contains_single(self):
-        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, SingleWindowStrategy
+        from pge.controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, SingleWindowStrategy
         assert 'single' in WINDOW_STRATEGY_REGISTRY
         assert WINDOW_STRATEGY_REGISTRY['single'] is SingleWindowStrategy
 
     def test_registry_contains_random(self):
-        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, RandomWindowStrategy
+        from pge.controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, RandomWindowStrategy
         assert 'random' in WINDOW_STRATEGY_REGISTRY
         assert WINDOW_STRATEGY_REGISTRY['random'] is RandomWindowStrategy
 
     def test_registry_contains_transition(self):
-        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, TransitionWindowStrategy
         assert 'transition' in WINDOW_STRATEGY_REGISTRY
         assert WINDOW_STRATEGY_REGISTRY['transition'] is TransitionWindowStrategy
 
     def test_registry_contains_multistate(self):
-        from controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, MultiStateWindowStrategy
+        from pge.controllers.window_selection_strategy import WINDOW_STRATEGY_REGISTRY, MultiStateWindowStrategy
         assert 'multistate' in WINDOW_STRATEGY_REGISTRY
         assert WINDOW_STRATEGY_REGISTRY['multistate'] is MultiStateWindowStrategy
 
     def test_register_window_strategy_adds_entry(self):
-        from controllers.window_selection_strategy import (
+        from pge.controllers.window_selection_strategy import (
             WINDOW_STRATEGY_REGISTRY, register_window_strategy, WindowSelectionStrategy,
         )
 
@@ -1287,7 +1287,7 @@ class TestWindowStrategyRegistry:
         del WINDOW_STRATEGY_REGISTRY['dummy_test']
 
     def test_register_window_strategy_overwrites_existing(self):
-        from controllers.window_selection_strategy import (
+        from pge.controllers.window_selection_strategy import (
             WINDOW_STRATEGY_REGISTRY, register_window_strategy, WindowSelectionStrategy,
             SingleWindowStrategy,
         )
@@ -1314,26 +1314,26 @@ class TestWindowStrategyFactoryCreate:
     """
 
     def test_create_single_returns_single_strategy(self):
-        from controllers.window_selection_strategy import WindowStrategyFactory, SingleWindowStrategy
-        from shared.probability_gate import NeverGate
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, SingleWindowStrategy
+        from pge.shared.probability_gate import NeverGate
         s = WindowStrategyFactory.create('single', window='hanning', gate=NeverGate())
         assert isinstance(s, SingleWindowStrategy)
 
     def test_create_single_window_is_correct(self):
-        from controllers.window_selection_strategy import WindowStrategyFactory
-        from shared.probability_gate import NeverGate
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory
+        from pge.shared.probability_gate import NeverGate
         s = WindowStrategyFactory.create('single', window='bartlett', gate=NeverGate())
         assert s.select(0.0) == 'bartlett'
 
     def test_create_random_returns_random_strategy(self):
-        from controllers.window_selection_strategy import WindowStrategyFactory, RandomWindowStrategy
-        from shared.probability_gate import AlwaysGate
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, RandomWindowStrategy
+        from pge.shared.probability_gate import AlwaysGate
         s = WindowStrategyFactory.create('random', windows=['hanning', 'expodec'], gate=AlwaysGate())
         assert isinstance(s, RandomWindowStrategy)
 
     def test_create_transition_returns_transition_strategy(self):
-        from controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
+        from pge.envelopes.envelope import Envelope
         s = WindowStrategyFactory.create(
             'transition',
             from_window='hanning', to_window='bartlett',
@@ -1343,8 +1343,8 @@ class TestWindowStrategyFactoryCreate:
         assert isinstance(s, TransitionWindowStrategy)
 
     def test_create_multistate_returns_multistate_strategy(self):
-        from controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
-        from envelopes.envelope import Envelope
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
+        from pge.envelopes.envelope import Envelope
         s = WindowStrategyFactory.create(
             'multistate',
             states=[(0.0, 'hanning'), (1.0, 'bartlett')],
@@ -1354,8 +1354,8 @@ class TestWindowStrategyFactoryCreate:
         assert isinstance(s, MultiStateWindowStrategy)
 
     def test_create_unknown_name_raises_strategy_not_found(self):
-        from controllers.window_selection_strategy import WindowStrategyFactory
-        from shared.exceptions import StrategyNotFoundError
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory
+        from pge.shared.exceptions import StrategyNotFoundError
         with pytest.raises(StrategyNotFoundError, match="non trovata"):
             WindowStrategyFactory.create('nonexistent_strategy')
 
@@ -1371,30 +1371,30 @@ class TestWindowStrategyFactoryFromSpec:
     """
 
     def _make_gate(self):
-        from shared.probability_gate import NeverGate
+        from pge.shared.probability_gate import NeverGate
         return NeverGate()
 
     def test_from_spec_single_string_returns_single_strategy(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory, SingleWindowStrategy
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, SingleWindowStrategy
         s = WindowStrategyFactory.from_spec('hanning', default_config, ['hanning'], self._make_gate())
         assert isinstance(s, SingleWindowStrategy)
 
     def test_from_spec_list_returns_random_strategy(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory, RandomWindowStrategy
-        from shared.probability_gate import AlwaysGate
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, RandomWindowStrategy
+        from pge.shared.probability_gate import AlwaysGate
         s = WindowStrategyFactory.from_spec(
             ['hanning', 'expodec'], default_config, ['hanning', 'expodec'], AlwaysGate()
         )
         assert isinstance(s, RandomWindowStrategy)
 
     def test_from_spec_transition_dict_returns_transition_strategy(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
         spec = {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}
         s = WindowStrategyFactory.from_spec(spec, default_config, ['hanning', 'bartlett'], self._make_gate())
         assert isinstance(s, TransitionWindowStrategy)
 
     def test_from_spec_multistate_dict_returns_multistate_strategy(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
         spec = {
             'states': [[0.0, 'hanning'], [0.5, 'expodec'], [1.0, 'bartlett']],
             'curve': [[0, 0], [10, 1]],
@@ -1405,15 +1405,15 @@ class TestWindowStrategyFactoryFromSpec:
         assert isinstance(s, MultiStateWindowStrategy)
 
     def test_from_spec_single_gate_passed_to_strategy(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory
-        from shared.probability_gate import AlwaysGate
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory
+        from pge.shared.probability_gate import AlwaysGate
         gate = AlwaysGate()
         s = WindowStrategyFactory.from_spec('hanning', default_config, ['hanning'], gate)
         assert s._gate is gate
 
     def test_from_spec_random_gate_passed_to_strategy(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory
-        from shared.probability_gate import AlwaysGate
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory
+        from pge.shared.probability_gate import AlwaysGate
         gate = AlwaysGate()
         s = WindowStrategyFactory.from_spec(
             ['hanning', 'expodec'], default_config, ['hanning', 'expodec'], gate
@@ -1421,13 +1421,13 @@ class TestWindowStrategyFactoryFromSpec:
         assert s._gate is gate
 
     def test_from_spec_transition_default_curve_used_when_absent(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, TransitionWindowStrategy
         spec = {'from': 'hanning', 'to': 'bartlett'}  # no 'curve' key
         s = WindowStrategyFactory.from_spec(spec, default_config, ['hanning', 'bartlett'], self._make_gate())
         assert isinstance(s, TransitionWindowStrategy)
 
     def test_from_spec_multistate_default_curve_used_when_absent(self, default_config):
-        from controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
+        from pge.controllers.window_selection_strategy import WindowStrategyFactory, MultiStateWindowStrategy
         spec = {'states': [[0.0, 'hanning'], [1.0, 'bartlett']]}  # no 'curve' key
         s = WindowStrategyFactory.from_spec(
             spec, default_config, ['hanning', 'bartlett'], self._make_gate()
@@ -1447,24 +1447,24 @@ class TestWindowControllerGateProxy:
     """
 
     def test_gate_proxy_reads_from_single_strategy(self, default_config):
-        from shared.probability_gate import NeverGate
+        from pge.shared.probability_gate import NeverGate
         ctrl = WindowController({'envelope': 'hanning'}, config=default_config)
         assert ctrl._gate is ctrl._strategy._gate
 
     def test_gate_proxy_reads_from_random_strategy(self, default_config):
-        from shared.probability_gate import AlwaysGate
+        from pge.shared.probability_gate import AlwaysGate
         ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
         assert ctrl._gate is ctrl._strategy._gate
 
     def test_gate_proxy_write_updates_strategy_gate(self, default_config):
-        from shared.probability_gate import AlwaysGate, NeverGate
+        from pge.shared.probability_gate import AlwaysGate, NeverGate
         ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
         new_gate = NeverGate()
         ctrl._gate = new_gate
         assert ctrl._strategy._gate is new_gate
 
     def test_gate_proxy_write_read_roundtrip(self, default_config):
-        from shared.probability_gate import AlwaysGate
+        from pge.shared.probability_gate import AlwaysGate
         ctrl = WindowController({'envelope': ['hanning', 'expodec']}, config=default_config)
         g = AlwaysGate()
         ctrl._gate = g
@@ -1485,7 +1485,7 @@ class TestWindowControllerGateProxy:
 
     def test_gate_proxy_transition_write_is_noop(self, default_config):
         """Assegnare _gate su una transition strategy non deve sollevare eccezioni."""
-        from shared.probability_gate import AlwaysGate
+        from pge.shared.probability_gate import AlwaysGate
         spec = {'envelope': {'from': 'hanning', 'to': 'bartlett', 'curve': [[0, 0], [10, 1]]}}
         ctrl = WindowController(spec, config=default_config)
         ctrl._gate = AlwaysGate()  # no exception

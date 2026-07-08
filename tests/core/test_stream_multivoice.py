@@ -22,8 +22,8 @@ import math
 import pytest
 from unittest.mock import Mock
 
-from core.stream import Stream
-from controllers.voice_manager import VoiceConfig, VoiceManager
+from pge.core.stream import Stream
+from pge.controllers.voice_manager import VoiceConfig, VoiceManager
 
 
 # =============================================================================
@@ -156,7 +156,7 @@ def _make_stream(
     s.window_table_map = {'hanning': 2}
 
     # Clip strategy: passthrough per test (preserva semantiche pre-U2).
-    from strategies.grain_clip_strategy import PassthroughClipStrategy
+    from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
     s._clip_strategy = PassthroughClipStrategy()
 
     s.voices = []
@@ -262,7 +262,7 @@ class TestGenerateGrainsVoiceZeroReference:
 
     def test_voice_0_pitch_unmodified(self):
         """Voce 0 non ha pitch offset → pitch_ratio identico al base."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
@@ -270,7 +270,7 @@ class TestGenerateGrainsVoiceZeroReference:
         assert all(p == pytest.approx(1.0) for p in voice_0_pitches)
 
     def test_voice_0_pointer_unmodified(self):
-        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.3))
         s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.5, voice_manager=vm)
         s.generate_grains()
@@ -278,7 +278,7 @@ class TestGenerateGrainsVoiceZeroReference:
         assert all(p == pytest.approx(0.5) for p in voice_0_pointers)
 
     def test_voice_0_onset_unmodified(self):
-        from strategies.voice_onset_strategy import LinearOnsetStrategy
+        from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=1.0))
         s = _make_stream(duration=0.3, onset=5.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
@@ -286,7 +286,7 @@ class TestGenerateGrainsVoiceZeroReference:
         assert s.voices[0][0].onset == pytest.approx(5.0)
 
     def test_voice_0_pan_unmodified(self):
-        from strategies.voice_pan_strategy import RangePanStrategy
+        from pge.strategies.voice_pan_strategy import RangePanStrategy
         vm = VoiceManager(max_voices=2, pan_strategy=RangePanStrategy(spread=60.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
         s.generate_grains()
@@ -302,7 +302,7 @@ class TestGenerateGrainsVoiceOneOffsets:
 
     def test_voice_1_pitch_offset_applied(self):
         """Voce 1 con StepPitchStrategy(step=12) → pitch_ratio = base * 2^(12/12) = 2.0."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
@@ -312,7 +312,7 @@ class TestGenerateGrainsVoiceOneOffsets:
 
     def test_voice_1_pitch_offset_7_semitones(self):
         """Voce 1 con step=7 → pitch_ratio = 2^(7/12) ≈ 1.4983."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=7.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
@@ -322,7 +322,7 @@ class TestGenerateGrainsVoiceOneOffsets:
 
     def test_voice_1_pointer_offset_applied(self):
         """Voce 1 con LinearPointerStrategy(step=0.2) → pointer = base + 0.2."""
-        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.2))
         s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3, voice_manager=vm)
         s.generate_grains()
@@ -336,7 +336,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         lasciando grain.pointer_pos oltre sample_dur. Audio ok (renderer ri-wrappa),
         ma la partitura clippava le voci.
         """
-        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=3.0))
         # sample_dur_sec=5.0 (default _make_stream); base=4.5, voce 1 offset=3.0 → 7.5
         s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5, voice_manager=vm)
@@ -354,7 +354,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         LinearPointerStrategy(step=0.2), sample_dur_sec=5.0, base=0.3.
         Voce 1 offset normalizzato = 0.2 * 5.0 = 1.0 → pointer = 0.3 + 1.0 = 1.3.
         """
-        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.2))
         s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3,
                          voice_manager=vm, voice_pointer_normalized=True)
@@ -368,7 +368,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         step=0.6 normalizzato, sample_dur_sec=5.0 → offset=3.0; base=4.5
         → 4.5 + 3.0 = 7.5 → 7.5 % 5.0 = 2.5. Wrap valido come in modalità secondi.
         """
-        from strategies.voice_pointer_strategy import LinearPointerStrategy
+        from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.6))
         s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5,
                          voice_manager=vm, voice_pointer_normalized=True)
@@ -386,7 +386,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         normalizzato deve essere quello in secondi moltiplicato per sample_dur_sec
         (range piccolo + base centrata → nessun wrap a confondere il confronto).
         """
-        from strategies.voice_pointer_strategy import StochasticPointerStrategy
+        from pge.strategies.voice_pointer_strategy import StochasticPointerStrategy
         vm_sec = VoiceManager(
             max_voices=2,
             pointer_strategy=StochasticPointerStrategy(pointer_range=0.1, stream_id='seed_x'),
@@ -407,7 +407,7 @@ class TestGenerateGrainsVoiceOneOffsets:
 
     def test_voice_1_onset_offset_applied(self):
         """Voce 1 con LinearOnsetStrategy(step=0.5) → primo onset = onset + 0.0 + 0.5."""
-        from strategies.voice_onset_strategy import LinearOnsetStrategy
+        from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=0.5))
         s = _make_stream(duration=0.3, onset=2.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
@@ -416,7 +416,7 @@ class TestGenerateGrainsVoiceOneOffsets:
 
     def test_voice_1_pan_offset_applied(self):
         """Voce 1 con RangePanStrategy spread=60 → pan = base_pan + pan_offset."""
-        from strategies.voice_pan_strategy import RangePanStrategy
+        from pge.strategies.voice_pan_strategy import RangePanStrategy
         # 2 voci, RangePanStrategy: voce 0 = 0, voce 1 = +30
         vm = VoiceManager(max_voices=2, pan_strategy=RangePanStrategy(spread=60.0))
         s = _make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
@@ -873,8 +873,8 @@ class TestGenerateGrainsEnvelopePerGrain:
 
     def test_pitch_envelope_early_grains_smaller_than_late(self):
         """Voice 1 con step=Envelope([[0,0],[1,12]]): pitch cresce nel tempo."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
-        from envelopes.envelope import Envelope
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0.0, 0.0], [1.0, 12.0]])
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
         # duration=1.0, inter_onset=0.1 → ~10 grani per voce a t=0.0,0.1,...,0.9
@@ -889,8 +889,8 @@ class TestGenerateGrainsEnvelopePerGrain:
 
     def test_pitch_envelope_voice_0_always_unmodified(self):
         """Anche con step envelope, voce 0 ha sempre pitch_ratio = base."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
-        from envelopes.envelope import Envelope
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0.0, 0.0], [1.0, 12.0]])
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
         s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
@@ -900,7 +900,7 @@ class TestGenerateGrainsEnvelopePerGrain:
 
     def test_scalar_strategy_regression_constant_over_time(self):
         """Con step scalare, tutti i grani di voice 1 hanno stesso pitch_ratio."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
         s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
@@ -910,8 +910,8 @@ class TestGenerateGrainsEnvelopePerGrain:
 
     def test_pitch_envelope_values_match_envelope_at_voice_cursor(self):
         """Ogni grain di voice 1 ha pitch_ratio = 2^(step_at_t/12) con t=voice_cursor."""
-        from strategies.voice_pitch_strategy import StepPitchStrategy
-        from envelopes.envelope import Envelope
+        from pge.strategies.voice_pitch_strategy import StepPitchStrategy
+        from pge.envelopes.envelope import Envelope
         env = Envelope([[0.0, 0.0], [1.0, 12.0]])
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
         inter_onset = 0.1
@@ -940,8 +940,8 @@ class TestGrainClipStrategyIntegration:
 
     def test_default_excludes_grain_with_onset_past_stream_end(self):
         """Voce 1 con onset_offset enorme: grain spinti oltre stream_end → esclusi."""
-        from strategies.voice_onset_strategy import LinearOnsetStrategy
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
@@ -957,8 +957,8 @@ class TestGrainClipStrategyIntegration:
 
     def test_default_filters_per_voice_independently(self):
         """Voice 0 dentro bounds, voice 1 fuori: solo voice 1 filtrata."""
-        from strategies.voice_onset_strategy import LinearOnsetStrategy
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
@@ -970,8 +970,8 @@ class TestGrainClipStrategyIntegration:
 
     def test_default_grains_flat_excludes_out_of_bounds(self):
         """stream.grains (flatten) non contiene grain fuori bounds."""
-        from strategies.voice_onset_strategy import LinearOnsetStrategy
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
@@ -984,8 +984,8 @@ class TestGrainClipStrategyIntegration:
 
     def test_passthrough_strategy_keeps_out_of_bounds_grains(self):
         """PassthroughClipStrategy iniettata: grain fuori bounds presenti."""
-        from strategies.voice_onset_strategy import LinearOnsetStrategy
-        from strategies.grain_clip_strategy import PassthroughClipStrategy
+        from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
+        from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
@@ -997,7 +997,7 @@ class TestGrainClipStrategyIntegration:
 
     def test_grain_with_tail_exactly_at_stream_end_included(self):
         """grain.onset + grain.duration == stream_end → incluso (limit `<=`)."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         # inter_onset=0.25, grain_dur=0.25 FP-safe: onsets 0, 0.25, 0.5, 0.75
         # ultimo grain: onset=0.75, coda=1.0 == stream_end → incluso
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.25, grain_dur=0.25)
@@ -1010,7 +1010,7 @@ class TestGrainClipStrategyIntegration:
 
     def test_grain_with_tail_overflow_excluded(self):
         """grain con coda che sfora stream_end → escluso (margin=0.0)."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         # duration=1.0, grain_dur=0.2: grain con onset=0.9 → coda=1.1 > 1.0 → escluso
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
@@ -1020,7 +1020,7 @@ class TestGrainClipStrategyIntegration:
 
     def test_margin_allows_tail_overflow(self):
         """margin=0.5 ammette coda oltre stream_end → piu' grain di margin=0.0."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         s_strict = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
         s_strict._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s_strict.generate_grains()
@@ -1038,7 +1038,7 @@ class TestGrainClipStrategyIntegration:
 
     def test_stream_with_nonzero_onset(self):
         """stream.onset != 0: stream_end = onset + duration calcolato corretto."""
-        from strategies.grain_clip_strategy import OverflowMarginClipStrategy
+        from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         s = _make_stream(duration=1.0, onset=5.0, inter_onset=0.1, grain_dur=0.05)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
