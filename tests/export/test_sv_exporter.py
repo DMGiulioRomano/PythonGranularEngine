@@ -29,10 +29,10 @@ import xml.etree.ElementTree as ET
 import pytest
 from unittest.mock import MagicMock
 
-from envelopes.envelope import Envelope
-from parameters.parameter import Parameter
-from parameters.parameter_definitions import GRANULAR_PARAMETERS
-from export.sv_exporter import SVExporter
+from pge.envelopes.envelope import Envelope
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+from pge.export.sv_exporter import SVExporter
 
 FIX_DIR = os.path.join(os.path.dirname(__file__), 'fixtures', 'sv_reference')
 SR = 48000
@@ -143,7 +143,7 @@ class TestEnvelopeLayers:
         assert sum(1 for m in models if m.get('type') == 'sparse') == 3
 
     def test_colour_from_envelope_colors(self):
-        from rendering.score_visualizer import ENVELOPE_COLORS
+        from pge.rendering.score_visualizer import ENVELOPE_COLORS
         root = _build([_e3_stream()])
         for name in ('density', 'grain_duration', 'distribution'):
             layer = next(l for l in root.findall('.//data/layer')
@@ -202,7 +202,7 @@ class TestEnvelopeLayers:
     def test_multi_stream_colour_from_base_key_not_prefixed_name(self):
         # Il colore deve venire dalla CHIAVE engine, non dal nome prefissato
         # '<stream_id>/density': altrimenti cadrebbe sul fallback.
-        from rendering.score_visualizer import ENVELOPE_COLORS
+        from pge.rendering.score_visualizer import ENVELOPE_COLORS
         s1 = _stream('a', density=_param('density', Envelope([[0, 5.0], [DUR, 1000.0]])))
         s2 = _stream('b', density=_param('density', Envelope([[0, 1.0], [DUR, 9.0]])))
         root = _build([s1, s2])

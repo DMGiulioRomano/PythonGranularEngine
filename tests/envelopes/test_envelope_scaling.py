@@ -11,7 +11,7 @@ Coverage:
 """
 
 import pytest
-from envelopes.envelope import Envelope, create_scaled_envelope
+from pge.envelopes.envelope import Envelope, create_scaled_envelope
 
 # =============================================================================
 # 1. TEST CREATE_SCALED_ENVELOPE (SCALING TEMPO / ASSE X)
@@ -340,7 +340,7 @@ class TestScaleRawValuesY:
         Ramo else di _scale_time_recursive: elemento non riconoscibile
         viene passato invariato (ne' compatto, ne' [t, v] a due elementi).
         """
-        from envelopes.envelope import _scale_time_recursive
+        from pge.envelopes.envelope import _scale_time_recursive
 
         raw_points = [
             [0.5, 10],      # standard [t, v] -> scalato
@@ -495,23 +495,23 @@ class TestScaleRawParamValues:
     """
 
     def test_scalar_is_multiplied(self):
-        from envelopes.envelope import scale_raw_param_values
+        from pge.envelopes.envelope import scale_raw_param_values
         assert scale_raw_param_values(0.5, 10.0) == 5.0
         assert scale_raw_param_values(512, 1.0 / 48000) == 512 / 48000
 
     def test_envelope_like_list_scales_y_only(self):
-        from envelopes.envelope import scale_raw_param_values
+        from pge.envelopes.envelope import scale_raw_param_values
         result = scale_raw_param_values([[0.0, 0.5], [2.0, 1.0]], 100.0)
         assert result == [[0.0, 50.0], [2.0, 100.0]]
 
     def test_envelope_like_dict_scales_points(self):
-        from envelopes.envelope import scale_raw_param_values
+        from pge.envelopes.envelope import scale_raw_param_values
         raw = {'type': 'linear', 'points': [[0, 0.1], [1, 0.2]]}
         result = scale_raw_param_values(raw, 10.0)
         assert result['points'][0][1] == pytest.approx(1.0)
         assert result['points'][1][1] == pytest.approx(2.0)
 
     def test_non_envelope_value_passthrough(self):
-        from envelopes.envelope import scale_raw_param_values
+        from pge.envelopes.envelope import scale_raw_param_values
         assert scale_raw_param_values(None, 10.0) is None
         assert scale_raw_param_values('hanning', 10.0) == 'hanning'

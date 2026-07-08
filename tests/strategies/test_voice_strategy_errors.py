@@ -7,7 +7,7 @@ StrategyNotFoundError / InvalidStrategyConfigError (sotto-classi ConfigError).
 """
 import pytest
 
-from shared.exceptions import (
+from pge.shared.exceptions import (
     ConfigError,
     InvalidStrategyConfigError,
     StrategyNotFoundError,
@@ -15,7 +15,7 @@ from shared.exceptions import (
 
 
 def test_voice_pitch_factory_unknown_raises_strategy_not_found():
-    from strategies.voice_pitch_strategy import VoicePitchStrategyFactory
+    from pge.strategies.voice_pitch_strategy import VoicePitchStrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         VoicePitchStrategyFactory.create("bogus")
@@ -27,7 +27,7 @@ def test_voice_pitch_factory_unknown_raises_strategy_not_found():
 
 
 def test_voice_onset_factory_unknown_raises_strategy_not_found():
-    from strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
+    from pge.strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         VoiceOnsetStrategyFactory.create("bogus")
@@ -37,7 +37,7 @@ def test_voice_onset_factory_unknown_raises_strategy_not_found():
 
 
 def test_voice_pointer_factory_unknown_raises_strategy_not_found():
-    from strategies.voice_pointer_strategy import VoicePointerStrategyFactory
+    from pge.strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         VoicePointerStrategyFactory.create("bogus")
@@ -47,7 +47,7 @@ def test_voice_pointer_factory_unknown_raises_strategy_not_found():
 
 
 def test_voice_pan_factory_unknown_raises_strategy_not_found():
-    from strategies.voice_pan_strategy import VoicePanStrategyFactory
+    from pge.strategies.voice_pan_strategy import VoicePanStrategyFactory
 
     with pytest.raises(StrategyNotFoundError) as exc_info:
         VoicePanStrategyFactory.create("bogus")
@@ -57,7 +57,7 @@ def test_voice_pan_factory_unknown_raises_strategy_not_found():
 
 
 def test_chord_pitch_strategy_unknown_chord_raises_invalid_strategy_config():
-    from strategies.voice_pitch_strategy import ChordPitchStrategy
+    from pge.strategies.voice_pitch_strategy import ChordPitchStrategy
 
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
         ChordPitchStrategy(chord="bogus_chord")
@@ -69,7 +69,7 @@ def test_chord_pitch_strategy_unknown_chord_raises_invalid_strategy_config():
 
 
 def test_chord_pitch_strategy_invalid_inversion_raises_invalid_strategy_config():
-    from strategies.voice_pitch_strategy import ChordPitchStrategy
+    from pge.strategies.voice_pitch_strategy import ChordPitchStrategy
 
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
         ChordPitchStrategy(chord="dom7", inversion=99)
@@ -79,7 +79,7 @@ def test_chord_pitch_strategy_invalid_inversion_raises_invalid_strategy_config()
 
 
 def test_chord_progression_unknown_chord_raises_invalid_strategy_config():
-    from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+    from pge.strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
 
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
         ChordProgressionPitchStrategy(progression=[[0, "bogus_chord"]])
@@ -91,7 +91,7 @@ def test_chord_progression_unknown_chord_raises_invalid_strategy_config():
 
 
 def test_chord_progression_invalid_interp_raises_invalid_strategy_config():
-    from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+    from pge.strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
 
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
         ChordProgressionPitchStrategy(progression=[[0, "maj"]], interp="bogus")
@@ -100,7 +100,7 @@ def test_chord_progression_invalid_interp_raises_invalid_strategy_config():
 
 
 def test_chord_progression_invalid_voice_leading_raises_invalid_strategy_config():
-    from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+    from pge.strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
 
     with pytest.raises(InvalidStrategyConfigError) as exc_info:
         ChordProgressionPitchStrategy(progression=[[0, "maj"]], voice_leading="bogus")
@@ -109,7 +109,7 @@ def test_chord_progression_invalid_voice_leading_raises_invalid_strategy_config(
 
 
 def test_stochastic_pan_strategy_negative_spread_raises_invalid_strategy_config():
-    from strategies.voice_pan_strategy import StochasticPanStrategy
+    from pge.strategies.voice_pan_strategy import StochasticPanStrategy
 
     strategy = StochasticPanStrategy(spread=-0.5, stream_id="s1")
     with pytest.raises(InvalidStrategyConfigError) as exc_info:

@@ -23,7 +23,7 @@ Coverage:
 
 import pytest
 from dataclasses import FrozenInstanceError, fields
-from core.stream_config import StreamConfig, StreamContext
+from pge.core.stream_config import StreamConfig, StreamContext
 
 
 # =============================================================================
@@ -108,7 +108,7 @@ class TestStreamContextOutputSr:
 
     def test_default_output_sr_is_engine_constant(self):
         """Senza indicazioni, output_sr e' la costante di sistema (48000)."""
-        from shared.constants import DEFAULT_OUTPUT_SR
+        from pge.shared.constants import DEFAULT_OUTPUT_SR
 
         ctx = StreamContext(
             stream_id='s1', onset=0.0, duration=5.0,
@@ -119,7 +119,7 @@ class TestStreamContextOutputSr:
 
     def test_from_yaml_defaults_output_sr(self):
         """from_yaml senza chiave output_sr usa il default di sistema."""
-        from shared.constants import DEFAULT_OUTPUT_SR
+        from pge.shared.constants import DEFAULT_OUTPUT_SR
 
         ctx = StreamContext.from_yaml(
             {'stream_id': 's1', 'onset': 0.0, 'duration': 5.0,
@@ -137,7 +137,7 @@ class TestStreamContextOutputSr:
         samples->secondi e il bound minimo userebbero un SR, il rendering un
         altro, producendo grani di lunghezza sbagliata.
         """
-        from shared.constants import DEFAULT_OUTPUT_SR
+        from pge.shared.constants import DEFAULT_OUTPUT_SR
 
         ctx = StreamContext.from_yaml(
             {'stream_id': 's1', 'onset': 0.0, 'duration': 5.0,
@@ -702,7 +702,7 @@ class TestIntegration:
         for i in range(3):
             ctx = StreamContext.from_yaml(
                 {'stream_id': f's{i}', 'onset': float(i * 5),
-                 'duration': 5.0, 'sample': 'shared.wav'},
+                 'duration': 5.0, 'sample': 'pge.shared.wav'},
                 sample_dur_sec=sample_dur
             )
             contexts.append(ctx)
@@ -713,7 +713,7 @@ class TestIntegration:
         ]
 
         assert len(configs) == 3
-        assert all(c.context.sample == 'shared.wav' for c in configs)
+        assert all(c.context.sample == 'pge.shared.wav' for c in configs)
         onsets = [c.context.onset for c in configs]
         assert onsets == [0.0, 5.0, 10.0]
 

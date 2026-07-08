@@ -7,8 +7,8 @@ Generator.create_elements arricchisce config_file su tutti i ConfigError
 """
 import pytest
 
-from engine.generator import Generator
-from shared.exceptions import MissingFieldError
+from pge.engine.generator import Generator
+from pge.shared.exceptions import MissingFieldError
 
 
 YAML_MISSING_SAMPLE_FIELD = """\

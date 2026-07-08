@@ -31,7 +31,7 @@ import pytest
 import yaml
 from unittest.mock import patch
 
-from engine.generator import Generator
+from pge.engine.generator import Generator
 
 
 PROJECT_ROOT = os.path.abspath(
@@ -71,7 +71,7 @@ def _materialize_onsets(tmp_path, yaml_data):
     cfg.write_text(yaml.safe_dump(yaml_data))
     gen = Generator(str(cfg))
     gen.load_yaml()
-    with patch('core.stream.get_sample_duration', return_value=10.0):
+    with patch('pge.core.stream.get_sample_duration', return_value=10.0):
         gen.create_elements()
         onsets = [round(g.onset, 9) for s in gen.streams for g in s.grains]
     return onsets
@@ -111,8 +111,8 @@ class TestGlobalRandomReproducibility:
 
 _SNIPPET = textwrap.dedent("""
     import sys
-    from strategies.voice_pitch_strategy import StochasticPitchStrategy
-    from parameters.pitch_unit import EdoUnit
+    from pge.strategies.voice_pitch_strategy import StochasticPitchStrategy
+    from pge.parameters.pitch_unit import EdoUnit
     seed = None if sys.argv[1] == 'none' else int(sys.argv[1])
     s = StochasticPitchStrategy(pitch_range=2.0, stream_id='s1', seed=seed)
     u = EdoUnit(12)

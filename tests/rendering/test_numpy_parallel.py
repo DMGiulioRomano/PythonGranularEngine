@@ -20,11 +20,11 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from core.grain import Grain
-from rendering import numpy_parallel as npar
-from rendering.grain_renderer import GrainRenderer
-from rendering.sample_registry import SampleRegistry
-from rendering.numpy_window_registry import NumpyWindowRegistry
+from pge.core.grain import Grain
+from pge.rendering import numpy_parallel as npar
+from pge.rendering.grain_renderer import GrainRenderer
+from pge.rendering.sample_registry import SampleRegistry
+from pge.rendering.numpy_window_registry import NumpyWindowRegistry
 
 
 OUTPUT_SR = 48000
@@ -287,7 +287,7 @@ class TestRenderGrainChunk:
 def make_single_stream_renderer(worker_env, jobs=1):
     """NumpyAudioRenderer sequenziale sugli stessi file: oracolo per l'intero
     path di render_single_stream (overlap-add + dc_block + write)."""
-    from rendering.numpy_audio_renderer import NumpyAudioRenderer
+    from pge.rendering.numpy_audio_renderer import NumpyAudioRenderer
     reg = SampleRegistry(base_path=worker_env['base_path'])
     for name in worker_env['sample_names']:
         reg.load(name)

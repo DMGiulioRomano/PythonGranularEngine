@@ -19,8 +19,8 @@ Organizzazione:
 import pytest
 import math
 from typing import List
-from envelopes.envelope import Envelope
-from envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
+from pge.envelopes.envelope import Envelope
+from pge.envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
 
 
 # =============================================================================

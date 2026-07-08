@@ -7,7 +7,7 @@ su YAML invalidi (scritti inline via tmp_path) e verifica:
   - log file: messaggio + Traceback
 
 I YAML di test stanno qui (non in configs/), perche' sono fixture di test
-e non materiale di lavoro dell'engine.
+e non materiale di lavoro dell'pge.engine.
 """
 
 import os

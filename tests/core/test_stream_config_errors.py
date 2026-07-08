@@ -12,8 +12,8 @@ Verifica:
 """
 import pytest
 
-from core.stream import Stream
-from shared.exceptions import (
+from pge.core.stream import Stream
+from pge.shared.exceptions import (
     ConfigError,
     EngineError,
     InvalidFieldValueError,
@@ -53,7 +53,7 @@ def test_stream_missing_context_fields_raises_missing_field_error():
     """context fields mancanti -> MissingFieldError con stream_id."""
     # sample valido per superare check sample, esiste in PATHSAMPLES
     import os
-    from shared.utils import PATHSAMPLES
+    from pge.shared.utils import PATHSAMPLES
     samples = [f for f in os.listdir(PATHSAMPLES) if f.endswith('.wav')]
     if not samples:
         pytest.skip("nessun sample disponibile")
@@ -72,7 +72,7 @@ def test_stream_missing_context_fields_raises_missing_field_error():
 def test_stream_invalid_grain_reverse_raises_invalid_field_value_error():
     """grain.reverse: true -> InvalidFieldValueError con stream_id."""
     import os
-    from shared.utils import PATHSAMPLES
+    from pge.shared.utils import PATHSAMPLES
     samples = [f for f in os.listdir(PATHSAMPLES) if f.endswith('.wav')]
     if not samples:
         pytest.skip("nessun sample disponibile")

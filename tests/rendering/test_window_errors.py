@@ -9,8 +9,8 @@ import pytest
 
 
 def test_unknown_window_name_raises_invalid_window_error():
-    from rendering.numpy_window_registry import NumpyWindowRegistry
-    from shared.exceptions import (
+    from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+    from pge.shared.exceptions import (
         ConfigError,
         EngineError,
         InvalidWindowError,
@@ -32,8 +32,8 @@ def test_unknown_window_name_raises_invalid_window_error():
 
 
 def test_window_controller_unknown_window_raises_invalid_window_error():
-    from controllers.window_controller import WindowController
-    from shared.exceptions import ConfigError, InvalidWindowError
+    from pge.controllers.window_controller import WindowController
+    from pge.shared.exceptions import ConfigError, InvalidWindowError
 
     with pytest.raises(InvalidWindowError) as exc_info:
         WindowController.parse_window_list(
@@ -49,8 +49,8 @@ def test_window_controller_unknown_window_raises_invalid_window_error():
 
 
 def test_window_controller_invalid_envelope_format_raises_invalid_window_error():
-    from controllers.window_controller import WindowController
-    from shared.exceptions import InvalidWindowError
+    from pge.controllers.window_controller import WindowController
+    from pge.shared.exceptions import InvalidWindowError
 
     with pytest.raises(InvalidWindowError) as exc_info:
         WindowController.parse_window_list({"envelope": 42}, stream_id="s1")
@@ -61,16 +61,16 @@ def test_window_controller_invalid_envelope_format_raises_invalid_window_error()
 
 
 def test_window_controller_empty_list_raises_invalid_window_error():
-    from controllers.window_controller import WindowController
-    from shared.exceptions import InvalidWindowError
+    from pge.controllers.window_controller import WindowController
+    from pge.shared.exceptions import InvalidWindowError
 
     with pytest.raises(InvalidWindowError):
         WindowController.parse_window_list({"envelope": []}, stream_id="s1")
 
 
 def test_window_controller_short_states_raises_invalid_window_error():
-    from controllers.window_controller import WindowController
-    from shared.exceptions import InvalidWindowError
+    from pge.controllers.window_controller import WindowController
+    from pge.shared.exceptions import InvalidWindowError
 
     with pytest.raises(InvalidWindowError):
         WindowController.parse_window_list(
@@ -80,8 +80,8 @@ def test_window_controller_short_states_raises_invalid_window_error():
 
 
 def test_invalid_length_raises_invalid_window_error():
-    from rendering.numpy_window_registry import NumpyWindowRegistry
-    from shared.exceptions import InvalidWindowError
+    from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+    from pge.shared.exceptions import InvalidWindowError
 
     reg = NumpyWindowRegistry()
     with pytest.raises(InvalidWindowError) as exc_info:

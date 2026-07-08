@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [window, grain, extension]
 sources:
-  - src/controllers/window_registry.py
+  - src/pge/controllers/window_registry.py
 last_synced_commit: 8c896d8
 entry_for: [add-window-function]
 ---
@@ -27,7 +27,7 @@ Se la finestra deve essere usata dal renderer Csound: la `FtableManager` numera 
 
 ## Passi
 
-1. Definisci la funzione in `src/controllers/window_registry.py`
+1. Definisci la funzione in `src/pge/controllers/window_registry.py`
 2. Aggiungi entry a `WindowRegistry.WINDOW_FUNCTIONS` (chiave = nome usato in YAML)
 3. Aggiungi test unit verificando shape, range, simmetria (se attesa)
 4. Aggiorna [[yaml]] § Finestre Disponibili con il nuovo nome
@@ -36,7 +36,7 @@ Se la finestra deve essere usata dal renderer Csound: la `FtableManager` numera 
 
 | Path | Tipo |
 |------|------|
-| `src/controllers/window_registry.py` | aggiunta funzione + entry registry |
+| `src/pge/controllers/window_registry.py` | aggiunta funzione + entry registry |
 | `tests/controllers/test_window_registry.py` | nuovi test |
 | `docs/reference/yaml.md` | elenco finestre aggiornato |
 

@@ -10,11 +10,11 @@ Modulo sotto test:
 
 import pytest
 
-from parameters.pitch_unit import (
+from pge.parameters.pitch_unit import (
     EDO_IMPLICIT_DETUNE_CENTS, EdoUnit, RatioUnit, make_pitch_unit,
 )
-from parameters.parameter_definitions import ParameterBounds
-from shared.exceptions import InvalidFieldValueError
+from pge.parameters.parameter_definitions import ParameterBounds
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================

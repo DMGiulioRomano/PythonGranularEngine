@@ -18,10 +18,10 @@ import sys
 import pytest
 from unittest.mock import MagicMock
 
-from envelopes.envelope import Envelope
-from parameters.parameter import Parameter
-from parameters.parameter_definitions import GRANULAR_PARAMETERS
-from rendering.envelope_extractor import get_stream_envelopes, base_param_name
+from pge.envelopes.envelope import Envelope
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+from pge.rendering.envelope_extractor import get_stream_envelopes, base_param_name
 
 
 # =============================================================================
@@ -117,7 +117,7 @@ class TestGetStreamEnvelopes:
 
 def test_module_does_not_import_matplotlib():
     import importlib
-    import rendering.envelope_extractor as mod
+    import pge.rendering.envelope_extractor as mod
     importlib.reload(mod)
     # Il modulo non deve trascinare matplotlib: l'export SV non lo richiede.
     src = open(mod.__file__).read()

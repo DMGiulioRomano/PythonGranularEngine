@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [strategy, variation, extension]
 sources:
-  - src/strategies/variation_registry.py
+  - src/pge/strategies/variation_registry.py
 last_synced_commit: 8c896d8
 entry_for: [add-variation-strategy]
 ---
@@ -17,14 +17,14 @@ Aggiungere un nuovo modo di variare i parametri grain nel tempo (es. perlin nois
 
 ## Prerequisiti
 
-- Conoscenza ABC `VariationStrategy` (`src/strategies/variation_strategy.py`)
+- Conoscenza ABC `VariationStrategy` (`src/pge/strategies/variation_strategy.py`)
 - Decisione: la strategy è deterministica? Se sì, deve usare `stream_id` come seed
 - Conoscenza interfaccia: `apply(value, time, ...)` o equivalente
 
 ## Passi
 
-1. Crea la classe in `src/strategies/<nome>_variation.py` ed eredita `VariationStrategy`
-2. Registra in `src/strategies/variation_registry.py` (`VariationFactory.REGISTRY`)
+1. Crea la classe in `src/pge/strategies/<nome>_variation.py` ed eredita `VariationStrategy`
+2. Registra in `src/pge/strategies/variation_registry.py` (`VariationFactory.REGISTRY`)
 3. Usa in YAML: `variation_mode: 'nome_strategy'`
 4. Test determinismo (stesso `stream_id` → stessa sequenza) e invarianti
 
@@ -32,8 +32,8 @@ Aggiungere un nuovo modo di variare i parametri grain nel tempo (es. perlin nois
 
 | Path | Tipo |
 |------|------|
-| `src/strategies/<nome>_variation.py` | nuovo file |
-| `src/strategies/variation_registry.py` | aggiunta a REGISTRY |
+| `src/pge/strategies/<nome>_variation.py` | nuovo file |
+| `src/pge/strategies/variation_registry.py` | aggiunta a REGISTRY |
 | `tests/strategies/test_<nome>_variation.py` | nuovi test |
 
 ## Test da aggiornare

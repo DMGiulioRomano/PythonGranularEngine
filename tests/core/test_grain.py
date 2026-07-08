@@ -5,7 +5,7 @@ Testa la classe Grain e i suoi metodi con pytest.
 
 import pytest
 from dataclasses import FrozenInstanceError
-from core.grain import Grain
+from pge.core.grain import Grain
 
 
 @pytest.fixture

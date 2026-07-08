@@ -40,7 +40,7 @@ import pytest
 # =============================================================================
 
 def _get_module():
-    from strategies.voice_onset_strategy import (
+    from pge.strategies.voice_onset_strategy import (
         VoiceOnsetStrategy,
         LinearOnsetStrategy,
         GeometricOnsetStrategy,
@@ -396,7 +396,7 @@ class TestDynamicOnsetParams:
 
     def test_linear_step_envelope_varies(self):
         """LinearOnsetStrategy con Envelope: step varia nel tempo."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, LinearOnsetStrategy, *_ = _get_module()
         env = Envelope([[0, 0.0], [1, 0.1]])
         s = LinearOnsetStrategy(step=env)
@@ -405,7 +405,7 @@ class TestDynamicOnsetParams:
 
     def test_stochastic_envelope_varies_magnitude(self):
         """StochasticOnsetStrategy con Envelope: magnitudine varia, sempre >= 0."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _, _, _, StochasticOnsetStrategy, *_ = _get_module()
         env = Envelope([[0, 0.1], [1, 1.0]])
         s = StochasticOnsetStrategy(max_offset=env, stream_id="s1")

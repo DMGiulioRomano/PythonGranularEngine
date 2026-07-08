@@ -4,7 +4,7 @@ type: reference
 status: stable
 tags: [errors, exceptions, user-facing]
 sources:
-  - src/shared/exceptions.py
+  - src/pge/shared/exceptions.py
 last_synced_commit: 4c4fee4
 entry_for: [error-handling]
 ---
@@ -47,7 +47,7 @@ Vedi [Esempi](#3-esempi) per output reale di terminale.
 
 ## Versionato da
 
-- `src/shared/exceptions.py` — definizioni
+- `src/pge/shared/exceptions.py` — definizioni
 - Siti di sollevamento sparsi nei moduli (parser, controller, renderer)
 - Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
@@ -55,7 +55,7 @@ Vedi [Esempi](#3-esempi) per output reale di terminale.
 
 ## 1. Gerarchia
 
-Tutte le classi sono in [`src/shared/exceptions.py`](../src/shared/exceptions.py).
+Tutte le classi sono in [`src/pge/shared/exceptions.py`](../src/pge/shared/exceptions.py).
 
 ```
 EngineError                                  (Exception)
@@ -235,7 +235,7 @@ streams:
 
 ## 5. Estensione — aggiungere nuova sotto-classe
 
-1. Definire in `src/shared/exceptions.py` ereditando dal nodo giusto:
+1. Definire in `src/pge/shared/exceptions.py` ereditando dal nodo giusto:
    - errore di config YAML → `ConfigError`
    - errore runtime engine non-config → `EngineRuntimeError`
 2. Override `user_message()` con formato `[ERRORE] head` + righe indentate +

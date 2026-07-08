@@ -10,9 +10,9 @@ Ultimo punto: type ignorato (warning).
 """
 
 import pytest
-from envelopes.envelope import Envelope, create_scaled_envelope, _scale_time_recursive
-from envelopes.envelope_builder import EnvelopeBuilder
-from shared.exceptions import InvalidFieldValueError
+from pge.envelopes.envelope import Envelope, create_scaled_envelope, _scale_time_recursive
+from pge.envelopes.envelope_builder import EnvelopeBuilder
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 class TestThreeTupleAcceptance:

@@ -16,6 +16,7 @@
 |------|--------|------|
 | [architecture](explanation/architecture.md) | stable | architecture, rendering, ocp |
 | [caching](explanation/caching.md) | stable | caching, rendering, csound |
+| [library-vs-cli](explanation/library-vs-cli.md) | stable | api, cli, architecture, refactor |
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
 
 ## How-to
@@ -31,6 +32,7 @@
 | [make-parameter-envelope-aware](how-to/make-parameter-envelope-aware.md) | stable | parameters, envelopes, extension |
 | [reaper](how-to/reaper.md) | stable | reaper, daw, workflow, output |
 | [sonic-visualiser](how-to/sonic-visualiser.md) | stable | sonic-visualiser, export, envelope, output, workflow |
+| [use-as-library](how-to/use-as-library.md) | stable | api, library, install, render |
 
 ## Entry points per task
 
@@ -43,11 +45,15 @@
 | add-voice-strategy | add-voice-strategy |
 | add-window-function | add-window-function |
 | build-flags | cli |
+| capire la divisione API/CLI | library-vs-cli |
 | cli-flags | cli |
 | envelope-syntax | yaml |
 | error-handling | errors |
 | export-sonic-visualiser | sonic-visualiser |
+| integrare PGE in un altro progetto | use-as-library |
 | make-parameter-envelope-aware | make-parameter-envelope-aware |
 | reaper-workflow | reaper |
+| renderizzare da Python | use-as-library |
+| usare PGE come libreria | library-vs-cli |
 | yaml-syntax | yaml |
 

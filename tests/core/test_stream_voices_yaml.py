@@ -43,28 +43,28 @@ Organizzazione:
 import pytest
 from unittest.mock import patch, Mock
 
-from core.stream import Stream
-from controllers.voice_manager import VoiceManager, VoiceConfig
-from strategies.voice_pitch_strategy import (
+from pge.core.stream import Stream
+from pge.controllers.voice_manager import VoiceManager, VoiceConfig
+from pge.strategies.voice_pitch_strategy import (
     StepPitchStrategy, RangePitchStrategy,
     ChordPitchStrategy, StochasticPitchStrategy,
 )
-from strategies.voice_onset_strategy import (
+from pge.strategies.voice_onset_strategy import (
     LinearOnsetStrategy, GeometricOnsetStrategy, StochasticOnsetStrategy,
 )
-from strategies.voice_pointer_strategy import (
+from pge.strategies.voice_pointer_strategy import (
     LinearPointerStrategy, StochasticPointerStrategy,
 )
-from strategies.voice_pan_strategy import RangePanStrategy, StochasticPanStrategy, StepPanStrategy
-from parameters.pitch_unit import EdoUnit, RatioUnit
-from parameters.parameter import resolve_param
-from envelopes.envelope import Envelope
+from pge.strategies.voice_pan_strategy import RangePanStrategy, StochasticPanStrategy, StepPanStrategy
+from pge.parameters.pitch_unit import EdoUnit, RatioUnit
+from pge.parameters.parameter import resolve_param
+from pge.envelopes.envelope import Envelope
 
 
 def _f(semitones: float) -> float:
     """Semitoni -> fattore di ratio (EDO 12), per le asserzioni pitch_factor."""
     return 2 ** (semitones / 12)
-from shared.exceptions import InvalidStrategyConfigError
+from pge.shared.exceptions import InvalidStrategyConfigError
 
 
 # =============================================================================
@@ -84,7 +84,7 @@ def _build_stream(voices_params=None, stream_id='s1', seed=None):
     if voices_params is not None:
         params['voices'] = voices_params
 
-    with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+    with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
         if seed is None:
             return Stream(params)
         return Stream(params, seed=seed)
@@ -195,7 +195,7 @@ class TestChordProgressionYAML:
                 'voice_leading': 'positional',
             },
         })
-        from strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
+        from pge.strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
         assert isinstance(s._voice_manager._pitch_strategy, ChordProgressionPitchStrategy)
 
     def test_pitch_factor_at_onsets(self):
@@ -258,7 +258,7 @@ class TestChordProgressionYAML:
                 },
             },
         }
-        with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+        with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
             s = Stream(params)
         vm = s._voice_manager
         # norm 0.0 → t=0 (maj7); norm 1.0 → t=16 (min7)
@@ -329,7 +329,7 @@ class TestVoicesPointerStrategy:
 
     def test_pointer_normalized_non_bool_raises(self):
         """`normalized` non-bool → InvalidFieldValueError (no coercion silenziosa)."""
-        from shared.exceptions import InvalidFieldValueError
+        from pge.shared.exceptions import InvalidFieldValueError
         with pytest.raises(InvalidFieldValueError):
             _build_stream({
                 'num_voices': 3,
@@ -384,7 +384,7 @@ class TestVoicesPanStrategy:
 
     def test_old_pan_names_rejected(self):
         """I vecchi nomi (linear/random/additive) non sono più accettati."""
-        from shared.exceptions import StrategyNotFoundError
+        from pge.shared.exceptions import StrategyNotFoundError
         for old in ['linear', 'random', 'additive']:
             with pytest.raises((StrategyNotFoundError, ValueError)):
                 _build_stream({
@@ -830,7 +830,7 @@ class TestStrategyKwargsEnvelope:
 
     def test_pan_spread_list_envelope_stored_as_envelope(self):
         """spread: [[0,0],[10,120]] → la strategy pan possiede uno spread Envelope."""
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         s = _build_stream({
             'num_voices': 4,
             'pan': {'strategy': 'range', 'spread': [[0, 0], [10, 120]]},
@@ -1046,7 +1046,7 @@ def _build_stream_tm(voices_params, time_mode=None, duration=10.0, stream_id='s1
     }
     if time_mode is not None:
         params['time_mode'] = time_mode
-    with patch('core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+    with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
         return Stream(params)
 
 

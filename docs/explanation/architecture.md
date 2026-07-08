@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [architecture, rendering, ocp]
 sources:
-  - src/rendering/
+  - src/pge/rendering/
   - src/main.py
 last_synced_commit: d750ba6
 ---
@@ -91,7 +91,7 @@ processo parent: l'ordine di consumo è la riproducibilità delle composizioni.
 Il parallelismo vive interamente dentro `NumpyAudioRenderer`
 (`RenderMode`/`RenderingEngine`/ABC invariati): le coppie
 `(grain, onset_sample)` vengono ordinate per onset, divise in chunk contigui
-(`src/rendering/numpy_parallel.py`) e affidate a un pool `spawn` di
+(`src/pge/rendering/numpy_parallel.py`) e affidate a un pool `spawn` di
 `jobs` worker; ogni worker rende il proprio chunk in un buffer locale
 all'extent del chunk e il parent somma i risultati in ordine di chunk fisso,
 poi applica `dc_block`, clamp e scrittura come nel path sequenziale.

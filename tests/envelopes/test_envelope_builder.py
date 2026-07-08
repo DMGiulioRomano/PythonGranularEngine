@@ -21,7 +21,7 @@ Coverage:
 
 import pytest
 from unittest.mock import patch, MagicMock, call
-from envelopes.envelope_builder import EnvelopeBuilder, detect_format_type
+from pge.envelopes.envelope_builder import EnvelopeBuilder, detect_format_type
 
 
 # =============================================================================
@@ -614,7 +614,7 @@ class TestValidationErrors:
 class TestLoggingTransformations:
     """Test logging delle trasformazioni (con mock)."""
     
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_logging_called_on_expand(self, mock_get_logger, simple_compact):
         """Logging chiamato durante expand."""
         mock_logger = MagicMock()
@@ -625,7 +625,7 @@ class TestLoggingTransformations:
         # Logger deve essere chiamato
         assert mock_logger.info.called
     
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_logging_contains_input_info(self, mock_get_logger, simple_compact):
         """Log contiene info formato compatto."""
         mock_logger = MagicMock()
@@ -640,7 +640,7 @@ class TestLoggingTransformations:
         assert 'total_time=0.4' in log_text or '0.4s' in log_text
         assert '4' in log_text  # n_reps
     
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_logging_disabled_when_logger_none(self, mock_get_logger, simple_compact):
         """Nessun errore se logger è None."""
         mock_get_logger.return_value = None
@@ -649,7 +649,7 @@ class TestLoggingTransformations:
         expanded = EnvelopeBuilder._expand_compact_format(simple_compact)
         assert len(expanded) == 8
     
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_logging_called_for_each_compact(self, mock_get_logger):
         """Logging chiamato per ogni formato compatto."""
         mock_logger = MagicMock()
@@ -785,7 +785,7 @@ class TestRobustnessMalformedInput:
 
     # Test aggiuntivi per _log_compact_transformation (da aggiungere a TestLoggingTransformations)
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_compact_direct_call(self, mock_get_logger):
         """Test chiamata diretta a _log_compact_transformation."""
         mock_logger = MagicMock()
@@ -810,7 +810,7 @@ class TestRobustnessMalformedInput:
         
         assert mock_logger.info.called
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_shows_pattern_points(self, mock_get_logger):
         """Log mostra pattern points correttamente."""
         mock_logger = MagicMock()
@@ -832,7 +832,7 @@ class TestRobustnessMalformedInput:
 
 
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_shows_cycle_info(self, mock_get_logger):
         """Log mostra info cicli (total_time, n_reps, cycle_duration)."""
         mock_logger = MagicMock()
@@ -851,7 +851,7 @@ class TestRobustnessMalformedInput:
         # Verifica che il log contenga info sui cicli
         assert mock_logger.info.called
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_shows_interpolation_type(self, mock_get_logger):
         """Log mostra tipo interpolazione se presente."""
         mock_logger = MagicMock()
@@ -871,7 +871,7 @@ class TestRobustnessMalformedInput:
         assert mock_logger.info.called
 
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_shows_output_summary(self, mock_get_logger):
         """Log mostra summary output (n_breakpoints, time_range)."""
         mock_logger = MagicMock()
@@ -897,7 +897,7 @@ class TestRobustnessMalformedInput:
         assert mock_logger.info.called
 
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_shows_preview_breakpoints(self, mock_get_logger):
         """Log mostra preview breakpoints (primi e ultimi 5)."""
         mock_logger = MagicMock()
@@ -919,7 +919,7 @@ class TestRobustnessMalformedInput:
 
 
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_no_crash_if_logger_none(self, mock_get_logger):
         """Nessun crash se get_clip_logger ritorna None."""
         mock_get_logger.return_value = None
@@ -936,7 +936,7 @@ class TestRobustnessMalformedInput:
         EnvelopeBuilder._log_compact_transformation(compact, expanded, time_offset, total_duration, distributor)
 
 
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.get_clip_logger')
     def test_log_separator_lines(self, mock_get_logger):
         """Log contiene linee separatore per leggibilità."""
         mock_logger = MagicMock()
@@ -975,7 +975,7 @@ class TestEnvelopeBuilderMissingLines:
         Riga 330: time_dist_spec presente -> logger.info viene chiamato con spec.
         """
 
-        with patch('shared.logger.get_clip_logger') as mock_get_logger:
+        with patch('pge.shared.logger.get_clip_logger') as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
@@ -999,8 +999,8 @@ class TestEnvelopeBuilderMissingLines:
 class TestLogTransformationsFlag:
     """Il flag log_transformations=False sopprime i log di envelope."""
 
-    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': False})
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.CLIP_LOG_CONFIG', {'log_transformations': False})
+    @patch('pge.shared.logger.get_clip_logger')
     def test_final_envelope_silent_when_flag_false(self, mock_get_logger):
         """_log_final_envelope non chiama logger se log_transformations=False."""
         mock_logger = MagicMock()
@@ -1012,8 +1012,8 @@ class TestLogTransformationsFlag:
 
         mock_logger.info.assert_not_called()
 
-    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': False})
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.CLIP_LOG_CONFIG', {'log_transformations': False})
+    @patch('pge.shared.logger.get_clip_logger')
     def test_compact_transformation_silent_when_flag_false(self, mock_get_logger):
         """_log_compact_transformation non chiama logger se log_transformations=False."""
         mock_logger = MagicMock()
@@ -1027,8 +1027,8 @@ class TestLogTransformationsFlag:
 
         mock_logger.info.assert_not_called()
 
-    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': True})
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.CLIP_LOG_CONFIG', {'log_transformations': True})
+    @patch('pge.shared.logger.get_clip_logger')
     def test_final_envelope_active_when_flag_true(self, mock_get_logger):
         """_log_final_envelope chiama logger se log_transformations=True."""
         mock_logger = MagicMock()
@@ -1040,8 +1040,8 @@ class TestLogTransformationsFlag:
 
         assert mock_logger.info.called
 
-    @patch('shared.logger.CLIP_LOG_CONFIG', {'log_transformations': True})
-    @patch('shared.logger.get_clip_logger')
+    @patch('pge.shared.logger.CLIP_LOG_CONFIG', {'log_transformations': True})
+    @patch('pge.shared.logger.get_clip_logger')
     def test_compact_transformation_active_when_flag_true(self, mock_get_logger):
         """_log_compact_transformation chiama logger se log_transformations=True."""
         mock_logger = MagicMock()

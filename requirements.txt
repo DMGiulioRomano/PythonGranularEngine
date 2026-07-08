@@ -1,12 +1,3 @@
-# === Python 3.9+ COMPATIBLE ===
-# Gestione Audio e Dati
-numpy>=1.24.0
-soundfile>=0.12.1
-matplotlib>=3.7.0
-
-# Parsing Config
-PyYAML>=6.0
-
-# Testing e sviluppo
-pytest>=7.4.0
-pytest-cov>=4.1.0  # Per coverage reports
+# Le dipendenze vivono in pyproject.toml (Fase 4 refactor library/CLI).
+# Questo file resta come puntatore per compatibilita' con tooling esterno.
+-e .[dev]

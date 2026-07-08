@@ -4,12 +4,12 @@ type: reference
 status: stable
 tags: [yaml, syntax, parameters, envelopes]
 sources:
-  - src/engine/generator.py
-  - src/core/stream.py
-  - src/parameters/
-  - src/strategies/
-  - src/envelopes/
-  - src/shared/seeding.py
+  - src/pge/engine/generator.py
+  - src/pge/core/stream.py
+  - src/pge/parameters/
+  - src/pge/strategies/
+  - src/pge/envelopes/
+  - src/pge/shared/seeding.py
 last_synced_commit: c7ad14b
 entry_for: [yaml-syntax, envelope-syntax]
 ---
@@ -52,8 +52,8 @@ Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [En
 ## Versionato da
 
 - `src/yaml_parser/` — parser
-- `src/parameters/parameter_definitions.py`, `src/parameters/parameter_schema.py` — bounds e schema
-- `src/envelopes/` — sintassi envelope
+- `src/pge/parameters/parameter_definitions.py`, `src/pge/parameters/parameter_schema.py` — bounds e schema
+- `src/pge/envelopes/` — sintassi envelope
 - Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
 ---
@@ -94,7 +94,7 @@ streams:
   posteriori**: aggiungendo `seed: N` allo YAML si riottiene lo stesso render.
 
 Tutti i siti stocastici usano **RNG locali derivati per componente**
-(`src/shared/seeding.py`, issue #154): nessun random globale condiviso.
+(`src/pge/shared/seeding.py`, issue #154): nessun random globale condiviso.
 
 - **RNG per-componente** — ogni sito pesca dal proprio generatore derivato via
   `hashlib.sha256(f"{seed}:{stream_id}:{componente}")`, deterministico e
@@ -916,7 +916,7 @@ streams:
 
 > Sintassi completa del sistema envelope (sostituisce il vecchio `envelopes-reference.md`).
 >
-> Sorgente di verità: `src/envelopes/envelope.py`, `src/envelopes/envelope_builder.py`, `src/envelopes/envelope_interpolation.py`, `src/envelopes/envelope_segment.py`, `src/envelopes/time_distribution.py`.
+> Sorgente di verità: `src/pge/envelopes/envelope.py`, `src/pge/envelopes/envelope_builder.py`, `src/pge/envelopes/envelope_interpolation.py`, `src/pge/envelopes/envelope_segment.py`, `src/pge/envelopes/time_distribution.py`.
 
 ### Indice envelopes
 
@@ -1428,7 +1428,7 @@ strettamente crescenti.
 
 Il quinto elemento del formato compatto controlla come le durate dei cicli sono
 distribuite all'interno del blocco. Definito in
-`src/envelopes/time_distribution.py` tramite `TimeDistributionFactory`.
+`src/pge/envelopes/time_distribution.py` tramite `TimeDistributionFactory`.
 
 Vincolo invariante: `sum(cycle_durations) == total_duration`.
 
@@ -1785,20 +1785,20 @@ un envelope dal YAML al runtime è:
 
 ### Riferimenti sorgente
 
-- `src/envelopes/envelope.py` — classe `Envelope`, `is_envelope_like`,
+- `src/pge/envelopes/envelope.py` — classe `Envelope`, `is_envelope_like`,
   `create_scaled_envelope`, `_scale_raw_values_y`
-- `src/envelopes/envelope_builder.py` — `EnvelopeBuilder.parse`,
+- `src/pge/envelopes/envelope_builder.py` — `EnvelopeBuilder.parse`,
   `_is_compact_format`, `_expand_compact_format`, `DISCONTINUITY_OFFSET`
-- `src/envelopes/envelope_interpolation.py` — `LinearInterpolation`,
+- `src/pge/envelopes/envelope_interpolation.py` — `LinearInterpolation`,
   `StepInterpolation`, `CubicInterpolation`
-- `src/envelopes/envelope_segment.py` — `NormalSegment` con hold behavior
-- `src/envelopes/envelope_factory.py` — `InterpolationStrategyFactory`
-- `src/envelopes/time_distribution.py` — `TimeDistributionFactory` e le 5 strategie
-- `src/parameters/parser.py` — `GranularParser.parse_parameter` + validazione
-- `src/parameters/gate_factory.py` — uso di envelope per `dephase`
-- `src/controllers/pointer_controller.py` — `loop_unit` e scaling dei valori loop
-- `src/controllers/window_selection_strategy.py` — `_validate_curve_range`
-- `src/core/stream.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy
+- `src/pge/envelopes/envelope_segment.py` — `NormalSegment` con hold behavior
+- `src/pge/envelopes/envelope_factory.py` — `InterpolationStrategyFactory`
+- `src/pge/envelopes/time_distribution.py` — `TimeDistributionFactory` e le 5 strategie
+- `src/pge/parameters/parser.py` — `GranularParser.parse_parameter` + validazione
+- `src/pge/parameters/gate_factory.py` — uso di envelope per `dephase`
+- `src/pge/controllers/pointer_controller.py` — `loop_unit` e scaling dei valori loop
+- `src/pge/controllers/window_selection_strategy.py` — `_validate_curve_range`
+- `src/pge/core/stream.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy
 
 ---
 

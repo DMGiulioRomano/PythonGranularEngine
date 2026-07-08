@@ -47,7 +47,7 @@ _import_cache = {}
 def _get_score_writer_class():
     """Import lazy di ScoreWriter."""
     if 'ScoreWriter' not in _import_cache:
-        from rendering.score_writer import ScoreWriter
+        from pge.rendering.score_writer import ScoreWriter
         _import_cache['ScoreWriter'] = ScoreWriter
     return _import_cache['ScoreWriter']
 
@@ -55,7 +55,7 @@ def _get_score_writer_class():
 def _get_real_parameter():
     """Import lazy di Parameter."""
     if 'Parameter' not in _import_cache:
-        from parameters.parameter import Parameter
+        from pge.parameters.parameter import Parameter
         _import_cache['Parameter'] = Parameter
     return _import_cache['Parameter']
 
@@ -63,7 +63,7 @@ def _get_real_parameter():
 def _get_real_envelope():
     """Import lazy di Envelope."""
     if 'Envelope' not in _import_cache:
-        from envelopes.envelope import Envelope
+        from pge.envelopes.envelope import Envelope
         _import_cache['Envelope'] = Envelope
     return _import_cache['Envelope']
 
