@@ -397,6 +397,34 @@ class TestRender:
         api_mocks['RendererFactory'].create.assert_not_called()
         assert api_mocks['RenderingEngine'].call_args.args[0] is my_renderer
 
+    def test_renderer_instance_type_from_declared_attribute(self, api_mocks):
+        """renderer=istanza: RenderResult.renderer_type e' l'attributo
+        `renderer_type` dichiarato dal renderer, non un'euristica sul nome
+        della classe."""
+        gen = self._gen(api_mocks)
+
+        class WrappedRenderer:            # nome senza 'csound' nel nome
+            renderer_type = 'csound'
+            cache_manager = None
+
+        result = api_mocks['api'].render(
+            gen, 'out.aif', renderer=WrappedRenderer())
+
+        assert result.renderer_type == 'csound'
+
+    def test_renderer_instance_without_declared_type_is_unknown(self, api_mocks):
+        """Renderer custom che non dichiara renderer_type: 'unknown',
+        niente etichette inventate."""
+        gen = self._gen(api_mocks)
+
+        class BareRenderer:
+            cache_manager = None
+
+        result = api_mocks['api'].render(
+            gen, 'out.aif', renderer=BareRenderer())
+
+        assert result.renderer_type == 'unknown'
+
     def test_run_cache_gc_default_in_stems(self, api_mocks):
         """per_stream + cache manager presente: GC eseguito prima del render
         e orfani riportati in gc_removed."""
@@ -512,6 +540,20 @@ class TestRenderFile:
             api_mocks['api'].render_file(
                 'test.yml', 'out.mp3', audio_format='mp3')
         api_mocks['Generator'].assert_not_called()
+
+    def test_run_cache_gc_false_skips_gc(self, api_mocks):
+        """run_cache_gc=False esposto anche nella one-shot API: un chiamante
+        STEMS+cache puo' evitare la cancellazione degli stem orfani senza
+        dover scendere a load_generator + render."""
+        gen = api_mocks['generator_instance']
+        gen.data = {'streams': [{'stream_id': 's1'}]}
+
+        api_mocks['api'].render_file(
+            'test.yml', 'out.aif', renderer='numpy', per_stream=True,
+            run_cache_gc=False)
+
+        renderer = api_mocks['renderer_instance']
+        renderer.cache_manager.garbage_collect.assert_not_called()
 
 
 # =============================================================================

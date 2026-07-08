@@ -1,8 +1,8 @@
 # =============================================================================
 # API programmatica del granular engine (Fase 1 refactor library/CLI).
 #
-# Contratto del modulo (docs/plans/2026-07-08-001-refactor-pge-library-cli-plan.md,
-# sez. B.1):
+# Contratto del modulo
+# (docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md, sez. B.1):
 # - nessun print, nessun sys.exit, nessuna lettura di sys.argv;
 # - errori -> eccezioni (EngineError e sottoclassi, FileNotFoundError,
 #   ValueError per argomenti API invalidi);
@@ -24,8 +24,6 @@ from typing import List, Optional, Union
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.rendering.audio_format import DEFAULT_FORMAT, FORMATS
-
-DEFAULT_SAMPLES_DIR = './refs/'   # default storico, ora esplicito e overridabile
 
 
 @dataclass(frozen=True)
@@ -249,10 +247,11 @@ def render(
         )
     else:
         renderer_obj = renderer
-        renderer_type = (
-            'csound' if 'csound' in type(renderer_obj).__name__.lower()
-            else 'numpy'
-        )
+        # I renderer del progetto dichiarano `renderer_type` come attributo
+        # di classe (AudioRenderer); per istanze esterne che non lo fanno il
+        # campo informativo resta 'unknown', niente etichette inventate.
+        declared = getattr(renderer_obj, 'renderer_type', None)
+        renderer_type = declared if isinstance(declared, str) else 'unknown'
 
     gc_removed: List[str] = []
     if run_cache_gc and per_stream:
@@ -294,6 +293,7 @@ def render_file(
     *,
     renderer: str = 'numpy',
     per_stream: bool = False,
+    run_cache_gc: bool = True,
     output_sr: int = DEFAULT_OUTPUT_SR,
     jobs: Union[int, str] = 1,
     audio_format=DEFAULT_FORMAT,                 # AudioFormat | str (lookup FORMATS)
@@ -305,6 +305,9 @@ def render_file(
 
     `audio_format` come stringa viene risolto via FORMATS; una stringa
     ignota solleva ValueError con l'elenco dei formati validi.
+    `run_cache_gc=False` disattiva il GC degli stem orfani in STEMS+cache
+    (il GC cancella file: il chiamante deve poterlo rifiutare anche dalla
+    one-shot API).
     """
     if isinstance(audio_format, str):
         if audio_format not in FORMATS:
@@ -320,6 +323,7 @@ def render_file(
         output_path,
         renderer=renderer,
         per_stream=per_stream,
+        run_cache_gc=run_cache_gc,
         audio_format=audio_format,
         output_sr=output_sr,
         jobs=jobs,
