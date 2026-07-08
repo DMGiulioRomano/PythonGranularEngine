@@ -1,0 +1,61 @@
+# PGE_grain_duration_samples_demo.yml
+# Demo della feature grain.duration_unit: samples (PR #158).
+# Grani espressi in campioni invece che in secondi. A 48 kHz:
+#   1 campione = 1/48000 s ~= 20.8 us (durata minima, granulazione a impulso)
+#   512 campioni ~= 10.7 ms, 4800 campioni = 100 ms.
+# Nota: con duration_unit: samples la grain.duration va SEMPRE dichiarata
+# esplicitamente (il default 0.05 e' in secondi e non verrebbe convertito).
+#
+# Lancia con:  make FILE=PGE_grain_duration_samples_demo
+streams:
+
+  # 1. Click train: grano da 1 campione = impulso pieno.
+  #    Finestra hamming (estremi non nulli) perche' hanning(1)=[1.0] ok ma
+  #    hamming e' piu' robusta per grani ultra-corti. Densita' alta.
+  - stream_id: "s1_click_train_1sample"
+    onset: 0.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20.0
+    pointer:
+      start: .3
+      speed_ratio: 0.03
+    grain:
+      duration: [[0.0, 1], [4.0, 10]]
+      duration_unit: samples
+      envelope: hamming
+
+  # 2. Grani brevi fissi: 512 campioni (~10.7 ms), stessa unita' per il range.
+  - stream_id: "s2_short_512samples"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 40.0
+    grain:
+      duration: 2         # ~10.7 ms
+      duration_unit: samples
+      envelope: hanning
+
+  # 3. Envelope di durata in campioni: da 48 (~1 ms) a 4800 (100 ms) sui 4 s.
+  #    Y interpretato in campioni perche' duration_unit: samples.
+  - stream_id: "s3_env_samples_sweep"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 30.0
+    grain:
+      duration: [[0.0, 48], [4.0, 4800]]
+      duration_unit: samples
+      duration_range: 30   # +-128 campioni, stessa unita'
+      envelope: gaussian
+
+  # 4. Controprova retrocompatibile: stessi ~512 campioni ma in secondi.
+  #    Senza duration_unit -> comportamento identico a prima (default seconds).
+  - stream_id: "s4_equivalente_seconds"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 40.0
+    grain:
+      duration: 0.01067     # 512/48000 s, per confronto con s2
+      envelope: hanning
