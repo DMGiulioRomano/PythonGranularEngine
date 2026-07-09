@@ -863,3 +863,106 @@ class TestSamplesDirNormalization:
         api_mocks['api'].build_renderer('csound', gen, samples_dir='/campioni')
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['csound_config']['env_vars']['SSDIR'] == '/campioni'
+
+
+# =============================================================================
+# parameter_bounds (issue #163)
+# =============================================================================
+
+class TestParameterBoundsApi:
+    """parameter_bounds(): esposizione pubblica dei bounds del registry con
+    override dinamici (grain_duration <- output_sr, loop_* <- sample_dur_sec).
+
+    Funzione pura senza dipendenze pesanti: si importa pge.api reale,
+    senza la fixture api_mocks.
+    """
+
+    def test_no_args_returns_static_registry(self):
+        """Senza argomenti: tutte le chiavi del registry, bounds statici."""
+        from pge import api
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+
+        result = api.parameter_bounds()
+
+        assert set(result) == set(GRANULAR_PARAMETERS)
+        for name, bounds in result.items():
+            assert bounds == GRANULAR_PARAMETERS[name]
+
+    @pytest.mark.parametrize('sr', [44100, 48000, 96000])
+    def test_output_sr_overrides_grain_duration_min(self, sr):
+        """Con output_sr: grain_duration.min_val = 1 campione (1/output_sr),
+        tutti gli altri parametri restano statici."""
+        from pge import api
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+
+        result = api.parameter_bounds(output_sr=sr)
+
+        assert result['grain_duration'].min_val == 1.0 / sr
+        assert result['grain_duration'].max_val == \
+            GRANULAR_PARAMETERS['grain_duration'].max_val
+        for name, bounds in result.items():
+            if name != 'grain_duration':
+                assert bounds == GRANULAR_PARAMETERS[name]
+
+    def test_sample_dur_sec_overrides_loop_max(self):
+        """Con sample_dur_sec: max_val dei parametri loop = durata del file,
+        tutti gli altri parametri restano statici."""
+        from pge import api
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+
+        result = api.parameter_bounds(sample_dur_sec=7.5)
+
+        loop_params = {'loop_dur', 'loop_start', 'loop_end'}
+        for name in loop_params:
+            assert result[name].max_val == 7.5
+            assert result[name].min_val == GRANULAR_PARAMETERS[name].min_val
+        for name, bounds in result.items():
+            if name not in loop_params:
+                assert bounds == GRANULAR_PARAMETERS[name]
+
+    def test_both_overrides_together(self):
+        """output_sr e sample_dur_sec insieme: entrambi gli override attivi."""
+        from pge import api
+
+        result = api.parameter_bounds(output_sr=48000, sample_dur_sec=3.2)
+
+        assert result['grain_duration'].min_val == 1.0 / 48000
+        assert result['loop_dur'].max_val == 3.2
+        assert result['loop_start'].max_val == 3.2
+        assert result['loop_end'].max_val == 3.2
+
+    def test_returns_fresh_dict(self):
+        """Il dict e' nuovo a ogni chiamata: mutarlo non tocca il registry."""
+        from pge import api
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+
+        result = api.parameter_bounds()
+        result.pop('density')
+        result['fittizio'] = None
+
+        assert 'density' in GRANULAR_PARAMETERS
+        assert 'fittizio' not in GRANULAR_PARAMETERS
+        assert 'density' in api.parameter_bounds()
+
+    @pytest.mark.parametrize('kwargs', [
+        {'output_sr': 0},
+        {'output_sr': -44100},
+        {'sample_dur_sec': 0.0},
+        {'sample_dur_sec': -1.0},
+    ])
+    def test_non_positive_args_raise_value_error(self, kwargs):
+        """Contratto api.py: argomenti API invalidi -> ValueError."""
+        from pge import api
+
+        with pytest.raises(ValueError):
+            api.parameter_bounds(**kwargs)
+
+    def test_parameter_bounds_type_is_reexported(self):
+        """pge.api.ParameterBounds e' la stessa classe del modulo interno:
+        i consumer tipizzano il risultato senza import interni."""
+        from pge import api
+        from pge.parameters.parameter_definitions import ParameterBounds
+
+        assert api.ParameterBounds is ParameterBounds
+        assert isinstance(
+            api.parameter_bounds()['density'], api.ParameterBounds)

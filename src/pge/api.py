@@ -24,6 +24,10 @@ from typing import List, Optional, Union
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.rendering.audio_format import DEFAULT_FORMAT, FORMATS
+# Value Object leggero (dataclass frozen, nessuna dipendenza pesante):
+# re-export a livello di modulo cosi' i consumer di parameter_bounds()
+# tipizzano il risultato senza importare pge.parameters.
+from pge.parameters.parameter_definitions import ParameterBounds  # noqa: F401
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,45 @@ class RenderResult:
     jobs: Optional[int] = None         # jobs risolti (renderer.jobs); None per csound
     cache_manifest_path: Optional[str] = None
     gc_removed: List[str] = field(default_factory=list)  # stream orfani rimossi dal GC
+
+
+def parameter_bounds(
+    *,
+    output_sr: Optional[int] = None,
+    sample_dur_sec: Optional[float] = None,
+):
+    """Bounds di tutti i parametri registrati (issue #163).
+
+    Ritorna un dict nuovo {nome: ParameterBounds} costruito dal registry
+    GRANULAR_PARAMETERS via get_parameter_definition, cosi' i consumer
+    esterni non importano il modulo interno parameter_definitions.
+
+    Args:
+        output_sr: sample rate di render; se fornito, grain_duration.min_val
+            diventa 1 campione (1/output_sr).
+        sample_dur_sec: durata del file audio in secondi; se fornita,
+            max_val di loop_dur/loop_start/loop_end diventa la durata.
+
+    Raises:
+        ValueError: se output_sr o sample_dur_sec non sono positivi.
+    """
+    if output_sr is not None and output_sr <= 0:
+        raise ValueError(
+            f"output_sr deve essere positivo, ricevuto: {output_sr!r}")
+    if sample_dur_sec is not None and sample_dur_sec <= 0:
+        raise ValueError(
+            f"sample_dur_sec deve essere positivo, ricevuto: {sample_dur_sec!r}")
+
+    from pge.parameters.parameter_definitions import (
+        GRANULAR_PARAMETERS,
+        get_parameter_definition,
+    )
+
+    return {
+        name: get_parameter_definition(
+            name, sample_dur_sec=sample_dur_sec, output_sr=output_sr)
+        for name in GRANULAR_PARAMETERS
+    }
 
 
 def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):

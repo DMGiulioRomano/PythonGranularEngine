@@ -23,6 +23,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- `pge.api.parameter_bounds(output_sr=..., sample_dur_sec=...)` (issue #163):
+  bounds di tutti i parametri del registry `GRANULAR_PARAMETERS` con gli
+  override dinamici gia' calcolati internamente da
+  `get_parameter_definition` — `grain_duration.min_val = 1/output_sr`
+  (un campione), `loop_dur/loop_start/loop_end.max_val = sample_dur_sec`.
+  Argomenti non positivi sollevano `ValueError`. Re-export di
+  `ParameterBounds` da `pge.api`: i consumer esterni (es.
+  `granulation-studies`) non importano piu' il modulo interno
+  `pge.parameters.parameter_definitions`.
 - Packaging (Fase 4 del refactor library/CLI): `pyproject.toml` PEP 621
   (nome distribuzione `pge`, versione `5.0.0.dev0`), install editable
   `pip install -e ".[dev]"` fatto da `make venv-setup`, console script
