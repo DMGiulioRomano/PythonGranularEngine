@@ -23,6 +23,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Envelope BP group per-macrozona** (issue #64): un run di breakpoint puo'
+  essere avvolto in un gruppo compatto `[points, interp]`, simmetrico ai loop
+  block — due macrozone BP nello stesso envelope misto interpolano in modo
+  diverso (es. fade-in `cubic`, scala `step`), anche con loop block in mezzo.
+  Supportata anche la forma diretta `parametro: [points, interp]`. Il group
+  interp governa i soli segmenti interni della zona (desugar sui 3-tuple
+  per-punto di #54), non contamina il tipo globale, e le collisioni al bordo
+  zona seguono la regola `DISCONTINUITY_OFFSET`. Interp invalido →
+  `InvalidFieldValueError`; gruppo con meno di 2 punti → `ValueError`.
+  Reference: `docs/reference/yaml.md` §2.7.
 - `pge.api.parameter_bounds(output_sr=..., sample_dur_sec=...)` (issue #163):
   bounds di tutti i parametri del registry `GRANULAR_PARAMETERS` con gli
   override dinamici gia' calcolati internamente da

@@ -10,7 +10,7 @@ sources:
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
-last_synced_commit: c7ad14b
+last_synced_commit: 9ebe4df
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -146,6 +146,7 @@ Qualsiasi parametro numerico accetta le seguenti forme:
 | Envelope normalizzato | `step: {points: [[0, 0], [1, 12]], time_mode: normalized}` | `[0, 1]` mappato su `duration` |
 | Envelope per-punto interp | `density: [[0, 5, 'cubic'], [0.5, 30, 'step'], [1, 5]]` | `type` per-segmento, override del default globale (issue #54) |
 | Envelope dict per-punto | `density: {points: [{t:0, v:5, type:cubic}, {t:1, v:5}]}` | Forma dict equivalente di per-punto interp |
+| Envelope BP group | `density: [[[[0, 0], [0.4, 8]], 'cubic'], [[[0.75, 6], [1, 0]], 'step']]` | Macrozone di breakpoint con interp proprio (issue #64) |
 
 ---
 
@@ -940,7 +941,8 @@ qualunque valore scalare ovunque il parser lo accetti. Il sistema riconosce un
 envelope tramite `Envelope.is_envelope_like(value)`:
 
 - istanza di `Envelope`
-- lista non vuota con almeno un elemento `[t, v]` o un formato compatto
+- lista non vuota con almeno un elemento `[t, v]`, un formato compatto o un
+  BP group `[points, interp]`
 - dict contenente la chiave `points`
 
 Tutti i parametri numerici dei seguenti blocchi accettano envelope:
@@ -976,7 +978,7 @@ adiacente) resta invariato.
 
 ### 2. Forme di sintassi accettate
 
-Le forme valide nel YAML sono cinque. Tutte vengono ricondotte a una lista
+Le forme valide nel YAML sono sei. Tutte vengono ricondotte a una lista
 piatta di breakpoint `[[t, v], …]` durante il parsing (`EnvelopeBuilder.parse`).
 
 #### 2.1 Scalare
@@ -1089,6 +1091,53 @@ Regole:
 
 Backward compat: tutti i formati 2-elem `[t, v]` continuano a funzionare
 invariati.
+
+#### 2.7 BP group per-macrozona (issue #64)
+
+Un run di breakpoint puo' essere avvolto in un **BP group** compatto che
+dichiara il tipo di interpolazione dell'intera macrozona, simmetrico ai loop
+block. Sintassi: `[points, interp]` — lista a 2 elementi dove `points` e' una
+lista di `[t, v]` / `[t, v, type]` (tempi **assoluti**, come i breakpoint
+nudi — non percentuali) e `interp ∈ {linear, cubic, step}`.
+
+```yaml
+density: [
+  [[[0.0, 0], [0.2, 12], [0.4, 8]], 'cubic'],           # zona A: cubic
+  [[[0, 8], [50, 18], [100, 8]], 0.7, 4, 'linear'],     # loop block, invariato
+  [[[0.75, 6], [0.9, 6], [1.0, 0]], 'step'],            # zona B: step
+]
+```
+
+Forma diretta (envelope = una sola zona), simmetrica al compatto diretto:
+
+```yaml
+density: [[[0.0, 0], [0.5, 30], [1.0, 5]], 'cubic']
+```
+
+Regole:
+
+- Il group interp governa i soli **segmenti interni** della zona: n punti →
+  n−1 segmenti. Il segmento in uscita dall'ultimo punto del gruppo (gap verso
+  l'item successivo) resta al default globale, come i breakpoint nudi.
+- Desugar sui 3-tuple per-punto (§2.6): il gruppo equivale a taggare ogni
+  punto tranne l'ultimo con il group interp. Un punto `[t, v, type]` dentro la
+  zona fa **override** del group interp per il proprio segmento; un type
+  esplicito sull'ultimo punto della zona governa il gap in uscita.
+- L'interp del gruppo **non** diventa il tipo globale dell'envelope
+  (`extract_interp_type` scansiona solo i loop block). I breakpoint nudi
+  restano al default globale.
+- Zone `cubic`: tangenti Fritsch-Carlson calcolate globalmente (PCHIP
+  monotone), stessa regola di §2.6.
+- Collisione al bordo zona: se il primo punto del gruppo ha `t <=` ultimo
+  breakpoint precedente, viene traslato di `DISCONTINUITY_OFFSET` (salto
+  verticale, stessa regola dei loop block §7.3). Nessuna traslazione senza
+  collisione.
+- `interp` non in `{linear, cubic, step}` → `InvalidFieldValueError`.
+- Gruppo con meno di 2 punti → `ValueError` (zona senza segmenti interni).
+
+Disambiguazione: il BP group e' l'unica lista a 2 elementi con `elem[0]`
+lista di punti ed `elem[1]` stringa. Un breakpoint `[t, v]` ha `elem[0]`
+numerico; un loop block ha 3–6 elementi.
 
 ---
 
@@ -1500,9 +1549,10 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 
 ### 7. Formato misto (breakpoint + cicli)
 
-Una lista di envelope può combinare breakpoint standard `[t, v]` e blocchi
-compatti `[pattern, end_time, n_reps, ...]`. Il sistema calcola l'offset
-temporale di ciascun blocco compatto in base all'ultimo breakpoint precedente.
+Una lista di envelope può combinare breakpoint standard `[t, v]`, blocchi
+compatti `[pattern, end_time, n_reps, ...]` e BP group `[points, interp]`
+(§2.7). Il sistema calcola l'offset temporale di ciascun blocco compatto in
+base all'ultimo breakpoint precedente.
 
 #### 7.1 Regola di offset
 
@@ -1511,6 +1561,10 @@ Per ogni elemento iterato:
 - se è un breakpoint `[t, v]`: aggiorna `current_time = max(current_time, t)`
 - se è un formato compatto: la sua durata effettiva è `end_time - current_time`,
   e dopo l'espansione `current_time` diventa il tempo dell'ultimo punto generato.
+- se è un BP group: i suoi punti hanno tempi assoluti, quindi nessun offset —
+  ma il primo punto viene traslato di `DISCONTINUITY_OFFSET` se collide con
+  `current_time` (§7.3); dopo l'espansione `current_time` diventa il tempo
+  dell'ultimo punto della zona.
 
 #### 7.2 Esempio commentato
 
@@ -1539,10 +1593,16 @@ Il primo punto del primo ciclo viene anch'esso traslato di
 breakpoint standard. Anche in questo caso è subaudio e necessaria per la
 correttezza degli algoritmi.
 
+Per i BP group la traslazione avviene solo in caso di **collisione** (primo
+punto della zona con `t <=` ultimo breakpoint precedente): i tempi del gruppo
+sono assoluti, quindi un salto verticale intenzionale si scrive ripetendo lo
+stesso `t` al bordo zona.
+
 #### 7.4 Limiti
 
 Il formato compatto **non può essere annidato dentro un altro formato compatto**.
-Può comparire solo come elemento di primo livello in una lista mista.
+Può comparire solo come elemento di primo livello in una lista mista. Lo stesso
+vale per i BP group: niente gruppi dentro pattern compatti né viceversa.
 
 ---
 
@@ -1753,6 +1813,8 @@ Sintesi di tutte le forme accettate. `T` indica il tempo, `V` il valore.
 | Distribuzione dist come stringa               | `..., 'exponential']`                              | Parametri di default |
 | Distribuzione dist come dict                  | `..., {type: geometric, ratio: 1.5}]`              | Parametri custom |
 | Formato misto                                 | `[[0, 10], [5, 10], [[[0, 30], [100, 50]], 25, 4]]`| Offset automatico |
+| BP group diretto                              | `[[[0, 0], [0.5, 30], [1, 5]], 'cubic']`           | Macrozona unica con interp proprio (§2.7) |
+| BP group in misto                             | `[[[[0, 0], [0.4, 8]], 'cubic'], [[[0.75, 6], [1, 0]], 'step']]` | Macrozone con interp diversi; tempi assoluti |
 | Loop pointer normalizzato (valori)            | `loop_unit: normalized` + `loop_start: 0.0`        | Scala Y per sample_dur_sec |
 | Time mode globale                             | `time_mode: normalized` a livello stream           | Scala X per stream duration |
 | Espressione matematica                        | `[[0, 0], [(pi*5), 1]]`                            | Valutata a parse-time |
@@ -1772,9 +1834,11 @@ un envelope dal YAML al runtime è:
 3. **Detection**: `Envelope.is_envelope_like` decide se è un envelope o scalare.
 4. **Time scaling**: `create_scaled_envelope` applica `time_mode` (se normalized).
 5. **Value scaling**: `Envelope._scale_raw_values_y` per `loop_unit` (asse Y).
-6. **Expansion**: `EnvelopeBuilder.parse` espande formati compatti e misti.
+6. **Expansion**: `EnvelopeBuilder.parse` espande formati compatti, BP group
+   (desugar in 3-tuple per-punto) e misti.
 7. **Type extraction**: `EnvelopeBuilder.extract_interp_type` legge il tipo dal
-   formato compatto se presente, altrimenti default `linear`.
+   formato compatto se presente, altrimenti default `linear`. I BP group non
+   partecipano: il loro interp resta confinato alla zona.
 8. **Tangent computation**: `_compute_fritsch_carlson_tangents` solo per cubic.
 9. **Segment construction**: `NormalSegment` con strategy e context (tangenti).
 10. **Validation**: `_validate_and_clip` controlla ogni breakpoint contro i bounds.
@@ -1788,7 +1852,8 @@ un envelope dal YAML al runtime è:
 - `src/pge/envelopes/envelope.py` — classe `Envelope`, `is_envelope_like`,
   `create_scaled_envelope`, `_scale_raw_values_y`
 - `src/pge/envelopes/envelope_builder.py` — `EnvelopeBuilder.parse`,
-  `_is_compact_format`, `_expand_compact_format`, `DISCONTINUITY_OFFSET`
+  `_is_compact_format`, `_expand_compact_format`, `_is_bp_group`,
+  `_expand_bp_group`, `DISCONTINUITY_OFFSET`
 - `src/pge/envelopes/envelope_interpolation.py` — `LinearInterpolation`,
   `StepInterpolation`, `CubicInterpolation`
 - `src/pge/envelopes/envelope_segment.py` — `NormalSegment` con hold behavior
