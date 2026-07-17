@@ -19,9 +19,11 @@ from typing import List, Union, Tuple, Optional
 class EnvelopeBuilder:
     """
     Builder per creare liste di breakpoints da formati multipli.
-    
+
     Supporta:
     - Compact format: [[[0, 0], [100, 1]], end_time, n_reps, interp?, time_dist?]
+    - BP group (issue #64): [[[t, v], ...], interp] — macrozona di breakpoint
+      con interp proprio, desugarata in 3-tuple [t, v, type]
     - Mixed formats in single list
     
     FORMATO COMPATTO ESTESO:
@@ -63,14 +65,17 @@ class EnvelopeBuilder:
         Calcola automaticamente l'offset temporale per parti compatte in formato misto.
         
         Args:
-            raw_points: 
+            raw_points:
                 - [[[x%, y], ...], end_time, n_reps, interp?] (formato compatto diretto)
+                - [[[t, v], ...], interp] (BP group diretto, issue #64)
                 - Lista con mix di:
                     * [time, value] (legacy)
+                    * [time, value, type] (per-punto, issue #54)
                     * [[[x%, y], ...], end_time, n_reps, interp?] (compact wrapped)
-                
+                    * [[[t, v], ...], interp] (BP group, issue #64)
+
         Returns:
-            Lista espansa con solo [time, value]
+            Lista espansa con solo [time, value] / [time, value, type]
             
         Examples:
             # Formato compatto DIRETTO (caso più comune)
@@ -89,10 +94,18 @@ class EnvelopeBuilder:
         if cls._is_compact_format(raw_points):
             # Formato compatto diretto: offset = 0
             expanded = cls._expand_compact_format(raw_points, time_offset=0.0)
-            
+
             # Log risultato finale
             cls._log_final_envelope(raw_points, expanded)
-            
+
+            return expanded
+
+        # BP group diretto [points, interp] (issue #64), simmetrico al compatto
+        if cls._is_bp_group(raw_points):
+            expanded = cls._expand_bp_group(raw_points)
+
+            cls._log_final_envelope(raw_points, expanded)
+
             return expanded
         
         # Altrimenti, itera sugli elementi (formato legacy o misto)
@@ -114,6 +127,13 @@ class EnvelopeBuilder:
                 # Aggiorna tempo corrente (ultimo breakpoint espanso)
                 if compact_expanded:
                     current_time = compact_expanded[-1][0]
+            elif cls._is_bp_group(item):
+                # Espandi BP group [points, interp] in 3-tuple (issue #64)
+                group_expanded = cls._expand_bp_group(
+                    item, current_time=current_time, has_preceding=bool(expanded)
+                )
+                expanded.extend(group_expanded)
+                current_time = max(current_time, group_expanded[-1][0])
             else:
                 if cls._is_3tuple_breakpoint(item):
                     expanded.append(item)
@@ -157,6 +177,110 @@ class EnvelopeBuilder:
         if not isinstance(item[2], str):
             return False
         return True
+
+    @classmethod
+    def _is_bp_group(cls, item) -> bool:
+        """
+        Rileva se item è un BP group [points, interp] (issue #64).
+
+        BP group: lista a 2 elementi dove
+        - item[0] è lista di punti [t, v] o [t, v, type] (tempi ASSOLUTI,
+          come i breakpoint nudi — non percentuali come nei loop block)
+        - item[1] è stringa: interp della macrozona
+
+        Check strutturale (come _is_3tuple_breakpoint): il valore di interp
+        e il vincolo "almeno 2 punti" vengono validati in _expand_bp_group,
+        per dare errori precisi. Discriminato da:
+        - breakpoint [t, v]: elem[0] numerico, non lista
+        - 3-tuple [t, v, type] e loop block: len != 2
+        - legacy [[t, v], 'marker']: elem[0] è UN punto, non lista di punti
+
+        Returns:
+            True se è un BP group
+        """
+        if not isinstance(item, list) or len(item) != 2:
+            return False
+
+        points, interp = item
+
+        if not isinstance(interp, str):
+            return False
+
+        if not isinstance(points, list):
+            return False
+
+        def _is_num(x):
+            return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+        for p in points:
+            if not isinstance(p, list) or len(p) not in (2, 3):
+                return False
+            if not _is_num(p[0]) or not _is_num(p[1]):
+                return False
+            if len(p) == 3 and not isinstance(p[2], str):
+                return False
+
+        return True
+
+    @classmethod
+    def _expand_bp_group(cls, group: list, current_time: float = 0.0,
+                         has_preceding: bool = False) -> list:
+        """
+        Espande un BP group [points, interp] in breakpoint 3-tuple.
+
+        Desugar sull'infrastruttura per-punto (issue #54): ogni punto della
+        zona tranne l'ultimo viene emesso come [t, v, interp], così il group
+        interp governa i soli segmenti INTERNI (n punti → n-1 segmenti). Il
+        segmento in uscita dall'ultimo punto resta al default globale, come
+        i breakpoint nudi. Un punto 3-tuple dentro la zona fa override del
+        group interp per il proprio segmento.
+
+        Bordo zona: se il primo punto collide col breakpoint precedente
+        (t <= current_time), viene spostato a current_time +
+        DISCONTINUITY_OFFSET — stessa regola dei loop block.
+
+        Args:
+            group: [points, interp] con interp in VALID_INTERP_TYPES
+            current_time: tempo dell'ultimo breakpoint precedente
+            has_preceding: True se la zona segue altri breakpoint
+
+        Returns:
+            Lista di breakpoint [t, v] / [t, v, type]
+        """
+        points, interp = group
+
+        if interp not in cls.VALID_INTERP_TYPES:
+            from pge.shared.exceptions import InvalidFieldValueError
+            raise InvalidFieldValueError(
+                field="envelope.group.interp",
+                value=interp,
+                hint=f"Tipi validi: {', '.join(cls.VALID_INTERP_TYPES)}",
+            )
+
+        if len(points) < 2:
+            raise ValueError(
+                f"BP group richiede almeno 2 punti, ricevuti: {len(points)}. "
+                "Una zona con meno di 2 punti non ha segmenti interni."
+            )
+
+        expanded = []
+        last_index = len(points) - 1
+        for i, point in enumerate(points):
+            t, v = point[0], point[1]
+            own_type = point[2] if len(point) == 3 else None
+
+            if i == 0 and has_preceding and t <= current_time:
+                t = current_time + cls.DISCONTINUITY_OFFSET
+
+            seg_type = own_type if own_type is not None else (
+                interp if i < last_index else None
+            )
+            if seg_type is not None:
+                expanded.append([t, v, seg_type])
+            else:
+                expanded.append([t, v])
+
+        return expanded
 
     @classmethod
     def _is_compact_format(cls, item) -> bool:
@@ -463,31 +587,45 @@ class EnvelopeBuilder:
         if logger is None:
             return
         
-        # Conta quanti elementi sono compatti vs standard
+        # Conta quanti elementi sono compatti vs BP group vs standard
         n_compact = 0
+        n_group = 0
         n_standard = 0
-        
+
         if cls._is_compact_format(raw_input):
             n_compact = 1
+        elif cls._is_bp_group(raw_input):
+            n_group = 1
         else:
             for item in raw_input:
                 if cls._is_compact_format(item):
                     n_compact += 1
+                elif cls._is_bp_group(item):
+                    n_group += 1
                 elif isinstance(item, list) and len(item) == 2:
                     n_standard += 1
-        
+
         # Log header
         logger.info(
             f"\n{'='*80}\n"
             f"FINAL ENVELOPE (after parsing)\n"
             f"{'='*80}"
         )
-        
+
         # Log statistiche input
         logger.info(f"\n[INPUT SUMMARY]:")
         logger.info(f"  Standard breakpoints: {n_standard}")
         logger.info(f"  Compact sections: {n_compact}")
-        logger.info(f"  Format type: {'compact' if cls._is_compact_format(raw_input) else 'mixed' if n_compact > 0 else 'standard'}")
+        logger.info(f"  BP groups: {n_group}")
+        if cls._is_compact_format(raw_input):
+            format_type = 'compact'
+        elif cls._is_bp_group(raw_input):
+            format_type = 'bp_group'
+        elif n_compact > 0 or n_group > 0:
+            format_type = 'mixed'
+        else:
+            format_type = 'standard'
+        logger.info(f"  Format type: {format_type}")
         
         # Log output finale
         logger.info(f"\n[FINAL OUTPUT]:")
@@ -565,17 +703,20 @@ class EnvelopeBuilder:
 def detect_format_type(item) -> str:
     """
     Helper per debugging: rileva tipo di formato.
-    
+
     Returns:
-        'compact' | 'breakpoint' | 'cycle' | 'unknown'
+        'compact' | 'bp_group' | 'breakpoint' | 'cycle' | 'unknown'
     """
     if isinstance(item, str) and item.lower() == 'cycle':
         return 'cycle'
-    
+
     if EnvelopeBuilder._is_compact_format(item):
         return 'compact'
-    
+
+    if EnvelopeBuilder._is_bp_group(item):
+        return 'bp_group'
+
     if isinstance(item, list) and len(item) == 2:
         return 'breakpoint'
-    
+
     return 'unknown'
