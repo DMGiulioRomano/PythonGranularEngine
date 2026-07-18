@@ -202,7 +202,11 @@ class ScoreVisualizer:
             },
 
             'envelope_colors': dict(ENVELOPE_COLORS),
-            'envelope_panel_ratio': 0.3,      # 30% altezza per envelope
+            # Frazione della banda di OGNI stream riservata alla sua riga
+            # envelope (issue #113: un subplot envelope per stream, sotto i
+            # grani). Prima del fix era la frazione di pagina del pannello
+            # envelope unico condiviso: la proporzione complessiva resta 30%.
+            'envelope_panel_ratio': 0.3,
 
             # Scaling data-driven puro delle curve envelope (issue #114): ogni
             # curva scala sull'escursione reale dei suoi valori nella finestra
@@ -564,6 +568,12 @@ class ScoreVisualizer:
         stream condividono lo stesso sample (la waveform viene ridisegnata in
         ciascuno). Cosi' 4 stream producono 4 subplot anche se due puntano allo
         stesso file, e le label non collidono piu' su un asse condiviso.
+
+        issue #113: la stessa simmetria vale per gli envelope — ogni stream ha
+        la propria riga envelope subito sotto i suoi grani (stessa colonna,
+        stesso asse temporale), anche se non ha envelope dinamici (lane vuota
+        con label). Il vecchio pannello unico condiviso in fondo alla pagina
+        non esiste piu'.
         """
         
         layout = self.page_layouts[page_idx]
@@ -616,16 +626,22 @@ class ScoreVisualizer:
         colorbar_ratio = self.config['colorbar_width_ratio']
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
 
-        # Altezza per stream (divisa equamente)
-        stream_total_ratio = 1.0 - envelope_ratio
-        stream_row_height = stream_total_ratio / n_streams
+        # Altezza banda per stream (divisa equamente). Con envelope attivi ogni
+        # banda si sdoppia in due righe contigue: grani sopra, envelope sotto
+        # (issue #113) — la riga envelope prende envelope_panel_ratio della
+        # banda del suo stream, cosi' ogni stream ha il proprio subplot
+        # envelope allineato verticalmente ai suoi grani (simmetria 1:1 con
+        # #109), anche quando non ha envelope dinamici (lane vuota).
+        stream_band = 1.0 / n_streams
 
-        # Crea height_ratios
         if has_envelopes:
-            height_ratios = [stream_row_height] * n_streams + [envelope_ratio]
-            n_rows = n_streams + 1
+            height_ratios = []
+            for _ in range(n_streams):
+                height_ratios += [stream_band * (1.0 - envelope_ratio),
+                                  stream_band * envelope_ratio]
+            n_rows = 2 * n_streams
         else:
-            height_ratios = [stream_row_height] * n_streams
+            height_ratios = [stream_band] * n_streams
             n_rows = n_streams
 
         # GridSpec: n_rows righe × 3 colonne [waveform, contenuto, colorbar].
@@ -675,9 +691,13 @@ class ScoreVisualizer:
         # magnify è spenta.
         stream_entries = []
         for i, stream in enumerate(active_streams):
+            # Riga dei grani: con envelope attivi le bande sono sdoppiate
+            # (grani=2i, envelope=2i+1); senza envelope una riga per stream.
+            grain_row = 2 * i if has_envelopes else i
+
             # Crea subplot per questo stream
-            ax_wave = fig.add_subplot(gs[i, 0])
-            ax_grain = fig.add_subplot(gs[i, 1])
+            ax_wave = fig.add_subplot(gs[grain_row, 0])
+            ax_grain = fig.add_subplot(gs[grain_row, 1])
 
             # Sample e durata dello stream corrente
             sample_path = stream.sample
@@ -705,8 +725,8 @@ class ScoreVisualizer:
             })
 
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
-            # colonna dedicata gs[i, 2]: non ruba larghezza al subplot dei grani.
-            self._add_pitch_colorbar(fig, gs[i, 2], cents_range,
+            # colonna dedicata della riga grani: non ruba larghezza al subplot.
+            self._add_pitch_colorbar(fig, gs[grain_row, 2], cents_range,
                                      [stream], page_start, page_end)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
@@ -743,59 +763,57 @@ class ScoreVisualizer:
                 ax_grain.set_xlabel("Time (s)", fontsize=self._fs(self.config['label_fontsize']))
             else:
                 ax_grain.set_xticklabels([])
-        
-        # =========================================================================
-        # SUBPLOT ENVELOPE (se presenti)
-        # =========================================================================
-        if has_envelopes:
-            ax_env = fig.add_subplot(gs[n_streams, 1])
 
-            # Layout condiviso lane/legenda (issue #91): stesso ordinamento e
-            # stesse y, cosi' la legenda non appare mirrorata rispetto alle curve.
-            lanes, legend_entries = self._compute_env_legend_layout(active_streams)
+            # =====================================================================
+            # RIGA ENVELOPE DELLO STREAM (issue #113)
+            # =====================================================================
+            # Un subplot envelope per stream, subito sotto i suoi grani, nella
+            # stessa colonna centrale: stesso bordo destro/sinistro e stesso
+            # asse temporale. Presente anche per stream senza envelope dinamici
+            # (lane vuota), cosi' il conteggio resta 1:1 coi subplot dei grani.
+            if has_envelopes:
+                ax_env = fig.add_subplot(gs[grain_row + 1, 1],
+                                         label=f'env:{stream.stream_id}')
 
-            for slot_idx, lane in enumerate(lanes):
-                stream = lane['stream']
-                y_base = lane['y_base']
-                y_height = lane['y_height']
+                # Layout condiviso lane/legenda (issue #91), ora calcolato per
+                # il singolo stream: 0 lane (stream tutto statico) o 1 lane.
+                lanes, legend_entries = self._compute_env_legend_layout([stream])
 
-                # Disegna envelope in questa "corsia"
-                self._draw_envelopes(ax_env, stream, y_base, y_height,
-                                     page_start, page_end)
+                for lane in lanes:
+                    self._draw_envelopes(ax_env, lane['stream'], lane['y_base'],
+                                         lane['y_height'], page_start, page_end)
 
-                # Label stream nella corsia envelope
+                # Label stream nella lane envelope: presente anche a lane
+                # vuota, cosi' la corsia resta attribuibile al suo stream.
                 ax_env.text(
-                    page_start + 0.3,
-                    y_base + y_height * 0.5,
-                    stream.stream_id,
+                    0.01, 0.5, stream.stream_id,
+                    transform=ax_env.transAxes,
                     fontsize=self._fs(self.config['label_fontsize'] - 2),
                     verticalalignment='center',
                     color='gray',
                     alpha=0.6
                 )
-                # ========== LINEE DIVISORIE ==========
-                # Linea sopra questa corsia (non sulla prima)
-                if slot_idx > 0:
-                    ax_env.axhline(y=y_base - 0.02, color='darkgray',
-                                   linewidth=1, alpha=0.4, linestyle='-')
 
-            # Configura assi envelope
-            ax_env.set_xlim(page_start, page_end)
-            ax_env.set_ylim(0, 1)
-            ax_env.set_xlabel("Time (s)", fontsize=self._fs(self.config['label_fontsize']))
-            ax_env.set_ylabel("", fontsize=self._fs(self.config['label_fontsize']))
-            ax_env.set_yticklabels([])
-            ax_env.tick_params(axis='y', length=0)
-            ax_env.grid(True, alpha=0.3, linestyle='--', axis='x')
+                # Configura assi envelope
+                ax_env.set_xlim(page_start, page_end)
+                ax_env.set_ylim(0, 1)
+                ax_env.set_yticklabels([])
+                ax_env.tick_params(axis='y', length=0)
+                ax_env.grid(True, alpha=0.3, linestyle='--', axis='x')
 
-            ax_env.spines['top'].set_position(('axes', 1))     
-            ax_env.spines['bottom'].set_position(('axes', 0))  
+                # Asse tempo descritto una sola volta, sull'ultima riga della
+                # pagina (l'envelope dell'ultimo stream).
+                if i == n_streams - 1:
+                    ax_env.set_xlabel("Time (s)",
+                                      fontsize=self._fs(self.config['label_fontsize']))
+                else:
+                    ax_env.set_xticklabels([])
 
-
-            # Legenda envelope (per-lane, allineata alle curve — issue #91)
-            if legend_entries:
-                ax_legend = fig.add_subplot(gs[n_streams, 0])
-                self._draw_envelope_legend(ax_legend, legend_entries)
+                # Legenda envelope (per-lane, allineata alle curve — issue #91)
+                # nella colonna sinistra della riga envelope dello stream.
+                if legend_entries:
+                    ax_legend = fig.add_subplot(gs[grain_row + 1, 0])
+                    self._draw_envelope_legend(ax_legend, legend_entries)
         # =========================================================================
         # LENTE DI INGRANDIMENTO (magnify)
         # =========================================================================
@@ -1818,6 +1836,11 @@ class ScoreVisualizer:
 
         Lane e legenda devono usare lo stesso ordinamento e le stesse y,
         altrimenti la legenda appare mirrorata rispetto alle curve.
+
+        Dal fix #113 render_page la invoca con UN solo stream per volta (ogni
+        stream ha il proprio asse envelope): il risultato e' 0 lane (stream
+        tutto statico -> l'asse resta, vuoto) o 1 lane a tutta altezza. La
+        geometria multi-stream resta supportata per compatibilita'.
 
         Returns:
             (lanes, legend_entries)

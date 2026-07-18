@@ -178,6 +178,23 @@ def issue_109_shared_sample_scene():
     ]
 
 
+def issue_113_mixed_envelope_scene():
+    """Caso PGE_pino2.yml (issue #113): 4 stream, di cui solo i primi due hanno
+    envelope dinamici; stream4 e stream5 sono tutti statici (dict envelope
+    vuoto coi flag di default). stream4 condivide il sample con texture2.
+    Pre-fix: pannello envelope unico in fondo con 2 sole lane (filtro `if e`)."""
+    from pge.envelopes.envelope import Envelope
+    streams = [
+        make_stream('texture2', onset=0.0, duration=20.0, sample='001-0_0-3_0.wav'),
+        make_stream('texture3', onset=0.0, duration=20.0, sample='001-29_5-7_5.wav'),
+        make_stream('stream4',  onset=0.0, duration=20.0, sample='001-0_0-3_0.wav'),
+        make_stream('stream5',  onset=0.0, duration=20.0, sample='001-8_5-4_5.wav'),
+    ]
+    streams[0].density = Envelope([[0, 10.0], [20, 100.0]])
+    streams[1].pointer_speed = Envelope([[0, -2.0], [20, 4.0]])
+    return streams
+
+
 # =============================================================================
 # GROUP 1 - Pipeline analyze → render_all (scenario singolo stream)
 # =============================================================================
@@ -1111,7 +1128,11 @@ class TestLegendDisplayName:
 class TestEnvelopeLegendPerLane:
     """La legenda envelope deve essere allineata per-lane: la voce di legenda di
     ogni envelope-type cade nella lane dello stream che lo possiede, alla stessa
-    y delle curve. Pre-fix legenda globale alfabetica -> swap apparente."""
+    y delle curve. Pre-fix legenda globale alfabetica -> swap apparente.
+
+    Nota (issue #113): render_page ora invoca _compute_env_legend_layout con un
+    solo stream per volta (un asse envelope per stream); la geometria
+    multi-stream qui testata resta il contratto della funzione."""
 
     def _two_streams(self):
         s_low = make_stream('s_low', onset=0.0, duration=10.0)
@@ -1165,6 +1186,148 @@ class TestEnvelopeLegendPerLane:
                 [s_low, s_high])
         assert lanes == []
         assert legend_entries == []
+
+
+# =============================================================================
+# GROUP - Pannello envelope per-stream (issue #113)
+# =============================================================================
+
+class TestEnvelopePerStreamPanel:
+    """issue #113 - il pannello envelope deve essere un subplot per stream,
+    allineato 1:1 e verticalmente al rispettivo subplot dei grani (la simmetria
+    di #109 estesa agli envelope). Pre-fix: un unico asse condiviso in fondo
+    alla pagina, con lane solo per gli stream con envelope dinamici."""
+
+    @staticmethod
+    def _env_axes(fig, page_start=0.0, page_end=30.0):
+        """Assi envelope: xlim == pagina e ylim == (0, 1) (i grani hanno
+        ylim = durata sample; waveform/legenda/colorbar hanno xlim diversi)."""
+        out = []
+        for ax in fig.axes:
+            lo, hi = ax.get_xlim()
+            ylo, yhi = ax.get_ylim()
+            same_page = abs(lo - page_start) < 1e-9 and abs(hi - page_end) < 1e-9
+            is_env = abs(ylo - 0.0) < 1e-9 and abs(yhi - 1.0) < 1e-9
+            if same_page and is_env:
+                out.append(ax)
+        return out
+
+    @staticmethod
+    def _env_by_id(fig):
+        """Mappa stream_id -> asse envelope (label matplotlib 'env:<id>')."""
+        return {str(ax.get_label())[len('env:'):]: ax for ax in fig.axes
+                if str(ax.get_label()).startswith('env:')}
+
+    def _render(self, streams, **cfg):
+        viz = make_viz(streams, config={'page_duration': 30.0, **cfg})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        fig.canvas.draw()  # finalizza le posizioni dei subplot
+        return fig
+
+    def test_envelope_axes_count_equals_stream_count(self):
+        """Cuore della issue: 4 stream di cui 2 con soli statici -> 4 assi
+        envelope, come i 4 subplot dei grani (pre-fix: 1 pannello, 2 lane)."""
+        fig = self._render(issue_113_mixed_envelope_scene())
+        assert len(self._env_axes(fig)) == 4
+
+    def test_envelope_axis_adjacent_and_aligned_to_its_stream(self):
+        """L'asse envelope dello stream i sta subito sotto il suo asse grani
+        (bordo superiore == bordo inferiore dei grani) e ne condivide i bordi
+        sinistro/destro (stessa colonna centrale => stesso asse temporale).
+        Pre-fix tutti gli envelope vivevano in fondo alla pagina."""
+        streams = issue_113_mixed_envelope_scene()
+        ids = [s.stream_id for s in streams]
+        fig = self._render(streams)
+
+        # Mappa stream -> asse grani: porta la label testuale dello stream e
+        # NON e' un asse envelope (ylim != (0,1)); la label compare anche
+        # nella lane envelope, che va esclusa dalla mappa.
+        env_axes = set(self._env_axes(fig))
+        grain_by_id = {}
+        for ax in fig.axes:
+            if ax in env_axes:
+                continue
+            for t in ax.texts:
+                if t.get_text() in ids:
+                    grain_by_id[t.get_text()] = ax
+        env_by_id = self._env_by_id(fig)
+
+        assert set(env_by_id) == set(ids)
+        for sid in ids:
+            g = grain_by_id[sid].get_position()
+            e = env_by_id[sid].get_position()
+            assert abs(e.x0 - g.x0) < 1e-6          # stesso bordo sinistro
+            assert abs(e.x1 - g.x1) < 1e-6          # stesso bordo destro
+            assert abs(e.y1 - g.y0) < 1e-6          # adiacente, subito sotto
+            assert env_by_id[sid].get_xlim() == grain_by_id[sid].get_xlim()
+
+    def test_stream_without_dynamic_envelopes_gets_empty_labeled_lane(self):
+        """Stream tutto statico (flag di default): la sua lane envelope esiste
+        comunque — nessuna curva ma label dello stream visibile — mentre gli
+        stream con envelope dinamici hanno curve E label (pre-fix il filtro
+        `if e` ometteva del tutto la lane degli stream statici)."""
+        fig = self._render(issue_113_mixed_envelope_scene())
+        env_by_id = self._env_by_id(fig)
+
+        for sid in ('stream4', 'stream5'):          # tutti statici
+            ax = env_by_id[sid]
+            assert len(ax.lines) == 0               # lane vuota
+            assert any(t.get_text() == sid for t in ax.texts)
+
+        for sid in ('texture2', 'texture3'):        # envelope dinamici
+            ax = env_by_id[sid]
+            assert len(ax.lines) > 0                # curve presenti
+            assert any(t.get_text() == sid for t in ax.texts)
+
+    def test_no_envelopes_at_all_no_env_axes(self):
+        """Retro-compatibilita': nessuno stream con envelope dinamici ->
+        nessuna riga envelope, layout #109 invariato (solo grani)."""
+        fig = self._render(issue_109_shared_sample_scene())
+        assert self._env_axes(fig) == []
+        assert self._env_by_id(fig) == {}
+
+    def test_shared_sample_streams_keep_distinct_env_lanes(self):
+        """texture2 e stream4 condividono il sample ma le lane envelope non
+        collassano: assi distinti su bande verticali disgiunte (la regressione
+        #109 sui grani, estesa agli envelope)."""
+        fig = self._render(issue_113_mixed_envelope_scene())
+        env_by_id = self._env_by_id(fig)
+        a, b = env_by_id['texture2'], env_by_id['stream4']
+        assert a is not b
+        pa, pb = a.get_position(), b.get_position()
+        assert pa.y0 >= pb.y1 - 1e-9 or pb.y0 >= pa.y1 - 1e-9
+
+    def test_legend_entries_live_in_owning_stream_row(self):
+        """La voce di legenda di un envelope sta nella colonna sinistra della
+        riga envelope dello stream proprietario (issue #91 portata al layout
+        per-stream), non piu' in un'unica colonna in fondo alla pagina."""
+        fig = self._render(issue_113_mixed_envelope_scene())
+        env_by_id = self._env_by_id(fig)
+
+        # nome di legenda atteso per ciascuno stream con envelope dinamici
+        for sid, legend_text in (('texture2', 'density'),
+                                 ('texture3', 'ptr spd')):
+            e = env_by_id[sid].get_position()
+            found = False
+            for ax in fig.axes:
+                p = ax.get_position()
+                same_row = abs(p.y0 - e.y0) < 1e-6 and abs(p.y1 - e.y1) < 1e-6
+                left_of_env = p.x1 <= e.x0 + 1e-6
+                if same_row and left_of_env and \
+                        any(t.get_text() == legend_text for t in ax.texts):
+                    found = True
+            assert found, f"legenda '{legend_text}' assente nella riga di {sid}"
+
+    def test_time_axis_label_only_on_last_row(self):
+        """"Time (s)" compare una sola volta, sull'asse envelope dell'ultimo
+        stream (l'ultima riga della pagina)."""
+        streams = issue_113_mixed_envelope_scene()
+        fig = self._render(streams)
+        labeled = [ax for ax in fig.axes if ax.get_xlabel() == "Time (s)"]
+        assert len(labeled) == 1
+        assert labeled[0] is self._env_by_id(fig)[streams[-1].stream_id]
 
 
 # =============================================================================
