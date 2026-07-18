@@ -117,6 +117,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- Score visualizer: il pannello envelope e' ora **un subplot per stream**
+  (issue #113), allineato 1:1 e verticalmente al subplot dei grani del
+  rispettivo stream — la simmetria introdotta da #109 per i grani, estesa
+  agli envelope. Prima tutti gli envelope vivevano in un unico asse condiviso
+  in fondo alla pagina e gli stream senza envelope dinamici perdevano la
+  lane (filtro sul dict vuoto): con 4 stream di cui 2 tutti statici si
+  ottenevano 4 subplot grani ma 2 sole lane envelope. Ora ogni stream ha la
+  sua riga envelope subito sotto i grani (stessa colonna, stesso asse
+  temporale), presente anche se vuota (con label stream), con legenda
+  per-stream nella colonna sinistra e asse "Time (s)" solo sull'ultima riga.
+  `envelope_panel_ratio` (0.3) e' ora la frazione della banda di ogni stream
+  riservata alla riga envelope (proporzione complessiva invariata).
 - Race condition (TOCTOU) in `configure_engine_logger` (issue #159): con render
   paralleli subito dopo la rimozione della dir dei log (es. `make clean; make
   render` con `ProcessPoolExecutor`), i worker superavano insieme il check
