@@ -3,8 +3,9 @@
 Envelope system with Composite Pattern.
 
 Supports:
-- Standard breakpoints: [[t, v], ...]
+- Standard breakpoints: [[t, v], ...] e per-punto [[t, v, type], ...]
 - Compact format: [[[x%, y], ...], total_time, n_reps, interp?]
+- BP group (issue #64): [[[t, v], ...], interp] — macrozona con interp proprio
 - Dict format: {'type': 'cubic', 'points': [...]}
 """
 from __future__ import annotations
@@ -25,17 +26,24 @@ class Envelope:
     def __init__(self, breakpoints):
         """
         Args:
-            breakpoints: 
-                - Lista di [time, value]
+            breakpoints:
+                - Lista di [time, value] / [time, value, type]
                 - Nuovo formato compatto: [[[x%, y], ...], total_time, n_reps, interp?]
+                - BP group (issue #64): [[[t, v], ...], interp]
                 - Dict con 'type' e 'points'
-            
+
         Examples:
             # Standard breakpoints
             Envelope([[0, 0], [0.5, 1], [1.0, 0]])
-            
+
             # Nuovo formato compatto: 4 ripetizioni in 0.4s
             Envelope([[[0, 0], [100, 1]], 0.4, 4])
+
+            # BP group: macrozona step, poi gap linear verso [1, 0]
+            Envelope([
+                [[[0, 0], [0.5, 1]], 'step'],   # zona con interp proprio
+                [1.0, 0]
+            ])
             
             # Formato misto
             Envelope([
@@ -364,13 +372,20 @@ class Envelope:
             # Formato compatto
             if EnvelopeBuilder._is_compact_format(obj):
                 return True
-            
+
+            # BP group diretto [points, interp] (issue #64)
+            if EnvelopeBuilder._is_bp_group(obj):
+                return True
+
             # Lista con almeno un [t, v]
             for item in obj:
                 if isinstance(item, list) and len(item) == 2:
                     return True
                 # Formato compatto dentro lista
                 if EnvelopeBuilder._is_compact_format(item):
+                    return True
+                # BP group dentro lista
+                if EnvelopeBuilder._is_bp_group(item):
                     return True
             return False
         
@@ -391,6 +406,14 @@ class Envelope:
         from pge.envelopes.envelope_builder import EnvelopeBuilder
         import copy
         
+        def _scale_group_y(group):
+            scaled_points = [
+                [p[0], p[1] * scale_factor] if len(p) == 2
+                else [p[0], p[1] * scale_factor, p[2]]
+                for p in group[0]
+            ]
+            return [scaled_points, group[1]]
+
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
@@ -400,6 +423,11 @@ class Envelope:
                     new_item = list(item)
                     new_item[0] = scaled_pattern
                     scaled.append(new_item)
+                elif EnvelopeBuilder._is_bp_group(item):
+                    # BP group: scala i valori Y dei punti, preserva interp e
+                    # type per-punto. Prima del branch [t, v]: anche il gruppo
+                    # è una lista a 2 elementi.
+                    scaled.append(_scale_group_y(item))
                 elif isinstance(item, list) and len(item) == 2:
                     scaled.append([item[0], item[1] * scale_factor])
                 elif EnvelopeBuilder._is_3tuple_breakpoint(item):
@@ -425,6 +453,9 @@ class Envelope:
                 new_data = list(raw_data)
                 new_data[0] = scaled_pattern
                 return new_data
+            elif EnvelopeBuilder._is_bp_group(raw_data):
+                # BP group diretto [points, interp]
+                return _scale_group_y(raw_data)
             else:
                 return _scale_list_y(raw_data)
 
@@ -490,6 +521,14 @@ def create_scaled_envelope(
 
     return Envelope(raw_data)
 
+def _scale_group_points_time(group_points: List, factor: float) -> List:
+    """Scala i tempi dei punti di un BP group, preservando i type per-punto."""
+    return [
+        [p[0] * factor, p[1]] if len(p) == 2 else [p[0] * factor, p[1], p[2]]
+        for p in group_points
+    ]
+
+
 def _scale_time_recursive(points: List, factor: float) -> List:
     """
     Scala ricorsivamente i tempi per breakpoint standard [t, v].
@@ -511,6 +550,10 @@ def _scale_time_recursive(points: List, factor: float) -> List:
         scaled_compact[1] = points[1] * factor
         return scaled_compact
 
+    # CASO 1b: L'intera lista è un BP group diretto [points, interp]
+    if EnvelopeBuilder._is_bp_group(points):
+        return [_scale_group_points_time(points[0], factor), points[1]]
+
     # CASO 2: Lista di elementi misti
     scaled = []
     for item in points:
@@ -518,6 +561,11 @@ def _scale_time_recursive(points: List, factor: float) -> List:
             scaled_compact = list(item)
             scaled_compact[1] = item[1] * factor
             scaled.append(scaled_compact)
+        elif EnvelopeBuilder._is_bp_group(item):
+            # BP group: scala i tempi dei punti, preserva interp e type per-punto.
+            # Va controllato prima del branch [t, v]: un gruppo è anch'esso
+            # una lista a 2 elementi.
+            scaled.append([_scale_group_points_time(item[0], factor), item[1]])
         elif isinstance(item, list) and len(item) == 2:
             # Standard breakpoint: [t, v] -> [t * factor, v]
             scaled.append([item[0] * factor, item[1]])
