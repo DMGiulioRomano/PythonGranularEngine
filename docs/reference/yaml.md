@@ -164,9 +164,15 @@ streams:
   o `distribution` diverse i due stream si desincronizzano subito pur
   condividendo l'RNG. Griglia identica solo con density e distribution
   identiche.
-- `rng_group` non entra in `solo`/`mute` né nella cache: restano invarianti
-  come da #154 (la condivisione è solo dell'identità di derivazione, non dei
-  draw a runtime — ogni stream materializza la propria copia della sequenza).
+- `rng_group` **entra nel fingerprint** della cache stems
+  (`StreamCacheManager.compute_fingerprint`): cambiarlo cambia i valori
+  pescati, quindi l'audio, e lo stem viene giustamente marcato dirty. Le
+  sole chiavi escluse dal fingerprint restano `solo`/`mute`, che non
+  toccano l'audio del singolo stem (issue #108).
+- L'invarianza di `solo`/`mute` garantita da #154 resta intatta: la
+  condivisione riguarda l'identità di derivazione, non i draw a runtime —
+  ogni stream materializza la propria copia della sequenza, quindi mettere
+  un cugino in solo non sposta i grani degli altri.
 
 ---
 

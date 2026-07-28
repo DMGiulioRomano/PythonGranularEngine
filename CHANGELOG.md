@@ -32,7 +32,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `stream_id`: hash identico a prima, **nessun render esistente cambia
   bit-per-bit**. Implementato come campo `rng_group` + property `rng_id` in
   `StreamContext`; le firme di `component_rng`/`voice_rng` non cambiano.
-  Reference: `docs/reference/yaml.md` §Seed.
+  `rng_group` entra nel fingerprint della cache stems (cambiarlo cambia
+  l'audio: lo stem diventa dirty); le sole chiavi escluse restano
+  `solo`/`mute`. Reference: `docs/reference/yaml.md` §Seed.
 - **Envelope BP group per-macrozona** (issue #64): un run di breakpoint puo'
   essere avvolto in un gruppo compatto `[points, interp]`, simmetrico ai loop
   block — due macrozone BP nello stesso envelope misto interpolano in modo

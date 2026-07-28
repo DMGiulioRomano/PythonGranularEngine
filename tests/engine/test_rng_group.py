@@ -35,8 +35,14 @@ from pge.engine.generator import Generator
 # HELPERS (stesso schema di test_seed_component_isolation.py)
 # =============================================================================
 
-def _stream_dict(stream_id, rng_group=None, voices=False):
-    """Stream con più componenti stocastici attivi (iot, range, window, pitch)."""
+def _stream_dict(stream_id, rng_group=None, voices=False,
+                 pointer_start=None, pan=None):
+    """Stream con più componenti stocastici attivi (iot, range, window, pitch).
+
+    `pointer_start` e `pan` sono i parametri **deterministici** su cui i
+    "cugini" della issue #169 divergono: servono a distinguere la
+    condivisione dell'RNG dalla banale identità dei due stream.
+    """
     d = {
         'stream_id': stream_id,
         'onset': 0.0,
@@ -55,12 +61,27 @@ def _stream_dict(stream_id, rng_group=None, voices=False):
     }
     if rng_group is not None:
         d['rng_group'] = rng_group
+    if pointer_start is not None:
+        d['pointer'] = {'start': pointer_start}
+    if pan is not None:
+        d['pan'] = pan
+        d['pan_range'] = 20.0
+        # I `_range` devono pescare anche senza dephase: e' il jitter
+        # condiviso che si vuole osservare.
+        d['range_always_active'] = True
     if voices:
         d['voices'] = {
             'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
             'pan': {'strategy': 'stochastic', 'spread': 60.0},
         }
     return d
+
+
+def _cousin(stream_id, rng_group, pointer_start, pan):
+    """Stream 'cugino': stessa grana stocastica, posizione di lettura e
+    pan diversi (lo spread verticale del caso d'uso della issue #169)."""
+    return _stream_dict(stream_id, rng_group=rng_group,
+                        pointer_start=pointer_start, pan=pan)
 
 
 def _render_streams(tmp_path, streams, seed=42, filename='rng_group.yml'):
@@ -133,6 +154,85 @@ class TestSharedSequence:
             _stream_dict('s2', rng_group='gruppo_b'),
         ])
         assert _signature_of(gen, 's1') != _signature_of(gen, 's2')
+
+
+# =============================================================================
+# 1b. IL CASO D'USO REALE — cugini con parametri deterministici diversi
+# =============================================================================
+
+class TestCousins:
+    """Il caso della issue #169: stream "cugini" di uno spread, che
+    differiscono su parametri *deterministici* (`pointer.start`, `pan`) ma
+    devono condividere la grana stocastica — la griglia temporale e il
+    jitter — per essere ascoltati come un unico oggetto verticale.
+
+    Qui la condivisione dice qualcosa di più forte del caso "due copie
+    identiche restano identiche": gli stream divergono davvero (asserito),
+    eppure la sequenza pescata resta la stessa.
+    """
+
+    def _onsets(self, gen, stream_id):
+        for s in gen.streams:
+            if s.stream_id == stream_id:
+                return [round(g.onset, 9) for g in s.grains]
+        raise AssertionError(f"stream {stream_id} non trovato")
+
+    def _field(self, gen, stream_id, attr):
+        for s in gen.streams:
+            if s.stream_id == stream_id:
+                return [round(getattr(g, attr), 9) for g in s.grains]
+        raise AssertionError(f"stream {stream_id} non trovato")
+
+    def test_cousins_share_the_temporal_grid(self, tmp_path):
+        """Stesso rng_group, `pointer.start` e `pan` diversi → stessa
+        griglia temporale (identico numero di grani e identici onset).
+        E' l'asserzione che la issue #169 chiede davvero."""
+        gen = _render_streams(tmp_path, [
+            _cousin('cugini_1', 'cugini', pointer_start=0.0, pan=-60.0),
+            _cousin('cugini_2', 'cugini', pointer_start=3.0, pan=60.0),
+        ])
+        o1 = self._onsets(gen, 'cugini_1')
+        o2 = self._onsets(gen, 'cugini_2')
+        assert len(o1) > 10
+        assert o1 == o2
+
+    def test_cousins_really_differ(self, tmp_path):
+        """Guardia anti-vacuità: i due cugini NON sono lo stesso stream —
+        leggono da posizioni diverse del sample."""
+        gen = _render_streams(tmp_path, [
+            _cousin('cugini_1', 'cugini', pointer_start=0.0, pan=-60.0),
+            _cousin('cugini_2', 'cugini', pointer_start=3.0, pan=60.0),
+        ])
+        p1 = self._field(gen, 'cugini_1', 'pointer_pos')
+        p2 = self._field(gen, 'cugini_2', 'pointer_pos')
+        assert p1 != p2
+
+    def test_cousins_share_the_random_jitter(self, tmp_path):
+        """Il jitter pescato è lo stesso: con `pan` base diverso e stesso
+        `pan_range`, la differenza fra i pan per-grano resta costante e
+        pari alla differenza dei valori base (120 gradi). Se i due stream
+        pescassero da sequenze diverse, la differenza oscillerebbe."""
+        gen = _render_streams(tmp_path, [
+            _cousin('cugini_1', 'cugini', pointer_start=0.0, pan=-60.0),
+            _cousin('cugini_2', 'cugini', pointer_start=3.0, pan=60.0),
+        ])
+        pan1 = self._field(gen, 'cugini_1', 'pan')
+        pan2 = self._field(gen, 'cugini_2', 'pan')
+        assert len(pan1) == len(pan2)
+        # Guardia anti-vacuità: il jitter deve esistere davvero, altrimenti
+        # (pan_range inattivo) il delta sarebbe costante per costruzione.
+        assert len(set(pan1)) > 1
+        deltas = {round(b - a, 6) for a, b in zip(pan1, pan2)}
+        assert deltas == {120.0}, sorted(deltas)
+
+    def test_cousins_without_group_do_not_share_the_grid(self, tmp_path):
+        """Controprova: senza rng_group gli stessi due cugini hanno griglie
+        temporali diverse — è esattamente il problema della issue."""
+        gen = _render_streams(tmp_path, [
+            _cousin('cugini_1', None, pointer_start=0.0, pan=-60.0),
+            _cousin('cugini_2', None, pointer_start=3.0, pan=60.0),
+        ], filename='rng_group_cousins.yml')
+        assert self._onsets(gen, 'cugini_1') != self._onsets(gen, 'cugini_2')
 
 
 # =============================================================================

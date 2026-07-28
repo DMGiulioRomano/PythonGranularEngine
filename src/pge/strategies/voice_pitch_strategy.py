@@ -452,6 +452,12 @@ class StochasticPitchStrategy(VoicePitchStrategy):
     Offset fisso per voce entro un singolo run; la direzione è fissa, la magnitudine
     può variare nel tempo se pitch_range è un Envelope.
 
+    Identità RNG (issue #169): il kwarg `stream_id` è l'*identità* della
+    sequenza, non necessariamente l'id dello stream. Stream inietta
+    `context.rng_id`, che vale il `rng_group` quando più stream condividono
+    la sequenza; il nome del kwarg resta invariato per non rompere i
+    factory kwarg documentati.
+
     Seed (issue #81): se `seed` è None il RNG per-voce usa hash(stream_id+vi) —
     stabile ENTRO un run, NON riproducibile fra processi (hash() randomizzato
     per-processo, PYTHONHASHSEED non fissato). Se `seed` è valorizzato la

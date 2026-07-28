@@ -37,9 +37,10 @@ class GranularParser:
         """
         self.stream_id = config.context.stream_id
         # Identità di derivazione RNG (issue #169): rng_group se dichiarato,
-        # altrimenti stream_id. getattr difensivo come per output_sr (context
-        # parziali nei test). stream_id resta l'identità di log/errori.
-        self.rng_id = getattr(config.context, 'rng_id', self.stream_id)
+        # altrimenti stream_id. Accesso diretto come negli altri call site
+        # della derivazione: la property esiste sempre sulla dataclass.
+        # stream_id resta l'identità di log/errori.
+        self.rng_id = config.context.rng_id
         self.duration = config.context.duration
         self.sample_dur_sec = config.context.sample_dur_sec
         # Sample rate di output: bound minimo dinamico di grain_duration

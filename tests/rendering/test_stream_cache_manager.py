@@ -177,6 +177,24 @@ class TestFingerprintIgnoresMuteSolo:
         d2 = {'stream_id': 's1', 'volume': -12.0, 'mute': True}
         assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
 
+    def test_rng_group_changes_fingerprint(self, manager):
+        """rng_group NON e' un flag non-audio: cambia l'identita' di
+        derivazione RNG, quindi i valori pescati e l'audio dello stem
+        (issue #169). Deve entrare nel fingerprint — mai aggiungerlo a
+        FINGERPRINT_IGNORE_KEYS, o gli stem restano stantii in silenzio."""
+        base = {'stream_id': 's1', 'volume': -6.0, 'sample': 'a.wav'}
+        grouped = {**base, 'rng_group': 'cugini'}
+        assert (
+            manager.compute_fingerprint(base)
+            != manager.compute_fingerprint(grouped)
+        )
+
+    def test_different_rng_group_changes_fingerprint(self, manager):
+        """Anche cambiare gruppo (non solo aggiungerlo) marca lo stem dirty."""
+        d1 = {'stream_id': 's1', 'volume': -6.0, 'rng_group': 'gruppo_a'}
+        d2 = {'stream_id': 's1', 'volume': -6.0, 'rng_group': 'gruppo_b'}
+        assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
+
     def test_toggling_mute_does_not_mark_stream_dirty(self, manager, tmp_path):
         """Dirty-check end-to-end: aggiungere mute non marca lo stem dirty se
         il fingerprint precedente (senza mute) e' nel manifest e il .aif esiste.
