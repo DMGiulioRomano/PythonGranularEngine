@@ -91,10 +91,11 @@ class ParameterOrchestrator:
         return param
 
     def _gate_rng(self, dephase_key: Optional[str]):
-        """RNG locale del gate, derivato da (seed, stream_id, gate:<key>)."""
+        """RNG locale del gate, derivato da (seed, rng_id, gate:<key>) —
+        rng_id è stream_id o, se dichiarato, il rng_group (issue #169)."""
         return component_rng(
             getattr(self._config, 'seed', None),
-            self._config.context.stream_id,
+            self._config.context.rng_id,
             f"gate:{dephase_key}",
         )
     

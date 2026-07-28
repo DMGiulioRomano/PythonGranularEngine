@@ -88,14 +88,14 @@ class TestStreamContextDirect:
         assert ctx.sample_dur_sec == 3.2
 
     def test_field_count(self):
-        """StreamContext ha esattamente 6 campi."""
-        assert len(fields(StreamContext)) == 6
+        """StreamContext ha esattamente 7 campi."""
+        assert len(fields(StreamContext)) == 7
 
     def test_field_names(self):
         """Nomi campi corretti e nell'ordine atteso."""
         names = [f.name for f in fields(StreamContext)]
         assert names == ['stream_id', 'onset', 'duration', 'sample',
-                         'sample_dur_sec', 'output_sr']
+                         'sample_dur_sec', 'output_sr', 'rng_group']
 
     def test_missing_required_field_raises(self):
         """Campi mancanti nella costruzione diretta -> TypeError."""
@@ -1001,3 +1001,64 @@ class TestRepr:
         config = StreamConfig(context=stream_context)
         r = repr(config)
         assert 'stream_01' in r
+
+
+# =============================================================================
+# 17. RNG_GROUP / RNG_ID (issue #169)
+# =============================================================================
+
+class TestRngGroup:
+    """Identità RNG condivisibile fra stream (issue #169).
+
+    `rng_group` è opzionale: assente → `rng_id` coincide con `stream_id`
+    (derivazione hash identica a prima, retrocompatibilità bit-per-bit);
+    presente → `rng_id` è il nome del gruppo, così stream diversi possono
+    pescare la stessa sequenza pseudo-casuale.
+    """
+
+    def test_default_rng_group_is_none(self, sample_dur):
+        ctx = StreamContext(
+            stream_id='s1', onset=0.0, duration=1.0,
+            sample='a.wav', sample_dur_sec=sample_dur,
+        )
+        assert ctx.rng_group is None
+
+    def test_rng_id_falls_back_to_stream_id(self, sample_dur):
+        """Senza rng_group l'identità RNG resta lo stream_id."""
+        ctx = StreamContext(
+            stream_id='s1', onset=0.0, duration=1.0,
+            sample='a.wav', sample_dur_sec=sample_dur,
+        )
+        assert ctx.rng_id == 's1'
+
+    def test_rng_id_uses_rng_group_when_set(self, sample_dur):
+        ctx = StreamContext(
+            stream_id='s1', onset=0.0, duration=1.0,
+            sample='a.wav', sample_dur_sec=sample_dur,
+            rng_group='cugini',
+        )
+        assert ctx.rng_id == 'cugini'
+
+    def test_from_yaml_reads_rng_group(self, full_yaml_context, sample_dur):
+        """from_yaml legge rng_group dal dict per-stream."""
+        data = dict(full_yaml_context, rng_group='cugini')
+        ctx = StreamContext.from_yaml(data, sample_dur_sec=sample_dur)
+        assert ctx.rng_group == 'cugini'
+        assert ctx.rng_id == 'cugini'
+
+    def test_from_yaml_without_key_defaults_none(self, full_yaml_context, sample_dur):
+        ctx = StreamContext.from_yaml(full_yaml_context, sample_dur_sec=sample_dur)
+        assert ctx.rng_group is None
+        assert ctx.rng_id == ctx.stream_id
+
+    def test_same_rng_group_same_rng_id_across_streams(self, sample_dur):
+        """Due stream con lo stesso rng_group condividono l'identità RNG."""
+        a = StreamContext(
+            stream_id='cugini_1', onset=0.0, duration=1.0,
+            sample='a.wav', sample_dur_sec=sample_dur, rng_group='cugini',
+        )
+        b = StreamContext(
+            stream_id='cugini_2', onset=0.0, duration=1.0,
+            sample='a.wav', sample_dur_sec=sample_dur, rng_group='cugini',
+        )
+        assert a.rng_id == b.rng_id

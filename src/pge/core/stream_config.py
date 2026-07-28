@@ -17,6 +17,17 @@ class StreamContext:
     # campioni <-> secondi (grain.duration_unit) e per il bound minimo
     # dinamico di grain_duration (1 campione).
     output_sr: int = DEFAULT_OUTPUT_SR
+    # Identità RNG condivisibile (issue #169): se valorizzato, sostituisce
+    # lo stream_id nella derivazione degli RNG locali (shared/seeding.py),
+    # così stream diversi con lo stesso rng_group pescano le stesse sequenze.
+    # None (default) → identità = stream_id, hash identico a prima di #169.
+    rng_group: Optional[str] = None
+
+    @property
+    def rng_id(self) -> str:
+        """Identità usata nella derivazione RNG: rng_group se dichiarato,
+        altrimenti stream_id (isolamento per-stream, contratto issue #154)."""
+        return self.rng_group if self.rng_group is not None else self.stream_id
 
     @classmethod
     def from_yaml(cls, yaml_data: dict, sample_dur_sec: float, allow_none: bool = True) -> 'StreamConfig':
