@@ -126,8 +126,9 @@ class WindowController:
 
         # RNG per-componente (issue #154): 'window' per la selezione,
         # 'gate:pc_rand_envelope' per il gate — draw isolati dagli altri siti.
+        # Identità = rng_id (issue #169): stream_id, o rng_group se condiviso.
         seed = getattr(config, 'seed', None)
-        stream_id = config.context.stream_id
+        rng_id = config.context.rng_id
 
         uses_gate = not (_is_transition_spec(envelope_spec) or _is_multistate_spec(envelope_spec))
         gate = GateFactory.create_gate(
@@ -138,11 +139,11 @@ class WindowController:
             range_always_active=config.range_always_active,
             duration=config.context.duration,
             time_mode=config.time_mode,
-            rng=component_rng(seed, stream_id, 'gate:pc_rand_envelope'),
+            rng=component_rng(seed, rng_id, 'gate:pc_rand_envelope'),
         )
         self._strategy: WindowSelectionStrategy = WindowStrategyFactory.from_spec(
             envelope_spec, config, self._windows, gate,
-            rng=component_rng(seed, stream_id, 'window'),
+            rng=component_rng(seed, rng_id, 'window'),
         )
 
     @property

@@ -36,9 +36,10 @@ class DensityController:
         """
         # RNG dedicato all'IOT async (issue #154): i draw della distribuzione
         # Truax non dipendono dagli altri componenti né dagli altri stream.
+        # Identità = rng_id (issue #169): stream_id, o rng_group se condiviso.
         self._rng = component_rng(
             getattr(config, 'seed', None),
-            config.context.stream_id,
+            config.context.rng_id,
             'iot',
         )
 

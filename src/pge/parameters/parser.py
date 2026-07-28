@@ -36,6 +36,11 @@ class GranularParser:
             time_mode: 'absolute' (sec) o 'normalized' (0-1). Default per gli envelope.
         """
         self.stream_id = config.context.stream_id
+        # Identità di derivazione RNG (issue #169): rng_group se dichiarato,
+        # altrimenti stream_id. Accesso diretto come negli altri call site
+        # della derivazione: la property esiste sempre sulla dataclass.
+        # stream_id resta l'identità di log/errori.
+        self.rng_id = config.context.rng_id
         self.duration = config.context.duration
         self.sample_dur_sec = config.context.sample_dur_sec
         # Sample rate di output: bound minimo dinamico di grain_duration
@@ -113,8 +118,10 @@ class GranularParser:
 
         # 4. Assembla e restituisce l'oggetto Smart Parameter.
         # RNG per-componente (issue #154): ogni parametro pesca dal proprio
-        # stream derivato da (seed, stream_id, nome) — i draw di un parametro
+        # stream derivato da (seed, rng_id, nome) — i draw di un parametro
         # non shiftano quelli degli altri (solo/mute e cache invarianti).
+        # rng_id = stream_id, o rng_group se condiviso (issue #169);
+        # owner_id resta lo stream_id (identità di log, non di derivazione).
         return Parameter(
             name=name,
             value=validated_value,
@@ -122,7 +129,7 @@ class GranularParser:
             mod_range=validated_range,
             owner_id=self.stream_id,
             distribution_mode=self.distribution_mode,
-            rng=component_rng(self.seed, self.stream_id, name),
+            rng=component_rng(self.seed, self.rng_id, name),
         )
 
     # =========================================================================

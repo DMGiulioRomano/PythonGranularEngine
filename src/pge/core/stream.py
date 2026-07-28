@@ -257,7 +257,9 @@ class Stream:
                 spread: 60.0
 
         - voices assente → VoiceManager(max_voices=1)
-        - strategy stochastiche: stream_id iniettato automaticamente
+        - strategy stochastiche: identità RNG iniettata automaticamente nel
+          kwarg `stream_id` — vale rng_id (issue #169): lo stream_id, o il
+          rng_group quando la sequenza è condivisa fra stream
         - spread estratto dal blocco pan
         """
         from pge.parameters.parameter import Parameter
@@ -333,7 +335,7 @@ class Stream:
                 raise err
             pitch_unit = make_pitch_unit(unit_spec)
             if name == 'stochastic':
-                kw['stream_id'] = self.stream_id
+                kw['stream_id'] = config.context.rng_id
                 kw['seed'] = self.seed
             # chord_progression: i kwarg strutturali NON sono envelope-like e
             # vanno estratti prima della comprehension. In particolare
@@ -359,7 +361,7 @@ class Stream:
             kw = dict(v['onset_offset'])
             name = kw.pop('strategy')
             if name == 'stochastic':
-                kw['stream_id'] = self.stream_id
+                kw['stream_id'] = config.context.rng_id
                 kw['seed'] = self.seed
             kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             onset_strategy = VoiceOnsetStrategyFactory.create(name, **kw)
@@ -383,7 +385,7 @@ class Stream:
                 raise err
             self._voice_pointer_normalized = raw_normalized
             if name == 'stochastic':
-                kw['stream_id'] = self.stream_id
+                kw['stream_id'] = config.context.rng_id
                 kw['seed'] = self.seed
             kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             pointer_strategy = VoicePointerStrategyFactory.create(name, **kw)
@@ -394,7 +396,7 @@ class Stream:
             kw = dict(v['pan'])
             name = kw.pop('strategy')
             if name == 'stochastic':
-                kw['stream_id'] = self.stream_id
+                kw['stream_id'] = config.context.rng_id
                 kw['seed'] = self.seed
             kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
             pan_strategy = VoicePanStrategyFactory.create(name, **kw)

@@ -1,6 +1,6 @@
 # src/shared/seeding.py
 """
-seeding.py — derivazione deterministica degli RNG locali (issue #81, #154).
+seeding.py — derivazione deterministica degli RNG locali (issue #81, #154, #169).
 
 Singola fonte di verità per la derivazione dei generatori pseudo-casuali:
 
@@ -15,6 +15,14 @@ Singola fonte di verità per la derivazione dei generatori pseudo-casuali:
 - `session_seed` (issue #154): seed di sessione derivato da timestamp per i
   run senza `seed:` nello YAML — loggato dal Generator, così ogni run resta
   ricostruibile a posteriori.
+
+Identità di derivazione (issue #169): il parametro `stream_id` di queste
+funzioni è l'*identità* della sequenza, non necessariamente l'id dello
+stream. I call site passano `StreamContext.rng_id`: lo stream_id di default
+(isolamento per-stream, contratto #154) oppure il `rng_group` dichiarato
+nello YAML per-stream — così stream diversi possono pescare la stessa
+sequenza pseudo-casuale. Le firme qui non cambiano: la leva è tutta nel
+valore passato dai chiamanti.
 
 Regimi di derivazione:
 

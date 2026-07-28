@@ -10,7 +10,7 @@ sources:
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
-last_synced_commit: 9ebe4df
+last_synced_commit: abea29b
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -33,7 +33,8 @@ Reference completa del formato YAML consumato da `main.py`: sintassi per stream,
 Sezioni rilevanti in questo doc:
 
 - [Minimal Stream](#minimal-stream) — schema minimo
-- [Seed (Riproducibilità)](#seed-riproducibilità) — render NumPy riproducibili
+- [Seed (Riproducibilità)](#seed-riproducibilità) — render NumPy riproducibili;
+  `rng_group` per condividere la sequenza fra stream
 - [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
 - [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
@@ -129,6 +130,49 @@ volta. I render senza seed non cambiano di natura.
 Csound ha un RNG proprio: con `--renderer csound` i due renderer NON sono
 bit-identici nemmeno col seed. Le tendency mask restano stocastiche per natura —
 l'obiettivo è riprodurre *lo stesso run*, non l'identità bit-a-bit.
+
+### Condividere la sequenza fra stream: `rng_group`
+
+Chiave **per-stream** opzionale (issue #169). Di default lo `stream_id` è
+dentro l'hash di derivazione: due stream non possono pescare la stessa
+sequenza nemmeno con lo stesso `seed` (isolamento voluto da #154).
+`rng_group` sostituisce lo `stream_id` come **identità** della derivazione:
+gli stream che dichiarano lo stesso gruppo condividono le sequenze
+pseudo-casuali di tutti i componenti (variazioni `_range`, gate, `iot`,
+`window`, `detune`) e delle voci stocastiche.
+
+```yaml
+seed: 1988
+streams:
+  - stream_id: "cugini_1"
+    rng_group: "cugini"    # stessa identità RNG di cugini_2
+    # ...
+  - stream_id: "cugini_2"
+    rng_group: "cugini"
+    # ...
+```
+
+- **Assente** (default): identità = `stream_id`, hash **identico a prima di
+  #169** — nessun render esistente cambia bit-per-bit.
+- **Presente**: identità = valore del gruppo. La derivazione diventa
+  `sha256(f"{seed}:{rng_group}:{componente}")` (e
+  `...:{voice_index}` per le voci).
+- Caso d'uso: stream "cugini" (spread su `pointer.start`/`pan`) letti come un
+  unico oggetto verticale, con la stessa griglia stocastica di `distribution`.
+- **Limite**: identità condivisa NON significa griglia temporale identica. Il
+  draw dell'IOT async avviene per grano e dipende da `avg_iot`: con `density`
+  o `distribution` diverse i due stream si desincronizzano subito pur
+  condividendo l'RNG. Griglia identica solo con density e distribution
+  identiche.
+- `rng_group` **entra nel fingerprint** della cache stems
+  (`StreamCacheManager.compute_fingerprint`): cambiarlo cambia i valori
+  pescati, quindi l'audio, e lo stem viene giustamente marcato dirty. Le
+  sole chiavi escluse dal fingerprint restano `solo`/`mute`, che non
+  toccano l'audio del singolo stem (issue #108).
+- L'invarianza di `solo`/`mute` garantita da #154 resta intatta: la
+  condivisione riguarda l'identità di derivazione, non i draw a runtime —
+  ogni stream materializza la propria copia della sequenza, quindi mettere
+  un cugino in solo non sposta i grani degli altri.
 
 ---
 

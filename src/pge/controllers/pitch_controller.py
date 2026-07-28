@@ -61,11 +61,12 @@ class PitchController:
             dephase_key='pitch',
         )
         # RNG dedicato al detune implicito (issue #154, componente 'detune').
+        # Identità = rng_id (issue #169): stream_id, o rng_group se condiviso.
         self._strategy = UnitPitchStrategy(
             self._active_param, unit, unit.name,
             rng=component_rng(
                 getattr(config, 'seed', None),
-                config.context.stream_id,
+                config.context.rng_id,
                 'detune',
             ),
         )
