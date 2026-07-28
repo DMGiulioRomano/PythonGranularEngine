@@ -26,8 +26,10 @@ class StreamContext:
     @property
     def rng_id(self) -> str:
         """Identità usata nella derivazione RNG: rng_group se dichiarato,
-        altrimenti stream_id (isolamento per-stream, contratto issue #154)."""
-        return self.rng_group if self.rng_group is not None else self.stream_id
+        altrimenti stream_id (isolamento per-stream, contratto issue #154).
+        Falsy (None, stringa vuota) → fallback a stream_id: una stringa vuota
+        non deve diventare un'identità condivisa accidentale."""
+        return self.rng_group or self.stream_id
 
     @classmethod
     def from_yaml(cls, yaml_data: dict, sample_dur_sec: float, allow_none: bool = True) -> 'StreamConfig':

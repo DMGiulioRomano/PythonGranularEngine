@@ -1046,6 +1046,16 @@ class TestRngGroup:
         assert ctx.rng_group == 'cugini'
         assert ctx.rng_id == 'cugini'
 
+    def test_empty_string_falls_back_to_stream_id(self, sample_dur):
+        """rng_group vuoto NON diventa un'identità condivisa accidentale:
+        falsy → fallback a stream_id, come rng_group assente."""
+        ctx = StreamContext(
+            stream_id='s1', onset=0.0, duration=1.0,
+            sample='a.wav', sample_dur_sec=sample_dur,
+            rng_group='',
+        )
+        assert ctx.rng_id == 's1'
+
     def test_from_yaml_without_key_defaults_none(self, full_yaml_context, sample_dur):
         ctx = StreamContext.from_yaml(full_yaml_context, sample_dur_sec=sample_dur)
         assert ctx.rng_group is None
