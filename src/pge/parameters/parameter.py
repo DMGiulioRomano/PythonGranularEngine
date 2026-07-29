@@ -23,7 +23,11 @@ from pge.envelopes.envelope import Envelope
 from pge.parameters.parameter_definitions import ParameterBounds
 from pge.shared.logger import log_clip_warning
 from pge.shared.probability_gate import *
-from pge.shared.distribution_strategy import DistributionFactory, DistributionStrategy
+from pge.shared.distribution_strategy import (
+    ANCHOR_CENTER,
+    DistributionFactory,
+    DistributionStrategy,
+)
 from pge.strategies.variation_registry import VariationFactory
 
 ParamInput = Union[float, int, Envelope]
@@ -58,6 +62,7 @@ class Parameter:
         owner_id: str = "unknown",
         distribution_mode: str = 'uniform',
         rng: Optional[random.Random] = None,
+        range_anchor: str = ANCHOR_CENTER,
     ):
         self.name = name
         self.owner_id = owner_id
@@ -68,7 +73,20 @@ class Parameter:
         self._probability_gate = NeverGate()
 
         # RNG locale del parametro (issue #154): None → random globale.
-        self._distribution = DistributionFactory.create(distribution_mode, rng=rng)
+        self._distribution = DistributionFactory.create(
+            distribution_mode, rng=rng, anchor=range_anchor
+        )
+        # Il jitter implicito e' un tremolio simmetrico attorno al valore, non
+        # una banda dichiarata dall'utente: resta centrato in ogni modalita'.
+        # Con anchor='center' e' la stessa istanza, quindi il default non paga
+        # nulla; le due distribuzioni condividono l'RNG, quindi la sequenza di
+        # draw non si sdoppia.
+        self._jitter_distribution = (
+            self._distribution if range_anchor == ANCHOR_CENTER
+            else DistributionFactory.create(
+                distribution_mode, rng=rng, anchor=ANCHOR_CENTER
+            )
+        )
         self._variation_strategy = VariationFactory.create(bounds.variation_mode)
         
     def set_probability_gate(self, gate: ProbabilityGate):
@@ -108,10 +126,16 @@ class Parameter:
         # 3. Calcola il Range di variazione (Modulation Depth)
 
         # 4. Delega alla VariationStrategy (Strategy Pattern)
+        # La distribuzione porta l'ancora del range: quella configurata quando
+        # il range e' esplicito, quella centrata quando e' jitter implicito.
+        distribution = (
+            self._distribution if self.has_explicit_range
+            else self._jitter_distribution
+        )
         final_val = self._variation_strategy.apply(
-            base_val, 
-            current_range, 
-            self._distribution
+            base_val,
+            current_range,
+            distribution
         )
         # 5. Safety Clamp e Ritorno
         return self._clamp(final_val, time)

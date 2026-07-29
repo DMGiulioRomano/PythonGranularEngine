@@ -76,6 +76,11 @@ class StreamConfig:
     dephase: Optional[Union[dict, bool, int, float, list]] = False
     range_always_active: bool = False
     distribution_mode: str = 'uniform'
+    # Ancora del range (shared/distribution_strategy.py): 'center' (default,
+    # storico) → banda [base - range/2, base + range/2]; 'min' → banda
+    # [base, base + range], la semantica di granulation-studies. Asse
+    # ortogonale a distribution_mode, che dice solo COME si riempie la banda.
+    range_anchor: str = 'center'
     time_mode: str = 'absolute'
     time_scale: float = 1.0
     clip_strategy: str = 'overflow_margin'

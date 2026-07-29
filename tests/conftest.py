@@ -35,6 +35,8 @@ def mock_config():
     config.distribution_mode = 'uniform'
     config.dephase = False
     config.range_always_active = False
+    # Ancora del range: 'center' = comportamento storico (banda simmetrica).
+    config.range_anchor = 'center'
     # issue #154: seed None → fallback legacy sul random globale
     config.seed = None
 

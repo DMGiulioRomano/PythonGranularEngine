@@ -48,6 +48,8 @@ class GranularParser:
         self.output_sr = getattr(config.context, 'output_sr', None)
         self.time_mode = config.time_mode
         self.distribution_mode = config.distribution_mode
+        # Ancora del range per-stream: 'center' (default) o 'min'.
+        self.range_anchor = config.range_anchor
         # Seed effettivo del run (issue #154): deriva l'RNG per-parametro.
         # getattr difensivo: i config parziali dei test possono non averlo.
         self.seed = getattr(config, 'seed', None)
@@ -130,6 +132,7 @@ class GranularParser:
             owner_id=self.stream_id,
             distribution_mode=self.distribution_mode,
             rng=component_rng(self.seed, self.rng_id, name),
+            range_anchor=self.range_anchor,
         )
 
     # =========================================================================
