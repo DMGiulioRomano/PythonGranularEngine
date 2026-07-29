@@ -33,6 +33,10 @@ def mock_config():
     config.context = context
     config.time_mode = 'absolute'
     config.distribution_mode = 'uniform'
+    # Mock(spec=StreamConfig) espone i campi della dataclass, ma restituisce
+    # un Mock figlio invece del default: le stringhe di configurazione vanno
+    # valorizzate a mano o arrivano validate come Mock.
+    config.range_anchor = 'center'
     config.dephase = False
     config.range_always_active = False
     # issue #154: seed None → fallback legacy sul random globale

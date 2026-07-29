@@ -16,6 +16,7 @@ from typing import Union, Optional, List, Any
 from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.parameters.parameter_definitions import get_parameter_definition
+from pge.shared.distribution_strategy import ANCHOR_CENTER
 from pge.shared.exceptions import InvalidParameterError, ParameterBoundError
 from pge.shared.seeding import component_rng
 
@@ -48,6 +49,9 @@ class GranularParser:
         self.output_sr = getattr(config.context, 'output_sr', None)
         self.time_mode = config.time_mode
         self.distribution_mode = config.distribution_mode
+        # Ancora dei range dichiarati (center | min). getattr difensivo come
+        # per `seed`: i config parziali dei test possono non averla.
+        self.range_anchor = getattr(config, 'range_anchor', ANCHOR_CENTER)
         # Seed effettivo del run (issue #154): deriva l'RNG per-parametro.
         # getattr difensivo: i config parziali dei test possono non averlo.
         self.seed = getattr(config, 'seed', None)
@@ -129,6 +133,7 @@ class GranularParser:
             mod_range=validated_range,
             owner_id=self.stream_id,
             distribution_mode=self.distribution_mode,
+            range_anchor=self.range_anchor,
             rng=component_rng(self.seed, self.rng_id, name),
         )
 
