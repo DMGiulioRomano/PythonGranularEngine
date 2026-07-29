@@ -195,6 +195,37 @@ class TestFingerprintIgnoresMuteSolo:
         d2 = {'stream_id': 's1', 'volume': -6.0, 'rng_group': 'gruppo_b'}
         assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
 
+    def test_range_anchor_changes_fingerprint(self, manager):
+        """range_anchor cambia la banda di ogni range dello stream, quindi i
+        valori pescati e l'audio dello stem. Deve entrare nel fingerprint —
+        mai aggiungerlo a FINGERPRINT_IGNORE_KEYS, o flipparlo lascia in
+        cache stem calcolati con l'altra semantica, senza nessun errore."""
+        base = {'stream_id': 's1', 'volume': -6.0, 'volume_range': 12.0}
+        anchored = {**base, 'range_anchor': 'min'}
+        assert (
+            manager.compute_fingerprint(base)
+            != manager.compute_fingerprint(anchored)
+        )
+
+    def test_switching_range_anchor_changes_fingerprint(self, manager):
+        """Anche passare da 'center' esplicito a 'min' marca lo stem dirty."""
+        d1 = {'stream_id': 's1', 'volume': -6.0, 'range_anchor': 'center'}
+        d2 = {'stream_id': 's1', 'volume': -6.0, 'range_anchor': 'min'}
+        assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
+
+    def test_range_anchor_marks_stream_dirty_end_to_end(self, manager, tmp_path):
+        """Dirty-check end-to-end: uno stem gia' renderizzato e presente su
+        disco torna dirty se lo stream cambia ancora."""
+        aif = tmp_path / 's1.aif'
+        aif.write_bytes(b'fake')
+        centered = {'stream_id': 's1', 'volume': -6.0, 'volume_range': 12.0}
+        manager.update_after_build([centered])
+
+        assert manager.is_dirty(centered, aif_path=str(aif)) is False
+        assert manager.is_dirty(
+            {**centered, 'range_anchor': 'min'}, aif_path=str(aif)
+        ) is True
+
     def test_toggling_mute_does_not_mark_stream_dirty(self, manager, tmp_path):
         """Dirty-check end-to-end: aggiungere mute non marca lo stem dirty se
         il fingerprint precedente (senza mute) e' nel manifest e il .aif esiste.
