@@ -10,6 +10,27 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v5.2.0] — "Millisecond Grain" — 2026-07-29
+
+### Aggiunto
+
+- **`grain.duration_unit: milliseconds`** (PR #171): terza unità per
+  `grain.duration` e `grain.duration_range`, accanto a `seconds` (default) e
+  `samples`. I valori sono convertiti in secondi al parse con fattore fisso
+  `1e-3` (`SECONDS_PER_MILLISECOND` in `shared/constants.py`), quindi — a
+  differenza di `samples` — la conversione non dipende da `output_sr` e lo
+  stesso YAML dà le stesse durate a qualunque frequenza di rendering. Vale su
+  scalari ed envelope (solo i valori Y, l'asse tempo resta invariato) e
+  condivide con `samples` la regola della durata esplicita: senza
+  `grain.duration` la base resterebbe in secondi mentre `duration_range`
+  sarebbe in millisecondi → `MissingFieldError`, con hint che nomina l'unità
+  dichiarata. Motivazione: la grana udibile vive fra 1 e 1000 ms, dove in
+  secondi si scrivono solo numeri molto piccoli e difficili da leggere.
+  Nessun comportamento esistente cambia: `duration_unit` assente o `seconds`
+  resta un no-op. Reference: `docs/reference/yaml.md` §Blocco Grain.
+
+---
+
 ## [v5.1.0] — "RNG Groups & BP Envelopes" — 2026-07-29
 
 Include anche il refactor library/CLI taggato come `v5.0.0`, che era rimasto
@@ -30,20 +51,6 @@ senza una sezione propria in questo file.
 
 ### Aggiunto
 
-- **`grain.duration_unit: milliseconds`**: terza unità per `grain.duration` e
-  `grain.duration_range`, accanto a `seconds` (default) e `samples`. I valori
-  sono convertiti in secondi al parse con fattore fisso `1e-3`
-  (`SECONDS_PER_MILLISECOND` in `shared/constants.py`), quindi — a differenza
-  di `samples` — la conversione non dipende da `output_sr` e lo stesso YAML dà
-  le stesse durate a qualunque frequenza di rendering. Vale su scalari ed
-  envelope (solo i valori Y, l'asse tempo resta invariato) e condivide con
-  `samples` la regola della durata esplicita: senza `grain.duration` la base
-  resterebbe in secondi mentre `duration_range` sarebbe in millisecondi →
-  `MissingFieldError`, con hint che nomina l'unità dichiarata. Motivazione:
-  la grana udibile vive fra 1 e 1000 ms, dove in secondi si scrivono solo
-  numeri molto piccoli e difficili da leggere. Nessun comportamento esistente
-  cambia: `duration_unit` assente o `seconds` resta un no-op.
-  Reference: `docs/reference/yaml.md` §Blocco Grain.
 - **`rng_group`: sequenza RNG condivisa fra stream** (issue #169): nuova
   chiave YAML per-stream opzionale che sostituisce lo `stream_id` come
   identità nella derivazione degli RNG locali (`shared/seeding.py`). Stream
