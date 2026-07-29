@@ -11,9 +11,46 @@ from abc import ABC, abstractmethod
 from typing import Tuple
 
 from pge.shared.exceptions import (
+    InvalidFieldValueError,
     InvalidStrategyConfigError,
     StrategyNotFoundError,
 )
+
+# =============================================================================
+# ANCORA DEL RANGE
+# =============================================================================
+# `spread` e' SEMPRE la larghezza della banda. L'ancora dice dove cade il
+# valore base dentro quella banda:
+#
+#   center (default) -> [base - spread/2, base + spread/2]
+#   min              -> [base,           base + spread]
+#
+# E' un asse ortogonale alla forma della distribuzione (`distribution_mode`),
+# non una sua variante: la stessa ancora vale per uniform, gaussian e per
+# qualunque distribuzione registrata in futuro.
+
+ANCHOR_CENTER = 'center'
+ANCHOR_MIN = 'min'
+
+#: Valori validi della chiave YAML per-stream `range_anchor`. Esposto come
+#: registry perche' PGE-ls e PGE-ui possano leggerlo dal vivo invece di
+#: duplicarne una copia statica (stesso ruolo di DistributionFactory.modes()).
+RANGE_ANCHORS = (ANCHOR_CENTER, ANCHOR_MIN)
+
+
+def validate_range_anchor(anchor: str) -> str:
+    """Valida il valore di `range_anchor`, restituendolo normalizzato.
+
+    Raises:
+        InvalidFieldValueError: se il valore non e' fra RANGE_ANCHORS.
+    """
+    if anchor not in RANGE_ANCHORS:
+        raise InvalidFieldValueError(
+            field='range_anchor',
+            value=anchor,
+            hint=f"valori ammessi: {' | '.join(RANGE_ANCHORS)}",
+        )
+    return anchor
 
 
 class DistributionStrategy(ABC):
@@ -27,15 +64,37 @@ class DistributionStrategy(ABC):
     iniettato; i sample pescano da quello, così ogni Parameter ha il proprio
     stream di draw isolato. Senza rng si usa il modulo `random` globale
     (comportamento legacy).
+
+    Ancora del range: il costruttore accetta `anchor` (ANCHOR_CENTER di
+    default). L'ancora e' stato dell'istanza, non un argomento di sample():
+    cosi' la firma `sample(center, spread)` resta invariata e i chiamanti
+    (VariationStrategy) non devono sapere che l'ancora esiste.
     """
 
-    def __init__(self, rng=None):
+    def __init__(self, rng=None, anchor: str = ANCHOR_CENTER):
         self._rng = rng if rng is not None else random
+        self._anchor = validate_range_anchor(anchor)
 
     @property
     def rng(self):
         """RNG locale della strategia (random.Random o modulo random)."""
         return self._rng
+
+    @property
+    def anchor(self) -> str:
+        """Ancora del range: ANCHOR_CENTER o ANCHOR_MIN."""
+        return self._anchor
+
+    def _band(self, center: float, spread: float) -> Tuple[float, float]:
+        """Banda [lo, hi] effettiva per (center, spread) sotto l'ancora attiva.
+
+        E' la fonte di verita' condivisa da sample() e get_bounds(): una sola
+        definizione della banda, nessuna possibilita' che le due divergano.
+        """
+        if self._anchor == ANCHOR_MIN:
+            return (center, center + spread)
+        half_spread = spread / 2
+        return (center - half_spread, center + half_spread)
 
     @abstractmethod
     def sample(self, center: float, spread: float) -> float:        # pragma: no cover
@@ -75,76 +134,94 @@ class UniformDistribution(DistributionStrategy):
     Distribuzione uniforme: tutti i valori nel range sono equiprobabili.
     
     Comportamento:
-    - center viene ignorato (uniform è simmetrico attorno a 0)
-    - spread definisce il range totale
-    - Output: center + uniform(-spread/2, +spread/2)
-    
+    - spread definisce la larghezza della banda
+    - ancora `center`: output in [center - spread/2, center + spread/2]
+    - ancora `min`:    output in [center, center + spread]
+
     Uso tipico: comportamento attuale del sistema.
     """
-    
+
     def sample(self, center: float, spread: float) -> float:
         """
-        Genera valore uniformemente distribuito.
+        Genera valore uniformemente distribuito nella banda.
 
-        Formula: center + rng.uniform(-0.5, 0.5) * spread
+        Ancora `center`: center + rng.uniform(-0.5, 0.5) * spread
+        Ancora `min`:    center + rng.uniform(0.0, 1.0) * spread
+
+        Il ramo `center` e' volutamente scritto come espressione letterale
+        invariata (non derivata da _band): e' il default storico e deve
+        restare identico bit per bit.
         """
         if spread <= 0:
             return center
 
+        if self._anchor == ANCHOR_MIN:
+            return center + self._rng.uniform(0.0, 1.0) * spread
+
         return center + self._rng.uniform(-0.5, 0.5) * spread
-    
+
     @property
     def name(self) -> str:
         return "uniform"
-    
+
     def get_bounds(self, center: float, spread: float) -> Tuple[float, float]:
-        """Bounds teorici: [center - spread/2, center + spread/2]"""
-        half_spread = spread / 2
-        return (center - half_spread, center + half_spread)
+        """Bounds della banda, secondo l'ancora attiva."""
+        return self._band(center, spread)
 
 
 class GaussianDistribution(DistributionStrategy):
     """
-    Distribuzione gaussiana (normale): valori concentrati attorno al centro.
-    
+    Distribuzione gaussiana troncata: campana dentro una banda chiusa.
+
     Comportamento:
-    - center = μ (media della gaussiana)
-    - spread = σ (deviazione standard)
-    - ~68% dei valori in [μ±σ]
-    - ~95% dei valori in [μ±2σ]
-    - ~99.7% dei valori in [μ±3σ]
-    
-    Uso tipico: texture "smooth", nuvole sonore, variazioni naturali.
-    
-    Note:
-    - La gaussiana è teoricamente illimitata, ma clamping ai bounds
-      del parametro viene fatto successivamente in Parameter._clamp()
+    - spread = LARGHEZZA della banda (non σ)
+    - σ = spread / 6, cioè i bordi della banda cadono a 3σ dalla media
+    - μ = centro della banda, che dipende dall'ancora:
+        `center` -> banda [center - spread/2, center + spread/2], μ = center
+        `min`    -> banda [center, center + spread],              μ = center + spread/2
+    - la coda oltre 3σ (~0.3%) viene clampata ai bordi, non lasciata uscire
+
+    Uso tipico: texture "smooth", nuvole sonore, variazioni naturali — dove
+    si vuole una banda dichiarata, con i valori addensati al centro invece che
+    distribuiti piatti.
+
+    Nota storica: fino alla v5.2.0 `spread` era σ e la campana era illimitata,
+    richiusa solo dal clamp ai bounds del parametro in Parameter._clamp(). Con
+    `range: 200` su `base: 300` i valori arrivavano grosso modo a 0..600 invece
+    che a 200..400. La semantica e' stata cambiata perche' `range` doveva
+    significare la stessa cosa in tutte le distribuzioni: la larghezza della
+    banda. È un cambio di comportamento voluto, non retrocompatibile.
     """
-    
+
+    #: Rapporto larghezza/σ: i bordi della banda cadono a 3σ dalla media.
+    SIGMA_DIVISOR = 6.0
+
     def sample(self, center: float, spread: float) -> float:
         """
-        Genera valore con distribuzione gaussiana.
+        Genera valore gaussiano dentro la banda, con clamp ai bordi.
 
-        Formula: rng.gauss(μ=center, σ=spread)
+        Formula: clamp(rng.gauss(μ=centro_banda, σ=spread/6), lo, hi)
         """
         if spread <= 0:
             return center
 
-        return self._rng.gauss(center, spread)
-    
+        lo, hi = self._band(center, spread)
+        mu = (lo + hi) / 2.0
+        sigma = spread / self.SIGMA_DIVISOR
+
+        return min(max(self._rng.gauss(mu, sigma), lo), hi)
+
     @property
     def name(self) -> str:
         return "gaussian"
-    
+
     def get_bounds(self, center: float, spread: float) -> Tuple[float, float]:
+        """Bounds della banda, secondo l'ancora attiva.
+
+        Sono bounds esatti, non piu' la stima 3σ: la distribuzione e' troncata,
+        quindi nessun campione cade fuori da qui.
         """
-        Bounds teorici: ~99.7% dei valori in [μ-3σ, μ+3σ]
-        
-        Nota: la gaussiana è teoricamente illimitata,
-        ma usiamo 3σ come bound pratico (3-sigma rule).
-        """
-        three_sigma = spread * 3
-        return (center - three_sigma, center + three_sigma)
+        return self._band(center, spread)
 
 
 class DistributionFactory:
@@ -160,7 +237,7 @@ class DistributionFactory:
     }
     
     @classmethod
-    def create(cls, mode: str, rng=None) -> DistributionStrategy:
+    def create(cls, mode: str, rng=None, anchor: str = ANCHOR_CENTER) -> DistributionStrategy:
         """
         Crea una strategia di distribuzione.
 
@@ -168,12 +245,14 @@ class DistributionFactory:
             mode: Nome della distribuzione ('uniform', 'gaussian')
             rng: random.Random locale da iniettare (issue #154);
                  None → modulo random globale (legacy)
+            anchor: ancora del range ('center' default, 'min')
 
         Returns:
             Istanza di DistributionStrategy
 
         Raises:
-            ValueError: Se mode non è riconosciuto
+            StrategyNotFoundError: Se mode non è riconosciuto
+            InvalidFieldValueError: Se anchor non è fra RANGE_ANCHORS
         """
         if mode not in cls._registry:
             raise StrategyNotFoundError(
@@ -183,8 +262,17 @@ class DistributionFactory:
             )
 
         strategy_class = cls._registry[mode]
-        return strategy_class(rng=rng)
-    
+        return strategy_class(rng=rng, anchor=validate_range_anchor(anchor))
+
+    @classmethod
+    def modes(cls) -> list:
+        """Nomi delle distribuzioni registrate.
+
+        Punto di lettura per i consumer esterni (PGE-ls legge di qui l'enum di
+        `distribution_mode`) invece di ispezionare `_registry`.
+        """
+        return list(cls._registry.keys())
+
     @classmethod
     def register(cls, name: str, strategy_class: type):
         """
