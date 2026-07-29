@@ -24,6 +24,7 @@ from pge.controllers.window_controller import WindowController
 from pge.controllers.pointer_controller import PointerController
 from pge.controllers.pitch_controller import PitchController
 from pge.controllers.density_controller import DensityController
+from pge.shared.constants import SECONDS_PER_MILLISECOND
 from pge.shared.utils import get_sample_duration
 from pge.shared.exceptions import (
     InvalidFieldValueError,
@@ -46,8 +47,16 @@ from dataclasses import fields, MISSING as dataclass_MISSING
 
 # Unita' di misura ammesse per grain.duration / grain.duration_range.
 # 'seconds' e' il default storico; 'samples' esprime i valori in campioni
-# alla frequenza di output del motore (StreamContext.output_sr).
-GRAIN_DURATION_UNITS = ('seconds', 'samples')
+# alla frequenza di output del motore (StreamContext.output_sr);
+# 'milliseconds' e' la scala comoda per la grana udibile (1-1000 ms) e usa un
+# fattore fisso, indipendente dal sample rate.
+GRAIN_DURATION_UNITS = ('seconds', 'samples', 'milliseconds')
+
+# Etichette per i messaggi d'errore: unita' -> nome dei valori attesi.
+_GRAIN_DURATION_UNIT_LABELS = {
+    'samples': 'campioni',
+    'milliseconds': 'millisecondi',
+}
 
 
 def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute'):
@@ -414,9 +423,10 @@ class Stream:
         """
         Conversione di unita' per la durata del grano (modello loop_unit).
 
-        Se grain.duration_unit == 'samples', scala grain.duration e
-        grain.duration_range da campioni a secondi (fattore 1/output_sr),
-        su scalari ed envelope-like (solo i valori Y; l'asse X resta tempo).
+        Se grain.duration_unit non e' 'seconds', scala grain.duration e
+        grain.duration_range fino ai secondi su scalari ed envelope-like (solo
+        i valori Y; l'asse X resta tempo). Il fattore dipende dall'unita':
+        1/output_sr per 'samples', 1e-3 per 'milliseconds'.
 
         Unico punto del sistema che legge 'duration_unit' dal dizionario
         grezzo: e' un meta-parametro che controlla l'interpretazione degli
@@ -440,21 +450,26 @@ class Stream:
         if unit == 'seconds':
             return params
 
-        # samples: il default seconds (0.05) NON viene scalato. Se grain.duration
-        # non e' esplicito, la base resterebbe in secondi mentre duration_range
-        # e' in campioni -> due domini diversi nello stesso blocco. Pretendi una
-        # duration esplicita (l'unita' governa base e range insieme).
+        # Unita' non-secondi: il default seconds (0.05) NON viene scalato. Se
+        # grain.duration non e' esplicito, la base resterebbe in secondi mentre
+        # duration_range e' nell'unita' dichiarata -> due domini diversi nello
+        # stesso blocco. Pretendi una duration esplicita (l'unita' governa base
+        # e range insieme).
+        label = _GRAIN_DURATION_UNIT_LABELS[unit]
         if grain.get('duration') is None:
             err = MissingFieldError(
                 field='grain.duration',
-                hint=("con grain.duration_unit: samples la durata va indicata "
-                      "esplicitamente in campioni (il default 0.05 e' in "
+                hint=(f"con grain.duration_unit: {unit} la durata va indicata "
+                      f"esplicitamente in {label} (il default 0.05 e' in "
                       "secondi e non verrebbe convertito)."),
             )
             err.stream_id = self.stream_id
             raise err
 
-        factor = 1.0 / output_sr
+        # 'samples' dipende dal sample rate di output, 'milliseconds' no.
+        factor = (
+            1.0 / output_sr if unit == 'samples' else SECONDS_PER_MILLISECOND
+        )
         scaled_grain = dict(grain)
         for key in ('duration', 'duration_range'):
             if key in scaled_grain and scaled_grain[key] is not None:

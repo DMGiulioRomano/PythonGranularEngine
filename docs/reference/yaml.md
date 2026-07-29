@@ -331,14 +331,23 @@ grain:
   duration: [[0, 0.02], [30, 0.2]]
   duration_range: 0.01     # ±0.01s randomizzazione
 
-  # Unità di misura per duration e duration_range (default: seconds).
-  # Con 'samples' i valori sono campioni alla frequenza di output del
-  # motore (48000 Hz) e vengono convertiti in secondi al parse; vale per
+  # Unità di misura per duration e duration_range: seconds (default) |
+  # samples | milliseconds. La conversione avviene al parse e vale per
   # scalari ed envelope (solo i valori, l'asse tempo resta invariato).
+
+  # 'samples': campioni alla frequenza di output del motore (48000 Hz).
   duration_unit: samples
   duration: 512            # 512 campioni = 512/48000 s
   duration_range: 64       # ±64 campioni
   duration: [[0, 48], [30, 4800]]   # envelope: Y in campioni
+
+  # 'milliseconds': fattore fisso 1e-3, indipendente dal sample rate.
+  # È la scala comoda per la grana udibile, dove in secondi si scriverebbero
+  # solo numeri molto piccoli.
+  duration_unit: milliseconds
+  duration: 50             # 50 ms = 0.05 s
+  duration_range: 4.5      # ±4.5 ms
+  duration: [[0, 1], [30, 100]]     # envelope: Y in millisecondi
 
   envelope: hanning        # finestra per shape del grano (default: hanning)
   # Vedi sezione "Finestre Disponibili" per tutti i valori validi.
@@ -367,15 +376,18 @@ grain:
   # ERRORE: reverse: true / reverse: false / reverse: auto
 ```
 
-Con `duration_unit: samples` la `grain.duration` va **sempre indicata
-esplicitamente**: il default `0.05` è in secondi e non verrebbe convertito, per
-cui base (secondi) e `duration_range` (campioni) finirebbero in domini diversi.
-Ometterla → `MissingFieldError`. `output_sr` è una config globale del motore
-(48000 Hz), non impostabile per-stream nello YAML.
+Con qualunque `duration_unit` diverso da `seconds` la `grain.duration` va
+**sempre indicata esplicitamente**: il default `0.05` è in secondi e non
+verrebbe convertito, per cui base (secondi) e `duration_range` (campioni o
+millisecondi) finirebbero in domini diversi. Ometterla → `MissingFieldError`.
+`output_sr` è una config globale del motore (48000 Hz), non impostabile
+per-stream nello YAML — per questo `milliseconds`, che non lo usa, dà le stesse
+durate a qualunque frequenza di rendering mentre `samples` no.
 
 Bounds: `grain_duration` ∈ [1 campione (`1/48000` s), 10 s] — in `samples`:
-[1, 480000]. Valori frazionari di campioni sono ammessi: il renderer
-arrotonda al campione più vicino (`n_out = max(1, round(dur * sr))`).
+[1, 480000]; in `milliseconds`: [1/48, 10000]. Valori frazionari sono ammessi
+in ogni unità: il renderer arrotonda al campione più vicino
+(`n_out = max(1, round(dur * sr))`).
 
 Note sui grani a precisione di campione:
 
@@ -1918,7 +1930,7 @@ un envelope dal YAML al runtime è:
 | `density` | 0.01 | 4000 | — | grani/secondo |
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
-| `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; con `duration_unit: samples` i valori sono campioni |
+| `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
 | `pitch_ratio` | 0.001 | 8 | 1.0 | ratio diretto |
