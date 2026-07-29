@@ -16,7 +16,7 @@ from typing import Union, Optional, List, Any
 from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.parameters.parameter_definitions import get_parameter_definition
-from pge.shared.distribution_strategy import ANCHOR_CENTER
+from pge.shared.distribution_strategy import ANCHOR_CENTER, ANCHOR_MIN
 from pge.shared.exceptions import InvalidParameterError, ParameterBoundError
 from pge.shared.seeding import component_rng
 
@@ -120,6 +120,9 @@ class GranularParser:
             value_type='probability'
         ) if clean_prob is not None else None
 
+        # 3-bis. Tetto della banda sotto ancora `min` (vedi _validate_band_ceiling).
+        self._validate_band_ceiling(validated_value, validated_range, bounds, name)
+
         # 4. Assembla e restituisce l'oggetto Smart Parameter.
         # RNG per-componente (issue #154): ogni parametro pesca dal proprio
         # stream derivato da (seed, rng_id, nome) — i draw di un parametro
@@ -162,6 +165,68 @@ class GranularParser:
             param_name=context_info,
             value=raw_data,
             hint="atteso numero, lista di punti, o dict envelope",
+        )
+        err.stream_id = self.stream_id
+        raise err
+
+    def _validate_band_ceiling(
+        self,
+        value: Optional[ParamInput],
+        mod_range: Optional[ParamInput],
+        bounds: Any,
+        param_name: str,
+    ) -> None:
+        """Verifica che la banda `[base, base + range]` stia sotto max_val.
+
+        Si applica SOLO con `range_anchor: min`. Sotto l'ancora `center` la
+        banda arriva a `base + range/2` e resta gestita dal safety clamp a
+        valle: e' il comportamento storico e non si tocca.
+
+        Perche' al parse e non solo col clamp: la modalita' `min` promette una
+        banda esatta. Se la banda non e' realizzabile, il clamp la schiaccia
+        contro il tetto e produce un warning per grano — un sintomo rumoroso
+        ma facile da non leggere, che lascia l'utente convinto di avere la
+        banda che ha scritto. Meglio dirlo una volta, prima di renderizzare.
+
+        Solo il tetto: il pavimento della banda e' `base`, gia' validato
+        contro min_val da _validate_and_clip.
+
+        Il controllo scatta solo quando il massimo della somma e' ESATTO:
+
+            base scalare + range scalare   -> base + range
+            base envelope + range scalare  -> max(base) + range
+            base scalare + range envelope  -> base + max(range)
+
+        Con entrambi envelope il massimo della somma non e' la somma dei
+        massimi (i due picchi possono cadere in istanti diversi): il controllo
+        sarebbe conservativo e un falso positivo bloccherebbe un render valido.
+        In quel caso resta il safety clamp.
+        """
+        if self.range_anchor != ANCHOR_MIN:
+            return
+        if mod_range is None or bounds.max_val is None:
+            return
+
+        value_is_env = isinstance(value, Envelope)
+        range_is_env = isinstance(mod_range, Envelope)
+        if value_is_env and range_is_env:
+            return
+
+        peak_value = (max(y for _, y in value.breakpoints)
+                      if value_is_env else float(value))
+        peak_range = (max(y for _, y in mod_range.breakpoints)
+                      if range_is_env else float(mod_range))
+        ceiling = peak_value + peak_range
+
+        if ceiling <= bounds.max_val:
+            return
+
+        err = ParameterBoundError(
+            param_name=param_name,
+            value_type='base + range (range_anchor: min)',
+            value=ceiling,
+            min_bound=bounds.min_val,
+            max_bound=bounds.max_val,
         )
         err.stream_id = self.stream_id
         raise err
