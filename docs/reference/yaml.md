@@ -10,7 +10,8 @@ sources:
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
-last_synced_commit: abea29b
+  - src/pge/shared/distribution_strategy.py
+last_synced_commit: 41a469c
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -38,6 +39,8 @@ Sezioni rilevanti in questo doc:
 - [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
 - [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
+- [La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor) —
+  larghezza, forma (`distribution_mode`), ancora (`range_anchor`)
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [Dephase](#dephase-variazione-stocastica)
 - [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
 - [Envelopes](#envelopes) — sintassi envelope completa
@@ -54,6 +57,7 @@ Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [En
 
 - `src/yaml_parser/` — parser
 - `src/pge/parameters/parameter_definitions.py`, `src/pge/parameters/parameter_schema.py` — bounds e schema
+- `src/pge/shared/distribution_strategy.py` — banda dei `_range`: distribuzioni e `range_anchor`
 - `src/pge/envelopes/` — sintassi envelope
 - Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
@@ -185,7 +189,7 @@ Qualsiasi parametro numerico accetta le seguenti forme:
 | Scalare | `density: 10` | Valore fisso |
 | Envelope lineare | `density: [[0, 10], [1, 50]]` | Interpolazione lineare tra breakpoint `[time, value]` |
 | Envelope annidata | `density: [[[0, 5], [10, 50]], 1.0, 5]` | Envelope di envelope |
-| Variazione | `grain: {duration: 0.05, duration_range: 0.01}` | `±0.01` randomizzazione |
+| Variazione | `grain: {duration: 0.05, duration_range: 0.01}` | banda larga `0.01` (default: `±0.005`) |
 | Espressione math | `onset: (pi)`, `duration: (10/2)` | Valutato via `safe_eval` |
 | Envelope normalizzato | `step: {points: [[0, 0], [1, 12]], time_mode: normalized}` | `[0, 1]` mappato su `duration` |
 | Envelope per-punto interp | `density: [[0, 5, 'cubic'], [0.5, 30, 'step'], [1, 5]]` | `type` per-segmento, override del default globale (issue #54) |
@@ -228,7 +232,11 @@ dephase: false          # Controllo variazione stocastica (vedi sezione Dephase)
 
 range_always_active: false  # true: i _range sono sempre attivi anche senza dephase
 
-distribution_mode: uniform  # (riservato, non usato correntemente)
+distribution_mode: uniform  # "uniform" (default) | "gaussian"
+                            # COME la banda del range viene riempita
+
+range_anchor: center    # "center" (default) | "min"
+                        # DOVE cade il valore base dentro la banda
 
 time_scale: 1.0         # fattore di scala temporale globale (default 1.0)
 
@@ -236,6 +244,71 @@ clip_strategy: overflow_margin  # "overflow_margin" (default) | "passthrough"
                                 # Decide quali grain entrano in stream.voices
 clip_margin: 0.0        # tolleranza in secondi per la coda dei grain (default 0.0)
 ```
+
+### La banda dei `_range`: `distribution_mode` e `range_anchor`
+
+Ogni parametro con un `_range` associato produce, per ogni grano, un valore
+pescato dentro una **banda**. La banda si descrive con tre concetti ortogonali,
+che vanno tenuti distinti:
+
+| concetto | chiave | cosa decide |
+|---|---|---|
+| larghezza | il valore del `_range` stesso | quanto è larga la banda |
+| forma | `distribution_mode` | come la banda viene riempita |
+| ancora | `range_anchor` | dove cade `base` dentro la banda |
+
+**`range` è sempre la larghezza della banda**, in ogni distribuzione e in
+entrambe le ancore. Non è mai una deviazione standard, non è mai una semi-ampiezza.
+
+```yaml
+range_anchor: center   # default — banda [base - range/2, base + range/2]
+range_anchor: min      # banda [base, base + range]: base è il MINIMO
+```
+
+Con `base: 300` e `range: 200`:
+
+| `distribution_mode` | `range_anchor` | banda | dove si addensa |
+|---|---|---|---|
+| `uniform` | `center` | 200 … 400 | piatta |
+| `uniform` | `min` | 300 … 500 | piatta |
+| `gaussian` | `center` | 200 … 400 | picco a 300 |
+| `gaussian` | `min` | 300 … 500 | picco a 400 |
+
+La gaussiana è **troncata**: σ = larghezza/6, quindi i bordi della banda cadono
+a 3σ dalla media, e la coda oltre i bordi (~0.3%) viene appiattita sull'estremo
+invece di uscire. Nessun campione cade fuori dalla banda dichiarata.
+
+**Cosa governa `range_anchor`.** Tutti e soli i `_range` che passano da
+`Parameter`: `volume_range`, `pan_range`, `grain.duration_range`,
+`pointer.offset_range`, `pitch.range`. Vale anche per il pitch quantizzato
+(unità EDO): con `min` gli step interi partono da `base` e salgono.
+
+**Cosa NON governa**, e resta simmetrico in ogni caso:
+
+- il **jitter implicito** (`ParameterBounds.default_jitter`, attivo sotto
+  dephase quando *non* c'è un `_range` dichiarato) — è un tremolio attorno al
+  valore, non una banda dichiarata: non c'è nessun `range` scritto da
+  reinterpretare, e ancorarlo al minimo lo renderebbe un offset positivo
+  sistematico;
+- il **detune implicito del pitch** (`±12 cents`, vedi
+  [Detune implicito](#detune-implicito-del-pitch-senza-range)) — stessa ragione;
+- lo **spread delle voice strategy** (`spread`, `pitch_range`, `pointer_range`):
+  non sono `_range` di un parametro, non hanno una `base` di cui essere il minimo.
+
+**Bounds.** Con `range_anchor: min` la banda arriva a `base + range`, quindi il
+tetto può sforare `max_val` dove la versione centrata (`base + range/2`) non lo
+faceva. Il motore lo verifica **al parse** e solleva `ParameterBoundError`
+invece di lasciare che il safety clamp schiacci la banda contro il tetto. Il
+controllo scatta quando il massimo è calcolabile esattamente (scalare+scalare,
+envelope+scalare, scalare+envelope); con base e range entrambi envelope il
+massimo della somma non è la somma dei massimi, quindi resta il solo clamp.
+
+> **Cambio di comportamento (post v5.2.0).** Fino alla v5.2.0 `gaussian` leggeva
+> `range` come **σ**, con la campana illimitata richiusa solo dal clamp ai bounds
+> del parametro: `range: 200` su `base: 300` produceva valori grosso modo fra 0 e
+> 600. Ora produce 200…400. `uniform` non cambia. Chi usava `distribution_mode:
+> gaussian` e vuole un'escursione paragonabile a prima deve moltiplicare il
+> proprio `range` per circa 6.
 
 ### clip_strategy — Controllo grain out-of-bounds
 
@@ -312,12 +385,17 @@ Bounds: `density` ∈ [0.01, 4000], `fill_factor` ∈ [0.001, 50], `distribution
 ```yaml
 volume: 0.0                        # dB, default 0.0
 volume: [[0, -12], [30, 0]]
-volume_range: 3.0                  # ±3 dB randomizzazione per grano
+volume_range: 3.0                  # banda larga 3 dB attorno al valore
+                                   # (con range_anchor: min → da 0 a +3 dB)
 
 pan: 0.0                           # gradi, 0 = centro, ±180 = estremi
 pan: [[0, -90], [30, 90]]
-pan_range: 30.0                    # ±30° randomizzazione per grano
+pan_range: 30.0                    # banda larga 30° attorno al valore
 ```
+
+I `_range` sono larghezze di banda: dove cade il valore base dentro la banda
+lo decide `range_anchor` (default `center` → `±range/2`). Vedi
+[La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor).
 
 Bounds: `volume` ∈ [-120, 12], `pan` ∈ [-3600, 3600].
 
@@ -329,7 +407,7 @@ Bounds: `volume` ∈ [-120, 12], `pan` ∈ [-3600, 3600].
 grain:
   duration: 0.05           # secondi, default 0.05
   duration: [[0, 0.02], [30, 0.2]]
-  duration_range: 0.01     # ±0.01s randomizzazione
+  duration_range: 0.01     # banda larga 0.01 s (default: ±0.005 s)
 
   # Unità di misura per duration e duration_range: seconds (default) |
   # samples | milliseconds. La conversione avviene al parse e vale per
@@ -338,7 +416,7 @@ grain:
   # 'samples': campioni alla frequenza di output del motore (48000 Hz).
   duration_unit: samples
   duration: 512            # 512 campioni = 512/48000 s
-  duration_range: 64       # ±64 campioni
+  duration_range: 64       # banda larga 64 campioni (default: ±32)
   duration: [[0, 48], [30, 4800]]   # envelope: Y in campioni
 
   # 'milliseconds': fattore fisso 1e-3, indipendente dal sample rate.
@@ -346,7 +424,7 @@ grain:
   # solo numeri molto piccoli.
   duration_unit: milliseconds
   duration: 50             # 50 ms = 0.05 s
-  duration_range: 4.5      # ±4.5 ms
+  duration_range: 4.5      # banda larga 4.5 ms (default: ±2.25 ms)
   duration: [[0, 1], [30, 100]]     # envelope: Y in millisecondi
 
   envelope: hanning        # finestra per shape del grano (default: hanning)
@@ -418,7 +496,9 @@ pointer:
                           # 1.0 = velocità normale, -1.0 = indietro, 2.0 = doppia
                           # supporta envelope: [[0, 1.0], [30, 2.0]]
 
-  offset_range: 0.0       # deviazione per-grano ∈ [-offset_range, +offset_range]
+  offset_range: 0.0       # deviazione per-grano: banda larga offset_range
+                          # attorno a 0 (con range_anchor: min → da 0 in su,
+                          # cioè sempre in avanti).
                           # scalata sulla finestra di loop attiva e CONFINATA al
                           # suo interno (wrap modulare). Senza loop: scala e wrap
                           # sull'intero file.
@@ -491,11 +571,13 @@ Chiavi valide del blocco: le 6 unità più `range` e `value`. `value` è ammesso
 pitch:
   ratio: 1.0              # rapporto di trasposizione (default 1.0 = no trasposizione)
   ratio: [[0, 0.5], [30, 2.0]]
-  range: 0.1              # ±variazione random intorno a ratio
+  range: 0.1              # larghezza della banda di variazione random
+                          # (range_anchor: center → ±0.05 intorno a ratio)
 
   semitones: 0            # trasposizione in semitoni (intero o float)
   semitones: [[0, -12], [30, 12]]
-  range: 6                # ±variazione random in semitoni (intera)
+  range: 6                # larghezza della banda in semitoni, step interi
+                          # (range_anchor: min → da base a base+6 semitoni)
 
   quarter_tone: 3         # quarti di tono (24-EDO)
   eighth_tone: 6          # ottavi di tono (48-EDO)
@@ -515,7 +597,10 @@ pitch:
 ## Dephase (Variazione Stocastica)
 
 `dephase` controlla la probabilità di applicare variazioni stocastiche per-grano.
-Si applica a tutti i parametri che hanno un `_range` associato.
+Si applica a tutti i parametri che hanno un `_range` associato. Decide **se** la
+variazione avviene; la banda dentro cui il valore viene pescato la decidono
+`distribution_mode` e `range_anchor` (vedi
+[La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor)).
 
 ```yaml
 # Disabilitato (default): range attivi solo se presenti
