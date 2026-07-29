@@ -8,6 +8,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+---
+
+## [v5.1.0] — "RNG Groups & BP Envelopes" — 2026-07-29
+
+Include anche il refactor library/CLI taggato come `v5.0.0`, che era rimasto
+senza una sezione propria in questo file.
+
 ### Modificato (breaking)
 
 - **Import path**: i nove package flat (`core`, `engine`, `rendering`,
