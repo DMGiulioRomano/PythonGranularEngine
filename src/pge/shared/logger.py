@@ -279,6 +279,40 @@ def log_config_warning(stream_id: str, param_name: str,
         f"Δ={deviation:>+10.6f}"
     )
 
+def log_band_warning(stream_id: str, param_name: str,
+                     band_min: float, band_max: float,
+                     max_val: float):
+    """
+    Logga un warning quando la banda di `range_anchor: min` sfora il tetto
+    del parametro.
+
+    In modalita' 'min' la banda dichiarata e' [base, base + range]: se la sua
+    cima supera max_val, i valori oltre il tetto vengono clampati a valle e la
+    banda effettiva e' piu' stretta di quella scritta nello YAML. Non e' un
+    errore — la stessa coppia sfora anche da centrata, silenziosamente — ma
+    va detto una volta al parse invece che una volta per grano.
+
+    Args:
+        stream_id: ID dello stream
+        param_name: nome del parametro
+        band_min: base della banda
+        band_max: cima della banda (base + range)
+        max_val: tetto del parametro
+    """
+    logger = get_clip_logger()
+
+    if logger is None:
+        return
+
+    logger.warning(
+        f"[BANDA] [{stream_id}] {param_name:<20} | "
+        f"range_anchor=min | "
+        f"banda [{band_min:.2f}, {band_max:.2f}] oltre MAX={max_val:.2f} | "
+        f"Δ={band_max - max_val:+.2f} | "
+        f"i valori oltre il tetto verranno clampati"
+    )
+
+
 def log_loop_drift_warning(stream_id: str, elapsed_time: float,
                            pointer_pos: float,
                            loop_start: float, loop_end: float,

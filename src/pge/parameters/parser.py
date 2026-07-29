@@ -16,7 +16,9 @@ from typing import Union, Optional, List, Any
 from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.parameters.parameter_definitions import get_parameter_definition
+from pge.shared.distribution_strategy import ANCHOR_MIN
 from pge.shared.exceptions import InvalidParameterError, ParameterBoundError
+from pge.shared.logger import log_band_warning
 from pge.shared.seeding import component_rng
 
 class GranularParser:
@@ -118,6 +120,14 @@ class GranularParser:
             value_type='probability'
         ) if clean_prob is not None else None
 
+        # 3b. In modalità 'min' la banda dichiarata è [base, base + range]:
+        # se sfora il tetto del parametro va detto qui, una volta, invece di
+        # lasciarlo scoprire dal log dei clip per-grano.
+        if self.range_anchor == ANCHOR_MIN and validated_range is not None:
+            self._warn_if_band_exceeds_bounds(
+                validated_value, validated_range, bounds, name
+            )
+
         # 4. Assembla e restituisce l'oggetto Smart Parameter.
         # RNG per-componente (issue #154): ogni parametro pesca dal proprio
         # stream derivato da (seed, rng_id, nome) — i draw di un parametro
@@ -138,6 +148,35 @@ class GranularParser:
     # =========================================================================
     # INTERNAL HELPER METHODS
     # =========================================================================
+
+    @staticmethod
+    def _peak(param: ParamInput) -> float:
+        """Valore massimo di uno scalare o di un Envelope (picco dei
+        breakpoint): la combinazione peggiore per la cima della banda."""
+        if isinstance(param, Envelope):
+            return max(bp[1] for bp in param.breakpoints)
+        return float(param)
+
+    def _warn_if_band_exceeds_bounds(self, value, mod_range, bounds, name):
+        """Avvisa se la banda [base, base + range] supera il tetto.
+
+        Solo un avviso: il safety clamp a valle resta la rete, e un errore
+        duro renderebbe fatale una configurazione che da centrata passa
+        (sforando in silenzio esattamente allo stesso modo)."""
+        if bounds.max_val is None:
+            return
+
+        band_min = self._peak(value)
+        band_max = band_min + self._peak(mod_range)
+
+        if band_max > bounds.max_val:
+            log_band_warning(
+                stream_id=self.stream_id,
+                param_name=name,
+                band_min=band_min,
+                band_max=band_max,
+                max_val=bounds.max_val,
+            )
 
     def _parse_input(self, raw_data: Any, context_info: str) -> Optional[ParamInput]:
         """
