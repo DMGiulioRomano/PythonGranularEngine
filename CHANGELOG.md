@@ -8,6 +8,53 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`range_anchor: center | min`**: chiave per-stream che decide dove sta
+  `base` rispetto alla banda di un `<param>_range`. Con `center` (default) la
+  banda è `[base - range/2, base + range/2]`; con `min` è
+  `[base, base + range]`, cioè `base` è il minimo e `range` la forbice di
+  apertura verso l'alto. È la semantica di `granulation-studies`, che finora
+  divergeva da quella del motore dentro lo stesso `study.yml`: gli assi dello
+  studio sono ancorati al minimo, ma il blocco `base:` passa intatto a PGE e
+  veniva letto come centrato.
+
+  L'ancora è un asse ortogonale a `distribution_mode` e vive sulle
+  `DistributionStrategy` (`shared/distribution_strategy.py`): la distribuzione
+  dice **come** si riempie la banda, l'ancora dice **dov'è**. Governa tutto
+  ciò che passa da `Parameter.get_value` — ogni `_range` dichiarato e il pitch
+  quantizzato, che in `min` non scende mai sotto `base`.
+
+  Restano invariati per scelta: il **jitter implicito** (`default_jitter`), che
+  è un tremolio simmetrico attorno al valore e non una banda dichiarata; il
+  **detune implicito** del pitch (`± cents` pieno); lo **spread per-voce** delle
+  voice strategy (`± spread/2`). Dettaglio e motivazioni in
+  `docs/reference/yaml.md` §Ancora del range.
+
+  In modalità `min` con `distribution_mode: gaussian`, `range` diventa la
+  **larghezza** della banda invece della σ: μ al centro banda, σ = `range/6`
+  (i bordi cadono a 3σ) e clamp ai bordi, come in `granulation-studies`. È
+  l'unica sorpresa della chiave, ed è il prezzo della promessa "mai sotto
+  `base`": con σ = `range` circa un terzo dei valori cadrebbe sotto `base`
+  (misurato: 30.8%). Il clamp tocca lo 0.28% dei campioni.
+
+  Il default `center` non cambia un bit del rendering — dimostrato da un
+  golden test i cui valori attesi sono stati generati sul codice precedente
+  alla feature (`tests/fixtures/range_anchor_center_golden.json`), non
+  fotografati dal codice nuovo. La chiave entra nel fingerprint della cache
+  stem, quindi flipparla forza il re-render.
+
+- **Avviso `[BANDA]` al parse**: in modalità `min` una banda che supera il
+  tetto del parametro viene segnalata una volta, con banda e tetto nominati,
+  invece di lasciarlo scoprire dal log dei clip per-grano. Resta un avviso e
+  non un errore: da centrata la stessa coppia sfora e viene solo clampata.
+
+### Corretto
+
+- **Documentazione**: `docs/reference/yaml.md` dichiarava `distribution_mode`
+  "riservato, non usato correntemente". È usato: arriva a ogni `Parameter` e
+  sceglie la distribuzione (`uniform` | `gaussian`).
+
 ---
 
 ## [v5.2.0] — "Millisecond Grain" — 2026-07-29

@@ -10,7 +10,8 @@ sources:
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
-last_synced_commit: abea29b
+  - src/pge/shared/distribution_strategy.py
+last_synced_commit: 6989c60
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -38,6 +39,8 @@ Sezioni rilevanti in questo doc:
 - [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
 - [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
+- [Ancora del range](#ancora-del-range-range_anchor) — `range_anchor`: banda
+  centrata su `base` o ancorata al minimo
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [Dephase](#dephase-variazione-stocastica)
 - [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
 - [Envelopes](#envelopes) — sintassi envelope completa
@@ -228,7 +231,12 @@ dephase: false          # Controllo variazione stocastica (vedi sezione Dephase)
 
 range_always_active: false  # true: i _range sono sempre attivi anche senza dephase
 
-distribution_mode: uniform  # (riservato, non usato correntemente)
+distribution_mode: uniform  # "uniform" (default) | "gaussian"
+                            # Forma della distribuzione con cui i _range pescano
+
+range_anchor: center    # "center" (default) | "min"
+                        # Dove sta `base` rispetto alla banda dei _range
+                        # (vedi sezione Ancora del range)
 
 time_scale: 1.0         # fattore di scala temporale globale (default 1.0)
 
@@ -236,6 +244,92 @@ clip_strategy: overflow_margin  # "overflow_margin" (default) | "passthrough"
                                 # Decide quali grain entrano in stream.voices
 clip_margin: 0.0        # tolleranza in secondi per la coda dei grain (default 0.0)
 ```
+
+---
+
+## Ancora del range (`range_anchor`)
+
+Decide dove sta `base` rispetto alla banda che un `<param>_range` descrive.
+Campo per-stream, default `center`: **nessuno YAML esistente cambia
+comportamento**.
+
+| `range_anchor` | banda | `base` è |
+|---|---|---|
+| `center` (default) | `[base - range/2, base + range/2]` | il **centro** |
+| `min` | `[base, base + range]` | il **minimo** |
+
+```yaml
+streams:
+  - stream_id: s1
+    range_anchor: min       # default: center
+    grain:
+      duration: 0.300
+      duration_range: 0.200 # min → [0.300, 0.500] · center → [0.200, 0.400]
+```
+
+`range_anchor` è ortogonale a `distribution_mode`: la distribuzione dice
+**come** si riempie la banda, l'ancora dice **dov'è**.
+
+La modalità `min` è la semantica di
+[granulation-studies](https://github.com/DMGiulioRomano/granulation-studies),
+dove la banda di un asse è `[base, base + range]`. Serve a chi scrive uno
+`study.yml` e incontra le due convenzioni nello stesso file: gli assi dello
+studio sono ancorati al minimo, il blocco `base:` passa intatto al motore e
+finora veniva letto come centrato.
+
+### La gaussiana in modalità `min`
+
+Con `distribution_mode: gaussian` la modalità cambia **anche il significato di
+`range`**, ed è l'unica sorpresa della chiave:
+
+| | `range` è | coda |
+|---|---|---|
+| `center` | **σ** (deviazione standard) | illimitata, richiusa solo dal safety clamp del parametro |
+| `min` | **larghezza** della banda, con σ = `range/6` | clampata ai bordi banda (i bordi cadono a 3σ) |
+
+Concretamente, con `range: 200` la nuvola non si limita a spostarsi: si
+**stringe** da σ=200 a σ≈33. È il prezzo della promessa "mai sotto `base`":
+una gaussiana con σ=`range` centrata sulla banda lascerebbe circa un terzo dei
+valori sotto `base` (misurato: 30.8%), e la modalità mentirebbe sul proprio
+nome. Il clamp ai bordi tocca lo 0.28% dei campioni, cioè le sole code oltre 3σ.
+
+Con `distribution_mode: uniform` (default) la modalità è una pura traslazione:
+stessa larghezza, banda spostata di `range/2` verso l'alto.
+
+### Cosa governa e cosa no
+
+`range_anchor` governa **tutto ciò che passa da `Parameter.get_value`**:
+
+- ogni `<param>_range` dichiarato nello YAML — `volume_range`, `pan_range`,
+  `grain.duration_range`, `pointer.offset_range`, il `range` del blocco
+  `pitch`, e così via;
+- il pitch quantizzato (`variation_mode: quantized`): in `min` gli step
+  restano `>= base`.
+
+**Non** governa, e restano invariati:
+
+| cosa | formula | perché |
+|---|---|---|
+| jitter implicito (`default_jitter`, attivo senza `_range` esplicito) | `± jitter/2` sempre | è un tremolio simmetrico attorno al valore, non una banda dichiarata: seguirlo darebbe a ogni parametro un bias verso l'alto che nessuno ha chiesto |
+| detune implicito (`pitch`, unità con `implicit_detune_cents`) | `± cents` pieno | non nasce da un `_range` e non ha una `base` di cui essere il minimo |
+| `spread` per-voce (`voices`: pan, pointer, pitch) | `± spread/2` | è lo `spread` di una strategy, non un `_range`: piegarlo cambierebbe il senso delle voci |
+| `distribution: 1.0` asincrono (density) | `uniform(0, 2×avg_iot)` | già ancorato al minimo, per ragioni sue |
+
+### Bounds e banda che sfora
+
+In `min` la banda arriva a `base + range`, quindi una coppia che passava la
+validazione da centrata può sforare il tetto del parametro: `volume: -6` con
+`volume_range: 24` sta dentro i bounds da centrata (`[-18, 6]`) e li sfora da
+ancorata (`[-6, 18]` contro `max_val` 12).
+
+Non è un errore: il parse emette un avviso `[BANDA]` nel log dei clip e il
+safety clamp resta la rete, esattamente come per una banda centrata che sfora.
+La banda effettiva è però più stretta di quella scritta.
+
+### Cache degli stem
+
+`range_anchor` entra nel fingerprint per-stream: cambiarlo marca lo stem dirty
+e forza il re-render. Vedi [[architecture]] per il caching incrementale.
 
 ### clip_strategy — Controllo grain out-of-bounds
 
