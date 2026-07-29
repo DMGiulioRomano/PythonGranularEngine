@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ]; then input=$(cat 2>/dev/null); file_path=$(printf '%s' \"$input\" | python3 -c \"import sys,json\\ntry:\\n    d=json.load(sys.stdin)\\n    print(d.get('file_path') or d.get('tool_input',{}).get('file_path',''))\\nexcept:\\n    print('')\" 2>/dev/null); if echo \"$file_path\" | grep -q '/docs/plans/'; then exit 0; fi; echo 'BLOCCATO: sei sul branch main. Modifiche permesse solo in docs/plans/. Apri un feature branch.'; exit 2; fi"
+            "command": "branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ]; then input=$(cat 2>/dev/null); file_path=$(printf '%s' \"$input\" | python3 -c \"import sys,json\\ntry:\\n    d=json.load(sys.stdin)\\n    print(d.get('file_path') or d.get('tool_input',{}).get('file_path',''))\\nexcept:\\n    print('')\" 2>/dev/null); root=$(git rev-parse --show-toplevel 2>/dev/null); case \"$file_path\" in \"$root\"/*) ;; *) exit 0;; esac; if echo \"$file_path\" | grep -q '/docs/plans/'; then exit 0; fi; echo 'BLOCCATO: sei sul branch main. Modifiche permesse solo in docs/plans/. Apri un feature branch.'; exit 2; fi"
           }
         ]
       }
