@@ -8,6 +8,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+---
+
+## [v6.0.0] — "Range Anchor" — 2026-07-30
+
 ### Aggiunto
 
 - **`range_anchor: center | min`**: chiave per-stream che decide dove cade il
@@ -71,6 +75,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - `docs/reference/yaml.md` dichiarava `distribution_mode` "riservato, non usato
   correntemente": era falso da tempo — la chiave arriva fino a ogni `Parameter`
   via `StreamConfig` e sceglie la distribuzione dei `_range`.
+
+- Un valore invalido di `range_anchor` ora nomina lo stream che lo contiene:
+  la validazione avviene in `GranularParser.__init__`, dove lo `stream_id` è
+  noto, e non solo a valle nella `DistributionFactory` — che poteva solo
+  riportare il valore incriminato, lasciando all'utente il compito di cercare
+  quale stream lo dichiarasse.
 
 ---
 
