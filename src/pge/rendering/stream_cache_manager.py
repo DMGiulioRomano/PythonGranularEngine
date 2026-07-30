@@ -32,6 +32,24 @@ from typing import Dict, List, Optional
 # nell'hash (divergenza nota e accettata rispetto al JS, PGE-ui #39).
 FINGERPRINT_IGNORE_KEYS = frozenset({"solo", "mute"})
 
+# Versione della semantica di variazione del motore.
+#
+# Il fingerprint di uno stem non puo' essere solo il testo YAML: se il MOTORE
+# cambia il significato di una chiave a YAML invariato, l'hash resta identico,
+# lo stem resta marcato 'clean' e si continua ad ascoltare l'audio vecchio
+# senza nessun errore. Il manifest su disco non porta traccia della versione
+# del motore, quindi la traccia va messa qui.
+#
+# Bumpare a ogni modifica che cambia i VALORI prodotti a parita' di YAML:
+# formule delle distribuzioni, delle VariationStrategy, derivazione degli RNG.
+# Un bump marca dirty ogni stream di ogni progetto: un re-render completo al
+# primo run, poi la cache incrementale riparte normalmente.
+#
+# 1 -> semantica storica (uniform ±range/2, gaussian con range = sigma)
+# 2 -> range e' sempre la larghezza della banda; gaussian troncata con
+#      sigma = larghezza/6; introdotta l'ancora range_anchor
+VARIATION_SEMANTICS_VERSION = 2
+
 
 class StreamCacheManager:
     """
@@ -58,6 +76,10 @@ class StreamCacheManager:
         Le chiavi in FINGERPRINT_IGNORE_KEYS (solo/mute) vengono escluse: non
         influenzano l'audio del singolo stem, solo quali stream renderizzare.
 
+        Nell'hash entra anche VARIATION_SEMANTICS_VERSION: lo stem dipende dal
+        testo YAML E dalla semantica con cui il motore lo interpreta, e la
+        seconda puo' cambiare a YAML fermo.
+
         Args:
             stream_dict: dict parametri dello stream dallo YAML
 
@@ -68,7 +90,11 @@ class StreamCacheManager:
             k: v for k, v in stream_dict.items()
             if k not in FINGERPRINT_IGNORE_KEYS
         }
-        serialized = json.dumps(filtered, sort_keys=True)
+        payload = {
+            'semantics': VARIATION_SEMANTICS_VERSION,
+            'stream': filtered,
+        }
+        serialized = json.dumps(payload, sort_keys=True)
         return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
 
     # =========================================================================

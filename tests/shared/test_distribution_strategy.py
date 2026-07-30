@@ -232,16 +232,20 @@ class TestGaussianDistribution:
         
         assert isinstance(result, float)
     
-    def test_get_bounds_uses_three_sigma(self):
-        """get_bounds usa regola 3-sigma."""
+    def test_get_bounds_is_the_band(self):
+        """get_bounds e' la banda esatta: spread e' la larghezza, non σ.
+
+        La distribuzione e' troncata ai bordi, quindi questi sono bounds
+        reali e non la stima 3σ di una campana illimitata.
+        """
         dist = GaussianDistribution()
-        
+
         center = 100.0
-        spread = 10.0  # σ
+        spread = 10.0  # larghezza della banda
         min_b, max_b = dist.get_bounds(center, spread)
-        
-        assert min_b == 70.0  # 100 - 3*10
-        assert max_b == 130.0  # 100 + 3*10
+
+        assert min_b == 95.0   # 100 - 10/2
+        assert max_b == 105.0  # 100 + 10/2
     
     def test_get_bounds_symmetric(self):
         """Bounds sono simmetrici rispetto al center."""
@@ -265,51 +269,57 @@ class TestGaussianDistribution:
         # Con 1000 campioni, media ±2%
         assert abs(mean - center) < center * 0.02
     
-    def test_statistical_std_close_to_spread(self):
-        """Deviazione standard dei campioni ~spread."""
+    def test_statistical_std_is_one_sixth_of_the_width(self):
+        """Deviazione standard dei campioni ~larghezza/6.
+
+        spread e' la larghezza della banda; σ = spread/6 mette i bordi a 3σ.
+        """
         dist = GaussianDistribution()
         center = 100.0
-        spread = 10.0  # σ target
-        
+        spread = 10.0  # larghezza
+        sigma = spread / 6.0
+
         samples = [dist.sample(center, spread) for _ in range(1000)]
         std = statistics.stdev(samples)
-        
+
         # Con 1000 campioni, σ ±20%
-        assert abs(std - spread) < spread * 0.2
-    
+        assert abs(std - sigma) < sigma * 0.2
+
     def test_statistical_68_percent_in_one_sigma(self):
-        """~68% dei campioni in [μ-σ, μ+σ]."""
+        """~68% dei campioni in [μ-σ, μ+σ], con σ = larghezza/6."""
         dist = GaussianDistribution()
         center = 100.0
         spread = 10.0
-        
+        sigma = spread / 6.0
+
         samples = [dist.sample(center, spread) for _ in range(1000)]
-        
+
         in_one_sigma = sum(
-            1 for s in samples 
-            if center - spread <= s <= center + spread
+            1 for s in samples
+            if center - sigma <= s <= center + sigma
         )
-        
+
         percentage = (in_one_sigma / 1000) * 100
-        
+
         # ~68% ±5%
         assert 63 <= percentage <= 73
-    
+
     def test_statistical_95_percent_in_two_sigma(self):
-        """~95% dei campioni in [μ-2σ, μ+2σ]."""
+        """~95% dei campioni in [μ-2σ, μ+2σ], con σ = larghezza/6."""
         dist = GaussianDistribution()
         center = 100.0
         spread = 10.0
-        
+        sigma = spread / 6.0
+
         samples = [dist.sample(center, spread) for _ in range(1000)]
-        
+
         in_two_sigma = sum(
-            1 for s in samples 
-            if center - 2*spread <= s <= center + 2*spread
+            1 for s in samples
+            if center - 2*sigma <= s <= center + 2*sigma
         )
-        
+
         percentage = (in_two_sigma / 1000) * 100
-        
+
         # ~95% ±3%
         assert 92 <= percentage <= 98
     
@@ -587,14 +597,15 @@ class TestDistributionStrategyParametrized:
     
     @pytest.mark.parametrize("spread", [1.0, 5.0, 10.0, 50.0])
     def test_gaussian_std_accurate_at_various_spreads(self, spread):
-        """GaussianDistribution ha σ accurata per vari spread."""
+        """GaussianDistribution ha σ = larghezza/6 per varie larghezze."""
         dist = GaussianDistribution()
-        
+        sigma = spread / 6.0
+
         samples = [dist.sample(center=100.0, spread=spread) for _ in range(500)]
         std = statistics.stdev(samples)
-        
+
         # ±25% tolleranza
-        assert abs(std - spread) < spread * 0.25
+        assert abs(std - sigma) < sigma * 0.25
     
     @pytest.mark.parametrize("invalid_mode", [
         'invalid',
@@ -618,70 +629,61 @@ class TestDistributionComparison:
     """Test comparativi tra distribuzioni diverse."""
     
     def test_uniform_vs_gaussian_spread(self):
-        """Uniform ha spread più ampio di gaussian per stessi parametri."""
+        """A parita' di banda, la gaussiana e' piu' stretta della piatta.
+
+        Le due distribuzioni riempiono la STESSA banda in modo diverso:
+        uniform ha σ = larghezza/sqrt(12) ≈ 2.89, gaussian σ = larghezza/6 ≈ 1.67.
+        La campana addensa al centro, la piatta no.
+        """
         uniform = UniformDistribution()
         gaussian = GaussianDistribution()
-        
+
         center = 100.0
         spread = 10.0
-        
+
         uniform_samples = [uniform.sample(center, spread) for _ in range(1000)]
         gaussian_samples = [gaussian.sample(center, spread) for _ in range(1000)]
-        
+
         uniform_std = statistics.stdev(uniform_samples)
         gaussian_std = statistics.stdev(gaussian_samples)
-        
-        # Uniform dovrebbe avere σ ~spread/sqrt(3) ≈ 5.77
-        # Gaussian dovrebbe avere σ ~spread = 10
-        # Quindi gaussian_std > uniform_std
-        assert gaussian_std > uniform_std
+
+        assert gaussian_std < uniform_std
     
     def test_gaussian_more_concentrated_than_uniform(self):
-        """Gaussian con σ piccolo concentra campioni più di uniform con spread largo."""
+        """Gaussian su banda stretta concentra più di uniform su banda larga."""
         uniform = UniformDistribution()
         gaussian = GaussianDistribution()
-        
+
         center = 50.0
-        
-        # Uniform con spread largo
+
+        # Uniform su banda larga 20 → [40, 60] piatta
         uniform_samples = [uniform.sample(center, spread=20.0) for _ in range(1000)]
-        
-        # Gaussian con σ piccolo (più concentrato)
+
+        # Gaussian su banda larga 5 → [47.5, 52.5], σ = 5/6 ≈ 0.83
         gaussian_samples = [gaussian.sample(center, spread=5.0) for _ in range(1000)]
-        
-        # Conta campioni in zona ±10
-        uniform_in_range = sum(1 for s in uniform_samples if 40 <= s <= 60)
-        gaussian_in_range = sum(1 for s in gaussian_samples if 40 <= s <= 60)
-        
-        # Uniform: spread=20 → bounds [40, 60] → tutti i campioni (100%)
-        # Gaussian: σ=5 → [40, 60] = μ±2σ → ~95% dei campioni
-        # 
-        # Quindi uniform ≈ gaussian per questa zona
-        
-        # Usiamo zona più stretta: ±5
+
+        # Zona centrale ±5
         uniform_narrow = sum(1 for s in uniform_samples if 45 <= s <= 55)
         gaussian_narrow = sum(1 for s in gaussian_samples if 45 <= s <= 55)
-        
+
         # Uniform: [45, 55] = 10 unità su 20 = 50% → ~500
-        # Gaussian: [45, 55] = μ±σ → ~68% → ~680
-        
-        # Gaussian ha più campioni in zona centrale
+        # Gaussian: la banda [47.5, 52.5] è tutta dentro [45, 55] → 100%
         assert gaussian_narrow > uniform_narrow
     
-    def test_bounds_different_between_distributions(self):
-        """Bounds teorici diversi tra uniform e gaussian."""
+    def test_bounds_identical_between_distributions(self):
+        """Stessa banda per tutte le distribuzioni: cambia solo come si riempie.
+
+        E' il contratto: `spread` e' la larghezza della banda, sempre. La forma
+        (`distribution_mode`) decide la densita' dentro la banda, non la banda.
+        """
         uniform = UniformDistribution()
         gaussian = GaussianDistribution()
-        
+
         center = 100.0
         spread = 10.0
-        
-        u_min, u_max = uniform.get_bounds(center, spread)
-        g_min, g_max = gaussian.get_bounds(center, spread)
-        
-        # Uniform: [95, 105] (spread/2)
-        # Gaussian: [70, 130] (3σ)
-        assert (u_max - u_min) < (g_max - g_min)
+
+        assert uniform.get_bounds(center, spread) == (95.0, 105.0)
+        assert gaussian.get_bounds(center, spread) == (95.0, 105.0)
 
 class TestDistributionStrategyABCCoverage:
     """Copre i pass nei metodi astratti tramite super()."""

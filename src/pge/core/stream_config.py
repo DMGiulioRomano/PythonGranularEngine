@@ -5,6 +5,7 @@ from dataclasses import dataclass,fields
 from typing import Optional, Union
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
+from pge.shared.distribution_strategy import ANCHOR_CENTER
 
 @dataclass(frozen=True)
 class StreamContext:
@@ -76,6 +77,13 @@ class StreamConfig:
     dephase: Optional[Union[dict, bool, int, float, list]] = False
     range_always_active: bool = False
     distribution_mode: str = 'uniform'
+    # Ancora dei `_range` dichiarati: 'center' (default, banda
+    # [base - range/2, base + range/2]) o 'min' (banda [base, base + range]).
+    # Asse ortogonale a distribution_mode: quella dice come la banda si
+    # riempie, questa dove cade `base` dentro la banda. Non tocca il jitter
+    # implicito, che resta centrato (non c'e' nessun range dichiarato da
+    # reinterpretare). Vedi shared/distribution_strategy.py.
+    range_anchor: str = ANCHOR_CENTER
     time_mode: str = 'absolute'
     time_scale: float = 1.0
     clip_strategy: str = 'overflow_margin'

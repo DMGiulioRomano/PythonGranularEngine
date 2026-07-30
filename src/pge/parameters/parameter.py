@@ -23,7 +23,11 @@ from pge.envelopes.envelope import Envelope
 from pge.parameters.parameter_definitions import ParameterBounds
 from pge.shared.logger import log_clip_warning
 from pge.shared.probability_gate import *
-from pge.shared.distribution_strategy import DistributionFactory, DistributionStrategy
+from pge.shared.distribution_strategy import (
+    ANCHOR_CENTER,
+    DistributionFactory,
+    DistributionStrategy,
+)
 from pge.strategies.variation_registry import VariationFactory
 
 ParamInput = Union[float, int, Envelope]
@@ -57,6 +61,7 @@ class Parameter:
         mod_range: Optional[ParamInput] = None,
         owner_id: str = "unknown",
         distribution_mode: str = 'uniform',
+        range_anchor: str = ANCHOR_CENTER,
         rng: Optional[random.Random] = None,
     ):
         self.name = name
@@ -67,8 +72,20 @@ class Parameter:
         self._mod_range = mod_range
         self._probability_gate = NeverGate()
 
+        # Ancora effettiva: `range_anchor` vale solo se un range è stato
+        # dichiarato. Senza range esplicito si applica il jitter implicito
+        # (bounds.default_jitter), che è un tremolio simmetrico attorno al
+        # valore e non una banda: non c'è nessun `range` scritto da
+        # reinterpretare, e ancorarlo al minimo lo trasformerebbe in un
+        # offset positivo sistematico su ogni grano. La scelta è costante per
+        # tutta la vita del Parameter (mod_range non cambia dopo l'init),
+        # quindi si risolve una volta qui invece che a ogni get_value.
+        effective_anchor = range_anchor if mod_range is not None else ANCHOR_CENTER
+
         # RNG locale del parametro (issue #154): None → random globale.
-        self._distribution = DistributionFactory.create(distribution_mode, rng=rng)
+        self._distribution = DistributionFactory.create(
+            distribution_mode, rng=rng, anchor=effective_anchor
+        )
         self._variation_strategy = VariationFactory.create(bounds.variation_mode)
         
     def set_probability_gate(self, gate: ProbabilityGate):

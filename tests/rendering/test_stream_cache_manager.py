@@ -25,6 +25,7 @@ import os
 import pytest
 from unittest.mock import patch
 
+from pge.rendering import stream_cache_manager as scm
 from pge.rendering.stream_cache_manager import StreamCacheManager
 
 
@@ -194,6 +195,50 @@ class TestFingerprintIgnoresMuteSolo:
         d1 = {'stream_id': 's1', 'volume': -6.0, 'rng_group': 'gruppo_a'}
         d2 = {'stream_id': 's1', 'volume': -6.0, 'rng_group': 'gruppo_b'}
         assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
+
+    def test_range_anchor_changes_fingerprint(self, manager):
+        """range_anchor cambia la banda dei _range, quindi i valori pescati
+        e l'audio dello stem. Deve entrare nel fingerprint — mai aggiungerlo
+        a FINGERPRINT_IGNORE_KEYS."""
+        base = {'stream_id': 's1', 'volume': -6.0, 'volume_range': 8.0}
+        anchored = {**base, 'range_anchor': 'min'}
+        assert (
+            manager.compute_fingerprint(base)
+            != manager.compute_fingerprint(anchored)
+        )
+
+    def test_different_range_anchor_changes_fingerprint(self, manager):
+        d1 = {'stream_id': 's1', 'volume_range': 8.0, 'range_anchor': 'center'}
+        d2 = {'stream_id': 's1', 'volume_range': 8.0, 'range_anchor': 'min'}
+        assert manager.compute_fingerprint(d1) != manager.compute_fingerprint(d2)
+
+    def test_semantics_version_participates_in_fingerprint(self, manager):
+        """Il fingerprint copre anche la semantica del motore, non solo il testo
+        YAML. Senza, un cambio di significato a YAML invariato (es. `range` che
+        da sigma diventa larghezza della banda per la gaussiana) lascerebbe ogni
+        stem gia' renderizzato marcato 'clean': audio vecchio, nessun errore."""
+        d = {'stream_id': 's1', 'volume': -6.0}
+        before = manager.compute_fingerprint(d)
+
+        with patch.object(scm, 'VARIATION_SEMANTICS_VERSION',
+                          scm.VARIATION_SEMANTICS_VERSION + 1):
+            after = manager.compute_fingerprint(d)
+
+        assert before != after
+
+    def test_semantics_bump_marks_existing_stems_dirty(self, manager, tmp_path):
+        """End-to-end: un manifest scritto con la semantica precedente marca
+        dirty, anche con lo YAML identico e il .aif presente sul disco."""
+        aif = str(tmp_path / 's1.aif')
+        open(aif, 'w').close()
+        d = {'stream_id': 's1', 'volume': -6.0}
+        manager.save({'s1': manager.compute_fingerprint(d)})
+
+        assert manager.is_dirty(d, aif_path=aif) is False
+
+        with patch.object(scm, 'VARIATION_SEMANTICS_VERSION',
+                          scm.VARIATION_SEMANTICS_VERSION + 1):
+            assert manager.is_dirty(d, aif_path=aif) is True
 
     def test_toggling_mute_does_not_mark_stream_dirty(self, manager, tmp_path):
         """Dirty-check end-to-end: aggiungere mute non marca lo stem dirty se

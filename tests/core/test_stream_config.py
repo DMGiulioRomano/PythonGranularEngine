@@ -319,16 +319,17 @@ class TestStreamConfigDefaults:
         assert config.context is None
 
     def test_field_count(self):
-        """StreamConfig ha esattamente 9 campi (issue #154: +seed)."""
-        assert len(fields(StreamConfig)) == 9
+        """StreamConfig ha esattamente 10 campi (issue #154: +seed;
+        range-anchor-mode: +range_anchor)."""
+        assert len(fields(StreamConfig)) == 10
 
     def test_field_names(self):
         """Nomi campi nell'ordine atteso."""
         names = [f.name for f in fields(StreamConfig)]
         expected = [
             'dephase', 'range_always_active', 'distribution_mode',
-            'time_mode', 'time_scale', 'clip_strategy', 'clip_margin',
-            'seed', 'context'
+            'range_anchor', 'time_mode', 'time_scale', 'clip_strategy',
+            'clip_margin', 'seed', 'context'
         ]
         assert names == expected
 

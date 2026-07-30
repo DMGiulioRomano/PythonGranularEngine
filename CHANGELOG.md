@@ -8,6 +8,70 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`range_anchor: center | min`**: chiave per-stream che decide dove cade il
+  valore base dentro la banda di un `_range`. Default `center` — banda
+  `[base - range/2, base + range/2]`, il comportamento storico. Con `min` la
+  banda diventa `[base, base + range]`: `base` è il **minimo** e `range` la
+  forbice di apertura verso l'alto. Allinea la lettura dei range di PGE a
+  quella di `granulation-studies`, dove le bande sono `[base, base + range]`
+  e la stessa parola significava due cose dentro lo stesso `study.yml`.
+
+  Governa tutti e soli i `_range` che passano da `Parameter`: `volume_range`,
+  `pan_range`, `grain.duration_range`, `pointer.offset_range`, `pitch.range`,
+  compreso il pitch quantizzato delle unità EDO. **Non** governa il jitter
+  implicito (`default_jitter`), il detune implicito del pitch (±12 cents) né
+  lo spread delle voice strategy (`spread`, `pitch_range`, `pointer_range`):
+  non sono range dichiarati, non hanno una `base` di cui essere il minimo, e
+  restano simmetrici in ogni modalità.
+
+  Con `range_anchor: min` la banda arriva a `base + range` e può sforare
+  `max_val` dove la versione centrata non lo faceva: il motore lo verifica al
+  parse e solleva `ParameterBoundError` invece di lasciare che il safety clamp
+  schiacci la banda contro il tetto. Il controllo scatta quando il massimo è
+  esatto (scalare+scalare, envelope+scalare, scalare+envelope); con base e
+  range entrambi envelope resta il solo clamp.
+
+  Reference: `docs/reference/yaml.md` §La banda dei `_range`.
+
+### Modificato (breaking)
+
+- **`distribution_mode: gaussian` legge `range` come larghezza della banda,
+  non più come σ.** Prima la gaussiana era illimitata e richiusa solo dal clamp
+  ai bounds del parametro: `range: 200` su `base: 300` produceva valori grosso
+  modo fra 0 e 600. Ora è una gaussiana **troncata** sulla banda dichiarata —
+  σ = larghezza/6 (i bordi cadono a 3σ), coda clampata ai bordi — quindi
+  produce 200…400, con il picco su 300.
+
+  La ragione: `range` significava due cose diverse a seconda della
+  distribuzione — larghezza con `uniform`, σ con `gaussian` — e chi scriveva
+  `range: 200` si aspettava una banda larga 200 in entrambi i casi. Adesso
+  `range` è sempre la larghezza, la distribuzione decide solo come la banda
+  viene riempita, e `range_anchor` dove cade `base`.
+
+  `uniform` non cambia: il default resta identico bit per bit, dimostrato dal
+  golden `tests/engine/test_default_variation_identity.py`. Chi usava
+  `gaussian` e vuole un'escursione paragonabile a prima deve moltiplicare il
+  proprio `range` per circa 6.
+
+- **Il fingerprint della cache stems include la versione della semantica del
+  motore** (`VARIATION_SEMANTICS_VERSION` in `rendering/stream_cache_manager.py`).
+  Il fingerprint era lo SHA-256 del solo testo YAML per-stream, e il manifest
+  non porta traccia della versione del motore: col cambio di semantica della
+  gaussiana a YAML invariato, ogni stem già renderizzato sarebbe rimasto
+  marcato `clean` e si sarebbe continuato ad ascoltare l'audio vecchio, senza
+  nessun errore. Effetto pratico: **un re-render completo al primo run dopo
+  l'aggiornamento**, poi la cache incrementale riparte normalmente. La
+  costante va bumpata a ogni modifica futura che cambi i valori prodotti a
+  parità di YAML.
+
+### Corretto
+
+- `docs/reference/yaml.md` dichiarava `distribution_mode` "riservato, non usato
+  correntemente": era falso da tempo — la chiave arriva fino a ogni `Parameter`
+  via `StreamConfig` e sceglie la distribuzione dei `_range`.
+
 ---
 
 ## [v5.2.0] — "Millisecond Grain" — 2026-07-29
