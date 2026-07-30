@@ -23,6 +23,7 @@ from unittest.mock import patch
 from pge.core.stream_config import StreamConfig, StreamContext
 from pge.engine.generator import Generator
 from pge.parameters.parameter import Parameter
+from pge.parameters.parser import GranularParser
 from pge.parameters.parameter_definitions import ParameterBounds
 from pge.shared.distribution_strategy import ANCHOR_CENTER, ANCHOR_MIN
 from pge.shared.exceptions import InvalidFieldValueError
@@ -215,6 +216,25 @@ class TestYamlSurface:
             _param(anchor='minimo')
 
         assert exc.value.field == 'range_anchor'
+
+    def test_invalid_anchor_names_the_stream(self):
+        """Un typo va attribuito allo stream che lo contiene.
+
+        Senza stream_id l'errore dice solo "valore invalido": in uno YAML con
+        decine di stream tocca all'utente cercare quale. Il parser conosce il
+        proprio stream_id, quindi valida l'ancora una volta all'init.
+        """
+        ctx = StreamContext(
+            stream_id='colpevole', onset=0.0, duration=10.0,
+            sample='x.wav', sample_dur_sec=30.0,
+        )
+        cfg = StreamConfig(range_anchor='minimo', context=ctx)
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            GranularParser(cfg)
+
+        assert exc.value.field == 'range_anchor'
+        assert exc.value.stream_id == 'colpevole'
 
     def _render(self, tmp_path, anchor):
         data = {

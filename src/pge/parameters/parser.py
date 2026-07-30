@@ -16,8 +16,16 @@ from typing import Union, Optional, List, Any
 from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.parameters.parameter_definitions import get_parameter_definition
-from pge.shared.distribution_strategy import ANCHOR_CENTER, ANCHOR_MIN
-from pge.shared.exceptions import InvalidParameterError, ParameterBoundError
+from pge.shared.distribution_strategy import (
+    ANCHOR_CENTER,
+    ANCHOR_MIN,
+    validate_range_anchor,
+)
+from pge.shared.exceptions import (
+    InvalidFieldValueError,
+    InvalidParameterError,
+    ParameterBoundError,
+)
 from pge.shared.seeding import component_rng
 
 class GranularParser:
@@ -51,7 +59,12 @@ class GranularParser:
         self.distribution_mode = config.distribution_mode
         # Ancora dei range dichiarati (center | min). getattr difensivo come
         # per `seed`: i config parziali dei test possono non averla.
-        self.range_anchor = getattr(config, 'range_anchor', ANCHOR_CENTER)
+        # Validata qui e non solo a valle nella DistributionFactory: qui si
+        # conosce lo stream_id, quindi un typo dice QUALE stream lo contiene
+        # invece del solo valore incriminato.
+        self.range_anchor = self._validated_anchor(
+            getattr(config, 'range_anchor', ANCHOR_CENTER)
+        )
         # Seed effettivo del run (issue #154): deriva l'RNG per-parametro.
         # getattr difensivo: i config parziali dei test possono non averlo.
         self.seed = getattr(config, 'seed', None)
@@ -169,6 +182,14 @@ class GranularParser:
         err.stream_id = self.stream_id
         raise err
 
+    def _validated_anchor(self, anchor: str) -> str:
+        """Valida `range_anchor` attribuendo l'errore allo stream."""
+        try:
+            return validate_range_anchor(anchor)
+        except InvalidFieldValueError as err:
+            err.stream_id = self.stream_id
+            raise
+
     def _validate_band_ceiling(
         self,
         value: Optional[ParamInput],
@@ -191,7 +212,8 @@ class GranularParser:
         Solo il tetto: il pavimento della banda e' `base`, gia' validato
         contro min_val da _validate_and_clip.
 
-        Il controllo scatta solo quando il massimo della somma e' ESATTO:
+        Il controllo scatta solo quando il massimo della somma e' calcolabile
+        da un solo lato:
 
             base scalare + range scalare   -> base + range
             base envelope + range scalare  -> max(base) + range
@@ -201,6 +223,12 @@ class GranularParser:
         massimi (i due picchi possono cadere in istanti diversi): il controllo
         sarebbe conservativo e un falso positivo bloccherebbe un render valido.
         In quel caso resta il safety clamp.
+
+        Il picco di un envelope e' stimato dai suoi breakpoint. Con
+        interpolazione cubica la curva puo' superare i breakpoint, quindi la
+        stima puo' essere per difetto: il controllo puo' lasciar passare una
+        banda che sfora di poco, mai bloccarne una valida. Il residuo lo
+        prende il safety clamp — errore di sicurezza dalla parte giusta.
         """
         if self.range_anchor != ANCHOR_MIN:
             return
