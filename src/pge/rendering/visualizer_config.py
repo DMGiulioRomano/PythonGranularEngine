@@ -14,11 +14,20 @@ Il risultato resta un dict. `ScoreVisualizer(generator, config={...})` e
 `viz.config` sono superficie pubblica — api.py, la CLI e gli esempi del paper
 li usano — e sostituirne il tipo costerebbe decine di modifiche per un
 guadagno estetico. E' lo schema a essere dichiarato, non il tipo che circola.
+
+Cosa lo schema verifica, e cosa no: verifica i NOMI delle chiavi, al primo
+livello e dentro i gruppi annidati, e fonde gli override sui default. Non
+verifica il TIPO dei valori: `{'envelope_display': 5}` passa di qui e fallisce
+molto piu' tardi, dentro chi lo legge. Tipizzare i valori vorrebbe dire
+duplicare in un validatore quello che le annotazioni gia' dicono, e il caso
+che questo modulo esiste per chiudere e' il refuso nel nome — non il tipo
+sbagliato, che si vede al primo giro.
 """
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, field, fields, is_dataclass, replace
+from dataclasses import (
+    MISSING, dataclass, field, fields, is_dataclass, replace)
 from typing import Optional
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
@@ -199,6 +208,22 @@ class VisualizerConfig:
     # =========================================================================
 
     @classmethod
+    def _default_of(cls, field):
+        """Il valore di default di un campo, comunque sia dichiarato.
+
+        Non si legge dall'attributo di classe: per un campo con
+        `default_factory` quell'attributo NON esiste — dataclasses lo cancella
+        — e `getattr(cls, name, None)` restituirebbe None. Proprio i due
+        dizionari-dato (`envelope_ranges`, `envelope_colors`) sono dichiarati
+        cosi', quindi un merge scritto su getattr li salterebbe in silenzio.
+        """
+        if field.default is not MISSING:
+            return field.default
+        if field.default_factory is not MISSING:
+            return field.default_factory()
+        return None
+
+    @classmethod
     def from_overrides(cls, overrides):
         """Configurazione con gli scarti dell'utente applicati sui default.
 
@@ -207,8 +232,8 @@ class VisualizerConfig:
         e' quello che fa dict.update — il primo che leggesse un campo non
         ridichiarato solleverebbe KeyError.
         """
-        known = {f.name for f in fields(cls)}
-        unknown = sorted(set(overrides or {}) - known)
+        by_name = {f.name: f for f in fields(cls)}
+        unknown = sorted(set(overrides or {}) - set(by_name))
         if unknown:
             # Nominare le chiavi e' il punto: un errore generico lascerebbe a
             # cercarle fra le quaranta.
@@ -218,12 +243,14 @@ class VisualizerConfig:
 
         values = {}
         for name, value in (overrides or {}).items():
-            default = getattr(cls, name, None)
+            default = cls._default_of(by_name[name])
             if is_dataclass(default) and isinstance(value, dict):
-                value = replace(default, **value)
+                value = _merge_group(name, default, value)
             elif isinstance(default, dict) and isinstance(value, dict):
                 # Anche i dizionari-dato (envelope_ranges, envelope_colors) si
                 # fondono: chi ne ritocca una entry non deve perdere le altre.
+                # `default` e' gia' fresco (viene dal factory), ma la copia
+                # resta esplicita: la tabella di modulo non si tocca.
                 merged = deepcopy(default)
                 merged.update(value)
                 value = merged
@@ -240,13 +267,40 @@ class VisualizerConfig:
         return {f.name: _as_plain(getattr(self, f.name)) for f in fields(self)}
 
 
+def _merge_group(group_name, default, overrides):
+    """Un gruppo annidato con gli scarti dell'utente applicati campo per campo.
+
+    La validazione delle chiavi e' esplicita e non lasciata a `replace`: quello
+    fallirebbe con un TypeError del costruttore del gruppo, e un refuso dentro
+    un gruppo e' lo stesso errore dell'utente di un refuso al primo livello —
+    quindi deve essere lo stesso errore del programma. Il nome e' qualificato
+    (`envelope_display.sampls`) perche' dire solo `sampls` lascerebbe a cercare
+    in quale dei tre gruppi sta.
+    """
+    known = {f.name for f in fields(default)}
+    unknown = sorted(set(overrides) - known)
+    if unknown:
+        raise ValueError(
+            "chiavi di configurazione sconosciute per ScoreVisualizer: "
+            + ", ".join(f'{group_name}.{key}' for key in unknown))
+    return replace(default, **overrides)
+
+
 def _as_plain(value):
     """Un gruppo dichiarato torna dict; i contenitori mutabili si copiano.
 
-    Si copiano solo dict, list e set: sono quelli che due visualizer non devono
-    condividere. Tutto il resto passa per riferimento — in particolare un
-    oggetto Colormap passato dall'utente, che deve restare LO STESSO oggetto:
-    copiarlo sarebbe sprecato e sorprendente.
+    Si copiano solo dict, list e set: sono quelli che i consumatori mutano, e
+    sono i tipi in cui i default e gli override arrivano davvero. Tutto il
+    resto passa per riferimento — in particolare un oggetto Colormap passato
+    dall'utente, che deve restare LO STESSO oggetto: copiarlo sarebbe sprecato
+    e sorprendente.
+
+    Il limite e' voluto ma va detto: un contenitore mutabile di un tipo
+    diverso (una tuple di dict passata come `magnify_targets`, un ndarray
+    passato come range) attraversa per riferimento. Oggi non fa danni perche'
+    ogni consumatore di quei campi e' in sola lettura; se un domani qualcuno
+    ci scrivesse, la copia andrebbe estesa a quel tipo invece che data per
+    scontata.
     """
     if is_dataclass(value) and not isinstance(value, type):
         return {f.name: _as_plain(getattr(value, f.name)) for f in fields(value)}
