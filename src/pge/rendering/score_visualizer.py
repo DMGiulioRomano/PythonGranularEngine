@@ -53,6 +53,7 @@ except (ValueError, KeyError):
 from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
 from pge.rendering import envelope_display  # noqa: E402
 from pge.rendering import grain_visuals  # noqa: E402
+from pge.rendering import magnifier_targets  # noqa: E402
 
 
 class ScoreVisualizer:
@@ -825,118 +826,46 @@ class ScoreVisualizer:
             self._draw_one_magnifier(fig, overlay, resolved)
 
     def _resolve_magnify_targets(self, page_start, page_end, stream_entries):
-        """Target risolti (concreti) per la pagina: {entry, t, y, zoom, out, src}.
-
-        L'auto (se abilitato) aggiunge la lente sul cluster più denso; gli
-        espliciti la cui 't' cade in [page_start, page_end) vengono risolti su
-        stream e y concreti."""
-        resolved = []
-        if self.config.get('magnify_auto'):
-            auto = self._auto_magnify_target(
-                page_start, page_end, stream_entries)
-            if auto is not None:
-                resolved.append(auto)
-        for target in (self.config.get('magnify_targets') or []):
-            r = self._resolve_explicit_target(
-                target, page_start, page_end, stream_entries)
-            if r is not None:
-                resolved.append(r)
-        return resolved
+        """Target risolti (MagnifyTarget) per la pagina.
+        Delega a rendering.magnifier_targets.resolve."""
+        return magnifier_targets.resolve(
+            stream_entries, page_start, page_end,
+            auto=self.config.get('magnify_auto'),
+            specs=self.config.get('magnify_targets'),
+            hist_bins=self.config['magnify_hist_bins'],
+            defaults=self.config['magnify_defaults'])
 
     def _page_grain_points(self, stream, page_start, page_end):
-        """(onset, pointer_pos) dei grani dello stream visibili nella pagina."""
-        return [
-            (g.onset, g.pointer_pos)
-            for g in grain_visuals.visible_grains(stream, page_start, page_end)
-        ]
+        """(onset, pointer_pos) dei grani visibili nella pagina.
+        Delega a rendering.magnifier_targets.grain_points."""
+        return magnifier_targets.grain_points(stream, page_start, page_end)
 
     def _auto_magnify_target(self, page_start, page_end, stream_entries):
-        """Target automatico: centroide del bin più denso (tempo×posizione) fra
-        gli stream attivi. None se nessuno stream ha grani in pagina."""
-        nt, ny = self.config['magnify_hist_bins']
-        best = None  # (count, entry, tc, yc)
-        for entry in stream_entries:
-            pts = self._page_grain_points(entry['stream'], page_start, page_end)
-            if not pts:
-                continue
-            ts = np.array([p[0] for p in pts])
-            ys = np.array([p[1] for p in pts])
-            y_hi = max(entry['sample_duration'], 1e-6)
-            H, te, ye = np.histogram2d(
-                ts, ys, bins=[nt, ny],
-                range=[[page_start, page_end], [0.0, y_hi]])
-            i, j = np.unravel_index(int(np.argmax(H)), H.shape)
-            count = H[i, j]
-            if count <= 0:
-                continue
-            # Centro sul centroide dei grani del bin: cade su grani reali, così
-            # la finestra (stretta per via dello zoom) li contiene davvero.
-            in_bin = [(t, y) for t, y in pts
-                      if te[i] <= t <= te[i + 1] and ye[j] <= y <= ye[j + 1]]
-            if not in_bin:
-                continue
-            tc = float(np.mean([t for t, _ in in_bin]))
-            yc = float(np.mean([y for _, y in in_bin]))
-            if best is None or count > best[0]:
-                best = (count, entry, tc, yc)
-        if best is None:
-            return None
-        _, entry, tc, yc = best
-        d = self.config['magnify_defaults']
-        return {'entry': entry, 't': tc, 'y': yc,
-                'zoom': d['zoom'], 'out': d['out'], 'src': d['src'],
-                'corner': d.get('corner', 'top-right')}
+        """Target automatico sul cluster piu' denso.
+        Delega a rendering.magnifier_targets.auto_target."""
+        return magnifier_targets.auto_target(
+            stream_entries, page_start, page_end,
+            hist_bins=self.config['magnify_hist_bins'],
+            defaults=self.config['magnify_defaults'])
 
     def _resolve_explicit_target(self, target, page_start, page_end,
                                  stream_entries):
-        """Risolve un target esplicito {t, y?, zoom?, out?, src?, stream?}.
-
-        None se 't' non cade nella pagina. Stream: la chiave 'stream' (per
-        stream_id) o, in mancanza, lo stream più denso in pagina. y: la chiave
-        'y' o il centroide dei pointer_pos vicino a 't' (o metà sample)."""
-        t = target.get('t')
-        if t is None or not (page_start <= t < page_end):
-            return None
-        entry = None
-        sid = target.get('stream')
-        if sid is not None:
-            entry = next((e for e in stream_entries
-                          if e['stream'].stream_id == sid), None)
-        if entry is None:
-            entry = self._densest_stream_entry(
-                page_start, page_end, stream_entries)
-        if entry is None:
-            return None
-        d = self.config['magnify_defaults']
-        y = target.get('y')
-        if y is None:
-            y = self._auto_y_at(entry['stream'], t, page_start, page_end)
-            if y is None:
-                y = entry['sample_duration'] * 0.5
-        return {'entry': entry, 't': float(t), 'y': float(y),
-                'zoom': target.get('zoom', d['zoom']),
-                'out': target.get('out', d['out']),
-                'src': target.get('src', d['src']),
-                'corner': target.get('corner', d.get('corner', 'top-right'))}
+        """Risolve un target esplicito su stream e quota concreti.
+        Delega a rendering.magnifier_targets.explicit_target."""
+        return magnifier_targets.explicit_target(
+            target, stream_entries, page_start, page_end,
+            defaults=self.config['magnify_defaults'])
 
     def _densest_stream_entry(self, page_start, page_end, stream_entries):
-        """Entry dello stream con più grani visibili in pagina (fallback: primo)."""
-        best, best_n = None, 0
-        for entry in stream_entries:
-            n = len(self._page_grain_points(
-                entry['stream'], page_start, page_end))
-            if n > best_n:
-                best, best_n = entry, n
-        return best or (stream_entries[0] if stream_entries else None)
+        """Entry dello stream con piu' grani visibili in pagina.
+        Delega a rendering.magnifier_targets.densest_entry."""
+        return magnifier_targets.densest_entry(
+            stream_entries, page_start, page_end)
 
     def _auto_y_at(self, stream, t, page_start, page_end):
-        """Centroide dei pointer_pos dei grani vicini a 't' (None se nessuno)."""
-        pts = self._page_grain_points(stream, page_start, page_end)
-        if not pts:
-            return None
-        w = 0.05 * (page_end - page_start)  # finestra locale ±5% pagina
-        near = [y for (gt, y) in pts if abs(gt - t) <= w] or [y for _, y in pts]
-        return float(np.mean(near))
+        """Quota della lente dedotta dai grani vicini a t.
+        Delega a rendering.magnifier_targets.auto_y_at."""
+        return magnifier_targets.auto_y_at(stream, t, page_start, page_end)
 
     def _make_magnify_overlay(self, fig):
         """Asse a tutta figura in coordinate pixel: cerchi tondi e linee dritte
@@ -955,18 +884,18 @@ class ScoreVisualizer:
         """Proietta una lente: inset circolare zoomato + marker sorgente +
         connettori. I quattro controlli (center, zoom, out, src) sono
         indipendenti; src=None usa il valore fedele out/zoom."""
-        entry = resolved['entry']
+        entry = resolved.entry
         ax_grain = entry['ax']
         stream = entry['stream']
         sample_dur = entry['sample_duration']
         cents_range = entry['cents_range']
-        tc, yc = float(resolved['t']), float(resolved['y'])
-        zoom = max(float(resolved['zoom']), 1e-6)
+        tc, yc = float(resolved.t), float(resolved.y)
+        zoom = max(float(resolved.zoom), 1e-6)
 
         W, H = fig.get_size_inches() * fig.dpi
         min_dim = min(W, H)
-        out_r_px = float(resolved['out']) * min_dim
-        src = resolved.get('src')
+        out_r_px = float(resolved.out) * min_dim
+        src = resolved.src
         src_r_px = (float(src) * min_dim) if src is not None else out_r_px / zoom
 
         # Scala px/dato dell'asse principale al centro (asse lineare).
@@ -985,7 +914,7 @@ class ScoreVisualizer:
         # Posizione del cerchio di uscita: angolo del subplot (frazione figura).
         pos = ax_grain.get_position()
         r_fx, r_fy = out_r_px / W, out_r_px / H
-        corner = resolved.get('corner') or \
+        corner = resolved.corner or \
             self.config['magnify_defaults'].get('corner', 'top-right')
         pad = 0.012
         cy = (pos.y1 - r_fy - pad) if 'top' in corner else (pos.y0 + r_fy + pad)

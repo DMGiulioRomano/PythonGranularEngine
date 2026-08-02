@@ -440,15 +440,15 @@ def _snapshot_magnifiers(viz):
             'page_idx': layout['page_idx'],
             'targets': [
                 {
-                    'stream_id': r['entry']['stream'].stream_id,
-                    't': _round(r['t']),
-                    'y': _round(r['y']),
-                    'zoom': _round(r['zoom']),
-                    'out': _round(r['out']),
+                    'stream_id': r.entry['stream'].stream_id,
+                    't': _round(r.t),
+                    'y': _round(r.y),
+                    'zoom': _round(r.zoom),
+                    'out': _round(r.out),
                     # src=None e' il default significativo ("out/zoom"), non un
                     # valore mancante: va congelato com'e'.
-                    'src': None if r['src'] is None else _round(r['src']),
-                    'corner': r['corner'],
+                    'src': None if r.src is None else _round(r.src),
+                    'corner': r.corner,
                 }
                 for r in resolved
             ],

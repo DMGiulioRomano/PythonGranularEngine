@@ -49,6 +49,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lettura: essendo condivisa fra visualizer, una mutazione la avvelenerebbe
   per tutti.
 
+- **`rendering/magnifier_targets`**: dove puntare la lente di ingrandimento —
+  il cluster più denso quando è automatica, i punti chiesti dall'utente
+  risolti su stream e quota concreti quando è esplicita. Il risultato è ora
+  un `MagnifyTarget` (dataclass frozen) al posto del dict a sette chiavi
+  stringa. Proiettare il cerchio e disegnare i connettori restano di
+  `ScoreVisualizer`. Questa logica non aveva test unitari: era coperta solo di
+  rimbalzo.
+
 ### Modificato
 
 - **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
