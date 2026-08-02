@@ -23,7 +23,6 @@ from pge.parameters.parameter import Parameter
 from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
 from pge.rendering.envelope_extractor import (
     get_stream_envelopes,
-    get_voice_offset_envelopes,
     base_param_name,
 )
 
@@ -695,3 +694,104 @@ class TestEnvelopeFilter:
 # =============================================================================
 # GROUP - Pitch color auto-zoom (colormap divergente pitch_div + range dinamico per-subplot)
 # =============================================================================
+
+
+# =============================================================================
+# Robustezza della lettura delle facce
+# =============================================================================
+
+class TestValueOutsideTheDomain:
+    """Un Parameter puo' contenere un valore che non e' ne' un numero ne' un
+    Envelope: `Parameter.__init__` non valida, e chi lo costruisce a mano puo'
+    metterci dentro qualunque cosa.
+
+    Il valore non e' una curva, e infatti non se ne pubblica nessuna. Ma la
+    reazione giusta e' saltarlo, non far cadere l'estrazione: le curve dello
+    stream sono decine, e un parametro malformato non deve portarsi via anche
+    le altre — cioe' l'intera partitura, o l'intera sessione Sonic Visualiser.
+    """
+
+    def _stream_with(self, value):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.volume = Parameter('volume', value, GRANULAR_PARAMETERS['volume'])
+        s.pan = _param('pan', Envelope([[0, -90.0], [10, 90.0]]))
+        return s
+
+    def test_a_bogus_value_is_skipped_not_raised(self):
+        """La faccia non classificabile sparisce dal risultato."""
+        keys = get_stream_envelopes(self._stream_with('rumore'), show_static=True)
+        assert 'volume' not in keys
+
+    def test_the_other_curves_survive_it(self):
+        """E' il punto: le curve buone dello stesso stream restano."""
+        keys = get_stream_envelopes(self._stream_with('rumore'), show_static=True)
+        assert 'pan' in keys
+
+    def test_the_value_object_itself_stays_strict(self):
+        """La tolleranza sta in chi legge, non nel value object: ParameterCurve
+        continua a dichiarare il proprio dominio e a farlo rispettare, cosi'
+        chi lo usa altrove ha un errore che nomina il tipo invece di un
+        `float()` nudo che parla di stringhe."""
+        from pge.parameters.parameter_curve import ParameterCurve
+        with pytest.raises(TypeError):
+            ParameterCurve.classify('rumore')
+
+
+class TestFlattenSpansTheStream:
+    """La costante appiattita copre l'estensione dello stream.
+
+    E' l'unico punto dell'estrattore che ha bisogno di `stream.duration` — la
+    ragione per cui ParameterCurve, che dice solo *cos'e'* il dato, non la
+    conosce. Senza un test l'ancoraggio non e' tenuto fermo da niente: si puo'
+    appiattire su una durata qualunque e la suite resta verde.
+    """
+
+    def _flat(self, duration, value=-6.0):
+        s = make_stream('s1', onset=0.0, duration=duration)
+        s.volume = _param('volume', value)
+        return get_stream_envelopes(s, show_static=True)['volume']
+
+    def test_the_flat_curve_runs_from_zero_to_the_stream_duration(self):
+        env = self._flat(duration=7.5)
+        assert [bp[0] for bp in env.breakpoints] == [0, pytest.approx(7.5)]
+
+    def test_a_different_duration_moves_the_end(self):
+        """Due stream di durata diversa danno due curve piatte diverse: la
+        durata e' letta, non costante."""
+        assert self._flat(duration=3.0).breakpoints[-1][0] == pytest.approx(3.0)
+        assert self._flat(duration=42.0).breakpoints[-1][0] == pytest.approx(42.0)
+
+    def test_the_value_is_the_constant_on_both_ends(self):
+        env = self._flat(duration=7.5, value=-12.0)
+        assert [bp[1] for bp in env.breakpoints] == [
+            pytest.approx(-12.0), pytest.approx(-12.0)]
+
+
+class TestRawSourcesHaveOnlyAValue:
+    """Le sorgenti che non sono un Parameter portano un valore e basta: niente
+    range, niente gate.
+
+    `grain_envelope` e' dichiarata `is_smart=False`, quindi lo Stream la espone
+    grezza; di solito e' una stringa e non e' leggibile come curva. Ma un
+    numero lo sarebbe, e senza la guardia la riga `grain_envelope_prob` —
+    che esiste perche' la spec ha un `dephase_key` — pubblicherebbe come
+    probabilita' il valore base. Sarebbe per giunta una chiave fuori da
+    ENVELOPE_COLORS, cioe' fuori dall'universo dei nomi plottabili.
+    """
+
+    def _stream_with_numeric_grain_envelope(self):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.grain_envelope = 3
+        return s
+
+    def test_no_probability_key_from_a_raw_numeric_source(self):
+        keys = get_stream_envelopes(
+            self._stream_with_numeric_grain_envelope(), show_static=True)
+        assert 'grain_envelope_prob' not in keys
+
+    def test_the_value_face_still_reads_it(self):
+        """La guardia riguarda solo le facce che una sorgente grezza non ha:
+        il valore si legge."""
+        keys = get_stream_envelopes(
+            self._stream_with_numeric_grain_envelope(), show_static=True)
+        assert 'grain_envelope' in keys

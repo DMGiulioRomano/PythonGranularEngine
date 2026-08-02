@@ -183,11 +183,22 @@ def _curve_of(source, stream):
     if obj is None:
         return ParameterCurve(kind='absent')
     if isinstance(obj, Parameter):
-        return {
-            'value': obj.value_curve,
-            'range': obj.range_curve,
-            'probability': obj.probability_curve,
+        face = {
+            'value': lambda p: p.value_curve,
+            'range': lambda p: p.range_curve,
+            'probability': lambda p: p.probability_curve,
         }[source.face]
+        try:
+            return face(obj)
+        except TypeError:
+            # Dentro un Parameter puo' esserci un valore fuori dal dominio di
+            # ParameterCurve: Parameter non valida al costruttore. Qui non e'
+            # una curva e non se ne pubblica nessuna — ma saltarla e' l'unica
+            # reazione proporzionata, perche' far cadere questa faccia vuol
+            # dire far cadere tutte le altre curve dello stream, cioe' la
+            # partitura intera. Il value object resta stretto: e' il lettore a
+            # essere tollerante, come lo era prima del refactor.
+            return ParameterCurve(kind='absent')
     # Sorgente grezza (pitch_value): ha solo il valore, niente range ne' gate.
     if source.face != 'value':
         return ParameterCurve(kind='absent')
@@ -277,14 +288,3 @@ def get_stream_envelopes(stream, show_static=False, show_voice_offsets=False,
         }
 
     return envelopes
-
-
-def get_voice_offset_envelopes(stream):
-    """Curve degli offset per-voce come dict {chiave: Envelope}.
-
-    Il campionamento vive in VoiceManager.offset_curves (issue #90 lo faceva
-    qui, frugando in vm._pitch_strategy / vm._pointer_strategy): questa resta
-    come vista a dizionario per chi vuole le sole curve per-voce senza il
-    resto — get_stream_envelopes le prende dalla stessa sorgente, non da qui.
-    """
-    return dict(_voice_curves(stream))
