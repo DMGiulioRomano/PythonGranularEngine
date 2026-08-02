@@ -30,6 +30,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   pubblici a quello che i lettori delle curve raggiungevano per via privata
   (`stream._pointer.deviation`, `stream._voice_manager`).
 
+- **`rendering/envelope_display`**: quanto è alta la corsia di una curva
+  (`display_ranges`) e dove ci cade dentro un valore (`normalize`), più il
+  riconoscimento delle interpolazioni per-segmento. Fratello di
+  `envelope_extractor` — quello dice *quali* curve ha uno stream, questo *quanto
+  sono alte* — e come lui matplotlib-free, quindi verificabile senza costruire
+  una figura. Estratto da `ScoreVisualizer`, che ne conserva i quattro metodi
+  come deleghe con le firme di prima.
+
 ### Modificato
 
 - **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287

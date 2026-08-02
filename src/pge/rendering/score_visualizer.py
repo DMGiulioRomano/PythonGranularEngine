@@ -51,6 +51,7 @@ except (ValueError, KeyError):
 # per retro-compatibilita': main.py importa PLOT_ENVELOPE_KEYS da qui, i test
 # importano ENVELOPE_COLORS da qui.
 from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
+from pge.rendering import envelope_display  # noqa: E402
 
 
 class ScoreVisualizer:
@@ -1449,38 +1450,19 @@ class ScoreVisualizer:
             dict {param_name: (disp_min, disp_max)} per ogni parametro non-pan.
         """
         cfg = self.config['envelope_display']
-        pad_ratio = cfg['pad_ratio']
-        n = cfg['samples']
-        stream_start = stream.onset
-
-        result = {}
-        for param_name, envelope in envelopes.items():
-            # Le chiavi per-voce ('__vN', #90) ereditano dal parametro base.
-            if self._base_param_name(param_name) == 'pan':
-                continue  # pan ciclico: range fisso (-180, 180)
-
-            # Escursione reale nella finestra visibile: campiona densamente la
-            # curva (cattura overshoot cubic) e includi i breakpoint interni.
-            t_rel0 = max(0.0, t_start - stream_start)
-            t_rel1 = max(t_rel0, t_end - stream_start)
-            samples = [envelope.evaluate(t) for t in np.linspace(t_rel0, t_rel1, n)]
-            samples += [v for t, v in envelope.breakpoints if t_rel0 <= t <= t_rel1]
-            if not samples:
-                continue
-            v_min, v_max = min(samples), max(samples)
-            span = v_max - v_min
-            if span <= 1e-12:
-                pad = max(abs(v_min) * pad_ratio, 1e-6)  # envelope costante: centra
-            else:
-                pad = span * pad_ratio
-            result[param_name] = (v_min - pad, v_max + pad)
-
-        return result
+        return envelope_display.display_ranges(
+            envelopes, stream.onset, t_start, t_end,
+            pad_ratio=cfg['pad_ratio'], samples=cfg['samples'])
 
     def _normalize_envelope_value(self, param_name, value):
         """
         Normalizza un valore di envelope a 0-1 sul range di display data-driven
         attivo (issue #114). Nessun clamp ai range fissi tranne per pan.
+
+        Delega a rendering.envelope_display.normalize. I range sono lo
+        scratchpad che _draw_envelopes riempie per la corsia in corso: qui
+        restano un attributo perche' i sei chiamanti interni non se li passano,
+        ma la REGOLA non li legge piu' da self.
 
         Args:
             param_name: nome del parametro
@@ -1489,47 +1471,24 @@ class ScoreVisualizer:
         Returns:
             float: valore normalizzato (tipicamente 0-1; pan è clippato).
         """
-        # Le curve per-voce ('__vN', #90) si normalizzano col base.
-        base = self._base_param_name(param_name)
-
-        # pan resta ciclico: wrap modulo su ±180 e clamp (range fisso).
-        if base == 'pan':
-            min_val, max_val = self.config['envelope_ranges']['pan']
-            value = ((value + 180) % 360) - 180
-            return np.clip((value - min_val) / (max_val - min_val), 0, 1)
-
-        # Range di display data-driven (popolato da _draw_envelopes per tutti i
-        # parametri tranne pan). Nessun clip: la curva scala sulla sua escursione.
-        display_ranges = getattr(self, '_current_display_ranges', None) or {}
-        if param_name in display_ranges:
-            min_val, max_val = display_ranges[param_name]
-            if max_val != min_val:
-                return (value - min_val) / (max_val - min_val)   # NESSUN clip
-            return 0.5                                            # costante: centro corsia
-        return 0.5  # fallback difensivo (draw imposta sempre i display range)
+        return envelope_display.normalize(
+            param_name, value,
+            getattr(self, '_current_display_ranges', None) or {},
+            pan_range=self.config['envelope_ranges']['pan'])
 
     @staticmethod
     def _segment_strategy_name(segment) -> str:
-        """Mappa strategy del segmento al nome canonico ('step'/'linear'/'cubic')."""
-        cls_name = segment.strategy.__class__.__name__
-        if 'Step' in cls_name:
-            return 'step'
-        if 'Cubic' in cls_name:
-            return 'cubic'
-        return 'linear'
+        """Mappa strategy del segmento al nome canonico ('step'/'linear'/'cubic').
+        Delega a rendering.envelope_display.segment_strategy_name."""
+        return envelope_display.segment_strategy_name(segment)
 
     @staticmethod
     def _is_per_segment_heterogeneous(envelope) -> bool:
         """
         True se envelope ha segmenti con strategie diverse (es. step+linear).
-
-        Envelope uniformi (1 segmento o tutti stessa strategy) → False.
+        Delega a rendering.envelope_display.is_per_segment_heterogeneous.
         """
-        segs = getattr(envelope, 'segments', None)
-        if not segs or len(segs) < 2:
-            return False
-        names = {ScoreVisualizer._segment_strategy_name(s) for s in segs}
-        return len(names) > 1
+        return envelope_display.is_per_segment_heterogeneous(envelope)
 
     def _draw_envelopes(self, ax, stream, y_base, y_height, page_start, page_end):
         """

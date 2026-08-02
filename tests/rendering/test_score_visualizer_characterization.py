@@ -8,7 +8,7 @@ target delle lenti — su config reali del progetto, costruite attraverso la
 pipeline vera (Generator -> Stream), non su MagicMock.
 
 E' il paracadute dell'estrazione dei quattro moduli puri (page_layout,
-envelope_scaling, grain_visuals, magnifier_targets): mentre la logica esce
+envelope_display, grain_visuals, magnifier_targets): mentre la logica esce
 dalla classe, l'output osservabile non deve cambiare di una virgola.
 
 Perche' i numeri e non il PDF: uno snapshot della figura sarebbe legato alla
@@ -51,7 +51,7 @@ Rigenerare la baseline (solo se il cambiamento e' voluto):
         tests/rendering/test_score_visualizer_characterization.py -k regenerate
 
 DA CANCELLARE a refactor completato: la copertura definitiva sono
-test_page_layout.py, test_envelope_scaling.py, test_grain_visuals.py e
+test_page_layout.py, test_envelope_display.py, test_grain_visuals.py e
 test_magnifier_targets.py.
 """
 import json
