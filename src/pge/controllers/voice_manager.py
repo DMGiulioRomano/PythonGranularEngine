@@ -30,7 +30,9 @@ Layering pointer (da design doc):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, List, Optional
+
+import numpy as np
 
 from pge.parameters.pitch_unit import PitchUnit, EdoUnit
 from pge.strategies.voice_pitch_strategy import VoicePitchStrategy
@@ -66,6 +68,36 @@ class VoiceConfig:
     pointer_offset: float
     pan_offset: float
     onset_offset: float
+
+
+@dataclass(frozen=True)
+class VoiceCurve:
+    """Una curva campionata da una voice strategy.
+
+    dimension:   'pitch_offset' | 'pointer_offset' | 'pointer_range'
+    voice_index: indice della voce, None per le curve non per-voce
+    envelope:    la curva campionata
+
+    Porta un Envelope e NON una ParameterCurve, deliberatamente. Per un
+    Parameter un envelope piatto e' una costante travestita e va classificato
+    come tale; per una curva di voce l'estensione temporale e' informazione —
+    dice in quale finestra la voce esiste, perche' num_voices puo' accenderla
+    e spegnerla nel tempo. Collassarla a 'constant' butterebbe via proprio il
+    dato che la rende utile.
+
+    Il nome pubblicato (`voice_pitch_offset__v2`) lo compone il consumatore
+    dalla struttura: qui non si costruiscono stringhe.
+    """
+    dimension: str
+    voice_index: Optional[int]
+    envelope: 'Envelope'
+
+
+# Densita' della griglia di campionamento degli offset per-voce. 33 e' il
+# valore storico (issue #90): nato senza motivazione e mai rivisto, qui
+# diventa un default esplicito e sovrascrivibile invece di una costante
+# sepolta nel codice che campiona.
+DEFAULT_OFFSET_SAMPLES = 33
 
 
 # =============================================================================
@@ -171,3 +203,103 @@ class VoiceManager:
             pan_offset=pan,
             onset_offset=onset,
         )
+
+    # =========================================================================
+    # CURVE DEGLI OFFSET PER-VOCE
+    # =========================================================================
+
+    def offset_curves(
+        self,
+        duration: float,
+        *,
+        samples: int = DEFAULT_OFFSET_SAMPLES,
+        active_voices: Optional[Callable[[float], float]] = None,
+    ) -> List[VoiceCurve]:
+        """Campiona le strategy e restituisce le curve degli offset per-voce.
+
+        Args:
+            duration: estensione temporale su cui campionare.
+            samples: densita' della griglia (default: comportamento storico).
+            active_voices: callable t -> numero di voci attive, per troncare le
+                curve alla finestra in cui la voce esiste. None -> tutte
+                attive. E' un predicato iniettato, non un Parameter posseduto:
+                la logica time-varying di num_voices resta fuori da qui.
+        """
+        from pge.envelopes.envelope import Envelope
+
+        grid = np.linspace(0.0, duration, samples)
+        curves: List[VoiceCurve] = []
+
+        has_pitch = self._pitch_strategy is not None
+        has_pointer = self._pointer_strategy is not None
+
+        def is_active(voice_index, t):
+            if active_voices is None:
+                return True
+            return int(active_voices(t)) > voice_index
+
+        def carries_information(points):
+            """Una curva identicamente nulla non dice niente: si scarta."""
+            return len(points) >= 2 and any(
+                abs(value) > 1e-9 for _, value in points)
+
+        for voice_index in range(1, self.max_voices):
+            pitch_points = []
+            pointer_points = []
+            for t in grid:
+                if not is_active(voice_index, float(t)):
+                    continue
+                config = self.get_voice_config(voice_index, float(t))
+                if has_pitch:
+                    # Il pitch e' un fattore di ratio: si disegna in semitoni.
+                    factor = config.pitch_factor
+                    pitch_points.append([float(t), (
+                        float(12.0 * np.log2(factor)) if factor > 0 else 0.0)])
+                if has_pointer:
+                    # L'offset del pointer si disegna com'e'.
+                    pointer_points.append(
+                        [float(t), float(config.pointer_offset)])
+
+            if has_pitch and carries_information(pitch_points):
+                curves.append(VoiceCurve(
+                    dimension='pitch_offset',
+                    voice_index=voice_index,
+                    envelope=Envelope(pitch_points),
+                ))
+            if has_pointer and carries_information(pointer_points):
+                curves.append(VoiceCurve(
+                    dimension='pointer_offset',
+                    voice_index=voice_index,
+                    envelope=Envelope(pointer_points),
+                ))
+
+        spread = self._pointer_range_curve(duration)
+        if spread is not None:
+            curves.append(spread)
+
+        return curves
+
+    def _pointer_range_curve(self, duration: float) -> Optional[VoiceCurve]:
+        """Ampiezza dello spread, esposta dalla pointer strategy stocastica.
+
+        Curva singola e non per-voce (voice_index None): descrive la banda
+        entro cui le voci si distribuiscono, non una voce in particolare.
+        """
+        from pge.envelopes.envelope import Envelope
+
+        if self._pointer_strategy is None:
+            return None
+
+        spread = getattr(self._pointer_strategy, 'pointer_range', None)
+
+        if isinstance(spread, Envelope):
+            if not any(abs(bp[1]) > 1e-9 for bp in spread.breakpoints):
+                return None
+            envelope = spread
+        elif isinstance(spread, (int, float)) and abs(spread) > 1e-9:
+            envelope = Envelope([[0, spread], [duration, spread]])
+        else:
+            return None
+
+        return VoiceCurve(
+            dimension='pointer_range', voice_index=None, envelope=envelope)
