@@ -513,11 +513,14 @@ class TestDephaseGateEnvelopeCollection:
 
 
 class TestPointerDeviationEnvelopeCollection:
-    """issue #96 - il vero pointer_deviation NON e' esposto sullo Stream: vive in
-    stream._pointer.deviation (PointerController), offset_range in _mod_range e
-    dephase in _probability_gate. hasattr(stream,'pointer_deviation') e' False:
-    il loop sugli schemi lo salta, serve estrazione esplicita (come pointer_speed,
-    issue #88). Chiavi: `pointer_deviation` (range) e `pointer_deviation_prob`."""
+    """issue #96 - pointer_deviation vive in stream._pointer.deviation
+    (PointerController), con offset_range in _mod_range e dephase in
+    _probability_gate; Stream.pointer_deviation lo espone.
+
+    Il suo valore base e' un dummy 0 che non si disegna: l'informazione sta nel
+    range e nel gate. Da qui le due sole chiavi pubblicate, `pointer_deviation`
+    (che porta il RANGE) e `pointer_deviation_prob` — e l'esclusione dal ciclo
+    sugli schemi, che TestSchemaExclusion sotto tiene ferma."""
 
     def _stream(self, mod_range=None, gate=None):
         from pge.parameters.parameter import Parameter
@@ -569,6 +572,61 @@ class TestPointerDeviationEnvelopeCollection:
         s = make_stream('s1', onset=0.0, duration=10.0)
         del s.pointer_deviation
         assert get_stream_envelopes(s) is not None
+
+
+class TestSchemaExclusion:
+    """pointer_deviation e' negli schemi ma NON si pubblica dal ciclo sugli
+    schemi: lo esclude _SCHEMA_EXCLUDED, e le sue due chiavi arrivano dalle
+    righe dedicate.
+
+    Prima che Stream lo esponesse, l'esclusione era un accidente —
+    hasattr(stream,'pointer_deviation') era False e il ciclo lo saltava da
+    solo. Adesso e' una decisione, e una decisione va tenuta ferma: senza
+    questi test toglierla lascia la suite verde mentre cambia le chiavi
+    pubblicate, che sono contratto (nomi dei layer SV, --plot-envelopes).
+    """
+
+    def _stream(self, mod_range=0.4):
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pointer_deviation = Parameter(
+            'pointer_deviation', 0.0,
+            GRANULAR_PARAMETERS['pointer_deviation'], mod_range=mod_range)
+        # Un parametro di schema qualsiasi, per avere un riferimento d'ordine.
+        s.volume = _param('volume', -6.0)
+        return s
+
+    def test_no_range_suffixed_key_is_published(self):
+        """La chiave del range si chiama `pointer_deviation`, non
+        `pointer_deviation_range`: quel nome non e' mai esistito, e nascerebbe
+        solo se il ciclo sugli schemi ricominciasse a vedere il parametro
+        (spec.range_path e' 'offset_range', quindi la riga _range scatterebbe).
+        """
+        keys = get_stream_envelopes(self._stream(), show_static=True)
+        assert 'pointer_deviation_range' not in keys
+
+    def test_the_published_key_carries_the_range_not_the_base(self):
+        """Il valore base e' un dummy 0. Se la chiave portasse quello invece
+        del range, la curva disegnata sarebbe una riga piatta a zero — e la
+        deviazione, che e' l'unica cosa da vedere, sparirebbe."""
+        envelopes = get_stream_envelopes(self._stream(mod_range=0.4),
+                                         show_static=True)
+        assert envelopes['pointer_deviation'].evaluate(0.0) == 0.4
+
+    def test_it_is_published_after_the_schema_driven_keys(self):
+        """L'ordine delle chiavi e' contratto: i layer di una sessione Sonic
+        Visualiser lo seguono. pointer_deviation arriva dalle righe dedicate,
+        quindi dopo quelle degli schemi e dei nomi espliciti."""
+        keys = list(get_stream_envelopes(self._stream(), show_static=True))
+        assert keys.index('pointer_deviation') > keys.index('volume')
+
+    def test_the_exclusion_is_declared_and_not_incidental(self):
+        """L'esclusione e' scritta, e riguarda solo pointer_deviation: se
+        crescesse in silenzio, ogni nome aggiunto sparirebbe dalla partitura
+        senza che niente lo dica."""
+        from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
+        assert _SCHEMA_EXCLUDED == frozenset({'pointer_deviation'})
 
 
 class TestEnvelopeFilter:

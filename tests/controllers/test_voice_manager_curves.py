@@ -35,6 +35,27 @@ class TestVoiceZeroIsReference:
                  if vc.dimension == 'pitch_offset']
         assert {vc.voice_index for vc in pitch} == {1, 2}
 
+    def test_voice_zero_is_skipped_by_rule_not_by_luck(self):
+        """Che la voce 0 non compaia lo decide il campionamento, non il caso.
+
+        Le due asserzioni sopra passerebbero anche partendo da zero: le
+        strategy di oggi danno alla voce 0 un offset nullo, e la curva verrebbe
+        scartata perche' identicamente zero. Sono due regole diverse, e questa
+        le separa — una strategy che desse alla voce 0 un offset reale non deve
+        far comparire una traccia '__v0', perche' quella voce e' il
+        RIFERIMENTO: il suo offset rispetto a se stessa e' zero per
+        definizione, qualunque cosa risponda la strategy.
+        """
+        class OffsetsEveryVoice:
+            def get_pointer_offset(self, voice_index, num_voices, time):
+                return 0.5 + voice_index
+
+        vm = VoiceManager(max_voices=3,
+                          pointer_strategy=OffsetsEveryVoice())
+        indexes = {vc.voice_index for vc in vm.offset_curves(duration=10.0)
+                   if vc.dimension == 'pointer_offset'}
+        assert indexes == {1, 2}
+
 
 class TestPointerDimension:
 
