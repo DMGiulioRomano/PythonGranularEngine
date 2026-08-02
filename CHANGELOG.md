@@ -76,14 +76,55 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - **Override parziale di un gruppo di config annidato**: passare
   `config={'envelope_display': {'pad_ratio': 0.1}}` a `ScoreVisualizer`
   cancellava gli altri campi del gruppo, e il primo che li leggeva sollevava
-  `KeyError: 'samples'`. Il merge è ora profondo. Stesso problema per
-  `magnify_defaults`, `pitch_color_autozoom` ed `envelope_ranges`.
+  `KeyError: 'samples'`. Il merge è ora profondo. Stesso problema, e stessa
+  correzione, per `magnify_defaults` e `pitch_color_autozoom`.
 
-- **Chiavi di configurazione sconosciute**: erano accettate in silenzio, quindi
-  un refuso si manifestava solo come un'opzione senza effetto. Ora sollevano
-  `ValueError` nominando le chiavi.
+- **Override parziale dei dizionari-dato** (`envelope_ranges`,
+  `envelope_colors`): erano il caso più insidioso dei precedenti, perché sono
+  dichiarati con `default_factory` — e per quei campi `dataclasses` cancella
+  l'attributo di classe, quindi un merge scritto leggendo `getattr(cls, nome)`
+  li saltava in silenzio. `config={'envelope_ranges': {'volume': (-40, 0)}}`
+  faceva sparire tutti gli altri range, e il disegno di una curva di pan
+  sollevava `KeyError: 'pan'`; con `envelope_colors` non si schiantava ma la
+  partitura usciva monocroma, tutte le curve sul grigio di fallback. Il
+  default si legge ora da `fields()`, che è l'unico posto dove esiste
+  comunque sia dichiarato.
+
+- **Refuso dentro un gruppo annidato**: `{'envelope_display': {'sampls': 4}}`
+  sollevava il `TypeError` del costruttore del gruppo invece del `ValueError`
+  dichiarato per le chiavi sconosciute — quindi chi intercettava `ValueError`
+  attorno alla costruzione del visualizer si perdeva metà dei refusi. Ora è
+  un `ValueError` col nome qualificato (`envelope_display.sampls`).
 
 ### Modificato
+
+- **BREAKING — chiavi di configurazione sconosciute**: erano accettate in
+  silenzio, quindi un refuso si manifestava solo come un'opzione senza
+  effetto. Ora sollevano `ValueError` nominando le chiavi. È un fallimento
+  duro su un costruttore pubblico, senza deprecazione intermedia: codice
+  esterno che passava una chiave in più a `ScoreVisualizer(...)` o a
+  `api.export_score_pdf(config=...)` e finora girava, adesso si ferma.
+  L'insieme delle chiavi e ogni loro default sono invariati, quindi nessuna
+  configurazione *corretta* cambia comportamento; i due chiamanti in-repo
+  (`cli.py`, `api.py`) passano solo chiavi valide. Da verificare prima di
+  bumpare il submodule nel repo del paper CIM 2026, che costruisce le proprie
+  config in `paper/examples/render_example.py`.
+
+- **BREAKING — `viz.page_layouts` è una lista di `PageLayout`**, non più di
+  dict: `layout['time_range']` diventa `layout.t_start` / `layout.t_end`,
+  `active_streams` → `streams`, `slot_assignments` → `slots`, `page_idx` →
+  `index`. Nessun altro modulo del repo li legge (`page_layouts`, `page_count`
+  e `total_duration` restano interni al visualizer), ma sono attributi
+  pubblici e chi li leggesse da fuori va adeguato.
+
+- **Costanti appiattite: i valori dei breakpoint sono ora `float`.** Con
+  `show_static_params` una costante diventa una curva piatta, e il suo valore
+  passa da `ParameterCurve`, che normalizza a `float`: un `reverse: 0` che
+  prima produceva breakpoint `0` ora ne produce `0.0`. È l'unica differenza
+  di output misurabile dell'intero refactor, ed è di tipo e non di valore:
+  non raggiunge nessuna uscita, perché le annotazioni dei breakpoint
+  formattano con `:.2f` e l'export Sonic Visualiser legge le curve senza
+  `show_static`, quindi le costanti non ci arrivano mai.
 
 - **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
   righe). I tre meccanismi di accesso — ciclo sugli schemi con `hasattr`, lista
@@ -93,12 +134,21 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   bisogno di `stream.duration`.
 
   **Nessun cambiamento osservabile**: chiavi pubblicate, loro ordine e
-  breakpoint sono identici. Nessun impatto su `--plot-envelopes`, sui nomi dei
-  layer nelle sessioni Sonic Visualiser, né su PGE-ls / PGE-ui.
+  breakpoint sono identici (a meno del tipo dei valori costanti, sopra).
+  Nessun impatto su `--plot-envelopes`, sui nomi dei layer nelle sessioni
+  Sonic Visualiser, né su PGE-ls / PGE-ui.
+
+- **Nove metodi privati di `ScoreVisualizer` rimossi**: `_find_active_streams`,
+  `_calculate_max_concurrent`, `_assign_vertical_slots`, `_page_grain_points`,
+  `_auto_magnify_target`, `_resolve_explicit_target`, `_densest_stream_entry`,
+  `_auto_y_at`, `_get_voice_offset_envelopes`. Erano rimasti come deleghe di
+  una riga verso i moduli estratti, ma dopo l'estrazione nessuno li chiamava
+  più — né il resto del visualizer né i test. Le deleghe che i test chiamano
+  sulla classe restano tutte. `score_visualizer.py`: 1465 → 1412 righe.
 
 - I test dell'estrazione (dieci classi, ~500 righe) non costruiscono più un
   `ScoreVisualizer` per interrogare l'estrattore:
-  `tests/rendering/test_envelope_extractor.py` passa da 11 a 63 test,
+  `tests/rendering/test_envelope_extractor.py` passa da 11 a 67 test,
   `test_score_visualizer.py` da 181 a 129 (resta il disegno).
 
 ---

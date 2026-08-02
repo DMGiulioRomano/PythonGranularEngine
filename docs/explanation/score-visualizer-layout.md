@@ -131,12 +131,22 @@ stessa ragione, e poi un secondo consumatore lo ha preso davvero
 
 ## Implicazioni codice
 
-`score_visualizer.py` passa da 2015 a 1621 righe e perde due import rimasti
+`score_visualizer.py` passa da 2015 a 1412 righe e perde due import rimasti
 orfani (`re`, `math.ceil`). I metodi estratti restano come **deleghe con le
 firme di prima**, inclusi i due `@staticmethod` che i test chiamano sulla
 classe: i call site interni e i test esistenti non sono cambiati.
 
-La suite passa da 5139 a 5256 test. Le quattro suite nuove valgono 109 test.
+Con una eccezione, che è il rovescio della stessa medaglia. Nove di quelle
+deleghe, dopo l'estrazione, non erano chiamate più da nessuno — né dal resto
+del visualizer, che ora parla direttamente ai moduli, né da un test. Tenerle
+non era back-compat ma codice morto: una firma rotta lì dentro non avrebbe
+fatto diventare rosso niente. Sono state rimosse: `_find_active_streams`,
+`_calculate_max_concurrent`, `_assign_vertical_slots`, `_page_grain_points`,
+`_auto_magnify_target`, `_resolve_explicit_target`, `_densest_stream_entry`,
+`_auto_y_at`, `_get_voice_offset_envelopes`. Il criterio è quello: una delega
+si tiene se qualcuno la chiama.
+
+La suite passa da 5106 a 5283 test.
 
 Alcune cose sono cambiate di comportamento osservabile solo nel tipo:
 
@@ -145,10 +155,14 @@ Alcune cose sono cambiate di comportamento osservabile solo nel tipo:
 - `_resolve_magnify_targets` restituisce `MagnifyTarget`.
 - `_compute_env_legend_layout` restituisce `EnvelopeLane`.
 
-Niente di tutto questo esce dal repository: `page_layouts`, `page_count` e
-`total_duration` non sono letti da nessun altro modulo, e la superficie pubblica
-— `ScoreVisualizer(generator, config=...)`, `export_pdf`, le chiavi di config —
-è invariata.
+Dentro il repository non lo legge nessun altro modulo: `page_layouts`,
+`page_count` e `total_duration` restano interni al visualizer. Ma
+`page_layouts` è un attributo pubblico, quindi il cambio di tipo è comunque
+una rottura per chi lo leggesse da fuori, ed è annotato come tale nel
+CHANGELOG. La superficie che davvero non cambia è l'altra:
+`ScoreVisualizer(generator, config=...)`, `export_pdf` e le chiavi di config —
+con l'eccezione, anch'essa dichiarata nel CHANGELOG, delle chiavi sconosciute,
+che ora sollevano invece di passare.
 
 ### Cosa il refactor ha scoperto
 
