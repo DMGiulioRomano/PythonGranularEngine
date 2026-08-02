@@ -53,6 +53,7 @@ from pge.rendering import envelope_display  # noqa: E402
 from pge.rendering import grain_visuals  # noqa: E402
 from pge.rendering import magnifier_targets  # noqa: E402
 from pge.rendering import page_layout  # noqa: E402
+from pge.rendering.visualizer_config import VisualizerConfig  # noqa: E402
 
 
 class ScoreVisualizer:
@@ -79,168 +80,11 @@ class ScoreVisualizer:
         self.streams = generator.streams
         
         # Configurazione con defaults
-        default_config = {
-            # Directory dei sample audio per waveform/durate (Fase 2 refactor
-            # library/CLI). None -> fallback sul globale PATHSAMPLES.
-            'samples_dir': None,
-            # Se True, mostra anche i valori costanti
-            'show_static_params': False,
-            # Se True, disegna gli offset per-voce (voice_pitch_offset /
-            # voice_pointer_offset come una curva per voce, voice_pointer_range
-            # come curva singola dello spread). Fase 3 issue #90. Gating
-            # indipendente da show_static_params.
-            'show_voice_offsets': False,
-            # Filtro selettivo: None = tutti gli envelope; altrimenti set/lista
-            # di nomi — solo quelli elencati vengono plottati (issue #101)
-            'envelope_filter': None,
-            # Paginazione
-            'page_duration': 30.0,           # secondi per pagina
-            'page_size': (420, 297),         # A3 in mm
-            'orientation': 'landscape',
-            'margins_mm': 20,
-            
-            # Grani
-            'grain_colormap': 'pitch_div',   # pitch_ratio → colore (divergente)
-            'grain_alpha_range': (0.3, 1.0), # volume → alpha
-            'pitch_range': (0.5, 2.0),       # range fisso (fallback senza autozoom)
-            # Auto-zoom del range colore pitch: normalizza sul min/max in cents
-            # dei grani visibili nel subplot (sample+pagina) invece del range
-            # fisso — rende visibile il micro-detune ±6 cents (issue #95).
-            'pitch_color_autozoom': {
-                'enabled': True,
-                'pad_ratio': 0.1,        # margine per lato: 10% dello span
-                # floor: 1 semitono. Senza questo minimo, una manciata di
-                # cents di scarto reale produrrebbe uno span quasi nullo e
-                # quindi un gradiente di colore esagerato (l'intera colormap)
-                # per una differenza musicalmente trascurabile.
-                'min_span_cents': 50.0,
-            },
-            'volume_range': (-60, 0),        # dB range per normalizzare alpha
-            'min_grain_width_pts': 1,        # larghezza minima visibile
-            # Forma del grano nella partitura:
-            #   'arrow'  -> freccia direzionale (default, comportamento storico);
-            #   'window' -> il bordo superiore ("testa") traccia la curva della
-            #               finestra/envelope del grano, base piatta sul pointer.
-            # La finestra e' altrimenti invisibile nella partitura: due grani con
-            # envelope diversi (hanning vs expodec) hanno la stessa freccia.
-            'grain_shape': 'arrow',
-            # Numero di punti con cui campionare la curva della finestra per la
-            # silhouette (solo grain_shape='window'). La silhouette normalizzata
-            # e' precalcolata e cachata per (nome, risoluzione): il costo per
-            # grano e' solo una trasformazione affine dei vertici.
-            'window_shape_resolution': 32,
-            # Soglia adattiva: se la larghezza del grano sulla pagina e' sotto
-            # questo numero di pixel, la finestra non sarebbe leggibile e il
-            # grano ripiega sulla freccia a 5 vertici (cap al costo vettoriale
-            # sugli score densi).
-            'window_shape_min_px': 3,
-            
-            # Waveform
-            'waveform_alpha': 0.3,
-            'waveform_color': 'steelblue',
-            'waveform_width_ratio': 0.06,    # 3% della larghezza pagina
-            'waveform_downsample': 200,      # 1 punto ogni N campioni
-            # Larghezza (frazione della pagina) della colonna dedicata alla
-            # colorbar del pitch. Vive in una colonna propria del GridSpec cosi'
-            # i subplot dei grani e quello degli envelope condividono la colonna
-            # centrale -> stesso bordo destro, niente piu' disallineamento (la
-            # colorbar non ruba larghezza ai soli stream).
-            'colorbar_width_ratio': 0.02,
-            # Loop mask
-            'loop_mask_color': '#f4a261',    # arancio caldo
-            'loop_mask_alpha': 0.18,
-            'loop_mask_samples': 200,        # punti di campionamento del poligono
-
-            # Stile
-            'stream_gap_ratio': 0.05,        # gap tra stream (5% dell'altezza)
-            'label_fontsize': 8,
-            'title_fontsize': 12,
-            # Dimensioni font prima hardcoded, ora configurabili: annotazione
-            # dei breakpoint envelope e testo della pagina vuota.
-            'breakpoint_fontsize': 6,
-            'empty_fontsize': 14,
-            # Moltiplicatore globale applicato a TUTTE le fontsize del
-            # visualizer (vedi _fs): 1.0 = comportamento invariato; alzarlo
-            # ingrandisce uniformemente assi, titolo, legenda, annotazioni.
-            # Pensato per chi rigenera le figure per la stampa (es. il paper).
-            'font_scale': 1.0,
-            # Envelope ranges. Dopo issue #114 (scaling data-driven) solo 'pan'
-            # è ancora consultato per lo scaling delle curve (ciclico, ±180);
-            # le altre entry restano per riferimento/back-compat, non più usate.
-            'envelope_ranges': {
-                # === OUTPUT ===
-                'volume': (-90, 0),           # dB
-                'volume_prob': (0, 100),      # probabilità %
-                'pan': (-180, 180),           # gradi (ciclico)
-                'pan_prob': (0, 100),         # probabilità %
-                
-                # === GRAIN ===
-                'grain_duration': (1.0 / DEFAULT_OUTPUT_SR, 1.0),  # secondi (min 1 campione)
-                'grain_duration_prob': (0, 100),  # probabilità %
-                'reverse': (0, 1),            # boolean
-                'reverse_prob': (0, 100),     # probabilità %
-                
-                # === POINTER ===
-                'pointer_start': (0.0, 1.0),  # normalizzato
-                'pointer_speed': (-4.0, 16.0),
-                'pointer_deviation': (0.0, 1.0),  # normalizzato
-                'pointer_deviation_prob': (0, 100),  # probabilità %
-                'loop_dur': (0.001, 10.0),    # secondi
-                # NOTA: pitch è unit-driven (chiave 'pitch'); i bounds vengono da
-                # stream.pitch_unit.value_bounds(), non da range statici qui.
-
-                # === DENSITY ===
-                'density': (1, 200),          # grani/sec
-                'fill_factor': (0.1, 20),
-                'distribution': (0, 1),
-                'effective_density': (1, 200),
-                
-                # === VOICES ===
-                'num_voices': (1, 20),
-                'scatter': (0.0, 1.0),        # normalizzato (cluster→spread)
-                'voice_pitch_offset': (-48, 48),  # semitoni
-                'voice_pointer_offset': (-1.0, 1.0),  # normalizzato
-                'voice_pointer_range': (0.0, 1.0),    # normalizzato
-            },
-
-            'envelope_colors': dict(ENVELOPE_COLORS),
-            # Frazione della banda di OGNI stream riservata alla sua riga
-            # envelope (issue #113: un subplot envelope per stream, sotto i
-            # grani). Prima del fix era la frazione di pagina del pannello
-            # envelope unico condiviso: la proporzione complessiva resta 30%.
-            'envelope_panel_ratio': 0.3,
-
-            # Scaling data-driven puro delle curve envelope (issue #114): ogni
-            # curva scala sull'escursione reale dei suoi valori nella finestra
-            # visibile (min/max + padding), senza alcun clamp ai range fissi.
-            # Si applica a tutti i parametri; pan resta ciclico (escluso).
-            'envelope_display': {
-                'pad_ratio': 0.05,      # margine sopra/sotto: 5% dell'escursione
-                'samples': 128,         # densità campionamento (cattura overshoot cubic)
-            },
-
-            # === LENTE DI INGRANDIMENTO (magnify) ===
-            # Proietta un cerchio che ingrandisce una regione del piano
-            # tempo×posizione di lettura, con connettori verso la sorgente.
-            # Default disattivata: a flag spenti render_page è identico a prima.
-            'magnify_auto': False,        # lente automatica sul cluster più denso
-            'magnify_targets': [],        # target espliciti: list[dict]
-                                          # (t obbligatorio; y/zoom/out/src/stream/corner opz.)
-                                          # corner per-target -> piu' lenti non
-                                          # sovrapposte sullo stesso subplot
-            'magnify_defaults': {
-                'zoom': 8.0,              # fattore di ingrandimento del contenuto
-                'out': 0.12,              # raggio cerchio di USCITA (frazione min figura)
-                'src': None,              # raggio cerchio di PARTENZA; None = out/zoom
-                'corner': 'top-right',    # angolo del subplot dove proiettare la lente
-            },
-            'magnify_hist_bins': (40, 16),  # bin (tempo, posizione) per auto-densest
-            'magnify_color': '#c1121f',   # colore marker sorgente + connettori
-        }
-
-        self.config = default_config
-        if config:
-            self.config.update(config)
+        # Lo schema vive in rendering.visualizer_config: dichiarato, con merge
+        # profondo dei gruppi annidati e rifiuto delle chiavi sconosciute.
+        # Il risultato resta un dict perche' viz.config e il parametro config=
+        # sono superficie pubblica.
+        self.config = VisualizerConfig.from_overrides(config).as_dict()
 
         # Directory sample effettiva: config esplicita o fallback globale
         # (deprecato, mantenuto per compatibilita' coi monkey-patch esterni).

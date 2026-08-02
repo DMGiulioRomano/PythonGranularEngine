@@ -65,6 +65,24 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   scrive lo stato dell'oggetto e stampa; `envelope_lanes` riceve le curve già
   estratte, così la geometria delle corsie non conosce più i flag di config.
 
+- **`rendering/visualizer_config`**: lo schema della configurazione di
+  `ScoreVisualizer`, dichiarato come dataclass con i gruppi annidati tipizzati
+  (`PitchColorAutozoom`, `EnvelopeDisplay`, `MagnifyDefaults`). Erano 160 righe
+  di dizionario dentro `__init__`. Il risultato resta un dict: `viz.config` e
+  il parametro `config=` sono superficie pubblica e non cambiano.
+
+### Corretto
+
+- **Override parziale di un gruppo di config annidato**: passare
+  `config={'envelope_display': {'pad_ratio': 0.1}}` a `ScoreVisualizer`
+  cancellava gli altri campi del gruppo, e il primo che li leggeva sollevava
+  `KeyError: 'samples'`. Il merge è ora profondo. Stesso problema per
+  `magnify_defaults`, `pitch_color_autozoom` ed `envelope_ranges`.
+
+- **Chiavi di configurazione sconosciute**: erano accettate in silenzio, quindi
+  un refuso si manifestava solo come un'opzione senza effetto. Ora sollevano
+  `ValueError` nominando le chiavi.
+
 ### Modificato
 
 - **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
