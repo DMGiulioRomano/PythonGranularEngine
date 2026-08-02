@@ -222,6 +222,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `tests/rendering/test_envelope_extractor.py` passa da 11 a 75 test,
   `test_score_visualizer.py` da 181 a 129 (resta il disegno).
 
+- I test del visualizer non installano piu' uno stub di `soundfile` in
+  `sys.modules` a livello di modulo. Era un `setdefault`: perdeva nella suite
+  completa (qualcun altro aveva gia' importato la libreria vera) e vinceva
+  quando il file girava da solo, facendo fallire i tre test di
+  `TestSamplesDirConfig` che scrivono WAV veri. `soundfile` e' una dipendenza
+  dichiarata in `pyproject.toml`, quindi lo stub non serviva; chi vuole audio
+  finto continua a usare `patch('soundfile.read', ...)` nel singolo test.
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30

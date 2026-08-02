@@ -5,15 +5,13 @@ Verifica che il visualizer rilevi envelope con strategie eterogenee
 (misto step/linear/cubic) e adatti il rendering per-segmento.
 """
 
-import sys
-import types
 from unittest.mock import MagicMock
 
 import matplotlib
 matplotlib.use('Agg')
 
-# Block heavy deps
-sys.modules.setdefault('soundfile', types.ModuleType('soundfile'))
+# Niente stub di soundfile in sys.modules (issue #182): e' una dipendenza
+# dichiarata, e uno stub globale vince solo quando questo file gira da solo.
 
 from pge.envelopes.envelope import Envelope
 from pge.envelopes.envelope_interpolation import (
