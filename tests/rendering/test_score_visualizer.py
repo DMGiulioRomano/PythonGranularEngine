@@ -266,7 +266,7 @@ class TestMultiPagePipeline:
     def test_page_time_ranges_are_contiguous(self):
         viz = make_viz(multi_page_scene(), config={'page_duration': 30.0})
         viz.analyze()
-        ranges = [lay['time_range'] for lay in viz.page_layouts]
+        ranges = [(lay.t_start, lay.t_end) for lay in viz.page_layouts]
         for i in range(len(ranges) - 1):
             assert ranges[i][1] == pytest.approx(ranges[i + 1][0])
 
@@ -274,13 +274,13 @@ class TestMultiPagePipeline:
         streams = multi_page_scene()
         viz = make_viz(streams, config={'page_duration': 30.0})
         viz.analyze()
-        assert streams[0] not in viz.page_layouts[1]['active_streams']
+        assert streams[0] not in viz.page_layouts[1].streams
 
     def test_second_stream_absent_from_first_page(self):
         streams = multi_page_scene()
         viz = make_viz(streams, config={'page_duration': 30.0})
         viz.analyze()
-        assert streams[1] not in viz.page_layouts[0]['active_streams']
+        assert streams[1] not in viz.page_layouts[0].streams
 
 
 # =============================================================================
@@ -293,7 +293,7 @@ class TestGapPagePipeline:
         viz = make_viz(gap_scene(), config={'page_duration': 30.0})
         viz.analyze()
         # pagina centrale (30-60s) e' vuota
-        assert viz.page_layouts[1]['active_streams'] == []
+        assert viz.page_layouts[1].streams == []
 
     def test_gap_page_renders_without_error(self):
         viz = make_viz(gap_scene(), config={'page_duration': 30.0})
@@ -595,8 +595,8 @@ class TestPerStreamLayout:
         viz = make_viz(streams, config={'page_duration': 40.0})
         viz.analyze()
         for layout in viz.page_layouts:
-            for s in layout['active_streams']:
-                assert s.stream_id in layout['slot_assignments']
+            for s in layout.streams:
+                assert s.stream_id in layout.slots
 
 
 # =============================================================================
@@ -725,10 +725,10 @@ class TestEnvelopeLegendPerLane:
             lanes, legend_entries = viz._compute_env_legend_layout(
                 [s_low, s_high])
 
-        lane_by_id = {lane['stream_id']: lane for lane in lanes}
+        lane_by_id = {lane.stream_id: lane for lane in lanes}
         for name, y, stream_id in legend_entries:
             lane = lane_by_id[stream_id]
-            assert lane['y_base'] <= y <= lane['y_base'] + lane['y_height']
+            assert lane.y_base <= y <= lane.y_base + lane.y_height
 
         owner = {name: sid for name, y, sid in legend_entries}
         assert owner['grain_duration'] == 's_low'
@@ -750,7 +750,7 @@ class TestEnvelopeLegendPerLane:
         assert len(legend_entries) == 2
         for name, y, stream_id in legend_entries:
             assert stream_id == 's1'
-            assert lane['y_base'] <= y <= lane['y_base'] + lane['y_height']
+            assert lane.y_base <= y <= lane.y_base + lane.y_height
 
     def test_streams_without_envelopes_excluded(self):
         viz, s_low, s_high = self._two_streams()

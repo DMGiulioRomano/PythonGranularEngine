@@ -272,13 +272,13 @@ def _snapshot_pages(viz):
     """Paginazione, sweep line dei simultanei e slot verticali."""
     return [
         {
-            'page_idx': layout['page_idx'],
-            'time_range': [_round(t) for t in layout['time_range']],
-            'active_streams': [s.stream_id for s in layout['active_streams']],
-            'max_concurrent': layout['max_concurrent'],
+            'page_idx': layout.index,
+            'time_range': [_round(t) for t in (layout.t_start, layout.t_end)],
+            'active_streams': [s.stream_id for s in layout.streams],
+            'max_concurrent': layout.max_concurrent,
             # lista di coppie, non dict: sensibile anche all'ordine
             'slot_assignments': sorted(
-                [sid, slot] for sid, slot in layout['slot_assignments'].items()
+                [sid, slot] for sid, slot in layout.slots.items()
             ),
         }
         for layout in viz.page_layouts
@@ -289,15 +289,15 @@ def _snapshot_lanes(viz):
     """Corsie envelope e voci di legenda, per pagina."""
     out = []
     for layout in viz.page_layouts:
-        lanes, entries = viz._compute_env_legend_layout(layout['active_streams'])
+        lanes, entries = viz._compute_env_legend_layout(layout.streams)
         out.append({
-            'page_idx': layout['page_idx'],
+            'page_idx': layout.index,
             'lanes': [
                 {
-                    'stream_id': lane['stream_id'],
-                    'y_base': _round(lane['y_base']),
-                    'y_height': _round(lane['y_height']),
-                    'env_types': list(lane['env_types']),
+                    'stream_id': lane.stream_id,
+                    'y_base': _round(lane.y_base),
+                    'y_height': _round(lane.y_height),
+                    'env_types': list(lane.env_types),
                 }
                 for lane in lanes
             ],
@@ -317,8 +317,8 @@ def _snapshot_envelope_scaling(viz):
     """
     out = []
     for layout in viz.page_layouts:
-        t_start, t_end = layout['time_range']
-        for stream in layout['active_streams']:
+        t_start, t_end = layout.t_start, layout.t_end
+        for stream in layout.streams:
             envelopes = viz._get_stream_envelopes(stream)
             if not envelopes:
                 continue
@@ -339,7 +339,7 @@ def _snapshot_envelope_scaling(viz):
                     ])
 
             out.append({
-                'page_idx': layout['page_idx'],
+                'page_idx': layout.index,
                 'stream_id': stream.stream_id,
                 'display_ranges': sorted(
                     [name, _round(lo), _round(hi)]
@@ -372,16 +372,16 @@ def _snapshot_grain_visuals(viz):
     """Vertici, colori e alpha dei grani campione, piu' il range colore pitch."""
     out = []
     for layout in viz.page_layouts:
-        t_start, t_end = layout['time_range']
+        t_start, t_end = layout.t_start, layout.t_end
         cents_range = viz._compute_pitch_color_range(
-            layout['active_streams'], t_start, t_end)
+            layout.streams, t_start, t_end)
         page = {
-            'page_idx': layout['page_idx'],
+            'page_idx': layout.index,
             'cents_range': (None if cents_range is None
                             else [_round(c) for c in cents_range]),
             'streams': [],
         }
-        for stream in layout['active_streams']:
+        for stream in layout.streams:
             grains = _sample_grains(stream)
             if not grains:
                 continue
@@ -428,16 +428,16 @@ def _snapshot_magnifiers(viz):
     """Target delle lenti risolti per pagina (auto + espliciti)."""
     out = []
     for layout in viz.page_layouts:
-        t_start, t_end = layout['time_range']
+        t_start, t_end = layout.t_start, layout.t_end
         entries = [
             {'stream': stream,
              'sample_duration': viz._get_sample_duration(stream.sample)}
-            for stream in layout['active_streams']
+            for stream in layout.streams
         ]
         resolved = viz._resolve_magnify_targets(t_start, t_end, entries)
         densest = viz._densest_stream_entry(t_start, t_end, entries)
         out.append({
-            'page_idx': layout['page_idx'],
+            'page_idx': layout.index,
             'targets': [
                 {
                     'stream_id': r.entry['stream'].stream_id,

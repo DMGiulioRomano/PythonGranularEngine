@@ -12,8 +12,6 @@ from matplotlib.colors import Normalize, Colormap, LinearSegmentedColormap
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import soundfile as sf
-import re
-from math import ceil
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 
@@ -54,6 +52,7 @@ from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS
 from pge.rendering import envelope_display  # noqa: E402
 from pge.rendering import grain_visuals  # noqa: E402
 from pge.rendering import magnifier_targets  # noqa: E402
+from pge.rendering import page_layout  # noqa: E402
 
 
 class ScoreVisualizer:
@@ -276,128 +275,34 @@ class ScoreVisualizer:
         
         if not self.streams:
             raise ValueError("Nessuno stream da visualizzare")
-        
-        # 1. Calcola durata totale
-        self.total_duration = max(
-            s.onset + s.duration for s in self.streams
-        )
-    
-        # 2. Calcola numero pagine
-        page_dur = self.config['page_duration']
-        self.page_count = ceil(self.total_duration / page_dur)
-        
-        # 3. Per ogni pagina, calcola layout
-        self.page_layouts = []
-        
-        for page_idx in range(self.page_count):
-            page_start = page_idx * page_dur
-            page_end = page_start + page_dur
-            
-            # Stream attivi in questa pagina
-            active_streams = self._find_active_streams(page_start, page_end)
-            
-            if not active_streams:
-                # Pagina vuota (possibile se ci sono buchi)
-                self.page_layouts.append({
-                    'page_idx': page_idx,
-                    'time_range': (page_start, page_end),
-                    'active_streams': [],
-                    'max_concurrent': 0,
-                    'slot_assignments': {},
-                })
-                continue
-            
-            # Calcola max simultanei
-            max_concurrent = self._calculate_max_concurrent(
-                active_streams, page_start, page_end
-            )
-            
-            # Assegna slot verticali
-            slot_assignments = self._assign_vertical_slots(
-                active_streams, page_start, page_end
-            )
-            
-            self.page_layouts.append({
-                'page_idx': page_idx,
-                'time_range': (page_start, page_end),
-                'active_streams': active_streams,
-                'max_concurrent': max(max_concurrent, len(set(slot_assignments.values()))),
-                'slot_assignments': slot_assignments,
-            })
-        
+
+        self.total_duration = page_layout.total_duration(self.streams)
+        self.page_layouts = page_layout.paginate(
+            self.streams, self.config['page_duration'])
+        self.page_count = len(self.page_layouts)
+
         print(f"Analisi completata: {self.page_count} pagine, "
               f"durata totale {self.total_duration:.2f}s")
-    
+
     def _find_active_streams(self, page_start, page_end):
-        """Trova stream che intersecano l'intervallo della pagina."""
-        active = []
-        for stream in self.streams:
-            stream_start = stream.onset
-            stream_end = stream.onset + stream.duration
-            
-            # Intersezione?
-            if stream_start < page_end and stream_end > page_start:
-                active.append(stream)
-        
-        return active
-    
+        """Stream che intersecano l'intervallo della pagina.
+        Delega a rendering.page_layout.active_streams."""
+        return page_layout.active_streams(self.streams, page_start, page_end)
+
     def _calculate_max_concurrent(self, streams, page_start, page_end):
-        """Sweep line per trovare max stream simultanei."""
-        events = []
-        for stream in streams:
-            start = max(stream.onset, page_start)
-            end = min(stream.onset + stream.duration, page_end)
-            events.append((start, 1))   # START
-            events.append((end, -1))    # END
-        
-        # Ordina: per tempo, poi END (-1) prima di START (+1)
-        events.sort(key=lambda x: (x[0], x[1]))
-        
-        max_count = 0
-        current_count = 0
-        for time, delta in events:
-            current_count += delta
-            max_count = max(max_count, current_count)
-        
-        return max_count
-    
+        """Massimo di stream simultanei nella finestra.
+        Delega a rendering.page_layout.max_concurrent."""
+        return page_layout.max_concurrent(streams, page_start, page_end)
+
     def _assign_vertical_slots(self, active_streams, page_start, page_end):
-        """
-        Assegna slot verticali agli stream usando algoritmo greedy.
-        Gli stream che non si sovrappongono possono condividere lo stesso slot.
-        """
-        # Ordina per onset
-        sorted_streams = sorted(active_streams, key=lambda s: s.onset)
-        
-        # slots[i] = tempo di fine dell'ultimo stream in quello slot
-        slots = []
-        assignments = {}
-        
-        for stream in sorted_streams:
-            stream_start = stream.onset
-            stream_end = stream.onset + stream.duration
-            
-            # Trova slot libero (il primo che termina prima dell'inizio di questo stream)
-            assigned_slot = None
-            for i, slot_end in enumerate(slots):
-                if slot_end <= stream_start:
-                    assigned_slot = i
-                    slots[i] = stream_end
-                    break
-            
-            # Se nessuno slot libero, creane uno nuovo
-            if assigned_slot is None:
-                assigned_slot = len(slots)
-                slots.append(stream_end)
-            
-            assignments[stream.stream_id] = assigned_slot
-        
-        return assignments
-    
+        """Corsia verticale di ogni stream.
+        Delega a rendering.page_layout.assign_slots."""
+        return page_layout.assign_slots(active_streams)
+
     # =========================================================================
     # CARICAMENTO WAVEFORM
     # =========================================================================
-    
+
     def _load_waveform(self, sample_path):
         """Carica e processa waveform per visualizzazione."""
         
@@ -546,8 +451,8 @@ class ScoreVisualizer:
         """
         
         layout = self.page_layouts[page_idx]
-        page_start, page_end = layout['time_range']
-        active_streams = layout['active_streams']
+        page_start, page_end = layout.t_start, layout.t_end
+        active_streams = layout.streams
         
         # Dimensioni figura (mm → inches)
         page_w_mm, page_h_mm = self.config['page_size']
@@ -749,8 +654,8 @@ class ScoreVisualizer:
                 lanes, legend_entries = self._compute_env_legend_layout([stream])
 
                 for lane in lanes:
-                    self._draw_envelopes(ax_env, lane['stream'], lane['y_base'],
-                                         lane['y_height'], page_start, page_end)
+                    self._draw_envelopes(ax_env, lane.stream, lane.y_base,
+                                         lane.y_height, page_start, page_end)
 
                 # Label stream nella lane envelope: presente anche a lane
                 # vuota, cosi' la corsia resta attribuibile al suo stream.
@@ -1610,102 +1515,24 @@ class ScoreVisualizer:
             )
 
     def _compute_env_legend_layout(self, active_streams):
-        """
-        Calcola la geometria condivisa tra lane envelope e legenda (issue #91).
+        """Geometria condivisa fra corsie envelope e legenda (issue #91).
 
-        Lane e legenda devono usare lo stesso ordinamento e le stesse y,
-        altrimenti la legenda appare mirrorata rispetto alle curve.
-
-        Dal fix #113 render_page la invoca con UN solo stream per volta (ogni
-        stream ha il proprio asse envelope): il risultato e' 0 lane (stream
-        tutto statico -> l'asse resta, vuoto) o 1 lane a tutta altezza. La
-        geometria multi-stream resta supportata per compatibilita'.
+        Delega a rendering.page_layout.envelope_lanes. L'estrazione delle curve
+        resta qui perche' dipende dai flag di config (show_static_params,
+        show_voice_offsets, envelope_filter): la geometria delle corsie non
+        deve saperne niente.
 
         Returns:
-            (lanes, legend_entries)
-            lanes: list[dict] con {stream, stream_id, y_base, y_height,
-                   env_types}, ordine = impilamento (slot_idx crescente, dal
-                   basso verso l'alto come in render_page).
-            legend_entries: list[(param_name, y, stream_id)], con y interna
-                   alla lane dello stream proprietario.
+            (lanes, legend_entries) — lanes sono EnvelopeLane, legend_entries
+            triple (param_name, y, stream_id).
         """
-        streams_with_env = [
-            (s, self._get_stream_envelopes(s)) for s in active_streams
-        ]
-        streams_with_env = [(s, e) for s, e in streams_with_env if e]
-
-        lanes = []
-        legend_entries = []
-        n = len(streams_with_env)
-        if n == 0:
-            return lanes, legend_entries
-
-        gap_ratio = 0.02  # coerente con render_page
-        total_gap = gap_ratio * 2 * n
-        env_slot_height = (1.0 - total_gap) / n
-
-        for slot_idx, (stream, envelopes) in enumerate(streams_with_env):
-            y_single_stream_with_gap = gap_ratio * 2 + env_slot_height
-            y_that_stream = y_single_stream_with_gap * slot_idx
-            y_base = y_that_stream + gap_ratio
-            y_height = env_slot_height
-
-            # Le curve per-voce ('__vN', #90) collassano a una sola voce di
-            # legenda per parametro base: N tracce, una etichetta.
-            env_types = sorted(
-                dict.fromkeys(self._base_param_name(k) for k in envelopes)
-            )
-            lanes.append({
-                'stream': stream,
-                'stream_id': stream.stream_id,
-                'y_base': y_base,
-                'y_height': y_height,
-                'env_types': env_types,
-            })
-
-            m = len(env_types)
-            if m == 1:
-                ys = [y_base + y_height * 0.5]
-            else:
-                ys = np.linspace(y_base + y_height * 0.85,
-                                 y_base + y_height * 0.15, m)
-            for param_name, y in zip(env_types, ys):
-                legend_entries.append((param_name, float(y), stream.stream_id))
-
-        return lanes, legend_entries
-
-    # Nomi corti per la legenda: la colonna e' stretta (~6% pagina), i nomi
-    # lunghi sforavano nel plot (issue #96). Mappa solo i nomi lunghi; gli altri
-    # usano replace('_', ' ').
-    _ENV_LEGEND_SHORT = {
-        'pointer_deviation': 'ptr dev',
-        'pointer_speed': 'ptr spd',
-        'pointer_start': 'ptr start',
-        'grain_duration': 'grain dur',
-        'num_voices': 'voices',
-        'voice_pitch_offset': 'v pitch off',
-        'voice_pointer_offset': 'v ptr off',
-        'voice_pointer_range': 'v ptr rng',
-        'effective_density': 'eff density',
-        'distribution': 'distrib',
-        'fill_factor': 'fill',
-        # Override compatto: 'grain dur rng' (13) sforerebbe la colonna (issue #141)
-        'grain_duration_range': 'gr dur rng',
-    }
+        return page_layout.envelope_lanes(
+            [(s, self._get_stream_envelopes(s)) for s in active_streams])
 
     def _legend_display_name(self, param_name):
-        """Nome corto per la legenda. Un override esplicito in _ENV_LEGEND_SHORT
-        ha precedenza; altrimenti suffisso '_prob' → ' %' (probabilita') e
-        '_range' → ' rng' (deviazione per-grano, issue #141)."""
-        if param_name in self._ENV_LEGEND_SHORT:
-            return self._ENV_LEGEND_SHORT[param_name]
-        if param_name.endswith('_prob'):
-            base = param_name[:-len('_prob')]
-            return f"{self._legend_display_name(base)} %"
-        if param_name.endswith('_range'):
-            base = param_name[:-len('_range')]
-            return f"{self._legend_display_name(base)} rng"
-        return param_name.replace('_', ' ')
+        """Nome corto per la legenda.
+        Delega a rendering.page_layout.legend_display_name."""
+        return page_layout.legend_display_name(param_name)
 
     def _draw_envelope_legend(self, ax, legend_entries):
         """

@@ -57,6 +57,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `ScoreVisualizer`. Questa logica non aveva test unitari: era coperta solo di
   rimbalzo.
 
+- **`rendering/page_layout`**: come si dispone una partitura sulla pagina —
+  paginazione, sweep line dei simultanei, assegnazione greedy delle corsie
+  verticali, geometria condivisa fra corsie envelope e legenda, nomi corti
+  della legenda. Il risultato è una `PageLayout` (dataclass frozen) al posto
+  del dict a cinque chiavi. `ScoreVisualizer.analyze` resta un metodo perché
+  scrive lo stato dell'oggetto e stampa; `envelope_lanes` riceve le curve già
+  estratte, così la geometria delle corsie non conosce più i flag di config.
+
 ### Modificato
 
 - **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
