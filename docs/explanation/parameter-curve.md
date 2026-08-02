@@ -218,9 +218,22 @@ il modulo dei parametri.
 
 ### Punti aperti
 
-- `effective_density` è in `ENVELOPE_COLORS` e in `DENSITY_PARAMETER_SCHEMA`,
-  ma quello schema alimenta `DensityController` e nessuna property di `Stream`
-  lo espone: la tabella non può raggiungerlo. Voce di palette morta.
+- **`effective_density` è una feature semi-cablata, non una voce morta.** Il
+  lato visualizzazione è completo — colore in `ENVELOPE_COLORS`, range di
+  display `(1, 200)` grani/sec e nome breve `eff density` in
+  `ScoreVisualizer` — e la `ParameterSpec` la dichiara `is_smart=False` con
+  `yaml_path='_internal_calc_'`, cioè "calcolata internamente". Ma nessuno la
+  calcola: `DensityController` la crea col default `0.0` e nient'altro la
+  tocca, mentre i suoi bounds dichiarano `min_val=1` (contraddizione mai
+  emersa proprio perché `is_smart=False` salta il clamping di `Parameter`).
+  Nessuna property di `Stream` la espone, quindi la tabella dei descrittori
+  non potrebbe raggiungerla nemmeno se il valore ci fosse.
+
+  Il concetto è utile: la densità dichiarata diverge da quella reale con
+  `fill_factor`, col multi-voce (`Stream.generate_grains`: "la densità
+  complessiva è density × num_voices") e con lo `scatter`. Completarla
+  significa decidere la formula e dove calcolarla — lavoro a sé, non parte di
+  questa lettura.
 - I tre test di `TestSamplesDirConfig` in `test_score_visualizer.py` passano
   nella suite completa e falliscono se il file gira da solo (`soundfile` resta
   mockato da un altro test). Difetto di isolamento preesistente a questo
