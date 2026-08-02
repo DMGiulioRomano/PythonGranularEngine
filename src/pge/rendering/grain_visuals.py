@@ -27,6 +27,11 @@ def _window_registry():
 
     Lazy perche' serve solo con grain_shape='window': chi disegna frecce non
     deve pagarne la costruzione.
+
+    Il controllo e l'assegnazione non sono atomici, e non serve che lo siano:
+    due chiamanti concorrenti costruirebbero due registry identici e il
+    secondo vincerebbe: si spreca una costruzione, non si corrompe niente,
+    perche' il registry non ha stato che dipenda da chi lo usa.
     """
     global _WINDOW_REGISTRY
     if _WINDOW_REGISTRY is None:
@@ -35,7 +40,16 @@ def _window_registry():
     return _WINDOW_REGISTRY
 
 
-@lru_cache(maxsize=None)
+# Quante silhouette tenere in cache. Una partitura ne usa quante sono le
+# finestre citate dagli stream, a una risoluzione sola: poche unita'. Il tetto
+# serve al caso opposto — chi rigenera le figure variando
+# `window_shape_resolution` — perche' la cache e' di modulo e senza limite non
+# verrebbe liberata mai, essendo la sua vita quella del processo e non quella
+# del visualizer che l'ha riempita.
+WINDOW_SILHOUETTE_CACHE_SIZE = 64
+
+
+@lru_cache(maxsize=WINDOW_SILHOUETTE_CACHE_SIZE)
 def window_silhouette(name, resolution):
     """Curva della finestra normalizzata: dominio [0,1] e picco unitario.
 
@@ -45,7 +59,8 @@ def window_silhouette(name, resolution):
     Memoizzata: la forma di una finestra dato il nome e la risoluzione e'
     sempre la stessa, cambia solo la scala che chi disegna applica per grano.
     La cache e' di modulo e non d'istanza proprio perche' non dipende da
-    nient'altro che dai due argomenti.
+    nient'altro che dai due argomenti — e per la stessa ragione ha un tetto,
+    invece di crescere per tutta la vita del processo.
     """
     w = _window_registry().get(name, resolution)
     w = np.clip(np.asarray(w, dtype=float), 0.0, None)

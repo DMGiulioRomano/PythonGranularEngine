@@ -9,6 +9,8 @@ di essere ripetuta da ogni consumatore che legge i privati di Parameter.
 
 Qui si testa il modello puro: niente Stream, niente matplotlib, niente mock.
 """
+import pytest
+
 from pge.envelopes.envelope import Envelope
 from pge.parameters.parameter_curve import ParameterCurve
 
@@ -54,6 +56,22 @@ class TestClassifyScalarAndAbsent:
     def test_absent_carries_no_payload(self):
         curve = ParameterCurve.classify(None)
         assert curve.envelope is None and curve.value is None
+
+    @pytest.mark.parametrize('raw', ['hanning', (0.0, 1.0), [0, 1], object()])
+    def test_a_value_outside_the_domain_is_rejected(self, raw):
+        """Envelope, numero o None: fuori da questi tre non c'e' una curva da
+        classificare. Non tutti i campi di uno Stream ne hanno una — grain
+        envelope e' il nome di una finestra — e chiederla e' un errore del
+        chiamante, non un dato da interpretare."""
+        with pytest.raises(TypeError):
+            ParameterCurve.classify(raw)
+
+    def test_the_rejection_says_what_it_got(self):
+        """Il messaggio nomina tipo e valore: un `float()` nudo direbbe solo
+        'could not convert string to float', lasciando a indovinare da dove
+        arrivi."""
+        with pytest.raises(TypeError, match="str.*hanning"):
+            ParameterCurve.classify('hanning')
 
 
 class TestFromGate:

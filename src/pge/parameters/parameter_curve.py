@@ -28,7 +28,15 @@ class ParameterCurve:
 
     @classmethod
     def classify(cls, raw) -> 'ParameterCurve':
-        """Classifica un valore grezzo (Envelope, numero o None)."""
+        """Classifica un valore grezzo (Envelope, numero o None).
+
+        Raises:
+            TypeError: se `raw` non e' nessuno dei tre. Il dominio e' scritto
+                nella firma e vale la pena farlo rispettare: senza, un
+                `float()` nudo fallirebbe con "could not convert string to
+                float: 'hanning'", che non dice ne' quale parametro ne' che il
+                chiamante ha chiesto una curva a qualcosa che non ne ha una.
+        """
         if raw is None:
             return cls(kind=ABSENT)
         if isinstance(raw, Envelope):
@@ -37,6 +45,10 @@ class ParameterCurve:
                 # Costante travestita: breakpoint tutti uguali.
                 return cls(kind=CONSTANT, value=float(values[0]))
             return cls(kind=VARYING, envelope=raw)
+        if not isinstance(raw, (int, float)):
+            raise TypeError(
+                "ParameterCurve.classify accetta Envelope, numero o None; "
+                f"ricevuto {type(raw).__name__}: {raw!r}")
         return cls(kind=CONSTANT, value=float(raw))
 
     @classmethod

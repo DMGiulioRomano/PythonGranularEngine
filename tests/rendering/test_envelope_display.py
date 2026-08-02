@@ -124,6 +124,26 @@ class TestDisplayRanges:
             pad_ratio=PAD, samples=SAMPLES)
         assert ranges['density'] == pytest.approx((-2.5, 52.5))
 
+    def test_nothing_to_measure_means_no_range(self):
+        """Con una griglia vuota e nessun breakpoint dentro la finestra non
+        c'e' niente da misurare. La curva esce senza range — e normalize la
+        mette al centro della corsia — invece di far esplodere min() su una
+        lista vuota."""
+        envelopes = {'density': Envelope([[0, 0.0], [10, 100.0]])}
+        ranges = display_ranges(
+            envelopes, stream_start=0.0, t_start=20.0, t_end=20.0,
+            pad_ratio=PAD, samples=0)
+        assert 'density' not in ranges
+
+    def test_an_empty_grid_still_uses_the_breakpoints(self):
+        """La guardia non deve mangiarsi il caso in cui i breakpoint ci sono:
+        senza griglia il range si misura su quelli."""
+        envelopes = {'density': Envelope([[0, 0.0], [10, 100.0]])}
+        ranges = display_ranges(
+            envelopes, stream_start=0.0, t_start=0.0, t_end=10.0,
+            pad_ratio=PAD, samples=0)
+        assert ranges['density'] == pytest.approx((-5.0, 105.0))
+
 
 class TestNormalize:
     """Dove cade un valore dentro la corsia, come frazione della sua altezza.

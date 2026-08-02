@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from pge.rendering.grain_visuals import (
+    WINDOW_SILHOUETTE_CACHE_SIZE,
     arrow_vertices,
     window_silhouette,
     window_vertices,
@@ -115,6 +116,24 @@ class TestWindowSilhouette:
         curve diverse."""
         assert len(window_silhouette('hanning', 16)[1]) == 16
         assert len(window_silhouette('hanning', 64)[1]) == 64
+
+    def test_the_cache_has_a_ceiling(self):
+        """La cache e' di modulo: la sua vita e' quella del processo, non
+        quella del visualizer che l'ha riempita. Senza un tetto, chi rigenera
+        le figure variando window_shape_resolution la fa crescere senza che
+        niente la liberi mai."""
+        info = window_silhouette.cache_info()
+        assert info.maxsize == WINDOW_SILHOUETTE_CACHE_SIZE
+        assert info.maxsize is not None
+
+    def test_entries_beyond_the_ceiling_are_evicted(self):
+        """Il tetto e' vero, non decorativo: oltre la capienza le voci vecchie
+        escono, e la cache non supera mai la sua dimensione dichiarata."""
+        window_silhouette.cache_clear()
+        for resolution in range(8, 8 + WINDOW_SILHOUETTE_CACHE_SIZE + 10):
+            window_silhouette('hanning', resolution)
+        assert (window_silhouette.cache_info().currsize
+                == WINDOW_SILHOUETTE_CACHE_SIZE)
 
 
 class TestWindowVertices:

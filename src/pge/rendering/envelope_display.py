@@ -64,6 +64,12 @@ def display_ranges(envelopes, stream_start, t_start, t_end, *,
         values = [envelope.evaluate(t)
                   for t in np.linspace(t_rel0, t_rel1, samples)]
         values += [v for t, v in envelope.breakpoints if t_rel0 <= t <= t_rel1]
+        if not values:
+            # Raggiungibile solo con samples=0 e nessun breakpoint nella
+            # finestra: niente da misurare, quindi nessun range. La curva
+            # ricade sul centro corsia in normalize, che e' meglio del
+            # ValueError di min() su una lista vuota.
+            continue
         v_min, v_max = min(values), max(values)
         span = v_max - v_min
         if span <= FLAT_SPAN:
