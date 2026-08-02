@@ -1,24 +1,25 @@
 ---
 slug: parameter-curve
 type: explanation
-status: draft
+status: stable
 tags: [parameters, envelopes, architecture, refactor]
 sources:
+  - src/pge/parameters/parameter_curve.py
   - src/pge/parameters/parameter.py
+  - src/pge/controllers/voice_manager.py
   - src/pge/shared/probability_gate.py
   - src/pge/rendering/envelope_extractor.py
-last_synced_commit: 31b553c
+last_synced_commit: 676b011
 ---
 
 # ParameterCurve: come si legge il comportamento nel tempo di un parametro
 
 **Documenti collegati:** [[INDEX]] · [[architecture]] · [[library-vs-cli]] · [[add-parameter]] · [[make-parameter-envelope-aware]]
 
-> **Stato: draft.** Questo documento fissa il vocabolario e il modello di una
-> decisione di design **non ancora implementata**. Il codice descritto sotto la
-> voce "come sarà" non esiste: `ParameterCurve` è il nome concordato per il
-> concetto, non una classe presente in `src/`. Passa a `stable` quando
-> l'implementazione atterra.
+Il modello descritto qui è implementato: `ParameterCurve` vive in
+`src/pge/parameters/parameter_curve.py`, `VoiceManager.offset_curves` in
+`src/pge/controllers/voice_manager.py`, la tabella dei descrittori in
+`src/pge/rendering/envelope_extractor.py`.
 
 ---
 
@@ -38,25 +39,25 @@ Sonic Visualiser), entrambi serviti da `rendering.envelope_extractor`. Il seam
 è quindi **reale** — due adapter, non uno — ma è nel posto sbagliato: il
 modulo che legge sta fuori, e per leggere entra nei privati.
 
-Tre conseguenze osservabili nel codice attuale.
+Tre conseguenze, nel codice com'era prima di questo lavoro.
 
-**Il drilling sui privati.** `envelope_extractor` accede a `param._value`,
+**Il drilling sui privati.** `envelope_extractor` accedeva a `param._value`,
 `param._mod_range`, `param._probability_gate`. Nel caso peggiore la catena è
 lunga tre livelli e attraversa un controller: `stream._pointer.deviation._mod_range`.
-Metà di questo accesso non ha nemmeno una giustificazione — `Parameter.value`
-è già una property pubblica che restituisce `_value`, e viene ignorata.
+Metà di quell'accesso non aveva nemmeno una giustificazione: `Parameter.value`
+era già una property pubblica che restituisce `_value`, e veniva ignorata.
 
 **La costante travestita non ha una casa.** Un `Envelope` i cui breakpoint
 hanno tutti lo stesso valore Y non è una curva: è una costante scritta in forma
 di curva, e per chi la deve disegnare vale come un valore fisso. Questo
-riconoscimento — `is_static = len(set(bp_values)) == 1` — è **duplicato sei
+riconoscimento — `is_static = len(set(bp_values)) == 1` — era **duplicato sei
 volte** nell'estrattore: valore principale, suffisso `_prob`, suffisso
 `_range`, blocco pitch, ciclo sui nomi espliciti, blocco `pointer_deviation`
 (due volte). Sei copie della stessa regola di dominio significa che la
 settima faccia che qualcuno aggiungerà la ricopierà.
 
 **Il tipo di gate viene interrogato per una domanda che non è sua.**
-L'estrattore fa `isinstance(gate, EnvelopeGate)` / `isinstance(gate, RandomGate)`
+L'estrattore faceva `isinstance(gate, EnvelopeGate)` / `isinstance(gate, RandomGate)`
 non per raggiungere il dato — `EnvelopeGate.envelope` e `RandomGate.probability`
 sono già pubbliche, e `get_probability_value(time)` è implementata da tutti e
 quattro i gate — ma solo per distinguere "curva" da "costante". È la stessa
@@ -77,9 +78,9 @@ La classificazione avviene **una volta sola**, dentro il parametro che possiede
 il dato. Chi legge non chiede più "sei un Envelope?" né "i tuoi breakpoint sono
 tutti uguali?": chiede una `ParameterCurve` e la trova già classificata.
 
-`Parameter` espone le sue tre facce come `ParameterCurve`. Le due che oggi non
-hanno accessore pubblico (`_mod_range`, `_probability_gate`) lo acquistano in
-questa forma; il valore base continua a passare da `value`, che già esiste.
+`Parameter` espone le sue tre facce come `ParameterCurve`. Le due che non
+avevano accessore pubblico (`_mod_range`, `_probability_gate`) lo hanno
+acquistato in questa forma; il valore base continua a passare da `value`.
 
 ### Cosa resta fuori da `ParameterCurve`
 
@@ -120,17 +121,26 @@ che esiste solo se lo si **campiona** interrogando
 `VoiceManager.get_voice_config(voice_index, t)` su una griglia temporale.
 
 La responsabilità del campionamento va a `VoiceManager`, che è l'unico a
-conoscere la semantica delle proprie strategy — e che oggi viene frugato
-dall'esterno (`vm._pitch_strategy`, `vm._pointer_strategy`, `vm.max_voices`)
-proprio perché quella conoscenza non è esposta.
+conoscere la semantica delle proprie strategy — e che prima veniva frugato
+dall'esterno (`vm._pitch_strategy`, `vm._pointer_strategy`) proprio perché
+quella conoscenza non era esposta.
 
 Ma la differenza resta **visibile**: nella tabella dei descrittori gli offset
-per-voce sono una riga marcata come sorgente diversa, non una riga uguale alle
-altre. Leggere un `Parameter` e approssimare una strategy su una griglia non
-sono la stessa operazione, e un `kind: sampled` dentro `ParameterCurve` le
-farebbe sembrare tali nascondendo la distinzione nel tipo.
+per-voce sono una riga marcata come sorgente diversa (`VoiceOffsetSource`), non
+una riga uguale alle altre. Leggere un `Parameter` e approssimare una strategy
+su una griglia non sono la stessa operazione, e un `kind: sampled` dentro
+`ParameterCurve` le farebbe sembrare tali nascondendo la distinzione nel tipo.
 
-Il campionamento porta con sé una scelta che oggi è muta: la griglia è
+La distinzione si è rivelata più profonda di quanto previsto. `VoiceCurve`
+porta un **`Envelope`, non una `ParameterCurve`**: con uno `step` costante la
+curva di una voce è piatta, `ParameterCurve` la classificherebbe `constant` e
+il payload perderebbe l'asse dei tempi — ma per una curva di voce
+l'estensione temporale *è* informazione, dice in quale finestra la voce esiste
+quando `num_voices` la accende e la spegne. Per un `Parameter` un envelope
+piatto è una costante travestita; per una curva di voce è una curva con un
+dominio.
+
+Il campionamento porta con sé una scelta che era muta: la griglia era
 `np.linspace(0.0, duration, 33)`. Quel 33 non ha giustificazione — nasce in
 `446da1c` (issue #90) come "una griglia temporale" e non è mai stato rivisto —
 ed è l'unica griglia di campionamento hardcoded del progetto: `envelope_display.samples`,
@@ -176,31 +186,45 @@ il modulo dei parametri.
 
 ## Implicazioni codice
 
-- `Parameter` guadagna gli accessori delle tre facce come `ParameterCurve`;
-  `value` resta per retro-compatibilità.
-- `envelope_extractor` perde i sei blocchi duplicati e i tre meccanismi di
-  accesso, e guadagna la tabella dei descrittori. `ENVELOPE_COLORS` e
-  `PLOT_ENVELOPE_KEYS` restano dove sono: sono la palette, non il modello.
-- `PointerController` espone pubblicamente il Parameter che oggi l'estrattore
-  raggiunge per via privata (`_pointer.deviation`).
-- `VoiceManager` prende in carico il campionamento delle proprie strategy e
-  restituisce le curve per-voce già classificate, con la densità della griglia
-  come argomento esplicito. `get_voice_offset_envelopes` sparisce
-  dall'estrattore; `vm._pitch_strategy` / `vm._pointer_strategy` smettono di
-  essere letti da fuori.
-- Le chiavi pubblicate non cambiano: nessun impatto su `--plot-envelopes`, sui
-  nomi dei layer SV, né sui repo a valle.
+- `Parameter` espone le tre facce come `ParameterCurve` (`value_curve`,
+  `range_curve`, `probability_curve`); `value` resta per retro-compatibilità.
+- `envelope_extractor` è passato da 394 a 287 righe: i sei blocchi duplicati e
+  i tre meccanismi di accesso sono una tabella sola, con **un unico punto di
+  appiattimento** — l'unico che ha bisogno di `stream.duration`.
+  `ENVELOPE_COLORS` e `PLOT_ENVELOPE_KEYS` restano dove sono: sono la palette,
+  non il modello.
+- `VoiceManager.offset_curves` ha preso in carico il campionamento delle
+  proprie strategy, con la densità della griglia come argomento esplicito
+  (`DEFAULT_OFFSET_SAMPLES`, il 33 storico). `vm._pitch_strategy` /
+  `vm._pointer_strategy` non sono più letti da fuori.
+- `Stream` espone `pointer_deviation` e `voice_manager`. **Attenzione**: questo
+  ha rotto un equilibrio implicito. Il ciclo sugli schemi saltava
+  `pointer_deviation` solo perché `hasattr(stream, 'pointer_deviation')` era
+  `False`; esposto il Parameter, comparivano un `pointer_deviation_range` mai
+  esistito e un valore base dummy. L'esclusione ora è dichiarata in
+  `_SCHEMA_EXCLUDED` invece di essere subìta.
 - Il cinturone di property di `Stream` marcate "Espone X per ScoreVisualizer"
-  si assottiglia: chi legge passa dalla tabella, non da quindici property.
-- **Test.** `tests/rendering/test_envelope_extractor.py` sono 124 righe, mentre
-  ~500 righe di comportamento dell'estrattore sono verificate dentro
-  `tests/rendering/test_score_visualizer.py` chiamando
-  `viz._get_stream_envelopes(...)` — cioè costruendo un visualizer per testare
-  una funzione che non ne ha bisogno. Quei test si spostano sull'interfaccia
-  del modulo, e la classificazione `varying`/`constant`/`absent` diventa
-  testabile direttamente su `Parameter`, senza `Stream` e senza matplotlib.
+  **non si è ridotto**: le quindici property restano (servono al disegno, non
+  all'estrazione) e se ne sono aggiunte due. Toglierle è lavoro separato, che
+  riguarda `ScoreVisualizer`, non questa lettura.
+- Le chiavi pubblicate non cambiano: nessun impatto su `--plot-envelopes`, sui
+  nomi dei layer SV, né su PGE-ls / PGE-ui.
+- **Test.** Dieci classi (~500 righe) verificavano l'estrattore costruendo un
+  `ScoreVisualizer` intero per chiamarne `_get_stream_envelopes`: ora
+  interrogano la funzione. `test_envelope_extractor.py` è passato da 11 a 63
+  test, `test_score_visualizer.py` da 181 a 129 (resta il disegno).
 - Nessun impatto sulla sintassi YAML: `ParameterCurve` è interno alla lettura
   della IR, non alla superficie di input.
+
+### Punti aperti
+
+- `effective_density` è in `ENVELOPE_COLORS` e in `DENSITY_PARAMETER_SCHEMA`,
+  ma quello schema alimenta `DensityController` e nessuna property di `Stream`
+  lo espone: la tabella non può raggiungerlo. Voce di palette morta.
+- I tre test di `TestSamplesDirConfig` in `test_score_visualizer.py` passano
+  nella suite completa e falliscono se il file gira da solo (`soundfile` resta
+  mockato da un altro test). Difetto di isolamento preesistente a questo
+  lavoro.
 
 ## Vedi anche
 

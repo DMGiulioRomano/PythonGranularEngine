@@ -18,7 +18,7 @@
 | [caching](explanation/caching.md) | stable | caching, rendering, csound |
 | [library-vs-cli](explanation/library-vs-cli.md) | stable | api, cli, architecture, refactor |
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
-| [parameter-curve](explanation/parameter-curve.md) | draft | parameters, envelopes, architecture, refactor |
+| [parameter-curve](explanation/parameter-curve.md) | stable | parameters, envelopes, architecture, refactor |
 
 ## How-to
 

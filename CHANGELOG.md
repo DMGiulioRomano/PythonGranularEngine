@@ -8,6 +8,46 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`ParameterCurve`**: value object che risponde alla domanda "come varia nel
+  tempo questa faccia di un `Parameter`?" — `kind` in `varying` / `constant` /
+  `absent`, più il payload. Dà una casa al riconoscimento della **costante
+  travestita** (un `Envelope` con tutti i breakpoint uguali *è* un valore
+  fisso), regola che prima era duplicata sei volte in `envelope_extractor`.
+  `Parameter` espone le tre facce come `value_curve`, `range_curve`,
+  `probability_curve`. Documentato in
+  [docs/explanation/parameter-curve.md](docs/explanation/parameter-curve.md).
+
+- **`VoiceManager.offset_curves()`**: il campionamento delle curve degli offset
+  per-voce passa a chi conosce la semantica delle strategy, invece di essere
+  fatto dall'esterno frugando in `vm._pitch_strategy` / `vm._pointer_strategy`.
+  Restituisce record `VoiceCurve` (`dimension`, `voice_index`, `envelope`); la
+  densità della griglia è ora un argomento esplicito (`DEFAULT_OFFSET_SAMPLES`,
+  il 33 storico) invece di una costante sepolta nel codice.
+
+- **`Stream.pointer_deviation`** e **`Stream.voice_manager`**: accessori
+  pubblici a quello che i lettori delle curve raggiungevano per via privata
+  (`stream._pointer.deviation`, `stream._voice_manager`).
+
+### Modificato
+
+- **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
+  righe). I tre meccanismi di accesso — ciclo sugli schemi con `hasattr`, lista
+  hardcoded di nomi espliciti, drilling sui privati — diventano una tabella
+  sola: per ogni nome pubblicato, dove pescare il `Parameter` e quale faccia
+  leggere. Un solo punto di appiattimento delle costanti, l'unico che ha
+  bisogno di `stream.duration`.
+
+  **Nessun cambiamento osservabile**: chiavi pubblicate, loro ordine e
+  breakpoint sono identici. Nessun impatto su `--plot-envelopes`, sui nomi dei
+  layer nelle sessioni Sonic Visualiser, né su PGE-ls / PGE-ui.
+
+- I test dell'estrazione (dieci classi, ~500 righe) non costruiscono più un
+  `ScoreVisualizer` per interrogare l'estrattore:
+  `tests/rendering/test_envelope_extractor.py` passa da 11 a 63 test,
+  `test_score_visualizer.py` da 181 a 129 (resta il disegno).
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30
