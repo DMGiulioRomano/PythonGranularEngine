@@ -182,3 +182,65 @@ class TestIsolation:
 
         targets[0]['t'] = 99.0
         assert published[0]['t'] == 1.0
+
+    def test_a_tuple_from_the_caller_is_not_aliased_either(self):
+        """La protezione non puo' dipendere dal contenitore che l'utente ha
+        scelto.
+
+        `magnify_targets` funziona anche come tupla — `resolve` ci itera
+        sopra — e se la copia si fermasse a dict/list/set, la stessa
+        configurazione sarebbe protetta o no a seconda che il chiamante abbia
+        scritto `[...]` o `(...)`, senza nessun segnale della differenza.
+        """
+        targets = ({'t': 1.0},)
+        published = VisualizerConfig.from_overrides(
+            {'magnify_targets': targets}).as_dict()['magnify_targets']
+
+        targets[0]['t'] = 99.0
+        assert published[0]['t'] == 1.0
+
+    def test_a_frozenset_filter_is_not_aliased_either(self):
+        """Stessa regola per `envelope_filter`, che accetta qualunque
+        collezione di nomi."""
+        published = VisualizerConfig.from_overrides(
+            {'envelope_filter': frozenset({'volume'})}).as_dict()
+        assert published['envelope_filter'] == frozenset({'volume'})
+
+    def test_a_colormap_object_still_travels_by_reference(self):
+        """Il limite della copia resta dove serve: un oggetto Colormap passato
+        dall'utente deve restare LO STESSO oggetto, perche' il visualizer lo
+        interroga e copiarlo sarebbe sprecato e sorprendente."""
+        sentinel = object()
+        published = VisualizerConfig.from_overrides(
+            {'grain_colormap': sentinel}).as_dict()
+        assert published['grain_colormap'] is sentinel
+
+
+class TestConfigMustBeAMapping:
+    """`config=` e' un parametro di un costruttore pubblico: quando non e' un
+    dizionario, l'errore deve dirlo.
+
+    Iterare una stringa da' i suoi caratteri, e un controllo di chiavi scritto
+    su `set(overrides)` li riporterebbe uno per uno come "chiavi sconosciute" —
+    un messaggio che descrive un problema che non esiste e nasconde quello che
+    c'e'.
+    """
+
+    def test_a_string_says_what_is_wrong(self):
+        with pytest.raises(TypeError) as excinfo:
+            VisualizerConfig.from_overrides('page_duration')
+        assert 'str' in str(excinfo.value)
+
+    def test_a_string_is_not_read_as_a_bag_of_characters(self):
+        with pytest.raises(TypeError) as excinfo:
+            VisualizerConfig.from_overrides('page_duration')
+        assert 'sconosciute' not in str(excinfo.value)
+
+    def test_a_list_says_what_is_wrong(self):
+        with pytest.raises(TypeError) as excinfo:
+            VisualizerConfig.from_overrides(['page_duration'])
+        assert 'list' in str(excinfo.value)
+
+    def test_none_is_still_the_empty_configuration(self):
+        """None resta il default: nessuno scarto, tutti i valori dichiarati."""
+        assert VisualizerConfig.from_overrides(None).as_dict()['page_duration'] == 30.0

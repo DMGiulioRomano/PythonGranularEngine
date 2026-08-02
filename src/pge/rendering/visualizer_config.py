@@ -25,6 +25,7 @@ sbagliato, che si vede al primo giro.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import (
     MISSING, dataclass, field, fields, is_dataclass, replace)
@@ -208,8 +209,12 @@ class VisualizerConfig:
     # =========================================================================
 
     @classmethod
-    def _default_of(cls, field):
+    def _default_of(cls, spec):
         """Il valore di default di un campo, comunque sia dichiarato.
+
+        `spec` e' il descrittore restituito da `fields()`. Non si chiama
+        `field` per non ombreggiare `dataclasses.field`, che questo stesso
+        modulo importa e usa nelle dichiarazioni qui sopra.
 
         Non si legge dall'attributo di classe: per un campo con
         `default_factory` quell'attributo NON esiste — dataclasses lo cancella
@@ -217,10 +222,10 @@ class VisualizerConfig:
         dizionari-dato (`envelope_ranges`, `envelope_colors`) sono dichiarati
         cosi', quindi un merge scritto su getattr li salterebbe in silenzio.
         """
-        if field.default is not MISSING:
-            return field.default
-        if field.default_factory is not MISSING:
-            return field.default_factory()
+        if spec.default is not MISSING:
+            return spec.default
+        if spec.default_factory is not MISSING:
+            return spec.default_factory()
         return None
 
     @classmethod
@@ -232,6 +237,15 @@ class VisualizerConfig:
         e' quello che fa dict.update — il primo che leggesse un campo non
         ridichiarato solleverebbe KeyError.
         """
+        if overrides is not None and not isinstance(overrides, Mapping):
+            # Senza questa guardia una stringa verrebbe iterata carattere per
+            # carattere e riportata come un elenco di chiavi sconosciute:
+            # un messaggio che descrive un problema inesistente e nasconde
+            # quello vero.
+            raise TypeError(
+                "config di ScoreVisualizer deve essere un dizionario di "
+                f"chiavi note (o None); ricevuto {type(overrides).__name__}")
+
         by_name = {f.name: f for f in fields(cls)}
         unknown = sorted(set(overrides or {}) - set(by_name))
         if unknown:
@@ -286,24 +300,35 @@ def _merge_group(group_name, default, overrides):
     return replace(default, **overrides)
 
 
+# Contenitori che si copiano invece di attraversare per riferimento. Sono i
+# tipi in cui default e override arrivano davvero, e la lista include le due
+# forme immutabili (tuple, frozenset) perche' l'immutabilita' del contenitore
+# non dice niente di quella del contenuto: una tuple di dict e' scrivibile
+# quanto una lista di dict, e `magnify_targets` accetta entrambe. Senza,
+# la stessa configurazione sarebbe protetta o no a seconda delle parentesi
+# che il chiamante ha scritto.
+_COPIED_CONTAINERS = (dict, list, set, tuple, frozenset)
+
+
 def _as_plain(value):
-    """Un gruppo dichiarato torna dict; i contenitori mutabili si copiano.
+    """Un gruppo dichiarato torna dict; i contenitori si copiano.
 
-    Si copiano solo dict, list e set: sono quelli che i consumatori mutano, e
-    sono i tipi in cui i default e gli override arrivano davvero. Tutto il
-    resto passa per riferimento — in particolare un oggetto Colormap passato
-    dall'utente, che deve restare LO STESSO oggetto: copiarlo sarebbe sprecato
-    e sorprendente.
+    Tutto cio' che non e' un contenitore passa per riferimento — in
+    particolare un oggetto Colormap passato dall'utente, che deve restare LO
+    STESSO oggetto: copiarlo sarebbe sprecato e sorprendente.
 
-    Il limite e' voluto ma va detto: un contenitore mutabile di un tipo
-    diverso (una tuple di dict passata come `magnify_targets`, un ndarray
-    passato come range) attraversa per riferimento. Oggi non fa danni perche'
-    ogni consumatore di quei campi e' in sola lettura; se un domani qualcuno
-    ci scrivesse, la copia andrebbe estesa a quel tipo invece che data per
-    scontata.
+    Il limite resta, ed e' bene dirlo: un contenitore di un tipo ancora
+    diverso (un ndarray passato come range, una collezione utente) attraversa
+    per riferimento. Oggi non fa danni perche' ogni consumatore di quei campi
+    e' in sola lettura; se un domani qualcuno ci scrivesse, la copia va estesa
+    a quel tipo invece che data per scontata.
+
+    Nota: `deepcopy` di una tuple di soli valori atomici restituisce la tuple
+    stessa, quindi i campi-range (`page_size`, `pitch_range`, ...) non pagano
+    niente per essere entrati nella lista.
     """
     if is_dataclass(value) and not isinstance(value, type):
         return {f.name: _as_plain(getattr(value, f.name)) for f in fields(value)}
-    if isinstance(value, (dict, list, set)):
+    if isinstance(value, _COPIED_CONTAINERS):
         return deepcopy(value)
     return value
