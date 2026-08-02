@@ -71,6 +71,44 @@ class TestDefaults:
         assert ENVELOPE_RANGES['volume'] == (-90, 0)
 
 
+class TestAnyMapping:
+    """La config si dichiara accettare un Mapping, non solo un dict: la
+    guardia sul primo livello lo dice esplicitamente. Allora deve valere
+    anche per i gruppi annidati, o la stessa configurazione e' fusa o
+    sostituita a seconda di come il chiamante l'ha costruita."""
+
+    def test_a_nested_group_given_as_a_plain_mapping_still_merges(self):
+        """Il caso che rompeva: con un Mapping non-dict il ramo del merge non
+        scattava, il gruppo veniva sostituito in blocco, e il primo che
+        leggeva un campo non ridichiarato sollevava KeyError: 'samples'."""
+        from types import MappingProxyType
+
+        config = VisualizerConfig.from_overrides(
+            {'envelope_display': MappingProxyType({'pad_ratio': 0.1})}
+        ).as_dict()
+        assert config['envelope_display'] == {'pad_ratio': 0.1, 'samples': 128}
+
+    def test_a_data_dict_given_as_a_plain_mapping_still_merges(self):
+        """Stessa cosa per i dizionari-dato: un override parziale di
+        envelope_ranges non deve far sparire gli altri range."""
+        from types import MappingProxyType
+
+        config = VisualizerConfig.from_overrides(
+            {'envelope_ranges': MappingProxyType({'volume': (-40, 0)})}
+        ).as_dict()
+        assert config['envelope_ranges']['volume'] == (-40, 0)
+        assert 'pan' in config['envelope_ranges']
+
+    def test_a_typo_inside_a_mapping_group_is_still_named(self):
+        """E la validazione delle chiavi non deve saltare per il tipo del
+        contenitore: un refuso resta un ValueError col nome qualificato."""
+        from types import MappingProxyType
+
+        with pytest.raises(ValueError, match='envelope_display.sampls'):
+            VisualizerConfig.from_overrides(
+                {'envelope_display': MappingProxyType({'sampls': 4})})
+
+
 class TestUnknownKeys:
     """Una chiave che lo schema non conosce e' quasi sempre un refuso, e in un
     dizionario passava in silenzio: si vedeva solo dal fatto che l'opzione non

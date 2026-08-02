@@ -101,6 +101,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   (`_, a, d, e, g, i, n, o, p, r, t, u`). Ora è un `TypeError` che nomina il
   tipo ricevuto.
 
+- **Il merge di un gruppo annidato dipendeva dal tipo del mapping.**
+  `from_overrides` accetta qualunque `Mapping` come argomento — lo dichiara e
+  lo verifica — ma il merge dei gruppi guardava `isinstance(value, dict)`.
+  Un override scritto come `MappingProxyType` o `ChainMap` non veniva fuso ma
+  sostituito in blocco: `{'envelope_display': MappingProxyType({'pad_ratio':
+  0.1})}` faceva sparire `samples`, e `_compute_display_ranges` sollevava
+  `KeyError: 'samples'` — esattamente il difetto che il merge profondo esiste
+  per chiudere. Con un `dict` funzionava, e niente segnalava la differenza.
+  Vale anche per i dizionari-dato e per la validazione dei refusi dentro il
+  gruppo.
+
 - **La copia della config dipendeva dal tipo di parentesi.** `_as_plain`
   copiava dict, list e set: `magnify_targets` passato come tupla di dizionari
   restava condiviso con il chiamante, mentre la stessa cosa scritta come lista

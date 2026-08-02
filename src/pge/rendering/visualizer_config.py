@@ -258,9 +258,15 @@ class VisualizerConfig:
         values = {}
         for name, value in (overrides or {}).items():
             default = cls._default_of(by_name[name])
-            if is_dataclass(default) and isinstance(value, dict):
+            # Mapping e non dict, come per l'argomento intero: il primo livello
+            # accetta qualunque mapping, e se qui si guardasse il tipo concreto
+            # la stessa configurazione sarebbe fusa o sostituita a seconda di
+            # come il chiamante l'ha costruita — con la sostituzione che
+            # rimette in piedi proprio il KeyError che questo merge esiste per
+            # chiudere.
+            if is_dataclass(default) and isinstance(value, Mapping):
                 value = _merge_group(name, default, value)
-            elif isinstance(default, dict) and isinstance(value, dict):
+            elif isinstance(default, dict) and isinstance(value, Mapping):
                 # Anche i dizionari-dato (envelope_ranges, envelope_colors) si
                 # fondono: chi ne ritocca una entry non deve perdere le altre.
                 # `default` e' gia' fresco (viene dal factory), ma la copia
