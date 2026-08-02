@@ -769,7 +769,7 @@ class TestVoiceOffsetEnvelopeCollection:
 
     def _stream_with_vm(self, voice_manager, num_voices=None):
         s = make_stream('s1', onset=0.0, duration=10.0)
-        s._voice_manager = voice_manager
+        s.voice_manager = voice_manager
         if num_voices is not None:
             s.num_voices = num_voices
         return s
@@ -844,7 +844,7 @@ class TestVoiceOffsetEnvelopeCollection:
 
     def test_no_voice_manager_no_crash(self):
         s = make_stream('s1', onset=0.0, duration=10.0)
-        s._voice_manager = None
+        s.voice_manager = None
         env = make_viz([s], config={'show_voice_offsets': True})._get_stream_envelopes(s)
         assert not any(k.startswith('voice_') for k in env)
 
@@ -878,7 +878,7 @@ class TestBaseParamName:
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=3, pitch_strategy=StepPitchStrategy(step=3.0))
         s = make_stream('s1', onset=0.0, duration=10.0)
-        s._voice_manager = vm
+        s.voice_manager = vm
         env = make_viz([s], config={
             'show_voice_offsets': True,
             'envelope_filter': {'voice_pitch_offset'},
@@ -1025,9 +1025,7 @@ class TestPointerDeviationEnvelopeCollection:
                       mod_range=mod_range)
         if gate is not None:
             p.set_probability_gate(gate)
-        pointer = MagicMock()
-        pointer.deviation = p
-        s._pointer = pointer
+        s.pointer_deviation = p
         return s
 
     def test_offset_range_envelope_collected(self):
@@ -1069,7 +1067,7 @@ class TestPointerDeviationEnvelopeCollection:
 
     def test_no_pointer_attr_does_not_crash(self):
         s = make_stream('s1', onset=0.0, duration=10.0)
-        del s._pointer
+        del s.pointer_deviation
         assert make_viz([s])._get_stream_envelopes(s) is not None
 
 

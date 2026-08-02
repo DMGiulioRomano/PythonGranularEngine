@@ -797,6 +797,22 @@ class Stream:
         return self._num_voices
 
     @property
+    def pointer_deviation(self):
+        """Parameter della deviazione per-grano del pointer.
+
+        Vive dentro PointerController: senza questo accessore chi legge le
+        curve dello stream deve arrivarci per via privata
+        (stream._pointer.deviation).
+        """
+        return getattr(self._pointer, 'deviation', None)
+
+    @property
+    def voice_manager(self):
+        """VoiceManager dello stream: sa campionare le curve degli offset
+        per-voce (VoiceManager.offset_curves)."""
+        return self._voice_manager
+
+    @property
     def scatter(self):
         """Espone scatter come Parameter (supporta Envelope time-varying)."""
         return self._scatter
