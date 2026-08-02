@@ -73,6 +73,41 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **Il tetto della cache delle silhouette non era il tetto vero.**
+  `window_silhouette` ha un limite di 64 voci, ma leggeva da un
+  `NumpyWindowRegistry` tenuto in una variabile di modulo — che ha una cache
+  propria, **senza eviction**, e che il refactor aveva promosso da attributo
+  d'istanza a globale di processo. Il caso per cui il tetto esiste — chi
+  rigenera le figure variando `window_shape_resolution` — continuava quindi ad
+  accumulare un livello più giù, dove per giunta stanno gli array e non le
+  chiavi, e non veniva più liberato con il visualizer che l'aveva riempito.
+  Il registry ora si costruisce per singolo miss e muore lì: chi arriva a
+  generare una finestra è già un miss della memoizzazione, quindi la cache del
+  registry non serviva a nessuno, e `__init__` è un dizionario vuoto. Il
+  globale sparisce, e con esso la sua corsa fra thread.
+
+- **Un valore fuori dominio dentro un `Parameter` faceva cadere l'intera
+  estrazione.** `Parameter.__init__` non valida il proprio valore; leggerne le
+  facce come `ParameterCurve` ha reso un `TypeError` quello che prima era una
+  curva semplicemente saltata, e un solo parametro malformato si portava via
+  tutte le altre curve dello stream — cioè la partitura, o la sessione Sonic
+  Visualiser. `envelope_extractor` torna a dichiararla `absent`.
+  `ParameterCurve.classify` resta stretta: il dominio lo dichiara il value
+  object, la tolleranza è di chi legge.
+
+- **`config` non-dizionario dava un messaggio che descriveva un altro
+  problema.** `ScoreVisualizer(gen, config='page_duration')` iterava la stringa
+  carattere per carattere e li riportava come chiavi sconosciute
+  (`_, a, d, e, g, i, n, o, p, r, t, u`). Ora è un `TypeError` che nomina il
+  tipo ricevuto.
+
+- **La copia della config dipendeva dal tipo di parentesi.** `_as_plain`
+  copiava dict, list e set: `magnify_targets` passato come tupla di dizionari
+  restava condiviso con il chiamante, mentre la stessa cosa scritta come lista
+  veniva copiata in profondità — senza nessun segnale della differenza. La
+  copia comprende ora anche `tuple` e `frozenset`; un oggetto `Colormap`
+  continua a viaggiare per riferimento, che è quello che deve fare.
+
 - **Override parziale di un gruppo di config annidato**: passare
   `config={'envelope_display': {'pad_ratio': 0.1}}` a `ScoreVisualizer`
   cancellava gli altri campi del gruppo, e il primo che li leggeva sollevava
@@ -117,6 +152,29 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   e `total_duration` restano interni al visualizer), ma sono attributi
   pubblici e chi li leggesse da fuori va adeguato.
 
+- **BREAKING — gli array di `window_silhouette` sono di sola lettura.** La
+  cache è di modulo e quindi condivisa fra visualizer: un chiamante che
+  mutasse la curva la avvelenerebbe per tutti, e adesso fallisce subito invece
+  di propagarsi. Riguarda anche la delega `ScoreVisualizer._window_silhouette`,
+  che prima restituiva array scrivibili. Nessun consumatore in-repo ci scrive:
+  `window_vertices` costruisce comunque un array nuovo.
+
+- **BREAKING — i campi-sequenza dei record di layout sono tuple**:
+  `PageLayout.streams` e `EnvelopeLane.env_types`. `frozen` blocca il
+  riassegnamento del campo, non la scrittura dentro il campo, e una lista
+  lasciava aperta proprio la strada che il record dichiara chiusa.
+  `PageLayout.slots` resta un dict: per un mapping è il tipo giusto, e la sola
+  alternativa di sola lettura in stdlib non è né copiabile né serializzabile —
+  lì l'immutabilità è una convenzione dichiarata nella docstring.
+
+- **`envelope_extractor.get_voice_offset_envelopes` rimossa.** Il criterio
+  applicato alle nove deleghe del visualizer vale anche un livello più giù:
+  questa estrazione le ha portato via entrambi i chiamanti — 
+  `get_stream_envelopes` campiona direttamente da `VoiceManager`, e la delega
+  che la usava è fra le nove — e restava viva per un import nella sua suite che
+  non la chiamava. Le stesse curve arrivano da
+  `get_stream_envelopes(show_voice_offsets=True)`.
+
 - **Costanti appiattite: i valori dei breakpoint sono ora `float`.** Con
   `show_static_params` una costante diventa una curva piatta, e il suo valore
   passa da `ParameterCurve`, che normalizza a `float`: un `reverse: 0` che
@@ -148,7 +206,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 - I test dell'estrazione (dieci classi, ~500 righe) non costruiscono più un
   `ScoreVisualizer` per interrogare l'estrattore:
-  `tests/rendering/test_envelope_extractor.py` passa da 11 a 67 test,
+  `tests/rendering/test_envelope_extractor.py` passa da 11 a 75 test,
   `test_score_visualizer.py` da 181 a 129 (resta il disegno).
 
 ---

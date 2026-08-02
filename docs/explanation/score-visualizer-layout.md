@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/envelope_display.py
   - src/pge/rendering/magnifier_targets.py
   - src/pge/rendering/score_visualizer.py
-last_synced_commit: 917c7dd
+last_synced_commit: 4413fef
 ---
 
 # Il layout della partitura: separare i numeri dal disegno
@@ -115,7 +115,7 @@ disegna possa raggiungerne l'asse matplotlib.
 | Quattro moduli invece di uno | Ogni modulo ha una domanda sola | Quattro import invece di uno |
 | Quattro moduli invece di collaboratori per feature | Il seam è testabile: si asseriscono numeri | Non riduce la lunghezza di `render_page` |
 | Config come keyword argument | I moduli non conoscono il dict | Le firme sono più lunghe |
-| Cache delle silhouette come `lru_cache` di modulo | È memoizzazione, non stato d'istanza | Condivisa fra visualizer: gli array vanno resi read-only |
+| Cache delle silhouette come `lru_cache` di modulo | È memoizzazione, non stato d'istanza | Condivisa fra visualizer: gli array vanno resi read-only, e il tetto deve valere per tutto ciò che il modulo trattiene |
 | Dataclass al posto dei dict | I campi sono dichiarati | Tocca i consumatori esistenti |
 
 **Il contro principale, detto per intero: questo taglio ha un solo consumatore
@@ -146,12 +146,27 @@ fatto diventare rosso niente. Sono state rimosse: `_find_active_streams`,
 `_auto_y_at`, `_get_voice_offset_envelopes`. Il criterio è quello: una delega
 si tiene se qualcuno la chiama.
 
-La suite passa da 5106 a 5283 test.
+Lo stesso criterio vale un livello più giù, e applicarlo fino in fondo ne ha
+tolta una decima: `envelope_extractor.get_voice_offset_envelopes`. Non era una
+delega del visualizer ma una funzione di modulo, e questa estrazione le ha
+portato via entrambi i chiamanti — `get_stream_envelopes` ora campiona
+direttamente da `VoiceManager`, e la delega del visualizer che la usava è fra
+le nove. Restava viva per un import nella sua suite, che non la chiamava.
+Le stesse curve si ottengono da `get_stream_envelopes(show_voice_offsets=True)`,
+che è il path che il disegno percorre davvero.
+
+La suite passa da 5106 a 5309 test.
 
 Alcune cose sono cambiate di comportamento osservabile solo nel tipo:
 
 - `viz.page_layouts` è una lista di `PageLayout`, non di dict. Sette test
-  esistenti sono stati adeguati.
+  esistenti sono stati adeguati. I campi-sequenza dei record (`PageLayout.streams`,
+  `EnvelopeLane.env_types`) sono tuple: `frozen` blocca il riassegnamento del
+  campo e non la scrittura dentro il campo, e una lista lascerebbe aperta la
+  strada che il record dichiara chiusa. `PageLayout.slots` resta un dict —
+  per un mapping è il tipo giusto, e l'unica alternativa di sola lettura in
+  stdlib non è né copiabile né serializzabile — quindi lì l'immutabilità è
+  una convenzione dichiarata, non una garanzia.
 - `_resolve_magnify_targets` restituisce `MagnifyTarget`.
 - `_compute_env_legend_layout` restituisce `EnvelopeLane`.
 
@@ -185,6 +200,29 @@ Cinque fatti che il codice non diceva, ora scritti dove servono:
 5. **Il commento `gap_ratio = 0.02  # coerente con render_page` era stantio.**
    Dal fix #113 `render_page` consuma le corsie calcolate qui, non le ricalcola.
 
+Una seconda passata, fatta perturbando i moduli estratti uno per uno, ne ha
+aggiunti tre — tutti della stessa famiglia: codice difensivo la cui condizione
+non si può raggiungere, che quindi nessun test può tenere fermo.
+
+6. **In `paginate`, `max(simultanei, corsie)` non sceglie mai.** `assign_slots`
+   è il greedy per onset crescente, che su intervalli usa esattamente tante
+   corsie quanti sono gli stream mutuamente sovrapposti; e due stream entrambi
+   attivi in pagina che si sovrappongono continuano a sovrapporsi anche tagliati
+   sulla finestra, quindi quel grumo lo conta pure la sweep line. Una ricerca su
+   400 000 configurazioni casuali non trova un controesempio. Il massimo resta
+   scritto perché l'uguaglianza dipende da come `paginate` chiama `assign_slots`,
+   non da una proprietà delle due funzioni: a essere tenuta ferma da un test è
+   l'invariante che conta, cioè che l'altezza riservata basti alle corsie.
+7. **In `auto_target`, la guardia sul bin vuoto è irraggiungibile.** Il
+   ricontrollo dei grani nel bin è inclusivo su entrambi gli estremi, quindi più
+   largo del binning di numpy: un punto che l'istogramma ha contato ci ricade
+   dentro per forza. Resta perché l'indice del bin viene dall'aritmetica di
+   numpy e il ricontrollo è nostro, e fra i due, nel caso peggiore, c'è un ULP.
+8. **Le due uscite di `auto_target` si coprono a vicenda.** Quando l'istogramma
+   non conta niente, anche il ricontrollo trova la lista vuota: a test si
+   osserva solo il risultato comune, cioè che lo stream viene saltato, e non
+   quale delle due guardie l'ha deciso.
+
 ### Il metodo: rete di caratterizzazione, poi perturbazione
 
 Il refactor è stato coperto da una rete temporanea che congelava i **numeri** —
@@ -204,8 +242,17 @@ lasco (la distribuzione delle voci di legenda, che verificava l'ordine ma non gl
 estremi).
 
 A estrazione completata la rete è stata cancellata: la copertura definitiva sono
-`test_page_layout.py`, `test_grain_visuals.py`, `test_envelope_display.py` e
-`test_magnifier_targets.py`.
+`test_page_layout.py` (35), `test_grain_visuals.py` (36),
+`test_envelope_display.py` (26) e `test_magnifier_targets.py` (30).
+
+La rete è stata poi **ricostruita da fuori** in sede di review, e allargata: i
+numeri su tutte e ventisette le config del repository per quattro varianti di
+config del visualizer, più un confronto a livello di **figura** — gli artisti
+matplotlib di ventotto pagine renderizzate davvero, che copre i call site del
+disegno che la rete numerica salta. Contro `main`, il residuo è zero oltre alle
+differenze dichiarate qui sopra. Una seconda passata di perturbazione, questa
+volta su ogni modulo estratto, ha prodotto i tre fatti aggiunti alla lista
+sopra e i test che mancavano.
 
 ## Vedi anche
 

@@ -9,7 +9,7 @@ sources:
   - src/pge/controllers/voice_manager.py
   - src/pge/shared/probability_gate.py
   - src/pge/rendering/envelope_extractor.py
-last_synced_commit: 676b011
+last_synced_commit: 4413fef
 ---
 
 # ParameterCurve: come si legge il comportamento nel tempo di un parametro
@@ -188,6 +188,15 @@ il modulo dei parametri.
 
 - `Parameter` espone le tre facce come `ParameterCurve` (`value_curve`,
   `range_curve`, `probability_curve`); `value` resta per retro-compatibilità.
+- **Il dominio lo dichiara il value object, la tolleranza è di chi legge.**
+  `ParameterCurve.classify` rifiuta ciò che non è un `Envelope`, un numero o
+  `None`, con un errore che nomina il tipo. Ma `Parameter.__init__` non valida
+  il proprio valore, quindi un `Parameter` costruito a mano può contenerne uno
+  qualunque — e per una faccia così `envelope_extractor` risponde `absent`,
+  come faceva prima del refactor, invece di lasciar cadere l'intera estrazione.
+  Le curve di uno stream sono decine: un parametro malformato non deve
+  portarsi via anche le altre, cioè la partitura intera o l'intera sessione
+  Sonic Visualiser.
 - `envelope_extractor` è passato da 394 a 287 righe: i sei blocchi duplicati e
   i tre meccanismi di accesso sono una tabella sola, con **un unico punto di
   appiattimento** — l'unico che ha bisogno di `stream.duration`.
@@ -211,8 +220,13 @@ il modulo dei parametri.
   nomi dei layer SV, né su PGE-ls / PGE-ui.
 - **Test.** Dieci classi (~500 righe) verificavano l'estrattore costruendo un
   `ScoreVisualizer` intero per chiamarne `_get_stream_envelopes`: ora
-  interrogano la funzione. `test_envelope_extractor.py` è passato da 11 a 63
+  interrogano la funzione. `test_envelope_extractor.py` è passato da 11 a 75
   test, `test_score_visualizer.py` da 181 a 129 (resta il disegno).
+- `get_voice_offset_envelopes` è stata rimossa: questa estrazione le ha portato
+  via entrambi i chiamanti (`get_stream_envelopes` campiona direttamente da
+  `VoiceManager`, e la delega del visualizer che la usava è fra le nove
+  rimosse), e restava viva per un import nella sua suite che non la chiamava.
+  Le stesse curve arrivano da `get_stream_envelopes(show_voice_offsets=True)`.
 - Nessun impatto sulla sintassi YAML: `ParameterCurve` è interno alla lettura
   della IR, non alla superficie di input.
 
