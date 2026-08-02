@@ -293,7 +293,7 @@ class TestGapPagePipeline:
         viz = make_viz(gap_scene(), config={'page_duration': 30.0})
         viz.analyze()
         # pagina centrale (30-60s) e' vuota
-        assert viz.page_layouts[1].streams == []
+        assert viz.page_layouts[1].streams == ()
 
     def test_gap_page_renders_without_error(self):
         viz = make_viz(gap_scene(), config={'page_duration': 30.0})

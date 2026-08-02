@@ -101,11 +101,18 @@ class PageLayout:
 
     Sostituisce il dict a cinque chiavi che analyze costruiva. `slots` mappa
     stream_id -> corsia verticale.
+
+    `streams` e' una tuple: `frozen` blocca il riassegnamento del campo, non
+    la scrittura dentro cio' che il campo contiene, e una lista lascerebbe
+    aperta proprio la strada che il record dichiara chiusa. `slots` resta un
+    dict — un mapping e' il tipo giusto per un mapping, e la sola alternativa
+    di sola lettura in stdlib non e' ne' copiabile ne' serializzabile — quindi
+    li' l'immutabilita' e' una convenzione, non una garanzia.
     """
     index: int
     t_start: float
     t_end: float
-    streams: list
+    streams: tuple
     max_concurrent: int
     slots: dict
 
@@ -135,16 +142,27 @@ def paginate(streams, page_duration):
         on_page = active_streams(streams, t_start, t_end)
 
         if not on_page:
-            pages.append(PageLayout(index, t_start, t_end, [], 0, {}))
+            pages.append(PageLayout(index, t_start, t_end, (), 0, {}))
             continue
 
         slots = assign_slots(on_page)
-        # Il picco di simultanei e il numero di corsie possono divergere: le
-        # corsie si assegnano sull'intera estensione degli stream, i simultanei
-        # si contano tagliati sulla pagina. La pagina riserva il maggiore dei
-        # due, o due stream finirebbero disegnati nella stessa corsia.
+        # La pagina riserva il maggiore fra il picco di simultanei e il numero
+        # di corsie, o due stream finirebbero disegnati nella stessa corsia.
+        #
+        # Con gli stream di QUESTA pagina il massimo cade sempre sul primo dei
+        # due, e il `max` non sceglie mai davvero: `assign_slots` e' il greedy
+        # per onset crescente, che su intervalli usa esattamente tante corsie
+        # quanti sono gli stream mutuamente sovrapposti; e due stream entrambi
+        # attivi in pagina che si sovrappongono continuano a sovrapporsi anche
+        # tagliati sulla finestra, quindi quel grumo lo conta pure la sweep
+        # line. Resta scritto come un massimo perche' l'uguaglianza vale per
+        # come `paginate` chiama `assign_slots`, non per una proprieta' delle
+        # due funzioni: una strategia di corsie meno stretta la romperebbe, e
+        # il disegno non deve dipendere da quella dimostrazione. Il test
+        # `test_lanes_never_exceed_the_reserved_height` tiene ferma l'unica
+        # cosa che conta, cioe' che la pagina basti.
         pages.append(PageLayout(
-            index, t_start, t_end, on_page,
+            index, t_start, t_end, tuple(on_page),
             max(max_concurrent(on_page, t_start, t_end),
                 len(set(slots.values()))),
             slots))
@@ -161,12 +179,17 @@ LEGEND_TOP, LEGEND_BOTTOM = 0.85, 0.15
 
 @dataclass(frozen=True)
 class EnvelopeLane:
-    """Una corsia envelope: quale stream, dove sta, che curve ci vanno."""
+    """Una corsia envelope: quale stream, dove sta, che curve ci vanno.
+
+    `env_types` e' una tuple per la stessa ragione di `PageLayout.streams`:
+    in un record frozen un campo lista sarebbe scrivibile nonostante il
+    frozen.
+    """
     stream: object
     stream_id: str
     y_base: float
     y_height: float
-    env_types: list
+    env_types: tuple
 
 
 def envelope_lanes(streams_with_envelopes):
@@ -199,8 +222,8 @@ def envelope_lanes(streams_with_envelopes):
         # Le curve per-voce '__vN' collassano a una sola voce per parametro
         # base: N tracce, una etichetta. La colonna e' stretta, e ripetere lo
         # stesso nome non aggiunge niente.
-        env_types = sorted(
-            dict.fromkeys(base_param_name(k) for k in envelopes))
+        env_types = tuple(sorted(
+            dict.fromkeys(base_param_name(k) for k in envelopes)))
 
         lanes.append(EnvelopeLane(
             stream=stream, stream_id=stream.stream_id,

@@ -154,26 +154,54 @@ class TestPaginate:
             [stream('a', 0.0, 10.0), stream('b', 95.0, 5.0)],
             page_duration=30.0)
         assert len(pages) == 4
-        assert pages[2].streams == []
+        assert pages[2].streams == ()
         assert pages[2].max_concurrent == 0
         assert pages[2].slots == {}
 
     def test_page_carries_its_streams_and_layout(self):
         a, b = stream('a', 0.0, 10.0), stream('b', 5.0, 10.0)
         page = paginate([a, b], page_duration=30.0)[0]
-        assert page.streams == [a, b]
+        assert page.streams == (a, b)
         assert page.max_concurrent == 2
         assert page.slots == {'a': 0, 'b': 1}
 
-    def test_concurrency_is_at_least_the_slots_used(self):
-        """Il numero di corsie e il picco di simultanei possono divergere: le
-        corsie si assegnano sull'intera estensione degli stream, i simultanei
-        si contano tagliati sulla pagina. La pagina deve riservare il maggiore
-        dei due, o due stream finirebbero disegnati nella stessa corsia."""
-        a = stream('a', 25.0, 10.0)    # 25-35, entra nella pagina 0
-        b = stream('b', 28.0, 10.0)    # 28-38, si sovrappone ad 'a'
-        page = paginate([a, b], page_duration=30.0)[1]
-        assert page.max_concurrent >= len(set(page.slots.values()))
+    def test_lanes_never_exceed_the_reserved_height(self):
+        """L'altezza riservata dalla pagina basta sempre alle corsie che le
+        servono. E' la sola cosa che il disegno chiede: se una corsia cadesse
+        fuori, due stream finirebbero sovrapposti.
+
+        Il conto tiene su una batteria di forme diverse — stream a cavallo dei
+        confini, catene che si toccano, grumi, pagine parziali — perche' le
+        corsie si assegnano sull'estensione intera e i simultanei si contano
+        tagliati sulla finestra: sono due misure diverse, e l'invariante lega
+        proprio loro due.
+        """
+        shapes = [
+            [('a', 0.0, 10.0), ('b', 5.0, 10.0)],
+            [('a', 25.0, 10.0), ('b', 28.0, 10.0)],            # a cavallo
+            [('a', 0.0, 10.0), ('b', 10.0, 10.0), ('c', 20.0, 10.0)],  # catena
+            [('a', 0.0, 40.0), ('b', 29.0, 3.0), ('c', 31.0, 3.0)],
+            [('a', 0.0, 5.0), ('b', 0.0, 5.0), ('c', 0.0, 5.0)],       # grumo
+            [('a', 55.0, 20.0), ('b', 58.0, 2.0), ('c', 59.0, 30.0)],
+        ]
+        for shape in shapes:
+            pages = paginate([stream(*s) for s in shape], page_duration=30.0)
+            for page in pages:
+                assert page.max_concurrent >= len(set(page.slots.values())), shape
+
+    def test_the_page_is_a_frozen_record(self):
+        """La pagina e' un record: chi la riceve la legge, non la ritocca.
+
+        `frozen` da solo blocca il riassegnamento del campo e non la scrittura
+        dentro il campo, quindi la sequenza degli stream e' una tuple: senza,
+        il record prometterebbe un'immutabilita' che non ha.
+        """
+        page = paginate([stream('a', 0.0, 10.0)], page_duration=30.0)[0]
+        assert isinstance(page.streams, tuple)
+        with pytest.raises(Exception):
+            page.streams = ()
+        with pytest.raises(AttributeError):
+            page.streams.append(stream('b'))
 
     def test_no_streams_is_an_error(self):
         """Impaginare il nulla non ha senso: meglio dirlo che produrre zero
@@ -216,7 +244,7 @@ class TestEnvelopeLanes:
         non aggiunge niente."""
         envelopes = {f'voice_pitch_offset__v{i}': object() for i in (1, 2, 3)}
         lanes, entries = envelope_lanes([(stream('s'), envelopes)])
-        assert lanes[0].env_types == ['voice_pitch_offset']
+        assert lanes[0].env_types == ('voice_pitch_offset',)
         assert [name for name, _, _ in entries] == ['voice_pitch_offset']
 
     def test_single_entry_sits_in_the_middle(self):
@@ -248,7 +276,7 @@ class TestEnvelopeLanes:
         legenda."""
         envelopes = {'volume': object(), 'density': object()}
         lanes, _ = envelope_lanes([(stream('s'), envelopes)])
-        assert lanes[0].env_types == ['density', 'volume']
+        assert lanes[0].env_types == ('density', 'volume')
 
 
 class TestLegendDisplayName:
