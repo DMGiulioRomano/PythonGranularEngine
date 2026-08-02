@@ -20,6 +20,7 @@ from __future__ import annotations
 import random
 from typing import Union, Optional, Callable, Dict
 from pge.envelopes.envelope import Envelope
+from pge.parameters.parameter_curve import ParameterCurve
 from pge.parameters.parameter_definitions import ParameterBounds
 from pge.shared.logger import log_clip_warning
 from pge.shared.probability_gate import *
@@ -179,6 +180,29 @@ class Parameter:
         Utile per ispezione o logica condizionale (es. integrazione analitica).
         """
         return self._value
+
+    # =========================================================================
+    # FACCE COME ParameterCurve (docs/explanation/parameter-curve.md)
+    # =========================================================================
+    # Chi legge il comportamento nel tempo del parametro — partitura, export
+    # Sonic Visualiser — chiede una ParameterCurve gia' classificata, invece
+    # di ispezionare _value / _mod_range / _probability_gate e ripetere per
+    # conto proprio il riconoscimento della costante travestita.
+
+    @property
+    def value_curve(self) -> ParameterCurve:
+        """Come varia nel tempo il valore base."""
+        return ParameterCurve.classify(self._value)
+
+    @property
+    def range_curve(self) -> ParameterCurve:
+        """Come varia nel tempo la deviazione per-grano (absent senza range)."""
+        return ParameterCurve.classify(self._mod_range)
+
+    @property
+    def probability_curve(self) -> ParameterCurve:
+        """Come varia nel tempo la probabilita' di dephase."""
+        return ParameterCurve.from_gate(self._probability_gate)
 
     def __repr__(self):
         """Rappresentazione stringa per debug."""

@@ -12,8 +12,6 @@ from matplotlib.colors import Normalize, Colormap, LinearSegmentedColormap
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import soundfile as sf
-import re
-from math import ceil
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 
@@ -51,6 +49,11 @@ except (ValueError, KeyError):
 # per retro-compatibilita': main.py importa PLOT_ENVELOPE_KEYS da qui, i test
 # importano ENVELOPE_COLORS da qui.
 from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
+from pge.rendering import envelope_display  # noqa: E402
+from pge.rendering import grain_visuals  # noqa: E402
+from pge.rendering import magnifier_targets  # noqa: E402
+from pge.rendering import page_layout  # noqa: E402
+from pge.rendering.visualizer_config import VisualizerConfig  # noqa: E402
 
 
 class ScoreVisualizer:
@@ -77,168 +80,11 @@ class ScoreVisualizer:
         self.streams = generator.streams
         
         # Configurazione con defaults
-        default_config = {
-            # Directory dei sample audio per waveform/durate (Fase 2 refactor
-            # library/CLI). None -> fallback sul globale PATHSAMPLES.
-            'samples_dir': None,
-            # Se True, mostra anche i valori costanti
-            'show_static_params': False,
-            # Se True, disegna gli offset per-voce (voice_pitch_offset /
-            # voice_pointer_offset come una curva per voce, voice_pointer_range
-            # come curva singola dello spread). Fase 3 issue #90. Gating
-            # indipendente da show_static_params.
-            'show_voice_offsets': False,
-            # Filtro selettivo: None = tutti gli envelope; altrimenti set/lista
-            # di nomi — solo quelli elencati vengono plottati (issue #101)
-            'envelope_filter': None,
-            # Paginazione
-            'page_duration': 30.0,           # secondi per pagina
-            'page_size': (420, 297),         # A3 in mm
-            'orientation': 'landscape',
-            'margins_mm': 20,
-            
-            # Grani
-            'grain_colormap': 'pitch_div',   # pitch_ratio → colore (divergente)
-            'grain_alpha_range': (0.3, 1.0), # volume → alpha
-            'pitch_range': (0.5, 2.0),       # range fisso (fallback senza autozoom)
-            # Auto-zoom del range colore pitch: normalizza sul min/max in cents
-            # dei grani visibili nel subplot (sample+pagina) invece del range
-            # fisso — rende visibile il micro-detune ±6 cents (issue #95).
-            'pitch_color_autozoom': {
-                'enabled': True,
-                'pad_ratio': 0.1,        # margine per lato: 10% dello span
-                # floor: 1 semitono. Senza questo minimo, una manciata di
-                # cents di scarto reale produrrebbe uno span quasi nullo e
-                # quindi un gradiente di colore esagerato (l'intera colormap)
-                # per una differenza musicalmente trascurabile.
-                'min_span_cents': 50.0,
-            },
-            'volume_range': (-60, 0),        # dB range per normalizzare alpha
-            'min_grain_width_pts': 1,        # larghezza minima visibile
-            # Forma del grano nella partitura:
-            #   'arrow'  -> freccia direzionale (default, comportamento storico);
-            #   'window' -> il bordo superiore ("testa") traccia la curva della
-            #               finestra/envelope del grano, base piatta sul pointer.
-            # La finestra e' altrimenti invisibile nella partitura: due grani con
-            # envelope diversi (hanning vs expodec) hanno la stessa freccia.
-            'grain_shape': 'arrow',
-            # Numero di punti con cui campionare la curva della finestra per la
-            # silhouette (solo grain_shape='window'). La silhouette normalizzata
-            # e' precalcolata e cachata per (nome, risoluzione): il costo per
-            # grano e' solo una trasformazione affine dei vertici.
-            'window_shape_resolution': 32,
-            # Soglia adattiva: se la larghezza del grano sulla pagina e' sotto
-            # questo numero di pixel, la finestra non sarebbe leggibile e il
-            # grano ripiega sulla freccia a 5 vertici (cap al costo vettoriale
-            # sugli score densi).
-            'window_shape_min_px': 3,
-            
-            # Waveform
-            'waveform_alpha': 0.3,
-            'waveform_color': 'steelblue',
-            'waveform_width_ratio': 0.06,    # 3% della larghezza pagina
-            'waveform_downsample': 200,      # 1 punto ogni N campioni
-            # Larghezza (frazione della pagina) della colonna dedicata alla
-            # colorbar del pitch. Vive in una colonna propria del GridSpec cosi'
-            # i subplot dei grani e quello degli envelope condividono la colonna
-            # centrale -> stesso bordo destro, niente piu' disallineamento (la
-            # colorbar non ruba larghezza ai soli stream).
-            'colorbar_width_ratio': 0.02,
-            # Loop mask
-            'loop_mask_color': '#f4a261',    # arancio caldo
-            'loop_mask_alpha': 0.18,
-            'loop_mask_samples': 200,        # punti di campionamento del poligono
-
-            # Stile
-            'stream_gap_ratio': 0.05,        # gap tra stream (5% dell'altezza)
-            'label_fontsize': 8,
-            'title_fontsize': 12,
-            # Dimensioni font prima hardcoded, ora configurabili: annotazione
-            # dei breakpoint envelope e testo della pagina vuota.
-            'breakpoint_fontsize': 6,
-            'empty_fontsize': 14,
-            # Moltiplicatore globale applicato a TUTTE le fontsize del
-            # visualizer (vedi _fs): 1.0 = comportamento invariato; alzarlo
-            # ingrandisce uniformemente assi, titolo, legenda, annotazioni.
-            # Pensato per chi rigenera le figure per la stampa (es. il paper).
-            'font_scale': 1.0,
-            # Envelope ranges. Dopo issue #114 (scaling data-driven) solo 'pan'
-            # è ancora consultato per lo scaling delle curve (ciclico, ±180);
-            # le altre entry restano per riferimento/back-compat, non più usate.
-            'envelope_ranges': {
-                # === OUTPUT ===
-                'volume': (-90, 0),           # dB
-                'volume_prob': (0, 100),      # probabilità %
-                'pan': (-180, 180),           # gradi (ciclico)
-                'pan_prob': (0, 100),         # probabilità %
-                
-                # === GRAIN ===
-                'grain_duration': (1.0 / DEFAULT_OUTPUT_SR, 1.0),  # secondi (min 1 campione)
-                'grain_duration_prob': (0, 100),  # probabilità %
-                'reverse': (0, 1),            # boolean
-                'reverse_prob': (0, 100),     # probabilità %
-                
-                # === POINTER ===
-                'pointer_start': (0.0, 1.0),  # normalizzato
-                'pointer_speed': (-4.0, 16.0),
-                'pointer_deviation': (0.0, 1.0),  # normalizzato
-                'pointer_deviation_prob': (0, 100),  # probabilità %
-                'loop_dur': (0.001, 10.0),    # secondi
-                # NOTA: pitch è unit-driven (chiave 'pitch'); i bounds vengono da
-                # stream.pitch_unit.value_bounds(), non da range statici qui.
-
-                # === DENSITY ===
-                'density': (1, 200),          # grani/sec
-                'fill_factor': (0.1, 20),
-                'distribution': (0, 1),
-                'effective_density': (1, 200),
-                
-                # === VOICES ===
-                'num_voices': (1, 20),
-                'scatter': (0.0, 1.0),        # normalizzato (cluster→spread)
-                'voice_pitch_offset': (-48, 48),  # semitoni
-                'voice_pointer_offset': (-1.0, 1.0),  # normalizzato
-                'voice_pointer_range': (0.0, 1.0),    # normalizzato
-            },
-
-            'envelope_colors': dict(ENVELOPE_COLORS),
-            # Frazione della banda di OGNI stream riservata alla sua riga
-            # envelope (issue #113: un subplot envelope per stream, sotto i
-            # grani). Prima del fix era la frazione di pagina del pannello
-            # envelope unico condiviso: la proporzione complessiva resta 30%.
-            'envelope_panel_ratio': 0.3,
-
-            # Scaling data-driven puro delle curve envelope (issue #114): ogni
-            # curva scala sull'escursione reale dei suoi valori nella finestra
-            # visibile (min/max + padding), senza alcun clamp ai range fissi.
-            # Si applica a tutti i parametri; pan resta ciclico (escluso).
-            'envelope_display': {
-                'pad_ratio': 0.05,      # margine sopra/sotto: 5% dell'escursione
-                'samples': 128,         # densità campionamento (cattura overshoot cubic)
-            },
-
-            # === LENTE DI INGRANDIMENTO (magnify) ===
-            # Proietta un cerchio che ingrandisce una regione del piano
-            # tempo×posizione di lettura, con connettori verso la sorgente.
-            # Default disattivata: a flag spenti render_page è identico a prima.
-            'magnify_auto': False,        # lente automatica sul cluster più denso
-            'magnify_targets': [],        # target espliciti: list[dict]
-                                          # (t obbligatorio; y/zoom/out/src/stream/corner opz.)
-                                          # corner per-target -> piu' lenti non
-                                          # sovrapposte sullo stesso subplot
-            'magnify_defaults': {
-                'zoom': 8.0,              # fattore di ingrandimento del contenuto
-                'out': 0.12,              # raggio cerchio di USCITA (frazione min figura)
-                'src': None,              # raggio cerchio di PARTENZA; None = out/zoom
-                'corner': 'top-right',    # angolo del subplot dove proiettare la lente
-            },
-            'magnify_hist_bins': (40, 16),  # bin (tempo, posizione) per auto-densest
-            'magnify_color': '#c1121f',   # colore marker sorgente + connettori
-        }
-
-        self.config = default_config
-        if config:
-            self.config.update(config)
+        # Lo schema vive in rendering.visualizer_config: dichiarato, con merge
+        # profondo dei gruppi annidati e rifiuto delle chiavi sconosciute.
+        # Il risultato resta un dict perche' viz.config e il parametro config=
+        # sono superficie pubblica.
+        self.config = VisualizerConfig.from_overrides(config).as_dict()
 
         # Directory sample effettiva: config esplicita o fallback globale
         # (deprecato, mantenuto per compatibilita' coi monkey-patch esterni).
@@ -247,12 +93,6 @@ class ScoreVisualizer:
         # Cache waveform
         self.waveform_cache = {}
 
-        # Cache silhouette finestra normalizzata, chiave (nome, risoluzione).
-        # Popolata lazy da _window_silhouette; il registry NumPy e' creato al
-        # primo uso (solo con grain_shape='window').
-        self._window_silhouette_cache = {}
-        self._window_registry = None
-        
         # Dati calcolati
         self.total_duration = None
         self.page_count = None
@@ -279,128 +119,19 @@ class ScoreVisualizer:
         
         if not self.streams:
             raise ValueError("Nessuno stream da visualizzare")
-        
-        # 1. Calcola durata totale
-        self.total_duration = max(
-            s.onset + s.duration for s in self.streams
-        )
-    
-        # 2. Calcola numero pagine
-        page_dur = self.config['page_duration']
-        self.page_count = ceil(self.total_duration / page_dur)
-        
-        # 3. Per ogni pagina, calcola layout
-        self.page_layouts = []
-        
-        for page_idx in range(self.page_count):
-            page_start = page_idx * page_dur
-            page_end = page_start + page_dur
-            
-            # Stream attivi in questa pagina
-            active_streams = self._find_active_streams(page_start, page_end)
-            
-            if not active_streams:
-                # Pagina vuota (possibile se ci sono buchi)
-                self.page_layouts.append({
-                    'page_idx': page_idx,
-                    'time_range': (page_start, page_end),
-                    'active_streams': [],
-                    'max_concurrent': 0,
-                    'slot_assignments': {},
-                })
-                continue
-            
-            # Calcola max simultanei
-            max_concurrent = self._calculate_max_concurrent(
-                active_streams, page_start, page_end
-            )
-            
-            # Assegna slot verticali
-            slot_assignments = self._assign_vertical_slots(
-                active_streams, page_start, page_end
-            )
-            
-            self.page_layouts.append({
-                'page_idx': page_idx,
-                'time_range': (page_start, page_end),
-                'active_streams': active_streams,
-                'max_concurrent': max(max_concurrent, len(set(slot_assignments.values()))),
-                'slot_assignments': slot_assignments,
-            })
-        
+
+        self.total_duration = page_layout.total_duration(self.streams)
+        self.page_layouts = page_layout.paginate(
+            self.streams, self.config['page_duration'])
+        self.page_count = len(self.page_layouts)
+
         print(f"Analisi completata: {self.page_count} pagine, "
               f"durata totale {self.total_duration:.2f}s")
-    
-    def _find_active_streams(self, page_start, page_end):
-        """Trova stream che intersecano l'intervallo della pagina."""
-        active = []
-        for stream in self.streams:
-            stream_start = stream.onset
-            stream_end = stream.onset + stream.duration
-            
-            # Intersezione?
-            if stream_start < page_end and stream_end > page_start:
-                active.append(stream)
-        
-        return active
-    
-    def _calculate_max_concurrent(self, streams, page_start, page_end):
-        """Sweep line per trovare max stream simultanei."""
-        events = []
-        for stream in streams:
-            start = max(stream.onset, page_start)
-            end = min(stream.onset + stream.duration, page_end)
-            events.append((start, 1))   # START
-            events.append((end, -1))    # END
-        
-        # Ordina: per tempo, poi END (-1) prima di START (+1)
-        events.sort(key=lambda x: (x[0], x[1]))
-        
-        max_count = 0
-        current_count = 0
-        for time, delta in events:
-            current_count += delta
-            max_count = max(max_count, current_count)
-        
-        return max_count
-    
-    def _assign_vertical_slots(self, active_streams, page_start, page_end):
-        """
-        Assegna slot verticali agli stream usando algoritmo greedy.
-        Gli stream che non si sovrappongono possono condividere lo stesso slot.
-        """
-        # Ordina per onset
-        sorted_streams = sorted(active_streams, key=lambda s: s.onset)
-        
-        # slots[i] = tempo di fine dell'ultimo stream in quello slot
-        slots = []
-        assignments = {}
-        
-        for stream in sorted_streams:
-            stream_start = stream.onset
-            stream_end = stream.onset + stream.duration
-            
-            # Trova slot libero (il primo che termina prima dell'inizio di questo stream)
-            assigned_slot = None
-            for i, slot_end in enumerate(slots):
-                if slot_end <= stream_start:
-                    assigned_slot = i
-                    slots[i] = stream_end
-                    break
-            
-            # Se nessuno slot libero, creane uno nuovo
-            if assigned_slot is None:
-                assigned_slot = len(slots)
-                slots.append(stream_end)
-            
-            assignments[stream.stream_id] = assigned_slot
-        
-        return assignments
-    
+
     # =========================================================================
     # CARICAMENTO WAVEFORM
     # =========================================================================
-    
+
     def _load_waveform(self, sample_path):
         """Carica e processa waveform per visualizzazione."""
         
@@ -461,26 +192,9 @@ class ScoreVisualizer:
         az = self.config['pitch_color_autozoom']
         if not az.get('enabled', False):
             return None
-
-        cents = []
-        for stream in streams:
-            for voice_grains in stream.voices:
-                for g in voice_grains:
-                    if not (g.onset < page_end and (g.onset + g.duration) > page_start):
-                        continue
-                    ratio = abs(g.pitch_ratio)
-                    if ratio <= 0:
-                        continue
-                    cents.append(1200.0 * np.log2(ratio))
-
-        if not cents:
-            return None
-
-        c_min, c_max = min(cents), max(cents)
-        span = max(c_max - c_min, az['min_span_cents'])
-        center = (c_min + c_max) / 2.0
-        half = span / 2.0 + az['pad_ratio'] * span
-        return (center - half, center + half)
+        return grain_visuals.pitch_cents_range(
+            streams, page_start, page_end,
+            min_span_cents=az['min_span_cents'], pad_ratio=az['pad_ratio'])
 
     def _add_pitch_colorbar(self, fig, cax_spec, cents_range, streams,
                             page_start, page_end):
@@ -500,10 +214,8 @@ class ScoreVisualizer:
             label = 'pitch (cents)'
         else:
             has_grains = any(
-                g.onset < page_end and (g.onset + g.duration) > page_start
+                grain_visuals.visible_grains(s, page_start, page_end)
                 for s in streams
-                for voice_grains in s.voices
-                for g in voice_grains
             )
             if not has_grains:
                 return
@@ -538,24 +250,15 @@ class ScoreVisualizer:
         cents_range=(lo, hi): normalizza 1200*log2(ratio) nel range zoomato
         (auto-zoom per-subplot). None: fallback sul range fisso pitch_range.
         """
-        if cents_range is not None and pitch_ratio > 0:
-            lo, hi = cents_range
-            cents = 1200.0 * np.log2(pitch_ratio)
-            normalized = (cents - lo) / (hi - lo)
-        else:
-            p_min, p_max = self.config['pitch_range']
-            normalized = (pitch_ratio - p_min) / (p_max - p_min)
-        normalized = np.clip(normalized, 0, 1)
-        return self.cmap(normalized)
+        return self.cmap(grain_visuals.pitch_position(
+            pitch_ratio, cents_range, pitch_range=self.config['pitch_range']))
     
     def _volume_to_alpha(self, volume_db):
         """Mappa volume (dB) → alpha/opacità."""
-        v_min, v_max = self.config['volume_range']
-        normalized = (volume_db - v_min) / (v_max - v_min)
-        normalized = np.clip(normalized, 0, 1)
-        
-        a_min, a_max = self.config['grain_alpha_range']
-        return a_min + normalized * (a_max - a_min)
+        return grain_visuals.volume_alpha(
+            volume_db,
+            volume_range=self.config['volume_range'],
+            alpha_range=self.config['grain_alpha_range'])
     
     # =========================================================================
     # RENDERING
@@ -577,8 +280,8 @@ class ScoreVisualizer:
         """
         
         layout = self.page_layouts[page_idx]
-        page_start, page_end = layout['time_range']
-        active_streams = layout['active_streams']
+        page_start, page_end = layout.t_start, layout.t_end
+        active_streams = layout.streams
         
         # Dimensioni figura (mm → inches)
         page_w_mm, page_h_mm = self.config['page_size']
@@ -780,8 +483,8 @@ class ScoreVisualizer:
                 lanes, legend_entries = self._compute_env_legend_layout([stream])
 
                 for lane in lanes:
-                    self._draw_envelopes(ax_env, lane['stream'], lane['y_base'],
-                                         lane['y_height'], page_start, page_end)
+                    self._draw_envelopes(ax_env, lane.stream, lane.y_base,
+                                         lane.y_height, page_start, page_end)
 
                 # Label stream nella lane envelope: presente anche a lane
                 # vuota, cosi' la corsia resta attribuibile al suo stream.
@@ -857,120 +560,14 @@ class ScoreVisualizer:
             self._draw_one_magnifier(fig, overlay, resolved)
 
     def _resolve_magnify_targets(self, page_start, page_end, stream_entries):
-        """Target risolti (concreti) per la pagina: {entry, t, y, zoom, out, src}.
-
-        L'auto (se abilitato) aggiunge la lente sul cluster più denso; gli
-        espliciti la cui 't' cade in [page_start, page_end) vengono risolti su
-        stream e y concreti."""
-        resolved = []
-        if self.config.get('magnify_auto'):
-            auto = self._auto_magnify_target(
-                page_start, page_end, stream_entries)
-            if auto is not None:
-                resolved.append(auto)
-        for target in (self.config.get('magnify_targets') or []):
-            r = self._resolve_explicit_target(
-                target, page_start, page_end, stream_entries)
-            if r is not None:
-                resolved.append(r)
-        return resolved
-
-    def _page_grain_points(self, stream, page_start, page_end):
-        """(onset, pointer_pos) dei grani dello stream visibili nella pagina."""
-        return [
-            (g.onset, g.pointer_pos)
-            for voice_grains in stream.voices
-            for g in voice_grains
-            if g.onset < page_end and (g.onset + g.duration) > page_start
-        ]
-
-    def _auto_magnify_target(self, page_start, page_end, stream_entries):
-        """Target automatico: centroide del bin più denso (tempo×posizione) fra
-        gli stream attivi. None se nessuno stream ha grani in pagina."""
-        nt, ny = self.config['magnify_hist_bins']
-        best = None  # (count, entry, tc, yc)
-        for entry in stream_entries:
-            pts = self._page_grain_points(entry['stream'], page_start, page_end)
-            if not pts:
-                continue
-            ts = np.array([p[0] for p in pts])
-            ys = np.array([p[1] for p in pts])
-            y_hi = max(entry['sample_duration'], 1e-6)
-            H, te, ye = np.histogram2d(
-                ts, ys, bins=[nt, ny],
-                range=[[page_start, page_end], [0.0, y_hi]])
-            i, j = np.unravel_index(int(np.argmax(H)), H.shape)
-            count = H[i, j]
-            if count <= 0:
-                continue
-            # Centro sul centroide dei grani del bin: cade su grani reali, così
-            # la finestra (stretta per via dello zoom) li contiene davvero.
-            in_bin = [(t, y) for t, y in pts
-                      if te[i] <= t <= te[i + 1] and ye[j] <= y <= ye[j + 1]]
-            if not in_bin:
-                continue
-            tc = float(np.mean([t for t, _ in in_bin]))
-            yc = float(np.mean([y for _, y in in_bin]))
-            if best is None or count > best[0]:
-                best = (count, entry, tc, yc)
-        if best is None:
-            return None
-        _, entry, tc, yc = best
-        d = self.config['magnify_defaults']
-        return {'entry': entry, 't': tc, 'y': yc,
-                'zoom': d['zoom'], 'out': d['out'], 'src': d['src'],
-                'corner': d.get('corner', 'top-right')}
-
-    def _resolve_explicit_target(self, target, page_start, page_end,
-                                 stream_entries):
-        """Risolve un target esplicito {t, y?, zoom?, out?, src?, stream?}.
-
-        None se 't' non cade nella pagina. Stream: la chiave 'stream' (per
-        stream_id) o, in mancanza, lo stream più denso in pagina. y: la chiave
-        'y' o il centroide dei pointer_pos vicino a 't' (o metà sample)."""
-        t = target.get('t')
-        if t is None or not (page_start <= t < page_end):
-            return None
-        entry = None
-        sid = target.get('stream')
-        if sid is not None:
-            entry = next((e for e in stream_entries
-                          if e['stream'].stream_id == sid), None)
-        if entry is None:
-            entry = self._densest_stream_entry(
-                page_start, page_end, stream_entries)
-        if entry is None:
-            return None
-        d = self.config['magnify_defaults']
-        y = target.get('y')
-        if y is None:
-            y = self._auto_y_at(entry['stream'], t, page_start, page_end)
-            if y is None:
-                y = entry['sample_duration'] * 0.5
-        return {'entry': entry, 't': float(t), 'y': float(y),
-                'zoom': target.get('zoom', d['zoom']),
-                'out': target.get('out', d['out']),
-                'src': target.get('src', d['src']),
-                'corner': target.get('corner', d.get('corner', 'top-right'))}
-
-    def _densest_stream_entry(self, page_start, page_end, stream_entries):
-        """Entry dello stream con più grani visibili in pagina (fallback: primo)."""
-        best, best_n = None, 0
-        for entry in stream_entries:
-            n = len(self._page_grain_points(
-                entry['stream'], page_start, page_end))
-            if n > best_n:
-                best, best_n = entry, n
-        return best or (stream_entries[0] if stream_entries else None)
-
-    def _auto_y_at(self, stream, t, page_start, page_end):
-        """Centroide dei pointer_pos dei grani vicini a 't' (None se nessuno)."""
-        pts = self._page_grain_points(stream, page_start, page_end)
-        if not pts:
-            return None
-        w = 0.05 * (page_end - page_start)  # finestra locale ±5% pagina
-        near = [y for (gt, y) in pts if abs(gt - t) <= w] or [y for _, y in pts]
-        return float(np.mean(near))
+        """Target risolti (MagnifyTarget) per la pagina.
+        Delega a rendering.magnifier_targets.resolve."""
+        return magnifier_targets.resolve(
+            stream_entries, page_start, page_end,
+            auto=self.config.get('magnify_auto'),
+            specs=self.config.get('magnify_targets'),
+            hist_bins=self.config['magnify_hist_bins'],
+            defaults=self.config['magnify_defaults'])
 
     def _make_magnify_overlay(self, fig):
         """Asse a tutta figura in coordinate pixel: cerchi tondi e linee dritte
@@ -989,18 +586,18 @@ class ScoreVisualizer:
         """Proietta una lente: inset circolare zoomato + marker sorgente +
         connettori. I quattro controlli (center, zoom, out, src) sono
         indipendenti; src=None usa il valore fedele out/zoom."""
-        entry = resolved['entry']
+        entry = resolved.entry
         ax_grain = entry['ax']
         stream = entry['stream']
         sample_dur = entry['sample_duration']
         cents_range = entry['cents_range']
-        tc, yc = float(resolved['t']), float(resolved['y'])
-        zoom = max(float(resolved['zoom']), 1e-6)
+        tc, yc = float(resolved.t), float(resolved.y)
+        zoom = max(float(resolved.zoom), 1e-6)
 
         W, H = fig.get_size_inches() * fig.dpi
         min_dim = min(W, H)
-        out_r_px = float(resolved['out']) * min_dim
-        src = resolved.get('src')
+        out_r_px = float(resolved.out) * min_dim
+        src = resolved.src
         src_r_px = (float(src) * min_dim) if src is not None else out_r_px / zoom
 
         # Scala px/dato dell'asse principale al centro (asse lineare).
@@ -1019,7 +616,7 @@ class ScoreVisualizer:
         # Posizione del cerchio di uscita: angolo del subplot (frazione figura).
         pos = ax_grain.get_position()
         r_fx, r_fy = out_r_px / W, out_r_px / H
-        corner = resolved.get('corner') or \
+        corner = resolved.corner or \
             self.config['magnify_defaults'].get('corner', 'top-right')
         pad = 0.012
         cy = (pos.y1 - r_fy - pad) if 'top' in corner else (pos.y0 + r_fy + pad)
@@ -1095,95 +692,26 @@ class ScoreVisualizer:
 
     def _grain_arrow_vertices(self, grain):
         """Vertici della freccia direzionale (forma storica del grano).
-
-        5 vertici: rettangolo [onset, onset+duration] x [pointer, pointer+dur]
-        con punta triangolare verso l'alto (forward) o il basso (reverse)."""
-        x = grain.onset
-        width = grain.duration
-        pointer_y = grain.pointer_pos
-        height = grain.duration
-        arrow_head_width = width * 0.5
-
-        if grain.pitch_ratio < 0:
-            y_top = pointer_y
-            y_bottom = pointer_y - height
-            return [
-                (x, y_top),                               # alto sinistra
-                (x + width, y_top),                       # alto destra
-                (x + width, y_bottom + arrow_head_width), # prima della punta destra
-                (x + width / 2, y_bottom),                # punta centrale (GIU')
-                (x, y_bottom + arrow_head_width),         # prima della punta sinistra
-            ]
-        y_bottom = pointer_y
-        y_top = pointer_y + height
-        return [
-            (x, y_bottom),                                # basso sinistra
-            (x + width, y_bottom),                        # basso destra
-            (x + width, y_top - arrow_head_width),        # prima della punta destra
-            (x + width / 2, y_top),                       # punta centrale (SU)
-            (x, y_top - arrow_head_width),                # prima della punta sinistra
-        ]
+        Delega a rendering.grain_visuals.arrow_vertices."""
+        return grain_visuals.arrow_vertices(grain)
 
     def _grain_window_vertices(self, grain, xs, w):
         """Vertici della silhouette "testa/bordo": base piatta sul pointer, il
-        bordo superiore segue la curva della finestra w (normalizzata su [0,1]).
-
-        xs, w: arrays normalizzati su [0,1] (vedi _window_silhouette). La
-        direzione (sopra/sotto il pointer) segue il segno di pitch_ratio come
-        per la freccia."""
-        x = grain.onset
-        width = grain.duration
-        pointer_y = grain.pointer_pos
-        height = grain.duration
-
-        xs_abs = x + xs * width
-        if grain.pitch_ratio < 0:
-            edge = pointer_y - height * w
-        else:
-            edge = pointer_y + height * w
-
-        vertices = [(x, pointer_y)]
-        vertices.extend((float(xi), float(yi)) for xi, yi in zip(xs_abs, edge))
-        vertices.append((x + width, pointer_y))
-        return vertices
-
-    def _window_registry_lazy(self):
-        """Istanzia il NumpyWindowRegistry al primo uso (solo grain_shape='window')."""
-        if self._window_registry is None:
-            from pge.rendering.numpy_window_registry import NumpyWindowRegistry
-            self._window_registry = NumpyWindowRegistry()
-        return self._window_registry
+        bordo superiore segue la curva della finestra w.
+        Delega a rendering.grain_visuals.window_vertices."""
+        return grain_visuals.window_vertices(grain, xs, w)
 
     def _window_silhouette(self, name, resolution):
         """Curva finestra normalizzata su [0,1] in ampiezza e dominio.
-
-        Ritorna (xs, w) con xs = linspace(0,1,resolution) e w la finestra
-        riscalata a picco unitario. Cachata per (name, resolution): la forma di
-        una finestra dato il nome e' sempre la stessa, cambia solo la scala
-        applicata per grano."""
-        key = (name, resolution)
-        cached = self._window_silhouette_cache.get(key)
-        if cached is not None:
-            return cached
-
-        w = self._window_registry_lazy().get(name, resolution)
-        w = np.clip(np.asarray(w, dtype=float), 0.0, None)
-        peak = float(w.max())
-        if peak > 0:
-            w = w / peak
-        xs = np.linspace(0.0, 1.0, resolution)
-        result = (xs, w)
-        self._window_silhouette_cache[key] = result
-        return result
+        Delega a rendering.grain_visuals.window_silhouette, che la memoizza per
+        (name, resolution) — la cache vive nel modulo, non nell'istanza, perche'
+        la forma di una finestra non dipende da quale visualizer la chiede."""
+        return grain_visuals.window_silhouette(name, resolution)
 
     def _window_name_map(self, stream):
-        """Mappa table_num -> nome finestra invertendo stream.window_table_map.
-
-        Ritorna {} se la mappa non e' disponibile (fallback alla freccia)."""
-        wtm = getattr(stream, 'window_table_map', None)
-        if not wtm:
-            return {}
-        return {num: name for name, num in wtm.items()}
+        """Mappa table_num -> nome finestra.
+        Delega a rendering.grain_visuals.window_name_map."""
+        return grain_visuals.window_name_map(stream)
 
     def _grain_page_width_px(self, ax, grain):
         """Larghezza del grano sulla pagina in pixel display.
@@ -1206,14 +734,9 @@ class ScoreVisualizer:
         cents_range: range colore auto-zoomato del subplot (vedi
         _compute_pitch_color_range); None = range fisso."""
         
-        all_grains = [grain for voice_grains in stream.voices for grain in voice_grains]
+        visible_grains = grain_visuals.visible_grains(
+            stream, page_start, page_end)
 
-        # Filtra grani visibili
-        visible_grains = [
-            g for g in all_grains
-            if g.onset < page_end and (g.onset + g.duration) > page_start
-        ]
-        
         if not visible_grains:
             return
 
@@ -1430,12 +953,6 @@ class ScoreVisualizer:
         from pge.rendering.envelope_extractor import base_param_name
         return base_param_name(key)
 
-    def _get_voice_offset_envelopes(self, stream):
-        """Curve per-voce degli offset (issue #90, Fase 3).
-        Delega a rendering.envelope_extractor.get_voice_offset_envelopes."""
-        from pge.rendering.envelope_extractor import get_voice_offset_envelopes
-        return get_voice_offset_envelopes(stream)
-
     def _compute_display_ranges(self, envelopes, stream, t_start, t_end):
         """
         Calcola, per ogni envelope (tranne pan), il range di display data-driven:
@@ -1449,38 +966,19 @@ class ScoreVisualizer:
             dict {param_name: (disp_min, disp_max)} per ogni parametro non-pan.
         """
         cfg = self.config['envelope_display']
-        pad_ratio = cfg['pad_ratio']
-        n = cfg['samples']
-        stream_start = stream.onset
-
-        result = {}
-        for param_name, envelope in envelopes.items():
-            # Le chiavi per-voce ('__vN', #90) ereditano dal parametro base.
-            if self._base_param_name(param_name) == 'pan':
-                continue  # pan ciclico: range fisso (-180, 180)
-
-            # Escursione reale nella finestra visibile: campiona densamente la
-            # curva (cattura overshoot cubic) e includi i breakpoint interni.
-            t_rel0 = max(0.0, t_start - stream_start)
-            t_rel1 = max(t_rel0, t_end - stream_start)
-            samples = [envelope.evaluate(t) for t in np.linspace(t_rel0, t_rel1, n)]
-            samples += [v for t, v in envelope.breakpoints if t_rel0 <= t <= t_rel1]
-            if not samples:
-                continue
-            v_min, v_max = min(samples), max(samples)
-            span = v_max - v_min
-            if span <= 1e-12:
-                pad = max(abs(v_min) * pad_ratio, 1e-6)  # envelope costante: centra
-            else:
-                pad = span * pad_ratio
-            result[param_name] = (v_min - pad, v_max + pad)
-
-        return result
+        return envelope_display.display_ranges(
+            envelopes, stream.onset, t_start, t_end,
+            pad_ratio=cfg['pad_ratio'], samples=cfg['samples'])
 
     def _normalize_envelope_value(self, param_name, value):
         """
         Normalizza un valore di envelope a 0-1 sul range di display data-driven
         attivo (issue #114). Nessun clamp ai range fissi tranne per pan.
+
+        Delega a rendering.envelope_display.normalize. I range sono lo
+        scratchpad che _draw_envelopes riempie per la corsia in corso: qui
+        restano un attributo perche' i sei chiamanti interni non se li passano,
+        ma la REGOLA non li legge piu' da self.
 
         Args:
             param_name: nome del parametro
@@ -1489,47 +987,24 @@ class ScoreVisualizer:
         Returns:
             float: valore normalizzato (tipicamente 0-1; pan è clippato).
         """
-        # Le curve per-voce ('__vN', #90) si normalizzano col base.
-        base = self._base_param_name(param_name)
-
-        # pan resta ciclico: wrap modulo su ±180 e clamp (range fisso).
-        if base == 'pan':
-            min_val, max_val = self.config['envelope_ranges']['pan']
-            value = ((value + 180) % 360) - 180
-            return np.clip((value - min_val) / (max_val - min_val), 0, 1)
-
-        # Range di display data-driven (popolato da _draw_envelopes per tutti i
-        # parametri tranne pan). Nessun clip: la curva scala sulla sua escursione.
-        display_ranges = getattr(self, '_current_display_ranges', None) or {}
-        if param_name in display_ranges:
-            min_val, max_val = display_ranges[param_name]
-            if max_val != min_val:
-                return (value - min_val) / (max_val - min_val)   # NESSUN clip
-            return 0.5                                            # costante: centro corsia
-        return 0.5  # fallback difensivo (draw imposta sempre i display range)
+        return envelope_display.normalize(
+            param_name, value,
+            getattr(self, '_current_display_ranges', None) or {},
+            pan_range=self.config['envelope_ranges']['pan'])
 
     @staticmethod
     def _segment_strategy_name(segment) -> str:
-        """Mappa strategy del segmento al nome canonico ('step'/'linear'/'cubic')."""
-        cls_name = segment.strategy.__class__.__name__
-        if 'Step' in cls_name:
-            return 'step'
-        if 'Cubic' in cls_name:
-            return 'cubic'
-        return 'linear'
+        """Mappa strategy del segmento al nome canonico ('step'/'linear'/'cubic').
+        Delega a rendering.envelope_display.segment_strategy_name."""
+        return envelope_display.segment_strategy_name(segment)
 
     @staticmethod
     def _is_per_segment_heterogeneous(envelope) -> bool:
         """
         True se envelope ha segmenti con strategie diverse (es. step+linear).
-
-        Envelope uniformi (1 segmento o tutti stessa strategy) → False.
+        Delega a rendering.envelope_display.is_per_segment_heterogeneous.
         """
-        segs = getattr(envelope, 'segments', None)
-        if not segs or len(segs) < 2:
-            return False
-        names = {ScoreVisualizer._segment_strategy_name(s) for s in segs}
-        return len(names) > 1
+        return envelope_display.is_per_segment_heterogeneous(envelope)
 
     def _draw_envelopes(self, ax, stream, y_base, y_height, page_start, page_end):
         """
@@ -1831,102 +1306,24 @@ class ScoreVisualizer:
             )
 
     def _compute_env_legend_layout(self, active_streams):
-        """
-        Calcola la geometria condivisa tra lane envelope e legenda (issue #91).
+        """Geometria condivisa fra corsie envelope e legenda (issue #91).
 
-        Lane e legenda devono usare lo stesso ordinamento e le stesse y,
-        altrimenti la legenda appare mirrorata rispetto alle curve.
-
-        Dal fix #113 render_page la invoca con UN solo stream per volta (ogni
-        stream ha il proprio asse envelope): il risultato e' 0 lane (stream
-        tutto statico -> l'asse resta, vuoto) o 1 lane a tutta altezza. La
-        geometria multi-stream resta supportata per compatibilita'.
+        Delega a rendering.page_layout.envelope_lanes. L'estrazione delle curve
+        resta qui perche' dipende dai flag di config (show_static_params,
+        show_voice_offsets, envelope_filter): la geometria delle corsie non
+        deve saperne niente.
 
         Returns:
-            (lanes, legend_entries)
-            lanes: list[dict] con {stream, stream_id, y_base, y_height,
-                   env_types}, ordine = impilamento (slot_idx crescente, dal
-                   basso verso l'alto come in render_page).
-            legend_entries: list[(param_name, y, stream_id)], con y interna
-                   alla lane dello stream proprietario.
+            (lanes, legend_entries) — lanes sono EnvelopeLane, legend_entries
+            triple (param_name, y, stream_id).
         """
-        streams_with_env = [
-            (s, self._get_stream_envelopes(s)) for s in active_streams
-        ]
-        streams_with_env = [(s, e) for s, e in streams_with_env if e]
-
-        lanes = []
-        legend_entries = []
-        n = len(streams_with_env)
-        if n == 0:
-            return lanes, legend_entries
-
-        gap_ratio = 0.02  # coerente con render_page
-        total_gap = gap_ratio * 2 * n
-        env_slot_height = (1.0 - total_gap) / n
-
-        for slot_idx, (stream, envelopes) in enumerate(streams_with_env):
-            y_single_stream_with_gap = gap_ratio * 2 + env_slot_height
-            y_that_stream = y_single_stream_with_gap * slot_idx
-            y_base = y_that_stream + gap_ratio
-            y_height = env_slot_height
-
-            # Le curve per-voce ('__vN', #90) collassano a una sola voce di
-            # legenda per parametro base: N tracce, una etichetta.
-            env_types = sorted(
-                dict.fromkeys(self._base_param_name(k) for k in envelopes)
-            )
-            lanes.append({
-                'stream': stream,
-                'stream_id': stream.stream_id,
-                'y_base': y_base,
-                'y_height': y_height,
-                'env_types': env_types,
-            })
-
-            m = len(env_types)
-            if m == 1:
-                ys = [y_base + y_height * 0.5]
-            else:
-                ys = np.linspace(y_base + y_height * 0.85,
-                                 y_base + y_height * 0.15, m)
-            for param_name, y in zip(env_types, ys):
-                legend_entries.append((param_name, float(y), stream.stream_id))
-
-        return lanes, legend_entries
-
-    # Nomi corti per la legenda: la colonna e' stretta (~6% pagina), i nomi
-    # lunghi sforavano nel plot (issue #96). Mappa solo i nomi lunghi; gli altri
-    # usano replace('_', ' ').
-    _ENV_LEGEND_SHORT = {
-        'pointer_deviation': 'ptr dev',
-        'pointer_speed': 'ptr spd',
-        'pointer_start': 'ptr start',
-        'grain_duration': 'grain dur',
-        'num_voices': 'voices',
-        'voice_pitch_offset': 'v pitch off',
-        'voice_pointer_offset': 'v ptr off',
-        'voice_pointer_range': 'v ptr rng',
-        'effective_density': 'eff density',
-        'distribution': 'distrib',
-        'fill_factor': 'fill',
-        # Override compatto: 'grain dur rng' (13) sforerebbe la colonna (issue #141)
-        'grain_duration_range': 'gr dur rng',
-    }
+        return page_layout.envelope_lanes(
+            [(s, self._get_stream_envelopes(s)) for s in active_streams])
 
     def _legend_display_name(self, param_name):
-        """Nome corto per la legenda. Un override esplicito in _ENV_LEGEND_SHORT
-        ha precedenza; altrimenti suffisso '_prob' → ' %' (probabilita') e
-        '_range' → ' rng' (deviazione per-grano, issue #141)."""
-        if param_name in self._ENV_LEGEND_SHORT:
-            return self._ENV_LEGEND_SHORT[param_name]
-        if param_name.endswith('_prob'):
-            base = param_name[:-len('_prob')]
-            return f"{self._legend_display_name(base)} %"
-        if param_name.endswith('_range'):
-            base = param_name[:-len('_range')]
-            return f"{self._legend_display_name(base)} rng"
-        return param_name.replace('_', ' ')
+        """Nome corto per la legenda.
+        Delega a rendering.page_layout.legend_display_name."""
+        return page_layout.legend_display_name(param_name)
 
     def _draw_envelope_legend(self, ax, legend_entries):
         """

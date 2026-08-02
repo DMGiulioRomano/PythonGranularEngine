@@ -8,6 +8,220 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`ParameterCurve`**: value object che risponde alla domanda "come varia nel
+  tempo questa faccia di un `Parameter`?" — `kind` in `varying` / `constant` /
+  `absent`, più il payload. Dà una casa al riconoscimento della **costante
+  travestita** (un `Envelope` con tutti i breakpoint uguali *è* un valore
+  fisso), regola che prima era duplicata sei volte in `envelope_extractor`.
+  `Parameter` espone le tre facce come `value_curve`, `range_curve`,
+  `probability_curve`. Documentato in
+  [docs/explanation/parameter-curve.md](docs/explanation/parameter-curve.md).
+
+- **`VoiceManager.offset_curves()`**: il campionamento delle curve degli offset
+  per-voce passa a chi conosce la semantica delle strategy, invece di essere
+  fatto dall'esterno frugando in `vm._pitch_strategy` / `vm._pointer_strategy`.
+  Restituisce record `VoiceCurve` (`dimension`, `voice_index`, `envelope`); la
+  densità della griglia è ora un argomento esplicito (`DEFAULT_OFFSET_SAMPLES`,
+  il 33 storico) invece di una costante sepolta nel codice.
+
+- **`Stream.pointer_deviation`** e **`Stream.voice_manager`**: accessori
+  pubblici a quello che i lettori delle curve raggiungevano per via privata
+  (`stream._pointer.deviation`, `stream._voice_manager`).
+
+- **`rendering/envelope_display`**: quanto è alta la corsia di una curva
+  (`display_ranges`) e dove ci cade dentro un valore (`normalize`), più il
+  riconoscimento delle interpolazioni per-segmento. Fratello di
+  `envelope_extractor` — quello dice *quali* curve ha uno stream, questo *quanto
+  sono alte* — e come lui matplotlib-free, quindi verificabile senza costruire
+  una figura. Estratto da `ScoreVisualizer`, che ne conserva i quattro metodi
+  come deleghe con le firme di prima.
+
+- **`rendering/grain_visuals`**: che aspetto ha un grano sulla partitura — la
+  sua forma (vertici della freccia direzionale o della silhouette della
+  finestra) e dove cade sulle scale di colore e opacità. Il modulo arriva fino
+  al numero e si ferma: applicare la colormap alla frazione e costruire il
+  `Polygon` restano di `ScoreVisualizer`. Include `visible_grains`, il
+  predicato "grano dentro questa finestra temporale" che era scritto in
+  quattro punti diversi del visualizer. La cache delle silhouette passa da
+  dizionario d'istanza a `lru_cache` di modulo, con gli array resi di sola
+  lettura: essendo condivisa fra visualizer, una mutazione la avvelenerebbe
+  per tutti.
+
+- **`rendering/magnifier_targets`**: dove puntare la lente di ingrandimento —
+  il cluster più denso quando è automatica, i punti chiesti dall'utente
+  risolti su stream e quota concreti quando è esplicita. Il risultato è ora
+  un `MagnifyTarget` (dataclass frozen) al posto del dict a sette chiavi
+  stringa. Proiettare il cerchio e disegnare i connettori restano di
+  `ScoreVisualizer`. Questa logica non aveva test unitari: era coperta solo di
+  rimbalzo.
+
+- **`rendering/page_layout`**: come si dispone una partitura sulla pagina —
+  paginazione, sweep line dei simultanei, assegnazione greedy delle corsie
+  verticali, geometria condivisa fra corsie envelope e legenda, nomi corti
+  della legenda. Il risultato è una `PageLayout` (dataclass frozen) al posto
+  del dict a cinque chiavi. `ScoreVisualizer.analyze` resta un metodo perché
+  scrive lo stato dell'oggetto e stampa; `envelope_lanes` riceve le curve già
+  estratte, così la geometria delle corsie non conosce più i flag di config.
+
+- **`rendering/visualizer_config`**: lo schema della configurazione di
+  `ScoreVisualizer`, dichiarato come dataclass con i gruppi annidati tipizzati
+  (`PitchColorAutozoom`, `EnvelopeDisplay`, `MagnifyDefaults`). Erano 160 righe
+  di dizionario dentro `__init__`. Il risultato resta un dict: `viz.config` e
+  il parametro `config=` sono superficie pubblica e non cambiano.
+
+### Corretto
+
+- **Il tetto della cache delle silhouette non era il tetto vero.**
+  `window_silhouette` ha un limite di 64 voci, ma leggeva da un
+  `NumpyWindowRegistry` tenuto in una variabile di modulo — che ha una cache
+  propria, **senza eviction**, e che il refactor aveva promosso da attributo
+  d'istanza a globale di processo. Il caso per cui il tetto esiste — chi
+  rigenera le figure variando `window_shape_resolution` — continuava quindi ad
+  accumulare un livello più giù, dove per giunta stanno gli array e non le
+  chiavi, e non veniva più liberato con il visualizer che l'aveva riempito.
+  Il registry ora si costruisce per singolo miss e muore lì: chi arriva a
+  generare una finestra è già un miss della memoizzazione, quindi la cache del
+  registry non serviva a nessuno, e `__init__` è un dizionario vuoto. Il
+  globale sparisce, e con esso la sua corsa fra thread.
+
+- **Un valore fuori dominio dentro un `Parameter` faceva cadere l'intera
+  estrazione.** `Parameter.__init__` non valida il proprio valore; leggerne le
+  facce come `ParameterCurve` ha reso un `TypeError` quello che prima era una
+  curva semplicemente saltata, e un solo parametro malformato si portava via
+  tutte le altre curve dello stream — cioè la partitura, o la sessione Sonic
+  Visualiser. `envelope_extractor` torna a dichiararla `absent`.
+  `ParameterCurve.classify` resta stretta: il dominio lo dichiara il value
+  object, la tolleranza è di chi legge.
+
+- **`config` non-dizionario dava un messaggio che descriveva un altro
+  problema.** `ScoreVisualizer(gen, config='page_duration')` iterava la stringa
+  carattere per carattere e li riportava come chiavi sconosciute
+  (`_, a, d, e, g, i, n, o, p, r, t, u`). Ora è un `TypeError` che nomina il
+  tipo ricevuto.
+
+- **Il merge di un gruppo annidato dipendeva dal tipo del mapping.**
+  `from_overrides` accetta qualunque `Mapping` come argomento — lo dichiara e
+  lo verifica — ma il merge dei gruppi guardava `isinstance(value, dict)`.
+  Un override scritto come `MappingProxyType` o `ChainMap` non veniva fuso ma
+  sostituito in blocco: `{'envelope_display': MappingProxyType({'pad_ratio':
+  0.1})}` faceva sparire `samples`, e `_compute_display_ranges` sollevava
+  `KeyError: 'samples'` — esattamente il difetto che il merge profondo esiste
+  per chiudere. Con un `dict` funzionava, e niente segnalava la differenza.
+  Vale anche per i dizionari-dato e per la validazione dei refusi dentro il
+  gruppo.
+
+- **La copia della config dipendeva dal tipo di parentesi.** `_as_plain`
+  copiava dict, list e set: `magnify_targets` passato come tupla di dizionari
+  restava condiviso con il chiamante, mentre la stessa cosa scritta come lista
+  veniva copiata in profondità — senza nessun segnale della differenza. La
+  copia comprende ora anche `tuple` e `frozenset`; un oggetto `Colormap`
+  continua a viaggiare per riferimento, che è quello che deve fare.
+
+- **Override parziale di un gruppo di config annidato**: passare
+  `config={'envelope_display': {'pad_ratio': 0.1}}` a `ScoreVisualizer`
+  cancellava gli altri campi del gruppo, e il primo che li leggeva sollevava
+  `KeyError: 'samples'`. Il merge è ora profondo. Stesso problema, e stessa
+  correzione, per `magnify_defaults` e `pitch_color_autozoom`.
+
+- **Override parziale dei dizionari-dato** (`envelope_ranges`,
+  `envelope_colors`): erano il caso più insidioso dei precedenti, perché sono
+  dichiarati con `default_factory` — e per quei campi `dataclasses` cancella
+  l'attributo di classe, quindi un merge scritto leggendo `getattr(cls, nome)`
+  li saltava in silenzio. `config={'envelope_ranges': {'volume': (-40, 0)}}`
+  faceva sparire tutti gli altri range, e il disegno di una curva di pan
+  sollevava `KeyError: 'pan'`; con `envelope_colors` non si schiantava ma la
+  partitura usciva monocroma, tutte le curve sul grigio di fallback. Il
+  default si legge ora da `fields()`, che è l'unico posto dove esiste
+  comunque sia dichiarato.
+
+- **Refuso dentro un gruppo annidato**: `{'envelope_display': {'sampls': 4}}`
+  sollevava il `TypeError` del costruttore del gruppo invece del `ValueError`
+  dichiarato per le chiavi sconosciute — quindi chi intercettava `ValueError`
+  attorno alla costruzione del visualizer si perdeva metà dei refusi. Ora è
+  un `ValueError` col nome qualificato (`envelope_display.sampls`).
+
+### Modificato
+
+- **BREAKING — chiavi di configurazione sconosciute**: erano accettate in
+  silenzio, quindi un refuso si manifestava solo come un'opzione senza
+  effetto. Ora sollevano `ValueError` nominando le chiavi. È un fallimento
+  duro su un costruttore pubblico, senza deprecazione intermedia: codice
+  esterno che passava una chiave in più a `ScoreVisualizer(...)` o a
+  `api.export_score_pdf(config=...)` e finora girava, adesso si ferma.
+  L'insieme delle chiavi e ogni loro default sono invariati, quindi nessuna
+  configurazione *corretta* cambia comportamento; i due chiamanti in-repo
+  (`cli.py`, `api.py`) passano solo chiavi valide. Da verificare prima di
+  bumpare il submodule nel repo del paper CIM 2026, che costruisce le proprie
+  config in `paper/examples/render_example.py`.
+
+- **BREAKING — `viz.page_layouts` è una lista di `PageLayout`**, non più di
+  dict: `layout['time_range']` diventa `layout.t_start` / `layout.t_end`,
+  `active_streams` → `streams`, `slot_assignments` → `slots`, `page_idx` →
+  `index`. Nessun altro modulo del repo li legge (`page_layouts`, `page_count`
+  e `total_duration` restano interni al visualizer), ma sono attributi
+  pubblici e chi li leggesse da fuori va adeguato.
+
+- **BREAKING — gli array di `window_silhouette` sono di sola lettura.** La
+  cache è di modulo e quindi condivisa fra visualizer: un chiamante che
+  mutasse la curva la avvelenerebbe per tutti, e adesso fallisce subito invece
+  di propagarsi. Riguarda anche la delega `ScoreVisualizer._window_silhouette`,
+  che prima restituiva array scrivibili. Nessun consumatore in-repo ci scrive:
+  `window_vertices` costruisce comunque un array nuovo.
+
+- **BREAKING — i campi-sequenza dei record di layout sono tuple**:
+  `PageLayout.streams` e `EnvelopeLane.env_types`. `frozen` blocca il
+  riassegnamento del campo, non la scrittura dentro il campo, e una lista
+  lasciava aperta proprio la strada che il record dichiara chiusa.
+  `PageLayout.slots` resta un dict: per un mapping è il tipo giusto, e la sola
+  alternativa di sola lettura in stdlib non è né copiabile né serializzabile —
+  lì l'immutabilità è una convenzione dichiarata nella docstring.
+
+- **BREAKING — `envelope_extractor.get_voice_offset_envelopes` rimossa.** È
+  una funzione pubblica di modulo che sparisce: per chi la importava è la più
+  dura delle rotture elencate qui, non la più lieve. Il criterio
+  applicato alle nove deleghe del visualizer vale anche un livello più giù:
+  questa estrazione le ha portato via entrambi i chiamanti — 
+  `get_stream_envelopes` campiona direttamente da `VoiceManager`, e la delega
+  che la usava è fra le nove — e restava viva per un import nella sua suite che
+  non la chiamava. Le stesse curve arrivano da
+  `get_stream_envelopes(show_voice_offsets=True)`.
+
+- **Costanti appiattite: i valori dei breakpoint sono ora `float`.** Con
+  `show_static_params` una costante diventa una curva piatta, e il suo valore
+  passa da `ParameterCurve`, che normalizza a `float`: un `reverse: 0` che
+  prima produceva breakpoint `0` ora ne produce `0.0`. È l'unica differenza
+  di output misurabile dell'intero refactor, ed è di tipo e non di valore:
+  non raggiunge nessuna uscita, perché le annotazioni dei breakpoint
+  formattano con `:.2f` e l'export Sonic Visualiser legge le curve senza
+  `show_static`, quindi le costanti non ci arrivano mai.
+
+- **`envelope_extractor` guidato da una tabella di descrittori** (394 → 290
+  righe). I tre meccanismi di accesso — ciclo sugli schemi con `hasattr`, lista
+  hardcoded di nomi espliciti, drilling sui privati — diventano una tabella
+  sola: per ogni nome pubblicato, dove pescare il `Parameter` e quale faccia
+  leggere. Un solo punto di appiattimento delle costanti, l'unico che ha
+  bisogno di `stream.duration`.
+
+  **Nessun cambiamento osservabile**: chiavi pubblicate, loro ordine e
+  breakpoint sono identici (a meno del tipo dei valori costanti, sopra).
+  Nessun impatto su `--plot-envelopes`, sui nomi dei layer nelle sessioni
+  Sonic Visualiser, né su PGE-ls / PGE-ui.
+
+- **Nove metodi privati di `ScoreVisualizer` rimossi**: `_find_active_streams`,
+  `_calculate_max_concurrent`, `_assign_vertical_slots`, `_page_grain_points`,
+  `_auto_magnify_target`, `_resolve_explicit_target`, `_densest_stream_entry`,
+  `_auto_y_at`, `_get_voice_offset_envelopes`. Erano rimasti come deleghe di
+  una riga verso i moduli estratti, ma dopo l'estrazione nessuno li chiamava
+  più — né il resto del visualizer né i test. Le deleghe che i test chiamano
+  sulla classe restano tutte. `score_visualizer.py`: 1465 → 1412 righe.
+
+- I test dell'estrazione (dieci classi, ~500 righe) non costruiscono più un
+  `ScoreVisualizer` per interrogare l'estrattore:
+  `tests/rendering/test_envelope_extractor.py` passa da 11 a 75 test,
+  `test_score_visualizer.py` da 181 a 129 (resta il disegno).
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30

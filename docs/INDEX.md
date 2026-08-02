@@ -18,6 +18,8 @@
 | [caching](explanation/caching.md) | stable | caching, rendering, csound |
 | [library-vs-cli](explanation/library-vs-cli.md) | stable | api, cli, architecture, refactor |
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
+| [parameter-curve](explanation/parameter-curve.md) | stable | parameters, envelopes, architecture, refactor |
+| [score-visualizer-layout](explanation/score-visualizer-layout.md) | stable | rendering, visualizer, architecture, refactor, matplotlib |
 
 ## How-to
 
