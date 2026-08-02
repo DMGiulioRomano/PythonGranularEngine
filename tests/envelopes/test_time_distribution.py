@@ -446,5 +446,88 @@ class TestIntegration:
         assert sum(durations) == pytest.approx(30.0)
 
 
+# =============================================================================
+# 6. LE QUATTRO FORME, A CONFRONTO
+# =============================================================================
+
+class TestDistributionsDifferInShape:
+    """A parita' di input le distribuzioni danno forme diverse.
+
+    Qui vive quello che dimostrava il blocco demo in coda al modulo (issue
+    #181): stessi total_time e n_reps, quattro andamenti riconoscibili e
+    distinti fra loro. Un print lo mostrava a chi eseguiva il modulo come
+    script; un'asserzione lo tiene fermo a ogni suite.
+    """
+
+    TOTAL_TIME = 30.0
+    N_REPS = 5
+
+    def _distribution(self, spec):
+        dist = TimeDistributionFactory.create(spec)
+        return dist.calculate_distribution(self.TOTAL_TIME, self.N_REPS)
+
+    def test_linear_is_flat(self):
+        """Linear: durate tutte uguali, nessun andamento."""
+        _, durations = self._distribution('linear')
+
+        assert durations == pytest.approx([6.0] * self.N_REPS)
+
+    def test_exponential_accelerates(self):
+        """Exponential: durate in calo, i cicli si stringono (accelerando)."""
+        _, durations = self._distribution('exponential')
+
+        assert all(b < a for a, b in zip(durations, durations[1:]))
+
+    def test_logarithmic_decelerates(self):
+        """Logarithmic: durate in crescita, i cicli si allargano (ritardando)."""
+        _, durations = self._distribution('logarithmic')
+
+        assert all(b > a for a, b in zip(durations, durations[1:]))
+
+    def test_geometric_holds_its_ratio(self):
+        """Geometric con ratio=1.5: ogni ciclo dura 1.5 volte il precedente."""
+        _, durations = self._distribution({'type': 'geometric', 'ratio': 1.5})
+
+        for prev, nxt in zip(durations, durations[1:]):
+            assert nxt / prev == pytest.approx(1.5)
+
+    def test_power_curves_more_than_linear(self):
+        """Power con exponent=2.5: crescita piu' che proporzionale.
+
+        Il primo ciclo e' molto piu' corto della media (6.0 s), l'ultimo molto
+        piu' lungo: e' la firma della legge di potenza rispetto al lineare.
+        """
+        _, durations = self._distribution({'type': 'power', 'exponent': 2.5})
+
+        assert durations[0] < 6.0
+        assert durations[-1] > 6.0
+        assert all(b > a for a, b in zip(durations, durations[1:]))
+
+    def test_the_four_shapes_are_distinct(self):
+        """Nessuna coppia di distribuzioni produce le stesse durate."""
+        shapes = [
+            self._distribution('linear')[1],
+            self._distribution('exponential')[1],
+            self._distribution('logarithmic')[1],
+            self._distribution({'type': 'geometric', 'ratio': 1.5})[1],
+            self._distribution({'type': 'power', 'exponent': 2.5})[1],
+        ]
+
+        for i, first in enumerate(shapes):
+            for second in shapes[i + 1:]:
+                assert first != pytest.approx(second)
+
+    def test_every_shape_still_fills_total_time(self):
+        """Cambia la forma, non la somma: tutte coprono total_time."""
+        for spec in ('linear', 'exponential', 'logarithmic',
+                     {'type': 'geometric', 'ratio': 1.5},
+                     {'type': 'power', 'exponent': 2.5}):
+            starts, durations = self._distribution(spec)
+
+            assert sum(durations) == pytest.approx(self.TOTAL_TIME)
+            assert validate_distribution(
+                starts, durations, self.TOTAL_TIME) is True
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
