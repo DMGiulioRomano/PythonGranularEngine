@@ -18,7 +18,6 @@ from typing import Any
 from pge.parameters.parameter import Parameter
 from pge.parameters.parser import GranularParser
 from pge.parameters.parameter_schema import ParameterSpec
-import inspect
 
 class ParameterFactory:
     """
@@ -144,12 +143,6 @@ class ParameterFactory:
                 return default
         
         return current
-
-    def _get_caller(self):   
-        frame = inspect.currentframe().f_back
-        caller_info = inspect.getframeinfo(frame)
-        return f"{caller_info.function}:{caller_info.lineno}"
-    
 
     def __repr__(self) -> str:
         return f"ParameterFactory(stream_id='{self._stream_id}')"
