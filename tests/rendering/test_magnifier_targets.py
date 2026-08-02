@@ -251,3 +251,82 @@ class TestResolve:
                        hist_bins=(40, 16), defaults=DEFAULTS) == []
         assert resolve([], 0.0, 10.0, auto=True, specs=[{'t': 5.0}],
                        hist_bins=(40, 16), defaults=DEFAULTS) == []
+
+
+class TestAutoTargetTieBreak:
+    """Fra due stream ugualmente affollati la lente ne sceglie uno solo, e la
+    scelta non puo' dipendere dall'ordine in cui capitano."""
+
+    def _twins(self):
+        """Due entry con lo stesso identico grumo: il conteggio pareggia."""
+        grains = [grain(onset=1.0 + i * 0.01, pointer_pos=0.5) for i in range(6)]
+        return [entry('primo', grains=grains), entry('secondo', grains=grains)]
+
+    def test_the_first_wins_a_tie(self):
+        """A parita' vince chi arriva prima: il confronto e' stretto, quindi
+        un pari non spodesta il campione in carica. Con un confronto largo
+        vincerebbe l'ultimo, e l'ordine di stream_entries — che e' l'ordine
+        degli stream nel file — sposterebbe la lente."""
+        target = auto_target(self._twins(), 0.0, 10.0,
+                             hist_bins=(40, 16), defaults=DEFAULTS)
+        assert target.entry['stream'].stream_id == 'primo'
+
+    def test_the_tie_is_broken_the_same_way_reversed(self):
+        """La regola e' 'il primo della lista', non 'quello che si chiama
+        primo': invertendo la lista vince l'altro, e nulla resta ambiguo."""
+        target = auto_target(list(reversed(self._twins())), 0.0, 10.0,
+                             hist_bins=(40, 16), defaults=DEFAULTS)
+        assert target.entry['stream'].stream_id == 'secondo'
+
+
+class TestAutoTargetDegenerateSample:
+    """L'istogramma ha bisogno di un'altezza: la posizione di lettura si
+    distribuisce su [0, durata del sample]."""
+
+    def test_a_zero_length_sample_does_not_break_the_histogram(self):
+        """Un sample di durata nulla darebbe un range verticale degenere, e
+        np.histogram2d su un range vuoto non produce il bin che serve. Il
+        floor tiene in piedi il conto invece di far sparire la lente."""
+        only = entry('s1', sample_duration=0.0,
+                     grains=[grain(onset=2.0, pointer_pos=0.0)])
+        target = auto_target([only], 0.0, 10.0,
+                             hist_bins=(40, 16), defaults=DEFAULTS)
+        assert target is not None
+        assert target.t == pytest.approx(2.0)
+
+    def test_a_negative_sample_duration_is_survived_too(self):
+        """Stessa guardia, dal lato assurdo: una durata negativa non deve
+        propagarsi dentro numpy come un range invertito."""
+        only = entry('s1', sample_duration=-1.0,
+                     grains=[grain(onset=2.0, pointer_pos=0.0)])
+        assert auto_target([only], 0.0, 10.0,
+                           hist_bins=(40, 16), defaults=DEFAULTS) is not None
+
+
+class TestAutoTargetCountsNothing:
+    """Il centro della lente e' il centroide dei grani del bin piu' popolato,
+    non il centro geometrico del bin: la finestra e' stretta per via dello
+    zoom, e centrata sui grani veri contiene davvero qualcosa.
+
+    Quando invece NESSUN grano finisce dentro l'istogramma, non c'e' un bin
+    su cui centrare e lo stream va saltato: `argmax` su una matrice di zeri
+    restituisce comunque un indice, e senza la guardia sul conteggio la lente
+    si punterebbe sul primo bin in alto a sinistra, cioe' sul vuoto.
+    """
+
+    def test_a_stream_whose_grains_fall_outside_the_range_is_skipped(self):
+        """I grani sopra l'altezza del sample cadono fuori dal range
+        dell'istogramma: nessun bin li conta."""
+        fuori = entry('fuori', sample_duration=1.0,
+                      grains=[grain(onset=2.0, pointer_pos=50.0)])
+        assert auto_target([fuori], 0.0, 10.0,
+                           hist_bins=(40, 16), defaults=DEFAULTS) is None
+
+    def test_a_stream_with_grains_in_range_still_wins(self):
+        """Controprova: con i grani dentro il range la lente si punta."""
+        dentro = entry('dentro', sample_duration=1.0,
+                       grains=[grain(onset=2.0, pointer_pos=0.5)])
+        target = auto_target([dentro], 0.0, 10.0,
+                             hist_bins=(40, 16), defaults=DEFAULTS)
+        assert target is not None
+        assert target.y == pytest.approx(0.5)

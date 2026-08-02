@@ -57,6 +57,29 @@ class TestDisplayRanges:
             pad_ratio=PAD, samples=SAMPLES)
         assert 'pan' not in ranges
 
+    def test_a_per_voice_pan_is_excluded_too(self):
+        """L'esclusione si decide sul nome BASE, come la normalizzazione.
+
+        Una curva per-voce eredita la natura del parametro da cui viene: se
+        qui il confronto fosse sul nome pieno, `pan__v1` riceverebbe un range
+        data-driven mentre `normalize` continuerebbe a trattarlo da ciclico —
+        e la curva verrebbe disegnata su una scala diversa da quella con cui
+        e' stata misurata.
+        """
+        envelopes = {'pan__v1': Envelope([[0, -10.0], [10, 10.0]])}
+        ranges = display_ranges(
+            envelopes, stream_start=0.0, t_start=0.0, t_end=10.0,
+            pad_ratio=PAD, samples=SAMPLES)
+        assert 'pan__v1' not in ranges
+
+    def test_the_two_sides_agree_on_a_per_voice_pan(self):
+        """La controprova della stessa regola dall'altro lato: `normalize`
+        tratta `pan__v1` da ciclico, cioe' non cerca il suo range fra quelli
+        di display. Le due funzioni devono dire la stessa cosa, o la curva
+        finirebbe fuori corsia."""
+        assert normalize('pan__v1', 180.0, {}, pan_range=(-180, 180)) == \
+            normalize('pan', 180.0, {}, pan_range=(-180, 180))
+
     def test_constant_envelope_gets_a_range_around_its_value(self):
         """Escursione nulla: il pad si calcola sul valore, non sullo span, e il
         range resta non degenere. Un range collassato renderebbe la

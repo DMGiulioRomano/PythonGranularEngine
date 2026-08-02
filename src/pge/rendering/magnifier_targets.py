@@ -18,6 +18,7 @@ proiettare — gli e' opaco e viaggia intatto fino a chi disegna.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -78,7 +79,13 @@ class MagnifyTarget:
     y: float
     zoom: float
     out: float
-    src: float | None
+    # Optional e non `float | None`: il progetto dichiara Python >= 3.9, dove
+    # l'unione con | non e' valutabile. Qui `from __future__ import
+    # annotations` la salverebbe finche' nessuno risolve le annotazioni, ma
+    # basta un typing.get_type_hints — un serializzatore, un generatore di
+    # doc — perche' torni a essere un errore, e il resto del modulo usa gia'
+    # Optional.
+    src: Optional[float]
     corner: str
 
 
@@ -145,6 +152,14 @@ def auto_target(entries, t_start, t_end, *, hist_bins, defaults):
             range=[[t_start, t_end], [0.0, y_max]])
         i, j = np.unravel_index(int(np.argmax(histogram)), histogram.shape)
         count = histogram[i, j]
+        # Nessun grano dentro l'istogramma: argmax su una matrice di zeri
+        # restituisce comunque (0,0), e senza questa uscita la lente si
+        # punterebbe sul primo bin in alto a sinistra, cioe' sul vuoto.
+        # Il caso e' coperto da TestAutoTargetCountsNothing, che pero' non
+        # distingue questa uscita da quella su `in_bin` piu' sotto: quando il
+        # conteggio e' nullo anche il ricontrollo trova la lista vuota, quindi
+        # le due guardie si coprono a vicenda e a test si osserva solo il
+        # risultato comune, cioe' che lo stream viene saltato.
         if count <= 0:
             continue
 
@@ -154,7 +169,14 @@ def auto_target(entries, t_start, t_end, *, hist_bins, defaults):
         in_bin = [(t, y) for t, y in points
                   if t_edges[i] <= t <= t_edges[i + 1]
                   and y_edges[j] <= y <= y_edges[j + 1]]
-        if not in_bin:
+        # Praticamente irraggiungibile: il confronto qui sopra e' inclusivo su
+        # entrambi gli estremi, quindi e' piu' largo del binning di numpy, e un
+        # punto che il bin ha contato lo ricade dentro per forza. Resta perche'
+        # l'indice del bin viene dall'aritmetica di numpy e il ricontrollo e'
+        # nostra: a separarli, nel caso peggiore, c'e' un ULP — e centrare la
+        # lente su una media di lista vuota darebbe nan, che si propaga fino
+        # alle coordinate del disegno senza dire da dove viene.
+        if not in_bin:  # pragma: no cover
             continue
         if best is None or count > best[0]:
             best = (count, candidate,
