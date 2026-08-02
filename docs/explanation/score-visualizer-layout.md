@@ -1,0 +1,201 @@
+---
+slug: score-visualizer-layout
+type: explanation
+status: stable
+tags: [rendering, visualizer, architecture, refactor, matplotlib]
+sources:
+  - src/pge/rendering/page_layout.py
+  - src/pge/rendering/grain_visuals.py
+  - src/pge/rendering/envelope_display.py
+  - src/pge/rendering/magnifier_targets.py
+  - src/pge/rendering/score_visualizer.py
+last_synced_commit: 917c7dd
+---
+
+# Il layout della partitura: separare i numeri dal disegno
+
+**Documenti collegati:** [[INDEX]] · [[architecture]] · [[parameter-curve]]
+
+Il modello descritto qui è implementato: i quattro moduli vivono in
+`src/pge/rendering/`, e `ScoreVisualizer` li consuma come adapter matplotlib.
+
+## Problema
+
+`ScoreVisualizer` era una classe da 2015 righe con circa cinquanta metodi, e il
+suo file importava matplotlib in testa. Dentro c'erano due cose diverse
+mescolate: **quali numeri disegnare** e **come disegnarli**.
+
+I numeri erano già scritti, e già separati in metodi propri: la paginazione, gli
+slot verticali, i vertici dei grani, i range di scala delle curve, il layout
+della legenda, la risoluzione dei target della lente. Circa 590 righe che di
+matplotlib non avevano bisogno. Ma vivevano dentro una classe che lo importa,
+quindi non erano raggiungibili senza di esso.
+
+Le conseguenze si vedevano soprattutto nei test. La suite di
+`test_score_visualizer.py` contava 1731 righe, e per verificare un calcolo di
+normalizzazione doveva costruire un `Generator` finto, istanziare una classe che
+tira dentro la pila di plotting, e chiamare un metodo privato. Trentaquattro
+chiamate a `viz._qualcosa`, di cui una ventina su aritmetica pura.
+
+Tre problemi più specifici stavano sotto:
+
+**Stato mutabile usato come canale fra metodi.** `_draw_envelopes` scriveva
+`self._current_display_ranges`, e `_normalize_envelope_value` lo rileggeva via
+`getattr` con un fallback difensivo. Non era un dato dell'oggetto: era un
+parametro passato di nascosto. Quattro test lo scrivevano a mano per poter
+pilotare la normalizzazione.
+
+**Regole duplicate.** Il predicato "questo grano cade dentro la finestra di
+pagina" — `g.onset < page_end and (g.onset + g.duration) > page_start` — era
+scritto in quattro punti diversi: range colore del pitch, colorbar, punti per la
+lente, disegno dei grani.
+
+**Risultati stringly-typed.** I layout di pagina erano dict a cinque chiavi, i
+target della lente dict a sette. Nessuna dichiarazione di cosa contenessero: si
+scopriva leggendo chi li costruiva.
+
+## Modello
+
+Quattro moduli, nessuno dei quali importa matplotlib. Non uno solo: le cluster
+non condividono niente se non "servono a disegnare una pagina", e un modulo
+unico sarebbe stato una borsa.
+
+| Modulo | Domanda a cui risponde |
+|---|---|
+| `page_layout` | Quali stream su quale pagina, in che corsia, con che legenda |
+| `grain_visuals` | Che forma ha un grano, e dove cade sulle scale di colore e opacità |
+| `envelope_display` | Quanto è alta la corsia di una curva, e dove ci cade un valore |
+| `magnifier_targets` | Dove puntare la lente di ingrandimento |
+
+### Dove passa la linea
+
+La regola è: **i moduli arrivano fino al numero e si fermano.**
+
+Il caso che la illustra meglio è `_pitch_to_color`. Faceva due cose: normalizzare
+un `pitch_ratio` a una frazione `[0,1]`, e interrogare la colormap con quella
+frazione. La prima è aritmetica, la seconda è matplotlib. Il taglio le separa:
+`grain_visuals.pitch_position()` restituisce la frazione, e `self.cmap(frazione)`
+resta nel visualizer.
+
+Lo stesso vale per i vertici: il modulo dà una lista di coppie `(x, y)`,
+costruire il `Polygon` è dell'adapter.
+
+### Cosa resta fuori
+
+**`analyze` resta un metodo.** Scrive `self.total_duration`, `self.page_count`,
+`self.page_layouts` e stampa. Il modulo gli dà le pagine, lui le assegna: lo
+stato resta dell'oggetto, la regola no.
+
+**`_load_waveform` non si è mosso.** Non è geometria, è I/O con `soundfile` più
+una cache. Se ha una casa è `sample_registry`, ed è una domanda diversa da
+questa.
+
+**Le manopole di config diventano keyword argument.** `pad_ratio`, `samples`,
+`pan_range`, `hist_bins`, `page_duration`: i moduli non conoscono il dict di
+config, è l'adapter a leggerlo e a passarne i valori. È anche ciò che rende
+possibile tipizzare la config senza toccare le regole.
+
+### I dati dichiarati
+
+Due dataclass frozen sostituiscono i dict:
+
+- `PageLayout(index, t_start, t_end, streams, max_concurrent, slots)`
+- `MagnifyTarget(entry, t, y, zoom, out, src, corner)`
+
+più `EnvelopeLane(stream, stream_id, y_base, y_height, env_types)`.
+
+In `MagnifyTarget`, `entry` resta una riga opaca di `stream_entries`: il modulo
+ne legge solo `stream` e `sample_duration`, e la restituisce intatta perché chi
+disegna possa raggiungerne l'asse matplotlib.
+
+## Trade-off
+
+| Scelta | A favore | Contro |
+|---|---|---|
+| Quattro moduli invece di uno | Ogni modulo ha una domanda sola | Quattro import invece di uno |
+| Quattro moduli invece di collaboratori per feature | Il seam è testabile: si asseriscono numeri | Non riduce la lunghezza di `render_page` |
+| Config come keyword argument | I moduli non conoscono il dict | Le firme sono più lunghe |
+| Cache delle silhouette come `lru_cache` di modulo | È memoizzazione, non stato d'istanza | Condivisa fra visualizer: gli array vanno resi read-only |
+| Dataclass al posto dei dict | I campi sono dichiarati | Tocca i consumatori esistenti |
+
+**Il contro principale, detto per intero: questo taglio ha un solo consumatore
+di produzione.** `ScoreVisualizer` è importato da `cli.py` e `api.py`, e come
+classe intera. Per la regola secondo cui un adapter è un seam ipotetico e due è
+un seam reale, questo è ipotetico.
+
+L'argomento non è che arriverà un secondo renderer. È che **un secondo
+consumatore c'era già ed era servito male: la suite.** E il precedente esiste in
+questo repository — `envelope_extractor` fu estratto da `ScoreVisualizer` per la
+stessa ragione, e poi un secondo consumatore lo ha preso davvero
+(`export/sv_exporter.py`).
+
+## Implicazioni codice
+
+`score_visualizer.py` passa da 2015 a 1621 righe e perde due import rimasti
+orfani (`re`, `math.ceil`). I metodi estratti restano come **deleghe con le
+firme di prima**, inclusi i due `@staticmethod` che i test chiamano sulla
+classe: i call site interni e i test esistenti non sono cambiati.
+
+La suite passa da 5139 a 5256 test. Le quattro suite nuove valgono 109 test.
+
+Alcune cose sono cambiate di comportamento osservabile solo nel tipo:
+
+- `viz.page_layouts` è una lista di `PageLayout`, non di dict. Sette test
+  esistenti sono stati adeguati.
+- `_resolve_magnify_targets` restituisce `MagnifyTarget`.
+- `_compute_env_legend_layout` restituisce `EnvelopeLane`.
+
+Niente di tutto questo esce dal repository: `page_layouts`, `page_count` e
+`total_duration` non sono letti da nessun altro modulo, e la superficie pubblica
+— `ScoreVisualizer(generator, config=...)`, `export_pdf`, le chiavi di config —
+è invariata.
+
+### Cosa il refactor ha scoperto
+
+Cinque fatti che il codice non diceva, ora scritti dove servono:
+
+1. **`Envelope.evaluate` satura fuori dominio.** Il clamp del tempo relativo in
+   `display_ranges` è quindi difensivo e non portante: toglierlo lascia la suite
+   verde. Documentato invece che rimosso, perché non dipendere da quel dettaglio
+   del contratto di `Envelope` costa nulla.
+2. **Il ramo "range degenere" di `normalize` è irraggiungibile** da
+   `display_ranges`, che somma sempre un pad strettamente positivo. Era coperto
+   solo dai test che scrivevano nello stato interno. Ora che i range sono un
+   argomento, è diventato un contratto vero.
+3. **Ogni curva per-voce `__vN` ha un range di display proprio**, non ereditato
+   dal parametro base. Conseguenza da conoscere: due voci con escursioni diverse
+   riempiono entrambe la corsia, quindi a vista non sono confrontabili.
+4. **`pitch_cents_range` usa il valore assoluto del ratio.** Un grano reverse ha
+   la stessa altezza del forward corrispondente, ed è l'altezza che il colore
+   racconta; il verso lo dice già la forma della freccia.
+5. **Il commento `gap_ratio = 0.02  # coerente con render_page` era stantio.**
+   Dal fix #113 `render_page` consuma le corsie calcolate qui, non le ricalcola.
+
+### Il metodo: rete di caratterizzazione, poi perturbazione
+
+Il refactor è stato coperto da una rete temporanea che congelava i **numeri** —
+layout di pagina, corsie, range, vertici, target — su tre config reali più una
+sintetica, non uno snapshot del PDF: un confronto sulla figura sarebbe legato
+alla versione di matplotlib e si romperebbe per ragioni estranee.
+
+La rete è stata **verificata perturbando il codice**: quattordici modifiche
+deliberate, tredici delle quali la rendevano rossa. Le prime due versioni della
+config sintetica lasciavano scoperti il riuso della corsia al contatto esatto e
+l'ordinamento della sweep line — buchi trovati proprio così.
+
+Lo stesso metodo ha smascherato **tre test scritti male**: uno che passava per la
+ragione sbagliata (asseriva l'ereditarietà del range per-voce, che non esiste),
+uno che non mordeva (il raggio della finestra locale della lente), uno troppo
+lasco (la distribuzione delle voci di legenda, che verificava l'ordine ma non gli
+estremi).
+
+A estrazione completata la rete è stata cancellata: la copertura definitiva sono
+`test_page_layout.py`, `test_grain_visuals.py`, `test_envelope_display.py` e
+`test_magnifier_targets.py`.
+
+## Vedi anche
+
+- [[parameter-curve]] — lo stesso movimento sul lato dei parametri: la regola
+  esce da chi la usava e prende una casa dove è verificabile.
+- `src/pge/rendering/envelope_extractor.py` — il precedente in questo
+  repository, e l'unico dei moduli di questa famiglia che ha già due consumatori.
