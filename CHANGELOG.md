@@ -178,7 +178,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   alternativa di sola lettura in stdlib non è né copiabile né serializzabile —
   lì l'immutabilità è una convenzione dichiarata nella docstring.
 
-- **`envelope_extractor.get_voice_offset_envelopes` rimossa.** Il criterio
+- **BREAKING — `envelope_extractor.get_voice_offset_envelopes` rimossa.** È
+  una funzione pubblica di modulo che sparisce: per chi la importava è la più
+  dura delle rotture elencate qui, non la più lieve. Il criterio
   applicato alle nove deleghe del visualizer vale anche un livello più giù:
   questa estrazione le ha portato via entrambi i chiamanti — 
   `get_stream_envelopes` campiona direttamente da `VoiceManager`, e la delega
@@ -195,7 +197,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   formattano con `:.2f` e l'export Sonic Visualiser legge le curve senza
   `show_static`, quindi le costanti non ci arrivano mai.
 
-- **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
+- **`envelope_extractor` guidato da una tabella di descrittori** (394 → 290
   righe). I tre meccanismi di accesso — ciclo sugli schemi con `hasattr`, lista
   hardcoded di nomi espliciti, drilling sui privati — diventano una tabella
   sola: per ogni nome pubblicato, dove pescare il `Parameter` e quale faccia

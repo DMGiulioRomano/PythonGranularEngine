@@ -9,7 +9,8 @@ sources:
   - src/pge/rendering/envelope_display.py
   - src/pge/rendering/magnifier_targets.py
   - src/pge/rendering/score_visualizer.py
-last_synced_commit: 4413fef
+  - src/pge/rendering/visualizer_config.py
+last_synced_commit: 8c13acd
 ---
 
 # Il layout della partitura: separare i numeri dal disegno
@@ -32,7 +33,7 @@ matplotlib non avevano bisogno. Ma vivevano dentro una classe che lo importa,
 quindi non erano raggiungibili senza di esso.
 
 Le conseguenze si vedevano soprattutto nei test. La suite di
-`test_score_visualizer.py` contava 1731 righe, e per verificare un calcolo di
+`test_score_visualizer.py` contava 2222 righe, e per verificare un calcolo di
 normalizzazione doveva costruire un `Generator` finto, istanziare una classe che
 tira dentro la pila di plotting, e chiamare un metodo privato. Trentaquattro
 chiamate a `viz._qualcosa`, di cui una ventina su aritmetica pura.
@@ -155,7 +156,7 @@ le nove. Restava viva per un import nella sua suite, che non la chiamava.
 Le stesse curve si ottengono da `get_stream_envelopes(show_voice_offsets=True)`,
 che è il path che il disegno percorre davvero.
 
-La suite passa da 5106 a 5309 test.
+La suite passa da 5106 a 5313 test.
 
 Alcune cose sono cambiate di comportamento osservabile solo nel tipo:
 
@@ -243,7 +244,7 @@ estremi).
 
 A estrazione completata la rete è stata cancellata: la copertura definitiva sono
 `test_page_layout.py` (35), `test_grain_visuals.py` (36),
-`test_envelope_display.py` (26) e `test_magnifier_targets.py` (30).
+`test_envelope_display.py` (27) e `test_magnifier_targets.py` (30).
 
 La rete è stata poi **ricostruita da fuori** in sede di review, e allargata: i
 numeri su tutte e ventisette le config del repository per quattro varianti di
@@ -253,6 +254,16 @@ disegno che la rete numerica salta. Contro `main`, il residuo è zero oltre alle
 differenze dichiarate qui sopra. Una seconda passata di perturbazione, questa
 volta su ogni modulo estratto, ha prodotto i tre fatti aggiunti alla lista
 sopra e i test che mancavano.
+
+Una terza passata, indipendente dalle prime due, ha rifatto il confronto con
+una rete propria — stesse ventisette config, cinque varianti — e ha trovato
+zero differenze su chiavi, ordine, breakpoint, layout e range di display, con
+la sola eccezione del tipo già dichiarata. Ha aggiunto due cose. Che le curve
+per-voce **non sono confrontabili fra processi** senza fissare il seed: solo
+due config su ventisette ne dichiarano uno, quindi una rete che non lo forza
+misura il proprio rumore e non il refactor. E, perturbando di nuovo, che le
+due soglie di `envelope_display` — `FLAT_SPAN` e `MIN_PAD` — erano le uniche
+regole rimaste senza un test che le tenesse ferme; ora ce l'hanno.
 
 ## Vedi anche
 

@@ -9,7 +9,7 @@ sources:
   - src/pge/controllers/voice_manager.py
   - src/pge/shared/probability_gate.py
   - src/pge/rendering/envelope_extractor.py
-last_synced_commit: 4413fef
+last_synced_commit: 33aed88
 ---
 
 # ParameterCurve: come si legge il comportamento nel tempo di un parametro
