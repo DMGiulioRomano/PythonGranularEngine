@@ -4,13 +4,14 @@ Estrattore di Envelope dalla IR di uno Stream.
 
 Single source of truth condivisa da chi deve leggere le curve della IR:
 - ScoreVisualizer (partitura PDF) delega qui i suoi _get_stream_envelopes /
-  _base_param_name / _get_voice_offset_envelopes;
+  _base_param_name;
 - SVExporter (sessioni Sonic Visualiser) consuma le stesse curve.
 
 La logica era prima prigioniera di ScoreVisualizer (modulo che importa
 matplotlib). Estraendola qui, un secondo renderer puo' riusarla senza
-trascinarsi dietro la pila di plotting: questo modulo dipende solo da numpy,
-envelopes, parameters, shared.
+trascinarsi dietro la pila di plotting: questo modulo dipende solo da
+envelopes, parameters, shared — nemmeno numpy, da quando il campionamento
+delle curve per-voce vive in VoiceManager.
 
 I breakpoint restituiti restano RELATIVI allo stream (0-based): l'eventuale
 offset sull'onset globale e' responsabilita' del consumatore.
@@ -277,11 +278,13 @@ def get_stream_envelopes(stream, show_static=False, show_voice_offsets=False,
 
     return envelopes
 
+
 def get_voice_offset_envelopes(stream):
     """Curve degli offset per-voce come dict {chiave: Envelope}.
 
     Il campionamento vive in VoiceManager.offset_curves (issue #90 lo faceva
     qui, frugando in vm._pitch_strategy / vm._pointer_strategy): questa resta
-    come vista a dizionario per i consumatori che la chiamano direttamente.
+    come vista a dizionario per chi vuole le sole curve per-voce senza il
+    resto — get_stream_envelopes le prende dalla stessa sorgente, non da qui.
     """
     return dict(_voice_curves(stream))

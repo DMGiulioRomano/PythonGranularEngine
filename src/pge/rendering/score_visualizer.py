@@ -128,21 +128,6 @@ class ScoreVisualizer:
         print(f"Analisi completata: {self.page_count} pagine, "
               f"durata totale {self.total_duration:.2f}s")
 
-    def _find_active_streams(self, page_start, page_end):
-        """Stream che intersecano l'intervallo della pagina.
-        Delega a rendering.page_layout.active_streams."""
-        return page_layout.active_streams(self.streams, page_start, page_end)
-
-    def _calculate_max_concurrent(self, streams, page_start, page_end):
-        """Massimo di stream simultanei nella finestra.
-        Delega a rendering.page_layout.max_concurrent."""
-        return page_layout.max_concurrent(streams, page_start, page_end)
-
-    def _assign_vertical_slots(self, active_streams, page_start, page_end):
-        """Corsia verticale di ogni stream.
-        Delega a rendering.page_layout.assign_slots."""
-        return page_layout.assign_slots(active_streams)
-
     # =========================================================================
     # CARICAMENTO WAVEFORM
     # =========================================================================
@@ -584,38 +569,6 @@ class ScoreVisualizer:
             hist_bins=self.config['magnify_hist_bins'],
             defaults=self.config['magnify_defaults'])
 
-    def _page_grain_points(self, stream, page_start, page_end):
-        """(onset, pointer_pos) dei grani visibili nella pagina.
-        Delega a rendering.magnifier_targets.grain_points."""
-        return magnifier_targets.grain_points(stream, page_start, page_end)
-
-    def _auto_magnify_target(self, page_start, page_end, stream_entries):
-        """Target automatico sul cluster piu' denso.
-        Delega a rendering.magnifier_targets.auto_target."""
-        return magnifier_targets.auto_target(
-            stream_entries, page_start, page_end,
-            hist_bins=self.config['magnify_hist_bins'],
-            defaults=self.config['magnify_defaults'])
-
-    def _resolve_explicit_target(self, target, page_start, page_end,
-                                 stream_entries):
-        """Risolve un target esplicito su stream e quota concreti.
-        Delega a rendering.magnifier_targets.explicit_target."""
-        return magnifier_targets.explicit_target(
-            target, stream_entries, page_start, page_end,
-            defaults=self.config['magnify_defaults'])
-
-    def _densest_stream_entry(self, page_start, page_end, stream_entries):
-        """Entry dello stream con piu' grani visibili in pagina.
-        Delega a rendering.magnifier_targets.densest_entry."""
-        return magnifier_targets.densest_entry(
-            stream_entries, page_start, page_end)
-
-    def _auto_y_at(self, stream, t, page_start, page_end):
-        """Quota della lente dedotta dai grani vicini a t.
-        Delega a rendering.magnifier_targets.auto_y_at."""
-        return magnifier_targets.auto_y_at(stream, t, page_start, page_end)
-
     def _make_magnify_overlay(self, fig):
         """Asse a tutta figura in coordinate pixel: cerchi tondi e linee dritte
         nonostante l'asse-dato sia anisotropo (X tempo, Y posizione). Etichettato
@@ -999,12 +952,6 @@ class ScoreVisualizer:
         Delega a rendering.envelope_extractor.base_param_name (issue #150)."""
         from pge.rendering.envelope_extractor import base_param_name
         return base_param_name(key)
-
-    def _get_voice_offset_envelopes(self, stream):
-        """Curve per-voce degli offset (issue #90, Fase 3).
-        Delega a rendering.envelope_extractor.get_voice_offset_envelopes."""
-        from pge.rendering.envelope_extractor import get_voice_offset_envelopes
-        return get_voice_offset_envelopes(stream)
 
     def _compute_display_ranges(self, envelopes, stream, t_start, t_end):
         """
