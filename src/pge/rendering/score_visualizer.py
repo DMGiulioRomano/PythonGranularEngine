@@ -52,6 +52,7 @@ except (ValueError, KeyError):
 # importano ENVELOPE_COLORS da qui.
 from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
 from pge.rendering import envelope_display  # noqa: E402
+from pge.rendering import grain_visuals  # noqa: E402
 
 
 class ScoreVisualizer:
@@ -248,12 +249,6 @@ class ScoreVisualizer:
         # Cache waveform
         self.waveform_cache = {}
 
-        # Cache silhouette finestra normalizzata, chiave (nome, risoluzione).
-        # Popolata lazy da _window_silhouette; il registry NumPy e' creato al
-        # primo uso (solo con grain_shape='window').
-        self._window_silhouette_cache = {}
-        self._window_registry = None
-        
         # Dati calcolati
         self.total_duration = None
         self.page_count = None
@@ -462,26 +457,9 @@ class ScoreVisualizer:
         az = self.config['pitch_color_autozoom']
         if not az.get('enabled', False):
             return None
-
-        cents = []
-        for stream in streams:
-            for voice_grains in stream.voices:
-                for g in voice_grains:
-                    if not (g.onset < page_end and (g.onset + g.duration) > page_start):
-                        continue
-                    ratio = abs(g.pitch_ratio)
-                    if ratio <= 0:
-                        continue
-                    cents.append(1200.0 * np.log2(ratio))
-
-        if not cents:
-            return None
-
-        c_min, c_max = min(cents), max(cents)
-        span = max(c_max - c_min, az['min_span_cents'])
-        center = (c_min + c_max) / 2.0
-        half = span / 2.0 + az['pad_ratio'] * span
-        return (center - half, center + half)
+        return grain_visuals.pitch_cents_range(
+            streams, page_start, page_end,
+            min_span_cents=az['min_span_cents'], pad_ratio=az['pad_ratio'])
 
     def _add_pitch_colorbar(self, fig, cax_spec, cents_range, streams,
                             page_start, page_end):
@@ -501,10 +479,8 @@ class ScoreVisualizer:
             label = 'pitch (cents)'
         else:
             has_grains = any(
-                g.onset < page_end and (g.onset + g.duration) > page_start
+                grain_visuals.visible_grains(s, page_start, page_end)
                 for s in streams
-                for voice_grains in s.voices
-                for g in voice_grains
             )
             if not has_grains:
                 return
@@ -539,24 +515,15 @@ class ScoreVisualizer:
         cents_range=(lo, hi): normalizza 1200*log2(ratio) nel range zoomato
         (auto-zoom per-subplot). None: fallback sul range fisso pitch_range.
         """
-        if cents_range is not None and pitch_ratio > 0:
-            lo, hi = cents_range
-            cents = 1200.0 * np.log2(pitch_ratio)
-            normalized = (cents - lo) / (hi - lo)
-        else:
-            p_min, p_max = self.config['pitch_range']
-            normalized = (pitch_ratio - p_min) / (p_max - p_min)
-        normalized = np.clip(normalized, 0, 1)
-        return self.cmap(normalized)
+        return self.cmap(grain_visuals.pitch_position(
+            pitch_ratio, cents_range, pitch_range=self.config['pitch_range']))
     
     def _volume_to_alpha(self, volume_db):
         """Mappa volume (dB) → alpha/opacità."""
-        v_min, v_max = self.config['volume_range']
-        normalized = (volume_db - v_min) / (v_max - v_min)
-        normalized = np.clip(normalized, 0, 1)
-        
-        a_min, a_max = self.config['grain_alpha_range']
-        return a_min + normalized * (a_max - a_min)
+        return grain_visuals.volume_alpha(
+            volume_db,
+            volume_range=self.config['volume_range'],
+            alpha_range=self.config['grain_alpha_range'])
     
     # =========================================================================
     # RENDERING
@@ -880,9 +847,7 @@ class ScoreVisualizer:
         """(onset, pointer_pos) dei grani dello stream visibili nella pagina."""
         return [
             (g.onset, g.pointer_pos)
-            for voice_grains in stream.voices
-            for g in voice_grains
-            if g.onset < page_end and (g.onset + g.duration) > page_start
+            for g in grain_visuals.visible_grains(stream, page_start, page_end)
         ]
 
     def _auto_magnify_target(self, page_start, page_end, stream_entries):
@@ -1096,95 +1061,26 @@ class ScoreVisualizer:
 
     def _grain_arrow_vertices(self, grain):
         """Vertici della freccia direzionale (forma storica del grano).
-
-        5 vertici: rettangolo [onset, onset+duration] x [pointer, pointer+dur]
-        con punta triangolare verso l'alto (forward) o il basso (reverse)."""
-        x = grain.onset
-        width = grain.duration
-        pointer_y = grain.pointer_pos
-        height = grain.duration
-        arrow_head_width = width * 0.5
-
-        if grain.pitch_ratio < 0:
-            y_top = pointer_y
-            y_bottom = pointer_y - height
-            return [
-                (x, y_top),                               # alto sinistra
-                (x + width, y_top),                       # alto destra
-                (x + width, y_bottom + arrow_head_width), # prima della punta destra
-                (x + width / 2, y_bottom),                # punta centrale (GIU')
-                (x, y_bottom + arrow_head_width),         # prima della punta sinistra
-            ]
-        y_bottom = pointer_y
-        y_top = pointer_y + height
-        return [
-            (x, y_bottom),                                # basso sinistra
-            (x + width, y_bottom),                        # basso destra
-            (x + width, y_top - arrow_head_width),        # prima della punta destra
-            (x + width / 2, y_top),                       # punta centrale (SU)
-            (x, y_top - arrow_head_width),                # prima della punta sinistra
-        ]
+        Delega a rendering.grain_visuals.arrow_vertices."""
+        return grain_visuals.arrow_vertices(grain)
 
     def _grain_window_vertices(self, grain, xs, w):
         """Vertici della silhouette "testa/bordo": base piatta sul pointer, il
-        bordo superiore segue la curva della finestra w (normalizzata su [0,1]).
-
-        xs, w: arrays normalizzati su [0,1] (vedi _window_silhouette). La
-        direzione (sopra/sotto il pointer) segue il segno di pitch_ratio come
-        per la freccia."""
-        x = grain.onset
-        width = grain.duration
-        pointer_y = grain.pointer_pos
-        height = grain.duration
-
-        xs_abs = x + xs * width
-        if grain.pitch_ratio < 0:
-            edge = pointer_y - height * w
-        else:
-            edge = pointer_y + height * w
-
-        vertices = [(x, pointer_y)]
-        vertices.extend((float(xi), float(yi)) for xi, yi in zip(xs_abs, edge))
-        vertices.append((x + width, pointer_y))
-        return vertices
-
-    def _window_registry_lazy(self):
-        """Istanzia il NumpyWindowRegistry al primo uso (solo grain_shape='window')."""
-        if self._window_registry is None:
-            from pge.rendering.numpy_window_registry import NumpyWindowRegistry
-            self._window_registry = NumpyWindowRegistry()
-        return self._window_registry
+        bordo superiore segue la curva della finestra w.
+        Delega a rendering.grain_visuals.window_vertices."""
+        return grain_visuals.window_vertices(grain, xs, w)
 
     def _window_silhouette(self, name, resolution):
         """Curva finestra normalizzata su [0,1] in ampiezza e dominio.
-
-        Ritorna (xs, w) con xs = linspace(0,1,resolution) e w la finestra
-        riscalata a picco unitario. Cachata per (name, resolution): la forma di
-        una finestra dato il nome e' sempre la stessa, cambia solo la scala
-        applicata per grano."""
-        key = (name, resolution)
-        cached = self._window_silhouette_cache.get(key)
-        if cached is not None:
-            return cached
-
-        w = self._window_registry_lazy().get(name, resolution)
-        w = np.clip(np.asarray(w, dtype=float), 0.0, None)
-        peak = float(w.max())
-        if peak > 0:
-            w = w / peak
-        xs = np.linspace(0.0, 1.0, resolution)
-        result = (xs, w)
-        self._window_silhouette_cache[key] = result
-        return result
+        Delega a rendering.grain_visuals.window_silhouette, che la memoizza per
+        (name, resolution) — la cache vive nel modulo, non nell'istanza, perche'
+        la forma di una finestra non dipende da quale visualizer la chiede."""
+        return grain_visuals.window_silhouette(name, resolution)
 
     def _window_name_map(self, stream):
-        """Mappa table_num -> nome finestra invertendo stream.window_table_map.
-
-        Ritorna {} se la mappa non e' disponibile (fallback alla freccia)."""
-        wtm = getattr(stream, 'window_table_map', None)
-        if not wtm:
-            return {}
-        return {num: name for name, num in wtm.items()}
+        """Mappa table_num -> nome finestra.
+        Delega a rendering.grain_visuals.window_name_map."""
+        return grain_visuals.window_name_map(stream)
 
     def _grain_page_width_px(self, ax, grain):
         """Larghezza del grano sulla pagina in pixel display.
@@ -1207,14 +1103,9 @@ class ScoreVisualizer:
         cents_range: range colore auto-zoomato del subplot (vedi
         _compute_pitch_color_range); None = range fisso."""
         
-        all_grains = [grain for voice_grains in stream.voices for grain in voice_grains]
+        visible_grains = grain_visuals.visible_grains(
+            stream, page_start, page_end)
 
-        # Filtra grani visibili
-        visible_grains = [
-            g for g in all_grains
-            if g.onset < page_end and (g.onset + g.duration) > page_start
-        ]
-        
         if not visible_grains:
             return
 

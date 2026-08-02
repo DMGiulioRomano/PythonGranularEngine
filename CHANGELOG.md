@@ -38,6 +38,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   una figura. Estratto da `ScoreVisualizer`, che ne conserva i quattro metodi
   come deleghe con le firme di prima.
 
+- **`rendering/grain_visuals`**: che aspetto ha un grano sulla partitura — la
+  sua forma (vertici della freccia direzionale o della silhouette della
+  finestra) e dove cade sulle scale di colore e opacità. Il modulo arriva fino
+  al numero e si ferma: applicare la colormap alla frazione e costruire il
+  `Polygon` restano di `ScoreVisualizer`. Include `visible_grains`, il
+  predicato "grano dentro questa finestra temporale" che era scritto in
+  quattro punti diversi del visualizer. La cache delle silhouette passa da
+  dizionario d'istanza a `lru_cache` di modulo, con gli array resi di sola
+  lettura: essendo condivisa fra visualizer, una mutazione la avvelenerebbe
+  per tutti.
+
 ### Modificato
 
 - **`envelope_extractor` guidato da una tabella di descrittori** (394 → 287
