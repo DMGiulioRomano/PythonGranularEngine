@@ -178,7 +178,7 @@ Pages are 30 seconds wide in A3 landscape format. A 120-second piece produces a 
 │   │   ├── score_writer.py       # Csound score text formatting
 │   │   └── stream_cache_manager.py   # SHA-256 incremental cache
 │   ├── controllers/              # DensityController, PointerController, VoiceManager, ...
-│   ├── parameters/               # Parameter, ParameterFactory, schema, parsing
+│   ├── parameters/               # Parameter, ParameterOrchestrator, schema, parsing
 │   ├── envelopes/                # Envelope, interpolation, time distribution
 │   ├── strategies/               # Variation strategies, voice panning
 │   └── shared/                   # Utils, logger, probability gates

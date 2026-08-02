@@ -1,16 +1,24 @@
 """
 
-parameter_orchestrator.py - Coordina ParameterFactory e GateFactory.
+parameter_orchestrator.py - Coordina GranularParser e GateFactory.
 Isola completamente la logica di dephase dal parsing dei parametri.
+
+Divisione del lavoro:
+- parameter_schema.py: sa DOVE stanno i dati nel YAML (ParameterSpec + il
+  risolutore della dot notation)
+- parameter_definitions.py: sa QUALI SONO i limiti (bounds)
+- parser.py: sa COME si costruisce un Parameter
+- qui: legge lo spec, estrae il valore, chiede il Parameter al parser e ci
+  inietta il ProbabilityGate
 """
 from __future__ import annotations
 
-from typing import Dict, Optional
-from pge.parameters.parameter_factory import ParameterFactory
+from typing import Any, Dict, Optional
 from pge.parameters.gate_factory import GateFactory
+from pge.parameters.parser import GranularParser
 from pge.shared.probability_gate import ProbabilityGate
 from pge.parameters.parameter import Parameter
-from pge.parameters.parameter_schema import ParameterSpec
+from pge.parameters.parameter_schema import ParameterSpec, resolve_yaml_path
 from pge.parameters.parameter_definitions import DEFAULT_PROB
 from pge.parameters.exclusive_selector import ExclusiveGroupSelector
 from pge.core.stream_config import StreamConfig
@@ -18,16 +26,16 @@ from pge.shared.seeding import component_rng
 
 class ParameterOrchestrator:
     """
-    Orchestratore: collega ParameterFactory e GateFactory senza accoppiarle.
+    Orchestratore: collega GranularParser e GateFactory senza accoppiarli.
     """
-    
+
     def __init__(
         self,
         config: StreamConfig = None
     ):
-        self._param_factory = ParameterFactory(config)
+        self._parser = GranularParser(config)
         self._config = config
-    
+
 
     def create_all_parameters(
         self,
@@ -45,7 +53,7 @@ class ParameterOrchestrator:
                 param = self.create_parameter_with_gate(yaml_data, spec)
                 result[spec_name] = param
             else:
-                result[spec_name] = self._param_factory.create_raw_parameter(spec, yaml_data)
+                result[spec_name] = self._raw_value(spec, yaml_data)
 
         # I perdenti dei gruppi esclusivi vanno a None.
         # Garantisce che l'output abbia sempre forma completa:
@@ -56,6 +64,38 @@ class ParameterOrchestrator:
                     result[spec.name] = None
 
         return result
+
+    def _raw_value(self, spec: ParameterSpec, yaml_data: dict) -> Any:
+        """
+        Estrae un valore grezzo (non Parameter) dal YAML.
+
+        Usato per gli spec con is_smart=False, come 'grain_envelope', che sono
+        stringhe e non vanno parsate in Parameter.
+        """
+        return resolve_yaml_path(yaml_data, spec.yaml_path, spec.default)
+
+    def _parameter_from_spec(
+        self,
+        spec: ParameterSpec,
+        yaml_data: dict
+    ) -> Parameter:
+        """
+        Legge valore e range dello spec dal YAML e ne fa un Parameter.
+
+        L'unico punto in cui lo schema (DOVE stanno i dati) incontra il parser
+        (COME si costruisce un Parameter).
+        """
+        value = resolve_yaml_path(yaml_data, spec.yaml_path, spec.default)
+
+        range_val = None
+        if spec.range_path:
+            range_val = resolve_yaml_path(yaml_data, spec.range_path, None)
+
+        return self._parser.parse_parameter(
+            name=spec.name,  # Stessa chiave per bounds e attributo
+            value_raw=value,
+            range_raw=range_val,
+        )
 
     def create_parameter_with_gate(
         self,
@@ -68,7 +108,7 @@ class ParameterOrchestrator:
         Design Pattern: Strategy Injection
         """
         # 1. Crea il Parameter base (SENZA probabilità)
-        param = self._param_factory.create_smart_parameter(param_spec, yaml_data)
+        param = self._parameter_from_spec(param_spec, yaml_data)
 
         # Controlla se range è esplicitato
         has_explicit_range = param.has_explicit_range
@@ -114,11 +154,11 @@ class ParameterOrchestrator:
         schema. Replica la pipeline di create_parameter_with_gate (range +
         dephase) ma con bounds espliciti.
         """
-        param = self._param_factory.create_smart_parameter_with_bounds(
+        param = self._parser.parse_parameter(
             name=name,
             value_raw=value_raw,
             range_raw=range_raw,
-            bounds=bounds,
+            bounds_override=bounds,
         )
         gate = GateFactory.create_gate(
             dephase=self._config.dephase,
@@ -135,8 +175,13 @@ class ParameterOrchestrator:
 
     def create_constant_parameter(self, name: str, value: float) -> Parameter:
         """
-        Thin wrapper su ParameterFactory.create_constant_parameter.
+        Crea un Parameter costante da un valore scalare, senza YAML.
 
-        Il controller parla solo con l'orchestrator, mai con la factory diretta.
+        Usato per fallback interni (es. loop_end = sample_dur_sec) dove il
+        valore e' gia' noto ma serve un Parameter con get_value().
         """
-        return self._param_factory.create_constant_parameter(name, value)
+        return self._parser.parse_parameter(
+            name=name,
+            value_raw=value,
+            range_raw=None,
+        )

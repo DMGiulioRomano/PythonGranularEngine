@@ -1,19 +1,23 @@
 """
-test_parameter_factory.py
+test_parameter_orchestrator.py
 
-Test suite completa per parameter_factory.py e parameter_orchestrator.py.
+Test suite completa per parameter_orchestrator.py.
+
+Fino all'issue #183 questo file era test_parameter_factory.py e copriva anche
+ParameterFactory, che si e' rivelata un inoltro verso GranularParser: e'
+sparita, l'orchestratore parla direttamente col parser, e la navigazione del
+path YAML vive in parameter_schema.resolve_yaml_path (testata li').
 
 Coverage:
-1. Test ParameterFactory - creazione base
-2. Test _get_nested - navigazione YAML
-3. Test create_smart_parameter
-4. Test create_raw_parameter
-5. Test ParameterOrchestrator - orchestrazione completa
-6. Test create_parameter_with_gate - gate injection
-7. Test ExclusiveGroupSelector - gruppi mutuamente esclusivi
-8. Test integrazione schema completi
-9. Test error handling
-10. Test edge cases
+1. Test ParameterOrchestrator - costruzione
+2. Test create_parameter_with_gate - estrazione dallo spec + gate injection
+3. Test create_constant_parameter
+4. Test parametri raw (is_smart=False)
+5. Test create_all_parameters - orchestrazione completa
+6. Test ExclusiveGroupSelector - gruppi mutuamente esclusivi
+7. Test integrazione schema completi
+8. Test error handling
+9. Test edge cases
 """
 
 import pytest
@@ -28,7 +32,6 @@ from pge.parameters.parameter import Parameter
 from pge.parameters.parameter_schema import ParameterSpec
 from pge.parameters.exclusive_selector import ExclusiveGroupSelector
 from pge.parameters.parser import GranularParser
-from pge.parameters.parameter_factory import ParameterFactory
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 # =============================================================================
 # MOCK CLASSES E STRUCTURES
@@ -50,138 +53,74 @@ def get_parameter_definition(name):
     return ParameterBounds()
 
 # =============================================================================
-# 1. TEST PARAMETER FACTORY - INITIALIZATION
+# 1. TEST PARAMETER ORCHESTRATOR - COSTRUZIONE
 # =============================================================================
 
-class TestParameterFactoryInitialization:
-    """Test ParameterFactory initialization."""
-    
-    def test_create_factory_with_config(self):
-        """Create factory with StreamConfig."""
+class TestParameterOrchestratorInitialization:
+    """L'orchestratore tiene il parser, senza intermediari (issue #183)."""
+
+    def test_holds_the_parser_directly(self):
         config = make_config()
-        factory = ParameterFactory(config)
-        
-        assert factory._stream_id == "test_stream"
-        assert isinstance(factory._parser, GranularParser)
-    
-    def test_factory_creates_parser(self):
-        """Factory creates GranularParser internally."""
+        orchestrator = ParameterOrchestrator(config)
+
+        assert isinstance(orchestrator._parser, GranularParser)
+        assert orchestrator._parser.stream_id == "test_stream"
+
+    def test_keeps_the_config(self):
         config = make_config()
-        factory = ParameterFactory(config)
-        
-        assert hasattr(factory, '_parser')
-        assert factory._parser.stream_id == "test_stream"
+        orchestrator = ParameterOrchestrator(config)
+
+        assert orchestrator._config is config
+
+    def test_no_factory_in_the_middle(self):
+        """La catena e' Orchestrator -> Parser: niente factory interposta."""
+        orchestrator = ParameterOrchestrator(make_config())
+
+        assert not hasattr(orchestrator, '_param_factory')
 
 
 # =============================================================================
-# 2. TEST _GET_NESTED
+# 2. TEST ESTRAZIONE DALLO SPEC (create_parameter_with_gate)
 # =============================================================================
 
-class TestGetNested:
-    """Test _get_nested - YAML navigation."""
-    
-    def test_simple_key(self):
-        """Navigate simple key."""
-        data = {'volume': -6.0}
-        
-        result = ParameterFactory._get_nested(data, 'volume', 0.0)
-        
-        assert result == -6.0
-    
-    def test_nested_key(self):
-        """Navigate nested key with dot notation."""
-        data = {'grain': {'duration': 0.05}}
-        
-        result = ParameterFactory._get_nested(data, 'grain.duration', 0.1)
-        
-        assert result == 0.05
-    
-    def test_deep_nested_key(self):
-        """Navigate deeply nested key."""
-        data = {'a': {'b': {'c': 42}}}
-        
-        result = ParameterFactory._get_nested(data, 'a.b.c', 0)
-        
-        assert result == 42
-    
-    def test_missing_key_returns_default(self):
-        """Missing key returns default."""
-        data = {'volume': -6.0}
-        
-        result = ParameterFactory._get_nested(data, 'missing', 0.0)
-        
-        assert result == 0.0
-    
-    def test_partial_path_returns_default(self):
-        """Partial path (not complete) returns default."""
-        data = {'grain': {'duration': 0.05}}
-        
-        result = ParameterFactory._get_nested(data, 'grain.missing', 0.1)
-        
-        assert result == 0.1
-    
-    def test_non_dict_in_path_returns_default(self):
-        """Non-dict in path returns default."""
-        data = {'grain': 42}  # Not a dict
-        
-        result = ParameterFactory._get_nested(data, 'grain.duration', 0.1)
-        
-        assert result == 0.1
-    
-    def test_internal_marker_returns_default(self):
-        """Path starting with _ returns default."""
-        data = {'test': 10}
-        
-        result = ParameterFactory._get_nested(data, '_internal_calc_', 0)
-        
-        assert result == 0
+class TestParameterFromSpec:
+    """Dallo ParameterSpec al Parameter: estrazione dal YAML + parsing."""
 
-
-# =============================================================================
-# 3. TEST CREATE_SMART_PARAMETER
-# =============================================================================
-
-class TestCreateSmartParameter:
-    """Test create_smart_parameter."""
-    
     def test_create_parameter_from_simple_value(self):
         """Create Parameter from simple value."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
+        orchestrator = ParameterOrchestrator(make_config())
+
         spec = ParameterSpec(
             name='volume',
             yaml_path='volume',
             default=-6.0
         )
         yaml_data = {'volume': -12.0}
-        
-        param = factory.create_smart_parameter(spec, yaml_data)
-        
+
+        param = orchestrator.create_parameter_with_gate(yaml_data, spec)
+
         assert param.name == 'volume'
         assert param.value == -12.0
-    
+
     def test_create_parameter_with_default(self):
         """Create Parameter using default value."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
+        orchestrator = ParameterOrchestrator(make_config())
+
         spec = ParameterSpec(
             name='pan',
             yaml_path='pan',
             default=0.0
         )
         yaml_data = {}  # Empty
-        
-        param = factory.create_smart_parameter(spec, yaml_data)
-        
+
+        param = orchestrator.create_parameter_with_gate(yaml_data, spec)
+
         assert param.value == 0.0
-    
+
     def test_create_parameter_with_range(self):
         """Create Parameter with range."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
+        orchestrator = ParameterOrchestrator(make_config())
+
         spec = ParameterSpec(
             name='volume',
             yaml_path='volume',
@@ -189,121 +128,106 @@ class TestCreateSmartParameter:
             range_path='volume_range'
         )
         yaml_data = {'volume': -12.0, 'volume_range': 3.0}
-        
-        params = factory.create_smart_parameter(spec, yaml_data)
-        
-        assert params.value == -12.0
-        assert params._mod_range == 3.0
-    
+
+        param = orchestrator.create_parameter_with_gate(yaml_data, spec)
+
+        assert param.value == -12.0
+        assert param._mod_range == 3.0
+
     def test_create_parameter_nested_path(self):
         """Create Parameter from nested YAML path."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
+        orchestrator = ParameterOrchestrator(make_config())
+
         spec = ParameterSpec(
             name='grain_duration',
             yaml_path='grain.duration',
             default=0.05
         )
         yaml_data = {'grain': {'duration': 0.1}}
-        
-        param = factory.create_smart_parameter(spec, yaml_data)
-        
+
+        param = orchestrator.create_parameter_with_gate(yaml_data, spec)
+
         assert param.value == 0.1
 
 
 # =============================================================================
-# 3b. TEST CREATE_CONSTANT_PARAMETER
+# 3. TEST CREATE_CONSTANT_PARAMETER
 # =============================================================================
 
 class TestCreateConstantParameter:
-    """Test ParameterFactory.create_constant_parameter — usa la classe reale."""
+    """Parameter costante da uno scalare, senza YAML."""
 
     def test_restituisce_un_parameter(self):
-        factory = ParameterFactory(make_config())
-        result = factory.create_constant_parameter('loop_end', 4.0)
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_end', 4.0)
         assert isinstance(result, Parameter)
 
     def test_valore_corretto(self):
-        factory = ParameterFactory(make_config())
-        result = factory.create_constant_parameter('loop_end', 5.0)
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_end', 5.0)
         assert result.value == 5.0
 
     def test_get_value_restituisce_il_valore(self):
-        factory = ParameterFactory(make_config())
-        result = factory.create_constant_parameter('loop_end', 3.5)
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_end', 3.5)
         assert result.get_value(0.0) == pytest.approx(3.5)
         assert result.get_value(99.0) == pytest.approx(3.5)
 
     def test_nome_corretto(self):
-        factory = ParameterFactory(make_config())
-        result = factory.create_constant_parameter('loop_end', 1.0)
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_end', 1.0)
         assert result.name == 'loop_end'
 
     def test_funziona_con_qualsiasi_nome_parametro(self):
-        factory = ParameterFactory(make_config())
-        result = factory.create_constant_parameter('loop_dur', 2.0)
+        orchestrator = ParameterOrchestrator(make_config())
+        result = orchestrator.create_constant_parameter('loop_dur', 2.0)
         assert result.value == 2.0
         assert result.name == 'loop_dur'
 
 
 # =============================================================================
-# 4. TEST CREATE_RAW_PARAMETER
+# 4. TEST PARAMETRI RAW (is_smart=False)
 # =============================================================================
 
-class TestCreateRawParameter:
-    """Test create_raw_parameter."""
-    
+class TestRawParameters:
+    """Gli spec non-smart escono come valore grezzo, non come Parameter."""
+
+    def _raw(self, spec, yaml_data):
+        orchestrator = ParameterOrchestrator(make_config())
+        return orchestrator.create_all_parameters(yaml_data, [spec])[spec.name]
+
     def test_create_raw_string(self):
         """Create raw string value."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
         spec = ParameterSpec(
             name='envelope',
             yaml_path='envelope',
             default='hanning',
             is_smart=False
         )
-        yaml_data = {'envelope': 'triangle'}
-        
-        result = factory.create_raw_parameter(spec, yaml_data)
-        
-        assert result == 'triangle'
-    
+
+        assert self._raw(spec, {'envelope': 'triangle'}) == 'triangle'
+
     def test_create_raw_number(self):
         """Create raw number value."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
         spec = ParameterSpec(
             name='count',
             yaml_path='count',
             default=1,
             is_smart=False
         )
-        yaml_data = {'count': 5}
-        
-        result = factory.create_raw_parameter(spec, yaml_data)
-        
-        assert result == 5
-    
+
+        assert self._raw(spec, {'count': 5}) == 5
+
     def test_create_raw_uses_default(self):
         """Create raw parameter uses default if missing."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
         spec = ParameterSpec(
             name='mode',
             yaml_path='mode',
             default='auto',
             is_smart=False
         )
-        yaml_data = {}
-        
-        result = factory.create_raw_parameter(spec, yaml_data)
-        
-        assert result == 'auto'
+
+        assert self._raw(spec, {}) == 'auto'
 
 
 # =============================================================================
@@ -312,15 +236,7 @@ class TestCreateRawParameter:
 
 class TestParameterOrchestrator:
     """Test ParameterOrchestrator."""
-    
-    def test_create_orchestrator(self):
-        """Create orchestrator with config."""
-        config = make_config()
-        orchestrator = ParameterOrchestrator(config)
-        
-        assert hasattr(orchestrator, '_param_factory')
-        assert hasattr(orchestrator, '_config')
-    
+
     def test_create_all_parameters_simple(self):
         """Create all parameters from simple schema."""
         config = make_config()
@@ -357,16 +273,7 @@ class TestParameterOrchestrator:
         assert params['pan'] is not None
         assert params['volume'] is None  # Loser set to None
 
-    def test_create_constant_parameter_restituisce_parameter(self):
-        orchestrator = ParameterOrchestrator(make_config())
-        result = orchestrator.create_constant_parameter('loop_end', 4.0)
-        assert isinstance(result, Parameter)
 
-    def test_create_constant_parameter_delega_alla_factory(self):
-        orchestrator = ParameterOrchestrator(make_config())
-        result = orchestrator.create_constant_parameter('loop_end', 4.0)
-        assert result.value == 4.0
-        assert result.get_value(0.0) == pytest.approx(4.0)
 # =============================================================================
 # 6. TEST CREATE_PARAMETER_WITH_GATE
 # =============================================================================
@@ -516,7 +423,7 @@ class TestExclusiveGroupSelector:
 # 8. TEST INTEGRATION COMPLETE
 # =============================================================================
 
-class TestFactoryOrchestratorIntegration:
+class TestOrchestratorIntegration:
     """Test complete integration."""
     
     def test_complete_workflow_simple(self):
@@ -583,23 +490,22 @@ class TestFactoryOrchestratorIntegration:
 # 9. TEST ERROR HANDLING
 # =============================================================================
 
-class TestFactoryOrchestratorErrors:
+class TestOrchestratorErrors:
     """Test error handling."""
-    
+
     def test_nested_path_on_primitive_value(self):
         """Nested path on primitive returns default."""
-        config = make_config()
-        factory = ParameterFactory(config)
-        
+        orchestrator = ParameterOrchestrator(make_config())
+
         spec = ParameterSpec(
             name='volume',
             yaml_path='grain.duration',
             default=-6.0
         )
         yaml_data = {'grain': 42}
-        
-        param = factory.create_smart_parameter(spec, yaml_data)
-        
+
+        param = orchestrator.create_parameter_with_gate(yaml_data, spec)
+
         # Should use default
         assert param.value == -6.0
 
@@ -607,7 +513,7 @@ class TestFactoryOrchestratorErrors:
 # 10. TEST EDGE CASES
 # =============================================================================
 
-class TestFactoryOrchestratorEdgeCases:
+class TestOrchestratorEdgeCases:
     """Test edge cases."""
     
     def test_empty_yaml_uses_all_defaults(self):
@@ -638,14 +544,6 @@ class TestFactoryOrchestratorEdgeCases:
         
         assert params == {}
     
-    def test_deeply_nested_path(self):
-        """Very deep nested path works."""
-        data = {'a': {'b': {'c': {'d': 42}}}}
-        
-        result = ParameterFactory._get_nested(data, 'a.b.c.d', 0)
-        
-        assert result == 42
-    
     def test_exclusive_group_single_member(self):
         """Exclusive group with single member."""
         schema = [
@@ -665,27 +563,9 @@ class TestFactoryOrchestratorEdgeCases:
 # 11. TEST PARAMETRIZED
 # =============================================================================
 
-class TestFactoryOrchestratorParametrized:
+class TestOrchestratorParametrized:
     """Test parametrized for systematic coverage."""
-    
-    @pytest.mark.parametrize("path,expected", [
-        ('a', 1),
-        ('b.c', 2),
-        ('d.e.f', 3),
-        ('missing', 0)
-    ])
-    def test_get_nested_various_paths(self, path, expected):
-        """Test _get_nested with various paths."""
-        data = {
-            'a': 1,
-            'b': {'c': 2},
-            'd': {'e': {'f': 3}}
-        }
-        
-        result = ParameterFactory._get_nested(data, path, 0)
-        
-        assert result == expected
-    
+
     @pytest.mark.parametrize("is_smart", [True, False])
     def test_create_both_parameter_types(self, is_smart):
         """Test creating both smart and raw parameters."""
