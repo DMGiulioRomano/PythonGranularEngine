@@ -93,13 +93,33 @@ class TestDisplayRanges:
 
     def test_constant_envelope_at_zero_still_gets_a_width(self):
         """Costante a zero: il pad proporzionale sarebbe zero e il range
-        collasserebbe. E' il caso che il margine minimo esiste per coprire."""
+        collasserebbe. E' il caso che il margine minimo esiste per coprire.
+
+        Il valore e' scritto per esteso, non solo `hi > lo`: il margine minimo
+        e' una scelta di quanto larga sia la corsia di una costante, e con la
+        sola asserzione di non degenerazione si potrebbe spostare di ordini di
+        grandezza senza che niente diventi rosso."""
         envelopes = {'volume': Envelope([[0, 0.0], [10, 0.0]])}
         ranges = display_ranges(
             envelopes, stream_start=0.0, t_start=0.0, t_end=10.0,
             pad_ratio=PAD, samples=SAMPLES)
-        lo, hi = ranges['volume']
-        assert hi > lo
+        assert ranges['volume'] == pytest.approx((-1e-6, 1e-6))
+
+    def test_a_tiny_but_real_excursion_is_not_treated_as_flat(self):
+        """La soglia di piattezza separa "costante" da "varia pochissimo", e
+        le due cose si disegnano in modo diverso: la costante finisce al
+        centro di una corsia larga quanto il suo valore, chi varia riempie la
+        corsia con la propria escursione.
+
+        Con una soglia troppo alta una curva che varia davvero verrebbe
+        schiacciata al centro, e la sua forma sparirebbe dalla partitura."""
+        envelopes = {'pointer_speed': Envelope([[0, 1.0], [10, 1.000001]])}
+        ranges = display_ranges(
+            envelopes, stream_start=0.0, t_start=0.0, t_end=10.0,
+            pad_ratio=PAD, samples=SAMPLES)
+        # Ramo proporzionale: pad = span * pad_ratio, non il margine minimo.
+        assert ranges['pointer_speed'] == pytest.approx(
+            (1.0 - 5e-8, 1.000001 + 5e-8))
 
     def test_internal_breakpoint_peak_is_exact(self):
         """Il picco cade su un breakpoint interno che la griglia di
