@@ -12,6 +12,7 @@ colormap e costruire il Polygon resta dell'adapter, perche' e' li' che comincia
 matplotlib.
 """
 
+import gc
 from types import SimpleNamespace
 
 import pytest
@@ -38,6 +39,20 @@ def grain(onset=0.0, duration=1.0, pointer_pos=0.0, pitch_ratio=1.0,
         envelope_table=envelope_table)
 
 
+@pytest.fixture
+def clean_silhouette_cache():
+    """Cache delle silhouette vuota all'entrata e all'uscita.
+
+    La cache e' di modulo, quindi la sua vita e' quella del processo: un test
+    che la riempie di proposito la lascerebbe piena per tutti quelli dopo. E'
+    l'unico stato globale che questa suite tocca, e la pulizia va in entrambe
+    le direzioni perche' i test che la riempiono contano le voci.
+    """
+    window_silhouette.cache_clear()
+    yield
+    window_silhouette.cache_clear()
+
+
 class TestArrowVertices:
     """La forma storica del grano: un rettangolo con la punta triangolare che
     indica il verso di lettura del sample."""
@@ -55,6 +70,26 @@ class TestArrowVertices:
         assert verts[3] == (0.5, 1.0)   # punta: meta' larghezza, in cima
         assert verts[0] == (0.0, 0.0)   # base sinistra, sul pointer
         assert verts[1] == (1.0, 0.0)   # base destra, sul pointer
+
+    def test_the_head_takes_half_the_length(self):
+        """Le spalle stanno a meta' altezza del grano: la testa triangolare ne
+        occupa la meta', il fusto l'altra meta'.
+
+        E' la proporzione che rende la freccia leggibile a colpo d'occhio, ed
+        e' l'unico numero della forma che non discende da onset/durata: senza
+        un test, cambiarlo non farebbe rumore.
+        """
+        verts = arrow_vertices(grain(onset=0.0, duration=2.0, pointer_pos=0.0,
+                                     pitch_ratio=1.0))
+        shoulders = [verts[2][1], verts[4][1]]
+        assert shoulders == [pytest.approx(1.0), pytest.approx(1.0)]
+
+    def test_the_head_takes_half_the_length_when_reverse(self):
+        """Ribaltata, la proporzione e' la stessa: la testa resta meta'."""
+        verts = arrow_vertices(grain(onset=0.0, duration=2.0, pointer_pos=0.0,
+                                     pitch_ratio=-1.0))
+        shoulders = [verts[2][1], verts[4][1]]
+        assert shoulders == [pytest.approx(-1.0), pytest.approx(-1.0)]
 
     def test_arrow_points_down_when_reverse(self):
         """pitch_ratio negativo: la lettura torna indietro, e la freccia si
@@ -126,14 +161,39 @@ class TestWindowSilhouette:
         assert info.maxsize == WINDOW_SILHOUETTE_CACHE_SIZE
         assert info.maxsize is not None
 
-    def test_entries_beyond_the_ceiling_are_evicted(self):
+    def test_entries_beyond_the_ceiling_are_evicted(self, clean_silhouette_cache):
         """Il tetto e' vero, non decorativo: oltre la capienza le voci vecchie
         escono, e la cache non supera mai la sua dimensione dichiarata."""
-        window_silhouette.cache_clear()
         for resolution in range(8, 8 + WINDOW_SILHOUETTE_CACHE_SIZE + 10):
             window_silhouette('hanning', resolution)
         assert (window_silhouette.cache_info().currsize
                 == WINDOW_SILHOUETTE_CACHE_SIZE)
+
+    def test_nothing_survives_the_call_beyond_the_cache(
+            self, clean_silhouette_cache):
+        """Il tetto della lru e' il tetto VERO: dietro non resta un registry
+        che accumula gli array senza limite.
+
+        E' il caso che il tetto esiste per chiudere — chi rigenera le figure
+        variando window_shape_resolution — e un tetto sul solo strato di sopra
+        non lo chiude: la memoria si accumulerebbe un livello piu' giu', dove
+        per giunta stanno gli array veri e non le chiavi.
+        """
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+
+        def retained():
+            gc.collect()
+            return sum(len(obj._cache) for obj in gc.get_objects()
+                       if isinstance(obj, NumpyWindowRegistry))
+
+        # Risoluzioni che nessun altro test tocca: se si sovrapponessero, un
+        # registry gia' popolato le troverebbe in cache e il conteggio non
+        # crescerebbe — il test passerebbe per l'ordine, non per la regola.
+        base = 1000
+        before = retained()
+        for resolution in range(base, base + WINDOW_SILHOUETTE_CACHE_SIZE + 40):
+            window_silhouette('hanning', resolution)
+        assert retained() - before <= WINDOW_SILHOUETTE_CACHE_SIZE
 
 
 class TestWindowVertices:
@@ -302,9 +362,22 @@ class TestPitchPosition:
     def test_non_positive_ratio_uses_the_fixed_range(self):
         """Ratio non positivo non ha un valore in cent: anche con l'autozoom
         attivo si ricade sul range fisso, invece di prendere il logaritmo di
-        zero."""
-        assert 0.0 <= pitch_position(
-            0.0, (0.0, 1200.0), pitch_range=(0.5, 2.0)) <= 1.0
+        zero.
+
+        Il range fisso e' scelto simmetrico apposta: su 0.5-2.0 il ramo giusto
+        e quello sbagliato darebbero entrambi 0.0 dopo il clamp — uno perche'
+        misura sotto il minimo, l'altro perche' log2(0) e' -inf — e il test
+        passerebbe qualunque cosa faccia il codice. Su -2.0..2.0 lo zero cade
+        a meta', e i due rami si distinguono.
+        """
+        assert pitch_position(
+            0.0, (0.0, 1200.0), pitch_range=(-2.0, 2.0)) == pytest.approx(0.5)
+
+    def test_zero_ratio_does_not_take_a_logarithm(self, recwarn):
+        """Il ramo in cent non viene nemmeno sfiorato: niente log2(0), quindi
+        nessun -inf e nessun RuntimeWarning di divisione invalida."""
+        pitch_position(0.0, (0.0, 1200.0), pitch_range=(-2.0, 2.0))
+        assert [w for w in recwarn if issubclass(w.category, RuntimeWarning)] == []
 
 
 class TestVolumeAlpha:

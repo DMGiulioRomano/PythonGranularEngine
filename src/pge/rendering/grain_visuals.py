@@ -19,25 +19,25 @@ from functools import lru_cache
 
 import numpy as np
 
-_WINDOW_REGISTRY = None
 
+def _generate_window(name, resolution):
+    """La finestra grezza, da un registry usa-e-getta.
 
-def _window_registry():
-    """Registry NumPy delle finestre, istanziato al primo uso.
+    Il registry ha una cache propria, e qui non serve a niente: chi arriva fin
+    qui e' gia' un miss di `window_silhouette`, che memoizza sulla stessa
+    chiave. Tenerlo vivo fra una chiamata e l'altra vorrebbe dire conservare
+    due volte gli stessi array, e conservarli SENZA tetto — la cache del
+    registry non ha eviction — sotto un tetto che li conta una volta sola.
+    Costruirlo per-miss non costa niente (`__init__` e' un dict vuoto, le
+    tabelle delle finestre sono attributi di classe) e rende vero il limite
+    dichiarato sopra.
 
-    Lazy perche' serve solo con grain_shape='window': chi disegna frecce non
-    deve pagarne la costruzione.
-
-    Il controllo e l'assegnazione non sono atomici, e non serve che lo siano:
-    due chiamanti concorrenti costruirebbero due registry identici e il
-    secondo vincerebbe: si spreca una costruzione, non si corrompe niente,
-    perche' il registry non ha stato che dipenda da chi lo usa.
+    L'import resta locale: serve solo con grain_shape='window', e chi disegna
+    frecce non deve pagarlo.
     """
-    global _WINDOW_REGISTRY
-    if _WINDOW_REGISTRY is None:
-        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
-        _WINDOW_REGISTRY = NumpyWindowRegistry()
-    return _WINDOW_REGISTRY
+    from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+
+    return NumpyWindowRegistry().get(name, resolution)
 
 
 # Quante silhouette tenere in cache. Una partitura ne usa quante sono le
@@ -45,7 +45,9 @@ def _window_registry():
 # serve al caso opposto — chi rigenera le figure variando
 # `window_shape_resolution` — perche' la cache e' di modulo e senza limite non
 # verrebbe liberata mai, essendo la sua vita quella del processo e non quella
-# del visualizer che l'ha riempita.
+# del visualizer che l'ha riempita. E' il tetto di TUTTO cio' che il modulo
+# trattiene: sotto non resta nessun altro strato che accumuli (vedi
+# _generate_window).
 WINDOW_SILHOUETTE_CACHE_SIZE = 64
 
 
@@ -62,7 +64,7 @@ def window_silhouette(name, resolution):
     nient'altro che dai due argomenti — e per la stessa ragione ha un tetto,
     invece di crescere per tutta la vita del processo.
     """
-    w = _window_registry().get(name, resolution)
+    w = _generate_window(name, resolution)
     w = np.clip(np.asarray(w, dtype=float), 0.0, None)
     peak = float(w.max())
     if peak > 0:
