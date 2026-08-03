@@ -215,6 +215,42 @@ ALL_SCHEMAS = {
 
 
 # =============================================================================
+# RISOLUZIONE DEL PATH YAML
+# =============================================================================
+
+def resolve_yaml_path(data: dict, path: str, default: Any) -> Any:
+    """
+    Naviga un dict con la dot notation di `ParameterSpec.yaml_path`.
+
+    Sta qui perche' qui e' dichiarato il formato del path: chi scrive
+    `yaml_path='grain.duration'` in uno spec trova nello stesso modulo la
+    funzione che quel percorso lo risolve.
+
+    Un percorso che non arriva in fondo — chiave assente, oppure un valore
+    non-dict a meta' strada — restituisce `default` invece di sollevare.
+
+    Examples:
+        resolve_yaml_path({'grain': {'duration': 0.05}}, 'grain.duration', 0.1)
+        -> 0.05
+
+        resolve_yaml_path({'volume': -6}, 'volume', 0)
+        -> -6
+
+        resolve_yaml_path({}, 'missing.path', 42)
+        -> 42
+    """
+    current = data
+
+    for key in path.split('.'):
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
+
+    return current
+
+
+# =============================================================================
 # HELPER FUNCTIONS AGGIUNTIVE
 # =============================================================================
 
