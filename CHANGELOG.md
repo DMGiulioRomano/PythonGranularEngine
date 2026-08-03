@@ -245,6 +245,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `test_parameter_orchestrator.py` e ha perso i test che verificavano solo
   l'inoltro.
 
+- `ParameterOrchestrator` vuole il `config`: il default `None` sulla firma era
+  morto, perche' il primo uso e' `GranularParser(config)`, che dereferenzia
+  `config.context` e sollevava `AttributeError` un attimo dopo. Ora manca
+  l'argomento e lo dice `TypeError`, che almeno nomina il parametro. Nessun
+  chiamante lo ometteva.
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30

@@ -29,10 +29,7 @@ class ParameterOrchestrator:
     Orchestratore: collega GranularParser e GateFactory senza accoppiarli.
     """
 
-    def __init__(
-        self,
-        config: StreamConfig = None
-    ):
+    def __init__(self, config: StreamConfig):
         self._parser = GranularParser(config)
         self._config = config
 

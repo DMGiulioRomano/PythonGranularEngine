@@ -78,6 +78,17 @@ class TestParameterOrchestratorInitialization:
 
         assert not hasattr(orchestrator, '_param_factory')
 
+    def test_config_is_required(self):
+        """Senza config non si costruisce, e lo si scopre subito.
+
+        Il default None che c'era prima era morto: il primo uso e'
+        GranularParser(config), che dereferenzia config.context e sollevava
+        AttributeError un attimo dopo. Meglio un TypeError sulla firma, che
+        dice quale argomento manca.
+        """
+        with pytest.raises(TypeError):
+            ParameterOrchestrator()
+
 
 # =============================================================================
 # 2. TEST ESTRAZIONE DALLO SPEC (create_parameter_with_gate)
