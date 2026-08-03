@@ -11,9 +11,7 @@ Testa flussi completi end-to-end:
 - robustezza con zero voci o grani assenti
 """
 
-import sys
 import os
-import types
 import tempfile
 import shutil
 
@@ -24,29 +22,11 @@ matplotlib.use('Agg')  # backend non-interattivo obbligatorio nei test
 import matplotlib.pyplot as plt
 from unittest.mock import MagicMock, patch, call
 
-# =============================================================================
-# BLOCCO DIPENDENZE PESANTI PRIMA DI QUALSIASI IMPORT
-# =============================================================================
-
-_sf_mod = types.ModuleType('soundfile')
-_sf_mod.read = MagicMock()
-_sf_mod.info = MagicMock()
-sys.modules.setdefault('soundfile', _sf_mod)
-
-_envelope_mod = types.ModuleType('envelope')
-_envelope_mod.Envelope = MagicMock()
-sys.modules.setdefault('envelope', _envelope_mod)
-
-_parameter_mod = types.ModuleType('parameter')
-_parameter_mod.Parameter = MagicMock()
-sys.modules.setdefault('parameter', _parameter_mod)
-
-_param_schema_mod = types.ModuleType('parameter_schema')
-_param_schema_mod.STREAM_PARAMETER_SCHEMA = []
-_param_schema_mod.POINTER_PARAMETER_SCHEMA = []
-_param_schema_mod.PITCH_PARAMETER_SCHEMA = []
-_param_schema_mod.DENSITY_PARAMETER_SCHEMA = []
-sys.modules.setdefault('parameter_schema', _param_schema_mod)
+# Niente stub di modulo installati in sys.modules qui (issue #182): soundfile e'
+# una dipendenza dichiarata in pyproject.toml, quindi c'e' sempre, e chi vuole
+# l'audio finto lo ottiene con `patch('soundfile.read', ...)` dentro il singolo
+# test. Uno stub globale via sys.modules.setdefault vinceva solo quando questo
+# file girava da solo, e faceva fallire i test che scrivono WAV veri.
 
 from pge.rendering.score_visualizer import ScoreVisualizer  # noqa: E402
 
@@ -1669,6 +1649,30 @@ class TestMagnifier:
         cx, cy = (lp.x0 + lp.x1) / 2, (lp.y0 + lp.y1) / 2
         assert cx > (gp.x0 + gp.x1) / 2
         assert cy > (gp.y0 + gp.y1) / 2
+
+
+# =============================================================================
+# ISOLAMENTO DELLA SUITE
+# =============================================================================
+
+class TestSuiteIsolation:
+    """Questo file non deve dipendere da chi lo esegue insieme a se'.
+
+    Issue #182: un finto modulo 'soundfile' installato a livello di modulo con
+    sys.modules.setdefault vinceva quando il file girava da solo (nessun altro
+    aveva ancora importato quello vero) e perdeva nella suite completa. I test
+    che scrivono WAV veri fallivano solo nel primo caso.
+    """
+
+    def test_soundfile_is_the_real_module(self):
+        """Il soundfile visibile ai test e' la libreria, non uno stub."""
+        import soundfile as sf
+
+        assert hasattr(sf, 'write'), (
+            "soundfile e' stato sostituito da uno stub: i test che scrivono "
+            "WAV veri falliranno quando questo file gira da solo"
+        )
+        assert not isinstance(sf.read, MagicMock)
 
 
 # =============================================================================

@@ -15,9 +15,6 @@ Test divisi in:
   adattivo per grani troppo piccoli).
 """
 
-import sys
-import types
-
 import numpy as np
 import pytest
 import matplotlib
@@ -25,11 +22,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from unittest.mock import MagicMock
 
-# Stesso blocco dipendenze pesanti degli altri test del visualizer
-_sf_mod = types.ModuleType('soundfile')
-_sf_mod.read = MagicMock()
-_sf_mod.info = MagicMock()
-sys.modules.setdefault('soundfile', _sf_mod)
+# Niente stub di soundfile in sys.modules (issue #182): e' una dipendenza
+# dichiarata, e uno stub globale vince solo quando questo file gira da solo.
 
 from pge.rendering.score_visualizer import ScoreVisualizer  # noqa: E402
 

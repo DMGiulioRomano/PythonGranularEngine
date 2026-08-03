@@ -259,6 +259,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `tests/envelopes/test_time_distribution.py`. Il modulo passa da 520 a 466
   righe.
 
+- I test del visualizer non installano piu' uno stub di `soundfile` in
+  `sys.modules` a livello di modulo. Era un `setdefault`: perdeva nella suite
+  completa (qualcun altro aveva gia' importato la libreria vera) e vinceva
+  quando il file girava da solo, facendo fallire i tre test di
+  `TestSamplesDirConfig` che scrivono WAV veri. `soundfile` e' una dipendenza
+  dichiarata in `pyproject.toml`, quindi lo stub non serviva; chi vuole audio
+  finto continua a usare `patch('soundfile.read', ...)` nel singolo test.
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30
