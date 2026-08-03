@@ -447,14 +447,14 @@ class TestIntegration:
 
 
 # =============================================================================
-# 6. LE QUATTRO FORME, A CONFRONTO
+# 6. LE CINQUE FORME, A CONFRONTO
 # =============================================================================
 
 class TestDistributionsDifferInShape:
     """A parita' di input le distribuzioni danno forme diverse.
 
     Qui vive quello che dimostrava il blocco demo in coda al modulo (issue
-    #181): stessi total_time e n_reps, quattro andamenti riconoscibili e
+    #181): stessi total_time e n_reps, cinque andamenti riconoscibili e
     distinti fra loro. Un print lo mostrava a chi eseguiva il modulo come
     script; un'asserzione lo tiene fermo a ogni suite.
     """
@@ -503,7 +503,7 @@ class TestDistributionsDifferInShape:
         assert durations[-1] > 6.0
         assert all(b > a for a, b in zip(durations, durations[1:]))
 
-    def test_the_four_shapes_are_distinct(self):
+    def test_the_five_shapes_are_distinct(self):
         """Nessuna coppia di distribuzioni produce le stesse durate."""
         shapes = [
             self._distribution('linear')[1],
