@@ -18,6 +18,8 @@ from __future__ import annotations
 import numpy as np
 from typing import Dict, List, Tuple
 
+from pge.controllers.window_registry import WindowRegistry
+
 
 class NumpyWindowRegistry:
     """
@@ -82,25 +84,33 @@ class NumpyWindowRegistry:
             from pge.shared.exceptions import InvalidWindowError
             raise InvalidWindowError(param="n", value=n)
 
-        key = (name, n)
+        # Il catalogo (WindowRegistry) decide quali nomi lo YAML puo' scrivere
+        # e quale sia il nome canonico di ciascuno: qui si generano array, non
+        # si tiene un secondo elenco di nomi validi. Canonicalizzare prima
+        # della cache fa condividere l'array fra alias e nome canonico.
+        canonical = WindowRegistry.canonical(name)
+        if canonical is None:
+            from pge.shared.exceptions import InvalidWindowError
+            raise InvalidWindowError(name=name, available=self.available_windows())
+
+        key = (canonical, n)
         if key in self._cache:
             return self._cache[key]
 
-        window = self._generate(name, n)
+        window = self._generate(canonical, n)
         self._cache[key] = window
         return window
 
     def available_windows(self) -> List[str]:
-        """Lista dei nomi di finestra disponibili."""
-        names = list(self._NUMPY_WINDOWS.keys())
-        names.append('kaiser')
-        names.append('gaussian')
-        names.append('blackman_harris')
-        names.extend(self._GEN16_WINDOWS.keys())
-        names.append('half_sine')
-        names.append('rectangle')
-        names.append('sinc')
-        return names
+        """Nomi di finestra scrivibili nello YAML, alias compresi.
+
+        Viene dal catalogo, non da un elenco locale: e' la lista che finisce
+        nel messaggio d'errore quando un nome non esiste, e deve dire cosa
+        l'utente puo' scrivere. Che il catalogo sia integralmente
+        materializzabile in array e' garantito dal parity test in
+        tests/rendering/test_numpy_window_registry.py.
+        """
+        return WindowRegistry.all_names()
 
     def __len__(self) -> int:
         """Numero di entry attualmente in cache."""

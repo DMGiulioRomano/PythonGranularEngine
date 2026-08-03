@@ -158,10 +158,23 @@ class WindowRegistry:
     }
     
     @classmethod
+    def canonical(cls, name: str) -> Optional[str]:
+        """Nome canonico di `name`, risolti gli alias. None se il catalogo
+        non conosce il nome.
+
+        E' il punto in cui un alias smette di essere tale: chi materializza
+        una finestra (statement Csound, array NumPy) passa di qui e lavora
+        sempre sul nome canonico, cosi' i due adapter non possono divergere
+        su quali nomi lo YAML puo' scrivere.
+        """
+        resolved_name = cls.ALIASES.get(name, name)
+        return resolved_name if resolved_name in cls.WINDOWS else None
+
+    @classmethod
     def get(cls, name: str) -> Optional[WindowSpec]:
         """Ottieni specifica envelope (gestisce alias)."""
-        resolved_name = cls.ALIASES.get(name, name)
-        return cls.WINDOWS.get(resolved_name)
+        resolved_name = cls.canonical(name)
+        return cls.WINDOWS.get(resolved_name) if resolved_name else None
     
     @classmethod
     def all_names(cls) -> List[str]:

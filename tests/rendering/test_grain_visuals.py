@@ -129,6 +129,15 @@ class TestWindowSilhouette:
         assert w.max() == pytest.approx(1.0)
         assert w.min() >= 0.0
 
+    def test_alias_name_has_a_silhouette(self):
+        """La partitura disegna la finestra col nome scritto nello YAML: se
+        quello e' un alias (`triangle`), la silhouette deve esistere lo stesso.
+        Secondo consumatore del catalogo dopo il renderer numpy."""
+        xs_alias, w_alias = window_silhouette('triangle', 64)
+        xs_canon, w_canon = window_silhouette('bartlett', 64)
+        assert len(w_alias) == 64
+        assert list(w_alias) == list(w_canon)
+
     def test_same_shape_is_computed_once(self):
         """Stesso nome e stessa risoluzione: stessa curva, senza ricalcolarla."""
         a = window_silhouette('hanning', 32)
