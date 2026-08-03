@@ -6,7 +6,7 @@ tags: [architecture, rendering, ocp]
 sources:
   - src/pge/rendering/
   - src/main.py
-last_synced_commit: d750ba6
+last_synced_commit: 1aba65c
 ---
 
 # Architettura Renderer
@@ -169,14 +169,36 @@ Sequenza e invarianti:
 
 ### Copertura test
 
-| Layer | Strumento | Conteggio |
-|-------|-----------|-----------|
-| Unit (mock) | `pytest` / `make tests` | 4149 test |
-| E2E | `pytest -m e2e` / `make e2e-tests` | 24 test |
+| Layer | Come si lancia | Come si conta |
+|-------|----------------|---------------|
+| Unit (mock) | `make tests` | riga finale di `make tests` |
+| E2E | `make e2e-tests` | `pytest -m e2e --collect-only -q` |
 
-**E2E Csound** (`tests/e2e/test_cache_e2e.py`, 15 test): pipeline `make → Python → Csound → filesystem` in `STEMS=true CACHE=true`. Copre first build, incremental, partial rebuild, garbage collection.
+Qui non c'è un numero: il conteggio dei test cambia a ogni PR e `make docs-lint`
+non può verificarlo, quindi un numero scritto a mano è drift garantito (è
+esattamente come è nata l'issue #179). I due comandi della colonna destra danno
+la cifra aggiornata in un secondo.
 
-**E2E NumPy** (`tests/e2e/test_numpy_renderer_e2e.py`, 9 test): pipeline `make → Python → NumPy → filesystem`, no Csound. Copre stems, mix, rendering multi-processo (`JOBS`) intra-stream e a livello di stream (stem byte-identici a `JOBS=1`, cache clean).
+Il marker `e2e` è deselezionato di default (`addopts = -m "not e2e"` in
+`pytest.ini`): `make tests` esegue il layer unit e riporta gli e2e come
+`deselected`.
+
+**E2E Csound** (`tests/e2e/test_cache_e2e.py`): pipeline `make → Python → Csound → filesystem` in `STEMS=true CACHE=true`. Copre first build, incremental, partial rebuild, garbage collection.
+
+**E2E NumPy** (`tests/e2e/test_numpy_renderer_e2e.py`): pipeline `make → Python → NumPy → filesystem`, no Csound. Copre stems, mix, rendering multi-processo (`JOBS`) intra-stream e a livello di stream (stem byte-identici a `JOBS=1`, cache clean).
+
+Gli altri file sotto `tests/e2e/` coprono export e pulizia REAPER
+(`test_reaper_export_e2e.py`, `test_reaper_makefile_e2e.py`,
+`test_clean_rpp_e2e.py`), gli errori dell'engine end-to-end
+(`test_engine_errors_e2e.py`) e il sidecar JSON dei grani
+(`test_grain_json_e2e.py`).
+
+Un test `e2e` sta fuori da quella cartella, ed è il motivo per cui il comando di
+conteggio dà un numero più alto dei file elencati qui: è
+`test_editable_install_in_clean_venv` in `tests/test_package_layout.py`, che
+crea un venv pulito, ci installa il pacchetto in editable e importa `pge` da
+fuori dal repo. Il marker segue quello che il test fa, non la cartella in cui
+sta.
 
 **Note semantica onset:**
 - Csound/NumPy STEMS: onset relativi allo stream (onset=0 nel file)

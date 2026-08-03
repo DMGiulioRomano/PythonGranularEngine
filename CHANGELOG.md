@@ -251,6 +251,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   l'argomento e lo dice `TypeError`, che almeno nomina il parametro. Nessun
   chiamante lo ometteva.
 
+- Rimosso il blocco demo in coda a `envelopes/time_distribution.py` (48 righe,
+  tutti e 16 i `print()` del modulo): eseguiva le cinque distribuzioni e ne
+  stampava i cicli, ma nessuno esegue il modulo come script. Quello che
+  mostrava — a parita' di input le forme sono distinte e riconoscibili — e'
+  ora asserito da `TestDistributionsDifferInShape` in
+  `tests/envelopes/test_time_distribution.py`. Il modulo passa da 520 a 466
+  righe.
+
 - I test del visualizer non installano piu' uno stub di `soundfile` in
   `sys.modules` a livello di modulo. Era un `setdefault`: perdeva nella suite
   completa (qualcun altro aveva gia' importato la libreria vera) e vinceva
