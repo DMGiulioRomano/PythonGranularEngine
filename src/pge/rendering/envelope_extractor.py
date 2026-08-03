@@ -113,7 +113,12 @@ def _attr(name):
 # schemi per un accidente — hasattr(stream,'pointer_deviation') era False
 # perche' il Parameter viveva solo dentro PointerController. Ora che lo Stream
 # lo espone, l'esclusione va dichiarata invece che subita.
-_SCHEMA_EXCLUDED = frozenset({'pointer_deviation'})
+# pointer_speed_ratio e' il nome di schema di una curva gia' pubblicata piu'
+# sotto come 'pointer_speed', che e' il nome che lo Stream espone e che i
+# consumatori usano (layer SV, --plot-envelopes). Dal ciclo sugli schemi
+# usciva una seconda chiave che getattr non ha mai potuto risolvere: prometteva
+# una curva e ne consegnava zero. Esclusa qui invece che lasciata morta.
+_SCHEMA_EXCLUDED = frozenset({'pointer_deviation', 'pointer_speed_ratio'})
 
 
 def _curve_sources():

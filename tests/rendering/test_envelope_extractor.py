@@ -621,11 +621,18 @@ class TestSchemaExclusion:
         assert keys.index('pointer_deviation') > keys.index('volume')
 
     def test_the_exclusion_is_declared_and_not_incidental(self):
-        """L'esclusione e' scritta, e riguarda solo pointer_deviation: se
-        crescesse in silenzio, ogni nome aggiunto sparirebbe dalla partitura
-        senza che niente lo dica."""
+        """L'esclusione e' scritta: se crescesse in silenzio, ogni nome
+        aggiunto sparirebbe dalla partitura senza che niente lo dica.
+
+        Due nomi, per due motivi diversi. `pointer_deviation` e' pubblicato
+        dalle righe dedicate piu' sotto, col range al posto del valore base.
+        `pointer_speed_ratio` e' il nome di schema di una curva gia'
+        pubblicata come `pointer_speed`: dal ciclo usciva una chiave che
+        `getattr` non ha mai potuto risolvere (issue #199).
+        """
         from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
-        assert _SCHEMA_EXCLUDED == frozenset({'pointer_deviation'})
+        assert _SCHEMA_EXCLUDED == frozenset({
+            'pointer_deviation', 'pointer_speed_ratio'})
 
 
 class TestEnvelopeFilter:
@@ -795,3 +802,100 @@ class TestRawSourcesHaveOnlyAValue:
         keys = get_stream_envelopes(
             self._stream_with_numeric_grain_envelope(), show_static=True)
         assert 'grain_envelope' in keys
+
+
+# =============================================================================
+# LA SUPERFICIE PUBBLICATA E' UN CONTRATTO (issue #199)
+# =============================================================================
+
+class TestPublishedSurfaceResolves:
+    """Ogni nome che il modulo pubblica deve corrispondere a qualcosa che
+    esiste davvero sullo Stream.
+
+    La risoluzione e' `getattr(stream, name, None)`: un nome che non esiste
+    non solleva, produce una curva assente. Indistinguibile da un parametro
+    che l'utente non ha configurato — quindi una curva puo' sparire dalla
+    partitura, o entrarci, senza che niente fallisca.
+
+    Qui si costruiscono Stream VERI (il MagicMock ha ogni attributo, e non
+    saprebbe rispondere alla domanda) su un ventaglio di configurazioni che
+    copre ogni gruppo esclusivo, e si confronta l'insieme pubblicato con
+    quello che risolve.
+
+    `_curve_sources` e' privata ma e' il catalogo: il lavoro di questo test e'
+    esattamente confrontare il catalogo con la realta'.
+    """
+
+    # Chiavi pubblicate che oggi non risolvono in nessuna configurazione, con
+    # il motivo. Non e' un tappeto: il test verifica l'uguaglianza nei due
+    # sensi, quindi una chiave che tornasse a risolvere andrebbe tolta da qui.
+    DICHIARATE_MORTE = {
+        # pointer_start non e' in GRANULAR_PARAMETERS: l'orchestratore non ne
+        # fa un Parameter e PointerController.start resta il valore YAML
+        # grezzo, che _readable scarta. Pubblicarla vuol dire darle bounds e
+        # cambiare cosa contiene quell'attributo: e' una feature, non un
+        # collegamento mancante. Issue #199.
+        'pointer_start',
+        # effective_density ha yaml_path '_internal_calc_' e vive come float
+        # dentro DensityController._loaded_params. Prima di pubblicarla va
+        # deciso se e' una curva o uno scalare interno: una riga piatta
+        # accanto a una density che varia mentirebbe. Issue #199.
+        'effective_density',
+    }
+
+    def _configurazioni(self, build_stream):
+        """Un ventaglio che copre i gruppi esclusivi: density contro
+        fill_factor, loop_end contro loop_dur, pointer e voci espliciti."""
+        return [
+            build_stream(
+                stream_id='A',
+                density=[[0, 5], [2.0, 20]],
+                volume=-6, volume_range=3,
+                pan=0, pan_range=20,
+                dephase=10,
+                scatter=0.2,
+                pitch={'semitones': [[0, 0], [2.0, 12]]},
+                pointer={'start': 0.0, 'speed_ratio': 1.0,
+                         'offset_range': 0.1},
+                voices={'num_voices': 3,
+                        'pitch': {'strategy': 'chord', 'chord': 'dom7'}},
+            ),
+            build_stream(
+                stream_id='B',
+                fill_factor=0.5,
+                pointer={'loop_start': 0.0, 'loop_end': 0.8},
+            ),
+            build_stream(
+                stream_id='C',
+                density=10,
+                pointer={'loop_start': 0.1, 'loop_dur': 0.5},
+            ),
+        ]
+
+    def _pubblicate_e_vive(self, build_stream):
+        from pge.rendering.envelope_extractor import (
+            _curve_sources, VoiceOffsetSource)
+
+        pubblicate, vive = set(), set()
+        for stream in self._configurazioni(build_stream):
+            for source in _curve_sources():
+                if isinstance(source, VoiceOffsetSource):
+                    continue
+                pubblicate.add(source.key)
+                if source.resolve(stream) is not None:
+                    vive.add(source.key)
+        return pubblicate, vive
+
+    def test_no_key_is_dead_without_being_declared(self, build_stream):
+        """Una chiave che non risolve mai promette una curva che nessuno
+        vedra': o si pubblica davvero, o si dichiara qui il perche'."""
+        pubblicate, vive = self._pubblicate_e_vive(build_stream)
+        morte = pubblicate - vive
+        assert morte == self.DICHIARATE_MORTE
+
+    def test_most_of_the_surface_actually_resolves(self, build_stream):
+        """Controprova che il ventaglio esercita davvero le configurazioni: se
+        risolvesse una manciata di chiavi, l'asserzione sopra passerebbe per
+        difetto di copertura invece che per correttezza."""
+        pubblicate, vive = self._pubblicate_e_vive(build_stream)
+        assert len(vive) >= len(pubblicate) - len(self.DICHIARATE_MORTE)
