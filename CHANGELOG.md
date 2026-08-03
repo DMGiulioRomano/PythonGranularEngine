@@ -73,6 +73,25 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`pointer_speed_ratio` prometteva una curva che nessuno ha mai visto.**
+  Chi legge uno `Stream` per disegnarlo — partitura, export Sonic Visualiser,
+  `--plot-envelopes` — lo interroga per nome a runtime, con
+  `getattr(stream, name, None)`. Il default `None` fa sì che un nome
+  inesistente non sollevi ma produca una curva assente, indistinguibile da un
+  parametro non configurato: una curva può sparire dall'insieme pubblicato, o
+  entrarci, senza che niente fallisca. Costruendo `Stream` reali su tre
+  configurazioni che coprono ogni gruppo esclusivo, 25 chiavi pubblicate su 28
+  risolvono. `pointer_speed_ratio` è il nome di schema di una curva già
+  pubblicata come `pointer_speed`: una seconda chiave che `getattr` non ha mai
+  potuto risolvere, ora esclusa esplicitamente. Le altre due che non risolvono
+  — `pointer_start` ed `effective_density` — restano dichiarate nella guardia
+  con il loro motivo, perché pubblicarle richiede una decisione di dominio
+  (issue #199). La guardia è
+  `tests/rendering/test_envelope_extractor.py::TestPublishedSurfaceResolves`:
+  verifica l'uguaglianza nei due sensi, quindi né una chiave viva può morire
+  in silenzio né una dichiarata morta può restare nella lista dopo essere
+  tornata viva.
+
 - **Il tetto della cache delle silhouette non era il tetto vero.**
   `window_silhouette` ha un limite di 64 voci, ma leggeva da un
   `NumpyWindowRegistry` tenuto in una variabile di modulo — che ha una cache
