@@ -251,6 +251,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   l'argomento e lo dice `TypeError`, che almeno nomina il parametro. Nessun
   chiamante lo ometteva.
 
+- Rimosso il blocco demo in coda a `envelopes/time_distribution.py` (48 righe,
+  tutti e 16 i `print()` del modulo): eseguiva le cinque distribuzioni e ne
+  stampava i cicli, ma nessuno esegue il modulo come script. Quello che
+  mostrava — a parita' di input le forme sono distinte e riconoscibili — e'
+  ora asserito da `TestDistributionsDifferInShape` in
+  `tests/envelopes/test_time_distribution.py`. Il modulo passa da 520 a 466
+  righe.
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30
