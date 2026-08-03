@@ -624,15 +624,17 @@ class TestSchemaExclusion:
         """L'esclusione e' scritta: se crescesse in silenzio, ogni nome
         aggiunto sparirebbe dalla partitura senza che niente lo dica.
 
-        Due nomi, per due motivi diversi. `pointer_deviation` e' pubblicato
+        Tre nomi, per tre motivi diversi. `pointer_deviation` e' pubblicato
         dalle righe dedicate piu' sotto, col range al posto del valore base.
         `pointer_speed_ratio` e' il nome di schema di una curva gia'
         pubblicata come `pointer_speed`: dal ciclo usciva una chiave che
-        `getattr` non ha mai potuto risolvere (issue #199).
+        `getattr` non ha mai potuto risolvere. `pointer_start` non e' una
+        curva e non puo' esserlo: is_smart=False, e il pointer lo somma come
+        scalare (issue #199).
         """
         from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
         assert _SCHEMA_EXCLUDED == frozenset({
-            'pointer_deviation', 'pointer_speed_ratio'})
+            'pointer_deviation', 'pointer_speed_ratio', 'pointer_start'})
 
 
 class TestEnvelopeFilter:
@@ -830,12 +832,6 @@ class TestPublishedSurfaceResolves:
     # il motivo. Non e' un tappeto: il test verifica l'uguaglianza nei due
     # sensi, quindi una chiave che tornasse a risolvere andrebbe tolta da qui.
     DICHIARATE_MORTE = {
-        # pointer_start non e' in GRANULAR_PARAMETERS: l'orchestratore non ne
-        # fa un Parameter e PointerController.start resta il valore YAML
-        # grezzo, che _readable scarta. Pubblicarla vuol dire darle bounds e
-        # cambiare cosa contiene quell'attributo: e' una feature, non un
-        # collegamento mancante. Issue #199.
-        'pointer_start',
         # effective_density ha yaml_path '_internal_calc_' e vive come float
         # dentro DensityController._loaded_params. Prima di pubblicarla va
         # deciso se e' una curva o uno scalare interno: una riga piatta

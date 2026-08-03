@@ -118,7 +118,14 @@ def _attr(name):
 # consumatori usano (layer SV, --plot-envelopes). Dal ciclo sugli schemi
 # usciva una seconda chiave che getattr non ha mai potuto risolvere: prometteva
 # una curva e ne consegnava zero. Esclusa qui invece che lasciata morta.
-_SCHEMA_EXCLUDED = frozenset({'pointer_deviation', 'pointer_speed_ratio'})
+#
+# pointer_start non e' una curva e non puo' esserlo: la spec lo dichiara
+# is_smart=False, quindi l'orchestratore non ne fa un Parameter, e il pointer
+# lo usa come scalare (`self.start + sample_position` in
+# PointerController.calculate). Un envelope li' non e' una curva che nessuno
+# disegna: e' un TypeError alla generazione dei grani.
+_SCHEMA_EXCLUDED = frozenset({
+    'pointer_deviation', 'pointer_speed_ratio', 'pointer_start'})
 
 
 def _curve_sources():
