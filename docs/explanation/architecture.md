@@ -193,6 +193,13 @@ Gli altri file sotto `tests/e2e/` coprono export e pulizia REAPER
 (`test_engine_errors_e2e.py`) e il sidecar JSON dei grani
 (`test_grain_json_e2e.py`).
 
+Un test `e2e` sta fuori da quella cartella, ed è il motivo per cui il comando di
+conteggio dà un numero più alto dei file elencati qui: è
+`test_editable_install_in_clean_venv` in `tests/test_package_layout.py`, che
+crea un venv pulito, ci installa il pacchetto in editable e importa `pge` da
+fuori dal repo. Il marker segue quello che il test fa, non la cartella in cui
+sta.
+
 **Note semantica onset:**
 - Csound/NumPy STEMS: onset relativi allo stream (onset=0 nel file)
 - Csound/NumPy MIX: onset assoluti, stream posizionati nel tempo
