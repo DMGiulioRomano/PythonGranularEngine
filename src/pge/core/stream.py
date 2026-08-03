@@ -197,12 +197,12 @@ class Stream:
 
     def _init_stream_parameters(self, params: dict, config: StreamConfig) -> None:
         """
-        Inizializza parametri diretti di Stream usando ParameterFactory.
-        
+        Inizializza parametri diretti di Stream usando ParameterOrchestrator.
+
         Design Pattern: Data-Driven Configuration
         - Lo schema STREAM_PARAMETER_SCHEMA definisce COSA caricare
-        - ParameterFactory sa COME crearlo
-        - Stream riceve i Parameter già pronti        
+        - ParameterOrchestrator sa COME crearlo
+        - Stream riceve i Parameter già pronti
         """
         _orchestrator = ParameterOrchestrator(config=config)
 

@@ -1,6 +1,6 @@
 """
 gate_factory.py - Factory isolata per creare ProbabilityGate.
-Nessuna dipendenza da ParameterFactory o parser.
+Nessuna dipendenza da ParameterOrchestrator o parser.
 """
 from __future__ import annotations
 

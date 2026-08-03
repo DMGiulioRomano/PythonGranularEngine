@@ -222,6 +222,35 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `tests/rendering/test_envelope_extractor.py` passa da 11 a 75 test,
   `test_score_visualizer.py` da 181 a 129 (resta il disegno).
 
+- Rimosso `ParameterFactory._get_caller`: diagnostica di sviluppo che
+  ricostruiva il chiamante con `inspect` e che nessuno invocava. Con lei se ne
+  va l'import `inspect`, che nel modulo serviva solo a questo.
+
+- **BREAKING — `ParameterFactory` non esiste piu'.** Tre dei suoi quattro
+  metodi pubblici erano un inoltro a `GranularParser.parse_parameter`, il
+  quarto aggiungeva solo l'estrazione dal dizionario YAML, e l'unico chiamante
+  era `ParameterOrchestrator`. L'orchestratore ora tiene il parser
+  direttamente: la catena passa da `Stream -> ParameterOrchestrator ->
+  ParameterFactory -> GranularParser -> Parameter` a `Stream ->
+  ParameterOrchestrator -> GranularParser -> Parameter`. Nessuna superficie
+  YAML cambia; si rompe solo chi importava `pge.parameters.parameter_factory`
+  da fuori, che in-repo non faceva nessuno.
+
+- L'unica logica propria della factory, la navigazione del path YAML in dot
+  notation (`_get_nested`), e' diventata
+  `parameter_schema.resolve_yaml_path()`: sta dove e' dichiarato il formato
+  che risolve, cioe' accanto a `ParameterSpec.yaml_path`. I suoi test hanno
+  seguito la funzione in `tests/parameters/test_parameter_schema.py`;
+  `tests/parameters/test_parameter_factory.py` e' diventato
+  `test_parameter_orchestrator.py` e ha perso i test che verificavano solo
+  l'inoltro.
+
+- `ParameterOrchestrator` vuole il `config`: il default `None` sulla firma era
+  morto, perche' il primo uso e' `GranularParser(config)`, che dereferenzia
+  `config.context` e sollevava `AttributeError` un attimo dopo. Ora manca
+  l'argomento e lo dice `TypeError`, che almeno nomina il parametro. Nessun
+  chiamante lo ometteva.
+
 ---
 
 ## [v6.0.0] — "Range Anchor" — 2026-07-30
