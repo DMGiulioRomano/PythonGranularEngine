@@ -41,8 +41,67 @@ from pge.parameters.parameter_schema import (
     get_parameter_spec_from_schema,
     get_parameter_spec,
     get_all_parameter_names,
+    resolve_yaml_path,
     _SCHEMA_BY_NAME,
 )
+
+
+# =============================================================================
+# 0. RESOLVE_YAML_PATH — il risolutore della dot notation di ParameterSpec
+# =============================================================================
+
+class TestResolveYamlPath:
+    """Naviga un dict con la dot notation dichiarata da ParameterSpec.yaml_path.
+
+    Viveva come ParameterFactory._get_nested (issue #183); sta qui perche' qui
+    e' dichiarato il formato del path che risolve.
+    """
+
+    def test_simple_key(self):
+        assert resolve_yaml_path({'volume': -6.0}, 'volume', 0.0) == -6.0
+
+    def test_nested_key(self):
+        data = {'grain': {'duration': 0.05}}
+        assert resolve_yaml_path(data, 'grain.duration', 0.1) == 0.05
+
+    def test_deep_nested_key(self):
+        data = {'a': {'b': {'c': 42}}}
+        assert resolve_yaml_path(data, 'a.b.c', 0) == 42
+
+    def test_deeply_nested_path(self):
+        data = {'a': {'b': {'c': {'d': 42}}}}
+        assert resolve_yaml_path(data, 'a.b.c.d', 0) == 42
+
+    def test_missing_key_returns_default(self):
+        assert resolve_yaml_path({'volume': -6.0}, 'missing', 0.0) == 0.0
+
+    def test_partial_path_returns_default(self):
+        data = {'grain': {'duration': 0.05}}
+        assert resolve_yaml_path(data, 'grain.missing', 0.1) == 0.1
+
+    def test_non_dict_in_path_returns_default(self):
+        """Un primitivo a meta' percorso non fa esplodere: si torna al default."""
+        assert resolve_yaml_path({'grain': 42}, 'grain.duration', 0.1) == 0.1
+
+    def test_internal_marker_returns_default(self):
+        assert resolve_yaml_path({'test': 10}, '_internal_calc_', 0) == 0
+
+    @pytest.mark.parametrize("path,expected", [
+        ('a', 1),
+        ('b.c', 2),
+        ('d.e.f', 3),
+        ('missing', 0),
+    ])
+    def test_various_paths(self, path, expected):
+        data = {'a': 1, 'b': {'c': 2}, 'd': {'e': {'f': 3}}}
+        assert resolve_yaml_path(data, path, 0) == expected
+
+    def test_resolves_the_path_of_a_real_spec(self):
+        """Il risolutore e' fatto per gli yaml_path degli spec reali."""
+        spec = get_parameter_spec('grain_duration')
+        data = {'grain': {'duration': 0.02}}
+
+        assert resolve_yaml_path(data, spec.yaml_path, spec.default) == 0.02
 
 
 # =============================================================================
