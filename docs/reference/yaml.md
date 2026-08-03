@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: 41a469c
+last_synced_commit: dd43e1e
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -492,6 +492,8 @@ Controlla la posizione di lettura nel sample sorgente.
 ```yaml
 pointer:
   start: 0.0              # posizione iniziale in secondi (default 0.0)
+                          # SCALARE: non accetta envelope — il pointer lo somma
+                          # alla posizione calcolata, non lo valuta nel tempo
   speed_ratio: 1.0        # velocità di lettura (default 1.0)
                           # 1.0 = velocità normale, -1.0 = indietro, 2.0 = doppia
                           # supporta envelope: [[0, 1.0], [30, 2.0]]
@@ -1089,7 +1091,7 @@ envelope tramite `Envelope.is_envelope_like(value)`:
 Tutti i parametri numerici dei seguenti blocchi accettano envelope:
 `density`, `fill_factor`, `distribution`, `volume`, `pan`, `grain.duration`,
 `grain.duration_range`, `pitch.ratio`, `pitch.semitones`, `pitch.range`,
-`pointer.start`, `pointer.speed_ratio`, `pointer.offset_range`,
+`pointer.speed_ratio`, `pointer.offset_range`,
 `pointer.loop_start`, `pointer.loop_end`, `pointer.loop_dur`, `dephase` (globale
 o per chiave), `voices.num_voices`, `voices.scatter`, i parametri scalari di
 ciascuna voice strategy (`step`, `pitch_range`, `pointer_range`,
@@ -1336,9 +1338,10 @@ density:
 
 **(c) Solo per i parametri loop del pointer: `loop_unit`**
 
-I parametri `loop_start`, `loop_end`, `loop_dur` (e `start`) hanno una semantica
-aggiuntiva: `loop_unit: normalized` scala i **valori** (asse Y) da `[0, 1]` a
-`[0, sample_dur_sec]`. Non agisce sull'asse X. È documentato nella sezione 10.
+I parametri `loop_start`, `loop_end`, `loop_dur` (e `start`, che è scalare ma
+segue la stessa unità) hanno una semantica aggiuntiva: `loop_unit: normalized`
+scala i **valori** (asse Y) da `[0, 1]` a `[0, sample_dur_sec]`. Non agisce
+sull'asse X. È documentato nella sezione 10.
 
 #### 3.3 Scaling del formato compatto
 
@@ -1792,8 +1795,9 @@ che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
 
 #### 10.1 Loop pointer e `loop_unit`
 
-`loop_start`, `loop_end`, `loop_dur`, e `start` accettano envelope. In più,
-hanno una semantica di unità separata controllata da `loop_unit`:
+`loop_start`, `loop_end`, `loop_dur` accettano envelope. `start` **no**: è un
+valore scalare (vedi § Blocco Pointer). Condivide però con i tre parametri di
+loop la semantica di unità controllata da `loop_unit`:
 
 ```yaml
 pointer:

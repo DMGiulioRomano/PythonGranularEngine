@@ -81,16 +81,30 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   parametro non configurato: una curva può sparire dall'insieme pubblicato, o
   entrarci, senza che niente fallisca. Costruendo `Stream` reali su tre
   configurazioni che coprono ogni gruppo esclusivo, 25 chiavi pubblicate su 28
-  risolvono. `pointer_speed_ratio` è il nome di schema di una curva già
-  pubblicata come `pointer_speed`: una seconda chiave che `getattr` non ha mai
-  potuto risolvere, ora esclusa esplicitamente. Le altre due che non risolvono
-  — `pointer_start` ed `effective_density` — restano dichiarate nella guardia
-  con il loro motivo, perché pubblicarle richiede una decisione di dominio
+  risolvono. Due delle tre morte sono nomi che non dovevano essere pubblicati e
+  ora sono esclusi esplicitamente: `pointer_speed_ratio`, nome di schema di una
+  curva già pubblicata come `pointer_speed`, e `pointer_start`, che non è una
+  curva e non può esserlo — la spec lo dichiara `is_smart=False` e il pointer
+  lo somma come scalare. La terza, `effective_density`, resta dichiarata nella
+  guardia con il motivo, perché pubblicarla richiede una decisione di dominio
   (issue #199). La guardia è
   `tests/rendering/test_envelope_extractor.py::TestPublishedSurfaceResolves`:
   verifica l'uguaglianza nei due sensi, quindi né una chiave viva può morire
   in silenzio né una dichiarata morta può restare nella lista dopo essere
   tornata viva.
+
+- **La reference prometteva envelope su `pointer.start`, che non li accetta.**
+  `docs/reference/yaml.md` elencava `pointer.start` fra i parametri numerici
+  che accettano envelope, e la sezione 10.1 lo affiancava a `loop_start` /
+  `loop_end` / `loop_dur`. Ma il pointer usa `start` come scalare
+  (`self.start + sample_position`): scrivendo un envelope lì lo `Stream` si
+  costruisce senza protestare e la generazione dei grani muore con
+  `TypeError: can only concatenate list (not "float") to list`. La confusione
+  aveva una radice — `_pre_normalize_loop_params` scala davvero anche `start`
+  insieme ai parametri di loop quando `loop_unit: normalized`, e lo fa con un
+  helper che gli envelope li gestisce: la macchina delle unità tratta `start`
+  come i loop, il pointer no. La reference ora dice che `start` è scalare, e
+  mantiene separata la semantica di unità, che invece condivide.
 
 - **Il tetto della cache delle silhouette non era il tetto vero.**
   `window_silhouette` ha un limite di 64 voci, ma leggeva da un

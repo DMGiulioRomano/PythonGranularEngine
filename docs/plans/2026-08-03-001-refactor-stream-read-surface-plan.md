@@ -50,7 +50,7 @@ tre non risolvono mai**:
 
 | Chiave | Diagnosi |
 |---|---|
-| `pointer_start` | `pointer_start` non è in `GRANULAR_PARAMETERS`, quindi l'orchestratore non ne fa un `Parameter` e `PointerController.start` resta il valore YAML grezzo, che `_readable` scarta. Chi scrive `pointer: {start: <envelope>}` non vede mai quella curva. |
+| `pointer_start` | Non è una curva e non può esserlo: la spec lo dichiara `is_smart=False`, quindi l'orchestratore non ne fa un `Parameter`, e il pointer lo usa come scalare (`self.start + sample_position`). Un envelope lì non è una curva che nessuno disegna: è un `TypeError` alla generazione dei grani. |
 | `pointer_speed_ratio` | Nome di schema; la stessa cosa è già pubblicata come `pointer_speed`, che risolve. Chiave morta duplicata. |
 | `effective_density` | `yaml_path` `_internal_calc_`; il valore vive come float in `DensityController._loaded_params` e non è esposto. |
 
@@ -102,29 +102,41 @@ insiemi:
 L'uguaglianza è in entrambe le direzioni (R3): una chiave che comincia a
 risolvere deve uscire dalla lista dichiarata, non restarci.
 
-### S1.3 `pointer_speed_ratio` esce dall'insieme pubblicato
+### S1.3 `pointer_speed_ratio` e `pointer_start` escono dall'insieme pubblicato
 
-È un duplicato: `pointer_speed` pubblica la stessa curva e risolve. Va in
-`_SCHEMA_EXCLUDED`, dove già sta `pointer_deviation`, con il commento del
-perché. Zero rischio: la chiave non ha mai prodotto una curva, quindi nessun
-consumatore può averla vista.
+Nessuna delle due doveva starci, per due motivi diversi.
 
-### S1.4 `pointer_start` e `effective_density` restano dichiarate morte
+`pointer_speed_ratio` è un duplicato: `pointer_speed` pubblica la stessa curva
+e risolve. Un solo parametro con tre nomi lungo la catena — `speed_ratio` nello
+YAML, `pointer_speed_ratio` nello schema e nel controller, `pointer_speed`
+sulla property dello `Stream` — e il ciclo sugli schemi pubblicava il secondo
+mentre solo il terzo risolve.
 
-Entrambe richiedono una decisione di dominio che non si prende di passaggio in
-un refactor:
+`pointer_start` non è una curva. La spec lo dichiara `is_smart=False`, quindi
+non diventa mai un `Parameter`, e `PointerController.calculate` lo usa come
+scalare: `self.start + sample_position`. Scriverci un envelope non produce una
+curva invisibile, produce un `TypeError` alla generazione dei grani.
 
-- `pointer_start` — pubblicarla vuol dire darle bounds in
-  `GRANULAR_PARAMETERS` e far diventare `PointerController.start` un
-  `Parameter`. Tocca cosa quell'attributo contiene, quindi il comportamento del
-  pointer, e interagisce con `time_mode: normalized`. È una feature, non un
-  collegamento mancante.
-- `effective_density` — prima va deciso se è una curva o uno scalare interno.
-  Pubblicare un float costante quando `density` è un envelope disegnerebbe una
-  riga piatta che mente.
+Entrambe vanno in `_SCHEMA_EXCLUDED`, dove già sta `pointer_deviation`, con il
+commento del perché. Zero rischio: nessuna delle due ha mai prodotto una curva,
+quindi nessun consumatore può averle viste.
 
-Restano nella lista dichiarata con il rimando alla issue. La differenza
-rispetto a oggi è che sono **scritte**: prima erano invisibili.
+Da qui esce anche una correzione alla reference: `docs/reference/yaml.md`
+elencava `pointer.start` fra i parametri che accettano envelope, e la sezione
+10.1 lo affiancava ai parametri di loop. La radice della confusione è che
+`_pre_normalize_loop_params` **scala davvero anche `start`** quando
+`loop_unit: normalized`, con un helper che gli envelope li gestisce: la
+macchina delle unità tratta `start` come i loop, il pointer no.
+
+### S1.4 `effective_density` resta dichiarata morta
+
+Richiede una decisione di dominio che non si prende di passaggio in un
+refactor: prima va deciso se è una curva o uno scalare interno. Pubblicare un
+float costante quando `density` è un envelope disegnerebbe una riga piatta che
+mente.
+
+Resta nella lista dichiarata con il rimando alla issue. La differenza rispetto
+a oggi è che è **scritta**: prima era invisibile.
 
 ---
 
@@ -172,6 +184,15 @@ make tests
 ## Impatto cross-repo
 
 Nessuno. Non cambiano sintassi YAML, bounds, nomi di strategy o finestre,
-gerarchia errori, CLI, formati di output. L'unica chiave che sparisce
-dall'insieme pubblicato (`pointer_speed_ratio`) non ha mai prodotto una curva,
-quindi non è mai stata osservabile da `PGE-ls` né da `PGE-ui`.
+gerarchia errori, CLI, formati di output. Le due chiavi che spariscono
+dall'insieme pubblicato non hanno mai prodotto una curva, quindi non sono mai
+state osservabili da `PGE-ls` né da `PGE-ui`.
+
+La correzione della reference su `pointer.start` non genera issue a valle per
+la stessa ragione del caso `triangle`: entrambi i repo erano già allineati, era
+la reference di PGE a non esserlo. `PGE-ls` documenta `start` come «Valore raw:
+NON accetta envelope» (`granular_ls/providers/completion_provider.py`) e lo
+tiene fra i `_POINTER_SCALAR_PARAMS` del diagnostic provider; `PGE-ui` lo
+serializza come scalare secco (`start: ptr.start ?? undefined` in
+`yaml-bridge.js`), senza la coppia valore/envelope che usa per
+`speed_ratio`, `loop_start`, `loop_end`, `loop_dur` e `offset_range`.
