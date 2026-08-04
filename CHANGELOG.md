@@ -106,6 +106,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   come i loop, il pointer no. La reference ora dice che `start` è scalare, e
   mantiene separata la semantica di unità, che invece condivide.
 
+- **`pointer.start` con un envelope ora viene rifiutato, non più a valle.**
+  Chi ci scriveva un envelope — seguendo la reference, che fino a ieri glielo
+  prometteva — vedeva lo `Stream` costruirsi senza un lamento e poi morire
+  dentro la generazione dei grani con `TypeError: can only concatenate list
+  (not "float") to list`: un messaggio che non nomina il campo e non dice cosa
+  correggere. `PointerController` ora lo ferma in inizializzazione con un
+  `InvalidFieldValueError` su `pointer.start`, con lo stream_id e un hint che
+  indica le due strade vere per far variare la posizione di lettura nel tempo
+  (`pointer.speed_ratio`, o un loop mobile con `loop_start` come envelope).
+
 - **Il tetto della cache delle silhouette non era il tetto vero.**
   `window_silhouette` ha un limite di 64 voci, ma leggeva da un
   `NumpyWindowRegistry` tenuto in una variabile di modulo — che ha una cache
