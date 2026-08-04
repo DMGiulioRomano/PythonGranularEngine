@@ -1258,6 +1258,8 @@ class TestAbstractMethodBodies:
         class _Concrete(DensityStrategy):
             def calculate_density(self, elapsed_time: float, **context) -> float:
                 return super().calculate_density(elapsed_time, **context)
+            def nominal_density(self, elapsed_time: float, **context) -> float:
+                return 1.0
             @property
             def name(self) -> str:
                 return "test"
@@ -1272,6 +1274,8 @@ class TestAbstractMethodBodies:
 
         class _Concrete(DensityStrategy):
             def calculate_density(self, elapsed_time: float, **context) -> float:
+                return 1.0
+            def nominal_density(self, elapsed_time: float, **context) -> float:
                 return 1.0
             @property
             def name(self) -> str:

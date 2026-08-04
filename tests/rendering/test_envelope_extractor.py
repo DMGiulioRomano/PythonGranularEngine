@@ -624,17 +624,19 @@ class TestSchemaExclusion:
         """L'esclusione e' scritta: se crescesse in silenzio, ogni nome
         aggiunto sparirebbe dalla partitura senza che niente lo dica.
 
-        Tre nomi, per tre motivi diversi. `pointer_deviation` e' pubblicato
-        dalle righe dedicate piu' sotto, col range al posto del valore base.
-        `pointer_speed_ratio` e' il nome di schema di una curva gia'
-        pubblicata come `pointer_speed`: dal ciclo usciva una chiave che
-        `getattr` non ha mai potuto risolvere. `pointer_start` non e' una
-        curva e non puo' esserlo: is_smart=False, e il pointer lo somma come
-        scalare (issue #199).
+        Quattro nomi, per quattro motivi diversi. `pointer_deviation` e
+        `effective_density` sono pubblicati dalle righe dedicate piu' sotto —
+        il primo col range al posto del valore base, la seconda come curva
+        campionata invece che come segnaposto di schema. `pointer_speed_ratio`
+        e' il nome di schema di una curva gia' pubblicata come
+        `pointer_speed`: dal ciclo usciva una chiave che `getattr` non ha mai
+        potuto risolvere. `pointer_start` non e' una curva e non puo' esserlo:
+        is_smart=False, e il pointer lo somma come scalare (issue #199).
         """
         from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
         assert _SCHEMA_EXCLUDED == frozenset({
-            'pointer_deviation', 'pointer_speed_ratio', 'pointer_start'})
+            'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
+            'effective_density'})
 
 
 class TestEnvelopeFilter:
@@ -831,13 +833,11 @@ class TestPublishedSurfaceResolves:
     # Chiavi pubblicate che oggi non risolvono in nessuna configurazione, con
     # il motivo. Non e' un tappeto: il test verifica l'uguaglianza nei due
     # sensi, quindi una chiave che tornasse a risolvere andrebbe tolta da qui.
-    DICHIARATE_MORTE = {
-        # effective_density ha yaml_path '_internal_calc_' e vive come float
-        # dentro DensityController._loaded_params. Prima di pubblicarla va
-        # deciso se e' una curva o uno scalare interno: una riga piatta
-        # accanto a una density che varia mentirebbe. Issue #199.
-        'effective_density',
-    }
+    # Vuota: ogni chiave che il modulo pubblica risolve su almeno una delle
+    # configurazioni qui sotto. Se ne aggiungi una che non risolve, o la
+    # colleghi o la dichiari qui con il motivo — non c'e' una terza strada che
+    # passi il test.
+    DICHIARATE_MORTE = set()
 
     def _configurazioni(self, build_stream):
         """Un ventaglio che copre i gruppi esclusivi: density contro
@@ -895,3 +895,28 @@ class TestPublishedSurfaceResolves:
         difetto di copertura invece che per correttezza."""
         pubblicate, vive = self._pubblicate_e_vive(build_stream)
         assert len(vive) >= len(pubblicate) - len(self.DICHIARATE_MORTE)
+
+
+class TestEffectiveDensityIsPublished:
+    """La densita' reale della voce 0 arriva alla partitura (issue #199).
+
+    Colore, etichetta di legenda e range Y erano gia' configurati in
+    ENVELOPE_COLORS, page_layout e visualizer_config: mancava solo chi la
+    calcolasse.
+    """
+
+    def test_fill_factor_stream_publishes_the_curve(self, build_stream):
+        stream = build_stream(
+            fill_factor=0.5,
+            grain={'duration': [[0, 0.05], [2.0, 0.1]], 'envelope': 'hanning'},
+        )
+        envelopes = get_stream_envelopes(stream)
+        assert 'effective_density' in envelopes
+        assert envelopes['effective_density'].evaluate(0.0) == pytest.approx(10.0)
+
+    def test_density_stream_does_not(self, build_stream):
+        """In modalita' density sarebbe il doppione della curva `density`."""
+        stream = build_stream(density=[[0, 5], [2.0, 20]])
+        envelopes = get_stream_envelopes(stream)
+        assert 'effective_density' not in envelopes
+        assert 'density' in envelopes
