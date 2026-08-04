@@ -10,6 +10,27 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **La densità reale arriva sulla partitura.** `fill_factor` da solo non dice
+  quanti grani al secondo si stanno ascoltando: la densità vera è
+  `fill_factor(t) / grain_duration(t)`, un quoziente che il motore calcolava a
+  ogni onset senza conservarlo da nessuna parte. `effective_density` esisteva
+  già come nome — con il suo colore in `ENVELOPE_COLORS`, la sua etichetta in
+  `page_layout` e il suo range Y in `visualizer_config` — ma nessuno la
+  calcolava, quindi la curva non arrivava mai e `--plot-envelopes
+  effective_density` era un filtro che non produceva niente. Ora
+  `DensityController.density_curve()` la campiona, sul modello di
+  `VoiceManager.offset_curves()`: il campionamento sta accanto alla strategy
+  che possiede formula e clamp, non nel visualizer. È la densità della **voce
+  0**, quella che definisce il `sync_iot` in `generate_grains`; `num_voices`
+  resta una riga a parte della legenda. Appare solo in modalità `fill_factor`:
+  in modalità `density` sarebbe la copia esatta della curva `density`.
+  La curva legge la faccia **valore** dei parametri, non `get_value`, che
+  passa dal gate e dalla variation strategy e quindi pesca: disegnare la
+  partitura non consuma l'RNG del render, e due letture danno lo stesso
+  disegno. La griglia è più fitta di quella degli offset per-voce
+  (`DEFAULT_DENSITY_SAMPLES = 129` contro 33) perché fra due breakpoint gli
+  input sono lineari ma il loro quoziente è un'iperbole.
+
 - **`ParameterCurve`**: value object che risponde alla domanda "come varia nel
   tempo questa faccia di un `Parameter`?" — `kind` in `varying` / `constant` /
   `absent`, più il payload. Dà una casa al riconoscimento della **costante

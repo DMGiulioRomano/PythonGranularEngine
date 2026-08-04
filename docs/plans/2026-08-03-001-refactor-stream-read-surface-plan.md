@@ -128,15 +128,45 @@ elencava `pointer.start` fra i parametri che accettano envelope, e la sezione
 `loop_unit: normalized`, con un helper che gli envelope li gestisce: la
 macchina delle unità tratta `start` come i loop, il pointer no.
 
-### S1.4 `effective_density` resta dichiarata morta
+### S1.4 `effective_density` diventa la curva che doveva essere
 
-Richiede una decisione di dominio che non si prende di passaggio in un
-refactor: prima va deciso se è una curva o uno scalare interno. Pubblicare un
-float costante quando `density` è un envelope disegnerebbe una riga piatta che
-mente.
+Era nata come calcolo interno da trasformare in parametro visualizzabile, e la
+trasformazione non era mai stata finita: il nome aveva già colore, etichetta di
+legenda e range Y, ma nessuno calcolava la curva.
 
-Resta nella lista dichiarata con il rimando alla issue. La differenza rispetto
-a oggi è che è **scritta**: prima era invisibile.
+La decisione di dominio, presa: si disegna la densità della **voce 0**, quella
+che definisce il `sync_iot` in `generate_grains`. Non la somma su tutte le voci
+— `num_voices` è una riga a parte, e chi guarda la partitura moltiplica se
+vuole il totale.
+
+Forma, calcata su `VoiceManager.offset_curves`:
+
+- la **strategy** guadagna `nominal_density()`, la versione disegnabile di
+  `calculate_density()`. Vive lì perché formula e clamp li possiede lei;
+- `DensityController.density_curve(duration, *, grain_duration_at, samples)`
+  campiona. `grain_duration_at` è iniettata perché `grain_duration` vive sullo
+  `Stream`;
+- `Stream.effective_density_curve` la espone, `envelope_extractor` la pubblica
+  da una riga esplicita — il segnaposto di schema va in `_SCHEMA_EXCLUDED`.
+
+Due vincoli che il codice non poteva ignorare:
+
+- **nominale, non `get_value`**. `Parameter.get_value` passa dal probability
+  gate e dalla variation strategy, quindi *pesca* quando c'è un range.
+  Campionare con quello darebbe una linea tremolante, non riproducibile, e
+  consumerebbe l'RNG: guardare la partitura cambierebbe il render. Si legge la
+  faccia valore, quella che `value_curve` pubblica;
+- **griglia fitta**. Fra due breakpoint `fill_factor` e `grain_duration` sono
+  lineari, ma il loro quoziente è un'iperbole: i soli breakpoint direbbero la
+  cosa sbagliata a metà segmento. `DEFAULT_DENSITY_SAMPLES = 129` contro i 33
+  degli offset per-voce.
+
+In modalità `density` la curva è `None`: lì sarebbe la copia esatta del
+parametro `density`, già disegnato sotto il suo nome.
+
+Resta aperto un dettaglio non toccato qui: `GRANULAR_PARAMETERS['effective_density']`
+dichiara `min=1` ma il clamp reale usa i bounds di `density` (`min=0.01`), e
+nessuno legge i primi. Vanno allineati o rimossi.
 
 ---
 
