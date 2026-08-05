@@ -87,6 +87,8 @@ class PointerController:
                 hint=(
                     "pointer.start e' un valore scalare — la posizione di "
                     "partenza nel sample — e non accetta envelope.\n"
+                    "  Se non ti serve, ometti la chiave: il default e' 0.0 "
+                    "(o loop_start, con un loop attivo).\n"
                     "  Per far variare nel tempo la posizione di lettura usa "
                     "pointer.speed_ratio, oppure un loop mobile con "
                     "loop_start come envelope."

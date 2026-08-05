@@ -2677,6 +2677,16 @@ class TestStartMustBeScalar:
         stream = build_stream(pointer={'start': 0.3})
         assert stream._pointer.start == pytest.approx(0.3)
 
+    def test_empty_start_is_rejected_too(self, build_stream):
+        """`start:` scritto e lasciato vuoto e' None, e None non e' una
+        posizione: prima diventava `None + sample_position` a valle. Non lo si
+        fa passare in silenzio ricadendo sul default — l'utente ha scritto la
+        chiave, e va detto che cosi' non vale."""
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            build_stream(pointer={'start': None})
+        assert exc_info.value.field == 'pointer.start'
+        assert 'ometti la chiave' in exc_info.value.user_message().lower()
+
     def test_absent_start_still_builds(self, build_stream):
         """`start` assente resta legittimo: il default e' 0.0, e con un loop
         il pointer parte da loop_start."""
