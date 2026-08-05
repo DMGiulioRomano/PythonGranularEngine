@@ -744,3 +744,62 @@ class TestRealisticSequence:
         # Media vicina a avg_iot
         mean_interval = sum(intervals) / len(intervals)
         assert mean_interval == pytest.approx(0.025, rel=0.1)
+
+# =============================================================================
+# LA CURVA DELLA DENSITA' REALE (issue #199)
+# =============================================================================
+
+class TestEffectiveDensityCurve:
+    """`fill_factor` da solo non dice quanti grani al secondo stai ascoltando:
+    la densita' vera e' `fill_factor(t) / grain_duration(t)`, un quoziente che
+    il motore calcola a ogni onset e non conserva da nessuna parte.
+
+    La curva e' quella della **voce 0**, la voce di riferimento: e' lei a
+    definire il `sync_iot` in `generate_grains`. Con piu' voci i grani totali
+    sono di piu', ma il ritmo di riferimento e' questo.
+    """
+
+    def test_the_curve_is_the_quotient_at_the_endpoints(self, build_stream):
+        """grain_duration che raddoppia -> densita' che dimezza."""
+        stream = build_stream(
+            fill_factor=0.5,
+            grain={'duration': [[0, 0.05], [2.0, 0.1]], 'envelope': 'hanning'},
+        )
+        curve = stream.effective_density_curve
+        assert curve.evaluate(0.0) == pytest.approx(10.0)    # 0.5 / 0.05
+        assert curve.evaluate(2.0) == pytest.approx(5.0)     # 0.5 / 0.10
+
+    def test_no_curve_in_density_mode(self, build_stream):
+        """In modalita' `density` la curva sarebbe la copia esatta del
+        parametro density, gia' disegnato sotto il suo nome: due righe
+        sovrapposte non aggiungono niente."""
+        stream = build_stream(density=[[0, 5], [2.0, 20]])
+        assert stream.effective_density_curve is None
+
+    def test_between_two_breakpoints_it_curves(self, build_stream):
+        """Il quoziente di due segmenti lineari non e' un segmento: e' un
+        iperbole. A meta' strada fra 10 e 5 g/s non c'e' 7.5 ma 6.67, e una
+        curva campionata sui soli breakpoint direbbe la cosa sbagliata."""
+        stream = build_stream(
+            fill_factor=0.5,
+            grain={'duration': [[0, 0.05], [2.0, 0.1]], 'envelope': 'hanning'},
+        )
+        curve = stream.effective_density_curve
+        # a t=1.0 grain_duration = 0.075 -> 0.5 / 0.075 = 6.666...
+        assert curve.evaluate(1.0) == pytest.approx(6.667, abs=0.05)
+        assert curve.evaluate(1.0) < 7.0, "sta interpolando linearmente"
+
+    def test_the_curve_is_nominal_not_a_dice_roll(self, build_stream):
+        """`grain.duration_range` fa pescare a ogni grano una durata diversa.
+        La curva legge la faccia valore, non `get_value`: due letture danno lo
+        stesso disegno, e guardare la partitura non consuma l'RNG del render.
+        """
+        stream = build_stream(
+            fill_factor=0.5,
+            grain={'duration': 0.05, 'duration_range': 0.02,
+                   'envelope': 'hanning'},
+        )
+        first = stream.effective_density_curve
+        second = stream.effective_density_curve
+        assert first.evaluate(1.0) == pytest.approx(second.evaluate(1.0))
+        assert first.evaluate(1.0) == pytest.approx(10.0)  # 0.5 / 0.05 base

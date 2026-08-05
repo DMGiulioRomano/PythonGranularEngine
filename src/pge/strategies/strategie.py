@@ -90,20 +90,51 @@ class UnitPitchStrategy(PitchStrategy):
 # STRATEGIE DENSITY
 # =============================================================================
 
+def nominal_value(param, time: float):
+    """Valore base di un Parameter al tempo dato, senza estrazioni casuali.
+
+    `Parameter.get_value` passa dal probability gate e dalla variation
+    strategy, quindi PESCA quando c'e' un range: va benissimo per generare un
+    grano, non per disegnare una curva. Userebbe l'RNG, e guardare la
+    partitura cambierebbe il render.
+
+    Qui si legge la faccia valore — la stessa che `value_curve` pubblica — e
+    la si valuta al tempo. None se quella faccia non c'e'.
+    """
+    from pge.parameters.parameter_curve import VARYING, CONSTANT
+
+    curve = param.value_curve
+    if curve.kind == VARYING:
+        return curve.envelope.evaluate(time)
+    if curve.kind == CONSTANT:
+        return curve.value
+    return None
+
+
 class DensityStrategy(ABC):
     """Interfaccia base per calcolare la densità."""
-    
+
     @abstractmethod
     def calculate_density(self, elapsed_time: float, **context) -> float:
         """
         Calcola la densità in grani/secondo.
-        
+
         Args:
             elapsed_time: tempo corrente nello stream
             **context: dati contestuali (es. grain_duration per fill_factor)
         """
         pass
-    
+
+    @abstractmethod
+    def nominal_density(self, elapsed_time: float, **context) -> float:
+        """La stessa densita' di `calculate_density`, ma sui valori base.
+
+        E' la versione disegnabile: deterministica, riproducibile, senza
+        toccare l'RNG. Vive qui e non nel visualizer perche' la formula e il
+        clamp li conosce la strategy, e due copie divergerebbero.
+        """
+        pass
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -132,8 +163,18 @@ class FillFactorStrategy(DensityStrategy):
         fill_factor = self._fill_factor.get_value(elapsed_time)
         grain_duration = context['grain_duration']
         raw_density = fill_factor / grain_duration
-        return max(self._density_bounds.min_val,min(self._density_bounds.max_val, raw_density))
-        
+        return self._clamp(raw_density)
+
+    def nominal_density(self, elapsed_time: float, **context) -> float:
+        if 'grain_duration' not in context:
+            raise ValueError(f"{self.__class__.__name__} requires 'grain_duration' in context")
+        fill_factor = nominal_value(self._fill_factor, elapsed_time)
+        return self._clamp(fill_factor / context['grain_duration'])
+
+    def _clamp(self, raw_density: float) -> float:
+        return max(self._density_bounds.min_val,
+                   min(self._density_bounds.max_val, raw_density))
+
     @property
     def name(self) -> str:
         return "fill_factor"
@@ -146,7 +187,10 @@ class DirectDensityStrategy(DensityStrategy):
     
     def calculate_density(self, elapsed_time: float, **context) -> float:
         return self._density.get_value(elapsed_time)
-    
+
+    def nominal_density(self, elapsed_time: float, **context) -> float:
+        return nominal_value(self._density, elapsed_time)
+
     @property
     def name(self) -> str:
         return "density"

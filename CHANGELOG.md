@@ -10,6 +10,27 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **La densità reale arriva sulla partitura.** `fill_factor` da solo non dice
+  quanti grani al secondo si stanno ascoltando: la densità vera è
+  `fill_factor(t) / grain_duration(t)`, un quoziente che il motore calcolava a
+  ogni onset senza conservarlo da nessuna parte. `effective_density` esisteva
+  già come nome — con il suo colore in `ENVELOPE_COLORS`, la sua etichetta in
+  `page_layout` e il suo range Y in `visualizer_config` — ma nessuno la
+  calcolava, quindi la curva non arrivava mai e `--plot-envelopes
+  effective_density` era un filtro che non produceva niente. Ora
+  `DensityController.density_curve()` la campiona, sul modello di
+  `VoiceManager.offset_curves()`: il campionamento sta accanto alla strategy
+  che possiede formula e clamp, non nel visualizer. È la densità della **voce
+  0**, quella che definisce il `sync_iot` in `generate_grains`; `num_voices`
+  resta una riga a parte della legenda. Appare solo in modalità `fill_factor`:
+  in modalità `density` sarebbe la copia esatta della curva `density`.
+  La curva legge la faccia **valore** dei parametri, non `get_value`, che
+  passa dal gate e dalla variation strategy e quindi pesca: disegnare la
+  partitura non consuma l'RNG del render, e due letture danno lo stesso
+  disegno. La griglia è più fitta di quella degli offset per-voce
+  (`DEFAULT_DENSITY_SAMPLES = 129` contro 33) perché fra due breakpoint gli
+  input sono lineari ma il loro quoziente è un'iperbole.
+
 - **`ParameterCurve`**: value object che risponde alla domanda "come varia nel
   tempo questa faccia di un `Parameter`?" — `kind` in `varying` / `constant` /
   `absent`, più il payload. Dà una casa al riconoscimento della **costante
@@ -90,6 +111,49 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ciò che l'utente può davvero scrivere. La divergenza non può tornare senza
   far fallire il parity test in
   `tests/rendering/test_numpy_window_registry.py::TestCatalogueParity`.
+
+- **`pointer_speed_ratio` prometteva una curva che nessuno ha mai visto.**
+  Chi legge uno `Stream` per disegnarlo — partitura, export Sonic Visualiser,
+  `--plot-envelopes` — lo interroga per nome a runtime, con
+  `getattr(stream, name, None)`. Il default `None` fa sì che un nome
+  inesistente non sollevi ma produca una curva assente, indistinguibile da un
+  parametro non configurato: una curva può sparire dall'insieme pubblicato, o
+  entrarci, senza che niente fallisca. Costruendo `Stream` reali su tre
+  configurazioni che coprono ogni gruppo esclusivo, 25 chiavi pubblicate su 28
+  risolvono. Due delle tre morte sono nomi che non dovevano essere pubblicati e
+  ora sono esclusi esplicitamente: `pointer_speed_ratio`, nome di schema di una
+  curva già pubblicata come `pointer_speed`, e `pointer_start`, che non è una
+  curva e non può esserlo — la spec lo dichiara `is_smart=False` e il pointer
+  lo somma come scalare. La terza, `effective_density`, è stata invece
+  collegata: era un calcolo interno che doveva diventare un parametro
+  visualizzabile (vedi § Aggiunto). La guardia è
+  `tests/rendering/test_envelope_extractor.py::TestPublishedSurfaceResolves`:
+  verifica l'uguaglianza nei due sensi, quindi né una chiave viva può morire
+  in silenzio né una dichiarata morta può restare nella lista dopo essere
+  tornata viva.
+
+- **La reference prometteva envelope su `pointer.start`, che non li accetta.**
+  `docs/reference/yaml.md` elencava `pointer.start` fra i parametri numerici
+  che accettano envelope, e la sezione 10.1 lo affiancava a `loop_start` /
+  `loop_end` / `loop_dur`. Ma il pointer usa `start` come scalare
+  (`self.start + sample_position`): scrivendo un envelope lì lo `Stream` si
+  costruisce senza protestare e la generazione dei grani muore con
+  `TypeError: can only concatenate list (not "float") to list`. La confusione
+  aveva una radice — `_pre_normalize_loop_params` scala davvero anche `start`
+  insieme ai parametri di loop quando `loop_unit: normalized`, e lo fa con un
+  helper che gli envelope li gestisce: la macchina delle unità tratta `start`
+  come i loop, il pointer no. La reference ora dice che `start` è scalare, e
+  mantiene separata la semantica di unità, che invece condivide.
+
+- **`pointer.start` con un envelope ora viene rifiutato, non più a valle.**
+  Chi ci scriveva un envelope — seguendo la reference, che fino a ieri glielo
+  prometteva — vedeva lo `Stream` costruirsi senza un lamento e poi morire
+  dentro la generazione dei grani con `TypeError: can only concatenate list
+  (not "float") to list`: un messaggio che non nomina il campo e non dice cosa
+  correggere. `PointerController` ora lo ferma in inizializzazione con un
+  `InvalidFieldValueError` su `pointer.start`, con lo stream_id e un hint che
+  indica le due strade vere per far variare la posizione di lettura nel tempo
+  (`pointer.speed_ratio`, o un loop mobile con `loop_start` come envelope).
 
 - **Il tetto della cache delle silhouette non era il tetto vero.**
   `window_silhouette` ha un limite di 64 voci, ma leggeva da un

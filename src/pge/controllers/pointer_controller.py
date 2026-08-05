@@ -74,6 +74,29 @@ class PointerController:
             attr_name = name.replace('pointer_', '')
             setattr(self, attr_name, param_obj)
 
+        # 3b. `start` e' un valore, non una curva: `calculate` lo somma alla
+        # posizione (`self.start + sample_position`), e la spec lo dichiara
+        # is_smart=False, quindi qui arriva grezzo dallo YAML. Se e' un
+        # envelope va fermato adesso, mentre il campo ha ancora un nome: piu'
+        # avanti diventa un TypeError dentro la generazione dei grani, quando
+        # non c'e' piu' modo di dire all'utente cosa ha scritto.
+        if not isinstance(self.start, (int, float)):
+            err = InvalidFieldValueError(
+                field='pointer.start',
+                value=self.start,
+                hint=(
+                    "pointer.start e' un valore scalare — la posizione di "
+                    "partenza nel sample — e non accetta envelope.\n"
+                    "  Se non ti serve, ometti la chiave: il default e' 0.0 "
+                    "(o loop_start, con un loop attivo).\n"
+                    "  Per far variare nel tempo la posizione di lettura usa "
+                    "pointer.speed_ratio, oppure un loop mobile con "
+                    "loop_start come envelope."
+                ),
+            )
+            err.stream_id = self._config.context.stream_id
+            raise err
+
         # 4. has_loop dipende solo dalla presenza di loop_start
         self.has_loop = 'loop_start' in params
         # Se loop_start è presente ma start non è esplicito nello YAML,

@@ -2649,3 +2649,46 @@ class TestLoopBoundsValidation:
                 {'loop_start': [[0.0, 5.0], [1.0, 1.0]], 'loop_end': 3.0}, mock_config
             )
             assert pointer.has_loop is True
+
+class TestStartMustBeScalar:
+    """`pointer.start` e' la posizione di partenza: un numero, non una curva.
+
+    Il pointer la somma alla posizione calcolata (`self.start + sample_position`
+    in `calculate`), non la valuta nel tempo — e la spec la dichiara
+    `is_smart=False`, quindi non diventa mai un Parameter. Un envelope li' non
+    produce una curva che nessuno disegna: produce un TypeError alla
+    generazione dei grani, dopo che lo Stream si e' costruito senza protestare.
+    Va rifiutato dove l'utente puo' ancora capire cosa ha sbagliato (#199).
+    """
+
+    def test_envelope_start_is_rejected(self, build_stream):
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            build_stream(pointer={'start': [[0, 0.0], [2.0, 0.5]]})
+        assert exc_info.value.field == 'pointer.start'
+
+    def test_the_error_says_what_to_write_instead(self, build_stream):
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            build_stream(pointer={'start': [[0, 0.0], [2.0, 0.5]]})
+        msg = exc_info.value.user_message()
+        assert 'scalare' in msg.lower()
+
+    def test_scalar_start_still_builds(self, build_stream):
+        """La controprova: il caso valido non deve essere toccato."""
+        stream = build_stream(pointer={'start': 0.3})
+        assert stream._pointer.start == pytest.approx(0.3)
+
+    def test_empty_start_is_rejected_too(self, build_stream):
+        """`start:` scritto e lasciato vuoto e' None, e None non e' una
+        posizione: prima diventava `None + sample_position` a valle. Non lo si
+        fa passare in silenzio ricadendo sul default — l'utente ha scritto la
+        chiave, e va detto che cosi' non vale."""
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            build_stream(pointer={'start': None})
+        assert exc_info.value.field == 'pointer.start'
+        assert 'ometti la chiave' in exc_info.value.user_message().lower()
+
+    def test_absent_start_still_builds(self, build_stream):
+        """`start` assente resta legittimo: il default e' 0.0, e con un loop
+        il pointer parte da loop_start."""
+        stream = build_stream(pointer={'speed_ratio': 1.0})
+        assert stream._pointer.start == pytest.approx(0.0)

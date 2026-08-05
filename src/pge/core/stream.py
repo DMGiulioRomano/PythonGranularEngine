@@ -42,6 +42,7 @@ from pge.strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from pge.strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from pge.strategies.voice_pan_strategy import VoicePanStrategyFactory
 from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory, OverflowMarginClipStrategy
+from pge.strategies.strategie import nominal_value
 from dataclasses import fields, MISSING as dataclass_MISSING
 
 
@@ -805,6 +806,27 @@ class Stream:
         (stream._pointer.deviation).
         """
         return getattr(self._pointer, 'deviation', None)
+
+    @property
+    def effective_density_curve(self):
+        """La densita' reale della voce 0 in grani/secondo, come curva.
+
+        `fill_factor` da solo non dice quanti grani al secondo si ascoltano:
+        la densita' vera e' `fill_factor(t) / grain_duration(t)`, che il
+        motore calcola a ogni onset (`generate_grains` -> voce 0 ->
+        `calculate_inter_onset`) e non conserva. Qui viene campionata.
+
+        Voce 0, la voce di riferimento: e' lei a definire il `sync_iot`. Con
+        piu' voci i grani totali sono di piu' — `num_voices` e' una riga a
+        parte della partitura.
+
+        None in modalita' `density`: li' sarebbe la copia esatta del
+        parametro `density`, gia' disegnato sotto il suo nome.
+        """
+        return self._density.density_curve(
+            self.duration,
+            grain_duration_at=lambda t: nominal_value(self.grain_duration, t),
+        )
 
     @property
     def voice_manager(self):

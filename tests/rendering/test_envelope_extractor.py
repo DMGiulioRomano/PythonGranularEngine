@@ -621,11 +621,22 @@ class TestSchemaExclusion:
         assert keys.index('pointer_deviation') > keys.index('volume')
 
     def test_the_exclusion_is_declared_and_not_incidental(self):
-        """L'esclusione e' scritta, e riguarda solo pointer_deviation: se
-        crescesse in silenzio, ogni nome aggiunto sparirebbe dalla partitura
-        senza che niente lo dica."""
+        """L'esclusione e' scritta: se crescesse in silenzio, ogni nome
+        aggiunto sparirebbe dalla partitura senza che niente lo dica.
+
+        Quattro nomi, per quattro motivi diversi. `pointer_deviation` e
+        `effective_density` sono pubblicati dalle righe dedicate piu' sotto —
+        il primo col range al posto del valore base, la seconda come curva
+        campionata invece che come segnaposto di schema. `pointer_speed_ratio`
+        e' il nome di schema di una curva gia' pubblicata come
+        `pointer_speed`: dal ciclo usciva una chiave che `getattr` non ha mai
+        potuto risolvere. `pointer_start` non e' una curva e non puo' esserlo:
+        is_smart=False, e il pointer lo somma come scalare (issue #199).
+        """
         from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
-        assert _SCHEMA_EXCLUDED == frozenset({'pointer_deviation'})
+        assert _SCHEMA_EXCLUDED == frozenset({
+            'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
+            'effective_density'})
 
 
 class TestEnvelopeFilter:
@@ -795,3 +806,117 @@ class TestRawSourcesHaveOnlyAValue:
         keys = get_stream_envelopes(
             self._stream_with_numeric_grain_envelope(), show_static=True)
         assert 'grain_envelope' in keys
+
+
+# =============================================================================
+# LA SUPERFICIE PUBBLICATA E' UN CONTRATTO (issue #199)
+# =============================================================================
+
+class TestPublishedSurfaceResolves:
+    """Ogni nome che il modulo pubblica deve corrispondere a qualcosa che
+    esiste davvero sullo Stream.
+
+    La risoluzione e' `getattr(stream, name, None)`: un nome che non esiste
+    non solleva, produce una curva assente. Indistinguibile da un parametro
+    che l'utente non ha configurato — quindi una curva puo' sparire dalla
+    partitura, o entrarci, senza che niente fallisca.
+
+    Qui si costruiscono Stream VERI (il MagicMock ha ogni attributo, e non
+    saprebbe rispondere alla domanda) su un ventaglio di configurazioni che
+    copre ogni gruppo esclusivo, e si confronta l'insieme pubblicato con
+    quello che risolve.
+
+    `_curve_sources` e' privata ma e' il catalogo: il lavoro di questo test e'
+    esattamente confrontare il catalogo con la realta'.
+    """
+
+    # Chiavi pubblicate che oggi non risolvono in nessuna configurazione, con
+    # il motivo. Non e' un tappeto: il test verifica l'uguaglianza nei due
+    # sensi, quindi una chiave che tornasse a risolvere andrebbe tolta da qui.
+    # Vuota: ogni chiave che il modulo pubblica risolve su almeno una delle
+    # configurazioni qui sotto. Se ne aggiungi una che non risolve, o la
+    # colleghi o la dichiari qui con il motivo — non c'e' una terza strada che
+    # passi il test.
+    DICHIARATE_MORTE = set()
+
+    def _configurazioni(self, build_stream):
+        """Un ventaglio che copre i gruppi esclusivi: density contro
+        fill_factor, loop_end contro loop_dur, pointer e voci espliciti."""
+        return [
+            build_stream(
+                stream_id='A',
+                density=[[0, 5], [2.0, 20]],
+                volume=-6, volume_range=3,
+                pan=0, pan_range=20,
+                dephase=10,
+                scatter=0.2,
+                pitch={'semitones': [[0, 0], [2.0, 12]]},
+                pointer={'start': 0.0, 'speed_ratio': 1.0,
+                         'offset_range': 0.1},
+                voices={'num_voices': 3,
+                        'pitch': {'strategy': 'chord', 'chord': 'dom7'}},
+            ),
+            build_stream(
+                stream_id='B',
+                fill_factor=0.5,
+                pointer={'loop_start': 0.0, 'loop_end': 0.8},
+            ),
+            build_stream(
+                stream_id='C',
+                density=10,
+                pointer={'loop_start': 0.1, 'loop_dur': 0.5},
+            ),
+        ]
+
+    def _pubblicate_e_vive(self, build_stream):
+        from pge.rendering.envelope_extractor import (
+            _curve_sources, VoiceOffsetSource)
+
+        pubblicate, vive = set(), set()
+        for stream in self._configurazioni(build_stream):
+            for source in _curve_sources():
+                if isinstance(source, VoiceOffsetSource):
+                    continue
+                pubblicate.add(source.key)
+                if source.resolve(stream) is not None:
+                    vive.add(source.key)
+        return pubblicate, vive
+
+    def test_no_key_is_dead_without_being_declared(self, build_stream):
+        """Una chiave che non risolve mai promette una curva che nessuno
+        vedra': o si pubblica davvero, o si dichiara qui il perche'."""
+        pubblicate, vive = self._pubblicate_e_vive(build_stream)
+        morte = pubblicate - vive
+        assert morte == self.DICHIARATE_MORTE
+
+    def test_most_of_the_surface_actually_resolves(self, build_stream):
+        """Controprova che il ventaglio esercita davvero le configurazioni: se
+        risolvesse una manciata di chiavi, l'asserzione sopra passerebbe per
+        difetto di copertura invece che per correttezza."""
+        pubblicate, vive = self._pubblicate_e_vive(build_stream)
+        assert len(vive) >= len(pubblicate) - len(self.DICHIARATE_MORTE)
+
+
+class TestEffectiveDensityIsPublished:
+    """La densita' reale della voce 0 arriva alla partitura (issue #199).
+
+    Colore, etichetta di legenda e range Y erano gia' configurati in
+    ENVELOPE_COLORS, page_layout e visualizer_config: mancava solo chi la
+    calcolasse.
+    """
+
+    def test_fill_factor_stream_publishes_the_curve(self, build_stream):
+        stream = build_stream(
+            fill_factor=0.5,
+            grain={'duration': [[0, 0.05], [2.0, 0.1]], 'envelope': 'hanning'},
+        )
+        envelopes = get_stream_envelopes(stream)
+        assert 'effective_density' in envelopes
+        assert envelopes['effective_density'].evaluate(0.0) == pytest.approx(10.0)
+
+    def test_density_stream_does_not(self, build_stream):
+        """In modalita' density sarebbe il doppione della curva `density`."""
+        stream = build_stream(density=[[0, 5], [2.0, 20]])
+        envelopes = get_stream_envelopes(stream)
+        assert 'effective_density' not in envelopes
+        assert 'density' in envelopes

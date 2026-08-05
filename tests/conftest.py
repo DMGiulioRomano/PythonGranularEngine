@@ -46,6 +46,42 @@ def mock_config():
 
 
 
+@pytest.fixture
+def build_stream(tmp_path):
+    """Costruisce Stream VERI, attraverso `__init__`.
+
+    Serve a chi deve verificare qualcosa della superficie dello Stream: un
+    MagicMock ha ogni attributo e quindi non puo' dire se un attributo esiste
+    davvero, e `object.__new__(Stream)` salta proprio l'inizializzazione che
+    la superficie la costruisce.
+
+    Il sample e' un wav di silenzio scritto in `tmp_path`: non dipende da
+    `refs/`, che in un checkout pulito e' vuota (due test si skippano gia'
+    con "nessun sample disponibile"), e un test che si skippa non verifica
+    niente.
+    """
+    import numpy as np
+    import soundfile as sf
+
+    sample_name = 'silence.wav'
+    sf.write(str(tmp_path / sample_name),
+             np.zeros(48000, dtype='float32'), 48000)
+
+    def build(**params):
+        from pge.core.stream import Stream
+        yaml_params = {
+            'stream_id': 'test_stream',
+            'onset': 0.0,
+            'duration': 2.0,
+            'sample': sample_name,
+            'grain': {'duration': 0.05, 'envelope': 'hanning'},
+        }
+        yaml_params.update(params)
+        return Stream(yaml_params, samples_dir=str(tmp_path))
+
+    return build
+
+
 def make_mock_stream_for_generator(stream_id='stream_01', sample='test.wav'):
     """
     Mock Stream con attributi necessari per Generator.

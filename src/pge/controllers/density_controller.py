@@ -14,6 +14,11 @@ from pge.core.stream_config import StreamConfig
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 from pge.shared.seeding import component_rng
 
+# Griglia di campionamento della curva di densita' reale. Piu' fitta dei 33
+# punti di DEFAULT_OFFSET_SAMPLES perche' qui la forma e' un'iperbole, non una
+# spezzata: i breakpoint degli input non ne descrivono la curvatura.
+DEFAULT_DENSITY_SAMPLES = 129
+
 class DensityController:
     """
     Controlla la densità granulare e la distribuzione temporale.
@@ -132,6 +137,55 @@ class DensityController:
             return (1.0 - dist_val) * avg_iot + dist_val * async_iot
     
     
+    def density_curve(
+        self,
+        duration: float,
+        *,
+        grain_duration_at,
+        samples: int = DEFAULT_DENSITY_SAMPLES,
+    ):
+        """La densita' reale della voce 0 in grani/secondo, campionata.
+
+        E' il quoziente `fill_factor(t) / grain_duration(t)`: il motore lo
+        calcola a ogni onset e non lo conserva, quindi l'unico modo di
+        disegnarlo e' campionarlo. Il campionamento sta qui, e non nel
+        visualizer, per lo stesso motivo di `VoiceManager.offset_curves`:
+        la formula e il clamp li conosce la strategy.
+
+        Args:
+            duration: estensione temporale su cui campionare.
+            grain_duration_at: callable t -> durata nominale del grano. E'
+                iniettata perche' grain_duration vive sullo Stream, non qui.
+            samples: densita' della griglia. Serve fitta: fra due breakpoint
+                gli input sono lineari ma il loro quoziente e' un'iperbole,
+                quindi i soli breakpoint non basterebbero.
+
+        Returns:
+            Envelope, oppure None se la curva non ha niente da aggiungere —
+            in modalita' `density` sarebbe la copia esatta del parametro
+            `density`, gia' pubblicato sotto il suo nome.
+        """
+        from pge.envelopes.envelope import Envelope
+
+        if self.mode != 'fill_factor':
+            return None
+        if duration <= 0 or samples < 2:
+            return None
+
+        step = duration / (samples - 1)
+        points = []
+        for i in range(samples):
+            time = i * step
+            grain_duration = grain_duration_at(time)
+            if not grain_duration:
+                return None
+            value = self._strategy.nominal_density(
+                time, grain_duration=grain_duration)
+            if value is None:
+                return None
+            points.append([time, value])
+        return Envelope(points)
+
     @property
     def mode(self) -> str:
         return self._strategy.name

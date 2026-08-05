@@ -6,7 +6,7 @@ tags: [cli, flags, make, rendering, export]
 sources:
   - src/main.py
   - make/build.mk
-last_synced_commit: 9de1079
+last_synced_commit: 95fd483
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -119,6 +119,12 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   statico elencato nel filtro appare solo se c'è anche `--show-static`.
   Nomi validi = chiavi di `ENVELOPE_COLORS`
   (`src/pge/rendering/score_visualizer.py`, costante `PLOT_ENVELOPE_KEYS`).
+  Non tutti i nomi sono parametri scrivibili nello YAML: `effective_density`
+  è **derivato**, la densità reale in grani/secondo della voce 0
+  (`fill_factor(t) / grain_duration(t)`), campionata da
+  `DensityController.density_curve`. Appare solo in modalità `fill_factor`:
+  in modalità `density` sarebbe la copia della curva `density`, già disegnata
+  sotto il suo nome.
 - **`--magnify` / `--magnify-at`** hanno effetto solo insieme a
   `--visualize` (come `--show-static`); la validazione di `--magnify-at`
   avviene comunque (SPEC malformato → exit 1 anche senza `--visualize`). Le

@@ -113,7 +113,24 @@ def _attr(name):
 # schemi per un accidente — hasattr(stream,'pointer_deviation') era False
 # perche' il Parameter viveva solo dentro PointerController. Ora che lo Stream
 # lo espone, l'esclusione va dichiarata invece che subita.
-_SCHEMA_EXCLUDED = frozenset({'pointer_deviation'})
+# pointer_speed_ratio e' il nome di schema di una curva gia' pubblicata piu'
+# sotto come 'pointer_speed', che e' il nome che lo Stream espone e che i
+# consumatori usano (layer SV, --plot-envelopes). Dal ciclo sugli schemi
+# usciva una seconda chiave che getattr non ha mai potuto risolvere: prometteva
+# una curva e ne consegnava zero. Esclusa qui invece che lasciata morta.
+#
+# pointer_start non e' una curva e non puo' esserlo: la spec lo dichiara
+# is_smart=False, quindi l'orchestratore non ne fa un Parameter, e il pointer
+# lo usa come scalare (`self.start + sample_position` in
+# PointerController.calculate). Un envelope li' non e' una curva che nessuno
+# disegna: e' un TypeError alla generazione dei grani.
+# effective_density e' un segnaposto nello schema (yaml_path '_internal_calc_',
+# is_smart=False): il valore vero non e' un Parameter da leggere ma un
+# quoziente che il motore calcola a ogni onset. Viene pubblicato piu' sotto
+# dalla curva campionata, non da qui.
+_SCHEMA_EXCLUDED = frozenset({
+    'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
+    'effective_density'})
 
 
 def _curve_sources():
@@ -142,6 +159,14 @@ def _curve_sources():
     # valore base gia' risolto (Envelope o scalare), non un Parameter: e' una
     # riga normale con una sorgente diversa, non un caso a parte.
     sources.append(CurveSource('pitch', _attr('pitch_value'), 'value'))
+
+    # La densita' reale della voce 0: fill_factor(t)/grain_duration(t), che il
+    # motore calcola a ogni onset e non conserva. Lo Stream la espone gia'
+    # campionata come Envelope (effective_density_curve), None in modalita'
+    # density — li' sarebbe il doppione della curva `density`. Subito dopo il
+    # blocco density, per tenere la famiglia vicina in legenda.
+    sources.append(
+        CurveSource('effective_density', _attr('effective_density_curve'), 'value'))
 
     # Parametri fuori da ogni schema: num_voices/scatter sono privati dello
     # Stream, pointer_speed e' esposto con un nome diverso da quello di schema
