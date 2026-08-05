@@ -94,6 +94,24 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`grain: {envelope: triangle}` passava la validazione e poi esplodeva al
+  render.** Il catalogo delle finestre esisteva due volte: `WindowRegistry`,
+  che decide quali nomi lo YAML può scrivere (alias compresi), e
+  `NumpyWindowRegistry`, che teneva un proprio elenco indipendente di nomi
+  generabili. I due erano già divergenti su `triangle` — alias documentato di
+  `bartlett` in [docs/reference/yaml.md](docs/reference/yaml.md) — che il
+  renderer Csound accettava e quello NumPy, cioè il default, rifiutava con
+  `InvalidWindowError`. Stesso buco sulla partitura: la silhouette del grano
+  con `grain_shape='window'` passa dallo stesso registry. Ora il catalogo è
+  uno solo: `WindowRegistry.canonical()` risolve gli alias, e
+  `NumpyWindowRegistry` è l'adapter che materializza in array il nome
+  canonico, senza tenere un secondo elenco di cosa sia valido. Alias e nome
+  canonico condividono la voce di cache invece di duplicare l'array, e
+  `available_windows()` — la lista che finisce nel messaggio d'errore — elenca
+  ciò che l'utente può davvero scrivere. La divergenza non può tornare senza
+  far fallire il parity test in
+  `tests/rendering/test_numpy_window_registry.py::TestCatalogueParity`.
+
 - **`pointer_speed_ratio` prometteva una curva che nessuno ha mai visto.**
   Chi legge uno `Stream` per disegnarlo — partitura, export Sonic Visualiser,
   `--plot-envelopes` — lo interroga per nome a runtime, con
@@ -106,9 +124,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ora sono esclusi esplicitamente: `pointer_speed_ratio`, nome di schema di una
   curva già pubblicata come `pointer_speed`, e `pointer_start`, che non è una
   curva e non può esserlo — la spec lo dichiara `is_smart=False` e il pointer
-  lo somma come scalare. La terza, `effective_density`, resta dichiarata nella
-  guardia con il motivo, perché pubblicarla richiede una decisione di dominio
-  (issue #199). La guardia è
+  lo somma come scalare. La terza, `effective_density`, è stata invece
+  collegata: era un calcolo interno che doveva diventare un parametro
+  visualizzabile (vedi § Aggiunto). La guardia è
   `tests/rendering/test_envelope_extractor.py::TestPublishedSurfaceResolves`:
   verifica l'uguaglianza nei due sensi, quindi né una chiave viva può morire
   in silenzio né una dichiarata morta può restare nella lista dopo essere

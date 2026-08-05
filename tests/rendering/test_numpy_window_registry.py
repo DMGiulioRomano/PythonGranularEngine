@@ -530,3 +530,46 @@ class TestSmallWindows:
         registry = NumpyWindowRegistry()
         for n in (1, 2, 3):
             assert np.all(registry.get('rectangle', n) == 1.0)
+
+
+# =============================================================================
+# PARITA' COL CATALOGO (WindowRegistry)
+# =============================================================================
+
+class TestCatalogueParity:
+    """Il catalogo delle finestre e' uno solo: WindowRegistry dice quali nomi
+    lo YAML puo' scrivere, questo registry e' l'adapter che li materializza in
+    array. Se i due divergono, un nome accettato dalla validazione esplode al
+    momento del render."""
+
+    def test_triangle_alias_renders_as_bartlett(self, registry):
+        """`triangle` e' l'alias documentato di `bartlett`: il renderer numpy
+        deve produrre la stessa finestra, non un errore."""
+        assert np.array_equal(registry.get('triangle', 64),
+                              registry.get('bartlett', 64))
+
+    def test_every_catalogue_name_is_renderable(self, registry):
+        """Guardia anti-drift: ogni nome che la validazione YAML accetta deve
+        produrre un array. Finche' i due elenchi erano indipendenti, `triangle`
+        passava la validazione e poi esplodeva al render con RENDERER=numpy."""
+        from pge.controllers.window_registry import WindowRegistry
+
+        for name in WindowRegistry.all_names():
+            window = registry.get(name, 128)
+            assert len(window) == 128, name
+            assert np.all(np.isfinite(window)), name
+
+    def test_alias_and_canonical_share_one_cache_entry(self, registry):
+        """`triangle` e `bartlett` sono la stessa finestra: una sola voce in
+        cache, non due array identici."""
+        registry.get('bartlett', 64)
+        registry.get('triangle', 64)
+        assert len(registry) == 1
+
+    def test_available_windows_are_the_catalogue_names(self, registry):
+        """`available_windows()` e' cio' che finisce nel messaggio d'errore di
+        un nome sbagliato: deve elencare i nomi scrivibili nello YAML, alias
+        compresi, non l'elenco privato dei generatori."""
+        from pge.controllers.window_registry import WindowRegistry
+
+        assert set(registry.available_windows()) == set(WindowRegistry.all_names())
