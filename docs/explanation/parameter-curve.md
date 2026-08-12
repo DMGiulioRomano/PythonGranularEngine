@@ -32,7 +32,7 @@ consumatori che devono **leggerle** senza sintetizzare audio:
 |---|---|---|
 | valore base | `Parameter._value` | `Envelope` o scalare |
 | deviazione per-grano | `Parameter._mod_range` | `Envelope` o scalare o `None` |
-| probabilità di dephase | `Parameter._probability_gate` | `EnvelopeGate`, `RandomGate`, `NeverGate`, `AlwaysGate` |
+| probabilità di deviation_probability | `Parameter._probability_gate` | `EnvelopeGate`, `RandomGate`, `NeverGate`, `AlwaysGate` |
 
 I consumatori sono `ScoreVisualizer` (partitura PDF) e `SVExporter` (sessioni
 Sonic Visualiser), entrambi serviti da `rendering.envelope_extractor`. Il seam

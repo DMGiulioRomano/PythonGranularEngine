@@ -115,18 +115,18 @@ streams:
       duration_range: 0.01
 """
 
-YAML_INVALID_DEPHASE = f"""\
+YAML_INVALID_DEVIATION_PROBABILITY = f"""\
 composition:
-  title: "test invalid dephase"
+  title: "test invalid deviation_probability"
 streams:
-  - stream_id: "stream_bad_dephase"
+  - stream_id: "stream_bad_deviation_probability"
     onset: 0.0
     duration: 5
     sample: "{REAL_SAMPLE}"
     distribution_mode: 'gaussian'
     density: 5
     distribution: [[0,1],[1,1]]
-    dephase: "not_a_valid_dephase"
+    deviation_probability: "not_a_valid_deviation_probability"
     pointer:
       speed_ratio: 1.0
     grain:
@@ -289,14 +289,14 @@ def test_e2e_parameter_out_of_bounds(tmp_path, cleanup_log):
 
 
 @pytest.mark.e2e
-def test_e2e_invalid_dephase(tmp_path, cleanup_log):
-    yaml_abs = _write_yaml(tmp_path, '07_invalid_dephase.yml', YAML_INVALID_DEPHASE)
+def test_e2e_invalid_deviation_probability(tmp_path, cleanup_log):
+    yaml_abs = _write_yaml(tmp_path, '07_invalid_deviation_probability.yml', YAML_INVALID_DEVIATION_PROBABILITY)
     cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
     _assert_clean_user_output(result)
     assert "Formato non valido" in result.stdout
-    assert "dephase" in result.stdout
-    _assert_log_contains(yaml_abs, "InvalidParameterError", ["dephase"])
+    assert "deviation_probability" in result.stdout
+    _assert_log_contains(yaml_abs, "InvalidParameterError", ["deviation_probability"])
 
 
 @pytest.mark.e2e

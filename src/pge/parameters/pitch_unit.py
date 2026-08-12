@@ -24,9 +24,9 @@ from typing import Callable, Dict, Optional, Union
 from pge.parameters.parameter_definitions import ParameterBounds
 from pge.shared.exceptions import InvalidFieldValueError
 
-# Detune implicito del dephase per le unità EDO (issue #95): semi-ampiezza in
+# Detune implicito del deviation_probability per le unità EDO (issue #95): semi-ampiezza in
 # cents (±N) del micro-detune continuo applicato in ratio-space da
-# UnitPitchStrategy quando il pitch è sotto dephase senza range esplicito.
+# UnitPitchStrategy quando il pitch è sotto deviation_probability senza range esplicito.
 # Non può vivere in default_jitter: il value-space EDO è quantizzato e un
 # jitter sub-grado arrotonderebbe a 0 (no-op), un grado intero sarebbe una
 # trasposizione piena.
@@ -46,7 +46,7 @@ class PitchUnit(ABC):
     symbol: str
 
     # Semi-ampiezza (±N cents) del detune implicito in ratio-space, campionato
-    # continuo per grano da UnitPitchStrategy nel path dephase senza range.
+    # continuo per grano da UnitPitchStrategy nel path deviation_probability senza range.
     implicit_detune_cents: float = 0.0
 
     @abstractmethod

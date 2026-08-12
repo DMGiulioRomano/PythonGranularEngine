@@ -57,39 +57,39 @@ def make_config(**kwargs) -> StreamConfig:
 
 @pytest.fixture
 def default_config():
-    """StreamConfig con dephase=False e context valido."""
-    return make_config(dephase=False)
+    """StreamConfig con deviation_probability=False e context valido."""
+    return make_config(deviation_probability=False)
 
 
 @pytest.fixture
-def config_dephase_disabled():
-    return make_config(dephase=False)
+def config_deviation_probability_disabled():
+    return make_config(deviation_probability=False)
 
 
 @pytest.fixture
-def config_dephase_implicit():
-    return make_config(dephase=None)
+def config_deviation_probability_implicit():
+    return make_config(deviation_probability=None)
 
 
 @pytest.fixture
-def config_dephase_global():
-    return make_config(dephase=50.0)
+def config_deviation_probability_global():
+    return make_config(deviation_probability=50.0)
 
 
 @pytest.fixture
-def config_dephase_100():
-    return make_config(dephase=100.0)
+def config_deviation_probability_100():
+    return make_config(deviation_probability=100.0)
 
 
 @pytest.fixture
-def config_dephase_0():
-    return make_config(dephase=0.0)
+def config_deviation_probability_0():
+    return make_config(deviation_probability=0.0)
 
 
 @pytest.fixture
 def config_with_stream_id():
     ctx = make_context(stream_id="my_stream_42")
-    return StreamConfig(dephase=False, context=ctx)
+    return StreamConfig(deviation_probability=False, context=ctx)
 
 
 @pytest.fixture
@@ -333,55 +333,55 @@ class TestWindowControllerInit:
 
 class TestWindowControllerGateCreation:
 
-    def test_single_string_dephase_false_creates_never_gate(self, config_dephase_disabled):
-        ctrl = WindowController({'envelope': 'hanning'}, config=config_dephase_disabled)
+    def test_single_string_deviation_probability_false_creates_never_gate(self, config_deviation_probability_disabled):
+        ctrl = WindowController({'envelope': 'hanning'}, config=config_deviation_probability_disabled)
         assert isinstance(ctrl._gate, NeverGate)
 
-    def test_list_dephase_false_creates_always_gate(self, config_dephase_disabled):
+    def test_list_deviation_probability_false_creates_always_gate(self, config_deviation_probability_disabled):
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
-            config=config_dephase_disabled
+            config=config_deviation_probability_disabled
         )
         assert isinstance(ctrl._gate, AlwaysGate)
 
-    def test_list_dephase_none_creates_random_gate(self, config_dephase_implicit):
+    def test_list_deviation_probability_none_creates_random_gate(self, config_deviation_probability_implicit):
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
-            config=config_dephase_implicit
+            config=config_deviation_probability_implicit
         )
         assert isinstance(ctrl._gate, RandomGate)
 
-    def test_list_dephase_none_uses_default_prob(self, config_dephase_implicit):
+    def test_list_deviation_probability_none_uses_default_prob(self, config_deviation_probability_implicit):
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
-            config=config_dephase_implicit
+            config=config_deviation_probability_implicit
         )
         assert ctrl._gate.get_probability_value(0.0) == DEFAULT_PROB
 
-    def test_list_dephase_50_creates_random_gate(self, config_dephase_global):
+    def test_list_deviation_probability_50_creates_random_gate(self, config_deviation_probability_global):
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
-            config=config_dephase_global
+            config=config_deviation_probability_global
         )
         assert isinstance(ctrl._gate, RandomGate)
         assert ctrl._gate.get_probability_value(0.0) == 50.0
 
-    def test_list_dephase_100_creates_always_gate(self, config_dephase_100):
+    def test_list_deviation_probability_100_creates_always_gate(self, config_deviation_probability_100):
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
-            config=config_dephase_100
+            config=config_deviation_probability_100
         )
         assert isinstance(ctrl._gate, AlwaysGate)
 
-    def test_list_dephase_0_creates_never_gate(self, config_dephase_0):
+    def test_list_deviation_probability_0_creates_never_gate(self, config_deviation_probability_0):
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
-            config=config_dephase_0
+            config=config_deviation_probability_0
         )
         assert isinstance(ctrl._gate, NeverGate)
 
-    def test_dephase_specific_key_pc_rand_envelope(self):
-        config = make_config(dephase={'pc_rand_envelope': 80.0})
+    def test_deviation_probability_specific_key_pc_rand_envelope(self):
+        config = make_config(deviation_probability={'pc_rand_envelope': 80.0})
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
             config=config
@@ -389,19 +389,19 @@ class TestWindowControllerGateCreation:
         assert isinstance(ctrl._gate, RandomGate)
         assert ctrl._gate.get_probability_value(0.0) == 80.0
 
-    def test_dephase_specific_key_missing_is_range_only(self):
+    def test_deviation_probability_specific_key_missing_is_range_only(self):
         """Chiave 'pc_rand_envelope' assente dal dict per-param: il gate finestra
-        segue la semantica range-only (come dephase:false). Con più finestre
+        segue la semantica range-only (come deviation_probability:false). Con più finestre
         (has_explicit_range=True) → AlwaysGate, non più il default 1%."""
-        config = make_config(dephase={'altro_parametro': 80.0})
+        config = make_config(deviation_probability={'altro_parametro': 80.0})
         ctrl = WindowController(
             {'envelope': ['hanning', 'expodec']},
             config=config
         )
         assert isinstance(ctrl._gate, AlwaysGate)
 
-    def test_single_element_list_behaves_like_string(self, config_dephase_disabled):
-        ctrl = WindowController({'envelope': ['hanning']}, config=config_dephase_disabled)
+    def test_single_element_list_behaves_like_string(self, config_deviation_probability_disabled):
+        ctrl = WindowController({'envelope': ['hanning']}, config=config_deviation_probability_disabled)
         assert isinstance(ctrl._gate, NeverGate)
         assert ctrl.select_window(0.0) == 'hanning'
 
@@ -651,10 +651,10 @@ class TestIntegration:
         ctrl = WindowController(grain_yaml, config=default_config)
         assert ctrl._windows == ['hanning']
 
-    def test_all_windows_with_always_gate_covers_registry(self, config_dephase_disabled):
+    def test_all_windows_with_always_gate_covers_registry(self, config_deviation_probability_disabled):
         ctrl = WindowController(
             {'envelope': 'all'},
-            config=config_dephase_disabled
+            config=config_deviation_probability_disabled
         )
         results = set(ctrl.select_window(0.0) for _ in range(5000))
         assert results == set(WindowRegistry.WINDOWS.keys())
@@ -774,7 +774,7 @@ class TestSelectWindowTransition:
             sample='test.wav',
             sample_dur_sec=5.0,
         )
-        config = StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+        config = StreamConfig(deviation_probability=False, context=ctx, time_mode=time_mode)
         params = {'envelope': {'from': from_w, 'to': to_w, 'curve': curve_pts}}
         return WindowController(params, config=config)
 
@@ -886,7 +886,7 @@ class TestWindowControllerMultiStateInit:
             stream_id='ms_stream', onset=0.0, duration=duration,
             sample='test.wav', sample_dur_sec=5.0,
         )
-        return StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+        return StreamConfig(deviation_probability=False, context=ctx, time_mode=time_mode)
 
     def test_multistate_init_sets_strategy(self):
         from pge.controllers.window_selection_strategy import MultiStateWindowStrategy
@@ -931,7 +931,7 @@ class TestSelectWindowMultiState:
             stream_id='ms_stream', onset=0.0, duration=duration,
             sample='test.wav', sample_dur_sec=5.0,
         )
-        config = StreamConfig(dephase=False, context=ctx, time_mode=time_mode)
+        config = StreamConfig(deviation_probability=False, context=ctx, time_mode=time_mode)
         envelope_spec = {'states': states}
         if curve_pts is not None:
             envelope_spec['curve'] = curve_pts

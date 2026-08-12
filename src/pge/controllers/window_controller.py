@@ -119,7 +119,7 @@ class WindowController:
 
         Args:
             params: dict grain da YAML
-            config: StreamConfig con regole di processo (dephase, durata, ecc.)
+            config: StreamConfig con regole di processo (deviation_probability, durata, ecc.)
         """
         envelope_spec = params.get('envelope', 'hanning')
         self._windows = self.parse_window_list(params, config.context.stream_id)
@@ -132,7 +132,7 @@ class WindowController:
 
         uses_gate = not (_is_transition_spec(envelope_spec) or _is_multistate_spec(envelope_spec))
         gate = GateFactory.create_gate(
-            dephase=config.dephase if uses_gate else False,
+            deviation_probability=config.deviation_probability if uses_gate else False,
             param_key='pc_rand_envelope',
             default_prob=DEFAULT_PROB,
             has_explicit_range=uses_gate and len(self._windows) > 1,

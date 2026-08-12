@@ -27,7 +27,7 @@ sezione [Envelopes](#envelopes) interna per la sintassi degli envelope.
 
 ## Scope
 
-Reference completa del formato YAML consumato da `main.py`: sintassi per stream, parametri, envelope, voci, finestre, dephase. Copre solo il **formato di input**: la pipeline di rendering è in [[architecture]], le voice strategy in [[multi-voice]].
+Reference completa del formato YAML consumato da `main.py`: sintassi per stream, parametri, envelope, voci, finestre, deviation_probability. Copre solo il **formato di input**: la pipeline di rendering è in [[architecture]], le voice strategy in [[multi-voice]].
 
 ## Sintassi
 
@@ -41,7 +41,7 @@ Sezioni rilevanti in questo doc:
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
 - [La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor) —
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`)
-- [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [Dephase](#dephase-variazione-stocastica)
+- [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [DeviationProbability](#deviation_probability-variazione-stocastica)
 - [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
 - [Envelopes](#envelopes) — sintassi envelope completa
 
@@ -105,7 +105,7 @@ Tutti i siti stocastici usano **RNG locali derivati per componente**
   `hashlib.sha256(f"{seed}:{stream_id}:{componente}")`, deterministico e
   indipendente da `PYTHONHASHSEED`. Componenti: il nome del parametro per la
   variazione `_range` (es. `grain_duration`, `pitch_semitones`),
-  `gate:<chiave>` per i gate di probabilità (dephase), `iot` per la
+  `gate:<chiave>` per i gate di probabilità (deviation_probability), `iot` per la
   distribuzione Truax async, `window` per la selezione finestra, `detune` per
   il detune implicito EDO.
 - **RNG locale delle voci stocastiche** (`voices.{pitch,onset,pointer,pan}` con
@@ -228,9 +228,9 @@ time_mode: normalized   # "absolute" (default) | "normalized"
                         # normalized: coordinate temporali envelope in [0, 1]
                         #             mappate su duration al momento della generazione
 
-dephase: false          # Controllo variazione stocastica (vedi sezione Dephase)
+deviation_probability: false          # Controllo variazione stocastica (vedi sezione DeviationProbability)
 
-range_always_active: false  # true: i _range sono sempre attivi anche senza dephase
+range_always_active: false  # true: i _range sono sempre attivi anche senza deviation_probability
 
 distribution_mode: uniform  # "uniform" (default) | "gaussian"
                             # COME la banda del range viene riempita
@@ -286,7 +286,7 @@ invece di uscire. Nessun campione cade fuori dalla banda dichiarata.
 **Cosa NON governa**, e resta simmetrico in ogni caso:
 
 - il **jitter implicito** (`ParameterBounds.default_jitter`, attivo sotto
-  dephase quando *non* c'è un `_range` dichiarato) — è un tremolio attorno al
+  deviation_probability quando *non* c'è un `_range` dichiarato) — è un tremolio attorno al
   valore, non una banda dichiarata: non c'è nessun `range` scritto da
   reinterpretare, e ancorarlo al minimo lo renderebbe un offset positivo
   sistematico;
@@ -596,9 +596,9 @@ pitch:
 
 ---
 
-## Dephase (Variazione Stocastica)
+## DeviationProbability (Variazione Stocastica)
 
-`dephase` controlla la probabilità di applicare variazioni stocastiche per-grano.
+`deviation_probability` controlla la probabilità di applicare variazioni stocastiche per-grano.
 Si applica a tutti i parametri che hanno un `_range` associato. Decide **se** la
 variazione avviene; la banda dentro cui il valore viene pescato la decidono
 `distribution_mode` e `range_anchor` (vedi
@@ -606,19 +606,19 @@ variazione avviene; la banda dentro cui il valore viene pescato la decidono
 
 ```yaml
 # Disabilitato (default): range attivi solo se presenti
-dephase: false
+deviation_probability: false
 
 # Implicito: usa probabilità di default (1%)
-dephase: null
+deviation_probability: null
 
 # Globale: probabilità uniforme per tutti i parametri (0–100)
-dephase: 50
+deviation_probability: 50
 
 # Globale con envelope: probabilità che varia nel tempo
-dephase: [[0, 0], [30, 80]]
+deviation_probability: [[0, 0], [30, 80]]
 
 # Specifico per parametro: probabilità diverse per ciascuno
-dephase:
+deviation_probability:
   volume: 30          # 30% probabilità di applicare volume_range
   pan: 50             # 50% probabilità di applicare pan_range
   duration: 20        # 20% probabilità di applicare duration_range
@@ -628,33 +628,33 @@ dephase:
   envelope: 15        # 15% probabilità di cambiare finestra (se lista)
 
 # Valore specifico come envelope
-dephase:
+deviation_probability:
   volume: [[0, 0], [30, 80]]
   pan: 50
 ```
 
 > **Default in modalità per-parametro.** Una chiave **assente** dal dict — o
-> impostata esplicitamente a **`null`** — non viene dephased: si comporta come
-> `dephase: false` per quel parametro (*range-only*). Il suo `_range` esplicito,
+> impostata esplicitamente a **`null`** — non riceve probabilità: si comporta come
+> `deviation_probability: false` per quel parametro (*range-only*). Il suo `_range` esplicito,
 > se presente, resta **sempre attivo** (100% dei grani); senza `_range` non c'è
 > nessuna variazione (niente jitter implicito). Quindi nel dict per-parametro
 > dichiari **solo** i parametri di cui vuoi *ridurre* la probabilità: gli altri
 > applicano il loro range a piena ampiezza. Per ottenere l'1% implicito su un
 > singolo parametro, scrivilo esplicito (es. `pan: 1`).
 >
-> Differisce dalla modalità **globale** (`dephase: 50`), dove un'unica
+> Differisce dalla modalità **globale** (`deviation_probability: 50`), dove un'unica
 > probabilità vale per tutti i parametri indistintamente.
 
 ```yaml
 # Solo 'volume' ridotto al 30%. pan/duration/pitch/pointer/reverse/envelope:
 # se hanno un _range dichiarato lo applicano al 100%, altrimenti restano fermi.
-dephase:
+deviation_probability:
   volume: 30
 ```
 
 ### Detune implicito del pitch (senza `range`)
 
-Quando il pitch è sotto dephase **senza** `range` esplicito, ai grani che il
+Quando il pitch è sotto deviation_probability **senza** `range` esplicito, ai grani che il
 gate seleziona si applica un micro-detune continuo:
 
 - unità EDO (`semitones`, `cents`, `quarter_tone`, `eighth_tone`, `edo: N`):
@@ -665,7 +665,7 @@ gate seleziona si applica un micro-detune continuo:
 ```yaml
 pitch:
   semitones: 7            # nessun range dichiarato
-dephase:
+deviation_probability:
   pitch: 50               # 50% dei grani: 7 st ± max 12 cents (continuo)
 ```
 
@@ -972,7 +972,7 @@ streams:
     volume: -9.0
     volume_range: 6.0
     pan: 0.0
-    dephase:
+    deviation_probability:
       volume: 50
       pan: 30
     grain:
@@ -1092,7 +1092,7 @@ Tutti i parametri numerici dei seguenti blocchi accettano envelope:
 `density`, `fill_factor`, `distribution`, `volume`, `pan`, `grain.duration`,
 `grain.duration_range`, `pitch.ratio`, `pitch.semitones`, `pitch.range`,
 `pointer.speed_ratio`, `pointer.offset_range`,
-`pointer.loop_start`, `pointer.loop_end`, `pointer.loop_dur`, `dephase` (globale
+`pointer.loop_start`, `pointer.loop_end`, `pointer.loop_dur`, `deviation_probability` (globale
 o per chiave), `voices.num_voices`, `voices.scatter`, i parametri scalari di
 ciascuna voice strategy (`step`, `pitch_range`, `pointer_range`,
 `max_offset`, `base`, `spread`), e il campo `curve` di
@@ -1827,27 +1827,27 @@ Differenza chiave da `time_mode`:
 
 I due possono coesistere.
 
-#### 10.2 `dephase` come envelope
+#### 10.2 `deviation_probability` come envelope
 
-`dephase` può essere booleano, numerico, envelope, o dict. Quando è envelope, la
+`deviation_probability` può essere booleano, numerico, envelope, o dict. Quando è envelope, la
 probabilità di applicare la randomness al parametro varia nel tempo.
 
 **Globale**:
 
 ```yaml
-dephase: [[0, 0], [30, 80]]          # probabilità: 0% all'inizio, 80% alla fine
+deviation_probability: [[0, 0], [30, 80]]          # probabilità: 0% all'inizio, 80% alla fine
 ```
 
 **Per chiave**:
 
 ```yaml
-dephase:
+deviation_probability:
   volume: [[0, 0], [30, 80]]
   pan: 50
   duration: {type: cubic, points: [[0, 0], [15, 100], [30, 0]]}
 ```
 
-Vedi `GateFactory._classify_dephase`: il dispatch usa
+Vedi `GateFactory._classify_deviation_probability`: il dispatch usa
 `Envelope.is_envelope_like` per riconoscere il formato e crea un
 `EnvelopeGate` invece di un `RandomGate` scalare.
 
@@ -1963,8 +1963,8 @@ Sintesi di tutte le forme accettate. `T` indica il tempo, `V` il valore.
 | Loop pointer normalizzato (valori)            | `loop_unit: normalized` + `loop_start: 0.0`        | Scala Y per sample_dur_sec |
 | Time mode globale                             | `time_mode: normalized` a livello stream           | Scala X per stream duration |
 | Espressione matematica                        | `[[0, 0], [(pi*5), 1]]`                            | Valutata a parse-time |
-| dephase globale envelope                      | `dephase: [[0, 0], [30, 80]]`                      | Probabilità time-varying |
-| dephase per chiave envelope                   | `dephase: {volume: [[0, 0], [30, 80]]}`            | Override per parametro |
+| deviation_probability globale envelope                      | `deviation_probability: [[0, 0], [30, 80]]`                      | Probabilità time-varying |
+| deviation_probability per chiave envelope                   | `deviation_probability: {volume: [[0, 0], [30, 80]]}`            | Override per parametro |
 | curve in window transition                    | `envelope: {from: ..., to: ..., curve: [...]}`     | Curve è envelope a tutti gli effetti |
 
 ---
@@ -2005,7 +2005,7 @@ un envelope dal YAML al runtime è:
 - `src/pge/envelopes/envelope_factory.py` — `InterpolationStrategyFactory`
 - `src/pge/envelopes/time_distribution.py` — `TimeDistributionFactory` e le 5 strategie
 - `src/pge/parameters/parser.py` — `GranularParser.parse_parameter` + validazione
-- `src/pge/parameters/gate_factory.py` — uso di envelope per `dephase`
+- `src/pge/parameters/gate_factory.py` — uso di envelope per `deviation_probability`
 - `src/pge/controllers/pointer_controller.py` — `loop_unit` e scaling dei valori loop
 - `src/pge/controllers/window_selection_strategy.py` — `_validate_curve_range`
 - `src/pge/core/stream.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy

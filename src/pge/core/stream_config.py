@@ -68,13 +68,13 @@ class StreamConfig:
     """
     Configurazione completa per un singolo stream.
     Contiene:
-    - Regole di processo: dephase, time_mode, distribution_mode, etc.
+    - Regole di processo: deviation_probability, time_mode, distribution_mode, etc.
     - Contesto
     
     Condiviso tra Stream e i suoi controller (PointerController, 
     PitchController, DensityController, VoiceManager).
     """
-    dephase: Optional[Union[dict, bool, int, float, list]] = False
+    deviation_probability: Optional[Union[dict, bool, int, float, list]] = False
     range_always_active: bool = False
     distribution_mode: str = 'uniform'
     # Ancora dei `_range` dichiarati: 'center' (default, banda

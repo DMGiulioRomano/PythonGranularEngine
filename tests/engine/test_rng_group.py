@@ -66,7 +66,7 @@ def _stream_dict(stream_id, rng_group=None, voices=False,
     if pan is not None:
         d['pan'] = pan
         d['pan_range'] = 20.0
-        # I `_range` devono pescare anche senza dephase: e' il jitter
+        # I `_range` devono pescare anche senza deviation_probability: e' il jitter
         # condiviso che si vuole osservare.
         d['range_always_active'] = True
     if voices:

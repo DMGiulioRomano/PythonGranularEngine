@@ -75,7 +75,7 @@ class TestClassifyScalarAndAbsent:
 
 
 class TestFromGate:
-    """Il dephase e' un ProbabilityGate. Oggi l'estrattore fa isinstance sul
+    """Il deviation_probability e' un ProbabilityGate. Oggi l'estrattore fa isinstance sul
     tipo di gate solo per distinguere curva da costante: la stessa domanda di
     classify, posta a un tipo invece che a un valore."""
 
@@ -107,7 +107,7 @@ class TestGateKindsWithoutCurve:
         assert ParameterCurve.from_gate(AlwaysGate()).kind == 'absent'
 
     def test_flat_envelope_gate_is_constant(self):
-        # Un dephase scritto come envelope piatto e' una probabilita' fissa:
+        # Un deviation_probability scritto come envelope piatto e' una probabilita' fissa:
         # stessa regola del valore base, applicata una volta sola.
         from pge.shared.probability_gate import EnvelopeGate
         curve = ParameterCurve.from_gate(
@@ -138,7 +138,7 @@ class TestCurveInvariants:
 
 class TestParameterFaces:
     """Le tre facce di un Parameter esposte come ParameterCurve: valore base,
-    deviazione per-grano, probabilita' di dephase. Oggi i consumatori le
+    deviazione per-grano, probabilita' di deviation_probability. Oggi i consumatori le
     raggiungono via _value / _mod_range / _probability_gate."""
 
     def _param(self, value, mod_range=None):

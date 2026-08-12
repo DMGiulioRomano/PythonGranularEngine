@@ -190,7 +190,7 @@ def test_invalid_parameter_error_includes_optional_context():
     """stream_id e config_file compaiono quando settati."""
     from pge.shared.exceptions import InvalidParameterError
 
-    err = InvalidParameterError(param_name="dephase", value=object())
+    err = InvalidParameterError(param_name="deviation_probability", value=object())
     err.stream_id = "s1"
     err.config_file = "c.yml"
     msg = err.user_message()

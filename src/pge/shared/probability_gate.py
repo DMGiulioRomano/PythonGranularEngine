@@ -1,6 +1,6 @@
 """
 probability_gate.py - Pattern Gateway per la gestione delle probabilità.
-Isola completamente la logica di dephase da Parameter e ParameterOrchestrator.
+Isola completamente la logica di deviation_probability da Parameter e ParameterOrchestrator.
 """
 from __future__ import annotations
 

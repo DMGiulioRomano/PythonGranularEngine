@@ -268,7 +268,7 @@ L'ordine di implementazione raccomandato: **001 → 002**. Piano 001 stabilizza 
 
 ## Configurazione YAML via StreamConfig
 
-`clip_strategy` e `clip_margin` vivono in `StreamConfig` — non in `StreamContext`. Motivazione: sono regole di processo (come `time_mode`, `dephase`), non identità dello stream.
+`clip_strategy` e `clip_margin` vivono in `StreamConfig` — non in `StreamContext`. Motivazione: sono regole di processo (come `time_mode`, `deviation_probability`), non identità dello stream.
 
 ### Modifiche a `StreamConfig`
 
@@ -276,7 +276,7 @@ L'ordine di implementazione raccomandato: **001 → 002**. Piano 001 stabilizza 
 # src/core/stream_config.py
 @dataclass(frozen=True)
 class StreamConfig:
-    dephase: ...
+    deviation_probability: ...
     range_always_active: bool = False
     distribution_mode: str = 'uniform'
     time_mode: str = 'absolute'

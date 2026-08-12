@@ -5,7 +5,7 @@ composition:
 # Raccoglie tutti i parametri che il ScoreVisualizer NON disegnava:
 #   - range stocastici (_mod_range): volume_range, pan_range,
 #     grain.duration_range, pointer.offset_range
-#   - dephase per-chiave (probability gate): volume, pan, duration,
+#   - deviation_probability per-chiave (probability gate): volume, pan, duration,
 #     pointer, reverse
 # Ogni curva e' un envelope dinamico con forma diversa, cosi' nel pannello
 # envelope si distinguono a colpo d'occhio. Tempo normalizzato (x in 0..1).
@@ -13,15 +13,15 @@ composition:
 # Mappa parametro YAML -> chiave nel pannello envelope:
 #   volume                  -> volume
 #   volume_range            -> volume        (curva range, se base statico)
-#   dephase.volume          -> volume_prob
+#   deviation_probability.volume          -> volume_prob
 #   pan_range               -> pan
-#   dephase.pan             -> pan_prob
+#   deviation_probability.pan             -> pan_prob
 #   grain.duration          -> grain_duration
 #   grain.duration_range    -> grain_duration (curva range, se base statico)
-#   dephase.duration        -> grain_duration_prob
+#   deviation_probability.duration        -> grain_duration_prob
 #   pointer.offset_range    -> pointer_deviation
-#   dephase.pointer         -> pointer_deviation_prob
-#   dephase.reverse         -> reverse_prob
+#   deviation_probability.pointer         -> pointer_deviation_prob
+#   deviation_probability.reverse         -> reverse_prob
 
 streams:
   - stream_id: "broken_params"
@@ -30,7 +30,7 @@ streams:
     duration: 30
     sample: "001-0_0-3_0.wav"
 
-    # range sempre attivi anche dove il dephase non li accende:
+    # range sempre attivi anche dove il deviation_probability non li accende:
     # assicura che il render applichi i _range (la curva nel visualizer
     # compare comunque, ma cosi' l'effetto e' anche udibile).
     range_always_active: true
@@ -46,7 +46,7 @@ streams:
     grain:
       duration: 0.05                                # base statico
       duration_range: [[0, 0], [0.7, 0.08], [1, 0.01]]  # -> 'grain_duration'
-      reverse:                                      # presente -> dephase.reverse attivo
+      reverse:                                      # presente -> deviation_probability.reverse attivo
 
     pointer:
       speed_ratio: 0.2
@@ -55,8 +55,8 @@ streams:
     density: 200
     distribution: 1
 
-    # dephase per-chiave, ognuno envelope distinto -> curve *_prob
-    dephase:
+    # deviation_probability per-chiave, ognuno envelope distinto -> curve *_prob
+    deviation_probability:
       volume:   [[0, 100], [1, 0]]                  # -> 'volume_prob'
       pan:      [[0, 0], [1, 100]]                  # -> 'pan_prob'
       duration: [[0, 20], [0.5, 90], [1, 20]]       # -> 'grain_duration_prob'

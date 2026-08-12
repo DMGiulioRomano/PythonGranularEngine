@@ -13,7 +13,7 @@ Coverage:
   7. StreamConfig.from_yaml - parsing completo
   8. StreamConfig.from_yaml - allow_none semantics
   9. StreamConfig.from_yaml - iniezione context
- 10. StreamConfig - tipi polimorfi di dephase (dict, bool, int, float, list)
+ 10. StreamConfig - tipi polimorfi di deviation_probability (dict, bool, int, float, list)
  11. StreamConfig - immutabilita' (frozen)
  12. Integrazione StreamContext + StreamConfig
  13. Edge cases e error handling
@@ -45,7 +45,7 @@ def full_yaml_context():
 def full_yaml_config():
     """YAML completo per StreamConfig (campi di processo)."""
     return {
-        'dephase': True,
+        'deviation_probability': True,
         'range_always_active': True,
         'distribution_mode': 'gaussian',
         'time_mode': 'normalized',
@@ -308,7 +308,7 @@ class TestStreamConfigDefaults:
     def test_all_defaults(self):
         """Costruzione senza argomenti usa tutti i defaults."""
         config = StreamConfig()
-        assert config.dephase is False
+        assert config.deviation_probability is False
         assert config.range_always_active is False
         assert config.distribution_mode == 'uniform'
         assert config.time_mode == 'absolute'
@@ -327,7 +327,7 @@ class TestStreamConfigDefaults:
         """Nomi campi nell'ordine atteso."""
         names = [f.name for f in fields(StreamConfig)]
         expected = [
-            'dephase', 'range_always_active', 'distribution_mode',
+            'deviation_probability', 'range_always_active', 'distribution_mode',
             'range_anchor', 'time_mode', 'time_scale', 'clip_strategy',
             'clip_margin', 'seed', 'context'
         ]
@@ -371,14 +371,14 @@ class TestStreamConfigDirect:
     def test_create_with_all_fields(self, stream_context):
         """Costruzione con tutti i campi espliciti."""
         config = StreamConfig(
-            dephase={'volume': 0.8},
+            deviation_probability={'volume': 0.8},
             range_always_active=True,
             distribution_mode='gaussian',
             time_mode='normalized',
             time_scale=0.5,
             context=stream_context
         )
-        assert config.dephase == {'volume': 0.8}
+        assert config.deviation_probability == {'volume': 0.8}
         assert config.range_always_active is True
         assert config.distribution_mode == 'gaussian'
         assert config.time_mode == 'normalized'
@@ -388,10 +388,10 @@ class TestStreamConfigDirect:
     def test_partial_override(self, stream_context):
         """Override parziale, il resto usa defaults."""
         config = StreamConfig(
-            dephase=True,
+            deviation_probability=True,
             context=stream_context
         )
-        assert config.dephase is True
+        assert config.deviation_probability is True
         assert config.range_always_active is False  # default
         assert config.distribution_mode == 'uniform'  # default
         assert config.context is stream_context
@@ -408,7 +408,7 @@ class TestStreamConfigFromYaml:
         """Parsing completo con tutti i campi di processo."""
         config = StreamConfig.from_yaml(full_yaml_config, context=stream_context)
 
-        assert config.dephase is True
+        assert config.deviation_probability is True
         assert config.range_always_active is True
         assert config.distribution_mode == 'gaussian'
         assert config.time_mode == 'normalized'
@@ -419,7 +419,7 @@ class TestStreamConfigFromYaml:
         """YAML vuoto -> tutti i defaults + context iniettato."""
         config = StreamConfig.from_yaml({}, context=stream_context)
 
-        assert config.dephase is False
+        assert config.deviation_probability is False
         assert config.range_always_active is False
         assert config.distribution_mode == 'uniform'
         assert config.time_mode == 'absolute'
@@ -428,23 +428,23 @@ class TestStreamConfigFromYaml:
 
     def test_partial_yaml_uses_defaults_for_missing(self, stream_context):
         """Campi parziali: quelli presenti override, il resto default."""
-        yaml_data = {'time_mode': 'normalized', 'dephase': True}
+        yaml_data = {'time_mode': 'normalized', 'deviation_probability': True}
         config = StreamConfig.from_yaml(yaml_data, context=stream_context)
 
         assert config.time_mode == 'normalized'
-        assert config.dephase is True
+        assert config.deviation_probability is True
         assert config.distribution_mode == 'uniform'  # default
         assert config.time_scale == 1.0  # default
 
     def test_extra_fields_ignored(self, stream_context):
         """Campi extra nello YAML vengono ignorati."""
         yaml_data = {
-            'dephase': True,
+            'deviation_probability': True,
             'volume': -6.0,           # extra
             'pointer_speed': 1.0,     # extra
         }
         config = StreamConfig.from_yaml(yaml_data, context=stream_context)
-        assert config.dephase is True
+        assert config.deviation_probability is True
         assert not hasattr(config, 'volume')
 
     def test_context_injection_overrides_yaml_context(self, stream_context):
@@ -477,34 +477,34 @@ class TestStreamConfigAllowNone:
     def test_allow_none_true_includes_none_values(self, stream_context):
         """allow_none=True include campi con valore None."""
         yaml_data = {
-            'dephase': None,
+            'deviation_probability': None,
             'time_mode': None,
         }
         config = StreamConfig.from_yaml(
             yaml_data, context=stream_context, allow_none=True
         )
-        assert config.dephase is None
+        assert config.deviation_probability is None
         assert config.time_mode is None
 
     def test_allow_none_false_excludes_none_values(self, stream_context):
         """allow_none=False esclude None -> usa defaults."""
         yaml_data = {
-            'dephase': None,
+            'deviation_probability': None,
             'time_mode': None,
             'time_scale': 3.0,  # non-None, incluso
         }
         config = StreamConfig.from_yaml(
             yaml_data, context=stream_context, allow_none=False
         )
-        # dephase e time_mode esclusi -> defaults
-        assert config.dephase is False
+        # deviation_probability e time_mode esclusi -> defaults
+        assert config.deviation_probability is False
         assert config.time_mode == 'absolute'
         # time_scale incluso
         assert config.time_scale == 3.0
 
     def test_allow_none_default_is_true(self, stream_context):
         """Il default di allow_none e' True."""
-        yaml_data = {'dephase': None}
+        yaml_data = {'deviation_probability': None}
         config_default = StreamConfig.from_yaml(yaml_data, context=stream_context)
         config_explicit = StreamConfig.from_yaml(
             yaml_data, context=stream_context, allow_none=True
@@ -514,7 +514,7 @@ class TestStreamConfigAllowNone:
     def test_allow_none_false_all_none_uses_defaults(self, stream_context):
         """Tutti None con allow_none=False -> tutti defaults."""
         yaml_data = {
-            'dephase': None,
+            'deviation_probability': None,
             'range_always_active': None,
             'distribution_mode': None,
             'time_mode': None,
@@ -528,70 +528,70 @@ class TestStreamConfigAllowNone:
 
 
 # =============================================================================
-# 9. STREAM CONFIG - TIPI POLIMORFI DI DEPHASE
+# 9. STREAM CONFIG - TIPI POLIMORFI DI DEVIATION_PROBABILITY
 # =============================================================================
 
-class TestStreamConfigDephaseTypes:
-    """Test che dephase accetta tipi diversi come dichiarato nel type hint."""
+class TestStreamConfigDeviationProbabilityTypes:
+    """Test che deviation_probability accetta tipi diversi come dichiarato nel type hint."""
 
-    def test_dephase_bool(self, stream_context):
-        """dephase come bool."""
-        config = StreamConfig.from_yaml({'dephase': True}, context=stream_context)
-        assert config.dephase is True
+    def test_deviation_probability_bool(self, stream_context):
+        """deviation_probability come bool."""
+        config = StreamConfig.from_yaml({'deviation_probability': True}, context=stream_context)
+        assert config.deviation_probability is True
 
-    def test_dephase_false(self, stream_context):
-        """dephase False (default)."""
-        config = StreamConfig.from_yaml({'dephase': False}, context=stream_context)
-        assert config.dephase is False
+    def test_deviation_probability_false(self, stream_context):
+        """deviation_probability False (default)."""
+        config = StreamConfig.from_yaml({'deviation_probability': False}, context=stream_context)
+        assert config.deviation_probability is False
 
-    def test_dephase_dict(self, stream_context):
-        """dephase come dict (configurazione per parametro)."""
-        dephase_dict = {'volume': 0.8, 'pan': 0.5, 'duration': 1.0}
+    def test_deviation_probability_dict(self, stream_context):
+        """deviation_probability come dict (configurazione per parametro)."""
+        deviation_probability_dict = {'volume': 0.8, 'pan': 0.5, 'duration': 1.0}
         config = StreamConfig.from_yaml(
-            {'dephase': dephase_dict}, context=stream_context
+            {'deviation_probability': deviation_probability_dict}, context=stream_context
         )
-        assert config.dephase == dephase_dict
-        assert config.dephase['volume'] == 0.8
+        assert config.deviation_probability == deviation_probability_dict
+        assert config.deviation_probability['volume'] == 0.8
 
-    def test_dephase_int(self, stream_context):
-        """dephase come int."""
-        config = StreamConfig.from_yaml({'dephase': 1}, context=stream_context)
-        assert config.dephase == 1
+    def test_deviation_probability_int(self, stream_context):
+        """deviation_probability come int."""
+        config = StreamConfig.from_yaml({'deviation_probability': 1}, context=stream_context)
+        assert config.deviation_probability == 1
 
-    def test_dephase_float(self, stream_context):
-        """dephase come float (probabilita' uniforme)."""
-        config = StreamConfig.from_yaml({'dephase': 0.75}, context=stream_context)
-        assert config.dephase == 0.75
+    def test_deviation_probability_float(self, stream_context):
+        """deviation_probability come float (probabilita' uniforme)."""
+        config = StreamConfig.from_yaml({'deviation_probability': 0.75}, context=stream_context)
+        assert config.deviation_probability == 0.75
 
-    def test_dephase_list(self, stream_context):
-        """dephase come list."""
-        dephase_list = [0.5, 0.8, 1.0]
+    def test_deviation_probability_list(self, stream_context):
+        """deviation_probability come list."""
+        deviation_probability_list = [0.5, 0.8, 1.0]
         config = StreamConfig.from_yaml(
-            {'dephase': dephase_list}, context=stream_context
+            {'deviation_probability': deviation_probability_list}, context=stream_context
         )
-        assert config.dephase == dephase_list
+        assert config.deviation_probability == deviation_probability_list
 
-    def test_dephase_none(self, stream_context):
-        """dephase None esplicito (con allow_none=True)."""
+    def test_deviation_probability_none(self, stream_context):
+        """deviation_probability None esplicito (con allow_none=True)."""
         config = StreamConfig.from_yaml(
-            {'dephase': None}, context=stream_context, allow_none=True
+            {'deviation_probability': None}, context=stream_context, allow_none=True
         )
-        assert config.dephase is None
+        assert config.deviation_probability is None
 
-    def test_dephase_empty_dict(self, stream_context):
-        """dephase dict vuoto."""
+    def test_deviation_probability_empty_dict(self, stream_context):
+        """deviation_probability dict vuoto."""
         config = StreamConfig.from_yaml(
-            {'dephase': {}}, context=stream_context
+            {'deviation_probability': {}}, context=stream_context
         )
-        assert config.dephase == {}
+        assert config.deviation_probability == {}
 
-    def test_dephase_nested_dict(self, stream_context):
-        """dephase con struttura annidata."""
+    def test_deviation_probability_nested_dict(self, stream_context):
+        """deviation_probability con struttura annidata."""
         nested = {'groups': {'output': 0.8, 'grain': 0.5}, 'global': True}
         config = StreamConfig.from_yaml(
-            {'dephase': nested}, context=stream_context
+            {'deviation_probability': nested}, context=stream_context
         )
-        assert config.dephase['groups']['output'] == 0.8
+        assert config.deviation_probability['groups']['output'] == 0.8
 
 
 # =============================================================================
@@ -601,11 +601,11 @@ class TestStreamConfigDephaseTypes:
 class TestStreamConfigFrozen:
     """Test immutabilita' (frozen=True)."""
 
-    def test_cannot_set_dephase(self):
-        """dephase non modificabile."""
+    def test_cannot_set_deviation_probability(self):
+        """deviation_probability non modificabile."""
         config = StreamConfig()
         with pytest.raises(FrozenInstanceError):
-            config.dephase = True
+            config.deviation_probability = True
 
     def test_cannot_set_time_mode(self):
         """time_mode non modificabile."""
@@ -623,7 +623,7 @@ class TestStreamConfigFrozen:
         """Cancellazione campo solleva FrozenInstanceError."""
         config = StreamConfig()
         with pytest.raises(FrozenInstanceError):
-            del config.dephase
+            del config.deviation_probability
 
     def test_cannot_add_new_field(self):
         """Aggiunta nuovo campo solleva FrozenInstanceError."""
@@ -646,7 +646,7 @@ class TestIntegration:
             'onset': 2.0,
             'duration': 15.0,
             'sample': 'forest.wav',
-            'dephase': {'volume': 0.9, 'pan': 0.5},
+            'deviation_probability': {'volume': 0.9, 'pan': 0.5},
             'range_always_active': True,
             'time_mode': 'normalized',
             'time_scale': 0.8,
@@ -661,7 +661,7 @@ class TestIntegration:
         assert config.context.sample_dur_sec == sample_dur
 
         # Config corretto
-        assert config.dephase == {'volume': 0.9, 'pan': 0.5}
+        assert config.deviation_probability == {'volume': 0.9, 'pan': 0.5}
         assert config.range_always_active is True
         assert config.time_mode == 'normalized'
 
@@ -676,13 +676,13 @@ class TestIntegration:
             sample='b.wav', sample_dur_sec=sample_dur
         )
 
-        yaml_process = {'dephase': True, 'time_mode': 'normalized'}
+        yaml_process = {'deviation_probability': True, 'time_mode': 'normalized'}
 
         config1 = StreamConfig.from_yaml(yaml_process, context=ctx1)
         config2 = StreamConfig.from_yaml(yaml_process, context=ctx2)
 
         # Stessi parametri di processo
-        assert config1.dephase == config2.dephase
+        assert config1.deviation_probability == config2.deviation_probability
         assert config1.time_mode == config2.time_mode
 
         # Contesti diversi
@@ -709,7 +709,7 @@ class TestIntegration:
             contexts.append(ctx)
 
         configs = [
-            StreamConfig.from_yaml({'dephase': True}, context=ctx)
+            StreamConfig.from_yaml({'deviation_probability': True}, context=ctx)
             for ctx in contexts
         ]
 
@@ -764,26 +764,26 @@ class TestEqualityAndHash:
 
     def test_streamconfig_equality_with_same_context(self, stream_context):
         """Due StreamConfig identici sono uguali."""
-        config1 = StreamConfig(dephase=True, context=stream_context)
-        config2 = StreamConfig(dephase=True, context=stream_context)
+        config1 = StreamConfig(deviation_probability=True, context=stream_context)
+        config2 = StreamConfig(deviation_probability=True, context=stream_context)
         assert config1 == config2
 
     def test_streamconfig_inequality(self, stream_context):
         """StreamConfig con valori diversi non sono uguali."""
-        config1 = StreamConfig(dephase=True, context=stream_context)
-        config2 = StreamConfig(dephase=False, context=stream_context)
+        config1 = StreamConfig(deviation_probability=True, context=stream_context)
+        config2 = StreamConfig(deviation_probability=False, context=stream_context)
         assert config1 != config2
 
     def test_streamconfig_hashable(self):
         """StreamConfig e' hashable (se tutti i campi lo sono)."""
-        # Con dephase=False (hashable), il config e' hashable
-        config = StreamConfig(dephase=False)
+        # Con deviation_probability=False (hashable), il config e' hashable
+        config = StreamConfig(deviation_probability=False)
         config_set = {config}
         assert len(config_set) == 1
 
-    def test_streamconfig_with_dict_dephase_not_hashable(self, stream_context):
-        """StreamConfig con dephase dict non e' hashable (dict non hashable)."""
-        config = StreamConfig(dephase={'volume': 0.8}, context=stream_context)
+    def test_streamconfig_with_dict_deviation_probability_not_hashable(self, stream_context):
+        """StreamConfig con deviation_probability dict non e' hashable (dict non hashable)."""
+        config = StreamConfig(deviation_probability={'volume': 0.8}, context=stream_context)
         with pytest.raises(TypeError):
             hash(config)
 
@@ -924,7 +924,7 @@ class TestParametrized:
         assert ctx.onset == onset
         assert ctx.duration == duration
 
-    @pytest.mark.parametrize("dephase_val,expected_type", [
+    @pytest.mark.parametrize("deviation_probability_val,expected_type", [
         (True, bool),
         (False, bool),
         (0.5, float),
@@ -934,12 +934,12 @@ class TestParametrized:
         ({'vol': 0.8}, dict),
         ([0.1, 0.9], list),
     ])
-    def test_dephase_type_preservation(self, dephase_val, expected_type, stream_context):
-        """Il tipo del dephase viene preservato."""
+    def test_deviation_probability_type_preservation(self, deviation_probability_val, expected_type, stream_context):
+        """Il tipo del deviation_probability viene preservato."""
         config = StreamConfig.from_yaml(
-            {'dephase': dephase_val}, context=stream_context
+            {'deviation_probability': deviation_probability_val}, context=stream_context
         )
-        assert isinstance(config.dephase, expected_type)
+        assert isinstance(config.deviation_probability, expected_type)
 
 
 # =============================================================================

@@ -29,7 +29,7 @@ class ParameterSpec:
         yaml_path: Percorso nel YAML (supporta dot notation: 'grain.duration')
         default: Valore di default se assente nel YAML
         range_path: Percorso YAML per il parametro _range associato (opzionale)
-        dephase_key: Chiave nel blocco dephase (opzionale)
+        deviation_probability_key: Chiave nel blocco deviation_probability (opzionale)
         is_smart: Se True, crea un oggetto Parameter. Se False, valore raw.
     
     NOTA: Non c'è bounds_key separato perché usiamo 'name' come chiave 
@@ -39,7 +39,7 @@ class ParameterSpec:
     yaml_path: str
     default: Any
     range_path: Optional[str] = None
-    dephase_key: Optional[str] = None
+    deviation_probability_key: Optional[str] = None
     is_smart: bool = True
     exclusive_group: Optional[str] = None
     group_priority: int = 99  
@@ -67,14 +67,14 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
         yaml_path='volume',
         default=0.0,
         range_path='volume_range',
-        dephase_key='volume'
+        deviation_probability_key='volume'
     ),
     ParameterSpec(
         name='pan',
         yaml_path='pan',
         default=0.0,
         range_path='pan_range',
-        dephase_key='pan'
+        deviation_probability_key='pan'
     ),
     
     # =========================================================================
@@ -85,13 +85,13 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
         yaml_path='grain.duration',
         default=0.05,
         range_path='grain.duration_range',
-        dephase_key='duration'
+        deviation_probability_key='duration'
     ),
     ParameterSpec(
         name='grain_envelope',
         yaml_path='grain.envelope',
         default='hanning',
-        dephase_key='envelope',
+        deviation_probability_key='envelope',
         is_smart=False
     ),    
     # =========================================================================
@@ -101,9 +101,9 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
         name='reverse',
         yaml_path='grain.reverse',
         default=0,  # 0 = forward, 1 = reverse
-        dephase_key='reverse'
+        deviation_probability_key='reverse'
         # Nota: 'reverse' usa variation_mode='invert', quindi
-        # il dephase_key controlla la PROBABILITÀ di flip, non un range
+        # il deviation_probability_key controlla la PROBABILITÀ di flip, non un range
     ),
 ]
 
@@ -132,7 +132,7 @@ POINTER_PARAMETER_SCHEMA: List[ParameterSpec] = [
         yaml_path='_dummy_fixed_zero_',   
         default=0.0,                
         range_path='offset_range',  
-        dephase_key='pointer',
+        deviation_probability_key='pointer',
     ),
     ParameterSpec(
         name='loop_start',

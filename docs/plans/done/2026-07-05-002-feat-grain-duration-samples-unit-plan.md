@@ -30,10 +30,10 @@ default resta `seconds`: nessun YAML esistente cambia comportamento.
 
 | Fase | File | Ruolo oggi |
 |---|---|---|
-| Schema | `src/parameters/parameter_schema.py:83` | `ParameterSpec(name='grain_duration', yaml_path='grain.duration', default=0.05, range_path='grain.duration_range', dephase_key='duration')` |
+| Schema | `src/parameters/parameter_schema.py:83` | `ParameterSpec(name='grain_duration', yaml_path='grain.duration', default=0.05, range_path='grain.duration_range', deviation_probability_key='duration')` |
 | Bounds | `src/parameters/parameter_definitions.py:87` | `min_val=0.001, max_val=10.0, max_range=1.0, default_jitter=0.01, variation_mode='additive'` |
 | Parsing | `src/parameters/parser.py` | `_parse_input` (scalare → float, lista/dict → Envelope con scaling X) poi `_validate_and_clip` sui bounds |
-| Creazione | `src/parameters/parameter_orchestrator.py` + `parameter_factory.py` | pipeline generica schema-driven (con gate dephase) |
+| Creazione | `src/parameters/parameter_orchestrator.py` + `parameter_factory.py` | pipeline generica schema-driven (con gate deviation_probability) |
 | Consumo | `src/core/stream.py:459,470` | `self.grain_duration.get_value(t)` → **secondi**, passati a `_create_grain` |
 | IR | `src/core/grain.py` | `Grain.duration: float` in secondi (frozen dataclass) |
 | Density | `src/strategies/strategie.py:134` | `density = fill_factor / grain_duration` |
@@ -135,7 +135,7 @@ Il fattore di scala scalare/envelope è la stessa logica di
 `envelopes/envelope.py`) e fare usare quello a entrambi (DRY, secondo
 micro-refactoring behavior-preserving del piano).
 
-Tutto il downstream (Parameter, gate dephase, Grain, density, renderer,
+Tutto il downstream (Parameter, gate deviation_probability, Grain, density, renderer,
 visualizer, export) continua a vedere **secondi**: un solo punto di
 conversione, nessuna unità che "perde" attraverso l'IR.
 
@@ -155,7 +155,7 @@ conversione, nessuna unità che "perde" attraverso l'IR.
   resta 10 s (= 480000 campioni a 48 kHz). `max_range` resta 1.0 s
   (= 48000 campioni).
 - Nota comportamentale (da documentare, non "fixare"): `default_jitter` resta
-  0.01 s — con dephase attivo senza range esplicito su grani ultra-corti il
+  0.01 s — con deviation_probability attivo senza range esplicito su grani ultra-corti il
   jitter implicito è enorme in proporzione e viene clampato al bound minimo.
   È il comportamento già osservabile oggi con grani da 1 ms, solo amplificato.
 
@@ -302,7 +302,7 @@ Nuovi (TDD, rosso→verde via `/tdd`, un vertical slice per step):
    unit pitch) con tre meccanismi simili ma non identici: il piano riduce il
    debito estraendo l'helper condiviso di Y-scaling, ma una futura
    unificazione "unit framework" resta fuori scope.
-6. **Jitter implicito dephase** (0.01 s) sproporzionato su grani corti:
+6. **Jitter implicito deviation_probability** (0.01 s) sproporzionato su grani corti:
    comportamento preesistente, documentato.
 
 ## Impatto cross-repo (regola `cross-repo-impact`)

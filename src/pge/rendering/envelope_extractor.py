@@ -148,7 +148,7 @@ def _curve_sources():
         if spec.name in _SCHEMA_EXCLUDED:
             continue
         sources.append(CurveSource(spec.name, _attr(spec.name), 'value'))
-        if spec.dephase_key:
+        if spec.deviation_probability_key:
             sources.append(
                 CurveSource(f'{spec.name}_prob', _attr(spec.name), 'probability'))
         if spec.range_path:
@@ -264,7 +264,7 @@ def get_stream_envelopes(stream, show_static=False, show_voice_offsets=False,
     Estrae tutti i parametri che sono Envelope dallo stream.
 
     Soluzione C: usa gli schema come single source of truth.
-    Suffisso "_prob" per le probabilita' dephase, "_range" per le deviazioni
+    Suffisso "_prob" per le probabilita' deviation_probability, "_range" per le deviazioni
     per-grano.
 
     Args:

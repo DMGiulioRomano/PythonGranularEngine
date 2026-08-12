@@ -45,7 +45,7 @@ class ParameterBounds:
 # SYSTEM CONSTANTS & DEFAULTS
 # =============================================================================
 
-# Probabilità di default (1%) usata quando dephase è attivo ma senza range espliciti.
+# Probabilità di default (1%) usata quando deviation_probability è attivo ma senza range espliciti.
 # Questo attiva il "Jitter Implicito" definito nei bounds dei parametri.
 DEFAULT_PROB = 1.0 
 
