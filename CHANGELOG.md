@@ -8,6 +8,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+---
+
+## [v7.0.0] — "Deviation Probability" — 2026-08-12
+
 ### Modificato (breaking)
 
 - **`dephase` → `deviation_probability`**: la chiave per-stream che governa la
