@@ -301,7 +301,7 @@ class TestCreateParameterWithGate:
             name='volume',
             yaml_path='volume',
             default=-6.0,
-            dephase_key='volume'
+            deviation_probability_key='volume'
         )
         yaml_data = {'volume': -12.0}
         
@@ -320,7 +320,7 @@ class TestCreateParameterWithGate:
             yaml_path='grain.duration',
             default=0.05,
             range_path='grain.duration_range',
-            dephase_key='duration'
+            deviation_probability_key='duration'
         )
         yaml_data = {'grain': {'duration': 0.05, 'duration_range': 0.1}}
 
@@ -444,9 +444,9 @@ class TestOrchestratorIntegration:
         
         schema = [
             ParameterSpec('volume', 'volume', -6.0, 
-                         range_path='volume_range', dephase_key='volume'),
+                         range_path='volume_range', deviation_probability_key='volume'),
             ParameterSpec('pan', 'pan', 0.0,
-                         dephase_key='pan')
+                         deviation_probability_key='pan')
         ]
         yaml_data = {
             'volume': -12.0,

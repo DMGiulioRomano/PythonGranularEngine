@@ -51,7 +51,7 @@ streams:
       semitones: 0
     pan: 0
     volume: -6
-    dephase:
+    deviation_probability:
       - - 0
         - 50
       - - 0.5
@@ -102,7 +102,7 @@ streams:
       semitones: 0
     pan: 0
     volume: -6
-    dephase: 30
+    deviation_probability: 30
   - stream_id: stream3
     onset: 30
     duration: 5
@@ -121,7 +121,7 @@ streams:
       semitones: 0
     pan: 0
     volume: -6
-    dephase:
+    deviation_probability:
       volume: 50
       pan: 30
       duration: 20

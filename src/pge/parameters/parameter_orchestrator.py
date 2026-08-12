@@ -1,7 +1,7 @@
 """
 
 parameter_orchestrator.py - Coordina GranularParser e GateFactory.
-Isola completamente la logica di dephase dal parsing dei parametri.
+Isola completamente la logica di deviation_probability dal parsing dei parametri.
 
 Divisione del lavoro:
 - parameter_schema.py: sa DOVE stanno i dati nel YAML (ParameterSpec + il
@@ -113,27 +113,27 @@ class ParameterOrchestrator:
         # 2. Crea il ProbabilityGate corrispondente, con RNG per-componente
         # (issue #154): i draw del gate non shiftano gli altri componenti.
         gate = GateFactory.create_gate(
-            dephase=self._config.dephase,
-            param_key=param_spec.dephase_key,
+            deviation_probability=self._config.deviation_probability,
+            param_key=param_spec.deviation_probability_key,
             default_prob=DEFAULT_PROB,
             has_explicit_range=has_explicit_range,
             range_always_active=self._config.range_always_active,
             duration=self._config.context.duration,
             time_mode=self._config.time_mode,
-            rng=self._gate_rng(param_spec.dephase_key),
+            rng=self._gate_rng(param_spec.deviation_probability_key),
         )
         # 3. Inietta il gate nel Parameter (modifica la classe Parameter)
         param.set_probability_gate(gate)
 
         return param
 
-    def _gate_rng(self, dephase_key: Optional[str]):
+    def _gate_rng(self, deviation_probability_key: Optional[str]):
         """RNG locale del gate, derivato da (seed, rng_id, gate:<key>) —
         rng_id è stream_id o, se dichiarato, il rng_group (issue #169)."""
         return component_rng(
             getattr(self._config, 'seed', None),
             self._config.context.rng_id,
-            f"gate:{dephase_key}",
+            f"gate:{deviation_probability_key}",
         )
     
     def create_pitch_parameter(
@@ -142,14 +142,14 @@ class ParameterOrchestrator:
         value_raw,
         range_raw,
         bounds,
-        dephase_key: str = 'pitch',
+        deviation_probability_key: str = 'pitch',
     ) -> Parameter:
         """
         Crea il Parameter del pitch con bounds dall'unità + ProbabilityGate.
 
         Il pitch è unit-driven: i bounds derivano dalla PitchUnit, non dallo
         schema. Replica la pipeline di create_parameter_with_gate (range +
-        dephase) ma con bounds espliciti.
+        deviation_probability) ma con bounds espliciti.
         """
         param = self._parser.parse_parameter(
             name=name,
@@ -158,14 +158,14 @@ class ParameterOrchestrator:
             bounds_override=bounds,
         )
         gate = GateFactory.create_gate(
-            dephase=self._config.dephase,
-            param_key=dephase_key,
+            deviation_probability=self._config.deviation_probability,
+            param_key=deviation_probability_key,
             default_prob=DEFAULT_PROB,
             has_explicit_range=param.has_explicit_range,
             range_always_active=self._config.range_always_active,
             duration=self._config.context.duration,
             time_mode=self._config.time_mode,
-            rng=self._gate_rng(dephase_key),
+            rng=self._gate_rng(deviation_probability_key),
         )
         param.set_probability_gate(gate)
         return param

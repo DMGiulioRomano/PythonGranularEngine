@@ -78,7 +78,7 @@ class MockParameter(_RealParameter):
         self.name = name
         self.bounds = bounds
         self.owner_id = owner_id
-        # Stato dephase: default = nessun range esplicito, gate chiuso.
+        # Stato deviation_probability: default = nessun range esplicito, gate chiuso.
         # Con NeverGate i test storici restano passthrough esatti
         # (nessun detune implicito, issue #95).
         self._mod_range = mod_range
@@ -1114,7 +1114,7 @@ class TestUnitPitchImplicitDetune:
     """
     Detune continuo ±implicit_detune_cents applicato da UnitPitchStrategy
     DOPO la quantizzazione EDO, solo se il param non ha range esplicito
-    e il gate dephase concede l'apply per il grano.
+    e il gate deviation_probability concede l'apply per il grano.
     """
 
     # semi-ampiezza ±EDO_IMPLICIT_DETUNE_CENTS -> banda moltiplicativa del ratio

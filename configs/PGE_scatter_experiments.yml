@@ -174,7 +174,7 @@ streams:
       pitch: {strategy: chord, chord: sus4}
       onset_offset: {strategy: linear, step: .3}
     pan: 80
-    dephase: 50
+    deviation_probability: 50
   # ===========================================================================
   # SEZIONE 2 — SCATTER FISSO, DISTRIBUTION COME ENVELOPE
   # ===========================================================================

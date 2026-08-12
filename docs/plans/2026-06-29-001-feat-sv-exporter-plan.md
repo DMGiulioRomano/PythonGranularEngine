@@ -45,7 +45,7 @@ dentro il motore, l'esportatore legge direttamente gli oggetti `Stream` →
 che serve: itera gli schema (`STREAM/POINTER/PITCH/DENSITY_PARAMETER_SCHEMA`),
 estrae gli `Envelope` da ogni `Parameter`, gestisce i casi speciali
 (pitch unit-driven, `num_voices`/`scatter`/`pointer_speed` per nome esplicito,
-`pointer_deviation`, deviazioni per-grano `_mod_range`, probabilità dephase
+`pointer_deviation`, deviazioni per-grano `_mod_range`, probabilità deviation_probability
 `_prob`, offset per-voce `__vN`). Il problema è che quella logica è **prigioniera
 di un metodo di istanza** che dipende da `self.config` e vive in un modulo che
 importa matplotlib: non riusabile da un secondo renderer senza trascinarsi
@@ -261,7 +261,7 @@ main.py
 ### Fase 0 — Refactor behavior-preserving (`envelope_extractor.py`)
 
 - **Test (caratterizzazione):** in `tests/rendering/` un test che, per un set
-  rappresentativo di stream (pitch unit-driven, num_voices/scatter, dephase,
+  rappresentativo di stream (pitch unit-driven, num_voices/scatter, deviation_probability,
   mod_range, pointer_deviation, voice offsets, static on/off, filtro), asserisce
   che `envelope_extractor.get_stream_envelopes(stream, ...)` ritorna **lo stesso
   dict** del precedente `ScoreVisualizer._get_stream_envelopes`. Prima

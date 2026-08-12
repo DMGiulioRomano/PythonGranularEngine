@@ -50,7 +50,7 @@ class Parameter:
     Sa calcolare il proprio valore al tempo T, gestendo automaticamente:
     1. Interpolazione Envelope (se presente)
     2. Variazione Stocastica usando VariationStrategy
-    3. Probabilità di attivazione (Dephase)
+    3. Probabilità di attivazione (DeviationProbability)
     4. Safety Clamping (rispetto ai Bounds)
         """
 
@@ -101,7 +101,7 @@ class Parameter:
 
     def variation_allowed(self, time: float) -> bool:
         """
-        Interroga il gate dephase senza applicare la variazione.
+        Interroga il gate deviation_probability senza applicare la variazione.
 
         Nota: sui gate stocastici ogni chiamata è un draw indipendente da
         quello interno a get_value(); nel path implicito EDO quel draw è
@@ -201,7 +201,7 @@ class Parameter:
 
     @property
     def probability_curve(self) -> ParameterCurve:
-        """Come varia nel tempo la probabilita' di dephase."""
+        """Come varia nel tempo la probabilita' di deviation_probability."""
         return ParameterCurve.from_gate(self._probability_gate)
 
     def __repr__(self):

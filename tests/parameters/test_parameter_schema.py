@@ -124,7 +124,7 @@ class TestParameterSpecConstruction:
         spec = ParameterSpec(name='x', yaml_path='x', default=1)
 
         assert spec.range_path is None
-        assert spec.dephase_key is None
+        assert spec.deviation_probability_key is None
         assert spec.is_smart is True
         assert spec.exclusive_group is None
         assert spec.group_priority == 99
@@ -136,7 +136,7 @@ class TestParameterSpecConstruction:
             yaml_path='volume',
             default=-6.0,
             range_path='volume_range',
-            dephase_key='volume',
+            deviation_probability_key='volume',
             is_smart=True,
             exclusive_group='output_mode',
             group_priority=1,
@@ -146,7 +146,7 @@ class TestParameterSpecConstruction:
         assert spec.yaml_path == 'volume'
         assert spec.default == -6.0
         assert spec.range_path == 'volume_range'
-        assert spec.dephase_key == 'volume'
+        assert spec.deviation_probability_key == 'volume'
         assert spec.is_smart is True
         assert spec.exclusive_group == 'output_mode'
         assert spec.group_priority == 1
@@ -246,7 +246,7 @@ class TestParameterSpecFieldDefinition:
         """I nomi dei campi sono quelli attesi."""
         expected = {
             'name', 'yaml_path', 'default', 'range_path',
-            'dephase_key', 'is_smart', 'exclusive_group', 'group_priority'
+            'deviation_probability_key', 'is_smart', 'exclusive_group', 'group_priority'
         }
         actual = {f.name for f in fields(ParameterSpec)}
         assert actual == expected
@@ -290,7 +290,7 @@ class TestStreamParameterSchema:
         assert spec.yaml_path == 'volume'
         assert spec.default == 0.0
         assert spec.range_path == 'volume_range'
-        assert spec.dephase_key == 'volume'
+        assert spec.deviation_probability_key == 'volume'
         assert spec.is_smart is True
 
     def test_pan_spec(self):
@@ -298,7 +298,7 @@ class TestStreamParameterSchema:
         assert spec.yaml_path == 'pan'
         assert spec.default == 0.0
         assert spec.range_path == 'pan_range'
-        assert spec.dephase_key == 'pan'
+        assert spec.deviation_probability_key == 'pan'
         assert spec.is_smart is True
 
     def test_grain_duration_spec(self):
@@ -306,7 +306,7 @@ class TestStreamParameterSchema:
         assert spec.yaml_path == 'grain.duration'
         assert spec.default == 0.05
         assert spec.range_path == 'grain.duration_range'
-        assert spec.dephase_key == 'duration'
+        assert spec.deviation_probability_key == 'duration'
         assert spec.is_smart is True
 
     def test_grain_envelope_is_raw(self):
@@ -320,7 +320,7 @@ class TestStreamParameterSchema:
         spec = next(s for s in STREAM_PARAMETER_SCHEMA if s.name == 'reverse')
         assert spec.yaml_path == 'grain.reverse'
         assert spec.default == 0
-        assert spec.dephase_key == 'reverse'
+        assert spec.deviation_probability_key == 'reverse'
 
     def test_no_exclusive_groups(self):
         """STREAM schema non ha gruppi esclusivi."""
@@ -366,10 +366,10 @@ class TestPointerParameterSchema:
         assert spec.is_smart is False
         assert spec.default == 0.0
 
-    def test_pointer_deviation_has_range_and_dephase(self):
+    def test_pointer_deviation_has_range_and_deviation_probability(self):
         spec = next(s for s in POINTER_PARAMETER_SCHEMA if s.name == 'pointer_deviation')
         assert spec.range_path == 'offset_range'
-        assert spec.dephase_key == 'pointer'
+        assert spec.deviation_probability_key == 'pointer'
         assert spec.default == 0.0
 
     def test_loop_bounds_exclusive_group(self):
@@ -829,19 +829,19 @@ class TestCrossSchemaInvariants:
                 assert isinstance(spec.yaml_path, str)
                 assert len(spec.yaml_path) > 0
 
-    def test_dephase_key_consistency(self):
+    def test_deviation_probability_key_consistency(self):
         """
-        Se un parametro ha dephase_key, deve essere is_smart=True
+        Se un parametro ha deviation_probability_key, deve essere is_smart=True
         (i parametri raw non possono avere probabilita').
-        Eccezione: grain_envelope che ha dephase_key ma is_smart=False
+        Eccezione: grain_envelope che ha deviation_probability_key ma is_smart=False
         (trattamento speciale per envelope categorico).
         """
         exceptions = {'grain_envelope'}
         for schema_list in ALL_SCHEMAS.values():
             for spec in schema_list:
-                if spec.dephase_key and spec.name not in exceptions:
+                if spec.deviation_probability_key and spec.name not in exceptions:
                     assert spec.is_smart is True, (
-                        f"'{spec.name}' ha dephase_key='{spec.dephase_key}' "
+                        f"'{spec.name}' ha deviation_probability_key='{spec.deviation_probability_key}' "
                         f"ma is_smart=False"
                     )
 

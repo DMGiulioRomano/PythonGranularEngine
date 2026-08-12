@@ -46,7 +46,7 @@ class UnitPitchStrategy(PitchStrategy):
         ratio(t) = unit.to_ratio(param.get_value(t))
 
     Detune implicito (issue #95): se l'unità dichiara implicit_detune_cents > 0,
-    il param non ha range esplicito e il gate dephase concede l'apply per il
+    il param non ha range esplicito e il gate deviation_probability concede l'apply per il
     grano, il ratio quantizzato viene moltiplicato per 2^(c/1200) con c uniforme
     continuo in ±implicit_detune_cents, poi richiuso nei bounds ratio dell'unità.
     Il detune opera sul ratio positivo: l'eventuale negazione reverse resta a

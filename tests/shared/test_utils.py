@@ -395,14 +395,14 @@ class TestUtilsIntegration:
     def test_get_nested_with_probability_dict(self):
         """get_nested usato per configurazioni probabilità."""
         config = {
-            'dephase': {
+            'deviation_probability': {
                 'enabled': True,
                 'probability': 80
             }
         }
         
-        enabled = get_nested(config, 'dephase.enabled', False)
-        prob = get_nested(config, 'dephase.probability', 100)
+        enabled = get_nested(config, 'deviation_probability.enabled', False)
+        prob = get_nested(config, 'deviation_probability.probability', 100)
         
         if enabled and random_percent(prob):
             assert True  # Logica applicata correttamente

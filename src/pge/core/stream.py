@@ -725,7 +725,7 @@ class Stream:
                 val = val.evaluate(elapsed_time)
             is_reverse_base = (val > 0.5) if val is not None else True
         
-        # FASE 2: Controlliamo se dobbiamo FLIPPARE (Dephase/Probabilità)
+        # FASE 2: Controlliamo se dobbiamo FLIPPARE (DeviationProbability/Probabilità)
         # Usiamo il metodo interno del parametro per vedere se il "dado" vince
         # Nota: Qui stiamo "rubando" la logica probabilistica all'oggetto Parameter
         should_flip = self.reverse._probability_gate.should_apply(elapsed_time)

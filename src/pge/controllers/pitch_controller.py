@@ -39,7 +39,7 @@ class PitchController:
 
     Responsabilità:
     1. Selezionare l'unità di misura dal blocco pitch.
-    2. Costruire il Parameter con i bounds dell'unità (+ range/dephase).
+    2. Costruire il Parameter con i bounds dell'unità (+ range/deviation_probability).
     3. Fornire `calculate(t)` che restituisce sempre un ratio.
     """
 
@@ -58,7 +58,7 @@ class PitchController:
             value_raw=value_raw,
             range_raw=params.get('range'),
             bounds=unit.value_bounds(),
-            dephase_key='pitch',
+            deviation_probability_key='pitch',
         )
         # RNG dedicato al detune implicito (issue #154, componente 'detune').
         # Identità = rng_id (issue #169): stream_id, o rng_group se condiviso.

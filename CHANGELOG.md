@@ -8,6 +8,44 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Modificato (breaking)
+
+- **`dephase` → `deviation_probability`**: la chiave per-stream che governa la
+  probabilità della deviazione per grano cambia nome, ovunque — chiave YAML,
+  dict per-parametro, messaggi di errore, API interne.
+
+  Il motivo è che `dephase` è esatto per un solo modo su cinque. In `IMPLICIT`
+  e in `GLOBAL` senza range espliciti il gate apre i `default_jitter` —
+  ampiezze minime, ed è davvero micromodulazione che rompe le correlazioni di
+  fase. In `SPECIFIC` con range esplicito (`offset_range: 0.35` fisso,
+  `deviation_probability.pointer` 0→100) i grani saltano su un terzo del
+  buffer: lì non si sfasa niente, è una mistura di grani fedeli e grani
+  lontani. Il parametro è una **probabilità**, quindi è scale-free; il vecchio
+  nome si impegnava su una sola scala. Esatto al micro, fuorviante al macro.
+
+  `deviation_probability` e non `deviation` perché la deviazione è l'ombrello
+  che si fattorizza in ampiezza (`_range`) × probabilità: se la probabilità si
+  chiamasse `deviation`, la fattorizzazione sparirebbe dal nome. Non `jitter`
+  perché nel PGE `jitter` nomina già l'ampiezza (`default_jitter`), e per
+  `reverse` il gate è probabilità di flip booleano, senza alcun range.
+
+  **Nessun alias di retrocompatibilità**: un YAML che dichiara `dephase` non
+  parsa più. La migrazione è una sostituzione testuale della chiave.
+
+  Rinominate di conseguenza le API interne: `DephaseMode` →
+  `DeviationProbabilityMode`, `GateFactory._classify_dephase` →
+  `_classify_deviation_probability`, `StreamConfig.dephase` →
+  `StreamConfig.deviation_probability`, `ParameterSpec.dephase_key` →
+  `ParameterSpec.deviation_probability_key`, parametro `dephase=` di
+  `GateFactory.create_gate` → `deviation_probability=`.
+
+  `VARIATION_SEMANTICS_VERSION` **non** è bumpata: è una rinomina pura, i
+  valori prodotti non cambiano e un bump forzerebbe un re-render completo
+  senza motivo. Le etichette del seeding dei gate restano `gate:<param_key>`
+  (`pitch`, `pointer`, …), che non contenevano il vecchio nome.
+
+  Reference: `docs/reference/yaml.md`.
+
 ### Aggiunto
 
 - **La densità reale arriva sulla partitura.** `fill_factor` da solo non dice

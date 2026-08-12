@@ -10,8 +10,8 @@ from enum import Enum
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.shared.exceptions import InvalidParameterError
 
-class DephaseMode(Enum):
-    """Stati semantici di dephase."""
+class DeviationProbabilityMode(Enum):
+    """Stati semantici di deviation_probability."""
     DISABLED = "disabled"      # False - solo range espliciti
     IMPLICIT = "implicit"      # None - usa IMPLICIT_JITTER_PROB
     GLOBAL = "global"          # numero - probabilità globale
@@ -34,27 +34,27 @@ class GateFactory:
         return Envelope.is_envelope_like(obj)
 
     @staticmethod
-    def _classify_dephase(dephase) -> DephaseMode:
-        if dephase is False:
-            return DephaseMode.DISABLED
-        elif dephase is None:
-            return DephaseMode.IMPLICIT
-        elif isinstance(dephase, (int, float)):
-            return DephaseMode.GLOBAL
-        elif GateFactory._is_envelope_like(dephase):
-            return DephaseMode.GLOBAL_ENV  # <-- NUOVO
-        elif isinstance(dephase, dict):
-            return DephaseMode.SPECIFIC
+    def _classify_deviation_probability(deviation_probability) -> DeviationProbabilityMode:
+        if deviation_probability is False:
+            return DeviationProbabilityMode.DISABLED
+        elif deviation_probability is None:
+            return DeviationProbabilityMode.IMPLICIT
+        elif isinstance(deviation_probability, (int, float)):
+            return DeviationProbabilityMode.GLOBAL
+        elif GateFactory._is_envelope_like(deviation_probability):
+            return DeviationProbabilityMode.GLOBAL_ENV  # <-- NUOVO
+        elif isinstance(deviation_probability, dict):
+            return DeviationProbabilityMode.SPECIFIC
         else:
             raise InvalidParameterError(
-                param_name="dephase",
-                value=dephase,
+                param_name="deviation_probability",
+                value=deviation_probability,
                 hint="atteso bool, numero (0-100), envelope, o dict per chiave",
             )
 
     @staticmethod
     def create_gate(
-        dephase: Optional[Union[dict, bool, int, float]] = False,
+        deviation_probability: Optional[Union[dict, bool, int, float]] = False,
         param_key: Optional[str] = None,
         default_prob: float = 0.0,
         has_explicit_range: bool = False,
@@ -70,27 +70,27 @@ class GateFactory:
         if has_explicit_range and range_always_active is None:
             return AlwaysGate()
         # Classifica lo stato
-        mode = GateFactory._classify_dephase(dephase)
+        mode = GateFactory._classify_deviation_probability(deviation_probability)
         # Logica basata sullo stato
-        if mode == DephaseMode.DISABLED:
+        if mode == DeviationProbabilityMode.DISABLED:
             return GateFactory._range_only_gate(has_explicit_range)
-        elif mode == DephaseMode.IMPLICIT:
+        elif mode == DeviationProbabilityMode.IMPLICIT:
             return GateFactory._create_probability_gate(default_prob, rng)
-        elif mode == DephaseMode.GLOBAL:
-            return GateFactory._create_probability_gate(float(dephase), rng)
-        elif mode == DephaseMode.GLOBAL_ENV:
+        elif mode == DeviationProbabilityMode.GLOBAL:
+            return GateFactory._create_probability_gate(float(deviation_probability), rng)
+        elif mode == DeviationProbabilityMode.GLOBAL_ENV:
             # Crea Envelope dai dati grezzi
-            envelope = create_scaled_envelope(dephase, duration, time_mode)
+            envelope = create_scaled_envelope(deviation_probability, duration, time_mode)
             return EnvelopeGate(envelope, rng=rng)
-        elif mode == DephaseMode.SPECIFIC:
-            # Chiave assente o null: il parametro non è dephased esplicitamente e
-            # segue la semantica range-only (come dephase:false). Il range
+        elif mode == DeviationProbabilityMode.SPECIFIC:
+            # Chiave assente o null: il parametro non ha probabilità dichiarata e
+            # segue la semantica range-only (come deviation_probability:false). Il range
             # esplicito, se presente, resta sempre attivo; senza range nessuna
             # variazione. Così in per-param si riduce la probabilità solo sui
             # parametri dichiarati, gli altri mantengono il range a piena
             # applicazione senza jitter implicito a sorpresa.
-            if param_key in dephase:
-                raw_value = dephase[param_key]
+            if param_key in deviation_probability:
+                raw_value = deviation_probability[param_key]
                 if raw_value is None:
                     return GateFactory._range_only_gate(has_explicit_range)
                 elif GateFactory._is_envelope_like(raw_value):
@@ -105,9 +105,9 @@ class GateFactory:
 
     @staticmethod
     def _range_only_gate(has_explicit_range: bool) -> ProbabilityGate:
-        """Semantica 'range-only' (come dephase:false / DephaseMode.DISABLED).
+        """Semantica 'range-only' (come deviation_probability:false / DeviationProbabilityMode.DISABLED).
 
-        Il parametro non viene dephased: se ha un range esplicito lo applica
+        Il parametro non riceve probabilità: se ha un range esplicito lo applica
         sempre (AlwaysGate), altrimenti nessuna variazione (NeverGate). Riusata
         in modalità SPECIFIC per le chiavi assenti o null, così i parametri non
         dichiarati nel dict per-param mantengono il loro range a piena
@@ -151,14 +151,14 @@ class GateFactory:
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.error(
-                    f"Envelope dephase invalido: {raw_value}. "
+                    f"Envelope deviation_probability invalido: {raw_value}. "
                     f"Errore: {e}. Usando AlwaysGate (probabilità 100%) come fallback."
                 )
                 return AlwaysGate()
         
         # Tipo completamente sbagliato
         raise InvalidParameterError(
-            param_name="dephase",
+            param_name="deviation_probability",
             value=raw_value,
             hint="atteso numero (0-100), lista [[t,v],...], o dict envelope",
         )

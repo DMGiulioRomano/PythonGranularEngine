@@ -11,7 +11,7 @@ niente", non "statisticamente equivalente": gli stessi identici float.
 
 Il test congela i grani prodotti da uno YAML che esercita tutti i `_range` che
 passano da `Parameter` (volume, pan, grain.duration, pointer.offset_range,
-pitch.range) piu' il jitter implicito sotto dephase, con `distribution_mode:
+pitch.range) piu' il jitter implicito sotto deviation_probability, con `distribution_mode:
 uniform` e seed fisso. Il digest e' stato calcolato PRIMA dell'introduzione di
 `range_anchor` ed e' il riferimento immutabile.
 
@@ -42,9 +42,9 @@ from pge.engine.generator import Generator
 def _golden_yaml():
     """YAML che esercita ogni `_range` che passa da Parameter.
 
-    - stream `explicit`: tutti i range dichiarati esplicitamente, dephase off
+    - stream `explicit`: tutti i range dichiarati esplicitamente, deviation_probability off
       (con `range_always_active` i range espliciti valgono al 100% dei grani).
-    - stream `implicit`: nessun range dichiarato + dephase attivo, cioe' il
+    - stream `implicit`: nessun range dichiarato + deviation_probability attivo, cioe' il
       path del jitter implicito (`ParameterBounds.default_jitter`) e del detune
       implicito EDO.
     """
@@ -74,7 +74,7 @@ def _golden_yaml():
                 'sample': 'test.wav',
                 'density': 12,
                 'distribution_mode': 'uniform',
-                'dephase': True,
+                'deviation_probability': True,
                 'volume': -6.0,
                 'pan': 0.0,
                 'grain': {'duration': 0.05},

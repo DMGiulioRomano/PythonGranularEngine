@@ -5,7 +5,7 @@
 #
 # Cosa fa la feature:
 #   pitch su unità EDO (semitones/cents/quarter_tone/eighth_tone/edo:N) messo
-#   sotto `dephase` SENZA `range` esplicito → ogni grano selezionato dal gate
+#   sotto `deviation_probability` SENZA `range` esplicito → ogni grano selezionato dal gate
 #   riceve un micro-detune continuo uniforme in ±12 cents, applicato in
 #   ratio-space DOPO la quantizzazione di griglia.
 #
@@ -28,7 +28,7 @@ bpm: 120
 
 streams:
 
-  # --- 1. CONTROLLO SECCO — nessun dephase, nessun detune ----------------------
+  # --- 1. CONTROLLO SECCO — nessun deviation_probability, nessun detune ----------------------
   # Riferimento: +7 semitoni puliti, pitch fermo. Nessuno shimmer.
   - stream_id: "1_controllo_secco"
     onset: 0
@@ -43,9 +43,9 @@ streams:
       semitones: 7
     volume: -6
 
-  # --- 2. FEATURE dephase 50% — metà grani detunati ----------------------------
+  # --- 2. FEATURE deviation_probability 50% — metà grani detunati ----------------------------
   # Stesso +7 st, ma 50% dei grani prende ±12c continuo. Shimmer intermittente.
-  - stream_id: "2_detune_dephase_50"
+  - stream_id: "2_detune_deviation_probability_50"
     onset: 10
     duration: 8
     sample: 001-0-27_9.wav
@@ -56,13 +56,13 @@ streams:
     grain: {duration: 0.1, envelope: hanning}
     pitch:
       semitones: 7            # nessun range → scatta il detune implicito
-    dephase:
+    deviation_probability:
       pitch: 50
     volume: -6
 
-  # --- 3. FEATURE dephase 100% — TUTTI i grani detunati ------------------------
+  # --- 3. FEATURE deviation_probability 100% — TUTTI i grani detunati ------------------------
   # Caso più udibile: chorus/battimenti continui attorno a +7 st.
-  - stream_id: "3_detune_dephase_100"
+  - stream_id: "3_detune_deviation_probability_100"
     onset: 20
     duration: 8
     sample: 001-0-27_9.wav
@@ -73,13 +73,13 @@ streams:
     grain: {duration: 0.1, envelope: hanning}
     pitch:
       semitones: 7
-    dephase:
+    deviation_probability:
       pitch: 100
     volume: -6
 
   # --- 4. CONTROPROVA range:0 — il detune NON deve scattare --------------------
   # range esplicito (anche 0) disabilita il detune implicito. Deve suonare
-  # IDENTICO allo stream 1 (pitch fermo), nonostante dephase 100.
+  # IDENTICO allo stream 1 (pitch fermo), nonostante deviation_probability 100.
   - stream_id: "4_range_zero_no_detune"
     onset: 30
     duration: 8
@@ -92,7 +92,7 @@ streams:
     pitch:
       semitones: 7
       range: 0               # esplicito → niente detune implicito
-    dephase:
+    deviation_probability:
       pitch: 100
     volume: -6
 
@@ -112,7 +112,7 @@ streams:
     pitch:
       semitones: 7
       range: 1               # ±1 semitono a salti interi
-    dephase:
+    deviation_probability:
       pitch: 100
     volume: -6
 
@@ -130,7 +130,7 @@ streams:
     grain: {duration: 0.1, envelope: hanning}
     pitch:
       ratio: 1.498           # ~quinta giusta, no range
-    dephase:
+    deviation_probability:
       pitch: 100
     volume: -6
 
@@ -148,12 +148,12 @@ streams:
     pitch:
       edo: 31
       value: 18              # 18 gradi di 31-EDO, no range → detune ±12c
-    dephase:
+    deviation_probability:
       pitch: 100
     volume: -6
 
   # --- 8. cents — unità EDO a 1200 divisioni -----------------------------------
-  # +700 cents (= +7 st) sotto dephase 100, no range → ±12c. Confronto diretto
+  # +700 cents (= +7 st) sotto deviation_probability 100, no range → ±12c. Confronto diretto
   # con lo stream 3 (stesso pitch effettivo, unità diversa, stesso detune).
   - stream_id: "8_cents_detune"
     onset: 70
@@ -166,6 +166,6 @@ streams:
     grain: {duration: 0.1, envelope: hanning}
     pitch:
       cents: 700
-    dephase:
+    deviation_probability:
       pitch: 100
     volume: -6

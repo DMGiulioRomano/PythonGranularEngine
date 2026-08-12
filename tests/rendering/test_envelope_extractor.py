@@ -468,8 +468,8 @@ class TestValueAndRangeCoexist:
         assert 'pan_range' not in env
 
 
-class TestDephaseGateEnvelopeCollection:
-    """issue #96 - il dephase oggi e' un ProbabilityGate in
+class TestDeviationProbabilityGateEnvelopeCollection:
+    """issue #96 - il deviation_probability oggi e' un ProbabilityGate in
     Parameter._probability_gate, non piu' in _mod_prob (codice morto). Va letto
     dal gate sotto la chiave `{spec.name}_prob`. Qui via `volume` (stream-level)."""
 
@@ -513,7 +513,7 @@ class TestDephaseGateEnvelopeCollection:
 
 class TestPointerDeviationEnvelopeCollection:
     """issue #96 - pointer_deviation vive in stream._pointer.deviation
-    (PointerController), con offset_range in _mod_range e dephase in
+    (PointerController), con offset_range in _mod_range e deviation_probability in
     _probability_gate; Stream.pointer_deviation lo espone.
 
     Il suo valore base e' un dummy 0 che non si disegna: l'informazione sta nel
@@ -552,18 +552,18 @@ class TestPointerDeviationEnvelopeCollection:
         s = self._stream(mod_range=0.4)
         assert 'pointer_deviation' in get_stream_envelopes(s, show_static=True)
 
-    def test_dephase_envelope_gate_collected(self):
+    def test_deviation_probability_envelope_gate_collected(self):
         from pge.envelopes.envelope import Envelope
         from pge.shared.probability_gate import EnvelopeGate
         s = self._stream(gate=EnvelopeGate(Envelope([[0, 0.0], [10, 100.0]])))
         assert 'pointer_deviation_prob' in get_stream_envelopes(s)
 
-    def test_dephase_random_gate_collected_with_show_static(self):
+    def test_deviation_probability_random_gate_collected_with_show_static(self):
         from pge.shared.probability_gate import RandomGate
         s = self._stream(gate=RandomGate(50.0))
         assert 'pointer_deviation_prob' in get_stream_envelopes(s, show_static=True)
 
-    def test_dephase_never_gate_not_collected(self):
+    def test_deviation_probability_never_gate_not_collected(self):
         s = self._stream()  # default NeverGate
         assert 'pointer_deviation_prob' not in get_stream_envelopes(s, show_static=True)
 
@@ -785,7 +785,7 @@ class TestRawSourcesHaveOnlyAValue:
     `grain_envelope` e' dichiarata `is_smart=False`, quindi lo Stream la espone
     grezza; di solito e' una stringa e non e' leggibile come curva. Ma un
     numero lo sarebbe, e senza la guardia la riga `grain_envelope_prob` —
-    che esiste perche' la spec ha un `dephase_key` — pubblicherebbe come
+    che esiste perche' la spec ha un `deviation_probability_key` — pubblicherebbe come
     probabilita' il valore base. Sarebbe per giunta una chiave fuori da
     ENVELOPE_COLORS, cioe' fuori dall'universo dei nomi plottabili.
     """
@@ -848,7 +848,7 @@ class TestPublishedSurfaceResolves:
                 density=[[0, 5], [2.0, 20]],
                 volume=-6, volume_range=3,
                 pan=0, pan_range=20,
-                dephase=10,
+                deviation_probability=10,
                 scatter=0.2,
                 pitch={'semitones': [[0, 0], [2.0, 12]]},
                 pointer={'start': 0.0, 'speed_ratio': 1.0,

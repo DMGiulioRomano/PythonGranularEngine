@@ -620,13 +620,13 @@ class TestProbabilityGateIntegration:
         assert gate.get_probability_value(0.0) == 75.0
     
     def test_gate_selection_pattern_zero(self):
-        """Pattern: selezione NeverGate quando dephase=0."""
+        """Pattern: selezione NeverGate quando deviation_probability=0."""
         gate = NeverGate()
         assert isinstance(gate, NeverGate)
         assert gate.get_probability_value(0.0) == 0.0
     
     def test_gate_selection_pattern_hundred(self):
-        """Pattern: selezione AlwaysGate quando dephase=100."""
+        """Pattern: selezione AlwaysGate quando deviation_probability=100."""
         gate = AlwaysGate()
         assert isinstance(gate, AlwaysGate)
         assert gate.get_probability_value(0.0) == 100.0

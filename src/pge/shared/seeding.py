@@ -69,7 +69,7 @@ def component_rng(seed, stream_id: str, component: str):
     """Restituisce l'RNG locale per (seed, stream_id, component) — issue #154.
 
     Componenti in uso: il nome del Parameter (es. `grain_duration`,
-    `pitch_semitones`), `gate:<dephase_key>` per i probability gate, `iot`
+    `pitch_semitones`), `gate:<deviation_probability_key>` per i probability gate, `iot`
     (distribuzione Truax async), `window` (selezione finestra), `detune`
     (detune implicito EDO). Componenti distinti → stream RNG indipendenti.
 

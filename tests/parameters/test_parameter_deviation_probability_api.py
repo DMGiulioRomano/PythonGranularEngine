@@ -1,10 +1,10 @@
-# tests/parameters/test_parameter_dephase_api.py
+# tests/parameters/test_parameter_deviation_probability_api.py
 """
 Test dell'API pubblica di Parameter usata dal detune implicito (issue #95):
 
 - has_explicit_range: True se l'utente ha dichiarato `range` nello YAML
   (mod_range non None), False se il param usa il jitter implicito.
-- variation_allowed(time): interroga il gate dephase senza applicare
+- variation_allowed(time): interroga il gate deviation_probability senza applicare
   la variazione — usata da UnitPitchStrategy per il detune per-grano.
 """
 

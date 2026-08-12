@@ -13,7 +13,7 @@ Coverage:
   3. Compensazione grain_reverse
   4. Properties (mode, range)
   5. Integrazione Envelope
-  6. range + dephase (uniforme per tutte le unità, edo incluso)
+  6. range + deviation_probability (uniforme per tutte le unità, edo incluso)
   7. Edge cases e clamping ai bounds
   8. base_value della strategy
   9. __repr__
@@ -302,7 +302,7 @@ class TestEnvelopeIntegration:
 
 
 # =============================================================================
-# GRUPPO 9: RANGE + DEPHASE UNIFORME (anche edo)
+# GRUPPO 9: RANGE + DEVIATION_PROBABILITY UNIFORME (anche edo)
 # =============================================================================
 
 class TestRangeUniform:

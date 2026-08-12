@@ -205,7 +205,7 @@ def test_materialize_ratio_non_positive_amount_is_identity(amount):
 # Il detune NON vive in default_jitter (value-space quantizzato: sub-grado
 # arrotonda a 0, un grado intero è una trasposizione enorme). È una costante
 # in cents (semi-ampiezza ±N) applicata da UnitPitchStrategy in ratio-space,
-# solo nel path dephase senza range esplicito.
+# solo nel path deviation_probability senza range esplicito.
 
 @pytest.mark.parametrize("divisions", [12, 24, 48, 1200, 31])
 def test_edo_implicit_detune_matches_constant(divisions):

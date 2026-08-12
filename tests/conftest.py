@@ -37,7 +37,7 @@ def mock_config():
     # un Mock figlio invece del default: le stringhe di configurazione vanno
     # valorizzate a mano o arrivano validate come Mock.
     config.range_anchor = 'center'
-    config.dephase = False
+    config.deviation_probability = False
     config.range_always_active = False
     # issue #154: seed None → fallback legacy sul random globale
     config.seed = None

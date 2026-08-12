@@ -84,7 +84,7 @@ class GranularParser:
             name: Nome del parametro (deve esistere in parameter_definitions.py).
             value_raw: Valore base dal YAML (numero, lista breakpoints, dict envelope).
             range_raw: Valore range/randomness dal YAML (opzionale).
-            prob_raw: Valore probabilità/dephase dal YAML (opzionale).
+            prob_raw: Valore probabilità/deviation_probability dal YAML (opzionale).
             bounds_override: ParameterBounds espliciti. Se forniti, bypassano il
                 Registry — usati per parametri con bounds dinamici (es. pitch,
                 i cui bounds derivano dall'unità di misura, non dal nome).

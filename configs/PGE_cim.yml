@@ -45,7 +45,7 @@ streams:
       pan:
         spread: [[0, 60], [0.12144, 55.55], [0.27153, 155.27], [0.57069, 60]]
         strategy: stochastic
-    dephase: [[0, 100], [0.4047, 100], [1, 1]]
+    deviation_probability: [[0, 100], [0.4047, 100], [1, 1]]
   - stream_id: stream2
     onset: 0
     duration: 63.998
@@ -62,7 +62,7 @@ streams:
       speed_ratio: 1
     pan: 0
     volume: 0
-    dephase: [[0, 1], [0.4847, 100], [1, 1]]
+    deviation_probability: [[0, 1], [0.4847, 100], [1, 1]]
   - stream_id: stream3
     onset: 0
     duration: 124.72
@@ -136,7 +136,7 @@ streams:
         strategy: stochastic
         unit: cents
     solo: true
-    dephase: false
+    deviation_probability: false
   - stream_id: stream4
     onset: 614.374
     duration: 5
@@ -188,7 +188,7 @@ streams:
       pan:
         spread: 30
         strategy: range
-    dephase:
+    deviation_probability:
       volume: [[0, 100], [1, 0]]
       reverse: [[0.00034, 0], [0.87608, 100], [1, 100]]
       duration: [[0, 50], [0.43371, 99.51], [0.64578, 100], [1, 50]]
