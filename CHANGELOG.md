@@ -8,6 +8,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+---
+
+## [v7.1.0] — "Sample Duration" — 2026-08-14
+
 ### Aggiunto
 
 - **`duration` opzionale nello stream: senza dichiarazione vale la durata del
