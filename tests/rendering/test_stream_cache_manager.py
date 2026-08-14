@@ -328,6 +328,41 @@ class TestFingerprintImplicitDuration:
 
         assert isinstance(fp, str) and len(fp) == 64
 
+    def test_is_dirty_computes_the_fingerprint_once(self, cache_path, tmp_path):
+        """Il fingerprint di uno stream senza `duration` legge l'header del
+        sample: calcolarlo due volte per ogni is_dirty raddoppia l'I/O senza
+        cambiare la risposta."""
+        d = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        mgr = self._manager(cache_path, tmp_path)
+        mgr.update_after_build([d])
+
+        calls = []
+        real = mgr.compute_fingerprint
+
+        def counting(stream_dict):
+            calls.append(stream_dict)
+            return real(stream_dict)
+
+        mgr.compute_fingerprint = counting
+        mgr.is_dirty(d, aif_path=None)
+
+        assert len(calls) == 1
+
+    def test_null_duration_counts_as_absent(self, cache_path, tmp_path):
+        """`duration: null` e' la chiave assente anche per il fingerprint:
+        stessa regola di resolve_stream_duration, o il motore userebbe la
+        durata del sample mentre l'hash non la registra."""
+        implicit = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+        explicit_null = {**implicit, 'duration': None}
+
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        before = self._manager(cache_path, tmp_path).compute_fingerprint(explicit_null)
+        self._write_wav(tmp_path, 'tono.wav', 5.0)
+        after = self._manager(cache_path, tmp_path).compute_fingerprint(explicit_null)
+
+        assert before != after
+
     def test_without_samples_dir_the_fingerprint_still_works(self, manager):
         """Manager costruito senza samples_dir (cache disattiva sul path di
         default): nessuna risoluzione, nessun crash."""

@@ -185,7 +185,7 @@ class StreamCacheManager:
         if stream_id not in manifest:
             return True
 
-        if manifest[stream_id] != self.compute_fingerprint(stream_dict):
+        if manifest[stream_id] != current_fp:
             return True
 
         if aif_path is not None and not os.path.exists(aif_path):
