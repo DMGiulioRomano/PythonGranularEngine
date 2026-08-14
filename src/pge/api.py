@@ -127,12 +127,19 @@ def _with_trailing_sep(samples_dir):
     return samples_dir
 
 
-def _make_cache_manager(cache_manifest_path: Optional[str]):
-    """StreamCacheManager sul manifest esplicito; None = cache disattiva."""
+def _make_cache_manager(cache_manifest_path: Optional[str],
+                        samples_dir: Optional[str] = None):
+    """StreamCacheManager sul manifest esplicito; None = cache disattiva.
+
+    `samples_dir` serve al fingerprint degli stream senza `duration` (#205),
+    che risolve la durata dal file audio: senza, la risoluzione userebbe
+    PATHSAMPLES anche quando i sample stanno altrove.
+    """
     if cache_manifest_path is None:
         return None
     from pge.rendering.stream_cache_manager import StreamCacheManager
-    return StreamCacheManager(cache_path=cache_manifest_path)
+    return StreamCacheManager(cache_path=cache_manifest_path,
+                              samples_dir=samples_dir)
 
 
 def build_renderer(
@@ -178,7 +185,7 @@ def build_renderer(
             window_registry=window_reg,
             table_map=table_map,
             output_sr=output_sr,
-            cache_manager=_make_cache_manager(cache_manifest_path),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
             stream_data_map=generator.stream_data_map,
             audio_format=audio_format,
             jobs=jobs,
@@ -209,7 +216,7 @@ def build_renderer(
             'csound',
             score_writer=generator.score_writer,
             csound_config=csound_config,
-            cache_manager=_make_cache_manager(cache_manifest_path),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
             stream_data_map=generator.stream_data_map,
             sco_dir=opts.sco_dir,
         )

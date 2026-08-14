@@ -254,6 +254,125 @@ class TestFingerprintIgnoresMuteSolo:
         assert manager.is_dirty(toggled, aif_path=aif) is False
 
 
+class TestFingerprintImplicitDuration:
+    """Con `duration` omessa (issue #205) la lunghezza dello stem viene dal file
+    audio, che il fingerprint non osserva: sostituire il sample con uno di
+    durata diversa, a YAML fermo, lascerebbe montato uno stem lungo un'altra
+    cosa. Entra nell'hash la durata risolta del sample — non il suo contenuto,
+    che resta fuori come e' sempre stato."""
+
+    @staticmethod
+    def _write_wav(directory, name, seconds):
+        import numpy as np
+        import soundfile as sf
+        sf.write(str(directory / name),
+                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+
+    def _manager(self, cache_path, samples_dir):
+        return StreamCacheManager(cache_path=cache_path, samples_dir=str(samples_dir))
+
+    def test_sample_length_change_marks_the_stem_dirty(self, cache_path, tmp_path):
+        d = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        before = self._manager(cache_path, tmp_path).compute_fingerprint(d)
+
+        # stesso YAML, altro file audio sotto lo stesso nome
+        self._write_wav(tmp_path, 'tono.wav', 5.0)
+        after = self._manager(cache_path, tmp_path).compute_fingerprint(d)
+
+        assert before != after
+
+    def test_same_sample_length_keeps_the_fingerprint(self, cache_path, tmp_path):
+        d = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        mgr = self._manager(cache_path, tmp_path)
+
+        assert mgr.compute_fingerprint(d) == mgr.compute_fingerprint(d)
+
+    def test_explicit_duration_ignores_the_sample_length(self, cache_path, tmp_path):
+        """Con `duration` dichiarata la durata del sample non c'entra nulla:
+        cambiarla non deve marcare dirty uno stem che suona identico."""
+        d = {'stream_id': 's1', 'onset': 0.0, 'duration': 3.0, 'sample': 'tono.wav'}
+
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        before = self._manager(cache_path, tmp_path).compute_fingerprint(d)
+        self._write_wav(tmp_path, 'tono.wav', 5.0)
+        after = self._manager(cache_path, tmp_path).compute_fingerprint(d)
+
+        assert before == after
+
+    def test_explicit_duration_payload_is_unchanged(self, cache_path, tmp_path):
+        """Il payload di uno stream con `duration` esplicita e' identico a
+        quello di prima di #205: qualunque variazione invaliderebbe la cache di
+        ogni stem gia' renderizzato."""
+        import hashlib
+        d = {'stream_id': 's1', 'onset': 0.0, 'duration': 3.0, 'sample': 'tono.wav'}
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+
+        legacy_payload = {
+            'semantics': scm.VARIATION_SEMANTICS_VERSION,
+            'stream': d,
+        }
+        legacy = hashlib.sha256(
+            json.dumps(legacy_payload, sort_keys=True).encode('utf-8')).hexdigest()
+
+        assert self._manager(cache_path, tmp_path).compute_fingerprint(d) == legacy
+
+    def test_unresolvable_sample_does_not_raise(self, cache_path, tmp_path):
+        """Un sample introvabile non deve far esplodere il fingerprint: il
+        render fallira' da solo, con il suo errore, piu' avanti."""
+        d = {'stream_id': 's1', 'onset': 0.0, 'sample': 'inesistente.wav'}
+
+        fp = self._manager(cache_path, tmp_path).compute_fingerprint(d)
+
+        assert isinstance(fp, str) and len(fp) == 64
+
+    def test_is_dirty_computes_the_fingerprint_once(self, cache_path, tmp_path):
+        """Il fingerprint di uno stream senza `duration` legge l'header del
+        sample: calcolarlo due volte per ogni is_dirty raddoppia l'I/O senza
+        cambiare la risposta."""
+        d = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        mgr = self._manager(cache_path, tmp_path)
+        mgr.update_after_build([d])
+
+        calls = []
+        real = mgr.compute_fingerprint
+
+        def counting(stream_dict):
+            calls.append(stream_dict)
+            return real(stream_dict)
+
+        mgr.compute_fingerprint = counting
+        mgr.is_dirty(d, aif_path=None)
+
+        assert len(calls) == 1
+
+    def test_null_duration_counts_as_absent(self, cache_path, tmp_path):
+        """`duration: null` e' la chiave assente anche per il fingerprint:
+        stessa regola di resolve_stream_duration, o il motore userebbe la
+        durata del sample mentre l'hash non la registra."""
+        implicit = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+        explicit_null = {**implicit, 'duration': None}
+
+        self._write_wav(tmp_path, 'tono.wav', 2.0)
+        before = self._manager(cache_path, tmp_path).compute_fingerprint(explicit_null)
+        self._write_wav(tmp_path, 'tono.wav', 5.0)
+        after = self._manager(cache_path, tmp_path).compute_fingerprint(explicit_null)
+
+        assert before != after
+
+    def test_without_samples_dir_the_fingerprint_still_works(self, manager):
+        """Manager costruito senza samples_dir (cache disattiva sul path di
+        default): nessuna risoluzione, nessun crash."""
+        d = {'stream_id': 's1', 'onset': 0.0, 'sample': 'tono.wav'}
+
+        fp = manager.compute_fingerprint(d)
+
+        assert isinstance(fp, str) and len(fp) == 64
+
+
 # =============================================================================
 # 2. CACHE PERSISTENCE
 # =============================================================================

@@ -7,6 +7,37 @@ from typing import Optional, Union
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.shared.distribution_strategy import ANCHOR_CENTER
 
+
+def stream_duration_is_implicit(yaml_data: dict) -> bool:
+    """True quando lo stream non dichiara una durata propria (issue #205).
+
+    `is None` (non la truthiness, non `setdefault`) copre sia la chiave assente
+    sia `duration: null` esplicito, e lascia fuori `duration: 0`, che e' una
+    dichiarazione degenere ma pur sempre una dichiarazione.
+
+    Predicato condiviso, non solo dettaglio di resolve_stream_duration: lo usa
+    anche il fingerprint della cache (rendering/stream_cache_manager.py), che
+    deve registrare la durata del sample esattamente sugli stream su cui il
+    motore la eredita. Se le due letture divergessero, uno stream la cui durata
+    dipende dal file audio resterebbe clean al cambiare del file.
+    """
+    return yaml_data.get('duration') is None
+
+
+def resolve_stream_duration(yaml_data: dict, sample_dur_sec: float) -> float:
+    """Durata dello stream: quella dichiarata, o la durata del sample (issue #205).
+
+    A riposo lo stream risintetizza il sample, quindi l'unica durata non
+    arbitraria e' quella del file: `duration` e' un override compositivo.
+
+    Punto unico di risoluzione: la usano sia StreamContext.from_yaml sia
+    Stream._init_stream_context, che scrivono la stessa durata su due oggetti.
+    """
+    if stream_duration_is_implicit(yaml_data):
+        return sample_dur_sec
+    return yaml_data['duration']
+
+
 @dataclass(frozen=True)
 class StreamContext:
     stream_id: str
@@ -60,6 +91,11 @@ class StreamContext:
                 if name in yaml_data and yaml_data[name] is not None
             }
         kwargs['sample_dur_sec'] = sample_dur_sec
+        # duration assente o null -> durata del sample (issue #205). Risolta
+        # prima di cls(**kwargs): il dataclass non puo' avere un default,
+        # e' dichiarato prima di sample/sample_dur_sec che ne resterebbero
+        # obbligati ad averne uno.
+        kwargs['duration'] = resolve_stream_duration(kwargs, sample_dur_sec)
         return cls(**kwargs)
 
 

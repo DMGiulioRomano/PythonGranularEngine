@@ -171,7 +171,7 @@ class TestBuildRendererCache:
             api_mocks['api'].build_renderer(
                 'numpy', gen, cache_manifest_path='cache/x.json')
 
-        scm_cls.assert_called_once_with(cache_path='cache/x.json')
+        scm_cls.assert_called_once_with(cache_path='cache/x.json', samples_dir=None)
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['cache_manager'] is scm_instance
         assert capsys.readouterr().out == ''
@@ -185,10 +185,28 @@ class TestBuildRendererCache:
             api_mocks['api'].build_renderer(
                 'csound', gen, cache_manifest_path='cache/y.json')
 
-        scm_cls.assert_called_once_with(cache_path='cache/y.json')
+        scm_cls.assert_called_once_with(cache_path='cache/y.json', samples_dir=None)
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['cache_manager'] is scm_instance
         assert capsys.readouterr().out == ''
+
+
+    def test_samples_dir_reaches_the_cache_manager(self, api_mocks):
+        """Il fingerprint di uno stream senza `duration` (#205) risolve la
+        durata dal file audio: senza samples_dir cercherebbe in PATHSAMPLES
+        anche quando i sample stanno altrove, e la risoluzione fallirebbe in
+        silenzio."""
+        scm_mod, scm_cls, _ = _make_scm_module()
+        gen = api_mocks['generator_instance']
+
+        with patch.dict(sys.modules,
+                        {'pge.rendering.stream_cache_manager': scm_mod}):
+            api_mocks['api'].build_renderer(
+                'csound', gen, cache_manifest_path='cache/y.json',
+                samples_dir='/media/wavs')
+
+        scm_cls.assert_called_once_with(cache_path='cache/y.json',
+                                        samples_dir='/media/wavs')
 
 
 class TestBuildRendererUnknownType:
