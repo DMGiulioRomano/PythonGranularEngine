@@ -41,12 +41,30 @@ streams:
       duration_range: 0.01
 """
 
+# Manca `onset`. `duration` e' opzionale (issue #205): ometterla non e' un
+# errore, quindi qui il campo mancante e' uno solo -> messaggio singolare.
 YAML_MISSING_CONTEXT = """\
 composition:
   title: "test missing context"
 streams:
   - stream_id: "stream_no_ctx"
     sample: "pino.wav"
+    distribution_mode: 'gaussian'
+    density: 5
+    distribution: [[0,1],[1,1]]
+    pointer:
+      speed_ratio: 1.0
+    grain:
+      duration: 0.05
+      duration_range: 0.01
+"""
+
+# Mancano `stream_id` e `onset`: due campi obbligatori -> messaggio plurale.
+YAML_MISSING_TWO_CONTEXT = """\
+composition:
+  title: "test missing two context fields"
+streams:
+  - sample: "pino.wav"
     distribution_mode: 'gaussian'
     density: 5
     distribution: [[0,1],[1,1]]
@@ -245,11 +263,27 @@ def test_e2e_missing_context_fields(tmp_path, cleanup_log):
     cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
     _assert_clean_user_output(result)
-    assert "Campi obbligatori mancanti" in result.stdout
-    assert "'duration'" in result.stdout
+    assert "Campo obbligatorio mancante" in result.stdout
     assert "'onset'" in result.stdout
+    # duration omessa non e' un errore (issue #205): non deve comparire
+    # fra i campi mancanti.
+    assert "'duration'" not in result.stdout
     assert "stream_no_ctx" in result.stdout
-    _assert_log_contains(yaml_abs, "MissingFieldError", ["duration", "onset"])
+    _assert_log_contains(yaml_abs, "MissingFieldError", ["onset"])
+
+
+@pytest.mark.e2e
+def test_e2e_missing_two_context_fields(tmp_path, cleanup_log):
+    """Con piu' campi mancanti il messaggio e' plurale e li elenca tutti."""
+    yaml_abs = _write_yaml(tmp_path, '02b_missing_two_context.yml',
+                           YAML_MISSING_TWO_CONTEXT)
+    cleanup_log.append(_log_path_for(yaml_abs))
+    result = _run(yaml_abs)
+    _assert_clean_user_output(result)
+    assert "Campi obbligatori mancanti" in result.stdout
+    assert "'onset'" in result.stdout
+    assert "'stream_id'" in result.stdout
+    _assert_log_contains(yaml_abs, "MissingFieldError", ["onset", "stream_id"])
 
 
 @pytest.mark.e2e
