@@ -8,6 +8,35 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`duration` opzionale nello stream: senza dichiarazione vale la durata del
+  sample.** A riposo lo stream risintetizza il file audio, quindi l'unica
+  durata non arbitraria è quella del file: ogni altro valore è una scelta
+  compositiva, e le scelte compositive stanno meglio come override espliciti.
+  Le condizioni di esistenza di uno stream passano da quattro a tre —
+  `stream_id`, `onset`, `sample`. `onset` resta obbligatorio: la posizione in
+  timeline non è deducibile da nulla.
+
+  La risoluzione vive in un punto solo, `resolve_stream_duration` in
+  `core/stream_config.py`, perché i siti che scrivono la durata sono due e
+  devono dire la stessa cosa: `StreamContext.from_yaml` (che la risolve prima
+  di costruire il dataclass — `duration` è dichiarato prima di `sample` e
+  `sample_dur_sec`, quindi un default lì costringerebbe anche loro ad averne
+  uno) e `Stream._init_stream_context`, che assegnava `self.duration`
+  iterando sui campi obbligatori e senza la stessa regola lascerebbe
+  l'attributo inesistente fino all'AttributeError alla prima generazione di
+  grani.
+
+  Il default scatta su `is None`, non sulla truthiness: `duration: null` vale
+  come chiave assente, mentre `duration: 0` resta zero e produce uno stream
+  senza grani invece di ereditare silenziosamente la lunghezza del sample.
+  Con `time_mode: normalized` l'asse `0.0`–`1.0` è mappato sulla durata
+  risolta, quindi senza `duration` copre l'intero sample.
+
+  Nessuno YAML valido cambia comportamento: se `duration` c'è, vince come
+  prima. Cambia solo il verdetto su input che prima erano rifiutati.
+
 ---
 
 ## [v7.0.0] — "Deviation Probability" — 2026-08-12

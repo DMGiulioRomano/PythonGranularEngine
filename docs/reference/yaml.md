@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: dd43e1e
+last_synced_commit: 0e23016
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -204,9 +204,42 @@ Qualsiasi parametro numerico accetta le seguenti forme:
 streams:
   - stream_id: "nome_univoco"   # stringa identificativa
     onset: 0.0                  # tempo di inizio in secondi (assoluto)
-    duration: 30.0              # durata dello stream in secondi
     sample: "file.wav"          # nome file (cercato in Media/)
 ```
+
+Le condizioni di esistenza di uno stream sono tre. `onset` resta obbligatorio:
+la posizione in timeline non è deducibile da nulla.
+
+### `duration` opzionale
+
+`duration` è un campo **opzionale**: se assente vale la durata del file audio
+dichiarato in `sample`.
+
+```yaml
+streams:
+  - stream_id: "risintesi"      # dura quanto il sample
+    onset: 0.0
+    sample: "file.wav"
+
+  - stream_id: "scelta"         # override compositivo esplicito
+    onset: 0.0
+    duration: 30.0
+    sample: "file.wav"
+```
+
+A riposo lo stream risintetizza il sample, quindi l'unica durata non arbitraria
+è quella del file: ogni altro valore è una scelta compositiva, e le scelte
+compositive stanno bene come override espliciti.
+
+| Dichiarazione | Durata dello stream |
+|---------------|---------------------|
+| chiave assente | durata del sample |
+| `duration: null` | durata del sample (come chiave assente) |
+| `duration: 30.0` | 30.0 s (l'esplicito vince sempre) |
+| `duration: 0` | 0 s — nessun grano generato, il default **non** scatta |
+
+Con `time_mode: normalized` l'asse `0.0`–`1.0` degli envelope è mappato sulla
+durata risolta: senza `duration`, copre l'intero sample.
 
 ---
 
