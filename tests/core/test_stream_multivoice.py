@@ -113,6 +113,9 @@ def _make_stream(
     s.volume = _make_mock_parameter(-6.0, 'volume')
     s.pan = _make_mock_parameter(pan_value, 'pan')
     s.reverse = _make_mock_parameter(0, 'reverse')
+    # I due membri del gruppo esclusivo 'grain_direction' esistono sempre
+    # entrambi come attributi: l'orchestratore mette a None il non selezionato.
+    s.read_direction = None
     s.grain_envelope = 'hanning'
 
     s._pointer = _make_mock_pointer(pointer_pos, s.sample_dur_sec)

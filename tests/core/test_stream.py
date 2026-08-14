@@ -168,6 +168,10 @@ def stream_factory():
         s.volume = _make_mock_parameter(volume_value, 'volume')
         s.pan = _make_mock_parameter(pan_value, 'pan')
         s.reverse = _make_mock_parameter(0, 'reverse')
+        # I due membri del gruppo esclusivo 'grain_direction' esistono sempre
+        # entrambi come attributi: l'orchestratore mette a None il non
+        # selezionato (issue #207).
+        s.read_direction = None
         s.grain_envelope = 'hanning'
 
         # Reverse mode
@@ -919,14 +923,37 @@ class TestCalculateGrainReverse:
         assert result is False
 
     def test_forced_mode_always_reverse(self, stream_factory):
-        """Mode True con valore > 0.5 -> reverse."""
+        """Mode True (chiave presente e vuota) -> sempre reverse."""
         s = stream_factory(reverse_mode=True)
-        s.reverse._value = 1.0
         s.reverse._probability_gate.should_apply.return_value = False
 
         result = s._calculate_grain_reverse(0.0)
 
         assert result is True
+
+    def test_forced_mode_ignora_il_valore_del_parametro(self, stream_factory):
+        """Il verso base del ramo forzato non dipende da `reverse._value`.
+
+        Non e' una scelta ma una constatazione: `_init_grain_reverse` accetta
+        `grain.reverse` solo vuota, quindi in questo ramo il valore e' sempre
+        None. Leggerlo — e gestirne il caso Envelope — era codice morto
+        (issue #207), rimosso insieme al ramo.
+        """
+        s = stream_factory(reverse_mode=True)
+        s.reverse._probability_gate.should_apply.return_value = False
+
+        for valore in (None, 0.0, 1.0, Mock()):
+            s.reverse._value = valore
+            assert s._calculate_grain_reverse(0.0) is True
+
+    def test_un_envelope_su_grain_reverse_e_irraggiungibile(self, stream_factory):
+        """La controprova alla fonte: nessuno YAML puo' portare un Envelope
+        dentro `reverse._value`, perche' la chiave non accetta valori."""
+        s = object.__new__(Stream)
+        s.stream_id = 'test_stream'
+
+        with pytest.raises(ValueError, match="grain.reverse"):
+            s._init_grain_reverse({'grain': {'reverse': [[0, 0], [1, 1]]}})
 
     def test_flip_with_gate_auto_mode(self, stream_factory):
         """Gate aperto in auto mode flippa il risultato."""
@@ -948,33 +975,6 @@ class TestCalculateGrainReverse:
         result = s._calculate_grain_reverse(0.0)
 
         # Backward (True) flippato -> False
-        assert result is False
-
-    def test_forced_mode_with_envelope(self, stream_factory):
-        """Mode True con Envelope come _value."""
-        s = stream_factory(reverse_mode=True)
-
-        mock_env = Mock()
-        mock_env.evaluate.return_value = 0.8  # > 0.5 -> True base
-        s.reverse._value = mock_env
-        s.reverse._probability_gate.should_apply.return_value = False
-
-        result = s._calculate_grain_reverse(5.0)
-
-        mock_env.evaluate.assert_called_once_with(5.0)
-        assert result is True
-
-    def test_forced_mode_envelope_below_threshold(self, stream_factory):
-        """Envelope < 0.5 in forced mode -> not reverse."""
-        s = stream_factory(reverse_mode=True)
-
-        mock_env = Mock()
-        mock_env.evaluate.return_value = 0.2  # < 0.5 -> False base
-        s.reverse._value = mock_env
-        s.reverse._probability_gate.should_apply.return_value = False
-
-        result = s._calculate_grain_reverse(5.0)
-
         assert result is False
 
 
