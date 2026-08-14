@@ -1,0 +1,216 @@
+"""
+test_read_direction.py
+
+Validazione e normalizzazione del valore grezzo di `grain.read_direction`
+(issue #207).
+
+La chiave dichiara il verso di lettura INTERNO al grano: due stati, -1
+(indietro) e +1 (avanti). Da questa natura discendono le due regole che il
+modulo fa rispettare, entrambe come errore esplicito e mai come correzione
+silenziosa:
+
+1. l'interpolazione e' `step`, implicita e obbligatoria — dichiarare `linear`
+   o `cubic` (dict, per-punto o BP group) e' errore;
+2. i valori dichiarati stanno in {-1, +1} — 0 non ha un segno, 0.3 non e' un
+   verso.
+
+Organizzazione:
+1. Scalari
+2. Envelope in forma di lista di breakpoint
+3. Interpolazione: step implicito, step esplicito, tutto il resto errore
+4. Dominio dei valori
+5. Forme composte (compatto, BP group, per-punto, dict)
+"""
+
+import pytest
+
+from pge.parameters.read_direction import (
+    READ_DIRECTION_FIELD,
+    READ_DIRECTION_VALUES,
+    normalize_read_direction,
+)
+from pge.shared.exceptions import InvalidFieldValueError
+
+
+# =============================================================================
+# 1. SCALARI
+# =============================================================================
+
+class TestScalari:
+    """Uno scalare resta uno scalare: niente envelope da costruire."""
+
+    @pytest.mark.parametrize("value", [1, 1.0, -1, -1.0])
+    def test_valori_ammessi(self, value):
+        assert normalize_read_direction(value) == float(value)
+
+    def test_restituisce_float(self):
+        assert isinstance(normalize_read_direction(1), float)
+
+    def test_chiave_vuota_e_errore(self):
+        """`read_direction:` senza valore non e' una dichiarazione di verso."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(None)
+        assert exc.value.field == READ_DIRECTION_FIELD
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_booleani_rifiutati(self, value):
+        """`true` non e' +1: la chiave non e' un flag."""
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction(value)
+
+    def test_stringa_rifiutata(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction('avanti')
+
+
+# =============================================================================
+# 2. ENVELOPE COME LISTA DI BREAKPOINT
+# =============================================================================
+
+class TestListaDiBreakpoint:
+    """La forma normale: una spezzata qualsiasi, il gradino lo impone la chiave."""
+
+    def test_lista_normalizzata_in_dict_step(self):
+        raw = [[0, 1], [12, -1], [20, 1]]
+        assert normalize_read_direction(raw) == {'type': 'step', 'points': raw}
+
+    def test_punti_preservati(self):
+        raw = [[0, -1], [5, 1]]
+        assert normalize_read_direction(raw)['points'] == raw
+
+    def test_lista_vuota_rifiutata(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([])
+
+
+# =============================================================================
+# 3. INTERPOLAZIONE
+# =============================================================================
+
+class TestInterpolazione:
+    """`step` e' la natura della chiave: implicito, e l'unico ammesso."""
+
+    def test_step_implicito_sulla_lista_nuda(self):
+        assert normalize_read_direction([[0, 1], [3, -1]])['type'] == 'step'
+
+    def test_step_esplicito_e_ridondanza_accettata(self):
+        raw = {'type': 'step', 'points': [[0, 1], [3, -1]]}
+        assert normalize_read_direction(raw) == raw
+
+    def test_dict_senza_type_riceve_step(self):
+        out = normalize_read_direction({'points': [[0, 1], [3, -1]]})
+        assert out['type'] == 'step'
+
+    def test_dict_preserva_le_altre_chiavi(self):
+        """time_unit governa la scala dei tempi: non va persa nella normalizzazione."""
+        raw = {'points': [[0, 1], [1, -1]], 'time_unit': 'normalized'}
+        assert normalize_read_direction(raw)['time_unit'] == 'normalized'
+
+    @pytest.mark.parametrize("interp", ['linear', 'cubic'])
+    def test_dict_con_interp_diverso_da_step_e_errore(self, interp):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction({'type': interp, 'points': [[0, 1], [3, -1]]})
+        assert exc.value.field == READ_DIRECTION_FIELD
+
+    @pytest.mark.parametrize("interp", ['linear', 'cubic'])
+    def test_per_punto_con_interp_diverso_da_step_e_errore(self, interp):
+        """Tag per-punto (issue #54): [t, v, type]."""
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[0, 1, interp], [3, -1]])
+
+    def test_per_punto_step_accettato(self):
+        raw = [[0, 1, 'step'], [3, -1]]
+        assert normalize_read_direction(raw)['points'] == raw
+
+    @pytest.mark.parametrize("interp", ['linear', 'cubic'])
+    def test_bp_group_con_interp_diverso_da_step_e_errore(self, interp):
+        """BP group (issue #64): [points, interp]."""
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[[0, 1], [3, -1]], interp])
+
+    def test_bp_group_step_accettato(self):
+        raw = [[[0, 1], [3, -1]], 'step']
+        assert normalize_read_direction(raw) == {'type': 'step', 'points': raw}
+
+    @pytest.mark.parametrize("interp", ['linear', 'cubic'])
+    def test_compatto_con_interp_diverso_da_step_e_errore(self, interp):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[[0, 1], [50, -1]], 4.0, 2, interp])
+
+    def test_compatto_step_accettato(self):
+        raw = [[[0, 1], [50, -1]], 4.0, 2, 'step']
+        assert normalize_read_direction(raw) == {'type': 'step', 'points': raw}
+
+    def test_compatto_senza_interp_accettato(self):
+        raw = [[[0, 1], [50, -1]], 4.0, 2]
+        assert normalize_read_direction(raw) == {'type': 'step', 'points': raw}
+
+    def test_hint_spiega_il_perche(self):
+        """Il messaggio dice PERCHE', non solo COSA: due stati, non una rampa."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction({'type': 'linear', 'points': [[0, 1], [3, -1]]})
+        hint = exc.value.hint.lower()
+        assert 'step' in hint
+        assert 'due stati' in hint
+
+    def test_errore_nomina_l_interp_trovato(self):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction({'type': 'cubic', 'points': [[0, 1], [3, -1]]})
+        assert exc.value.value == 'cubic'
+
+
+# =============================================================================
+# 4. DOMINIO DEI VALORI
+# =============================================================================
+
+class TestDominio:
+    """Con `step` imposto l'envelope emette solo i valori scritti: si validano
+    quelli, invece di arrotondarli al segno."""
+
+    def test_valori_ammessi_sono_due(self):
+        assert set(READ_DIRECTION_VALUES) == {-1.0, 1.0}
+
+    @pytest.mark.parametrize("value", [0, 0.5, -0.3, 2, -2])
+    def test_scalare_fuori_dominio_e_errore(self, value):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(value)
+        assert exc.value.field == READ_DIRECTION_FIELD
+
+    def test_zero_e_errore_esplicito(self):
+        """0 non ha un segno: non c'e' risposta non arbitraria."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(0)
+        assert '0' in exc.value.hint or 'segno' in exc.value.hint.lower()
+
+    @pytest.mark.parametrize("value", [0, 0.5, 3])
+    def test_breakpoint_fuori_dominio_e_errore(self, value):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[0, 1], [3, value]])
+
+    def test_breakpoint_fuori_dominio_nel_gruppo(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[[0, 1], [3, 0]], 'step'])
+
+    def test_breakpoint_fuori_dominio_nel_compatto(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[[0, 1], [50, 0.5]], 4.0, 2])
+
+    def test_end_time_e_n_reps_non_sono_valori(self):
+        """Nel formato compatto solo i pattern points portano il verso."""
+        raw = [[[0, 1], [50, -1]], 4.0, 2]
+        assert normalize_read_direction(raw)['points'] is raw
+
+
+# =============================================================================
+# 5. FORME NON RICONOSCIUTE
+# =============================================================================
+
+class TestFormeNonRiconosciute:
+
+    def test_dict_senza_points(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'type': 'step'})
+
+    def test_elemento_non_breakpoint(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction([[0, 1], 'cycle'])
