@@ -57,10 +57,29 @@ class StreamCacheManager:
 
     Args:
         cache_path: path del file manifest JSON su disco
+        samples_dir: directory dei sample audio, usata solo per risolvere la
+            durata di uno stream che non dichiara `duration` (issue #205).
+            None -> fallback su PATHSAMPLES, come nel resto del motore.
     """
 
-    def __init__(self, cache_path: str):
+    def __init__(self, cache_path: str, samples_dir: Optional[str] = None):
         self.cache_path = cache_path
+        self.samples_dir = samples_dir
+
+    def _sample_dur_sec(self, sample) -> Optional[float]:
+        """Durata del sample, o None se non risolvibile.
+
+        Non solleva: un sample introvabile fara' fallire il render con il suo
+        errore, e non e' compito del fingerprint anticiparlo — qui produrrebbe
+        solo un crash prima del messaggio giusto.
+        """
+        if not isinstance(sample, str) or not sample:
+            return None
+        from pge.shared.utils import get_sample_duration
+        try:
+            return get_sample_duration(sample, base_path=self.samples_dir)
+        except Exception:
+            return None
 
     # =========================================================================
     # FINGERPRINT
@@ -94,6 +113,20 @@ class StreamCacheManager:
             'semantics': VARIATION_SEMANTICS_VERSION,
             'stream': filtered,
         }
+        # `duration` omessa (issue #205): la lunghezza dello stem viene dal file
+        # audio, e il contenuto del file non e' mai stato nell'hash. Entra qui la
+        # sola durata risolta — l'unica dipendenza che il default introduce —
+        # cosi' sostituire il sample con uno piu' lungo non lascia montato uno
+        # stem della lunghezza vecchia. Il contenuto resta fuori: hashare i
+        # campioni costerebbe quanto rirenderizzare.
+        #
+        # La chiave si aggiunge SOLO quando `duration` manca: uno stream che la
+        # dichiara produce il payload identico a prima, quindi nessuno stem gia'
+        # renderizzato viene invalidato da questa modifica.
+        if stream_dict.get('duration') is None:
+            sample_dur = self._sample_dur_sec(stream_dict.get('sample'))
+            if sample_dur is not None:
+                payload['sample_dur_sec'] = sample_dur
         serialized = json.dumps(payload, sort_keys=True)
         return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
 
