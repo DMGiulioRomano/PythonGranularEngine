@@ -1,7 +1,7 @@
 ---
 title: "feat(yaml): grain.read_direction — il verso di lettura del grano diventa dichiarativo"
 type: feature
-status: active
+status: done
 date: 2026-08-14
 issue: 207
 ---
