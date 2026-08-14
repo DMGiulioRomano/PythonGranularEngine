@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: 0e23016
+last_synced_commit: 6d4bd0b
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -37,7 +37,9 @@ Sezioni rilevanti in questo doc:
 - [Seed (Riproducibilità)](#seed-riproducibilità) — render NumPy riproducibili;
   `rng_group` per condividere la sequenza fra stream
 - [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
-- [Campi Obbligatori di Stream](#campi-obbligatori-di-stream)
+- [Campi Obbligatori di Stream](#campi-obbligatori-di-stream) — `stream_id`, `onset`, `sample`
+- [Durata dello Stream](#durata-dello-stream-duration-opzionale) — `duration` opzionale,
+  assente = durata del sample
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
 - [La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor) —
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`)
@@ -208,9 +210,12 @@ streams:
 ```
 
 Le condizioni di esistenza di uno stream sono tre. `onset` resta obbligatorio:
-la posizione in timeline non è deducibile da nulla.
+la posizione in timeline non è deducibile da nulla. Per `duration`, che
+obbligatoria non è, vedi [Durata dello Stream](#durata-dello-stream-duration-opzionale).
 
-### `duration` opzionale
+---
+
+## Durata dello Stream (`duration` opzionale)
 
 `duration` è un campo **opzionale**: se assente vale la durata del file audio
 dichiarato in `sample`.
