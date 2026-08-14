@@ -8,6 +8,52 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`grain.read_direction`: il verso di lettura del grano diventa
+  dichiarativo.** Dominio `[-1, +1]` — `-1` legge all'indietro, `+1` in avanti
+  — scalare o envelope, indipendente dal segno di `pointer.speed_ratio`. Il
+  caso più ovvio (testina che percorre il buffer all'indietro, grani letti in
+  avanti) si otteneva saturando un gate stocastico a 100; ora si scrive.
+
+  L'interpolazione è `step`, ma non come opzione: è la natura della chiave.
+  L'envelope si scrive come una spezzata qualsiasi e il gradino lo impone la
+  chiave (`type: step` esplicito è ridondanza accettata); qualunque altro
+  interp — `linear`, `cubic`, in forma dict, per-punto o BP group — solleva
+  `InvalidFieldValueError` invece di essere accettato o corretto in silenzio.
+  Il verso ha due stati, non una rampa fra i due. Per la stessa ragione i
+  valori dichiarati devono stare in `{-1, +1}`: con `step` imposto l'envelope
+  emette solo i valori scritti ai breakpoint, quindi arrotondare al segno
+  significherebbe renderizzare una cosa diversa da quella scritta, e lo `0`
+  non ha un segno.
+
+  `grain.reverse` **resta identica**: nessun breaking change, e con entrambe le
+  chiavi assenti il comportamento è l'attuale modalità `auto` (il verso segue
+  `pointer.speed_ratio`). Le due chiavi insieme sono un **errore esplicito** e
+  non una priorità come in `loop_end`/`loop_dur`: governano la stessa grandezza
+  con semantiche opposte, e sceglierne una in silenzio nasconderebbe l'errore
+  invece di segnalarlo.
+
+  Il verso stocastico ha una chiave propria, `deviation_probability.read_direction`,
+  come ogni altro parametro dello schema: probabilità per-grano di ribaltare il
+  verso dichiarato. `deviation_probability.reverse` resta legata a
+  `grain.reverse` e non tocca la chiave nuova, così un vecchio `reverse: 100`
+  rimasto nello YAML non ribalta in silenzio un verso appena scritto. Il
+  default è quindi deterministico, che era il punto.
+
+  Nuovo `variation_mode='negate'` (`NegateVariation`): su un dominio con segno
+  il flip per-grano è un cambio di segno, mentre `'invert'` (`1 - base`)
+  produrrebbe `2` e `0`. Con il flip dentro il `Parameter`, il verso del grano
+  si legge in una riga — `read_direction.get_value(t) < 0` — e il ramo morto
+  che gestiva un `Envelope` su `grain.reverse` (irraggiungibile: la chiave non
+  accetta valori) è stato rimosso.
+
+  La map non cambia: il verso della testa del grano è già disegnato dal solo
+  segno di `pitch_ratio`, e il colore usa `abs(pitch_ratio)`. Il blocco `pitch`
+  non è toccato: resta interfaccia per la sola altezza percepita, con bounds
+  positivi per costruzione. Le curve `read_direction` e `read_direction_prob`
+  sono registrate fra gli envelope plottabili (`--plot-envelopes`, export SV).
+
 ---
 
 ## [v7.1.0] — "Sample Duration" — 2026-08-14
