@@ -258,6 +258,9 @@ LEGEND_SHORT_NAMES = {
     'fill_factor': 'fill',
     # Override compatto: 'grain dur rng' (13) sforerebbe la colonna (issue #141)
     'grain_duration_range': 'gr dur rng',
+    # 'read direction' (14) sforerebbe; con l'abbreviazione anche la curva di
+    # probabilita' resta in colonna ('read dir %', issue #207).
+    'read_direction': 'read dir',
 }
 
 

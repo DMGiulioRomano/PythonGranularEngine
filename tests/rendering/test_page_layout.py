@@ -307,3 +307,9 @@ class TestLegendDisplayName:
         """'grain_duration_range' avrebbe 'grain dur rng' (13 caratteri), che
         sfora: un override esplicito ha la precedenza sulla regola."""
         assert legend_display_name('grain_duration_range') == 'gr dur rng'
+
+    def test_read_direction_abbreviated(self):
+        """'read direction' (14) sfora la colonna; l'override vale anche per
+        la curva di probabilita', che eredita il nome accorciato."""
+        assert legend_display_name('read_direction') == 'read dir'
+        assert legend_display_name('read_direction_prob') == 'read dir %'

@@ -29,10 +29,24 @@ class QuantizedVariation(VariationStrategy):
         return base
 
 class InvertVariation(VariationStrategy):
-    def apply(self, base: float, mod_range: float, 
+    def apply(self, base: float, mod_range: float,
               distribution: DistributionStrategy) -> float:
         return 1.0 - base
-    
+
+
+class NegateVariation(VariationStrategy):
+    """Flip su un dominio con segno: cambia il segno, non il modulo.
+
+    Usata da `grain.read_direction` (issue #207), che vive su -1/+1.
+    `InvertVariation` non e' riusabile li': `1 - base` produrrebbe 2 e 0,
+    cioe' due valori che non sono un verso.
+    """
+
+    def apply(self, base: float, mod_range: float,
+              distribution: DistributionStrategy) -> float:
+        return -base
+
+
 class ChoiceVariation(VariationStrategy):
     """
     Selezione casuale da lista discreta.

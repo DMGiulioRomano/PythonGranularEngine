@@ -101,6 +101,18 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         variation_mode='invert'  # <--- NOTA: (Boolean Flip)
     ),
 
+    # Verso di lettura interno al grano (issue #207): -1 indietro, +1 avanti.
+    # Alternativa dichiarativa a 'reverse', in exclusive group con essa.
+    # variation_mode='negate' perche' il dominio ha segno: il flip per-grano
+    # e' un cambio di segno, non il `1 - base` di 'invert'.
+    'read_direction': ParameterBounds(
+        min_val=-1,
+        max_val=1,
+        min_range=0,
+        max_range=0,
+        variation_mode='negate'
+    ),
+
     'grain_envelope': ParameterBounds(
         min_val=0,      # Non usato per choice
         max_val=0,      # Non usato per choice

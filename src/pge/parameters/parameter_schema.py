@@ -95,15 +95,47 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
         is_smart=False
     ),    
     # =========================================================================
-    # REVERSE (caso speciale: variation_mode='invert')
+    # VERSO DI LETTURA DEL GRANO (gruppo esclusivo 'grain_direction')
     # =========================================================================
+    # Due chiavi per la stessa grandezza, con semantiche opposte:
+    # - 'reverse' (storica): presente-e-vuota = sempre indietro, assente =
+    #   'auto' (segue il segno di pointer.speed_ratio). Due stati, non
+    #   esprimibile nel tempo.
+    # - 'read_direction' (issue #207): -1 indietro / +1 avanti, scalare o
+    #   envelope, indipendente dal segno della velocita' della testina.
+    #
+    # Entrambe presenti e' un ERRORE, sollevato da Stream._init_grain_reverse
+    # prima che l'orchestratore arrivi qui: divergenza voluta dal precedente
+    # loop_end/loop_dur, che risolve per priorita'. Le due chiavi dicono cose
+    # opposte e una priorita' silenziosa nasconderebbe l'errore dell'utente
+    # invece di segnalarlo. Il gruppo serve a garantire che esattamente UNO dei
+    # due Parameter esista (l'altro e' None), cosi' il discriminante a valle e'
+    # `stream.read_direction is not None`; il suo tie-break per priorita' resta
+    # irraggiungibile, per costruzione.
     ParameterSpec(
         name='reverse',
         yaml_path='grain.reverse',
         default=0,  # 0 = forward, 1 = reverse
-        deviation_probability_key='reverse'
+        deviation_probability_key='reverse',
+        exclusive_group='grain_direction',
+        # Priorita' piu' alta + default non-None: con entrambe le chiavi
+        # assenti vince 'reverse', cioe' il comportamento 'auto' di sempre.
+        group_priority=1
         # Nota: 'reverse' usa variation_mode='invert', quindi
         # il deviation_probability_key controlla la PROBABILITÀ di flip, non un range
+    ),
+    ParameterSpec(
+        name='read_direction',
+        yaml_path='grain.read_direction',
+        default=None,  # None = chiave non dichiarata
+        # Chiave deviation_probability propria: il verso stocastico si dichiara
+        # dove si dichiara il verso. 'reverse' resta legata alla sua chiave,
+        # quindi un vecchio `deviation_probability: {reverse: N}` non ribalta
+        # in silenzio un read_direction appena scritto.
+        deviation_probability_key='read_direction',
+        exclusive_group='grain_direction',
+        group_priority=2
+        # Nota: usa variation_mode='negate' (dominio con segno), non 'invert'.
     ),
 ]
 
