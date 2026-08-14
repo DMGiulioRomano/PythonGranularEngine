@@ -34,7 +34,7 @@ from pge.shared.exceptions import (
 )
 from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
-from pge.core.stream_config import StreamConfig, StreamContext
+from pge.core.stream_config import StreamConfig, StreamContext, resolve_stream_duration
 from pge.controllers.voice_manager import VoiceManager, VoiceConfig
 from pge.parameters.pitch_unit import make_pitch_unit
 from pge.strategies.voice_pitch_strategy import VoicePitchStrategyFactory, SEMITONE_LOCKED
@@ -169,11 +169,16 @@ class Stream:
 
     @staticmethod
     def _required_context_fields() -> set:
-        """Campi StreamContext che il YAML deve fornire: quelli senza default
-        (sample_dur_sec escluso: derivato dal file audio, mai dal YAML)."""
+        """Campi StreamContext che il YAML deve fornire: quelli senza default.
+
+        Esclusi, pur non avendo un default nel dataclass:
+        - sample_dur_sec: derivato dal file audio, mai dal YAML;
+        - duration: se assente vale la durata del sample (issue #205), risolta
+          da resolve_stream_duration invece che pretesa dallo YAML.
+        """
         return {
             field.name for field in fields(StreamContext)
-            if field.name != 'sample_dur_sec'
+            if field.name not in ('sample_dur_sec', 'duration')
             and field.default is dataclass_MISSING
             and field.default_factory is dataclass_MISSING
         }
@@ -195,6 +200,11 @@ class Stream:
         # con object.__new__ (bypass di __init__), dove samples_dir manca.
         self.sample_dur_sec = get_sample_duration(
             self.sample, base_path=getattr(self, 'samples_dir', None))
+        # duration e' fuori dai campi obbligatori (issue #205): il setattr sopra
+        # non la scrive piu', va risolta qui con la stessa regola di
+        # StreamContext.from_yaml. Senza questa riga self.duration non esiste e
+        # la prima generazione di grani solleva AttributeError.
+        self.duration = resolve_stream_duration(params, self.sample_dur_sec)
 
     def _init_stream_parameters(self, params: dict, config: StreamConfig) -> None:
         """
