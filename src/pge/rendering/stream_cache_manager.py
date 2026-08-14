@@ -184,10 +184,6 @@ class StreamCacheManager:
         manifest = self.load()
         
         current_fp = self.compute_fingerprint(stream_dict)
-        saved_fp = manifest.get(stream_id, 'NON_PRESENTE')
-        #match = current_fp == saved_fp
-        #aif_exists = os.path.exists(aif_path) if aif_path is not None else 'N/A'
-        #print(f"[CACHE DEBUG] {stream_id}: match={match} aif_path={aif_path} aif_exists={aif_exists}", flush=True)
 
         if stream_id not in manifest:
             return True
