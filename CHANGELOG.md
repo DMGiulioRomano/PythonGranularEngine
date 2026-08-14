@@ -37,6 +37,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Nessuno YAML valido cambia comportamento: se `duration` c'è, vince come
   prima. Cambia solo il verdetto su input che prima erano rifiutati.
 
+  **Cache incrementale.** Per gli stream senza `duration` il fingerprint dello
+  stem include ora la durata risolta del sample: la lunghezza dello stem
+  dipende dal file audio, e il file non è mai entrato nell'hash — sostituirlo
+  con uno di durata diversa, a YAML fermo, avrebbe lasciato montato uno stem
+  della lunghezza vecchia. Entra la sola durata, non il contenuto: hashare i
+  campioni costerebbe quanto rirenderizzare. Uno stream che dichiara
+  `duration` produce un fingerprint identico a prima, quindi nessuno stem già
+  renderizzato viene invalidato.
+
 ---
 
 ## [v7.0.0] — "Deviation Probability" — 2026-08-12
