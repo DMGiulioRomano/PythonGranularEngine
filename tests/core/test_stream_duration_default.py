@@ -140,3 +140,33 @@ class TestStreamExistenceConditions:
             Stream(params, samples_dir=str(tmp_path))
 
         assert exc_info.value.fields == ['stream_id']
+
+
+class TestRenderWithoutDuration:
+    """La pipeline completa YAML -> audio con uno stream senza `duration`."""
+
+    def test_yaml_without_duration_renders_for_the_sample_duration(self, tmp_path):
+        from pge import api
+
+        _write_wav(tmp_path, seconds=2.0)
+        yaml_path = tmp_path / 'senza_duration.yml'
+        yaml_path.write_text(
+            "composition:\n"
+            "  title: \"duration default\"\n"
+            "\n"
+            "streams:\n"
+            "  - stream_id: \"s1\"\n"
+            "    onset: 0.0\n"
+            "    sample: \"tone.wav\"\n"
+        )
+        output_path = tmp_path / 'out.wav'
+
+        generator = api.load_generator(str(yaml_path), samples_dir=str(tmp_path))
+        result = api.render(
+            generator, str(output_path),
+            renderer='numpy', samples_dir=str(tmp_path),
+        )
+
+        assert result.audio_paths
+        rendered = sf.info(result.audio_paths[0])
+        assert rendered.duration == pytest.approx(2.0, abs=0.2)
