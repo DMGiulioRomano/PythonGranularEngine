@@ -8,21 +8,34 @@ from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.shared.distribution_strategy import ANCHOR_CENTER
 
 
+def stream_duration_is_implicit(yaml_data: dict) -> bool:
+    """True quando lo stream non dichiara una durata propria (issue #205).
+
+    `is None` (non la truthiness, non `setdefault`) copre sia la chiave assente
+    sia `duration: null` esplicito, e lascia fuori `duration: 0`, che e' una
+    dichiarazione degenere ma pur sempre una dichiarazione.
+
+    Predicato condiviso, non solo dettaglio di resolve_stream_duration: lo usa
+    anche il fingerprint della cache (rendering/stream_cache_manager.py), che
+    deve registrare la durata del sample esattamente sugli stream su cui il
+    motore la eredita. Se le due letture divergessero, uno stream la cui durata
+    dipende dal file audio resterebbe clean al cambiare del file.
+    """
+    return yaml_data.get('duration') is None
+
+
 def resolve_stream_duration(yaml_data: dict, sample_dur_sec: float) -> float:
     """Durata dello stream: quella dichiarata, o la durata del sample (issue #205).
 
     A riposo lo stream risintetizza il sample, quindi l'unica durata non
     arbitraria e' quella del file: `duration` e' un override compositivo.
 
-    `is None` (non la truthiness, non `setdefault`) copre sia la chiave assente
-    sia `duration: null` esplicito, e lascia passare `duration: 0` invariata
-    invece di trasformarla silenziosamente nella lunghezza del sample.
-
     Punto unico di risoluzione: la usano sia StreamContext.from_yaml sia
     Stream._init_stream_context, che scrivono la stessa durata su due oggetti.
     """
-    declared = yaml_data.get('duration')
-    return sample_dur_sec if declared is None else declared
+    if stream_duration_is_implicit(yaml_data):
+        return sample_dur_sec
+    return yaml_data['duration']
 
 
 @dataclass(frozen=True)

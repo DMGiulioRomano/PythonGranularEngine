@@ -23,6 +23,8 @@ import json
 import os
 from typing import Dict, List, Optional
 
+from pge.core.stream_config import stream_duration_is_implicit
+
 
 # Chiavi escluse dal fingerprint: cambiano QUALI stream vengono renderizzati
 # (vedi Generator._filter_solo_mute), non il contenuto audio del singolo stem.
@@ -120,10 +122,15 @@ class StreamCacheManager:
         # stem della lunghezza vecchia. Il contenuto resta fuori: hashare i
         # campioni costerebbe quanto rirenderizzare.
         #
+        # Il predicato e' quello del motore, importato e non riscritto: se il
+        # default cambiasse (es. anche `0` trattato come assente) le due letture
+        # divergerebbero, e uno stream con durata ereditata resterebbe clean al
+        # cambiare del sample.
+        #
         # La chiave si aggiunge SOLO quando `duration` manca: uno stream che la
         # dichiara produce il payload identico a prima, quindi nessuno stem gia'
         # renderizzato viene invalidato da questa modifica.
-        if stream_dict.get('duration') is None:
+        if stream_duration_is_implicit(stream_dict):
             sample_dur = self._sample_dur_sec(stream_dict.get('sample'))
             if sample_dur is not None:
                 payload['sample_dur_sec'] = sample_dur
