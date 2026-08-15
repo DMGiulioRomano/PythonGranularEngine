@@ -66,6 +66,23 @@ class TestScalari:
         with pytest.raises(InvalidFieldValueError):
             normalize_read_direction('avanti')
 
+    @pytest.mark.parametrize("value", [
+        10 ** 400,          # int arbitrariamente grande: non ha un float
+        -(10 ** 400),
+        float('nan'),
+        float('inf'),
+    ])
+    def test_numeri_senza_float_o_senza_ordine(self, value):
+        """Un numero fuori dominio va rifiutato, non fatto esplodere.
+
+        `float()` su un `int` più grande di ogni double alza `OverflowError`
+        dentro il validatore: un errore che non porta il campo, sollevato
+        proprio da chi deve produrne uno che lo porta. Il confronto
+        sull'appartenenza non converte niente."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(value)
+        assert exc.value.field == READ_DIRECTION_FIELD
+
 
 # =============================================================================
 # 2. ENVELOPE COME LISTA DI BREAKPOINT
@@ -311,6 +328,47 @@ class TestGuardDiArita:
     def test_pattern_vuoto_rifiutato(self):
         with pytest.raises(InvalidFieldValueError):
             normalize_read_direction({'points': [[], 2.0, 2]})
+
+    @pytest.mark.parametrize("x", [150, -10, 100.5])
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_x_del_pattern_fuori_da_zero_cento(self, ingresso, x):
+        """La x di un punto del pattern è una **percentuale del ciclo**, e il
+        vincolo `[0, 100]` è dichiarato nel docstring di `EnvelopeBuilder` ma
+        non applicato da nessuno. Fuori da lì il ciclo sfonda i propri
+        confini: con `x = 150` il ciclo dopo comincia prima che questo sia
+        finito, con `x = -10` esce un breakpoint a tempo negativo."""
+        corpo = [[[0, 1], [x, -1]], 2.0, 2]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value == x
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_x_del_pattern_che_tornano_indietro(self, ingresso):
+        """Le x possono stare in `[0, 100]` e ciononostante tornare indietro:
+        `[[100, 1], [0, -1]]` espande in `[[1.0, 1], [0.0, -1]]`, tempi
+        all'indietro. L'envelope a `step` legge l'ultimo valore scritto e il
+        `+1` dichiarato non compare in nessun grano — la regola 2 del modulo
+        violata dal modulo."""
+        corpo = [[[100, 1], [0, -1]], 2.0, 2]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value == 0
+
+    def test_x_ripetuta_resta_valida(self):
+        """Una x ripetuta è una discontinuità voluta, non un errore: il
+        vincolo è non-decrescente, non strettamente crescente."""
+        corpo = [[[0, 1], [50, 1], [50, -1], [100, -1]], 2.0, 2]
+        assert normalize_read_direction({'points': corpo})['points'] is corpo
+
+    @pytest.mark.parametrize("x", [0, 100, 0.0, 100.0])
+    def test_estremi_del_pattern_ammessi(self, x):
+        """`0` e `100` sono i confini del ciclo, non valori fuori."""
+        corpo = [[[x, 1], [100, -1]], 2.0, 2]
+        assert normalize_read_direction({'points': corpo})['points'] is corpo
 
 
 # =============================================================================

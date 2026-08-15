@@ -100,6 +100,21 @@ _REPS_ARITY_HINT = (
     "elementi precedenti."
 )
 
+_PATTERN_X_HINT = (
+    "la prima coordinata di un punto del pattern e' una percentuale del ciclo "
+    "e sta in [0, 100]. Fuori da li' il ciclo sfonda i propri confini: sopra "
+    "100 il ciclo successivo comincia prima che questo sia finito, sotto 0 "
+    "esce un breakpoint a tempo negativo."
+)
+
+_PATTERN_ORDER_HINT = (
+    "le percentuali del pattern non possono tornare indietro: il ciclo si "
+    "percorre in avanti una volta sola. Con tempi che si invertono l'envelope "
+    "a 'step' legge l'ultimo valore scritto, e il verso dichiarato prima non "
+    "comparirebbe in nessun grano. Una percentuale ripetuta invece va bene: "
+    "e' la discontinuita'."
+)
+
 _DIST_HINT = (
     "la distribuzione temporale del formato compatto non e' costruibile: {err}. "
     "Il verso di lettura non ha una distribuzione propria — e' quella "
@@ -121,8 +136,14 @@ def _reject(value: Any, hint: str) -> None:
 
 
 def _check_direction_value(value: Any) -> None:
-    """Un valore dichiarato — scalare o Y di un breakpoint — vale -1 o +1."""
-    if not _is_number(value) or float(value) not in READ_DIRECTION_VALUES:
+    """Un valore dichiarato — scalare o Y di un breakpoint — vale -1 o +1.
+
+    Il confronto e' sull'appartenenza e non converte: `float()` su un `int`
+    piu' grande di ogni double alza `OverflowError`, cioe' un errore senza
+    campo sollevato proprio da chi deve produrne uno che ce l'ha. `1 == 1.0`
+    in Python, quindi il confronto misto costa niente in leggibilita'.
+    """
+    if not _is_number(value) or value not in READ_DIRECTION_VALUES:
         _reject(value, _VALUE_HINT)
 
 
@@ -235,8 +256,10 @@ def _check_compact(compact: list) -> None:
         _reject(n_reps, _REPS_ARITY_HINT)
     if not pattern:
         _reject(pattern, _FORM_HINT)
+    precedente = None
     for point in pattern:
-        _check_pattern_point(point)
+        _check_pattern_point(point, precedente)
+        precedente = point[0]
     _check_time_dist(time_dist)
 
 
@@ -272,16 +295,34 @@ def _check_time_dist(spec: Any) -> None:
         _reject(spec, _DIST_HINT.format(err=err))
 
 
-def _check_pattern_point(point: list) -> None:
+def _check_pattern_point(point: list, precedente: Any = None) -> None:
     """Un punto del pattern di un ciclo: `[x%, y]` o `[x%, y, type]`, piatto.
 
     Non passa da `_check_item` perche' li' le macro-forme sono ammesse, e qui
     non lo sono: `_is_compact_format` filtra i punti del pattern sulla sola
     lunghezza (2 o 3) e un BP group e' lungo 2, quindi ci si infila: il builder
     poi fa `x_pct / 100.0` sul primo elemento e solleva un TypeError nudo.
+
+    La `x` e' una percentuale del ciclo e deve percorrerlo in avanti una volta
+    sola. Fuori da `[0, 100]` il ciclo sfonda i propri confini — con `150` il
+    ciclo successivo comincia prima che questo sia finito, con `-10` esce un
+    breakpoint a tempo negativo; tornando indietro (`[[100, v], [0, w]]`, con
+    entrambe le x in range) i tempi si invertono e con `step` il valore
+    dichiarato per primo non compare in nessun grano. Sono i due modi in cui
+    la regola 2 del modulo — non renderizzare qualcosa di diverso da cio' che
+    e' scritto — verrebbe violata dal modulo stesso.
+
+    Args:
+        point: il punto da controllare.
+        precedente: la `x` del punto che lo precede nel pattern, o `None` se
+            e' il primo. Una `x` ripetuta e' ammessa: e' la discontinuita'.
     """
     if not _is_number(point[0]):
         _reject(point, _FORM_HINT)
+    if not 0 <= point[0] <= 100:
+        _reject(point[0], _PATTERN_X_HINT)
+    if precedente is not None and point[0] < precedente:
+        _reject(point[0], _PATTERN_ORDER_HINT)
     if len(point) == 3:
         _check_interp(point[2])
     _check_direction_value(point[1])
