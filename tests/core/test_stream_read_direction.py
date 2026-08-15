@@ -175,6 +175,33 @@ class TestEnvelope:
         assert verso(0.6, 1.4) == {-1.0}
         assert verso(1.4, 2.0) == {1.0}
 
+    def test_macro_forme_dentro_il_dict_renderizzano(self, build):
+        """Le forme che il dict accetta devono anche renderizzare.
+
+        `Envelope` costruisce un formato compatto e un BP group dentro
+        `points`, quindi il validatore li accetta: qui si verifica che sia
+        davvero cosi' fino ai grani, e non solo un permesso concesso a monte.
+        """
+        compatto = build(grain={'read_direction': {
+            'points': [[[0, 1], [50, -1]], 2.0, 2]}})
+        gruppo = build(grain={'read_direction': {
+            'points': [[[0, 1], [1.0, -1]], 'step']}})
+
+        assert {g.pitch_ratio for g in compatto.grains} == {1.0, -1.0}
+        assert {g.pitch_ratio for g in gruppo.grains} == {1.0, -1.0}
+
+    def test_time_unit_del_dict_resta_onorato(self, build):
+        """La normalizzazione preserva le altre chiavi del dict: con
+        `time_unit: normalized` il breakpoint a 0.5 cade a meta' stream."""
+        stream = build(grain={'read_direction': {
+            'points': [[0, 1], [0.5, -1]], 'time_unit': 'normalized'}})
+
+        prima = [g.pitch_ratio for g in stream.grains if g.onset < 1.0]
+        dopo = [g.pitch_ratio for g in stream.grains if g.onset >= 1.0]
+        assert prima and dopo
+        assert all(r > 0 for r in prima)
+        assert all(r < 0 for r in dopo)
+
     def test_envelope_indipendente_dalla_velocita(self, build):
         """Il verso dichiarato non e' corretto dal segno di speed_ratio."""
         avanti = build(pointer={'speed_ratio': 1},

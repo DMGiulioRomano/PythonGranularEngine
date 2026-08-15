@@ -202,8 +202,103 @@ class TestDominio:
 
 
 # =============================================================================
-# 5. FORME NON RICONOSCIUTE
+# 5. LA STESSA GRAMMATICA AI DUE INGRESSI
 # =============================================================================
+
+class TestStessaGrammaticaNeiDueIngressi:
+    """Una curva scritta come lista nuda e la stessa curva dentro
+    `{points: ...}` sono la stessa curva.
+
+    I due ingressi — dict e lista — devono accettare e rifiutare le stesse
+    cose. Non e' una comodita': `Envelope` costruisce entrambe le forme (il
+    dict con `points` in formato compatto e' l'esempio nel suo docstring),
+    quindi un ingresso piu' stretto dell'altro rifiuterebbe uno YAML che il
+    motore renderizza, e con un messaggio che elenca fra le forme valide
+    proprio quella che sta rifiutando.
+    """
+
+    COMPATTO = [[[0, 1], [50, -1]], 20, 2]
+    GRUPPO = [[[0, 1], [10, -1]], 'step']
+
+    def test_compatto_accettato_nel_dict(self):
+        assert normalize_read_direction(
+            {'points': self.COMPATTO})['points'] is self.COMPATTO
+
+    def test_compatto_stessa_risposta_nei_due_ingressi(self):
+        assert (normalize_read_direction({'points': self.COMPATTO})
+                == normalize_read_direction(self.COMPATTO))
+
+    def test_bp_group_accettato_nel_dict(self):
+        assert normalize_read_direction(
+            {'points': self.GRUPPO})['points'] is self.GRUPPO
+
+    def test_bp_group_stessa_risposta_nei_due_ingressi(self):
+        assert (normalize_read_direction({'points': self.GRUPPO})
+                == normalize_read_direction(self.GRUPPO))
+
+    def test_lista_vuota_dentro_il_dict(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'points': []})
+
+    # --- I rifiuti valgono anche dentro le macro-forme nel dict ---------------
+    # Simmetria non vuol dire permissivita': allargare l'ingresso dict alle
+    # macro-forme non deve aprire una scorciatoia per dichiarare un interp o un
+    # valore che la chiave non ammette.
+
+    @pytest.mark.parametrize("interp", ['linear', 'cubic'])
+    def test_dict_con_compatto_a_interp_non_step(self, interp):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(
+                {'points': [[[0, 1], [50, -1]], 20, 2, interp]})
+        assert exc.value.value == interp
+
+    @pytest.mark.parametrize("interp", ['linear', 'cubic'])
+    def test_dict_con_bp_group_a_interp_non_step(self, interp):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(
+                {'points': [[[0, 1], [10, -1]], interp]})
+        assert exc.value.value == interp
+
+    def test_dict_con_compatto_fuori_dominio(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'points': [[[0, 1], [50, 0]], 20, 2]})
+
+    def test_dict_con_bp_group_fuori_dominio(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'points': [[[0, 1], [10, 0.5]], 'step']})
+
+    def test_il_type_del_dict_vale_anche_sulle_macro_forme(self):
+        """`type: linear` sul dict resta un errore comunque sia scritto il
+        corpo: le due dichiarazioni non si annullano a vicenda."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(
+                {'type': 'linear', 'points': self.COMPATTO})
+        assert exc.value.value == 'linear'
+
+    # --- Le stesse posizioni in cui le riconosce il builder -------------------
+
+    MISTO = [[0, 1], [0.3, 1], [[[0, -1], [100, 1]], 1.3, 2]]
+
+    def test_lista_mista_accettata_nei_due_ingressi(self):
+        """Una sezione compatta dentro una lista di breakpoint e' forma
+        documentata del builder, e passa da entrambi gli ingressi."""
+        assert (normalize_read_direction({'points': self.MISTO})['points']
+                is self.MISTO)
+        assert (normalize_read_direction(self.MISTO)['points']
+                is self.MISTO)
+
+    def test_lista_mista_valida_i_valori_della_sezione_compatta(self):
+        misto = [[0, 1], [0.3, 1], [[[0, 0], [100, 1]], 1.3, 2]]
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'points': misto})
+
+    def test_corpo_malformato_rifiutato(self):
+        """Una lista che non e' ne' una macro-forma ne' una sequenza di
+        breakpoint validi resta un errore: la simmetria fra i due ingressi non
+        e' permissivita'."""
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction(
+                {'points': [[[[0, 1], [50, -1]], 20, 2], 'step']})
 
 class TestFormeNonRiconosciute:
 

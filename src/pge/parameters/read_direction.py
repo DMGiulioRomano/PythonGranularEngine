@@ -97,6 +97,35 @@ def _check_interp(interp: Any) -> None:
         _reject(interp, _INTERP_HINT)
 
 
+def _check_envelope_body(body: Any) -> None:
+    """Il corpo di un envelope: una macro-forma, oppure una lista di elementi.
+
+    Punto unico della grammatica dei due ingressi — `{points: ...}` e lista
+    nuda. Tenerne uno solo evita che divergano: `Envelope` costruisce entrambe
+    le forme (un formato compatto dentro `points` e' l'esempio nel suo
+    docstring), quindi un ingresso piu' stretto dell'altro rifiuterebbe uno
+    YAML che il motore renderizza — e lo rifiuterebbe con un hint che elenca
+    fra le forme valide proprio quella appena scartata.
+
+    Le macro-forme sono riconosciute qui in cima e, da `_check_item`, come
+    elementi di una lista mista — le stesse due posizioni in cui le riconosce
+    `EnvelopeBuilder.parse`. Piu' in fondo non serve guardarle: dentro un BP
+    group o dentro il pattern di un ciclo i punti devono essere `[t, v]` piatti
+    perche' la forma sia riconosciuta come tale, quindi una macro-forma
+    annidata li' non e' un caso da rifiutare — e' una cosa che non arriva mai
+    a chiamarsi cosi'.
+    """
+    if EnvelopeBuilder._is_compact_format(body):
+        _check_compact(body)
+        return
+
+    if EnvelopeBuilder._is_bp_group(body):
+        _check_bp_group(body)
+        return
+
+    _check_points(body)
+
+
 def _check_points(points: Any) -> None:
     """Percorre una lista di elementi envelope, qualunque forma abbiano."""
     if not isinstance(points, list) or not points:
@@ -179,18 +208,11 @@ def normalize_read_direction(raw: Any) -> Union[float, dict]:
         if 'points' not in raw:
             _reject(raw, _FORM_HINT)
         _check_interp(raw.get('type'))
-        _check_points(raw['points'])
+        _check_envelope_body(raw['points'])
         return {**raw, 'type': REQUIRED_INTERP}
 
     if isinstance(raw, list):
-        if not raw:
-            _reject(raw, _FORM_HINT)
-        if EnvelopeBuilder._is_compact_format(raw):
-            _check_compact(raw)
-        elif EnvelopeBuilder._is_bp_group(raw):
-            _check_bp_group(raw)
-        else:
-            _check_points(raw)
+        _check_envelope_body(raw)
         return {'type': REQUIRED_INTERP, 'points': raw}
 
     _reject(raw, _FORM_HINT)
