@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: d7753a5
+last_synced_commit: 39602b1
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -2014,6 +2014,12 @@ parser, e ogni interp dichiarato diverso da `step` solleva
 grain:
   read_direction: [[0, 1], [12, -1], [20, 1]]   # step, senza doverlo scrivere
 ```
+
+Le **forme** dell'envelope restano tutte quelle documentate qui — lista di
+breakpoint, dict `{points: ...}`, BP group, formato compatto, lista mista — e
+valgono identiche nei due modi di scriverle: quello che è accettato come lista
+nuda è accettato dentro `points`, e viceversa. A essere imposta è
+l'interpolazione, non la sintassi.
 
 Il rifiuto copre tutte le forme in cui un interp è dichiarabile: dict
 (`type:`), tag per-punto `[t, v, type]`, BP group `[points, interp]` e formato
