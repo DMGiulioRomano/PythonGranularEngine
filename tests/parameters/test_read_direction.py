@@ -217,7 +217,14 @@ class TestGuardDiArita:
 
     Sono guard di **arità**, non una seconda validazione del builder: dicono
     quanti elementi servono perché la forma sia quella dichiarata, non se i
-    valori hanno senso.
+    valori hanno senso. L'unica eccezione è la distribuzione temporale, che
+    non si controlla ma si delega al suo factory (vedi `_check_time_dist`).
+
+    L'invariante non è chiuso, e non lo si dichiari tale: restano fuori le
+    condizioni che dipendono da quanto il builder ha già percorso — `end_time`
+    contro l'offset accumulato — e una distribuzione che validi i propri
+    parametri solo quando la si usa (oggi `power`). Sono pinnate a Stream in
+    `TestNienteValueErrorNudo`, che copre ciò che è davvero coperto.
     """
 
     @pytest.mark.parametrize("ingresso", ['dict', 'lista'])

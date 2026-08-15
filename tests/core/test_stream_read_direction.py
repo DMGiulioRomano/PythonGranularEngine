@@ -357,3 +357,42 @@ class TestDeviationProbability:
         stream = build(grain={'read_direction': 1},
                        deviation_probability=100)
         assert all(_segni(stream))
+
+
+# =============================================================================
+# 8. NIENTE ERRORI FUORI DALLA GERARCHIA
+# =============================================================================
+
+class TestNienteValueErrorNudo:
+    """Un `read_direction` che `Stream` accetta non deve morire piu' in la'
+    con un errore che non porta il campo.
+
+    L'osservabile e' il tipo di cio' che risale dal costruttore: dentro la
+    gerarchia `EngineError` (campo, hint, stream_id) oppure fuori, dove
+    l'utente perde la riga di contesto e PGE-ls perde il messaggio che parsa.
+    """
+
+    @pytest.mark.parametrize("dist", [
+        'bogus',                                   # nome ignoto, stringa
+        {'type': 'bogus'},                         # nome ignoto, dict
+        {'type': 'geometric', 'ratio': 0},         # parametro fuori dominio
+        {'type': 'logarithmic', 'base': 1},        # parametro fuori dominio
+        {'ratio': 1.5},                            # parametro estraneo al tipo
+        {'type': 5},                               # il tipo non e' un nome
+    ])
+    def test_distribuzione_temporale_non_costruibile(self, build, dist):
+        """Il quinto elemento del formato compatto e' la distribuzione
+        temporale: `_is_compact_format` accetta li' qualunque `str` o `dict`,
+        e cio' che ne esce non e' sempre una distribuzione."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            build(grain={'read_direction':
+                         [[[0, 1], [100, -1]], 2.0, 2, 'step', dist]})
+        assert exc.value.field == 'grain.read_direction'
+        assert exc.value.stream_id == 'test_stream'
+
+    def test_distribuzione_valida_renderizza(self, build):
+        """Il guard non chiude la porta: le distribuzioni vere passano."""
+        stream = build(grain={'read_direction':
+                              [[[0, 1], [100, -1]], 2.0, 2, 'step',
+                               {'type': 'geometric', 'ratio': 1.5}]})
+        assert {g.pitch_ratio for g in stream.grains} == {1.0, -1.0}

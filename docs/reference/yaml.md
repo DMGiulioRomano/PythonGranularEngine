@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: 39602b1
+last_synced_commit: d76883d
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -2032,6 +2032,16 @@ Conseguenza sui valori: l'envelope emette solo i valori scritti ai breakpoint,
 che devono stare in `{-1, +1}`. La validazione è a parse-time e precede il
 clamp dei bounds, così `read_direction: 0.5` produce un errore sul dominio a
 due valori invece di passare silenziosamente il clamp `[-1, 1]`.
+
+Su questa chiave alcune condizioni che altrove risalgono come `ValueError`
+nudo (vedi [§5](#5-formato-compatto-cicli-ripetuti)) sono invece
+`InvalidFieldValueError`, quindi portano il campo e lo `stream_id`: BP group
+con meno di 2 punti, `n_reps < 1`, `pattern_points` vuoto, punto del pattern
+non piatto, e distribuzione temporale non costruibile (nome ignoto o parametri
+non validi — la costruisce `TimeDistributionFactory`, i vincoli restano i
+suoi). Restano al builder, e quindi `ValueError`, `end_time <= time_offset` —
+che dipende dall'offset accumulato dagli elementi precedenti — e le
+distribuzioni che validano i propri parametri solo quando vengono usate.
 
 #### 10.6 `num_voices` come envelope
 

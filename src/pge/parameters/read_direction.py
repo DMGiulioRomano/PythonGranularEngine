@@ -28,10 +28,16 @@ come errore esplicito e mai come correzione silenziosa:
    non ha una risposta non arbitraria.
 
 A queste si aggiungono alcuni **guard di arita'** sulle macro-forme (quanti
-punti ha un gruppo, quanti cicli un formato compatto). Non sono una seconda
-validazione del builder: sono li' perche' quelle stesse condizioni, lasciate al
-builder, risalgono come `ValueError` nudi — fuori dalla gerarchia `EngineError`,
-senza campo e senza stream_id.
+punti ha un gruppo, quanti cicli un formato compatto) e la costruzione anticipata
+della distribuzione temporale. Non sono una seconda validazione del builder:
+sono li' perche' quelle stesse condizioni, lasciate al builder, risalgono come
+`ValueError` nudi — fuori dalla gerarchia `EngineError`, senza campo e senza
+stream_id.
+
+La copertura non e' totale e non va dichiarata tale: restano al builder le
+condizioni che dipendono da quanto ha gia' percorso (`end_time` contro l'offset
+accumulato dagli elementi precedenti) e le distribuzioni che validano i propri
+parametri solo all'uso.
 
 La normalizzazione avvolge il valore in `{'type': 'step', 'points': <raw>}`.
 Il wrapping preserva la semantica temporale: `create_scaled_envelope` sul dict
@@ -43,7 +49,8 @@ from __future__ import annotations
 from typing import Any, Union
 
 from pge.envelopes.envelope_builder import EnvelopeBuilder
-from pge.shared.exceptions import InvalidFieldValueError
+from pge.envelopes.time_distribution import TimeDistributionFactory
+from pge.shared.exceptions import EngineError, InvalidFieldValueError
 
 # Il nome della chiave nello YAML: identita' del campo in ogni errore.
 READ_DIRECTION_FIELD = 'grain.read_direction'
@@ -91,6 +98,12 @@ _REPS_ARITY_HINT = (
     "coerenza temporale del ciclo (end_time contro l'istante da cui parte) "
     "resta al builder, che e' l'unico a conoscere l'offset accumulato dagli "
     "elementi precedenti."
+)
+
+_DIST_HINT = (
+    "la distribuzione temporale del formato compatto non e' costruibile: {err}. "
+    "Il verso di lettura non ha una distribuzione propria — e' quella "
+    "dell'envelope, e le forme valide sono quelle di sempre."
 )
 
 
@@ -211,6 +224,7 @@ def _check_compact(compact: list) -> None:
     pattern = compact[0]
     n_reps = compact[2]
     interp = compact[3] if len(compact) >= 4 else None
+    time_dist = compact[4] if len(compact) >= 5 else None
     _check_interp(interp)
     if n_reps < 1:
         _reject(n_reps, _REPS_ARITY_HINT)
@@ -218,6 +232,39 @@ def _check_compact(compact: list) -> None:
         _reject(pattern, _FORM_HINT)
     for point in pattern:
         _check_pattern_point(point)
+    _check_time_dist(time_dist)
+
+
+def _check_time_dist(spec: Any) -> None:
+    """La distribuzione temporale del ciclo: la valida il factory, costruendola.
+
+    Qui non c'e' niente da decidere — il verso di lettura non ha una
+    distribuzione propria, e' quella dell'envelope. Ma `_is_compact_format`
+    accetta in quella posizione qualunque `str` o `dict`, e cio' che ne esce
+    fallisce dentro `TimeDistributionFactory` con errori fuori dalla gerarchia
+    `EngineError`. Costruirla adesso li fa risalire dove hanno un campo.
+
+    E' delega, non duplicazione: il registro delle distribuzioni e i vincoli
+    sui loro parametri restano uno solo, e questo guard resta allineato da se'
+    se cambiano. I costruttori sono puri (validano e assegnano), quindi il
+    costo e' un oggetto buttato via.
+
+    Resta scoperta una distribuzione che accetti tutto nel costruttore e
+    fallisca all'uso: oggi `power`, che non valida `exponent` e sbaglia dentro
+    `calculate_distribution`, con un `total_time` che dipende dall'offset
+    accumulato e che di qui non si conosce. E' lo stesso confine di `end_time`.
+    """
+    try:
+        TimeDistributionFactory.create(spec)
+    except EngineError:
+        # Gia' dentro la gerarchia: ha campo, hint e prende lo stream_id.
+        # Riavvolgerla perderebbe il bound che ha appena nominato.
+        raise
+    except Exception as err:
+        # Largo di proposito: qualunque modo in cui il factory rifiuta questo
+        # dato e' un rifiuto di cio' che l'utente ha scritto, non un caso da
+        # enumerare a mano. Il messaggio originale finisce nell'hint.
+        _reject(spec, _DIST_HINT.format(err=err))
 
 
 def _check_pattern_point(point: list) -> None:
