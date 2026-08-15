@@ -38,8 +38,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   come ogni altro parametro dello schema: probabilità per-grano di ribaltare il
   verso dichiarato. `deviation_probability.reverse` resta legata a
   `grain.reverse` e non tocca la chiave nuova, così un vecchio `reverse: 100`
-  rimasto nello YAML non ribalta in silenzio un verso appena scritto. Il
-  default è quindi deterministico, che era il punto.
+  rimasto nello YAML non ribalta in silenzio un verso appena scritto. Con
+  `deviation_probability` **omesso** — o con `read_direction: null` dentro di
+  esso — il gate è `NeverGate` e il verso dichiarato è quello che si ascolta,
+  che era il punto. Attenzione al caso `deviation_probability:` scritto e
+  lasciato **vuoto**: quello non è "assente" ma la modalità implicita
+  (`IMPLICIT_JITTER_PROB`), che applica il jitter di default a ogni chiave
+  dello schema, questa compresa (misurato: ~1% dei grani ribaltato). Vale per
+  `read_direction` come per ogni altro parametro, non è un'eccezione
+  introdotta qui.
 
   Nuovo `variation_mode='negate'` (`NegateVariation`): su un dominio con segno
   il flip per-grano è un cambio di segno, mentre `'invert'` (`1 - base`)

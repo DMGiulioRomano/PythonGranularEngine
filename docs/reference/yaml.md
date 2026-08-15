@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: d76883d
+last_synced_commit: efbf8c6
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -1798,6 +1798,11 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 - `exponential.rate <= 0` → `ValueError`
 - `logarithmic.base <= 1` → `ValueError`
 - `geometric.ratio <= 0` → `ValueError`
+- `power.exponent` non numerico → `InvalidFieldValueError`
+
+I primi cinque scattano alla costruzione della distribuzione; `power` era
+l'unico a non validare il proprio parametro, e falliva più tardi con un
+`TypeError` dentro `calculate_distribution`.
 
 ---
 
@@ -2033,15 +2038,31 @@ che devono stare in `{-1, +1}`. La validazione è a parse-time e precede il
 clamp dei bounds, così `read_direction: 0.5` produce un errore sul dominio a
 due valori invece di passare silenziosamente il clamp `[-1, 1]`.
 
-Su questa chiave alcune condizioni che altrove risalgono come `ValueError`
-nudo (vedi [§5](#5-formato-compatto-cicli-ripetuti)) sono invece
-`InvalidFieldValueError`, quindi portano il campo e lo `stream_id`: BP group
-con meno di 2 punti, `n_reps < 1`, `pattern_points` vuoto, punto del pattern
-non piatto, e distribuzione temporale non costruibile (nome ignoto o parametri
-non validi — la costruisce `TimeDistributionFactory`, i vincoli restano i
-suoi). Restano al builder, e quindi `ValueError`, `end_time <= time_offset` —
-che dipende dall'offset accumulato dagli elementi precedenti — e le
-distribuzioni che validano i propri parametri solo quando vengono usate.
+Su questa chiave un gruppo di condizioni che altrove risalgono come
+`ValueError` nudo (vedi [§5](#5-formato-compatto-cicli-ripetuti)) — o non
+risalgono affatto — sono invece `InvalidFieldValueError`, quindi portano il
+campo `grain.read_direction` e lo `stream_id`:
+
+| Condizione | Altrove |
+|---|---|
+| BP group con meno di 2 punti | `ValueError` |
+| `pattern_points` vuoto | `ValueError` |
+| `n_reps < 1`, e `n_reps: true` | `ValueError` / accettato in silenzio |
+| `end_time <= 0`, e `end_time: true` | `ValueError` / accettato in silenzio |
+| `x` del pattern fuori da `[0, 100]`, o che torna indietro | accettato in silenzio |
+| punto del pattern non piatto | `TypeError` |
+| breakpoint `{t, v}` con `t` non numerico | `ValueError` |
+| distribuzione temporale: nome ignoto o parametri non validi | `ValueError` / `AttributeError` |
+
+I nomi validi della distribuzione temporale sono quelli di
+[§6.2](#62-distribuzioni-disponibili); i vincoli sui loro parametri restano di
+`TimeDistributionFactory`, che li applica costruendola.
+
+Resta al builder, e quindi `ValueError`, la sola condizione che dipende da
+quanto il builder ha già percorso: `end_time <= time_offset`, dove
+`time_offset` è l'istante accumulato dagli elementi che precedono il ciclo in
+una lista mista. Qui se ne verifica il segno — decidibile, perché quell'istante
+non è mai negativo — non il confronto.
 
 #### 10.6 `num_voices` come envelope
 

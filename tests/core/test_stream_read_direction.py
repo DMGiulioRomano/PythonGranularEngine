@@ -63,6 +63,23 @@ def _segni(stream):
     return [g.pitch_ratio < 0 for g in stream.grains]
 
 
+def _transizioni(stream):
+    """Gli istanti in cui il verso cambia, come `[(onset, segno), ...]`.
+
+    L'insieme dei segni dice *se* i due versi compaiono; questo dice *quando*.
+    Serve per tutto cio' che governa i confini nel tempo — la distribuzione
+    dei cicli, la posizione dei breakpoint — dove l'insieme resta identico
+    anche quando il comportamento cambia del tutto.
+    """
+    out, precedente = [], None
+    for grain in stream.grains:
+        segno = 1 if grain.pitch_ratio > 0 else -1
+        if segno != precedente:
+            out.append((round(grain.onset, 4), segno))
+            precedente = segno
+    return out
+
+
 # =============================================================================
 # 1. REGRESSIONE: i quattro casi di grain.reverse
 # =============================================================================
@@ -193,10 +210,19 @@ class TestEnvelope:
     def test_punto_del_pattern_senza_interp_renderizza(self, build):
         """`[x%, y, None]` dentro il pattern di un ciclo: il validatore lo
         accetta come punto piatto con l'interp lasciato al default, e qui si
-        verifica che il builder lo espanda davvero invece di romperci sopra."""
-        stream = build(grain={'read_direction':
-                              [[[0, 1], [50, 1, None], [75, -1]], 2.0, 2]})
-        assert {g.pitch_ratio for g in stream.grains} == {1.0, -1.0}
+        verifica che il builder lo espanda davvero invece di romperci sopra.
+
+        Il punto porta un `y` **diverso** da quello che lo precede: con lo
+        stesso valore il grafico sarebbe identico a quello senza il punto, e
+        il test passerebbe senza osservare cio' che dichiara di pinnare.
+        """
+        con = build(grain={'read_direction':
+                           [[[0, 1], [50, -1, None], [100, 1]], 2.0, 2]})
+        senza = build(grain={'read_direction':
+                             [[[0, 1], [100, 1]], 2.0, 2]})
+
+        assert {g.pitch_ratio for g in con.grains} == {1.0, -1.0}
+        assert _transizioni(con) != _transizioni(senza)
 
     def test_time_unit_del_dict_resta_onorato(self, build):
         """La normalizzazione preserva le altre chiavi del dict: con
@@ -401,8 +427,24 @@ class TestNienteValueErrorNudo:
         assert exc.value.stream_id == 'test_stream'
 
     def test_distribuzione_valida_renderizza(self, build):
-        """Il guard non chiude la porta: le distribuzioni vere passano."""
-        stream = build(grain={'read_direction':
-                              [[[0, 1], [100, -1]], 2.0, 2, 'step',
-                               {'type': 'geometric', 'ratio': 1.5}]})
-        assert {g.pitch_ratio for g in stream.grains} == {1.0, -1.0}
+        """Il guard non chiude la porta: la distribuzione dichiarata passa
+        **e si vede**.
+
+        L'insieme dei segni non basta a osservarla: veniva identico con
+        `linear`, con `geometric` e senza alcun quinto elemento. Cio' che la
+        distribuzione governa sono i confini dei cicli, quindi l'osservabile
+        e' l'istante in cui il verso cambia. Il pattern flippa a meta' ciclo
+        proprio per rendere quei confini leggibili.
+        """
+        pattern = [[0, 1], [50, -1]]
+        geometrica = build(grain={'read_direction':
+                                  [pattern, 2.0, 2, 'step',
+                                   {'type': 'geometric', 'ratio': 2.0}]})
+        uniforme = build(grain={'read_direction':
+                                [pattern, 2.0, 2, 'step', 'linear']})
+
+        assert _transizioni(geometrica) != _transizioni(uniforme)
+        # ratio 2: il secondo ciclo dura il doppio del primo, quindi comincia
+        # a ~1/3 dello stream invece che a meta'.
+        assert _transizioni(geometrica)[2][0] < 0.8
+        assert _transizioni(uniforme)[2][0] == pytest.approx(1.0, abs=0.05)
