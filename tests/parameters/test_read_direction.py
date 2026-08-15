@@ -29,6 +29,7 @@ import pytest
 from pge.parameters.read_direction import (
     READ_DIRECTION_FIELD,
     READ_DIRECTION_VALUES,
+    _REPS_ARITY_HINT,
     normalize_read_direction,
 )
 from pge.shared.exceptions import InvalidFieldValueError
@@ -261,6 +262,21 @@ class TestGuardDiArita:
         """Il guard e' `>= 1`, non `> 1`: un ciclo solo e' legittimo."""
         corpo = [[[0, 1], [100, -1]], 2.0, 1]
         assert normalize_read_direction({'points': corpo})['points'] is corpo
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_ripetizioni_booleane_rifiutate(self, ingresso):
+        """`isinstance(True, int)` è vero, quindi `true` supera il
+        riconoscimento della forma e poi `True < 1` è falso: il guard non
+        scatta e `range(True)` rende un ciclo, in silenzio. È la stessa
+        politica per cui `true` non è `+1` in nessun altro punto del modulo —
+        e `false` era già rifiutato, per il valore, non per il tipo."""
+        corpo = [[[0, 1], [100, -1]], 2.0, True]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value is True
+        assert exc.value.hint == _REPS_ARITY_HINT
 
     @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
     def test_macro_forma_dentro_il_pattern_di_un_ciclo(self, ingresso):

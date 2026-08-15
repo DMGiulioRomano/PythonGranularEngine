@@ -226,7 +226,12 @@ def _check_compact(compact: list) -> None:
     interp = compact[3] if len(compact) >= 4 else None
     time_dist = compact[4] if len(compact) >= 5 else None
     _check_interp(interp)
-    if n_reps < 1:
+    # Solo la natura di `n_reps`: che sia un `int` lo garantisce gia'
+    # `_is_compact_format`. Resta fuori il solo `bool`, che li' passa per
+    # sottoclasse e qui no, per la stessa ragione per cui `true` non e' `+1`:
+    # senza questo `True < 1` e' falso, il guard non scatta e `range(True)`
+    # rende un ciclo in silenzio.
+    if not _is_number(n_reps) or n_reps < 1:
         _reject(n_reps, _REPS_ARITY_HINT)
     if not pattern:
         _reject(pattern, _FORM_HINT)
