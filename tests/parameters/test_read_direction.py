@@ -282,6 +282,39 @@ class TestGuardDiArita:
         assert normalize_read_direction({'points': corpo})['points'] is corpo
 
     @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_end_time_booleano_rifiutato(self, ingresso):
+        """Stessa coercizione `bool` -> `int` già vietata su `n_reps`: `true`
+        passa il riconoscimento della forma e il builder lo usa come `1.0`.
+        Verificato che non è innocuo — `[[[0,1],[50,-1]], true, 2]` rende le
+        stesse transizioni di `end_time: 1.0` e diverse da `2.0`, in
+        silenzio."""
+        corpo = [[[0, 1], [50, -1]], True, 2]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value is True
+
+    @pytest.mark.parametrize("end_time", [0, -1.5])
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_end_time_non_positivo_rifiutato(self, ingresso, end_time):
+        """`end_time` deve superare l'istante da cui il ciclo parte, e quello
+        non è mai negativo: `end_time <= 0` è quindi decidibile qui, senza
+        conoscere l'offset accumulato."""
+        corpo = [[[0, 1], [50, -1]], end_time, 2]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value == end_time
+
+    def test_end_time_positivo_resta_valido(self):
+        """Il guard è sul segno, non sul confronto con l'offset: quello resta
+        al builder."""
+        corpo = [[[0, 1], [50, -1]], 0.001, 2]
+        assert normalize_read_direction({'points': corpo})['points'] is corpo
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
     def test_ripetizioni_booleane_rifiutate(self, ingresso):
         """`isinstance(True, int)` è vero, quindi `true` supera il
         riconoscimento della forma e poi `True < 1` è falso: il guard non

@@ -27,17 +27,19 @@ come errore esplicito e mai come correzione silenziosa:
    accettare una scrittura e renderizzarne un'altra; `0` poi non ha un segno e
    non ha una risposta non arbitraria.
 
-A queste si aggiungono alcuni **guard di arita'** sulle macro-forme (quanti
-punti ha un gruppo, quanti cicli un formato compatto) e la costruzione anticipata
-della distribuzione temporale. Non sono una seconda validazione del builder:
-sono li' perche' quelle stesse condizioni, lasciate al builder, risalgono come
-`ValueError` nudi — fuori dalla gerarchia `EngineError`, senza campo e senza
-stream_id.
+A queste si aggiungono alcuni **guard** sulle macro-forme: quanti punti ha un
+gruppo, quanti cicli e fino a quando dura un formato compatto, dove cadono le
+percentuali del suo pattern, e la costruzione anticipata della distribuzione
+temporale. Non sono una seconda validazione del builder: sono li' perche' quelle
+stesse condizioni, lasciate al builder, risalgono come `ValueError` nudi — fuori
+dalla gerarchia `EngineError`, senza campo e senza stream_id — o non risalgono
+affatto e si renderizzano in silenzio.
 
-La copertura non e' totale e non va dichiarata tale: restano al builder le
-condizioni che dipendono da quanto ha gia' percorso (`end_time` contro l'offset
-accumulato dagli elementi precedenti) e le distribuzioni che validano i propri
-parametri solo all'uso.
+La copertura non e' totale e non va dichiarata tale. Resta al builder l'unica
+condizione che dipende da quanto ha gia' percorso: `end_time` contro l'istante
+in cui il ciclo comincia, che in una lista mista e' l'offset accumulato dagli
+elementi precedenti. Qui se ne verifica il segno, che e' decidibile perche'
+quell'istante non e' mai negativo, non il confronto.
 
 La normalizzazione avvolge il valore in `{'type': 'step', 'points': <raw>}`.
 Il wrapping preserva la semantica temporale: `create_scaled_envelope` sul dict
@@ -94,10 +96,15 @@ _GROUP_ARITY_HINT = (
 
 _REPS_ARITY_HINT = (
     "il numero di ripetizioni del formato compatto e' un intero >= 1: con "
-    "zero o meno cicli non c'e' nessun breakpoint da generare. Il resto della "
-    "coerenza temporale del ciclo (end_time contro l'istante da cui parte) "
-    "resta al builder, che e' l'unico a conoscere l'offset accumulato dagli "
-    "elementi precedenti."
+    "zero o meno cicli non c'e' nessun breakpoint da generare."
+)
+
+_END_TIME_HINT = (
+    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
+    "ciclo finisce, e deve superare quello in cui comincia: dev'essere un "
+    "numero positivo (`true` non e' `1`). Che superi davvero l'istante di "
+    "partenza lo verifica il builder, l'unico a conoscere l'offset accumulato "
+    "dagli elementi che precedono in una lista mista."
 )
 
 _PATTERN_X_HINT = (
@@ -240,13 +247,19 @@ def _check_bp_group(group: list) -> None:
 
 def _check_compact(compact: list) -> None:
     """Formato compatto: l'interp e' il quarto elemento, i valori stanno nel
-    pattern. `end_time` non e' un verso e non si valida qui (vedi
-    `_REPS_ARITY_HINT`)."""
+    pattern. Di `end_time` si verifica il segno, che e' decidibile qui, non il
+    confronto con l'istante di partenza (vedi `_END_TIME_HINT`)."""
     pattern = compact[0]
+    end_time = compact[1]
     n_reps = compact[2]
     interp = compact[3] if len(compact) >= 4 else None
     time_dist = compact[4] if len(compact) >= 5 else None
     _check_interp(interp)
+    # `end_time` deve superare l'istante da cui il ciclo parte, che non e' mai
+    # negativo: il segno e' quindi decidibile qui, il confronto no. E il
+    # `bool` va escluso a mano per la stessa ragione di `n_reps`.
+    if not _is_number(end_time) or end_time <= 0:
+        _reject(end_time, _END_TIME_HINT)
     # Solo la natura di `n_reps`: che sia un `int` lo garantisce gia'
     # `_is_compact_format`. Resta fuori il solo `bool`, che li' passa per
     # sottoclasse e qui no, per la stessa ragione per cui `true` non e' `+1`:
