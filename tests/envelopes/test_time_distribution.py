@@ -19,6 +19,7 @@ from pge.envelopes.time_distribution import (
     PowerDistribution,
     validate_distribution
 )
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================
@@ -173,6 +174,19 @@ class TestPowerDistribution:
         for i in range(len(durations) - 1):
             assert durations[i] < durations[i+1]
     
+    @pytest.mark.parametrize("exponent", ['x', None, True, [2]])
+    def test_invalid_exponent(self, exponent):
+        """`exponent` non numerico -> errore alla costruzione.
+
+        E' l'unico costruttore del registro che assegnava senza guardare: il
+        valore restava buono fino a `calculate_distribution`, dove
+        `(i + 1) ** exponent` alzava un `TypeError` nudo. Chi valida la spec
+        prima di usarla — costruendola — non vedeva niente.
+        """
+        with pytest.raises(InvalidFieldValueError) as exc:
+            PowerDistribution(exponent=exponent)
+        assert exc.value.field == 'power.exponent'
+
     def test_exponent_equals_one(self):
         """Exponent = 1 → lineare."""
         dist = PowerDistribution(exponent=1.0)

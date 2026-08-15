@@ -267,7 +267,25 @@ class PowerDistribution(TimeDistributionStrategy):
                      < 1: cicli crescenti rallentati
                      = 1: lineare
                      > 1: cicli crescenti accelerati
+
+        Raises:
+            InvalidFieldValueError: se `exponent` non e' un numero. Nessun
+                bound: qualunque reale e' un esponente legittimo. Ma senza
+                questo controllo era l'unico costruttore del registro che
+                assegnava senza guardare, e il valore restava buono fino a
+                `calculate_distribution`, dove `(i + 1) ** exponent` alza un
+                `TypeError` nudo — invisibile a chi valida una spec
+                costruendola.
         """
+        if not isinstance(exponent, (int, float)) or isinstance(exponent, bool):
+            from pge.shared.exceptions import InvalidFieldValueError
+            raise InvalidFieldValueError(
+                field="power.exponent",
+                value=exponent,
+                hint="l'esponente della power law e' un numero (qualunque "
+                     "reale): < 1 rallenta la crescita dei cicli, 1 la rende "
+                     "lineare, > 1 la accelera.",
+            )
         self.exponent = exponent
     
     def calculate_distribution(

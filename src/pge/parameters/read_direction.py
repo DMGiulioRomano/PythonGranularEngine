@@ -52,7 +52,7 @@ from typing import Any, Union
 
 from pge.envelopes.envelope_builder import EnvelopeBuilder
 from pge.envelopes.time_distribution import TimeDistributionFactory
-from pge.shared.exceptions import EngineError, InvalidFieldValueError
+from pge.shared.exceptions import InvalidFieldValueError
 
 # Il nome della chiave nello YAML: identita' del campo in ogni errore.
 READ_DIRECTION_FIELD = 'grain.read_direction'
@@ -122,10 +122,22 @@ _PATTERN_ORDER_HINT = (
     "e' la discontinuita'."
 )
 
-_DIST_HINT = (
-    "la distribuzione temporale del formato compatto non e' costruibile: {err}. "
-    "Il verso di lettura non ha una distribuzione propria — e' quella "
-    "dell'envelope, e le forme valide sono quelle di sempre."
+_DIST_NAME_HINT = (
+    "il quinto elemento del formato compatto e' la distribuzione temporale "
+    "dei cicli, e ne esiste un elenco chiuso: {disponibili}. Si scrive come "
+    "nome ('exponential') o come dict con i suoi parametri "
+    "({{type: geometric, ratio: 1.5}}); omettendola i cicli durano uguale."
+)
+
+_DIST_PARAM_HINT = (
+    "i parametri della distribuzione '{nome}' non sono validi.{nota} Il verso "
+    "di lettura non ha una distribuzione propria: e' quella dell'envelope, e i "
+    "vincoli sui suoi parametri sono documentati con lei."
+)
+
+_DIST_TIPO_IMPLICITO = (
+    " Senza la chiave `type` la distribuzione e' `linear`, che non prende "
+    "parametri: se ne volevi un'altra, dichiarane il nome."
 )
 
 
@@ -258,7 +270,6 @@ def _check_compact(compact: list) -> None:
     end_time = compact[1]
     n_reps = compact[2]
     interp = compact[3] if len(compact) >= 4 else None
-    time_dist = compact[4] if len(compact) >= 5 else None
     _check_interp(interp)
     # `end_time` deve superare l'istante da cui il ciclo parte, che non e' mai
     # negativo: il segno e' quindi decidibile qui, il confronto no. E il
@@ -278,7 +289,10 @@ def _check_compact(compact: list) -> None:
     for point in pattern:
         _check_pattern_point(point, precedente)
         precedente = point[0]
-    _check_time_dist(time_dist)
+    # Solo se dichiarata: senza questo, ogni elemento compatto costruirebbe e
+    # butterebbe via una LinearDistribution per non dire niente.
+    if len(compact) >= 5:
+        _check_time_dist(compact[4])
 
 
 def _check_time_dist(spec: Any) -> None:
@@ -287,30 +301,48 @@ def _check_time_dist(spec: Any) -> None:
     Qui non c'e' niente da decidere — il verso di lettura non ha una
     distribuzione propria, e' quella dell'envelope. Ma `_is_compact_format`
     accetta in quella posizione qualunque `str` o `dict`, e cio' che ne esce
-    fallisce dentro `TimeDistributionFactory` con errori fuori dalla gerarchia
-    `EngineError`. Costruirla adesso li fa risalire dove hanno un campo.
+    fallisce dentro `TimeDistributionFactory` con errori che non portano ne'
+    il campo ne' lo stream_id — `ParameterBoundError` compreso, che sta nella
+    gerarchia ma nomina il proprio bound, non questa chiave.
 
-    E' delega, non duplicazione: il registro delle distribuzioni e i vincoli
-    sui loro parametri restano uno solo, e questo guard resta allineato da se'
-    se cambiano. I costruttori sono puri (validano e assegnano), quindi il
-    costo e' un oggetto buttato via.
+    Due passaggi, per due ragioni diverse:
 
-    Resta scoperta una distribuzione che accetti tutto nel costruttore e
-    fallisca all'uso: oggi `power`, che non valida `exponent` e sbaglia dentro
-    `calculate_distribution`, con un `total_time` che dipende dall'offset
-    accumulato e che di qui non si conosce. E' lo stesso confine di `end_time`.
+    1. **Il nome si legge dal registro.** Non e' duplicazione: e' la stessa
+       lista che il factory consulta, e leggerla qui evita che `{'type': 5}`
+       arrivi a `spec.get('type').lower()` e risalga come `AttributeError`.
+       In cambio l'hint puo' elencare i nomi validi, che e' l'errore piu'
+       frequente.
+    2. **I parametri li valida il costruttore**, costruendo. Quelli sono
+       vincoli delle singole distribuzioni e replicarli qui sarebbe codice
+       destinato a divergere; i costruttori sono puri (validano e assegnano),
+       quindi il costo e' un oggetto buttato via.
+
+    Il catch e' stretto a `ValueError`/`TypeError` — i due modi in cui il
+    registro dice "questo dato non va" — cosi' `MemoryError`, `RecursionError`
+    e ogni altro guasto che non parla dello YAML restano visibili per quello
+    che sono. E l'hint non riversa `str(exc)`: quelle stringhe sono in parte
+    generate da CPython (`LinearDistribution() takes no arguments`), quindi
+    instabili fra versioni, e PGE-ls le parsa.
     """
+    disponibili = TimeDistributionFactory.list_available()
+    nome = spec.get('type', 'linear') if isinstance(spec, dict) else spec
+    if nome is None:
+        nome = 'linear'
+    if not isinstance(nome, str) or nome.lower() not in disponibili:
+        _reject(spec, _DIST_NAME_HINT.format(disponibili=', '.join(disponibili)))
+
     try:
         TimeDistributionFactory.create(spec)
-    except EngineError:
-        # Gia' dentro la gerarchia: ha campo, hint e prende lo stream_id.
-        # Riavvolgerla perderebbe il bound che ha appena nominato.
-        raise
-    except Exception as err:
-        # Largo di proposito: qualunque modo in cui il factory rifiuta questo
-        # dato e' un rifiuto di cio' che l'utente ha scritto, non un caso da
-        # enumerare a mano. Il messaggio originale finisce nell'hint.
-        _reject(spec, _DIST_HINT.format(err=err))
+    except (ValueError, TypeError):
+        # `EngineError` eredita da `ValueError`, quindi il ramo copre anche
+        # `ParameterBoundError`: e' voluto. Quello nomina 'rate', non questa
+        # chiave, e Stream attribuisce lo stream_id al solo
+        # InvalidFieldValueError — cosi' tutte le famiglie rispondono uguale.
+        senza_tipo = isinstance(spec, dict) and 'type' not in spec
+        _reject(spec, _DIST_PARAM_HINT.format(
+            nome=nome,
+            nota=_DIST_TIPO_IMPLICITO if senza_tipo else '',
+        ))
 
 
 def _check_pattern_point(point: list, precedente: Any = None) -> None:

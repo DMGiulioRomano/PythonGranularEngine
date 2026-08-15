@@ -387,6 +387,8 @@ class TestNienteValueErrorNudo:
         {'type': 'logarithmic', 'base': 1},        # parametro fuori dominio
         {'ratio': 1.5},                            # parametro estraneo al tipo
         {'type': 5},                               # il tipo non e' un nome
+        {'type': 'exponential', 'rate': 0},        # bound: alza ParameterBoundError
+        {'type': 'power', 'exponent': 'x'},        # validato dal costruttore
     ])
     def test_distribuzione_temporale_non_costruibile(self, build, dist):
         """Il quinto elemento del formato compatto e' la distribuzione
