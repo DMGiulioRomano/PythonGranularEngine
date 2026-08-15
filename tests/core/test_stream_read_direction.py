@@ -190,6 +190,14 @@ class TestEnvelope:
         assert {g.pitch_ratio for g in compatto.grains} == {1.0, -1.0}
         assert {g.pitch_ratio for g in gruppo.grains} == {1.0, -1.0}
 
+    def test_punto_del_pattern_senza_interp_renderizza(self, build):
+        """`[x%, y, None]` dentro il pattern di un ciclo: il validatore lo
+        accetta come punto piatto con l'interp lasciato al default, e qui si
+        verifica che il builder lo espanda davvero invece di romperci sopra."""
+        stream = build(grain={'read_direction':
+                              [[[0, 1], [50, 1, None], [75, -1]], 2.0, 2]})
+        assert {g.pitch_ratio for g in stream.grains} == {1.0, -1.0}
+
     def test_time_unit_del_dict_resta_onorato(self, build):
         """La normalizzazione preserva le altre chiavi del dict: con
         `time_unit: normalized` il breakpoint a 0.5 cade a meta' stream."""

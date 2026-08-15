@@ -29,6 +29,7 @@ import pytest
 from pge.parameters.read_direction import (
     READ_DIRECTION_FIELD,
     READ_DIRECTION_VALUES,
+    _FORM_HINT,
     _REPS_ARITY_HINT,
     normalize_read_direction,
 )
@@ -289,7 +290,23 @@ class TestGuardDiArita:
 
         with pytest.raises(InvalidFieldValueError) as exc:
             normalize_read_direction(raw)
-        assert exc.value.field == READ_DIRECTION_FIELD
+        # Il valore dice QUALE elemento e' caduto: il gruppo annidato, non la
+        # lista che lo contiene. Se un domani `_is_compact_format` si
+        # stringesse e il corpo finisse su `_check_item`, cadrebbe `corpo[0]`
+        # e questa asserzione lo direbbe.
+        assert exc.value.value == corpo[0][0]
+        assert exc.value.hint == _FORM_HINT
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_punto_del_pattern_senza_interp_dichiarato(self, ingresso):
+        """`[x%, y, None]` e' un punto piatto con l'interp lasciato al default,
+        non una forma annidata: passa, e il builder lo espande in un
+        breakpoint a due elementi. Il guard sul pattern pretende che il primo
+        elemento sia un numero, non che il punto abbia due soli elementi."""
+        corpo = [[[0, 1], [50, 1, None], [100, -1]], 2.0, 2]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        assert normalize_read_direction(raw)['points'] is corpo
 
     def test_pattern_vuoto_rifiutato(self):
         with pytest.raises(InvalidFieldValueError):
