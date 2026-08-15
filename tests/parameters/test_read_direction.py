@@ -19,7 +19,9 @@ Organizzazione:
 2. Envelope in forma di lista di breakpoint
 3. Interpolazione: step implicito, step esplicito, tutto il resto errore
 4. Dominio dei valori
-5. Forme composte (compatto, BP group, per-punto, dict)
+5. Guard di arita': quello che passa di qui arriva vivo al builder
+6. La stessa grammatica ai due ingressi (lista nuda e dict {points})
+7. Forme non riconosciute
 """
 
 import pytest
@@ -202,7 +204,77 @@ class TestDominio:
 
 
 # =============================================================================
-# 5. LA STESSA GRAMMATICA AI DUE INGRESSI
+# 5. QUELLO CHE PASSA DI QUI ARRIVA VIVO AL BUILDER
+# =============================================================================
+
+class TestGuardDiArita:
+    """Un corpo che il validatore accetta non deve esplodere nel builder.
+
+    `normalize_read_direction` dichiara di sollevare `InvalidFieldValueError`,
+    che porta il campo e a cui `Stream` attribuisce lo stream_id. Un `ValueError`
+    nudo che risale da `EnvelopeBuilder` esce dalla gerarchia `EngineError`:
+    l'utente perde la riga di contesto e PGE-ls perde il messaggio che parsa.
+
+    Sono guard di **arità**, non una seconda validazione del builder: dicono
+    quanti elementi servono perché la forma sia quella dichiarata, non se i
+    valori hanno senso.
+    """
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_bp_group_con_un_solo_punto(self, ingresso):
+        """Una zona con meno di 2 punti non ha segmenti interni: e' la stessa
+        condizione che il builder verifica, sollevata dove ha un campo."""
+        corpo = [[[0, 1]], 'step']
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.field == READ_DIRECTION_FIELD
+        assert '2 punti' in exc.value.hint
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_compatto_con_zero_ripetizioni(self, ingresso):
+        corpo = [[[0, 1], [100, -1]], 2.0, 0]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value == 0
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_compatto_con_ripetizioni_negative(self, ingresso):
+        corpo = [[[0, 1], [100, -1]], 2.0, -3]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value == -3
+
+    def test_una_ripetizione_resta_valida(self):
+        """Il guard e' `>= 1`, non `> 1`: un ciclo solo e' legittimo."""
+        corpo = [[[0, 1], [100, -1]], 2.0, 1]
+        assert normalize_read_direction({'points': corpo})['points'] is corpo
+
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_macro_forma_dentro_il_pattern_di_un_ciclo(self, ingresso):
+        """`_is_compact_format` guarda solo la lunghezza dei punti del pattern
+        (2 o 3), e un BP group e' lungo 2: passa quel filtro e arriva al
+        builder, che sul primo elemento fa `x_pct / 100.0` e solleva un
+        TypeError nudo. Qui il punto del pattern deve essere piatto."""
+        corpo = [[[[[0, 1], [50, -1]], 'step']], 2.0, 2]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.field == READ_DIRECTION_FIELD
+
+    def test_pattern_vuoto_rifiutato(self):
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'points': [[], 2.0, 2]})
+
+
+# =============================================================================
+# 6. LA STESSA GRAMMATICA AI DUE INGRESSI
 # =============================================================================
 
 class TestStessaGrammaticaNeiDueIngressi:
@@ -299,6 +371,11 @@ class TestStessaGrammaticaNeiDueIngressi:
         with pytest.raises(InvalidFieldValueError):
             normalize_read_direction(
                 {'points': [[[[0, 1], [50, -1]], 20, 2], 'step']})
+
+
+# =============================================================================
+# 7. FORME NON RICONOSCIUTE
+# =============================================================================
 
 class TestFormeNonRiconosciute:
 

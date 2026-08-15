@@ -27,6 +27,12 @@ come errore esplicito e mai come correzione silenziosa:
    accettare una scrittura e renderizzarne un'altra; `0` poi non ha un segno e
    non ha una risposta non arbitraria.
 
+A queste si aggiungono alcuni **guard di arita'** sulle macro-forme (quanti
+punti ha un gruppo, quanti cicli un formato compatto). Non sono una seconda
+validazione del builder: sono li' perche' quelle stesse condizioni, lasciate al
+builder, risalgono come `ValueError` nudi — fuori dalla gerarchia `EngineError`,
+senza campo e senza stream_id.
+
 La normalizzazione avvolge il valore in `{'type': 'step', 'points': <raw>}`.
 Il wrapping preserva la semantica temporale: `create_scaled_envelope` sul dict
 legge `time_unit` con fallback su `time_mode`, cioe' esattamente cio' che fa
@@ -69,6 +75,24 @@ _FORM_HINT = (
     "{points: [...]}, BP group o formato compatto."
 )
 
+# Guard di arita'. Sollevati qui e non lasciati al builder perche' di la'
+# risalgono come ValueError nudi, fuori dalla gerarchia EngineError: senza
+# campo, senza stream_id, e con un messaggio che PGE-ls non puo' attribuire.
+
+_GROUP_ARITY_HINT = (
+    "un BP group di grain.read_direction richiede almeno 2 punti: con meno "
+    "non ha segmenti interni, quindi non c'e' nessuna zona a cui applicare "
+    "l'interpolazione. Per un verso costante basta lo scalare (-1 o +1)."
+)
+
+_REPS_ARITY_HINT = (
+    "il numero di ripetizioni del formato compatto e' un intero >= 1: con "
+    "zero o meno cicli non c'e' nessun breakpoint da generare. Il resto della "
+    "coerenza temporale del ciclo (end_time contro l'istante da cui parte) "
+    "resta al builder, che e' l'unico a conoscere l'offset accumulato dagli "
+    "elementi precedenti."
+)
+
 
 def _is_number(value: Any) -> bool:
     """Numero vero: `bool` e' sottoclasse di `int`, ma `true` non e' `+1`."""
@@ -108,12 +132,18 @@ def _check_envelope_body(body: Any) -> None:
     fra le forme valide proprio quella appena scartata.
 
     Le macro-forme sono riconosciute qui in cima e, da `_check_item`, come
-    elementi di una lista mista — le stesse due posizioni in cui le riconosce
-    `EnvelopeBuilder.parse`. Piu' in fondo non serve guardarle: dentro un BP
-    group o dentro il pattern di un ciclo i punti devono essere `[t, v]` piatti
-    perche' la forma sia riconosciuta come tale, quindi una macro-forma
-    annidata li' non e' un caso da rifiutare — e' una cosa che non arriva mai
-    a chiamarsi cosi'.
+    elementi di una lista mista: le stesse due posizioni in cui le riconosce
+    `EnvelopeBuilder.parse`. Piu' in fondo non sono ammesse, ma per due ragioni
+    diverse, che vale la pena non confondere:
+
+    - dentro un BP group basta il riconoscimento della forma: `_is_bp_group`
+      pretende che ogni punto sia `[num, num]` o `[num, num, str]`, quindi un
+      annidamento fa fallire il riconoscimento e il valore non arriva mai a
+      chiamarsi gruppo;
+    - dentro il pattern di un ciclo no: `_is_compact_format` filtra i punti
+      sulla sola lunghezza (2 o 3), e un BP group e' lungo 2. Li' il rifiuto lo
+      fa `_check_pattern_point`, altrimenti il valore passa di qui e muore nel
+      builder con un TypeError nudo.
     """
     if EnvelopeBuilder._is_compact_format(body):
         _check_compact(body)
@@ -167,16 +197,42 @@ def _check_bp_group(group: list) -> None:
     """BP group (issue #64): `[points, interp]`, interp della macrozona."""
     points, interp = group
     _check_interp(interp)
+    # Solo l'arita': che `points` sia una lista di breakpoint piatti lo
+    # garantisce gia' `_is_bp_group`, che qui e' sempre passato.
+    if len(points) < 2:
+        _reject(points, _GROUP_ARITY_HINT)
     _check_points(points)
 
 
 def _check_compact(compact: list) -> None:
     """Formato compatto: l'interp e' il quarto elemento, i valori stanno nel
-    pattern. `end_time` e `n_reps` non sono versi e non si validano."""
+    pattern. `end_time` non e' un verso e non si valida qui (vedi
+    `_REPS_ARITY_HINT`)."""
     pattern = compact[0]
+    n_reps = compact[2]
     interp = compact[3] if len(compact) >= 4 else None
     _check_interp(interp)
-    _check_points(pattern)
+    if n_reps < 1:
+        _reject(n_reps, _REPS_ARITY_HINT)
+    if not pattern:
+        _reject(pattern, _FORM_HINT)
+    for point in pattern:
+        _check_pattern_point(point)
+
+
+def _check_pattern_point(point: list) -> None:
+    """Un punto del pattern di un ciclo: `[x%, y]` o `[x%, y, type]`, piatto.
+
+    Non passa da `_check_item` perche' li' le macro-forme sono ammesse, e qui
+    non lo sono: `_is_compact_format` filtra i punti del pattern sulla sola
+    lunghezza (2 o 3) e un BP group e' lungo 2, quindi ci si infila: il builder
+    poi fa `x_pct / 100.0` sul primo elemento e solleva un TypeError nudo.
+    """
+    if not _is_number(point[0]):
+        _reject(point, _FORM_HINT)
+    if len(point) == 3:
+        _check_interp(point[2])
+    _check_direction_value(point[1])
 
 
 def normalize_read_direction(raw: Any) -> Union[float, dict]:
