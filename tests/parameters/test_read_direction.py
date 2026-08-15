@@ -520,6 +520,24 @@ class TestFormeNonRiconosciute:
         with pytest.raises(InvalidFieldValueError):
             normalize_read_direction({'type': 'step'})
 
+    @pytest.mark.parametrize("t", ['x', None, True, [0]])
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_breakpoint_dict_con_t_non_numerico(self, ingresso, t):
+        """Il breakpoint in forma `{t, v}` deve dichiarare un tempo come
+        quello in forma lista: là `_is_number(item[0])` è già preteso, qui no,
+        e il valore arriva al builder che lo rifiuta con un `ValueError` nudo.
+        È l'asimmetria fra le forme che il modulo dichiara chiusa."""
+        corpo = [{'t': t, 'v': 1}, {'t': 1.0, 'v': -1}]
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            normalize_read_direction(raw)
+        assert exc.value.value == corpo[0]
+
+    def test_breakpoint_dict_valido_resta_valido(self):
+        corpo = [{'t': 0, 'v': 1}, {'t': 1.0, 'v': -1}]
+        assert normalize_read_direction(corpo)['points'] is corpo
+
     def test_elemento_non_breakpoint(self):
         with pytest.raises(InvalidFieldValueError):
             normalize_read_direction([[0, 1], 'cycle'])

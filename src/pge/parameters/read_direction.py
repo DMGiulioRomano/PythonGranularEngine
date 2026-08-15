@@ -223,6 +223,11 @@ def _check_item(item: Any) -> None:
         return
 
     if isinstance(item, dict) and 't' in item and 'v' in item:
+        # Il tempo si pretende numerico come nella forma lista: e' la stessa
+        # grandezza scritta in un altro modo, e senza questo il valore va a
+        # morire nel builder con un ValueError nudo.
+        if not _is_number(item['t']):
+            _reject(item, _FORM_HINT)
         _check_interp(item.get('type'))
         _check_direction_value(item['v'])
         return
