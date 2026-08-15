@@ -332,12 +332,17 @@ class TestStessaGrammaticaNeiDueIngressi:
         assert exc.value.value == interp
 
     def test_dict_con_compatto_fuori_dominio(self):
-        with pytest.raises(InvalidFieldValueError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             normalize_read_direction({'points': [[[0, 1], [50, 0]], 20, 2]})
+        # La ragione, non solo il tipo: senza questa riga il test passerebbe
+        # anche se il corpo fosse rifiutato per la forma invece che per lo 0.
+        assert exc.value.value == 0
+        assert 'segno' in exc.value.hint
 
     def test_dict_con_bp_group_fuori_dominio(self):
-        with pytest.raises(InvalidFieldValueError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             normalize_read_direction({'points': [[[0, 1], [10, 0.5]], 'step']})
+        assert exc.value.value == 0.5
 
     def test_il_type_del_dict_vale_anche_sulle_macro_forme(self):
         """`type: linear` sul dict resta un errore comunque sia scritto il
@@ -361,16 +366,17 @@ class TestStessaGrammaticaNeiDueIngressi:
 
     def test_lista_mista_valida_i_valori_della_sezione_compatta(self):
         misto = [[0, 1], [0.3, 1], [[[0, 0], [100, 1]], 1.3, 2]]
-        with pytest.raises(InvalidFieldValueError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             normalize_read_direction({'points': misto})
+        assert exc.value.value == 0
 
-    def test_corpo_malformato_rifiutato(self):
-        """Una lista che non e' ne' una macro-forma ne' una sequenza di
-        breakpoint validi resta un errore: la simmetria fra i due ingressi non
-        e' permissivita'."""
-        with pytest.raises(InvalidFieldValueError):
+    def test_elemento_estraneo_in_una_lista_mista(self):
+        """Il marcatore stringa e' l'elemento che cade, non la sezione
+        compatta che lo precede: quella e' valida e viene accettata."""
+        with pytest.raises(InvalidFieldValueError) as exc:
             normalize_read_direction(
                 {'points': [[[[0, 1], [50, -1]], 20, 2], 'step']})
+        assert exc.value.value == 'step'
 
 
 # =============================================================================
