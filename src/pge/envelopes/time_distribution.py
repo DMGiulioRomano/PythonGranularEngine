@@ -276,8 +276,15 @@ class PowerDistribution(TimeDistributionStrategy):
                 `calculate_distribution`, dove `(i + 1) ** exponent` alza un
                 `TypeError` nudo — invisibile a chi valida una spec
                 costruendola.
+
+                Il `bool` passa, come nelle sorelle: qui si valida il tipo
+                dove le altre validano i bound (`rate <= 0`, `ratio <= 0`,
+                `base <= 1`), e un `bool` quei bound li supera valendo 0 o 1.
+                `exponent: true` non ha mai alzato niente — `True ** n` fa 1 —
+                e rifiutarlo qui soltanto renderebbe `power` un'eccezione nel
+                registro, rompendo YAML che oggi renderizzano.
         """
-        if not isinstance(exponent, (int, float)) or isinstance(exponent, bool):
+        if not isinstance(exponent, (int, float)):
             from pge.shared.exceptions import InvalidFieldValueError
             raise InvalidFieldValueError(
                 field="power.exponent",

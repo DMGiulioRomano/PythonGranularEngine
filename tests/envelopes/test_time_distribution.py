@@ -174,7 +174,7 @@ class TestPowerDistribution:
         for i in range(len(durations) - 1):
             assert durations[i] < durations[i+1]
     
-    @pytest.mark.parametrize("exponent", ['x', None, True, [2]])
+    @pytest.mark.parametrize("exponent", ['x', None, [2], {'v': 2}])
     def test_invalid_exponent(self, exponent):
         """`exponent` non numerico -> errore alla costruzione.
 
@@ -186,6 +186,27 @@ class TestPowerDistribution:
         with pytest.raises(InvalidFieldValueError) as exc:
             PowerDistribution(exponent=exponent)
         assert exc.value.field == 'power.exponent'
+
+    @pytest.mark.parametrize("dist,kwargs", [
+        (PowerDistribution, {'exponent': True}),
+        (ExponentialDistribution, {'rate': True}),
+        (GeometricDistribution, {'ratio': True}),
+    ])
+    def test_bool_accettato_come_in_tutto_il_registro(self, dist, kwargs):
+        """Il guard e' sui non-numeri, non sui `bool`.
+
+        In questo modulo i costruttori validano i **bound** — `rate <= 0`,
+        `ratio <= 0`, `base <= 1` — e un `bool` li supera valendo 0 o 1. Un
+        `exponent: true` non alzava nulla nemmeno prima: `True ** n` fa 1, cioe'
+        distribuzione lineare. Rifiutarlo qui e non in `rate` o `ratio`
+        renderebbe `power` l'unica del registro a decidere sul tipo, e
+        romperebbe YAML che oggi renderizzano — su ogni chiave, non solo su
+        quelle di questa feature.
+        """
+        strategy = dist(**kwargs)
+        starts, durations = strategy.calculate_distribution(10.0, 3)
+        assert len(durations) == 3
+        assert sum(durations) == pytest.approx(10.0)
 
     def test_exponent_equals_one(self):
         """Exponent = 1 → lineare."""

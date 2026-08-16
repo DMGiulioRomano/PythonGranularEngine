@@ -1800,9 +1800,11 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 - `geometric.ratio <= 0` → `ValueError`
 - `power.exponent` non numerico → `InvalidFieldValueError`
 
-I primi cinque scattano alla costruzione della distribuzione; `power` era
-l'unico a non validare il proprio parametro, e falliva più tardi con un
-`TypeError` dentro `calculate_distribution`.
+Tutti scattano alla costruzione della distribuzione; `power` era l'unico a non
+validare il proprio parametro, e falliva più tardi con un `TypeError` dentro
+`calculate_distribution`. Il controllo su `exponent` è sul **tipo** (non è un
+numero) e non sui bound: qualunque reale è un esponente legittimo. Come negli
+altri quattro, un booleano passa valendo `0`/`1`.
 
 ---
 

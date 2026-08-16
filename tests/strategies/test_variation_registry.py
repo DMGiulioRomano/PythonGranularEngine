@@ -63,13 +63,10 @@ class MockDistribution(DistributionStrategy):
 # COSTANTI DI RIFERIMENTO
 # =============================================================================
 
-EXPECTED_STRATEGIES = {
-    'additive': AdditiveVariation,
-    'quantized': QuantizedVariation,
-    'invert': InvertVariation,
-    'choice': ChoiceVariation,
-}
-
+# La mappa nome -> classe non vive qui: e' asserita direttamente da
+# `test_each_mode_maps_correctly` e dai cinque test per singolo modo. Una
+# tabella in piu' sarebbe una terza copia dello stesso contratto, che nessuno
+# legge e che si scorda di crescere.
 EXPECTED_MODE_NAMES = {'additive', 'quantized', 'invert', 'negate', 'choice'}
 
 
