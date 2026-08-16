@@ -8,6 +8,44 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **La lente di ingrandimento proietta il suo istante sulle curve dello
+  stream.** La lente diceva dove guardare ma non con quali parametri: per
+  sapere a che valori corrispondesse il grumo di grani ingrandito bisognava
+  allineare a occhio la X del cerchio sorgente con le curve della corsia
+  sottostante. Ora ogni lente risolta — automatica o esplicita — disegna sulla
+  corsia envelope del suo stream una verticale tratteggiata a `x = t` e, su
+  ogni curva che incrocia, un marker con il valore reale e la sua unità (lo
+  stesso formato dei breakpoint annotati, ora condiviso in
+  `envelope_display.value_label`).
+
+  Colori dentro il sistema esistente: la verticale prende `magnify_color` — è
+  un pezzo della lente, non un elemento a sé — e il marker la tinta della sua
+  curva con l'anello dell'accento. Stampata in scala di grigi la proiezione
+  resta un tratteggio con pallini cerchiati, non due grigi indistinguibili.
+  Le etichette cadono tutte sulla stessa verticale, quindi il lato si alterna
+  salendo lungo la corsia; i bordi del subplot hanno comunque l'ultima parola,
+  come per i breakpoint.
+
+  Nuovo gruppo di config del visualizer `magnify_projection`
+  (`enabled`, `linestyle`, `linewidth`, `alpha`, `markersize`, `labels`);
+  nessuna flag CLI nuova, la proiezione è parte di `--magnify` /
+  `--magnify-at`. Niente da proiettare, niente disegnato: a magnify spenta,
+  su uno stream senza curve dinamiche o con l'istante fuori dall'estensione
+  dello stream la pagina resta identica a prima. Chiude #214.
+
+### Modificato
+
+- **`ScoreVisualizer._draw_envelopes` restituisce un record invece di un set.**
+  Era l'insieme dei nomi disegnati, che non leggeva nessuno; ora è
+  `EnvelopeLaneRender(curves, display_ranges, y_base, y_height, pitch_unit)`
+  — cosa è finito nella corsia. Serve alla proiezione: i range con cui le
+  curve sono state scalate vivevano solo nello scratchpad d'istanza
+  `_current_display_ranges`, che al momento di disegnare le lenti contiene
+  ormai quelli dell'ultimo stream. Metodo privato, nessun consumatore fuori
+  dal visualizer; `.drawn_types` sul record dà l'informazione di prima.
+
 ---
 
 ## [v7.1.0] — "Sample Duration" — 2026-08-14
