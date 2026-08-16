@@ -28,6 +28,7 @@ from pge.rendering.envelope_display import (
     normalize,
     segment_strategy_name,
     is_per_segment_heterogeneous,
+    value_label,
 )
 
 
@@ -317,3 +318,46 @@ class TestHeterogeneity:
         """Un oggetto che non espone segmenti non e' eterogeneo: si disegna in
         blocco, che e' il comportamento di default."""
         assert is_per_segment_heterogeneous(SimpleNamespace()) is False
+
+
+class TestValueLabel:
+    """L'etichetta col valore reale di un parametro: unita' per nome e cifre
+    decrescenti con la grandezza. Estratta da ScoreVisualizer._annotate_breakpoints
+    (issue #214) perche' ora la usano in due — i breakpoint e la proiezione
+    della lente — e lo stesso valore deve leggersi nello stesso modo."""
+
+    def test_unit_comes_from_the_parameter_name(self):
+        assert value_label('volume', -6.0) == '-6.00dB'
+        assert value_label('density', 12.0) == '12.0g/s'
+        assert value_label('pointer_speed', 2.0) == '2.00x'
+
+    def test_grain_duration_is_shown_in_milliseconds(self):
+        """Unico parametro con moltiplicatore: i secondi in cui e' scritto
+        sarebbero illeggibili (0.05 -> 50.0ms)."""
+        assert value_label('grain_duration', 0.05) == '50.0ms'
+
+    def test_digits_shrink_as_the_number_grows(self):
+        """Tre scaglioni: due decimali sotto 10, uno sotto 100, nessuno sopra."""
+        assert value_label('density', 5.0) == '5.00g/s'
+        assert value_label('density', 50.0) == '50.0g/s'
+        assert value_label('density', 150.0) == '150g/s'
+
+    def test_negative_numbers_use_the_same_scaglioni(self):
+        """Gli scaglioni guardano il valore assoluto: -150 non deve mostrare
+        due decimali solo perche' e' negativo."""
+        assert value_label('volume', -150.0) == '-150dB'
+
+    def test_unknown_parameter_has_no_unit(self):
+        assert value_label('scatter', 0.5) == '0.50'
+        assert value_label('voice_pitch_offset__v1', 3.0) == '3.00'
+
+    def test_pitch_symbol_comes_from_the_active_unit(self):
+        """pitch e' unit-driven: il simbolo (st/c/qt/edoN/x) viene dall'unita'
+        dello stream, non da una tabella statica."""
+        unit = SimpleNamespace(symbol='st')
+        assert value_label('pitch', 3.0, pitch_unit=unit) == '3.00st'
+
+    def test_pitch_without_a_unit_falls_back_to_no_symbol(self):
+        """Senza unita' attiva il numero resta leggibile: nessun simbolo
+        inventato."""
+        assert value_label('pitch', 3.0) == '3.00'

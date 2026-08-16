@@ -5,7 +5,8 @@ Scalatura verticale delle curve di uno Stream.
 Risponde a due domande, entrambe geometriche e nessuna delle due grafica:
 quanto e' ampia la finestra verticale in cui disegnare una curva (il range di
 display data-driven, issue #114) e dove cade un valore dentro quella finestra
-(la normalizzazione a [0,1]).
+(la normalizzazione a [0,1]). Piu' una terza, che geometrica non e' ma sta
+nella stessa famiglia: come si scrive quel valore in un'etichetta.
 
 Fratello di envelope_extractor: quello dice QUALI curve ha uno stream, questo
 dice quanto sono alte. Come lui non importa matplotlib, cosi' la regola resta
@@ -141,3 +142,56 @@ def normalize(param_name, value, ranges, *, pan_range):
     # (issue #114 nasce proprio dal clamp che faceva collassare due estremi
     # diversi sullo stesso 1.0).
     return (value - lo) / (hi - lo)
+
+
+# Unita' di misura per parametro. Il nome e' quello pubblicato (chiavi di
+# ENVELOPE_COLORS): una curva senza entry non ha unita' e mostra il numero nudo.
+ENVELOPE_UNITS = {
+    'volume': 'dB',
+    'grain_duration': 'ms',
+    'pan': '°',
+    # pitch: il simbolo (st/c/qt/et/edoN/x) viene dall'unita' attiva dello
+    # stream, non da qui — vedi il parametro pitch_unit di value_label.
+    'density': 'g/s',
+    'pointer_speed': 'x',
+    'fill_factor': '',
+    'distribution': '',
+    'num_voices': ' voices',
+    'scatter': '',  # normalizzato 0-1, adimensionale
+    'pc_rand_reverse': '%',
+}
+
+# Conversioni per la sola leggibilita' dell'etichetta: il valore resta quello
+# scritto nello YAML, cambia come lo si stampa.
+ENVELOPE_MULTIPLIERS = {
+    'grain_duration': 1000,  # secondi -> millisecondi
+}
+
+
+def value_label(param_name, value, pitch_unit=None):
+    """Il valore reale di un parametro, scritto per essere letto sulla pagina.
+
+    Due chiamanti, una regola: i breakpoint annotati sulle curve e la
+    proiezione dell'istante della lente (issue #214). Lo stesso valore deve
+    leggersi nello stesso modo, o le due annotazioni sembrerebbero parlare di
+    grandezze diverse.
+
+    Le cifre decrescono con la grandezza: sotto la corsia envelope c'e' poco
+    spazio, e tre decimali su un numero a tre cifre sono rumore.
+
+    Args:
+        param_name: nome pubblicato della curva.
+        value: valore nell'unita' in cui e' scritto nello YAML.
+        pitch_unit: unita' attiva dello stream, per il solo 'pitch' (che e'
+            unit-driven: st/c/qt/et/edoN/x). None -> nessun simbolo.
+    """
+    unit = ENVELOPE_UNITS.get(param_name, '')
+    if param_name == 'pitch' and pitch_unit is not None:
+        unit = pitch_unit.symbol
+
+    display_value = value * ENVELOPE_MULTIPLIERS.get(param_name, 1)
+    if abs(display_value) >= 100:
+        return f"{display_value:.0f}{unit}"
+    if abs(display_value) >= 10:
+        return f"{display_value:.1f}{unit}"
+    return f"{display_value:.2f}{unit}"
