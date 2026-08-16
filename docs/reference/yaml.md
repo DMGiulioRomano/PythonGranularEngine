@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: efbf8c6
+last_synced_commit: 3ffcf1c
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -1803,8 +1803,17 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 Tutti scattano alla costruzione della distribuzione; `power` era l'unico a non
 validare il proprio parametro, e falliva più tardi con un `TypeError` dentro
 `calculate_distribution`. Il controllo su `exponent` è sul **tipo** (non è un
-numero) e non sui bound: qualunque reale è un esponente legittimo. Come negli
-altri quattro, un booleano passa valendo `0`/`1`.
+numero) e non sui bound: qualunque reale è un esponente legittimo.
+
+Nessuna delle cinque rifiuta i booleani in quanto tali — sono numeri — ma i
+bound qui sopra li trattano diversamente, perché non sono la stessa condizione:
+
+| | `true` (vale 1) | `false` (vale 0) |
+|---|---|---|
+| `power.exponent` (nessun bound) | passa | passa |
+| `exponential.rate > 0` | passa | errore |
+| `geometric.ratio > 0` | passa | errore |
+| `logarithmic.base > 1` | **errore** | errore |
 
 ---
 

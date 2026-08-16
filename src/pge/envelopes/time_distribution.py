@@ -277,12 +277,18 @@ class PowerDistribution(TimeDistributionStrategy):
                 `TypeError` nudo — invisibile a chi valida una spec
                 costruendola.
 
-                Il `bool` passa, come nelle sorelle: qui si valida il tipo
-                dove le altre validano i bound (`rate <= 0`, `ratio <= 0`,
-                `base <= 1`), e un `bool` quei bound li supera valendo 0 o 1.
-                `exponent: true` non ha mai alzato niente — `True ** n` fa 1 —
-                e rifiutarlo qui soltanto renderebbe `power` un'eccezione nel
-                registro, rompendo YAML che oggi renderizzano.
+                Il `bool` passa questo guard, perche' e' un numero. Cosa gli
+                succeda poi non e' una regola comune del registro ma dipende
+                dai bound di ciascuna distribuzione, che non sono la stessa
+                condizione: `rate: false` e `ratio: false` valgono 0 e cadono
+                su `> 0`, mentre `base: true` vale esattamente 1 e cade su
+                `> 1`. Qui non ci sono bound — qualunque reale e' un esponente
+                — quindi non cade niente.
+
+                Il punto non e' che i bool siano ammessi ovunque, ma che
+                `exponent: true` non ha mai alzato niente (`True ** n` fa 1):
+                rifiutarlo qui aggiungerebbe un controllo di tipo che nessuna
+                sorella fa, rompendo YAML che oggi rendono.
         """
         if not isinstance(exponent, (int, float)):
             from pge.shared.exceptions import InvalidFieldValueError
