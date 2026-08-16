@@ -70,6 +70,26 @@ class MagnifyDefaults:
     corner: str = 'top-right'            # angolo del subplot dove proiettare
 
 
+@dataclass(frozen=True)
+class MagnifyProjection:
+    """Proiezione dell'istante della lente sulla corsia envelope (issue #214).
+
+    Il colore non sta qui: la verticale prende `magnify_color` (e' un pezzo
+    della lente, non un elemento a se') e i marker il colore della curva che
+    incrociano. Restano lo spessore del tratto e l'ingombro dei numeri, che
+    sono le due cose che cambiano davvero da una partitura all'altra.
+    """
+    enabled: bool = True
+    # Tratteggio e non tinta unita: la partitura deve restare leggibile anche
+    # stampata in scala di grigi, dove il rosso della lente e' un grigio come
+    # gli altri.
+    linestyle: str = '--'
+    linewidth: float = 0.6
+    alpha: float = 0.8
+    markersize: float = 5.0
+    labels: bool = True                  # etichette col valore reale
+
+
 # Range fissi dei parametri. Dopo issue #114 (scaling data-driven) solo 'pan'
 # e' ancora consultato per lo scaling delle curve, essendo ciclico; le altre
 # entry restano per riferimento e retrocompatibilita'.
@@ -204,7 +224,8 @@ class VisualizerConfig:
     magnify_targets: list = field(default_factory=list)
     magnify_defaults: MagnifyDefaults = MagnifyDefaults()
     magnify_hist_bins: tuple = (40, 16)   # bin (tempo, posizione) per l'auto
-    magnify_color: str = '#c1121f'        # marker sorgente e connettori
+    magnify_color: str = '#c1121f'        # marker sorgente, connettori, proiezione
+    magnify_projection: MagnifyProjection = MagnifyProjection()
 
     # =========================================================================
 

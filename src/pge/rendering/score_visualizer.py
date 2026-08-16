@@ -51,6 +51,7 @@ except (ValueError, KeyError):
 from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
 from pge.rendering import envelope_display  # noqa: E402
 from pge.rendering import grain_visuals  # noqa: E402
+from pge.rendering import magnifier_projection  # noqa: E402
 from pge.rendering import magnifier_targets  # noqa: E402
 from pge.rendering import page_layout  # noqa: E402
 from pge.rendering.visualizer_config import VisualizerConfig  # noqa: E402
@@ -420,12 +421,20 @@ class ScoreVisualizer:
                                    page_start, page_end, cents_range)
             self._draw_stream_label_full(ax_grain, stream, page_start, sample_duration)
 
-            stream_entries.append({
+            entry = {
                 'stream': stream,
                 'ax': ax_grain,
                 'sample_duration': sample_duration,
                 'cents_range': cents_range,
-            })
+                # Corsia envelope dello stream: riempite piu' sotto, quando la
+                # riga envelope viene creata. La lente le usa per proiettare il
+                # proprio istante sulle curve (issue #214); restano None per
+                # una pagina senza envelope, e il record resta vuoto per uno
+                # stream tutto statico (corsia presente ma senza curve).
+                'ax_env': None,
+                'env_render': magnifier_projection.EnvelopeLaneRender(),
+            }
+            stream_entries.append(entry)
 
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
             # colonna dedicata della riga grani: non ruba larghezza al subplot.
@@ -477,14 +486,16 @@ class ScoreVisualizer:
             if has_envelopes:
                 ax_env = fig.add_subplot(gs[grain_row + 1, 1],
                                          label=f'env:{stream.stream_id}')
+                entry['ax_env'] = ax_env
 
                 # Layout condiviso lane/legenda (issue #91), ora calcolato per
                 # il singolo stream: 0 lane (stream tutto statico) o 1 lane.
                 lanes, legend_entries = self._compute_env_legend_layout([stream])
 
                 for lane in lanes:
-                    self._draw_envelopes(ax_env, lane.stream, lane.y_base,
-                                         lane.y_height, page_start, page_end)
+                    entry['env_render'] = self._draw_envelopes(
+                        ax_env, lane.stream, lane.y_base,
+                        lane.y_height, page_start, page_end)
 
                 # Label stream nella lane envelope: presente anche a lane
                 # vuota, cosi' la corsia resta attribuibile al suo stream.
@@ -662,6 +673,78 @@ class ScoreVisualizer:
                                     ec='#222222', lw=2.2, zorder=6)
         lens_ring.set_gid('magnify-lens')
         overlay.add_patch(lens_ring)
+
+        # Proiezione dell'istante sulle curve dello stream (issue #214).
+        self._draw_poc_projection(resolved)
+
+    def _draw_poc_projection(self, resolved):
+        """Proietta l'istante della lente sulla corsia envelope del suo stream:
+        una verticale tratteggiata a x = t e, su ogni curva che incrocia, un
+        marker col valore reale (issue #214).
+
+        Senza, la lente dice DOVE guardare ma non con quali parametri: il
+        collegamento fra il grumo di grani ingrandito e i valori che lo
+        producono va ricostruito allineando a occhio la X del cerchio sorgente
+        con le curve sottostanti.
+
+        Nessun artista se la proiezione e' spenta, se lo stream non ha corsia
+        envelope (pagina tutta statica), se la sua corsia e' vuota o se
+        l'istante cade fuori dall'estensione dello stream: e' lo stesso
+        invariante di retrocompatibilita' del resto della lente.
+        """
+        cfg = self.config['magnify_projection']
+        if not cfg['enabled']:
+            return
+
+        entry = resolved.entry
+        ax_env = entry.get('ax_env')
+        render = entry.get('env_render')
+        if ax_env is None or render is None:
+            return
+
+        stream = entry['stream']
+        points = magnifier_projection.project(
+            render, float(resolved.t), stream.onset, stream.duration,
+            pan_range=self.config['envelope_ranges']['pan'])
+        if not points:
+            return
+
+        # Stesso accento della lente (anello sorgente e connettori): la
+        # proiezione e' un pezzo della lente, non un elemento a se'. Il
+        # tratteggio la tiene distinguibile dalle curve anche in stampa B&W,
+        # dove il rosso e' un grigio come gli altri.
+        accent = self.config['magnify_color']
+        tc = float(resolved.t)
+        line = ax_env.axvline(x=tc, color=accent, linestyle=cfg['linestyle'],
+                              linewidth=cfg['linewidth'], alpha=cfg['alpha'],
+                              zorder=3)
+        line.set_gid('poc-projection')
+
+        page_start, page_end = ax_env.get_xlim()
+        colors = self.config['envelope_colors']
+        # Le etichette cadono tutte sulla stessa verticale: alternare il lato
+        # salendo lungo la corsia tiene separate quelle di due curve vicine,
+        # che altrimenti si sovrascriverebbero (una corsia affollata ne ha
+        # cinque o sei a poche frazioni di corsia l'una dall'altra).
+        for order, point in enumerate(sorted(points, key=lambda p: p.y)):
+            color = colors.get(self._base_param_name(point.param), '#333333')
+            # Faccia del colore della curva (dice a quale valore appartiene),
+            # bordo dell'accento della lente (dice da dove viene il marker):
+            # in scala di grigi resta un pallino cerchiato sulla verticale.
+            marker, = ax_env.plot(
+                [tc], [point.y], 'o', color=color,
+                markersize=cfg['markersize'], markeredgecolor=accent,
+                markeredgewidth=0.8, zorder=4)
+            marker.set_gid('poc-projection-marker')
+
+            if not cfg['labels']:
+                continue
+            label = self._envelope_value_label(
+                point.param, point.value, pitch_unit=render.pitch_unit)
+            annotation = self._annotate_envelope_value(
+                ax_env, tc, point.y, label, color, page_start, page_end,
+                side='right' if order % 2 == 0 else 'left')
+            annotation.set_gid('poc-projection-label')
 
     def _draw_waveform_full(self, ax, stream, sample_duration):
         """Disegna waveform usando tutto lo spazio verticale dello subplot."""
@@ -1010,22 +1093,33 @@ class ScoreVisualizer:
         """
         Disegna tutti gli envelope dello stream nella sua corsia.
         Annota i breakpoint con i valori reali.
-        
+
         Returns:
-            set: nomi dei tipi di envelope disegnati
+            EnvelopeLaneRender: cosa e' finito nella corsia — le curve
+            disegnate, i range di display con cui sono state scalate e la
+            geometria della corsia. Il record esce di qui perche' la lente ci
+            proietta sopra molto dopo (issue #214), quando lo scratchpad
+            `_current_display_ranges` di questa corsia e' gia' stato
+            sovrascritto da quello dello stream successivo.
         """
         envelopes = self._get_stream_envelopes(stream)
 
         # Unità pitch dello stream corrente: serve a _normalize_envelope_value e
         # _annotate_breakpoints per scalare/etichettare la curva 'pitch' (i bounds
         # dipendono dall'unità, non sono statici come gli altri parametri).
-        self._current_pitch_unit = getattr(stream, 'pitch_unit', None)
+        pitch_unit = getattr(stream, 'pitch_unit', None)
+        self._current_pitch_unit = pitch_unit
         self._current_display_ranges = {}
 
-        if not envelopes:
-            return set()
+        def lane_render(curves=None, ranges=None):
+            return magnifier_projection.EnvelopeLaneRender(
+                curves=curves or {}, display_ranges=ranges or {},
+                y_base=y_base, y_height=y_height, pitch_unit=pitch_unit)
 
-        drawn_types = set()
+        if not envelopes:
+            return lane_render()
+
+        drawn = {}
         colors = self.config['envelope_colors']
         
         # Tempo relativo allo stream
@@ -1037,7 +1131,7 @@ class ScoreVisualizer:
         t_end = min(page_end, stream_end)
         
         if t_start >= t_end:
-            return set()
+            return lane_render()
 
         # Auto-zoom: range di display ristretti per i parametri a range ampio.
         self._current_display_ranges = self._compute_display_ranges(
@@ -1056,7 +1150,7 @@ class ScoreVisualizer:
                 self._annotate_breakpoints(ax, envelope, param_name, color,
                                            stream_start, y_base, y_height,
                                            page_start, page_end)
-                drawn_types.add(param_name)
+                drawn[param_name] = envelope
                 continue
 
             # ========== GESTIONE DIFFERENZIATA PER TIPO ==========
@@ -1147,12 +1241,15 @@ class ScoreVisualizer:
                                     stream_start, y_base, y_height,
                                     page_start, page_end)
             
-            drawn_types.add(param_name)
+            drawn[param_name] = envelope
 
-        # Reset: le lane successive ricalcolano i propri display range.
+        # Reset: le lane successive ricalcolano i propri display range. I range
+        # di QUESTA corsia escono nel record, che e' l'unico modo per ritrovarli
+        # quando la lente proietta (dopo il giro su tutti gli stream).
+        ranges = self._current_display_ranges
         self._current_display_ranges = {}
 
-        return drawn_types
+        return lane_render(drawn, ranges)
 
     def _draw_envelope_per_segment(
         self, ax, envelope, param_name, color,
@@ -1214,96 +1311,88 @@ class ScoreVisualizer:
         """
         Annota i breakpoint dell'envelope con i valori reali.
         """
-        # Unità di misura per ogni parametro
-        units = {
-            'volume': 'dB',
-            'grain_duration': 'ms',
-            'pan': '°',
-            # pitch: il simbolo (st/c/qt/et/edoN/x) viene da pu.symbol, vedi sotto
-            'density': 'g/s',
-            'pointer_speed': 'x',
-            'fill_factor': '',
-            'distribution': '',
-            'num_voices': ' voices',
-            'scatter': '',  # normalizzato 0-1, adimensionale
-            'scatter': '',  # normalizzato 0-1, adimensionale
-            'pc_rand_reverse': '%',
-        }
-        
-        # Moltiplicatori per visualizzazione leggibile
-        multipliers = {
-            'grain_duration': 1000,  # secondi → millisecondi
-        }
-        
-        unit = units.get(param_name, '')
-        # PITCH unit-driven: il simbolo (st/c/qt/et/edoN/x) viene dall'unità attiva.
-        if param_name == 'pitch':
-            pu = getattr(self, '_current_pitch_unit', None)
-            if pu is not None:
-                unit = pu.symbol
-        mult = multipliers.get(param_name, 1)
-        
         for t_rel, value in envelope.breakpoints:
             # Tempo assoluto
             t_abs = stream_start + t_rel
-            
+
             # Salta breakpoint fuori dalla pagina
             if t_abs < page_start or t_abs > page_end:
                 continue
-            
+
             # Posizione Y normalizzata
             val_norm = self._normalize_envelope_value(param_name, value)
             y_pos = y_base + val_norm * y_height
-            
-            # Valore da mostrare (con unità)
-            display_value = value * mult
-            
-            # Formatta il numero
-            if abs(display_value) >= 100:
-                label = f"{display_value:.0f}{unit}"
-            elif abs(display_value) >= 10:
-                label = f"{display_value:.1f}{unit}"
-            else:
-                label = f"{display_value:.2f}{unit}"
-            
+
+            label = self._envelope_value_label(
+                param_name, value,
+                pitch_unit=getattr(self, '_current_pitch_unit', None))
+
             # Disegna punto
             ax.plot(t_abs, y_pos, 'o', color=color, markersize=4, alpha=0.9)
 
-            # Lato dell'etichetta scelto dinamicamente in base alla posizione del
-            # breakpoint nel subplot, cosi' il testo resta SEMPRE dentro il plot
-            # dedicato all'envelope (prima un offset fisso in alto-a-destra faceva
-            # sforare i breakpoint vicini al bordo destro o al tetto della corsia).
-            x_span = page_end - page_start
-            x_frac = (t_abs - page_start) / x_span if x_span > 0 else 0.5
-            # ylim del subplot envelope e' (0, 1): y_pos e' gia' la frazione
-            # verticale dentro l'asse.
-            y_frac = y_pos
+            self._annotate_envelope_value(ax, t_abs, y_pos, label, color,
+                                          page_start, page_end)
 
-            # Vicino al bordo destro -> etichetta a sinistra del punto.
-            if x_frac > 0.85:
-                dx, ha = -3, 'right'
-            else:
-                dx, ha = 3, 'left'
-            # Vicino al tetto del subplot -> etichetta sotto il punto.
-            if y_frac > 0.9:
-                dy, va = -3, 'top'
-            else:
-                dy, va = 3, 'bottom'
+    def _envelope_value_label(self, param_name, value, pitch_unit=None):
+        """Etichetta col valore reale di un parametro.
+        Delega a rendering.envelope_display.value_label."""
+        return envelope_display.value_label(param_name, value,
+                                            pitch_unit=pitch_unit)
 
-            # Disegna etichetta (offset dinamico per restare dentro il plot)
-            ax.annotate(
-                label,
-                xy=(t_abs, y_pos),
-                xytext=(dx, dy),
-                textcoords='offset points',
-                fontsize=self._fs(self.config['breakpoint_fontsize']),
-                color=color,
-                alpha=0.9,
-                ha=ha,
-                va=va,
-                bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
-                         alpha=0.7, edgecolor='none')
-            )
+    def _annotate_envelope_value(self, ax, t_abs, y_pos, label, color,
+                                 page_start, page_end, side='right'):
+        """Scrive un valore accanto al punto in cui e' stato letto.
+
+        Lato dell'etichetta scelto dinamicamente in base alla posizione nel
+        subplot, cosi' il testo resta SEMPRE dentro il plot dedicato
+        all'envelope (prima un offset fisso in alto-a-destra faceva sforare i
+        breakpoint vicini al bordo destro o al tetto della corsia).
+
+        Usata dai breakpoint e dalla proiezione della lente (issue #214): le
+        due annotazioni devono stare nel plot con la stessa regola, o la
+        seconda sforerebbe dove la prima non sfora.
+
+        `side` e' la preferenza del chiamante ('right' = a destra del punto,
+        come i breakpoint): la proiezione la alterna fra i suoi valori, che
+        cadono tutti sulla stessa verticale. I bordi hanno comunque l'ultima
+        parola — restare dentro il plot viene prima del non sovrapporsi.
+        """
+        x_span = page_end - page_start
+        x_frac = (t_abs - page_start) / x_span if x_span > 0 else 0.5
+        # ylim del subplot envelope e' (0, 1): y_pos e' gia' la frazione
+        # verticale dentro l'asse.
+        y_frac = y_pos
+
+        # Vicino a un bordo il lato lo decide il bordo.
+        if x_frac > 0.85:
+            side = 'left'
+        elif x_frac < 0.15:
+            side = 'right'
+
+        if side == 'left':
+            dx, ha = -3, 'right'
+        else:
+            dx, ha = 3, 'left'
+        # Vicino al tetto del subplot -> etichetta sotto il punto.
+        if y_frac > 0.9:
+            dy, va = -3, 'top'
+        else:
+            dy, va = 3, 'bottom'
+
+        # Disegna etichetta (offset dinamico per restare dentro il plot)
+        return ax.annotate(
+            label,
+            xy=(t_abs, y_pos),
+            xytext=(dx, dy),
+            textcoords='offset points',
+            fontsize=self._fs(self.config['breakpoint_fontsize']),
+            color=color,
+            alpha=0.9,
+            ha=ha,
+            va=va,
+            bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
+                     alpha=0.7, edgecolor='none')
+        )
 
     def _compute_env_legend_layout(self, active_streams):
         """Geometria condivisa fra corsie envelope e legenda (issue #91).
