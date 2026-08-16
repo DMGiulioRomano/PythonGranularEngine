@@ -8,6 +8,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+---
+
+## [v7.2.0] — "POC Projection" — 2026-08-16
+
 ### Aggiunto
 
 - **La lente di ingrandimento proietta il suo istante sulle curve dello
