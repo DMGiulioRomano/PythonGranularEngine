@@ -8,16 +8,17 @@ sources:
   - src/pge/rendering/grain_visuals.py
   - src/pge/rendering/envelope_display.py
   - src/pge/rendering/magnifier_targets.py
+  - src/pge/rendering/magnifier_projection.py
   - src/pge/rendering/score_visualizer.py
   - src/pge/rendering/visualizer_config.py
-last_synced_commit: 8c13acd
+last_synced_commit: 51c49f8
 ---
 
 # Il layout della partitura: separare i numeri dal disegno
 
 **Documenti collegati:** [[INDEX]] · [[architecture]] · [[parameter-curve]]
 
-Il modello descritto qui è implementato: i quattro moduli vivono in
+Il modello descritto qui è implementato: i moduli vivono in
 `src/pge/rendering/`, e `ScoreVisualizer` li consuma come adapter matplotlib.
 
 ## Problema
@@ -57,16 +58,18 @@ scopriva leggendo chi li costruiva.
 
 ## Modello
 
-Quattro moduli, nessuno dei quali importa matplotlib. Non uno solo: le cluster
-non condividono niente se non "servono a disegnare una pagina", e un modulo
-unico sarebbe stato una borsa.
+Quattro moduli all'estrazione, cinque dalla proiezione della lente (#214), e
+nessuno importa matplotlib. Non uno solo: le cluster non condividono niente se
+non "servono a disegnare una pagina", e un modulo unico sarebbe stato una
+borsa.
 
 | Modulo | Domanda a cui risponde |
 |---|---|
 | `page_layout` | Quali stream su quale pagina, in che corsia, con che legenda |
 | `grain_visuals` | Che forma ha un grano, e dove cade sulle scale di colore e opacità |
-| `envelope_display` | Quanto è alta la corsia di una curva, e dove ci cade un valore |
+| `envelope_display` | Quanto è alta la corsia di una curva, dove ci cade un valore e come si scrive |
 | `magnifier_targets` | Dove puntare la lente di ingrandimento |
+| `magnifier_projection` | A quali valori delle curve corrisponde l'istante della lente |
 
 ### Dove passa la linea
 
@@ -108,6 +111,29 @@ più `EnvelopeLane(stream, stream_id, y_base, y_height, env_types)`.
 In `MagnifyTarget`, `entry` resta una riga opaca di `stream_entries`: il modulo
 ne legge solo `stream` e `sample_duration`, e la restituisce intatta perché chi
 disegna possa raggiungerne l'asse matplotlib.
+
+### Uno stato d'istanza che è diventato un dato
+
+`_current_display_ranges` è lo scratchpad che `_draw_envelopes` riempie per la
+corsia in corso e `_normalize_envelope_value` rilegge: un canale fra metodi,
+non un dato, e per questo azzerato a fine corsia.
+
+La proiezione della lente (issue #214) lo ha messo alla prova. Le corsie si
+disegnano nel giro sugli stream, le lenti dopo — e quando la proiezione deve
+collocare un valore sulla curva, lo scratchpad contiene i range dell'**ultimo**
+stream disegnato, non del suo. Con due stream sulla stessa pagina e escursioni
+diverse la differenza non è teorica: il marker cade appeso al vuoto invece che
+sulla sua curva. Ricalcolare i range al momento della proiezione non è una via
+d'uscita: sarebbe un conto scollegato da quello che sta già sulla pagina, e
+basterebbe una finestra diversa perché i due divergano.
+
+La risposta è la stessa del refactor: il dato esce come valore.
+`_draw_envelopes` restituisce `EnvelopeLaneRender(curves, display_ranges,
+y_base, y_height, pitch_unit)` — cosa è finito nella corsia — e `render_page`
+lo appende alla riga di `stream_entries` insieme al suo `ax_env`. Da lì
+`magnifier_projection.project` produce i punti, e il visualizer li disegna.
+Lo scratchpad resta dov'era, ma non è più l'unico modo per sapere con che
+scala una corsia è stata disegnata.
 
 ## Trade-off
 

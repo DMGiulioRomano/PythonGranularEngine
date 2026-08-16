@@ -135,6 +135,14 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   cerchio di partenza (`src`); con più lenti sulla stessa pagina la
   proiezione usa l'angolo configurato in `magnify_defaults['corner']` e può
   sovrapporsi (limite noto dell'MVP).
+  Ogni lente proietta inoltre il proprio istante sulla corsia envelope del
+  suo stream: verticale tratteggiata a `x = t` più un marker col valore
+  reale su ogni curva che incrocia. Non ha una flag propria — è parte della
+  lente — e si spegne dalla config del visualizer
+  (`magnify_projection['enabled']`, con `linestyle`/`linewidth`/`alpha`/
+  `markersize`/`labels` per lo stile). Niente da proiettare, niente
+  disegnato: stream senza curve dinamiche, o istante fuori dall'estensione
+  dello stream.
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
   la flag viene ignorata senza errore.
 
