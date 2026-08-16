@@ -379,6 +379,41 @@ class TestProjectionLabels:
 
 
 # =============================================================================
+# GROUP - il record della corsia
+# =============================================================================
+
+class TestEnvelopeLaneRecord:
+    """_draw_envelopes restituisce cosa e' finito nella corsia: e' l'unico modo
+    per ritrovare, al momento della proiezione, i range con cui le curve sono
+    state scalate (lo scratchpad d'istanza a quel punto e' quello dell'ultimo
+    stream disegnato)."""
+
+    def _render_lane(self, stream):
+        viz = make_viz([stream])
+        fig, ax = plt.subplots()
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            return viz._draw_envelopes(ax, stream, 0.0, 1.0, 0.0, PAGE)
+
+    def test_record_carries_curves_and_ranges(self):
+        stream = envelope_scene()[0]
+        record = self._render_lane(stream)
+        assert record.drawn_types == {'density', 'pointer_speed'}
+        assert set(record.display_ranges) == {'density', 'pointer_speed'}
+        # range data-driven sull'escursione reale + pad (issue #114)
+        lo, hi = record.display_ranges['density']
+        assert lo < 10.0 and hi > 30.0
+
+    def test_record_carries_the_lane_geometry(self):
+        record = self._render_lane(envelope_scene()[0])
+        assert (record.y_base, record.y_height) == (0.0, 1.0)
+
+    def test_static_stream_gives_an_empty_record(self):
+        record = self._render_lane(make_stream('statico'))
+        assert record.drawn_types == set()
+        assert record.display_ranges == {}
+
+
+# =============================================================================
 # GROUP - integrazione con le due modalita' della lente
 # =============================================================================
 
