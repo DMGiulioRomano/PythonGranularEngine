@@ -181,10 +181,14 @@ class GateFactory:
         except EngineError:
             raise
         except Exception as exc:
+            # L'elenco delle forme dice cosa era lecito scrivere, non quale
+            # delle forme si stava sbagliando: quello lo sa solo l'eccezione
+            # che arriva dal builder, e va letta prima di buttarla via. Col
+            # tipo davanti, perche' da solo un KeyError e' la chiave nuda.
             raise InvalidFieldValueError(
                 field=GateFactory._field_name(param_key),
                 value=raw_value,
-                hint=_ENVELOPE_HINT,
+                hint=f"{_ENVELOPE_HINT} Causa: {type(exc).__name__}: {exc}",
             ) from exc
         return EnvelopeGate(envelope, rng=rng)
 

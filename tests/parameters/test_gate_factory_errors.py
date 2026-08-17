@@ -143,3 +143,21 @@ def test_engine_error_del_builder_risale_intatto():
     err = exc_info.value
     assert not isinstance(err, InvalidFieldValueError)
     assert err.hint
+
+
+def test_l_hint_riporta_la_causa_precisa():
+    """L'hint elenca le forme note *e* dice cosa e' andato storto (review #216).
+
+    Senza la causa, l'utente legge che il suo corpo "non si costruisce come
+    envelope" e deve indovinare quale delle forme elencate stava sbagliando.
+    La causa la conosce solo l'eccezione che arriva dal builder, e va letta
+    prima di buttarla via.
+    """
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        _create_gate({'punti': [[0, 50]]})
+
+    hint = exc_info.value.hint
+    # Le forme note restano.
+    assert "formato compatto" in hint
+    # E in coda la ragione, come l'ha detta il builder.
+    assert str(exc_info.value.__cause__) in hint
