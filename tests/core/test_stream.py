@@ -252,10 +252,12 @@ class TestInitStreamContext:
 
     def test_missing_multiple_fields_raises(self):
         """Piu' parametri mancanti -> ValueError con nomi."""
-        
+
         s = object.__new__(Stream)
-        params = {'sample': 'test.wav'}
-        # Mancano stream_id, onset, duration
+        params = {'onset': 0.0, 'duration': 1.0}
+        # Mancano stream_id e sample: le due condizioni di esistenza rimaste
+        # dopo #205 (duration) e #220 (onset). Omettere `onset` non basta piu'
+        # a rendere plurale il messaggio.
 
         with patch('pge.core.stream.get_sample_duration', return_value=5.0):
             with pytest.raises(ValueError, match="Campi obbligatori mancanti"):

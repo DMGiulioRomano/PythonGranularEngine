@@ -38,7 +38,12 @@ from pge.parameters.read_direction import (
     READ_DIRECTION_FIELD,
     normalize_read_direction,
 )
-from pge.core.stream_config import StreamConfig, StreamContext, resolve_stream_duration
+from pge.core.stream_config import (
+    StreamConfig,
+    StreamContext,
+    resolve_stream_duration,
+    resolve_stream_onset,
+)
 from pge.controllers.voice_manager import VoiceManager, VoiceConfig
 from pge.parameters.pitch_unit import make_pitch_unit
 from pge.strategies.voice_pitch_strategy import VoicePitchStrategyFactory, SEMITONE_LOCKED
@@ -181,11 +186,14 @@ class Stream:
         Esclusi, pur non avendo un default nel dataclass:
         - sample_dur_sec: derivato dal file audio, mai dal YAML;
         - duration: se assente vale la durata del sample (issue #205), risolta
-          da resolve_stream_duration invece che pretesa dallo YAML.
+          da resolve_stream_duration invece che pretesa dallo YAML;
+        - onset: se assente vale l'origine della timeline (issue #220), risolto
+          da resolve_stream_onset. Restano due le condizioni di esistenza di
+          uno stream: stream_id e sample.
         """
         return {
             field.name for field in fields(StreamContext)
-            if field.name not in ('sample_dur_sec', 'duration')
+            if field.name not in ('sample_dur_sec', 'duration', 'onset')
             and field.default is dataclass_MISSING
             and field.default_factory is dataclass_MISSING
         }
@@ -207,10 +215,14 @@ class Stream:
         # con object.__new__ (bypass di __init__), dove samples_dir manca.
         self.sample_dur_sec = get_sample_duration(
             self.sample, base_path=getattr(self, 'samples_dir', None))
-        # duration e' fuori dai campi obbligatori (issue #205): il setattr sopra
-        # non la scrive piu', va risolta qui con la stessa regola di
-        # StreamContext.from_yaml. Senza questa riga self.duration non esiste e
-        # la prima generazione di grani solleva AttributeError.
+        # onset (issue #220) e duration (issue #205) sono fuori dai campi
+        # obbligatori: il setattr sopra non le scrive piu', vanno risolte qui
+        # con la stessa regola di StreamContext.from_yaml. Senza queste righe
+        # gli attributi non esistono e la prima generazione di grani solleva
+        # AttributeError (self.onset + elapsed_time + voice_config.onset_offset),
+        # insieme a page_layout, score_visualizer, i due renderer, sv_exporter,
+        # reaper_project_writer e grain_json_writer, che leggono stream.onset.
+        self.onset = resolve_stream_onset(params)
         self.duration = resolve_stream_duration(params, self.sample_dur_sec)
 
     def _init_stream_parameters(self, params: dict, config: StreamConfig) -> None:
