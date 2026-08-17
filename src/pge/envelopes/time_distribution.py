@@ -50,6 +50,37 @@ class TimeDistributionStrategy(ABC):
         """Nome della distribuzione."""
         pass
     
+    def _overflow(self, param_name: str, value, n_reps: int, formula: str):
+        """L'errore di una potenza che trabocca (issue #212).
+
+        Non e' un bound sul valore e non poteva esserlo: `ratio: 10` e
+        `n_reps: 400` sono legittimi da soli, e il costruttore che riceve il
+        primo non vede il secondo. La soglia esatta oltre cui `ratio ** n_reps`
+        esce dai float dipende dai due insieme, e replicarla a monte sarebbe
+        aritmetica destinata a divergere dal comportamento reale di CPython.
+        Il punto in cui l'overflow accade e' gia' quello che sa entrambi.
+
+        Per la stessa ragione il messaggio li nomina entrambi: nessuno dei due
+        e' il colpevole, quindi dire solo l'uno o solo l'altro non direbbe
+        all'utente quale ridurre.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        return ParameterBoundError(
+            param_name=param_name,
+            value_type="value",
+            min_bound=None,
+            max_bound=None,
+            value=value,
+            hint=(
+                f"la distribuzione '{self.name}' calcola {formula} con "
+                f"n_reps={n_reps}, e il risultato non sta in un float. "
+                f"Ne' {param_name}={value} ne' n_reps={n_reps} e' fuori posto "
+                f"da solo: e' la coppia a esplodere. Riduci n_reps, oppure "
+                f"avvicina {param_name} a 1."
+            ),
+        )
+
     def _validate_inputs(self, total_time: float, n_reps: int):
         """Validazione comune."""
         if n_reps < 1:
@@ -135,7 +166,12 @@ class ExponentialDistribution(TimeDistributionStrategy):
         self._validate_inputs(total_time, n_reps)
         
         # Genera pesi esponenziali decrescenti
-        weights = [self.rate ** (-i) for i in range(n_reps)]
+        try:
+            weights = [self.rate ** (-i) for i in range(n_reps)]
+        except OverflowError as exc:
+            raise self._overflow(
+                'rate', self.rate, n_reps, 'rate ** -i'
+            ) from exc
         sum_weights = sum(weights)
         
         # Normalizza a total_time
@@ -231,7 +267,15 @@ class GeometricDistribution(TimeDistributionStrategy):
         
         # Progressione geometrica: a, a*r, a*r^2, ..., a*r^(n-1)
         # Somma = a * (1 - r^n) / (1 - r)
-        sum_geometric = (1 - self.ratio ** n_reps) / (1 - self.ratio)
+        # Con `ratio` intero la potenza non trabocca — Python la calcola esatta
+        # su interi illimitati — ma la divisione che segue si': l'intercettazione
+        # va attorno all'espressione, non attorno alla sola potenza.
+        try:
+            sum_geometric = (1 - self.ratio ** n_reps) / (1 - self.ratio)
+        except OverflowError as exc:
+            raise self._overflow(
+                'ratio', self.ratio, n_reps, 'ratio ** n_reps'
+            ) from exc
         first_duration = total_time / sum_geometric
         
         # Genera durate
@@ -310,7 +354,12 @@ class PowerDistribution(TimeDistributionStrategy):
         self._validate_inputs(total_time, n_reps)
                 
         # Genera pesi usando power law
-        weights = [(i + 1) ** self.exponent for i in range(n_reps)]
+        try:
+            weights = [(i + 1) ** self.exponent for i in range(n_reps)]
+        except OverflowError as exc:
+            raise self._overflow(
+                'exponent', self.exponent, n_reps, '(i + 1) ** exponent'
+            ) from exc
         sum_weights = sum(weights)
         
         # Normalizza
