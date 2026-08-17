@@ -189,20 +189,20 @@ def _check_envelope_body(body: Any) -> None:
     `EnvelopeBuilder.parse`. Piu' in fondo non sono ammesse, ma per due ragioni
     diverse, che vale la pena non confondere:
 
-    - dentro un BP group basta il riconoscimento della forma: `_is_bp_group`
+    - dentro un BP group basta il riconoscimento della forma: `is_bp_group`
       pretende che ogni punto sia `[num, num]` o `[num, num, str]`, quindi un
       annidamento fa fallire il riconoscimento e il valore non arriva mai a
       chiamarsi gruppo;
-    - dentro il pattern di un ciclo no: `_is_compact_format` filtra i punti
+    - dentro il pattern di un ciclo no: `is_compact_format` filtra i punti
       sulla sola lunghezza (2 o 3), e un BP group e' lungo 2. Li' il rifiuto lo
       fa `_check_pattern_point`, altrimenti il valore passa di qui e muore nel
       builder con un TypeError nudo.
     """
-    if EnvelopeBuilder._is_compact_format(body):
+    if EnvelopeBuilder.is_compact_format(body):
         _check_compact(body)
         return
 
-    if EnvelopeBuilder._is_bp_group(body):
+    if EnvelopeBuilder.is_bp_group(body):
         _check_bp_group(body)
         return
 
@@ -220,15 +220,15 @@ def _check_points(points: Any) -> None:
 
 def _check_item(item: Any) -> None:
     """Un elemento della lista: breakpoint, gruppo, ciclo compatto o dict."""
-    if EnvelopeBuilder._is_compact_format(item):
+    if EnvelopeBuilder.is_compact_format(item):
         _check_compact(item)
         return
 
-    if EnvelopeBuilder._is_bp_group(item):
+    if EnvelopeBuilder.is_bp_group(item):
         _check_bp_group(item)
         return
 
-    if EnvelopeBuilder._is_3tuple_breakpoint(item):
+    if EnvelopeBuilder.is_3tuple_breakpoint(item):
         # Tag per-punto (issue #54): il type governa il segmento uscente.
         _check_interp(item[2])
         _check_direction_value(item[1])
@@ -256,7 +256,7 @@ def _check_bp_group(group: list) -> None:
     points, interp = group
     _check_interp(interp)
     # Solo l'arita': che `points` sia una lista di breakpoint piatti lo
-    # garantisce gia' `_is_bp_group`, che qui e' sempre passato.
+    # garantisce gia' `is_bp_group`, che qui e' sempre passato.
     if len(points) < 2:
         _reject(points, _GROUP_ARITY_HINT)
     _check_points(points)
@@ -265,11 +265,19 @@ def _check_bp_group(group: list) -> None:
 def _check_compact(compact: list) -> None:
     """Formato compatto: l'interp e' il quarto elemento, i valori stanno nel
     pattern. Di `end_time` si verifica il segno, che e' decidibile qui, non il
-    confronto con l'istante di partenza (vedi `_END_TIME_HINT`)."""
-    pattern = compact[0]
-    end_time = compact[1]
-    n_reps = compact[2]
-    interp = compact[3] if len(compact) >= 4 else None
+    confronto con l'istante di partenza (vedi `_END_TIME_HINT`).
+
+    Gli slot si leggono dalle costanti di `EnvelopeBuilder` (issue #213): il
+    layout della tupla e' suo, e questo modulo lo valida, non lo ridefinisce.
+    Con una copia propria degli indici, un giorno che il `time_dist_spec`
+    cambiasse posizione questa funzione avrebbe continuato a controllare lo
+    slot vecchio — in silenzio, perche' li' dentro ci sarebbe stato comunque
+    qualcosa di plausibile."""
+    pattern = compact[EnvelopeBuilder.COMPACT_PATTERN]
+    end_time = compact[EnvelopeBuilder.COMPACT_END_TIME]
+    n_reps = compact[EnvelopeBuilder.COMPACT_N_REPS]
+    interp = (compact[EnvelopeBuilder.COMPACT_INTERP]
+              if len(compact) > EnvelopeBuilder.COMPACT_INTERP else None)
     _check_interp(interp)
     # `end_time` deve superare l'istante da cui il ciclo parte, che non e' mai
     # negativo: il segno e' quindi decidibile qui, il confronto no. E il
@@ -277,7 +285,7 @@ def _check_compact(compact: list) -> None:
     if not _is_number(end_time) or end_time <= 0:
         _reject(end_time, _END_TIME_HINT)
     # Solo la natura di `n_reps`: che sia un `int` lo garantisce gia'
-    # `_is_compact_format`. Resta fuori il solo `bool`, che li' passa per
+    # `is_compact_format`. Resta fuori il solo `bool`, che li' passa per
     # sottoclasse e qui no, per la stessa ragione per cui `true` non e' `+1`:
     # senza questo `True < 1` e' falso, il guard non scatta e `range(True)`
     # rende un ciclo in silenzio.
@@ -291,15 +299,15 @@ def _check_compact(compact: list) -> None:
         precedente = point[0]
     # Solo se dichiarata: senza questo, ogni elemento compatto costruirebbe e
     # butterebbe via una LinearDistribution per non dire niente.
-    if len(compact) >= 5:
-        _check_time_dist(compact[4])
+    if len(compact) > EnvelopeBuilder.COMPACT_TIME_DIST:
+        _check_time_dist(compact[EnvelopeBuilder.COMPACT_TIME_DIST])
 
 
 def _check_time_dist(spec: Any) -> None:
     """La distribuzione temporale del ciclo: la valida il factory, costruendola.
 
     Qui non c'e' niente da decidere — il verso di lettura non ha una
-    distribuzione propria, e' quella dell'envelope. Ma `_is_compact_format`
+    distribuzione propria, e' quella dell'envelope. Ma `is_compact_format`
     accetta in quella posizione qualunque `str` o `dict`, e cio' che ne esce
     fallisce dentro `TimeDistributionFactory` con errori che non portano ne'
     il campo ne' lo stream_id — `ParameterBoundError` compreso, che sta nella
@@ -349,7 +357,7 @@ def _check_pattern_point(point: list, precedente: Any = None) -> None:
     """Un punto del pattern di un ciclo: `[x%, y]` o `[x%, y, type]`, piatto.
 
     Non passa da `_check_item` perche' li' le macro-forme sono ammesse, e qui
-    non lo sono: `_is_compact_format` filtra i punti del pattern sulla sola
+    non lo sono: `is_compact_format` filtra i punti del pattern sulla sola
     lunghezza (2 o 3) e un BP group e' lungo 2, quindi ci si infila: il builder
     poi fa `x_pct / 100.0` sul primo elemento e solleva un TypeError nudo.
 

@@ -2180,7 +2180,7 @@ un envelope dal YAML al runtime è:
 - `src/pge/envelopes/envelope.py` — classe `Envelope`, `is_envelope_like`,
   `create_scaled_envelope`, `_scale_raw_values_y`
 - `src/pge/envelopes/envelope_builder.py` — `EnvelopeBuilder.parse`,
-  `_is_compact_format`, `_expand_compact_format`, `_is_bp_group`,
+  `is_compact_format`, `_expand_compact_format`, `is_bp_group`,
   `_expand_bp_group`, `DISCONTINUITY_OFFSET`
 - `src/pge/envelopes/envelope_interpolation.py` — `LinearInterpolation`,
   `StepInterpolation`, `CubicInterpolation`

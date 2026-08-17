@@ -56,7 +56,22 @@ class EnvelopeBuilder:
     
     # Offset infinitesimale per discontinuità
     DISCONTINUITY_OFFSET = 0.000001
-    
+
+    # Gli slot del formato compatto (issue #213). Non sono una comodità di
+    # lettura: sono il punto unico in cui il layout della tupla esiste. Chi
+    # espande (`_expand_compact_format`) e chi valida a monte
+    # (`read_direction._check_compact`) decodificavano le stesse posizioni per
+    # conto proprio, e il caso peggiore non era un errore ma un silenzio — un
+    # `time_dist_spec` spostato di slot avrebbe lasciato il validatore a
+    # controllare quello vecchio senza che nessun test se ne accorgesse.
+    COMPACT_PATTERN = 0
+    COMPACT_END_TIME = 1
+    COMPACT_N_REPS = 2
+    COMPACT_INTERP = 3
+    COMPACT_TIME_DIST = 4
+    COMPACT_WRAP = 5
+
+
     @classmethod
     def parse(cls, raw_points: list) -> list:
         """
@@ -91,7 +106,7 @@ class EnvelopeBuilder:
             [[0, 0], [1, 10], 'cycle']
         """
         # FIX 1: Controlla PRIMA se raw_points STESSO è un formato compatto
-        if cls._is_compact_format(raw_points):
+        if cls.is_compact_format(raw_points):
             # Formato compatto diretto: offset = 0
             expanded = cls._expand_compact_format(raw_points, time_offset=0.0)
 
@@ -101,7 +116,7 @@ class EnvelopeBuilder:
             return expanded
 
         # BP group diretto [points, interp] (issue #64), simmetrico al compatto
-        if cls._is_bp_group(raw_points):
+        if cls.is_bp_group(raw_points):
             expanded = cls._expand_bp_group(raw_points)
 
             cls._log_final_envelope(raw_points, expanded)
@@ -119,7 +134,7 @@ class EnvelopeBuilder:
                     item = [item['t'], item['v'], item['type']]
                 else:
                     item = [item['t'], item['v']]
-            if cls._is_compact_format(item):
+            if cls.is_compact_format(item):
                 # Espandi formato compatto CON OFFSET
                 compact_expanded = cls._expand_compact_format(item, time_offset=current_time)
                 expanded.extend(compact_expanded)
@@ -127,7 +142,7 @@ class EnvelopeBuilder:
                 # Aggiorna tempo corrente (ultimo breakpoint espanso)
                 if compact_expanded:
                     current_time = compact_expanded[-1][0]
-            elif cls._is_bp_group(item):
+            elif cls.is_bp_group(item):
                 # Espandi BP group [points, interp] in 3-tuple (issue #64)
                 group_expanded = cls._expand_bp_group(
                     item, current_time=current_time, has_preceding=bool(expanded)
@@ -135,7 +150,7 @@ class EnvelopeBuilder:
                 expanded.extend(group_expanded)
                 current_time = max(current_time, group_expanded[-1][0])
             else:
-                if cls._is_3tuple_breakpoint(item):
+                if cls.is_3tuple_breakpoint(item):
                     expanded.append(item)
                     current_time = max(current_time, item[0])
                 elif (isinstance(item, list) and len(item) == 2
@@ -157,7 +172,7 @@ class EnvelopeBuilder:
     VALID_INTERP_TYPES = ('linear', 'cubic', 'step')
 
     @classmethod
-    def _is_3tuple_breakpoint(cls, item) -> bool:
+    def is_3tuple_breakpoint(cls, item) -> bool:
         """
         Rileva se item è breakpoint 3-tuple [t, v, type].
 
@@ -179,7 +194,7 @@ class EnvelopeBuilder:
         return True
 
     @classmethod
-    def _is_bp_group(cls, item) -> bool:
+    def is_bp_group(cls, item) -> bool:
         """
         Rileva se item è un BP group [points, interp] (issue #64).
 
@@ -188,7 +203,7 @@ class EnvelopeBuilder:
           come i breakpoint nudi — non percentuali come nei loop block)
         - item[1] è stringa: interp della macrozona
 
-        Check strutturale (come _is_3tuple_breakpoint): il valore di interp
+        Check strutturale (come is_3tuple_breakpoint): il valore di interp
         e il vincolo "almeno 2 punti" vengono validati in _expand_bp_group,
         per dare errori precisi. Discriminato da:
         - breakpoint [t, v]: elem[0] numerico, non lista
@@ -283,7 +298,7 @@ class EnvelopeBuilder:
         return expanded
 
     @classmethod
-    def _is_compact_format(cls, item) -> bool:
+    def is_compact_format(cls, item) -> bool:
         """
         Rileva se item è formato compatto.
         
@@ -378,12 +393,15 @@ class EnvelopeBuilder:
         from pge.envelopes.time_distribution import TimeDistributionFactory
         
         # Parse input
-        pattern_points_pct = compact[0]
-        end_time = compact[1]  # Tempo assoluto finale
-        n_reps = compact[2]
-        interp_type = compact[3] if len(compact) >= 4 else None
-        time_dist_spec = compact[4] if len(compact) >= 5 else None
-        wrap = compact[5] if len(compact) == 6 else False
+        pattern_points_pct = compact[cls.COMPACT_PATTERN]
+        end_time = compact[cls.COMPACT_END_TIME]  # Tempo assoluto finale
+        n_reps = compact[cls.COMPACT_N_REPS]
+        interp_type = (compact[cls.COMPACT_INTERP]
+                       if len(compact) > cls.COMPACT_INTERP else None)
+        time_dist_spec = (compact[cls.COMPACT_TIME_DIST]
+                          if len(compact) > cls.COMPACT_TIME_DIST else None)
+        wrap = (compact[cls.COMPACT_WRAP]
+                if len(compact) > cls.COMPACT_WRAP else False)
         if wrap is None:
             wrap = False
         
@@ -592,15 +610,15 @@ class EnvelopeBuilder:
         n_group = 0
         n_standard = 0
 
-        if cls._is_compact_format(raw_input):
+        if cls.is_compact_format(raw_input):
             n_compact = 1
-        elif cls._is_bp_group(raw_input):
+        elif cls.is_bp_group(raw_input):
             n_group = 1
         else:
             for item in raw_input:
-                if cls._is_compact_format(item):
+                if cls.is_compact_format(item):
                     n_compact += 1
-                elif cls._is_bp_group(item):
+                elif cls.is_bp_group(item):
                     n_group += 1
                 elif isinstance(item, list) and len(item) == 2:
                     n_standard += 1
@@ -617,9 +635,9 @@ class EnvelopeBuilder:
         logger.info(f"  Standard breakpoints: {n_standard}")
         logger.info(f"  Compact sections: {n_compact}")
         logger.info(f"  BP groups: {n_group}")
-        if cls._is_compact_format(raw_input):
+        if cls.is_compact_format(raw_input):
             format_type = 'compact'
-        elif cls._is_bp_group(raw_input):
+        elif cls.is_bp_group(raw_input):
             format_type = 'bp_group'
         elif n_compact > 0 or n_group > 0:
             format_type = 'mixed'
@@ -680,7 +698,7 @@ class EnvelopeBuilder:
             str or None: Tipo interpolazione ('linear', 'cubic', 'step')
         """
         # FIX 2: Controlla PRIMA se raw_points STESSO è formato compatto con tipo
-        if cls._is_compact_format(raw_points):
+        if cls.is_compact_format(raw_points):
             # Formato compatto con >= 4 elementi include interp_type in posizione 3
             if len(raw_points) >= 4 and raw_points[3] is not None:
                 return raw_points[3]
@@ -688,7 +706,7 @@ class EnvelopeBuilder:
 
         # Altrimenti itera sugli elementi (formato misto)
         for item in raw_points:
-            if cls._is_compact_format(item):
+            if cls.is_compact_format(item):
                 # Formato compatto con >= 4 elementi include interp_type in posizione 3
                 if len(item) >= 4 and item[3] is not None:
                     return item[3]
@@ -710,10 +728,10 @@ def detect_format_type(item) -> str:
     if isinstance(item, str) and item.lower() == 'cycle':
         return 'cycle'
 
-    if EnvelopeBuilder._is_compact_format(item):
+    if EnvelopeBuilder.is_compact_format(item):
         return 'compact'
 
-    if EnvelopeBuilder._is_bp_group(item):
+    if EnvelopeBuilder.is_bp_group(item):
         return 'bp_group'
 
     if isinstance(item, list) and len(item) == 2:

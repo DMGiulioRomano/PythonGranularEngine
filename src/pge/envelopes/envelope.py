@@ -118,7 +118,7 @@ class Envelope:
                 points.append(item)
                 seg_types.append(None)
             elif len(item) == 3:
-                if not _EB._is_3tuple_breakpoint(item):
+                if not _EB.is_3tuple_breakpoint(item):
                     raise ValueError(
                         f"Formato breakpoint non valido: {item}. "
                         "Deve essere [time, value] o [time, value, type]."
@@ -370,11 +370,11 @@ class Envelope:
                 return False
             
             # Formato compatto
-            if EnvelopeBuilder._is_compact_format(obj):
+            if EnvelopeBuilder.is_compact_format(obj):
                 return True
 
             # BP group diretto [points, interp] (issue #64)
-            if EnvelopeBuilder._is_bp_group(obj):
+            if EnvelopeBuilder.is_bp_group(obj):
                 return True
 
             # Lista con almeno un [t, v]
@@ -382,10 +382,10 @@ class Envelope:
                 if isinstance(item, list) and len(item) == 2:
                     return True
                 # Formato compatto dentro lista
-                if EnvelopeBuilder._is_compact_format(item):
+                if EnvelopeBuilder.is_compact_format(item):
                     return True
                 # BP group dentro lista
-                if EnvelopeBuilder._is_bp_group(item):
+                if EnvelopeBuilder.is_bp_group(item):
                     return True
             return False
         
@@ -417,20 +417,20 @@ class Envelope:
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
-                if EnvelopeBuilder._is_compact_format(item):
+                if EnvelopeBuilder.is_compact_format(item):
                     pattern = item[0]
                     scaled_pattern = [[p[0], p[1] * scale_factor] for p in pattern]
                     new_item = list(item)
                     new_item[0] = scaled_pattern
                     scaled.append(new_item)
-                elif EnvelopeBuilder._is_bp_group(item):
+                elif EnvelopeBuilder.is_bp_group(item):
                     # BP group: scala i valori Y dei punti, preserva interp e
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
                     # è una lista a 2 elementi.
                     scaled.append(_scale_group_y(item))
                 elif isinstance(item, list) and len(item) == 2:
                     scaled.append([item[0], item[1] * scale_factor])
-                elif EnvelopeBuilder._is_3tuple_breakpoint(item):
+                elif EnvelopeBuilder.is_3tuple_breakpoint(item):
                     scaled.append([item[0], item[1] * scale_factor, item[2]])
                 elif isinstance(item, dict) and 't' in item and 'v' in item:
                     scaled_dict = dict(item)
@@ -447,13 +447,13 @@ class Envelope:
             return new_data
 
         if isinstance(raw_data, list):
-            if EnvelopeBuilder._is_compact_format(raw_data):
+            if EnvelopeBuilder.is_compact_format(raw_data):
                 pattern = raw_data[0]
                 scaled_pattern = [[p[0], p[1] * scale_factor] for p in pattern]
                 new_data = list(raw_data)
                 new_data[0] = scaled_pattern
                 return new_data
-            elif EnvelopeBuilder._is_bp_group(raw_data):
+            elif EnvelopeBuilder.is_bp_group(raw_data):
                 # BP group diretto [points, interp]
                 return _scale_group_y(raw_data)
             else:
@@ -544,24 +544,24 @@ def _scale_time_recursive(points: List, factor: float) -> List:
     from pge.envelopes.envelope_builder import EnvelopeBuilder
 
     # CASO 1: L'intera lista è un formato compatto
-    if EnvelopeBuilder._is_compact_format(points):
+    if EnvelopeBuilder.is_compact_format(points):
         # NUOVO: Scala il total_time (elemento [1])
         scaled_compact = list(points)
         scaled_compact[1] = points[1] * factor
         return scaled_compact
 
     # CASO 1b: L'intera lista è un BP group diretto [points, interp]
-    if EnvelopeBuilder._is_bp_group(points):
+    if EnvelopeBuilder.is_bp_group(points):
         return [_scale_group_points_time(points[0], factor), points[1]]
 
     # CASO 2: Lista di elementi misti
     scaled = []
     for item in points:
-        if EnvelopeBuilder._is_compact_format(item):
+        if EnvelopeBuilder.is_compact_format(item):
             scaled_compact = list(item)
             scaled_compact[1] = item[1] * factor
             scaled.append(scaled_compact)
-        elif EnvelopeBuilder._is_bp_group(item):
+        elif EnvelopeBuilder.is_bp_group(item):
             # BP group: scala i tempi dei punti, preserva interp e type per-punto.
             # Va controllato prima del branch [t, v]: un gruppo è anch'esso
             # una lista a 2 elementi.
@@ -569,7 +569,7 @@ def _scale_time_recursive(points: List, factor: float) -> List:
         elif isinstance(item, list) and len(item) == 2:
             # Standard breakpoint: [t, v] -> [t * factor, v]
             scaled.append([item[0] * factor, item[1]])
-        elif EnvelopeBuilder._is_3tuple_breakpoint(item):
+        elif EnvelopeBuilder.is_3tuple_breakpoint(item):
             # 3-tuple breakpoint: [t, v, type] -> [t * factor, v, type]
             scaled.append([item[0] * factor, item[1], item[2]])
         elif isinstance(item, dict) and 't' in item and 'v' in item:
