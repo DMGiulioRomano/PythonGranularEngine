@@ -29,6 +29,7 @@ from pge.shared.probability_gate import (
     ProbabilityGate, NeverGate, AlwaysGate, RandomGate, EnvelopeGate
 )
 from pge.envelopes.envelope import Envelope
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================
@@ -710,32 +711,34 @@ class TestParseRawValue:
         # Con normalized: t=1.0*5.0=5.0
         assert gate.get_probability_value(5.0) == pytest.approx(100.0)
 
-    def test_malformed_envelope_returns_always_gate_fallback(self):
-        """Envelope malformato (lista vuota) → fallback AlwaysGate."""
-        # Lista vuota causa "Envelope deve contenere almeno un breakpoint"
-        gate = GateFactory._parse_raw_value(
-            [], duration=1.0, time_mode='absolute'
-        )
-        assert isinstance(gate, AlwaysGate)
+    def test_malformed_envelope_raises(self):
+        """Envelope malformato (lista vuota) → InvalidFieldValueError (issue #209).
 
-    def test_envelope_generic_error_fallback(self):
-        """Dict senza 'points' → fallback AlwaysGate (KeyError interno)."""
-        gate = GateFactory._parse_raw_value(
-            {"not_points": "invalid"}, duration=1.0, time_mode='absolute'
-        )
-        assert isinstance(gate, AlwaysGate)
-
-    def test_malformed_envelope_logs_error(self, caplog):
-        """Fallback per envelope malformato logga l'errore."""
-        with caplog.at_level(logging.ERROR):
+        Tornava `AlwaysGate`: il gate piu' lontano da quanto scritto, applicato
+        al 100% dei grani, per un envelope che non si costruisce.
+        """
+        with pytest.raises(InvalidFieldValueError):
             GateFactory._parse_raw_value([], duration=1.0, time_mode='absolute')
-        
-        assert any("Envelope deviation_probability invalido" in record.message for record in caplog.records)
-        """Fallback per envelope malformato logga l'errore."""
+
+    def test_envelope_generic_error_raises(self):
+        """Dict senza 'points' → InvalidFieldValueError (era KeyError interno)."""
+        with pytest.raises(InvalidFieldValueError):
+            GateFactory._parse_raw_value(
+                {"not_points": "invalid"}, duration=1.0, time_mode='absolute'
+            )
+
+    def test_malformed_envelope_does_not_log(self, caplog):
+        """Nessun log di fallback: non c'e' piu' un fallback (issue #209)."""
         with caplog.at_level(logging.ERROR):
-            GateFactory._parse_raw_value([1, 2, 3], duration=1.0, time_mode='absolute')
-        
-        assert any("Envelope deviation_probability invalido" in record.message for record in caplog.records)
+            with pytest.raises(InvalidFieldValueError):
+                GateFactory._parse_raw_value(
+                    [1, 2, 3], duration=1.0, time_mode='absolute'
+                )
+
+        assert not any(
+            "Envelope deviation_probability invalido" in record.getMessage()
+            for record in caplog.records
+        )
 
     # --- Tipo invalido ---
 
