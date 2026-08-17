@@ -22,6 +22,7 @@ Coverage:
 import pytest
 from unittest.mock import patch, MagicMock, call
 from pge.envelopes.envelope_builder import EnvelopeBuilder, detect_format_type
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================
@@ -1129,3 +1130,44 @@ class TestIndiciFormatoCompatto:
         assert len(espanso) == 4
         assert espanso[-1][0] == pytest.approx(1.0)
         assert EnvelopeBuilder.extract_interp_type(compatto) == 'step'
+
+    def test_il_validatore_segue_gli_slot_insieme_all_espansione(self, monkeypatch):
+        """Il lato che valida si muove con quello che espande.
+
+        Il test qui sopra fissa una meta' dell'invariante: che l'espansione
+        legga le costanti. Ma il rischio di #213 e' il *disallineamento* fra i
+        due lati, e nessuno lo osserva finche' non si muove il layout.
+
+        Qui il layout si muove davvero: `n_reps` e `end_time` si scambiano di
+        posto nelle costanti, e i due lati devono seguire lo scambio. Chi
+        avesse una copia propria degli indici resterebbe sul layout vecchio —
+        dove nella lista permutata c'e' comunque qualcosa di plausibile, che e'
+        il motivo per cui il guasto sarebbe silenzioso.
+
+        `is_compact_format` non e' toccata di proposito: e' lei a *definire* il
+        layout per posizione, quindi le due funzioni si chiamano dirette, come
+        fa il builder dopo che il riconoscimento e' gia' avvenuto.
+        """
+        from pge.parameters import read_direction
+
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_END_TIME', 2)
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_N_REPS', 1)
+
+        # Lista scritta nel layout permutato: n_reps allo slot 1, end_time al 2.
+        permutato = [[[0, -1], [100, 1]], 3, 1.0, 'step']
+
+        # Lato che espande: tre cicli su un pattern a due punti, fine a 1.0.
+        espanso = EnvelopeBuilder._expand_compact_format(permutato)
+        assert len(espanso) == 6
+        assert espanso[-1][0] == pytest.approx(1.0)
+
+        # Lato che valida: accetta lo stesso corpo.
+        read_direction._check_compact(permutato)
+
+        # E rifiuta `n_reps` dove le costanti dicono che sta ora. Un validatore
+        # fermo al layout vecchio rifiuterebbe anche lui, ma come `end_time`:
+        # e' l'hint a dire quale dei due slot ha davvero letto.
+        rotto = [[[0, -1], [100, 1]], 0, 1.0, 'step']
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            read_direction._check_compact(rotto)
+        assert exc_info.value.hint == read_direction._REPS_ARITY_HINT
