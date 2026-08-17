@@ -6,6 +6,83 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Unreleased]
+
+### Modificato (breaking)
+
+- **Un envelope malformato sotto `deviation_probability` ora è un errore.**
+  Smette di funzionare — cioè comincia a fallire il rendering invece di
+  proseguire in silenzio — ogni YAML in cui il valore di
+  `deviation_probability` (globale o per chiave) è un corpo che non si
+  costruisce come envelope: lista vuota `[]`, lista di non-breakpoint
+  `['x']`, dict senza `points` come `{punti: [[0, 50]]}`. Da ora
+  `InvalidFieldValueError` sul campo `deviation_probability.<chiave>`
+  (o `deviation_probability` per la forma globale).
+
+  Prima tornavano `AlwaysGate` con un `logger.error`: probabilità 100%, cioè
+  la variazione applicata a **tutti** i grani. Su `grain.read_direction: 1`
+  significava 79 grani su 79 letti nel verso opposto a quello dichiarato. Non
+  c'è comportamento utile da preservare: passavano rendendo l'opposto di
+  quanto scritto.
+
+  Il `logger.error` sparisce, perché non c'è più un fallback da tracciare. La
+  costruzione dell'envelope passa da un punto unico, letto dai tre siti che
+  prima decidevano per conto proprio: prima il corpo riconosciuto da
+  `is_envelope_like` faceva risalire un `ValueError` nudo mentre quello più
+  malformato veniva silenziato — più l'errore era grossolano, meno il sistema
+  lo segnalava.
+
+  **Migrazione:** correggere l'envelope, oppure — se l'intenzione era non
+  avere variazione su quella chiave — scrivere `false` o omettere la chiave.
+  Per la probabilità piena, `100`. (#209)
+
+- **I riconoscitori di forma di `EnvelopeBuilder` diventano pubblici**:
+  `is_compact_format`, `is_bp_group`, `is_3tuple_breakpoint`. Nessun alias
+  privato lasciato dietro. Non cambia nulla a runtime, ma è una rinomina di
+  simboli: chi chiamava i vecchi nomi privati dall'esterno (in-tree, solo
+  `read_direction.py`) va aggiornato. (#213, punto 1)
+
+### Corretto
+
+- **L'overflow delle potenze nelle distribuzioni temporali non risale più
+  nudo.** `rate ** -i`, `ratio ** n_reps` e `(i + 1) ** exponent` alzavano un
+  `OverflowError` di CPython — fuori dalla gerarchia `EngineError`, senza
+  campo e senza stream_id, con un testo (*integer division result too large
+  for a float*) che non nomina nessuna delle due cose da cambiare. Ora
+  `ParameterBoundError` che nomina **entrambi** i valori, il parametro e
+  `n_reps`: né `ratio: 10` né `n_reps: 400` sono sbagliati da soli, lo è la
+  coppia, e senza entrambi l'utente non sa quale ridurre.
+
+  L'intercettazione sta dove il calcolo avviene e non nei costruttori: la
+  soglia dipende dai due valori insieme, e il costruttore che riceve il
+  parametro non vede `n_reps`. Resta fuori scope `end_time <= time_offset`,
+  che è del builder perché `time_offset` dipende dagli elementi che precedono
+  il ciclo in una lista mista. (#212)
+
+- `ParameterBoundError` accetta un `hint` opzionale e omette la riga `Bounds`
+  quando entrambi i bound sono ignoti, invece di stampare `[None, None]`: il
+  vincolo violato non è sempre un intervallo sul singolo valore. (#212)
+
+- **Gli indici del formato compatto sono costanti nominate** in
+  `EnvelopeBuilder` (`COMPACT_PATTERN`, `COMPACT_END_TIME`, `COMPACT_N_REPS`,
+  `COMPACT_INTERP`, `COMPACT_TIME_DIST`, `COMPACT_WRAP`), lette sia da
+  `_expand_compact_format` sia da `read_direction._check_compact`. I due lati
+  decodificavano le stesse posizioni per conto proprio: se il `time_dist_spec`
+  avesse cambiato slot, il validatore avrebbe continuato a controllare quello
+  vecchio in silenzio, senza che nessun test se ne accorgesse. (#213, punto 2)
+
+### Documentazione
+
+- **La tabella delle cinque scritture di `deviation_probability`** in
+  `docs/reference/yaml.md`. Quattro su cinque danno `NeverGate`; la chiave
+  **scritta e lasciata vuota** (`deviation_probability:` → `null`) è l'unica a
+  non darlo — applica l'1% di jitter implicito. È la scrittura che più
+  assomiglia a "non voglio deviazione" e fa l'opposto. Nessun cambio di
+  comportamento: la modalità implicita resta, e ora è documentata dove
+  l'utente la incontra, con un test che la fissa. (#210)
+
+---
+
 ## [v7.3.0] — "Declared Reverse" — 2026-08-17
 
 ### Aggiunto
