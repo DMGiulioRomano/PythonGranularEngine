@@ -418,7 +418,7 @@ class TestNienteValueErrorNudo:
     ])
     def test_distribuzione_temporale_non_costruibile(self, build, dist):
         """Il quinto elemento del formato compatto e' la distribuzione
-        temporale: `_is_compact_format` accetta li' qualunque `str` o `dict`,
+        temporale: `is_compact_format` accetta li' qualunque `str` o `dict`,
         e cio' che ne esce non e' sempre una distribuzione."""
         with pytest.raises(InvalidFieldValueError) as exc:
             build(grain={'read_direction':
