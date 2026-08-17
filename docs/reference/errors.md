@@ -5,7 +5,7 @@ status: stable
 tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
-last_synced_commit: 4c4fee4
+last_synced_commit: d0dcd01
 entry_for: [error-handling]
 ---
 
@@ -203,6 +203,26 @@ streams:
 [ERRORE] Parametro 'pitch' fuori bounds
   value:        999.0
   Bounds:       [0.1, 100.0]
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+`ParameterBoundError` accetta anche un `hint` opzionale, per i casi in cui il
+vincolo violato **non è un intervallo sul singolo valore**. È il caso
+dell'overflow delle potenze nelle distribuzioni temporali del formato compatto
+(`ratio ** n_reps`): nessuno dei due valori è fuori posto da solo, quindi non
+c'è nessun `[min, max]` da stampare — e infatti la riga `Bounds` viene omessa
+quando entrambi i bound sono ignoti, invece di scrivere `[None, None]`.
+
+```yaml
+streams:
+  s1:
+    density: [[[0, 5], [100, 50]], 10.0, 400, 'linear', {type: geometric, ratio: 10}]
+```
+```
+[ERRORE] Parametro 'ratio' fuori bounds
+  value:        10
+  Hint:         la distribuzione 'geometric(ratio=10)' calcola ratio ** n_reps con n_reps=400, e il risultato non sta in un float. Ne' ratio=10 ne' n_reps=400 e' fuori posto da solo: e' la coppia a esplodere. Riduci n_reps, oppure avvicina ratio a 1.
   Stream:       s1
   Config:       configs/PGE_test.yml
 ```
