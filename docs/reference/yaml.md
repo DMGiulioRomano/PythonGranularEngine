@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: d0dcd01
+last_synced_commit: bbd4709
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 

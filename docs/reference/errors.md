@@ -5,7 +5,7 @@ status: stable
 tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
-last_synced_commit: d0dcd01
+last_synced_commit: ae61d22
 entry_for: [error-handling]
 ---
 
