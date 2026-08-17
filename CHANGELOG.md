@@ -50,6 +50,41 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   simboli: chi chiamava i vecchi nomi privati dall'esterno (in-tree, solo
   `read_direction.py`) va aggiornato. (#213, punto 1)
 
+### Modificato
+
+- **La colorbar del pitch compare solo dove le altezze variano davvero**
+  (#217). Prima si disegnava su ogni subplot con almeno un grano visibile: con
+  l'auto-zoom attivo (default) il range non è mai nullo — `pitch_cents_range`
+  allarga comunque al floor `min_span_cents` di mezzo semitono — quindi una
+  pagina di grani tutti alla stessa altezza otteneva una scala col gradiente
+  pieno sopra grani tutti dello stesso colore: prometteva un'escursione che non
+  c'era.
+
+  La soglia è **1 cent**, non l'uguaglianza esatta: i `pitch_ratio` arrivano da
+  rapporti calcolati in float (semitoni moltiplicati uno alla volta, cent
+  convertiti in rapporti) e la stessa altezza raggiunta per due strade diverse
+  differisce all'ultimo bit — con l'uguaglianza esatta quella deriva
+  riaccenderebbe la scala. Un cent è anche sotto la soglia percettiva, quindi
+  la soglia sbaglia solo dove sbagliare non si sente.
+
+  Fra 1 e 50 cent di escursione reale, però, la scala resta **più larga di
+  quello che mostra**: la colorbar viene disegnata, ma `pitch_cents_range`
+  allarga comunque al floor `min_span_cents`, quindi il gradiente copre mezzo
+  semitono mentre i grani ne occupano una frazione. È la lamentela della #217
+  in forma attenuata, ed è una scelta: alzare la soglia a 50 cent spegnerebbe
+  la colorbar proprio dove l'auto-zoom del micro-detune serve.
+
+  La soppressione è **per-stream** e vale anche col range fisso
+  (`pitch_color_autozoom.enabled: false`), dove un colore unico resta unico. La
+  **colonna** del GridSpec riservata da `colorbar_width_ratio` si decide invece
+  una volta per l'**intera partitura**: si recupera solo se nessuna pagina ha
+  escursione, e altrimenti resta riservata su tutte. Deciderla per pagina
+  avrebbe dato due scale mm/secondo diverse a pagine dello stesso brano, con
+  l'asse dei tempi non più confrontabile a occhio da una pagina all'altra; il
+  prezzo è una colonna vuota sulle pagine di soli stream uniformi. Nessuna
+  nuova chiave di config e nessun opt-out: le partiture con pitch variabile
+  sono invariate.
+
 ### Corretto
 
 - **L'overflow delle potenze nelle distribuzioni temporali non risale più

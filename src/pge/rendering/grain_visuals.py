@@ -168,6 +168,50 @@ def window_vertices(grain, xs, w):
     return vertices
 
 
+def _visible_cents(streams, t_start, t_end):
+    """Altezze in cent dei grani visibili degli stream dati.
+
+    Valore assoluto: un grano reverse ha ratio negativo ma la sua ALTEZZA e'
+    la stessa del forward corrispondente, ed e' l'altezza che il colore
+    racconta. Il verso lo dice gia' la forma della freccia.
+    """
+    return [
+        1200.0 * np.log2(abs(g.pitch_ratio))
+        for stream in streams
+        for g in visible_grains(stream, t_start, t_end)
+        # Il pitch in cent e' un logaritmo: ratio zero non ne ha uno.
+        if abs(g.pitch_ratio) > 0
+    ]
+
+
+# Sotto quale escursione due grani si considerano della stessa altezza.
+# Un cent, non l'uguaglianza esatta: i pitch_ratio arrivano da rapporti
+# calcolati in float (semitoni moltiplicati uno alla volta, cent convertiti in
+# rapporti) e la stessa altezza raggiunta per due strade diverse differisce
+# all'ultimo bit. Con l'uguaglianza esatta quella deriva riaccenderebbe la
+# scala di colore. Un cent e' anche sotto la soglia percettiva, quindi la
+# soglia sbaglia solo dove sbagliare non si sente — ed e' coerente col floor
+# di mezzo semitono che l'autozoom applica per la stessa ragione.
+PITCH_VARIATION_EPSILON_CENTS = 1.0
+
+
+def has_pitch_variation(streams, t_start, t_end):
+    """True se i grani visibili hanno davvero altezze diverse.
+
+    Domanda distinta da quella di `pitch_cents_range`, che risponde sempre con
+    un range non nullo (applica il floor `min_span_cents`): qui serve il dato
+    grezzo, perche' una scala di colore senza escursione da leggere promette
+    un'informazione che non c'e' (issue #217).
+
+    Nessun grano visibile, o nessuno con un'altezza definita, e' assenza di
+    variazione: non c'e' scala da disegnare.
+    """
+    cents = _visible_cents(streams, t_start, t_end)
+    if not cents:
+        return False
+    return (max(cents) - min(cents)) > PITCH_VARIATION_EPSILON_CENTS
+
+
 def pitch_cents_range(streams, t_start, t_end, *, min_span_cents, pad_ratio):
     """Range colore del pitch, in cent, sui grani visibili degli stream dati.
 
@@ -178,16 +222,7 @@ def pitch_cents_range(streams, t_start, t_end, *, min_span_cents, pad_ratio):
         (lo, hi) in cent, oppure None se non c'e' nessun pitch da misurare —
         allora chi disegna ripiega sul range fisso.
     """
-    # Valore assoluto: un grano reverse ha ratio negativo ma la sua ALTEZZA e'
-    # la stessa del forward corrispondente, ed e' l'altezza che il colore
-    # racconta. Il verso lo dice gia' la forma della freccia.
-    cents = [
-        1200.0 * np.log2(abs(g.pitch_ratio))
-        for stream in streams
-        for g in visible_grains(stream, t_start, t_end)
-        # Il pitch in cent e' un logaritmo: ratio zero non ne ha uno.
-        if abs(g.pitch_ratio) > 0
-    ]
+    cents = _visible_cents(streams, t_start, t_end)
     if not cents:
         return None
 

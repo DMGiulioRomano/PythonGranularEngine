@@ -23,6 +23,7 @@ from pge.rendering.grain_visuals import (
     window_silhouette,
     window_vertices,
     visible_grains,
+    has_pitch_variation,
     pitch_cents_range,
     pitch_position,
     volume_alpha,
@@ -342,6 +343,75 @@ class TestPitchCentsRange:
         assert pitch_cents_range(
             [self._stream(0.0)], 0.0, 10.0,
             min_span_cents=0.0, pad_ratio=0.0) is None
+
+
+class TestHasPitchVariation:
+    """Se le altezze dei grani variano davvero (issue #217).
+
+    E' la domanda che il range zoomato non puo' rispondere: `pitch_cents_range`
+    applica comunque il floor di mezzo semitono, quindi da' un'escursione anche
+    dove non ce n'e'. Chi disegna la scala di colore ha bisogno del dato grezzo,
+    non del range gia' allargato."""
+
+    def _stream(self, *ratios):
+        return SimpleNamespace(
+            voices=[[grain(onset=1.0, pitch_ratio=r) for r in ratios]])
+
+    def test_identical_pitches_do_not_vary(self):
+        assert not has_pitch_variation([self._stream(1.5, 1.5, 1.5)], 0.0, 10.0)
+
+    def test_float_drift_does_not_count_as_variation(self):
+        """La stessa ottava raggiunta per due strade diverse — dodici semitoni
+        moltiplicati uno alla volta contro il rapporto 2.0 — differisce
+        all'ultimo bit. E' rumore aritmetico, non una variazione d'altezza:
+        con l'uguaglianza esatta la colorbar ricomparirebbe."""
+        drifted = 1.0
+        for _ in range(12):
+            drifted *= 2.0 ** (1.0 / 12.0)
+        assert drifted != 2.0                       # la deriva c'e' davvero
+        assert not has_pitch_variation([self._stream(2.0, drifted)], 0.0, 10.0)
+
+    def test_sub_cent_difference_does_not_vary(self):
+        """Mezzo cent e' sotto la soglia percettiva: la scala di colore
+        prometterebbe un'escursione che nessuno sente."""
+        stream = self._stream(1.0, 2.0 ** (0.5 / 1200.0))
+        assert not has_pitch_variation([stream], 0.0, 10.0)
+
+    def test_audible_difference_varies(self):
+        """Cinque cent si sentono: la scala di colore ha qualcosa da dire."""
+        stream = self._stream(1.0, 2.0 ** (5.0 / 1200.0))
+        assert has_pitch_variation([stream], 0.0, 10.0)
+
+    def test_a_single_grain_does_not_vary(self):
+        """Un grano solo non e' un'escursione: non c'e' niente da cui differire,
+        e una scala di colore su un unico valore direbbe meno di niente."""
+        assert not has_pitch_variation([self._stream(1.5)], 0.0, 10.0)
+
+    def test_no_pitched_grains_do_not_vary(self):
+        """Nessun grano (o solo ratio zero, che un'altezza non ce l'ha):
+        niente da misurare, quindi niente variazione."""
+        assert not has_pitch_variation([self._stream()], 0.0, 10.0)
+        assert not has_pitch_variation([self._stream(0.0)], 0.0, 10.0)
+
+    def test_only_visible_grains_count(self):
+        """Un grano fuori pagina non fa comparire una variazione dentro."""
+        stream = SimpleNamespace(voices=[[
+            grain(onset=1.0, duration=1.0, pitch_ratio=1.0),
+            grain(onset=50.0, duration=1.0, pitch_ratio=4.0),
+        ]])
+        assert not has_pitch_variation([stream], 0.0, 10.0)
+
+    def test_reverse_grains_count_by_their_absolute_pitch(self):
+        """Il colore racconta l'altezza, non il verso: 1.0 e -1.0 sono lo
+        stesso pitch, quindi nessuna variazione."""
+        assert not has_pitch_variation([self._stream(1.0, -1.0)], 0.0, 10.0)
+
+    def test_variation_can_come_from_two_streams_together(self):
+        """La domanda si puo' porre su piu' stream insieme: due stream uniformi
+        ma di altezza diversa, guardati insieme, variano."""
+        streams = [self._stream(1.0), self._stream(2.0)]
+        assert has_pitch_variation(streams, 0.0, 10.0)
+        assert not has_pitch_variation([streams[0]], 0.0, 10.0)
 
 
 class TestPitchPosition:
