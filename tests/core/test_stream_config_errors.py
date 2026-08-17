@@ -7,7 +7,7 @@ verso la gerarchia ConfigError (issue #38, PR1).
 
 Verifica:
   - sample mancante/null  -> MissingFieldError con stream_id
-  - context fields mancanti -> MissingFieldError con stream_id
+  - stream_id mancante    -> MissingFieldError, contesto 'unknown'
   - grain.reverse invalido -> InvalidFieldValueError con stream_id
 """
 import pytest
@@ -49,8 +49,15 @@ def test_stream_missing_sample_user_message_clean():
     assert "drone_a" in msg
 
 
-def test_stream_missing_context_fields_raises_missing_field_error():
-    """context fields mancanti -> MissingFieldError con stream_id."""
+def test_stream_missing_stream_id_raises_missing_field_error():
+    """stream_id mancante -> MissingFieldError, senza stream_id da nominare.
+
+    Era il test sui "context fields mancanti", che teneva presenti stream_id e
+    sample e contava su `onset` per far scattare l'errore. Da #220 quei due
+    campi sono le sole condizioni di esistenza, quindi il campo che manca va
+    tolto per davvero: qui e' stream_id, e il contesto dell'errore ripiega su
+    'unknown' perche' non c'e' nessun id da stampare.
+    """
     # sample valido per superare check sample, esiste in PATHSAMPLES
     import os
     from pge.shared.utils import PATHSAMPLES
@@ -59,14 +66,34 @@ def test_stream_missing_context_fields_raises_missing_field_error():
         pytest.skip("nessun sample disponibile")
     sample = samples[0]
 
-    params = {'stream_id': 'sx', 'sample': sample}  # mancano altri campi obbligatori
+    params = {'sample': sample}
 
     with pytest.raises(MissingFieldError) as exc_info:
         Stream(params)
 
     err = exc_info.value
-    assert err.stream_id == 'sx'
-    assert len(err.fields) >= 1
+    assert err.fields == ['stream_id']
+    assert err.stream_id == 'unknown'
+
+
+def test_stream_builds_with_the_two_existence_conditions_alone():
+    """stream_id + sample bastano: nessun altro campo di contesto e' preteso.
+
+    Il rovescio del test precedente, e la ragione per cui ha dovuto cambiare
+    forma: `duration` (issue #205) e `onset` (issue #220) hanno un default.
+    """
+    import os
+    from pge.shared.utils import PATHSAMPLES
+    samples = [f for f in os.listdir(PATHSAMPLES) if f.endswith('.wav')]
+    if not samples:
+        pytest.skip("nessun sample disponibile")
+    sample = samples[0]
+
+    stream = Stream({'stream_id': 'sx', 'sample': sample})
+
+    assert stream.stream_id == 'sx'
+    assert stream.onset == 0.0
+    assert stream.duration == stream.sample_dur_sec
 
 
 def test_stream_invalid_grain_reverse_raises_invalid_field_value_error():

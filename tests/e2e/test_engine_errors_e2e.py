@@ -41,14 +41,14 @@ streams:
       duration_range: 0.01
 """
 
-# Manca `onset`. `duration` e' opzionale (issue #205): ometterla non e' un
-# errore, quindi qui il campo mancante e' uno solo -> messaggio singolare.
+# Mancano `stream_id`, `onset` e `duration`. Le ultime due sono opzionali
+# (issue #205 e #220): ometterle non e' un errore, quindi qui il campo
+# mancante e' uno solo -> messaggio singolare.
 YAML_MISSING_CONTEXT = """\
 composition:
   title: "test missing context"
 streams:
-  - stream_id: "stream_no_ctx"
-    sample: "pino.wav"
+  - sample: "pino.wav"
     distribution_mode: 'gaussian'
     density: 5
     distribution: [[0,1],[1,1]]
@@ -59,13 +59,12 @@ streams:
       duration_range: 0.01
 """
 
-# Mancano `stream_id` e `onset`: due campi obbligatori -> messaggio plurale.
-YAML_MISSING_TWO_CONTEXT = """\
+# Mancano entrambe le condizioni di esistenza rimaste: `stream_id` e `sample`.
+YAML_MISSING_BOTH_CONDITIONS = """\
 composition:
-  title: "test missing two context fields"
+  title: "test missing both existence conditions"
 streams:
-  - sample: "pino.wav"
-    distribution_mode: 'gaussian'
+  - distribution_mode: 'gaussian'
     density: 5
     distribution: [[0,1],[1,1]]
     pointer:
@@ -264,26 +263,33 @@ def test_e2e_missing_context_fields(tmp_path, cleanup_log):
     result = _run(yaml_abs)
     _assert_clean_user_output(result)
     assert "Campo obbligatorio mancante" in result.stdout
-    assert "'onset'" in result.stdout
-    # duration omessa non e' un errore (issue #205): non deve comparire
-    # fra i campi mancanti.
+    assert "'stream_id'" in result.stdout
+    # duration (issue #205) e onset (issue #220) omesse non sono un errore:
+    # non devono comparire fra i campi mancanti.
     assert "'duration'" not in result.stdout
-    assert "stream_no_ctx" in result.stdout
-    _assert_log_contains(yaml_abs, "MissingFieldError", ["onset"])
+    assert "'onset'" not in result.stdout
+    _assert_log_contains(yaml_abs, "MissingFieldError", ["stream_id"])
 
 
 @pytest.mark.e2e
-def test_e2e_missing_two_context_fields(tmp_path, cleanup_log):
-    """Con piu' campi mancanti il messaggio e' plurale e li elenca tutti."""
-    yaml_abs = _write_yaml(tmp_path, '02b_missing_two_context.yml',
-                           YAML_MISSING_TWO_CONTEXT)
+def test_e2e_missing_both_existence_conditions_reports_sample_first(tmp_path, cleanup_log):
+    """Con `stream_id` e `sample` entrambi assenti l'errore nomina `sample`.
+
+    Il controllo su `sample` in Stream.__init__ precede quello sui campi di
+    contesto e si ferma li'. Da #220 le condizioni di esistenza sono due e una
+    delle due e' proprio `sample`, quindi dalla CLI il messaggio plurale di
+    MissingFieldError non e' piu' raggiungibile: resta esercitato dove nasce
+    (tests/shared/test_engine_exceptions.py) e sul percorso che bypassa
+    __init__ (tests/core/test_stream.py).
+    """
+    yaml_abs = _write_yaml(tmp_path, '02b_missing_both_conditions.yml',
+                           YAML_MISSING_BOTH_CONDITIONS)
     cleanup_log.append(_log_path_for(yaml_abs))
     result = _run(yaml_abs)
     _assert_clean_user_output(result)
-    assert "Campi obbligatori mancanti" in result.stdout
-    assert "'onset'" in result.stdout
-    assert "'stream_id'" in result.stdout
-    _assert_log_contains(yaml_abs, "MissingFieldError", ["onset", "stream_id"])
+    assert "Campo obbligatorio mancante" in result.stdout
+    assert "'sample'" in result.stdout
+    _assert_log_contains(yaml_abs, "MissingFieldError", ["sample"])
 
 
 @pytest.mark.e2e
