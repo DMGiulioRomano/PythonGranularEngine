@@ -382,6 +382,11 @@ class TestHasPitchVariation:
         stream = self._stream(1.0, 2.0 ** (5.0 / 1200.0))
         assert has_pitch_variation([stream], 0.0, 10.0)
 
+    def test_a_single_grain_does_not_vary(self):
+        """Un grano solo non e' un'escursione: non c'e' niente da cui differire,
+        e una scala di colore su un unico valore direbbe meno di niente."""
+        assert not has_pitch_variation([self._stream(1.5)], 0.0, 10.0)
+
     def test_no_pitched_grains_do_not_vary(self):
         """Nessun grano (o solo ratio zero, che un'altezza non ce l'ha):
         niente da misurare, quindi niente variazione."""

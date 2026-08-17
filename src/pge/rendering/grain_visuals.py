@@ -195,8 +195,7 @@ def _visible_cents(streams, t_start, t_end):
 PITCH_VARIATION_EPSILON_CENTS = 1.0
 
 
-def has_pitch_variation(streams, t_start, t_end,
-                        *, epsilon_cents=PITCH_VARIATION_EPSILON_CENTS):
+def has_pitch_variation(streams, t_start, t_end):
     """True se i grani visibili hanno davvero altezze diverse.
 
     Domanda distinta da quella di `pitch_cents_range`, che risponde sempre con
@@ -210,7 +209,7 @@ def has_pitch_variation(streams, t_start, t_end,
     cents = _visible_cents(streams, t_start, t_end)
     if not cents:
         return False
-    return (max(cents) - min(cents)) > epsilon_cents
+    return (max(cents) - min(cents)) > PITCH_VARIATION_EPSILON_CENTS
 
 
 def pitch_cents_range(streams, t_start, t_end, *, min_span_cents, pad_ratio):

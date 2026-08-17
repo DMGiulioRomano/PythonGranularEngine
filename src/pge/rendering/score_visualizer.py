@@ -227,37 +227,32 @@ class ScoreVisualizer:
             )
         return self._score_pitch_variation
 
-    def _add_pitch_colorbar(self, fig, cax_spec, cents_range, streams,
-                            page_start, page_end):
+    def _add_pitch_colorbar(self, fig, cax_spec, cents_range, has_variation):
         """
         Colorbar compatta con la scala colore pitch del subplot, disegnata in una
         cella dedicata del GridSpec (cax_spec). Con un asse colorbar esplicito
         (cax=) invece di ax=, non viene rubata larghezza al subplot dei grani:
         grani ed envelope restano allineati sullo stesso bordo destro.
 
-        Con cents_range (auto-zoom attivo): scala in cents zoomata.
-        Senza: scala fissa pitch_range in ratio, solo se il subplot ha grani
-        visibili (cents_range None copre anche il caso zero grani). Se non c'e'
-        nulla da disegnare la cella resta vuota (nessun asse creato).
+        has_variation: se le altezze dei grani di questo subplot variano
+        davvero, calcolato una volta da chi disegna (grain_visuals
+        .has_pitch_variation). Niente colorbar dove non variano (issue #217):
+        l'autozoom allarga comunque al floor di mezzo semitono, quindi la scala
+        mostrerebbe un gradiente pieno sopra grani tutti dello stesso colore.
+        Vale anche col range fisso, dove il colore unico resta unico — e copre
+        il caso zero grani, che di variazione non ne ha. Se non c'e' nulla da
+        disegnare la cella resta vuota (nessun asse creato).
 
-        Niente colorbar dove le altezze non variano (issue #217): l'autozoom
-        allarga comunque al floor di mezzo semitono, quindi la scala mostrerebbe
-        un gradiente pieno sopra grani tutti dello stesso colore. Vale anche col
-        range fisso, dove il colore unico resta unico.
+        Con cents_range (auto-zoom attivo): scala in cents zoomata. Senza:
+        scala fissa pitch_range in ratio.
         """
-        if not grain_visuals.has_pitch_variation(streams, page_start, page_end):
+        if not has_variation:
             return
 
         if cents_range is not None:
             norm = Normalize(cents_range[0], cents_range[1])
             label = 'pitch (cents)'
         else:
-            has_grains = any(
-                grain_visuals.visible_grains(s, page_start, page_end)
-                for s in streams
-            )
-            if not has_grains:
-                return
             p_min, p_max = self.config['pitch_range']
             norm = Normalize(p_min, p_max)
             label = 'pitch (ratio)'
@@ -457,8 +452,12 @@ class ScoreVisualizer:
             # subplot anche se il sample e' condiviso; _load_waveform fa cache).
             self._draw_waveform_full(ax_wave, stream, sample_duration)
 
-            # Range colore pitch auto-zoomato sui grani di questo stream
+            # Range colore pitch auto-zoomato sui grani di questo stream, e se
+            # quei grani un'escursione ce l'hanno davvero (una volta sola: la
+            # risposta serve alla colorbar piu' sotto).
             cents_range = self._compute_pitch_color_range(
+                [stream], page_start, page_end)
+            stream_pitch_varies = grain_visuals.has_pitch_variation(
                 [stream], page_start, page_end)
 
             # Disegna grani, loop mask e label dello stream
@@ -485,7 +484,7 @@ class ScoreVisualizer:
             # Legenda della scala colore pitch (auto-zoomata o fissa) nella
             # colonna dedicata della riga grani: non ruba larghezza al subplot.
             self._add_pitch_colorbar(fig, gs[grain_row, 2], cents_range,
-                                     [stream], page_start, page_end)
+                                     stream_pitch_varies)
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
