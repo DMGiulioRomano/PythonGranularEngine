@@ -11,6 +11,19 @@ from typing import List, Tuple, Union, Dict, Any
 import math
 
 
+# Come uscire da un overflow, per parametro (issue #212, review #216). Non e'
+# lo stesso consiglio per tutti: `ratio` e `rate` sono fattori di una
+# progressione, e verso 1 la progressione si appiattisce e la potenza smette di
+# crescere; `exponent` e' una scala, dove 1 e' un valore ordinario e a
+# traboccare e' l'ordine di grandezza. Un parametro non elencato ricade su
+# "riduci <nome>", che e' vero per costruzione: l'overflow arriva dall'alto.
+_RIMEDI_OVERFLOW = {
+    'ratio': "avvicina ratio a 1",
+    'rate': "avvicina rate a 1",
+    'exponent': "riduci exponent in valore assoluto",
+}
+
+
 # =============================================================================
 # ABSTRACT BASE CLASS
 # =============================================================================
@@ -63,6 +76,10 @@ class TimeDistributionStrategy(ABC):
         Per la stessa ragione il messaggio li nomina entrambi: nessuno dei due
         e' il colpevole, quindi dire solo l'uno o solo l'altro non direbbe
         all'utente quale ridurre.
+
+        Il rimedio finale, invece, dipende dal parametro: `ratio` e `rate` sono
+        fattori, e verso 1 la progressione diventa uniforme; `exponent` no — 1
+        e' un esponente ordinario, ed e' la sua scala a essere fuori misura.
         """
         from pge.shared.exceptions import ParameterBoundError
 
@@ -77,7 +94,7 @@ class TimeDistributionStrategy(ABC):
                 f"n_reps={n_reps}, e il risultato non sta in un float. "
                 f"Ne' {param_name}={value} ne' n_reps={n_reps} e' fuori posto "
                 f"da solo: e' la coppia a esplodere. Riduci n_reps, oppure "
-                f"avvicina {param_name} a 1."
+                f"{_RIMEDI_OVERFLOW.get(param_name, f'riduci {param_name}')}."
             ),
         )
 

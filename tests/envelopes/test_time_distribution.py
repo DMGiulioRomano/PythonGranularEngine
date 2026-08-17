@@ -662,6 +662,41 @@ class TestOverflowDellePotenze:
         assert isinstance(exc.value, ConfigError)
         assert isinstance(exc.value, ValueError)
 
+    # (distribuzione, parametro, valore, n_reps, rimedio atteso)
+    RIMEDI = [
+        (GeometricDistribution, 'ratio', 10, 400, 'avvicina ratio a 1'),
+        (ExponentialDistribution, 'rate', 1e-300, 400, 'avvicina rate a 1'),
+        (PowerDistribution, 'exponent', 1e10, 2,
+         'riduci exponent in valore assoluto'),
+    ]
+
+    @pytest.mark.parametrize("dist,parametro,valore,n_reps,rimedio", RIMEDI)
+    def test_il_rimedio_e_quello_della_famiglia(
+            self, dist, parametro, valore, n_reps, rimedio):
+        """Il consiglio finale cambia col parametro, perche' non e' lo stesso.
+
+        `ratio` e `rate` sono fattori: si va verso 1, dove la progressione
+        diventa uniforme e la potenza smette di crescere. `exponent` no — 1 e'
+        un esponente perfettamente ordinario, e' `1e10` a essere fuori scala.
+        Dire "avvicina exponent a 1" manderebbe l'utente verso un valore che
+        non e' ne' il problema ne' la soluzione.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            dist(**{parametro: valore}).calculate_distribution(10.0, n_reps)
+
+        assert rimedio in exc.value.hint
+
+    def test_il_rimedio_della_power_non_parla_di_1(self):
+        """La controprova: il testo tarato sui fattori non e' rimasto sotto."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            PowerDistribution(exponent=1e10).calculate_distribution(10.0, 2)
+
+        assert 'avvicina exponent a 1' not in exc.value.hint
+
     @pytest.mark.parametrize("dist,parametro,valore,_n_reps,innocuo", COPPIE)
     def test_la_coppia_innocua_continua_a_rendere(
             self, dist, parametro, valore, _n_reps, innocuo):
