@@ -17,7 +17,7 @@ import pytest
 import soundfile as sf
 
 from pge.core.stream import Stream
-from pge.shared.exceptions import MissingFieldError
+from pge.core.stream_config import StreamContext, stream_onset_is_implicit
 
 
 SR = 48000
@@ -77,6 +77,70 @@ class TestOnsetDefaultsToOrigin:
         assert min(onsets) == pytest.approx(0.0, abs=0.05)
         assert max(onsets) < 1.0, (
             "i grani devono stare dentro la duration dichiarata, a partire da 0")
+
+
+class TestOnsetDeclarationForms:
+    """Le forme in cui `onset` puo' presentarsi, e cosa vale ciascuna."""
+
+    def test_explicit_null_behaves_as_absent_key(self, tmp_path):
+        """`onset: null` e' una dichiarazione vuota, non un valore: vale
+        l'origine come se la chiave non ci fosse. Senza la risoluzione prima
+        della costruzione, quel None arriverebbe intatto fino all'aritmetica
+        dei grani."""
+        _write_wav(tmp_path, seconds=2.0)
+
+        stream = _build(tmp_path, onset=None)
+
+        assert stream.onset == pytest.approx(0.0)
+        assert min(g.onset for g in stream.grains) == pytest.approx(0.0, abs=0.05)
+
+    def test_explicit_onset_still_wins(self, tmp_path):
+        """Nessuna regressione sugli YAML esistenti: la posizione dichiarata
+        prevale sull'origine."""
+        _write_wav(tmp_path, seconds=2.0)
+
+        stream = _build(tmp_path, onset=5.0)
+
+        assert stream.onset == pytest.approx(5.0)
+        onsets = [g.onset for g in stream.grains]
+        assert min(onsets) >= 5.0
+        assert max(onsets) < 6.0
+
+    def test_zero_is_a_declaration_not_an_absence(self):
+        """`onset: 0` e il default sono indistinguibili nel risultato ma
+        distinti nell'intenzione: il predicato scatta sull'assenza, non sulla
+        truthiness. E' l'unico punto in cui la differenza e' osservabile — al
+        livello dello stream i due casi producono lo stesso numero."""
+        assert stream_onset_is_implicit({}) is True
+        assert stream_onset_is_implicit({'onset': None}) is True
+        assert stream_onset_is_implicit({'onset': 0}) is False
+        assert stream_onset_is_implicit({'onset': 0.0}) is False
+
+
+class TestStreamContextResolution:
+    """La risoluzione avviene prima di costruire il dataclass frozen, in
+    entrambi i rami di allow_none: dopo, `onset` non sarebbe piu' scrivibile."""
+
+    @pytest.mark.parametrize('allow_none', [True, False])
+    def test_absent_onset_becomes_the_origin(self, allow_none):
+        ctx = StreamContext.from_yaml(
+            {'stream_id': 's1', 'duration': 5.0, 'sample': 'test.wav'},
+            sample_dur_sec=2.0, allow_none=allow_none,
+        )
+
+        assert ctx.onset == pytest.approx(0.0)
+
+    @pytest.mark.parametrize('allow_none', [True, False])
+    def test_null_onset_never_reaches_the_dataclass(self, allow_none):
+        """allow_none=True lo includerebbe come None, allow_none=False lo
+        escluderebbe lasciando il campo senza valore: entrambi i rami passano
+        per la risoluzione e nessuno dei due arriva a cls(**kwargs) con None."""
+        ctx = StreamContext.from_yaml(
+            {'stream_id': 's1', 'onset': None, 'duration': 5.0, 'sample': 'test.wav'},
+            sample_dur_sec=2.0, allow_none=allow_none,
+        )
+
+        assert ctx.onset == pytest.approx(0.0)
 
 
 class TestRenderWithoutOnset:
