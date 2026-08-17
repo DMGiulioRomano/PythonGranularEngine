@@ -36,6 +36,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   avere variazione su quella chiave — scrivere `false` o omettere la chiave.
   Per la probabilità piena, `100`. (#209)
 
+  **Quanto è ruvido il breaking, in concreto:** meno di quanto la parola
+  suggerisca per chi chiama PGE da codice. `ConfigError` eredita da
+  `ValueError` (`src/pge/shared/exceptions.py`), quindi un `except ValueError`
+  già presente attorno al parsing continua a intercettare senza modifiche —
+  cambia il tipo esatto, non la categoria. A rompersi è solo ciò che sul
+  vecchio comportamento *contava*: un YAML con un envelope malformato che
+  prima renderizzava (male, al 100% dei grani) e ora si ferma.
+
 - **I riconoscitori di forma di `EnvelopeBuilder` diventano pubblici**:
   `is_compact_format`, `is_bp_group`, `is_3tuple_breakpoint`. Nessun alias
   privato lasciato dietro. Non cambia nulla a runtime, ma è una rinomina di
@@ -70,6 +78,28 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   decodificavano le stesse posizioni per conto proprio: se il `time_dist_spec`
   avesse cambiato slot, il validatore avrebbe continuato a controllare quello
   vecchio in silenzio, senza che nessun test se ne accorgesse. (#213, punto 2)
+  Lo slot dell'interp è letto dalla costante anche da `extract_interp_type`,
+  che era l'ultimo punto fuori da `is_compact_format` a decodificarlo a mano.
+
+- **Gli errori nati costruendo l'envelope portano lo stream.** Il
+  `ParameterBoundError` dell'overflow e l'`InvalidFieldValueError`
+  dell'envelope malformato arrivavano senza `stream_id`: la riga `Stream:` che
+  gli esempi di `docs/reference/errors.md` mostrano non compariva. Ora il
+  parser avvolge `create_scaled_envelope` come già avvolgeva
+  `validate_range_anchor`, e l'orchestratore fa lo stesso per `GateFactory`.
+  I punti di origine restano isolati: continuano a nominare il campo e basta,
+  cambia chi intercetta.
+
+- **L'hint dell'envelope malformato riporta la causa** che arriva dal builder
+  (`Causa: KeyError: 'points'`), invece del solo elenco delle forme note: con
+  quello soltanto l'utente doveva indovinare quale delle forme stava
+  sbagliando.
+
+- **Il rimedio suggerito sull'overflow segue il parametro.** «Avvicina X a 1»
+  vale per i fattori (`ratio`, `rate`), non per `exponent`, dove 1 è un valore
+  ordinario ed è l'ordine di grandezza a traboccare: con `exponent: 1e10` il
+  vecchio testo indicava un valore che non era né il problema né la
+  soluzione. (#212)
 
 ### Documentazione
 
