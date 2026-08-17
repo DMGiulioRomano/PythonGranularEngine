@@ -1374,6 +1374,84 @@ class TestPitchColorbarSuppression:
         assert len(self._colorbar_axes(fig)) == 1
 
 
+class TestPitchColorbarColumnIsScoreWide:
+    """La colonna della colorbar si decide una volta per l'INTERA partitura,
+    non pagina per pagina.
+
+    Deciderla per pagina rendeva la larghezza dell'area dati diversa fra le
+    pagine di uno stesso brano — una pagina con escursione e una senza hanno
+    la stessa finestra temporale ma due scale mm/secondo diverse, e l'asse dei
+    tempi smette di essere confrontabile a occhio da una pagina all'altra. La
+    geometria della pagina e' una proprieta' della partitura; la colorbar
+    resta una proprieta' dello stream."""
+
+    @staticmethod
+    def _uniform_stream(sid, onset):
+        s = make_stream(sid, onset=onset, duration=10.0,
+                        sample='piano.wav', n_grains=0)
+        s.voices = [[make_grain(onset + 1.0 + i, pitch_ratio=1.5)
+                     for i in range(3)]]
+        return s
+
+    @staticmethod
+    def _varied_stream(sid, onset):
+        return make_pitched_stream(sid, onset=onset, duration=10.0,
+                                   sample='piano.wav')
+
+    @staticmethod
+    def _colorbar_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<colorbar>']
+
+    @staticmethod
+    def _width_ratios(fig):
+        ax = next(ax for ax in fig.axes
+                  if ax.get_ylabel().startswith('Read position (s)'))
+        return list(ax.get_subplotspec().get_gridspec().get_width_ratios())
+
+    def _render_pages(self, streams):
+        """Due pagine da 30s: lo stream a onset 0 sulla prima, quello a
+        onset 40 sulla seconda."""
+        viz = make_viz(streams, config={'page_duration': 30.0})
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            figs = [viz.render_page(i) for i in range(viz.page_count)]
+        return viz, figs
+
+    def test_column_width_is_the_same_on_every_page(self):
+        """Prima pagina con escursione, seconda senza: stessa larghezza di
+        colonna, quindi stessa scala dell'asse temporale."""
+        viz, figs = self._render_pages([
+            self._varied_stream('s1', onset=0.0),
+            self._uniform_stream('s2', onset=40.0),
+        ])
+        assert len(figs) == 2
+        wr = [self._width_ratios(f) for f in figs]
+        assert wr[0] == pytest.approx(wr[1])
+        assert wr[0][2] == pytest.approx(viz.config['colorbar_width_ratio'])
+
+    def test_the_page_without_variation_keeps_the_column_but_draws_nothing(self):
+        """La colonna resta riservata per la geometria, ma sulla pagina senza
+        escursione non ci finisce dentro nessuna colorbar: e' il prezzo
+        dichiarato della stabilita' fra pagine."""
+        _, figs = self._render_pages([
+            self._varied_stream('s1', onset=0.0),
+            self._uniform_stream('s2', onset=40.0),
+        ])
+        assert len(self._colorbar_axes(figs[0])) == 1
+        assert self._colorbar_axes(figs[1]) == []
+
+    def test_column_is_recovered_on_every_page_when_the_score_never_varies(self):
+        """Nessuna pagina con escursione: la colonna sparisce ovunque, e le
+        pagine restano identiche fra loro."""
+        _, figs = self._render_pages([
+            self._uniform_stream('s1', onset=0.0),
+            self._uniform_stream('s2', onset=40.0),
+        ])
+        wr = [self._width_ratios(f) for f in figs]
+        assert wr[0][2] == 0.0
+        assert wr[0] == pytest.approx(wr[1])
+
+
 # =============================================================================
 # GROUP - Allineamento larghezza envelope/stream (colonna colorbar dedicata)
 # =============================================================================

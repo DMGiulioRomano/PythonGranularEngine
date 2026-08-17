@@ -98,6 +98,10 @@ class ScoreVisualizer:
         self.total_duration = None
         self.page_count = None
         self.page_layouts = []
+        # Se la partitura, in QUALCHE pagina, ha una colorbar da mostrare:
+        # decide la colonna del GridSpec per tutte (vedi
+        # _score_has_pitch_variation). None = non ancora calcolato.
+        self._score_pitch_variation = None
         
         # Colormap. grain_colormap accetta sia una stringa (nome registrato,
         # incluso 'pitch_div') sia un oggetto Colormap gia' costruito.
@@ -125,6 +129,8 @@ class ScoreVisualizer:
         self.page_layouts = page_layout.paginate(
             self.streams, self.config['page_duration'])
         self.page_count = len(self.page_layouts)
+        # Le pagine sono cambiate: la risposta sulla colorbar va rifatta.
+        self._score_pitch_variation = None
 
         print(f"Analisi completata: {self.page_count} pagine, "
               f"durata totale {self.total_duration:.2f}s")
@@ -196,6 +202,30 @@ class ScoreVisualizer:
         return grain_visuals.pitch_cents_range(
             streams, page_start, page_end,
             min_span_cents=az['min_span_cents'], pad_ratio=az['pad_ratio'])
+
+    def _score_has_pitch_variation(self):
+        """True se in almeno una pagina almeno uno stream ha un'escursione di
+        altezza, cioe' se da qualche parte una colorbar verra' disegnata.
+
+        E' la domanda che decide la COLONNA del GridSpec, e si pone una volta
+        sola sull'intera partitura invece che pagina per pagina. Deciderla per
+        pagina faceva variare la larghezza dell'area dati da una pagina
+        all'altra dello stesso brano: stessa finestra temporale, due scale
+        mm/secondo diverse, e l'asse dei tempi non piu' confrontabile a occhio.
+        La geometria della pagina e' una proprieta' della partitura; quale
+        stream mostra la barra resta una proprieta' dello stream.
+
+        Memoizzata: la risposta dipende dai grani e dalle finestre di pagina,
+        che dopo `analyze` non cambiano piu' (ed e' `analyze` a invalidarla).
+        """
+        if self._score_pitch_variation is None:
+            self._score_pitch_variation = any(
+                grain_visuals.has_pitch_variation(
+                    [s], layout.t_start, layout.t_end)
+                for layout in self.page_layouts
+                for s in layout.streams
+            )
+        return self._score_pitch_variation
 
     def _add_pitch_colorbar(self, fig, cax_spec, cents_range, streams,
                             page_start, page_end):
@@ -335,18 +365,15 @@ class ScoreVisualizer:
         # cosi' un testo piu' grande non viene croppato. A fs=1.0 e' identita'.
         fs = self.config['font_scale']
         waveform_ratio = self.config['waveform_width_ratio'] * fs
-        # La colonna della colorbar si riserva solo se almeno uno stream della
-        # pagina ha davvero un'escursione di altezza (issue #217). Le colorbar
-        # sono impilate in quella sola colonna: basta uno stream che varii
-        # perche' serva, e se non varia nessuno la larghezza torna all'area
-        # dati invece di restare una cella vuota. La decisione va presa qui e
-        # non dentro _add_pitch_colorbar: dopo il GridSpec la colonna c'e' gia'.
-        page_has_pitch_variation = any(
-            grain_visuals.has_pitch_variation([s], page_start, page_end)
-            for s in active_streams
-        )
+        # La colonna della colorbar si riserva solo se la partitura ha, da
+        # qualche parte, un'escursione di altezza da mostrare (issue #217). La
+        # domanda e' sull'intero score e non su questa pagina: cosi' tutte le
+        # pagine hanno la stessa geometria e la stessa scala mm/secondo. Se
+        # nessuna pagina varia, la larghezza torna all'area dati invece di
+        # restare una cella vuota. La decisione va presa qui e non dentro
+        # _add_pitch_colorbar: dopo il GridSpec la colonna c'e' gia'.
         colorbar_ratio = (self.config['colorbar_width_ratio']
-                          if page_has_pitch_variation else 0.0)
+                          if self._score_has_pitch_variation() else 0.0)
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
 
         # Altezza banda per stream (divisa equamente). Con envelope attivi ogni
