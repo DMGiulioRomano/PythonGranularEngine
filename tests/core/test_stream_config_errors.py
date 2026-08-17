@@ -10,6 +10,8 @@ Verifica:
   - stream_id mancante    -> MissingFieldError, contesto 'unknown'
   - grain.reverse invalido -> InvalidFieldValueError con stream_id
 """
+from pathlib import Path
+
 import numpy as np
 import pytest
 import soundfile as sf
@@ -107,16 +109,18 @@ def test_stream_builds_with_the_two_existence_conditions_alone(tmp_path):
 
 def test_stream_invalid_grain_reverse_raises_invalid_field_value_error(tmp_path):
     """grain.reverse: true -> InvalidFieldValueError con stream_id."""
-    import os
-
     # tentativo: minimo necessario per arrivare a _init_grain_reverse.
     # Se altri campi mancano, _init_stream_context fallisce prima:
     # in tal caso questo test verifica che il path resti raggiungibile
     # via fixture parametri completi (delegato al test e2e).
     # Qui costruiamo dict via configs/PGE_test.yml.
     import yaml
-    cfg_path = 'configs/PGE_test.yml'
-    if not os.path.exists(cfg_path):
+    # Path ancorata al file di test, non alla cwd: il config e' versionato,
+    # quindi c'e' sempre, e con una path relativa lo skip qui sotto scattava
+    # solo per via della directory da cui si lancia pytest — un test che
+    # sparisce in silenzio, la stessa dinamica dei tre skip appena rimossi.
+    cfg_path = Path(__file__).resolve().parents[2] / 'configs' / 'PGE_test.yml'
+    if not cfg_path.exists():
         pytest.skip("config di riferimento mancante")
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)

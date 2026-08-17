@@ -209,8 +209,11 @@ streams:
       duration: 0.05
 ```
 
-Both are compositional overrides, written only when they differ from the
-sample:
+Both are compositional overrides. They are not the same kind of default,
+though: `duration` inherits a value from the sample, so writing it means
+choosing a length other than the file's, while `onset` inherits nothing —
+its neutral value is the timeline origin, and writing it means placing the
+stream somewhere other than the beginning.
 
 ```yaml
 streams:
