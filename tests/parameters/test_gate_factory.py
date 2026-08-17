@@ -1115,3 +1115,33 @@ class TestCreateGateFallthrough:
             )
 
         assert isinstance(gate, NeverGate)
+
+def test_envelope_gia_costruito_e_respinto_come_envelope_non_come_tipo():
+    """Un `Envelope` gia' costruito non si ricostruisce, e lo dice come tale.
+
+    Non arriva dallo YAML — arriva da chi chiama la factory con un envelope in
+    mano. `_is_envelope_like` lo riconosce da sempre (e' il suo primo caso),
+    quindi il corpo entra dal ramo envelope e ne esce con l'errore di quel
+    ramo: campo `deviation_probability.volume`, non "tipo non supportato".
+
+    Che poi `create_scaled_envelope` non sappia ricostruire un `Envelope` e'
+    un'altra questione, aperta prima di questa PR. Qui conta *da quale ramo*
+    passa: nessun test lo osservava, e il ramo si poteva rimuovere lasciando
+    la suite verde.
+    """
+    from pge.envelopes.envelope import Envelope
+    from pge.shared.exceptions import InvalidFieldValueError
+
+    envelope = Envelope([[0.0, 0.0], [1.0, 100.0]])
+
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        GateFactory.create_gate(
+            deviation_probability={'volume': envelope},
+            param_key='volume',
+            default_prob=1.0,
+            has_explicit_range=False,
+            duration=1.0,
+            time_mode='absolute',
+        )
+
+    assert exc_info.value.field == 'deviation_probability.volume'
