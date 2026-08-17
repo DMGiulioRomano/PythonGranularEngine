@@ -34,6 +34,10 @@ from pge.shared.exceptions import (
 )
 from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
+from pge.parameters.read_direction import (
+    READ_DIRECTION_FIELD,
+    normalize_read_direction,
+)
 from pge.core.stream_config import StreamConfig, StreamContext, resolve_stream_duration
 from pge.controllers.voice_manager import VoiceManager, VoiceConfig
 from pge.parameters.pitch_unit import make_pitch_unit
@@ -143,6 +147,9 @@ class Stream:
         params = self._pre_normalize_grain_params(params, config.context.output_sr)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
+        # Da qui in poi grain.read_direction, se dichiarata, e' gia' validata e
+        # normalizzata a interpolazione 'step'.
+        params = self._normalize_read_direction(params)
         # === 5. PARAMETRI DIRETTI (riceve config) ===
         self._init_stream_parameters(params, config)
         # === 6. CONTROLLER (riceve config) ===
@@ -493,27 +500,53 @@ class Stream:
     def _init_grain_reverse(self, params: dict) -> None:
         """
         Inizializza parametri reverse del grano.
-        
+
         Semantica YAML RISTRETTA:
         - Chiave ASSENTE → 'auto' (segue pointer_speed)
         - Chiave PRESENTE (reverse:) → DEVE essere vuota, significa True (forzato reverse)
         - reverse: true/false/auto → ERRORE! Non accettati
-        
+
         Examples YAML validi:
             grain:
             # reverse assente → auto mode
-            
+
             grain:
                 reverse:  # ← Unico modo per forzare reverse
-        
+
         Examples YAML INVALIDI:
             grain:
                 reverse: true    # x ERRORE
                 reverse: false   # x ERRORE
                 reverse: 'auto'  # x ERRORE
+
+        Qui vive anche il rifiuto della coppia `reverse` + `read_direction`
+        (issue #207): le due chiavi governano la stessa grandezza con
+        semantiche opposte.
         """
-        grain_params = params.get('grain', {})
-        
+        grain_params = params.get('grain', {}) or {}
+
+        # Exclusivity group 'grain_direction': entrambe presenti e' ERRORE, non
+        # una priorita'. Il precedente vicino (loop_end / loop_dur) risolve per
+        # priorita', ma li' le due chiavi dicono la stessa cosa in due modi;
+        # qui dicono cose diverse, e scegliere in silenzio nasconderebbe
+        # l'errore dell'utente invece di segnalarlo. Prima di ogni altra
+        # validazione: e' il problema da risolvere per primo.
+        if 'reverse' in grain_params and 'read_direction' in grain_params:
+            err = InvalidFieldValueError(
+                field=READ_DIRECTION_FIELD,
+                value=grain_params['read_direction'],
+                hint=(
+                    "grain.read_direction e grain.reverse governano la stessa "
+                    "grandezza — il verso di lettura del grano — con semantiche "
+                    "opposte, e non possono coesistere.\n"
+                    "  Tieni grain.read_direction (-1 indietro, +1 avanti, "
+                    "anche come envelope) oppure grain.reverse (chiave vuota = "
+                    "sempre indietro), non entrambe."
+                ),
+            )
+            err.stream_id = self.stream_id
+            raise err
+
         if 'reverse' in grain_params:
             # Validazione: se la chiave è presente, DEVE essere None (vuota)
             value = grain_params['reverse']
@@ -537,6 +570,35 @@ class Stream:
         else:
             # Chiave assente → auto mode (segue speed)
             self.grain_reverse_mode = 'auto'
+
+    def _normalize_read_direction(self, params: dict) -> dict:
+        """
+        Valida `grain.read_direction` e le impone l'interpolazione `step`.
+
+        Stesso modello di `_pre_normalize_grain_params`: legge il valore grezzo
+        dal dizionario, lo riscrive per il parser a valle e non muta l'originale
+        (fingerprint della cache e stream_data_map leggono i dati grezzi).
+
+        La regola sta in `parameters/read_direction.py`; qui si attribuisce
+        l'errore allo stream, cosi' un verso scritto male dice in quale stream
+        cercarlo.
+        """
+        grain = params.get('grain')
+        if not isinstance(grain, dict) or 'read_direction' not in grain:
+            return params
+
+        try:
+            value = normalize_read_direction(grain['read_direction'])
+        except InvalidFieldValueError as err:
+            err.stream_id = self.stream_id
+            raise
+
+        normalized_grain = dict(grain)
+        normalized_grain['read_direction'] = value
+
+        normalized_params = dict(params)
+        normalized_params['grain'] = normalized_grain
+        return normalized_params
 
     # =========================================================================
     # GENERAZIONE GRANI
@@ -711,35 +773,43 @@ class Stream:
     def _calculate_grain_reverse(self, elapsed_time: float) -> bool:
         """
         Calcola se il grano deve essere riprodotto al contrario.
-        
-        Usa evaluate_gated_stochastic con variation_mode='invert':
-        - 'auto': base_reverse segue pointer_speed
-        - grain_reverse_randomness: probabilità di flip (0-100)
-        - grain_reverse_randomness=None: nessun flip (mantiene base)
-        
+
+        Due superfici dichiarative, mutuamente esclusive (issue #207):
+
+        - `grain.read_direction`: il verso e' il valore dichiarato, -1 indietro
+          e +1 avanti, scalare o envelope. Il gate deviation_probability e il
+          flip per-grano vivono dentro il Parameter (variation_mode='negate'),
+          quindi qui basta leggerne il segno: `get_value()` e' gia' la
+          risposta completa.
+        - `grain.reverse`: il verso base e' 'auto' (segue pointer_speed) o
+          sempre indietro; il flip per-grano arriva dal gate del Parameter
+          'reverse'. L'asimmetria e' nella cosa, non nel codice: in 'auto' il
+          valore base non e' dichiarato ma dedotto dalla velocita' della
+          testina, quindi non c'e' un Parameter da cui leggerlo.
+
         Args:
             elapsed_time: tempo trascorso dall'inizio dello stream
-            
+
         Returns:
             bool: True se grano deve essere riprodotto al contrario
         """
-        # 1. Determina base value come float (0.0 o 1.0)
+        if self.read_direction is not None:
+            return self.read_direction.get_value(elapsed_time) < 0
+
+        # 1. Determina il verso base
         if self.grain_reverse_mode == 'auto':
             # Se la testina va indietro, il grano è reverse di base
             is_reverse_base = (self._pointer.get_speed(elapsed_time) < 0)
         else:
-            # Se forzato da YAML, usiamo il valore caricato nel parametro
-            # Nota: self.reverse._value può essere un numero o un Envelope
-            val = self.reverse._value
-            if hasattr(val, 'evaluate'):
-                val = val.evaluate(elapsed_time)
-            is_reverse_base = (val > 0.5) if val is not None else True
-        
+            # Chiave presente e vuota: _init_grain_reverse ha gia' rifiutato
+            # ogni valore, quindi qui il verso base e' sempre "indietro".
+            is_reverse_base = True
+
         # FASE 2: Controlliamo se dobbiamo FLIPPARE (DeviationProbability/Probabilità)
         # Usiamo il metodo interno del parametro per vedere se il "dado" vince
         # Nota: Qui stiamo "rubando" la logica probabilistica all'oggetto Parameter
         should_flip = self.reverse._probability_gate.should_apply(elapsed_time)
-        
+
         if should_flip:
             return not is_reverse_base
         return is_reverse_base

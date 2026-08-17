@@ -11,6 +11,7 @@ from pge.strategies.variation_strategy import (
     AdditiveVariation,
     QuantizedVariation,
     InvertVariation,
+    NegateVariation,
     ChoiceVariation
 )
 from pge.shared.exceptions import StrategyNotFoundError
@@ -23,6 +24,7 @@ VARIATION_STRATEGIES: Dict[str, Type[VariationStrategy]] = {
     'additive': AdditiveVariation,
     'quantized': QuantizedVariation,
     'invert': InvertVariation,
+    'negate': NegateVariation,
     'choice': ChoiceVariation,
 }
 

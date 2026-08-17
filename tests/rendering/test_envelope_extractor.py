@@ -841,7 +841,8 @@ class TestPublishedSurfaceResolves:
 
     def _configurazioni(self, build_stream):
         """Un ventaglio che copre i gruppi esclusivi: density contro
-        fill_factor, loop_end contro loop_dur, pointer e voci espliciti."""
+        fill_factor, loop_end contro loop_dur, reverse contro read_direction,
+        pointer e voci espliciti."""
         return [
             build_stream(
                 stream_id='A',
@@ -865,6 +866,15 @@ class TestPublishedSurfaceResolves:
                 stream_id='C',
                 density=10,
                 pointer={'loop_start': 0.1, 'loop_dur': 0.5},
+            ),
+            # L'altro membro del gruppo 'grain_direction' (issue #207): dove
+            # read_direction e' dichiarata, 'reverse' e' None e viceversa.
+            build_stream(
+                stream_id='D',
+                density=10,
+                grain={'duration': 0.05, 'envelope': 'hanning',
+                       'read_direction': [[0, 1], [1.0, -1]]},
+                deviation_probability={'read_direction': 40},
             ),
         ]
 
@@ -895,6 +905,38 @@ class TestPublishedSurfaceResolves:
         difetto di copertura invece che per correttezza."""
         pubblicate, vive = self._pubblicate_e_vive(build_stream)
         assert len(vive) >= len(pubblicate) - len(self.DICHIARATE_MORTE)
+
+
+class TestReadDirectionIsPlottable:
+    """Le curve di `read_direction` hanno un colore, quindi sono filtrabili.
+
+    `PLOT_ENVELOPE_KEYS` — l'universo dei nomi accettati da `--plot-envelopes`
+    e i colori dei layer SV — e' derivato da `ENVELOPE_COLORS`. Una chiave
+    pubblicata senza colore produce la curva ma viene rifiutata dal filtro che
+    dovrebbe selezionarla: promessa e superficie divergerebbero in silenzio.
+
+    (L'invariante non e' generale: `grain_envelope`, `loop_start` e `loop_end`
+    sono pubblicate senza colore da prima di questa chiave — precedente da non
+    estendere, non da imitare.)
+    """
+
+    def test_chiavi_read_direction_hanno_un_colore(self):
+        from pge.rendering.envelope_extractor import (
+            ENVELOPE_COLORS, _curve_sources, VoiceOffsetSource)
+
+        pubblicate = {
+            source.key for source in _curve_sources()
+            if not isinstance(source, VoiceOffsetSource)
+            and source.key.startswith('read_direction')
+        }
+        assert pubblicate == {'read_direction', 'read_direction_prob'}
+        assert pubblicate <= set(ENVELOPE_COLORS)
+
+    def test_filtro_plot_le_accetta(self):
+        from pge.rendering.envelope_extractor import PLOT_ENVELOPE_KEYS
+
+        assert 'read_direction' in PLOT_ENVELOPE_KEYS
+        assert 'read_direction_prob' in PLOT_ENVELOPE_KEYS
 
 
 class TestEffectiveDensityIsPublished:

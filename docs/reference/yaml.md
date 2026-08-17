@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: 6d4bd0b
+last_synced_commit: 3ffcf1c
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -490,6 +490,73 @@ grain:
   #          chiave presente vuota = reverse forzato
   reverse:          # forza reverse per tutti i grani
   # ERRORE: reverse: true / reverse: false / reverse: auto
+
+  # Verso di lettura INTERNO al grano, dichiarativo (alternativa a reverse).
+  # -1 = lettura all'indietro, +1 = lettura in avanti. Indipendente dal segno
+  # di pointer.speed_ratio: la testina puo' percorrere il buffer all'indietro
+  # mentre i grani leggono in avanti.
+  read_direction: 1
+
+  # Accetta envelope: il verso cambia nel tempo, a gradino
+  read_direction: [[0, 1], [12, -1], [20, 1]]
+  # ERRORE: read_direction insieme a reverse (gruppo esclusivo)
+  # ERRORE: read_direction: 0 / 0.5 (solo -1 e +1)
+  # ERRORE: interpolazione diversa da step
+```
+
+### `grain.read_direction` — il verso di lettura del grano
+
+Tre grandezze diverse, che è bene non confondere:
+
+| grandezza | governa | segno |
+|---|---|---|
+| `pointer.speed_ratio` | la velocità e il verso con cui la **testina** percorre il buffer | negativo = percorrenza all'indietro |
+| `grain.read_direction` | il verso con cui il **grano** legge il materiale | `-1` indietro, `+1` avanti |
+| blocco `pitch` | l'**altezza percepita** (trasposizione) | sempre positivo, per costruzione |
+
+`read_direction` è alternativa a `reverse`, non un suo complemento: **le due
+chiavi insieme sono un errore** (`InvalidFieldValueError`), non una priorità.
+Governano la stessa grandezza con semantiche opposte, e sceglierne una in
+silenzio nasconderebbe l'errore invece di segnalarlo. Con **entrambe assenti**
+il comportamento è quello di sempre: modalità `auto`, il verso segue il segno
+di `pointer.speed_ratio`.
+
+Il caso che con `reverse` richiede un gate stocastico saturato:
+
+```yaml
+# Prima: gate al 100% per un comportamento che di stocastico non ha nulla
+pointer: {speed_ratio: -1}
+grain: {reverse:}
+deviation_probability: {reverse: 100}
+
+# Adesso: dichiarato
+pointer: {speed_ratio: -1}
+grain: {read_direction: 1}
+```
+
+**L'interpolazione è `step`, implicita e obbligatoria.** L'envelope si scrive
+come una spezzata qualsiasi e il gradino lo impone la chiave; `type: step`
+esplicito è ridondanza accettata. Qualunque altro interp — `linear`, `cubic`,
+in forma dict, per-punto (`[t, v, type]`) o BP group (`[points, interp]`) — è
+un **errore esplicito**, mai un avviso e mai una correzione silenziosa: il
+verso di lettura ha due stati, non una rampa fra i due.
+
+**I valori dichiarati stanno in `{-1, +1}`.** Con `step` imposto l'envelope
+emette solo i valori scritti ai breakpoint, quindi il problema non è
+l'interpolazione ma la dichiarazione: `0.3` non è un verso e `0` non ha un
+segno. Ogni altro valore è rifiutato al parse, senza arrotondamento al segno.
+
+Verso stocastico: si dichiara con la chiave `read_direction` del blocco
+`deviation_probability`, che è la probabilità per-grano di **ribaltare** il
+verso dichiarato (vedi [DeviationProbability](#deviation_probability-variazione-stocastica)).
+`deviation_probability: {reverse: N}` resta legata a `grain.reverse` e non
+tocca `read_direction`.
+
+```yaml
+grain:
+  read_direction: 1        # base: in avanti
+deviation_probability:
+  read_direction: 30       # il 30% dei grani legge all'indietro
 ```
 
 Con qualunque `duration_unit` diverso da `seconds` la `grain.duration` va
@@ -662,7 +729,8 @@ deviation_probability:
   duration: 20        # 20% probabilità di applicare duration_range
   pitch: 10           # 10% per pitch range
   pointer: 40         # 40% per pointer offset_range
-  reverse: 5          # 5% probabilità di flip reverse
+  reverse: 5          # 5% probabilità di flip reverse (solo per grain.reverse)
+  read_direction: 5   # 5% probabilità di ribaltare grain.read_direction
   envelope: 15        # 15% probabilità di cambiare finestra (se lista)
 
 # Valore specifico come envelope
@@ -1486,6 +1554,10 @@ density:
 Utile per cambi discontinui di sezione, automazioni "a quantità fisse",
 modulazioni di parametri categorici (es. numero di voci).
 
+Su `grain.read_direction` non è una scelta ma la natura della chiave: è
+imposto, e ogni altro interp è un errore (vedi
+[§10.5](#105-grainread_direction-step-imposto)).
+
 #### 4.4 Discontinuità con formato compatto
 
 Quando si concatenano cicli, il `BUILDER` inserisce automaticamente un offset
@@ -1726,6 +1798,22 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 - `exponential.rate <= 0` → `ValueError`
 - `logarithmic.base <= 1` → `ValueError`
 - `geometric.ratio <= 0` → `ValueError`
+- `power.exponent` non numerico → `InvalidFieldValueError`
+
+Tutti scattano alla costruzione della distribuzione; `power` era l'unico a non
+validare il proprio parametro, e falliva più tardi con un `TypeError` dentro
+`calculate_distribution`. Il controllo su `exponent` è sul **tipo** (non è un
+numero) e non sui bound: qualunque reale è un esponente legittimo.
+
+Nessuna delle cinque rifiuta i booleani in quanto tali — sono numeri — ma i
+bound qui sopra li trattano diversamente, perché non sono la stessa condizione:
+
+| | `true` (vale 1) | `false` (vale 0) |
+|---|---|---|
+| `power.exponent` (nessun bound) | passa | passa |
+| `exponential.rate > 0` | passa | errore |
+| `geometric.ratio > 0` | passa | errore |
+| `logarithmic.base > 1` | **errore** | errore |
 
 ---
 
@@ -1930,7 +2018,64 @@ voices:
     spread: [[0, 0], [30, 120]]      # tutte centrate → spread ampio
 ```
 
-#### 10.5 `num_voices` come envelope
+#### 10.5 `grain.read_direction`: `step` imposto
+
+`read_direction` (vedi [Blocco Grain](#grainread_direction--il-verso-di-lettura-del-grano))
+è l'unico parametro con un'interpolazione **imposta** invece che scelta: il
+valore grezzo viene avvolto in `{type: step, points: <scritto>}` prima del
+parser, e ogni interp dichiarato diverso da `step` solleva
+`InvalidFieldValueError` invece di essere accettato o corretto in silenzio.
+
+```yaml
+grain:
+  read_direction: [[0, 1], [12, -1], [20, 1]]   # step, senza doverlo scrivere
+```
+
+Le **forme** dell'envelope restano tutte quelle documentate qui — lista di
+breakpoint, dict `{points: ...}`, BP group, formato compatto, lista mista — e
+valgono identiche nei due modi di scriverle: quello che è accettato come lista
+nuda è accettato dentro `points`, e viceversa. A essere imposta è
+l'interpolazione, non la sintassi.
+
+Il rifiuto copre tutte le forme in cui un interp è dichiarabile: dict
+(`type:`), tag per-punto `[t, v, type]`, BP group `[points, interp]` e formato
+compatto (quarto elemento). Così cade anche il caso del segmento **di confine**
+fra due macrozone, che l'interp di gruppo non governa (vedi
+[BP group](#4-tipi-di-interpolazione)): con `step` ovunque non esiste un
+segmento che possa produrre valori intermedi.
+
+Conseguenza sui valori: l'envelope emette solo i valori scritti ai breakpoint,
+che devono stare in `{-1, +1}`. La validazione è a parse-time e precede il
+clamp dei bounds, così `read_direction: 0.5` produce un errore sul dominio a
+due valori invece di passare silenziosamente il clamp `[-1, 1]`.
+
+Su questa chiave un gruppo di condizioni che altrove risalgono come
+`ValueError` nudo (vedi [§5](#5-formato-compatto-cicli-ripetuti)) — o non
+risalgono affatto — sono invece `InvalidFieldValueError`, quindi portano il
+campo `grain.read_direction` e lo `stream_id`:
+
+| Condizione | Altrove |
+|---|---|
+| BP group con meno di 2 punti | `ValueError` |
+| `pattern_points` vuoto | `ValueError` |
+| `n_reps < 1`, e `n_reps: true` | `ValueError` / accettato in silenzio |
+| `end_time <= 0`, e `end_time: true` | `ValueError` / accettato in silenzio |
+| `x` del pattern fuori da `[0, 100]`, o che torna indietro | accettato in silenzio |
+| punto del pattern non piatto | `TypeError` |
+| breakpoint `{t, v}` con `t` non numerico | `ValueError` |
+| distribuzione temporale: nome ignoto o parametri non validi | `ValueError` / `AttributeError` |
+
+I nomi validi della distribuzione temporale sono quelli di
+[§6.2](#62-distribuzioni-disponibili); i vincoli sui loro parametri restano di
+`TimeDistributionFactory`, che li applica costruendola.
+
+Resta al builder, e quindi `ValueError`, la sola condizione che dipende da
+quanto il builder ha già percorso: `end_time <= time_offset`, dove
+`time_offset` è l'istante accumulato dagli elementi che precedono il ciclo in
+una lista mista. Qui se ne verifica il segno — decidibile, perché quell'istante
+non è mai negativo — non il confronto.
+
+#### 10.6 `num_voices` come envelope
 
 `num_voices` è un caso particolare: viene parsato come `Parameter` che ammette
 envelope, ma il `VoiceManager` pre-alloca `max_voices` pari al picco massimo dei
@@ -2062,6 +2207,7 @@ un envelope dal YAML al runtime è:
 | `pan` | -3600 | 3600 | 0.0 | gradi |
 | `pitch_ratio` | 0.001 | 8 | 1.0 | ratio diretto |
 | `pitch_semitones` | -36 | 36 | 0 | ±3 ottave |
+| `read_direction` | -1 | +1 | — | solo `-1` e `+1`; assente = modalità `auto` |
 | `pointer_speed_ratio` | -100 | 100 | 1.0 | negativo = indietro |
 | `pointer_deviation` | -1 | 1 | 0.0 | offset per-grano |
 | `loop_start` | 0 | sample_dur | — | secondi |

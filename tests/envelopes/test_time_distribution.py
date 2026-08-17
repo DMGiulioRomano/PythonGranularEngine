@@ -19,6 +19,7 @@ from pge.envelopes.time_distribution import (
     PowerDistribution,
     validate_distribution
 )
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================
@@ -173,6 +174,36 @@ class TestPowerDistribution:
         for i in range(len(durations) - 1):
             assert durations[i] < durations[i+1]
     
+    @pytest.mark.parametrize("exponent", ['x', None, [2], {'v': 2}])
+    def test_invalid_exponent(self, exponent):
+        """`exponent` non numerico -> errore alla costruzione.
+
+        E' l'unico costruttore del registro che assegnava senza guardare: il
+        valore restava buono fino a `calculate_distribution`, dove
+        `(i + 1) ** exponent` alzava un `TypeError` nudo. Chi valida la spec
+        prima di usarla — costruendola — non vedeva niente.
+        """
+        with pytest.raises(InvalidFieldValueError) as exc:
+            PowerDistribution(exponent=exponent)
+        assert exc.value.field == 'power.exponent'
+
+    def test_bool_non_e_rifiutato_dal_guard_sul_tipo(self):
+        """Il guard di `power` e' sui non-numeri, e un `bool` non lo e'.
+
+        `exponent: true` non alzava nulla nemmeno prima — `True ** n` fa 1,
+        cioe' distribuzione lineare. Aggiungere qui un controllo di tipo che
+        nessun'altra del registro fa romperebbe YAML che rendono, su ogni
+        chiave con un formato compatto e non solo su quelle di questa feature.
+
+        Cosa poi succeda ai `bool` *dopo* questo guard dipende dai bound di
+        ciascuna distribuzione, ed e' la tabella di
+        `test_bool_contro_i_bound_di_ciascuna_distribuzione`.
+        """
+        starts, durations = PowerDistribution(
+            exponent=True).calculate_distribution(10.0, 3)
+        assert len(durations) == 3
+        assert sum(durations) == pytest.approx(10.0)
+
     def test_exponent_equals_one(self):
         """Exponent = 1 → lineare."""
         dist = PowerDistribution(exponent=1.0)
@@ -339,7 +370,48 @@ class TestValidateDistribution:
 
 class TestEdgeCases:
     """Test edge cases e corner cases."""
-    
+
+    @pytest.mark.parametrize("dist,kwargs,accettato", [
+        # `power` non ha bound: qualunque numero e' un esponente legittimo,
+        # quindi entrambi i booleani passano.
+        (PowerDistribution, {'exponent': True}, True),
+        (PowerDistribution, {'exponent': False}, True),
+        # `rate > 0` e `ratio > 0`: `true` vale 1 e li supera, `false` vale 0
+        # e ci cade sopra.
+        (ExponentialDistribution, {'rate': True}, True),
+        (ExponentialDistribution, {'rate': False}, False),
+        (GeometricDistribution, {'ratio': True}, True),
+        (GeometricDistribution, {'ratio': False}, False),
+        # `base > 1`: `true` vale **esattamente** 1, quindi non lo supera.
+        # Nessuno dei due passa.
+        (LogarithmicDistribution, {'base': True}, False),
+        (LogarithmicDistribution, {'base': False}, False),
+    ])
+    def test_bool_contro_i_bound_di_ciascuna_distribuzione(
+            self, dist, kwargs, accettato):
+        """Un `bool` non ha una risposta unica in questo registro.
+
+        Nessun costruttore decide sul tipo — tranne `power`, che pretende un
+        numero e a cui un `bool` basta. Da li' in poi la sorte di `true` e
+        `false` dipende dai **bound** della singola distribuzione, che non
+        sono la stessa condizione: `true` passa dove il bound e' `> 0` e cade
+        dove e' `> 1`, perche' vale esattamente 1.
+
+        La tabella e' scritta per intero, casi negativi compresi, proprio
+        perche' e' la parte che non si indovina — e perche' un parametrizzato
+        che coprisse solo i casi che passano darebbe un nome vero a un test
+        che osserva meta' del fenomeno.
+        """
+        if accettato:
+            starts, durations = dist(**kwargs).calculate_distribution(10.0, 3)
+            assert len(durations) == 3
+            assert sum(durations) == pytest.approx(10.0)
+        else:
+            # `ParameterBoundError` eredita da `ValueError`: il ramo copre sia
+            # i bound tipizzati sia i `ValueError` nudi ancora in giro.
+            with pytest.raises(ValueError):
+                dist(**kwargs)
+
     def test_single_repetition(self):
         """n_reps=1 funziona per tutte le strategie."""
         strategies = [

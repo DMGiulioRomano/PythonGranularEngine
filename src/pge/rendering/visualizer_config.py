@@ -105,6 +105,8 @@ ENVELOPE_RANGES = {
     'grain_duration_prob': (0, 100),
     'reverse': (0, 1),
     'reverse_prob': (0, 100),
+    'read_direction': (-1, 1),           # -1 indietro, +1 avanti
+    'read_direction_prob': (0, 100),
 
     # === POINTER ===
     'pointer_start': (0.0, 1.0),         # normalizzato

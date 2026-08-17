@@ -33,6 +33,7 @@ from pge.strategies.variation_strategy import (
     AdditiveVariation,
     QuantizedVariation,
     InvertVariation,
+    NegateVariation,
     ChoiceVariation,
 )
 
@@ -68,6 +69,12 @@ def quantized():
 def invert():
     """Istanza InvertVariation."""
     return InvertVariation()
+
+
+@pytest.fixture
+def negate():
+    """Istanza NegateVariation."""
+    return NegateVariation()
 
 
 @pytest.fixture
@@ -398,6 +405,57 @@ class TestInvertVariationApply:
                                      base, expected):
         """Inversione corretta per range [0, 1] a passi di 0.1."""
         assert invert.apply(base, 0.0, mock_distribution) == pytest.approx(expected)
+
+
+# =============================================================================
+# 4-bis. TEST NegateVariation
+# =============================================================================
+
+class TestNegateVariationInit:
+    """Test costruzione NegateVariation."""
+
+    def test_instantiation(self, negate):
+        assert negate is not None
+
+    def test_is_variation_strategy(self, negate):
+        assert isinstance(negate, VariationStrategy)
+
+
+class TestNegateVariationApply:
+    """
+    apply() ritorna sempre -base.
+
+    E' il flip su un dominio con segno (grain.read_direction: -1/+1), dove
+    InvertVariation non serve: `1 - base` su -1/+1 darebbe 2 e 0, cioe' due
+    valori che non sono un verso.
+    """
+
+    def test_negate_positive(self, negate, mock_distribution):
+        assert negate.apply(1.0, 0.0, mock_distribution) == -1.0
+
+    def test_negate_negative(self, negate, mock_distribution):
+        assert negate.apply(-1.0, 0.0, mock_distribution) == 1.0
+
+    def test_ignores_mod_range(self, negate, mock_distribution):
+        r1 = negate.apply(1.0, 0.0, mock_distribution)
+        r2 = negate.apply(1.0, 100.0, mock_distribution)
+        assert r1 == r2 == -1.0
+
+    def test_ignores_distribution(self, negate):
+        assert negate.apply(-1.0, 5.0, None) == 1.0
+
+    def test_distribution_sample_never_called(self, negate, mock_distribution):
+        negate.apply(1.0, 10.0, mock_distribution)
+        mock_distribution.sample.assert_not_called()
+
+    def test_double_negation_identity(self, negate, mock_distribution):
+        first = negate.apply(1.0, 0.0, mock_distribution)
+        second = negate.apply(first, 0.0, mock_distribution)
+        assert second == 1.0
+
+    def test_preserva_il_modulo(self, negate, mock_distribution):
+        """Cambia solo il segno: il modulo resta quello dichiarato."""
+        assert negate.apply(0.25, 0.0, mock_distribution) == pytest.approx(-0.25)
 
 
 # =============================================================================

@@ -44,6 +44,8 @@ ENVELOPE_COLORS = {
     'grain_duration_range': '#08519c',  # blu scuro (deviazione per-grano)
     'reverse': '#999999',         # grigio
     'reverse_prob': '#cccccc',    # grigio chiarissimo
+    'read_direction': '#666666',       # grigio scuro (l'altra chiave del verso)
+    'read_direction_prob': '#b3b3b3',  # grigio medio
 
     # === POINTER ===
     'pointer_start': '#8dd3c7',   # celeste

@@ -45,7 +45,7 @@ EXPECTED_PARAMETERS = {
     # Density & Time
     'density', 'fill_factor', 'distribution', 'effective_density',
     # Grain Properties
-    'grain_duration', 'reverse', 'grain_envelope',
+    'grain_duration', 'reverse', 'read_direction', 'grain_envelope',
     # Pitch: i bounds sono unit-driven (PitchUnit.value_bounds), non registrati qui.
     # Pointer
     'pointer_speed_ratio', 'pointer_deviation',
@@ -58,7 +58,7 @@ EXPECTED_PARAMETERS = {
 }
 
 # Variation modes validi nel sistema
-VALID_VARIATION_MODES = {'additive', 'quantized', 'invert', 'choice'}
+VALID_VARIATION_MODES = {'additive', 'quantized', 'invert', 'negate', 'choice'}
 
 
 # =============================================================================
@@ -383,6 +383,17 @@ class TestGrainPropertiesBounds:
     def test_reverse_variation_mode_invert(self):
         """reverse usa variation_mode='invert' (boolean flip)."""
         assert GRANULAR_PARAMETERS['reverse'].variation_mode == 'invert'
+
+    def test_read_direction_bounds(self):
+        """read_direction vive su [-1, +1]: il negativo e' 'indietro'."""
+        b = GRANULAR_PARAMETERS['read_direction']
+        assert b.min_val == -1
+        assert b.max_val == 1
+
+    def test_read_direction_variation_mode_negate(self):
+        """read_direction usa 'negate': il flip su un dominio con segno e'
+        un cambio di segno, non `1 - base` (che darebbe 2 e 0)."""
+        assert GRANULAR_PARAMETERS['read_direction'].variation_mode == 'negate'
 
     def test_grain_envelope_variation_mode_choice(self):
         """grain_envelope usa variation_mode='choice'."""

@@ -279,7 +279,8 @@ class TestStreamParameterSchema:
     def test_expected_parameters_present(self):
         """I parametri core di Stream sono presenti."""
         names = {s.name for s in STREAM_PARAMETER_SCHEMA}
-        expected_core = {'volume', 'pan', 'grain_duration', 'grain_envelope', 'reverse'}
+        expected_core = {'volume', 'pan', 'grain_duration', 'grain_envelope',
+                         'reverse', 'read_direction'}
         assert expected_core.issubset(names), (
             f"Mancanti: {expected_core - names}"
         )
@@ -322,12 +323,38 @@ class TestStreamParameterSchema:
         assert spec.default == 0
         assert spec.deviation_probability_key == 'reverse'
 
-    def test_no_exclusive_groups(self):
-        """STREAM schema non ha gruppi esclusivi."""
-        for spec in STREAM_PARAMETER_SCHEMA:
-            assert spec.exclusive_group is None, (
-                f"'{spec.name}' ha exclusive_group='{spec.exclusive_group}'"
-            )
+    def test_read_direction_spec(self):
+        """read_direction ha una deviation_probability_key propria: il verso
+        stocastico si dichiara sulla chiave che governa il verso, non su
+        'reverse' (issue #207)."""
+        spec = next(s for s in STREAM_PARAMETER_SCHEMA
+                    if s.name == 'read_direction')
+        assert spec.yaml_path == 'grain.read_direction'
+        assert spec.default is None
+        assert spec.deviation_probability_key == 'read_direction'
+        assert spec.is_smart is True
+
+    def test_grain_direction_exclusive_group(self):
+        """reverse e read_direction sono nello stesso gruppo esclusivo."""
+        group = {s.name for s in STREAM_PARAMETER_SCHEMA
+                 if s.exclusive_group == 'grain_direction'}
+        assert group == {'reverse', 'read_direction'}
+
+    def test_reverse_wins_when_neither_declared(self):
+        """Con entrambe le chiavi assenti vince 'reverse' (default non-None e
+        priorita' piu' alta): il comportamento resta l'attuale 'auto'."""
+        reverse = next(s for s in STREAM_PARAMETER_SCHEMA if s.name == 'reverse')
+        read_direction = next(s for s in STREAM_PARAMETER_SCHEMA
+                              if s.name == 'read_direction')
+        assert reverse.group_priority < read_direction.group_priority
+        assert reverse.default is not None
+        assert read_direction.default is None
+
+    def test_only_grain_direction_is_exclusive_in_stream(self):
+        """L'unico gruppo esclusivo dello STREAM schema e' grain_direction."""
+        groups = {s.exclusive_group for s in STREAM_PARAMETER_SCHEMA
+                  if s.exclusive_group}
+        assert groups == {'grain_direction'}
 
     def test_unique_names(self):
         """Tutti i nomi nello schema sono unici."""
@@ -867,7 +894,7 @@ class TestCrossSchemaInvariants:
             for spec in schema_list:
                 if spec.exclusive_group:
                     all_groups.add(spec.exclusive_group)
-        expected_groups = {'loop_bounds', 'density_mode'}
+        expected_groups = {'loop_bounds', 'density_mode', 'grain_direction'}
         assert all_groups == expected_groups, (
             f"Gruppi esclusivi inattesi: {all_groups - expected_groups} "
             f"o mancanti: {expected_groups - all_groups}"

@@ -32,6 +32,7 @@ from pge.strategies.variation_strategy import (
     AdditiveVariation,
     QuantizedVariation,
     InvertVariation,
+    NegateVariation,
     ChoiceVariation,
 )
 from pge.strategies.variation_registry import (
@@ -62,14 +63,11 @@ class MockDistribution(DistributionStrategy):
 # COSTANTI DI RIFERIMENTO
 # =============================================================================
 
-EXPECTED_STRATEGIES = {
-    'additive': AdditiveVariation,
-    'quantized': QuantizedVariation,
-    'invert': InvertVariation,
-    'choice': ChoiceVariation,
-}
-
-EXPECTED_MODE_NAMES = {'additive', 'quantized', 'invert', 'choice'}
+# La mappa nome -> classe non vive qui: e' asserita direttamente da
+# `test_each_mode_maps_correctly` e dai cinque test per singolo modo. Una
+# tabella in piu' sarebbe una terza copia dello stesso contratto, che nessuno
+# legge e che si scorda di crescere.
+EXPECTED_MODE_NAMES = {'additive', 'quantized', 'invert', 'negate', 'choice'}
 
 
 # =============================================================================
@@ -106,9 +104,9 @@ class TestVariationStrategiesRegistry:
         """VARIATION_STRATEGIES e' un dizionario."""
         assert isinstance(VARIATION_STRATEGIES, dict)
 
-    def test_registry_has_four_entries(self):
-        """Il registry contiene esattamente 4 strategie."""
-        assert len(VARIATION_STRATEGIES) == 4
+    def test_registry_entries_match_expected_modes(self):
+        """Il registry contiene esattamente le strategie attese."""
+        assert len(VARIATION_STRATEGIES) == len(EXPECTED_MODE_NAMES)
 
     def test_registry_contains_all_expected_modes(self):
         """Tutti i modi attesi sono presenti nel registry."""
@@ -126,6 +124,10 @@ class TestVariationStrategiesRegistry:
         """'invert' mappa a InvertVariation."""
         assert VARIATION_STRATEGIES['invert'] is InvertVariation
 
+    def test_negate_maps_to_correct_class(self):
+        """'negate' mappa a NegateVariation (flip su dominio con segno)."""
+        assert VARIATION_STRATEGIES['negate'] is NegateVariation
+
     def test_choice_maps_to_correct_class(self):
         """'choice' mappa a ChoiceVariation."""
         assert VARIATION_STRATEGIES['choice'] is ChoiceVariation
@@ -134,6 +136,7 @@ class TestVariationStrategiesRegistry:
         ('additive', AdditiveVariation),
         ('quantized', QuantizedVariation),
         ('invert', InvertVariation),
+        ('negate', NegateVariation),
         ('choice', ChoiceVariation),
     ])
     def test_each_mode_maps_correctly(self, mode_name, expected_class):
@@ -338,6 +341,7 @@ class TestVariationFactoryCreate:
         ('additive', AdditiveVariation),
         ('quantized', QuantizedVariation),
         ('invert', InvertVariation),
+        ('negate', NegateVariation),
         ('choice', ChoiceVariation),
     ])
     def test_create_parametrized(self, mode_name, expected_class):
@@ -717,7 +721,7 @@ class TestCoerenceWithParameterDefinitions:
     qui, il sistema fallira' a runtime.
     """
 
-    VALID_VARIATION_MODES = {'additive', 'quantized', 'invert', 'choice'}
+    VALID_VARIATION_MODES = {'additive', 'quantized', 'invert', 'negate', 'choice'}
 
     def test_all_valid_modes_in_registry(self):
         """Ogni variation_mode valido ha una strategia registrata."""
