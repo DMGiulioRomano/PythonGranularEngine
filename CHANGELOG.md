@@ -6,7 +6,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
-## [Unreleased]
+## [v8.0.0] — "Timeline Origin" — 2026-08-17
 
 ### Aggiunto
 
