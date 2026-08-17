@@ -8,6 +8,69 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`onset` opzionale nello stream: senza dichiarazione lo stream parte
+  dall'origine della timeline.** Uno stream che non dichiara una posizione non
+  ne ha una indeterminata, ne ha una neutra: `0` non è "nulla", è l'origine.
+  L'argomento con cui v7.1.0 aveva lasciato `onset` fuori — «la posizione in
+  timeline non è deducibile da nulla» — confondeva *non derivabile da
+  un'altra dichiarazione* con *senza valore neutro*. Le condizioni di
+  esistenza di uno stream passano da tre a due: `stream_id` e `sample`.
+
+  Si chiude così l'enunciato che v7.1.0 lasciava a metà: **uno stream a riposo
+  è il sample** — stessa origine, stessa durata, contenuto risintetizzato.
+  Tutto il resto è override compositivo.
+
+  ```yaml
+  streams:
+    - stream_id: risintesi     # parte da 0, dura quanto il sample
+      sample: file.wav
+  ```
+
+  La risoluzione vive in un punto solo, `resolve_stream_onset` in
+  `core/stream_config.py`, per la stessa ragione di `resolve_stream_duration`:
+  i siti che scrivono la posizione sono due e devono dire la stessa cosa.
+  `StreamContext.from_yaml` la risolve **prima** di costruire il dataclass —
+  `onset` è dichiarato prima di `duration`/`sample`/`sample_dur_sec`, quindi
+  un default lì costringerebbe anche loro ad averne uno, e un `onset: null`
+  entrato intatto nel dataclass frozen riemergerebbe lontano come `TypeError`
+  nell'aritmetica dei grani. `Stream._init_stream_context` lo assegna
+  esplicitamente: quel metodo scriveva `self.onset` iterando sui campi
+  obbligatori, e toltolo da quell'insieme l'attributo non esisterebbe più —
+  `AttributeError` alla prima generazione di grani, e a cascata in
+  `page_layout`, `score_visualizer`, i due renderer, `sv_exporter`,
+  `reaper_project_writer`, `grain_json_writer`, che leggono `stream.onset`.
+
+  Il default scatta su `is None`, non sulla truthiness: `onset: null` vale
+  come chiave assente, mentre `onset: 0` resta una dichiarazione esplicita —
+  indistinguibile nel risultato, distinta nell'intenzione. `time_mode` non
+  c'entra: riguarda l'asse degli envelope dentro lo stream, non la posizione
+  dello stream, che è sempre assoluta in secondi.
+
+  Nessuno YAML valido cambia comportamento: se `onset` c'è, vince come prima.
+  Cambia solo il verdetto su input che prima erano rifiutati.
+
+  **Costo accettato.** Un `onset` cancellato per sbaglio non produce più un
+  errore: lo stream si impila silenziosamente a `t=0`. È il prezzo del
+  default, identico a quello già accettato per `duration`.
+
+  **Cache incrementale: nessuna modifica**, e qui sta l'asimmetria con
+  v7.1.0. Là la durata risolta era entrata nel fingerprint perché derivava da
+  un file audio mutabile, fuori dall'hash; qui il default è la costante `0.0`
+  e non c'è nessuna dipendenza esterna da registrare. `onset` resta nell'hash
+  com'è oggi. Che `onset` assente e `onset: 0.0` producano fingerprint diversi
+  è il normale effetto di una chiave in più: un re-render una tantum.
+  Nessun bump di `VARIATION_SEMANTICS_VERSION`, per lo stesso motivo per cui
+  nessuno YAML valido cambia comportamento. (#220)
+
+  **Effetto collaterale sui messaggi d'errore.** Con due sole condizioni di
+  esistenza, e una delle due `sample`, il messaggio plurale di
+  `MissingFieldError` non è più raggiungibile dalla CLI: il controllo su
+  `sample` in `Stream.__init__` precede quello sui campi di contesto e si
+  ferma lì, quindi `stream_id` e `sample` entrambi assenti danno «Campo
+  obbligatorio mancante: 'sample'» e non l'elenco dei due.
+
 ### Modificato (breaking)
 
 - **Un envelope malformato sotto `deviation_probability` ora è un errore.**

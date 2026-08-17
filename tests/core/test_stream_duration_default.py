@@ -6,7 +6,11 @@ Test per `duration` opzionale nello stream (issue #205).
 
 A riposo lo stream risintetizza il sample: se `duration` non e' dichiarata,
 la durata dello stream e' quella del file audio in `sample`. Le condizioni
-di esistenza di uno stream passano da quattro a tre: stream_id, onset, sample.
+di esistenza di uno stream passavano cosi' da quattro a tre.
+
+Da #220 sono due — stream_id e sample: anche `onset` ha un default (l'origine
+della timeline). Il default di `onset` e' coperto da
+test_stream_onset_default.py; qui resta la parte che riguarda `duration`.
 """
 import numpy as np
 import pytest
@@ -28,7 +32,12 @@ def _write_wav(directory, name='tone.wav', seconds=2.0):
 
 
 def _params(**overrides):
-    """Stream minimo SENZA `duration`: solo le tre condizioni di esistenza."""
+    """Stream minimo SENZA `duration`.
+
+    `onset` e' dichiarato di proposito, pur essendo opzionale da #220: qui
+    l'oggetto del test e' il default di `duration`, e a muoversi deve essere
+    una cosa sola.
+    """
     params = {
         'stream_id': 'test_stream',
         'onset': 0.0,
@@ -118,23 +127,35 @@ class TestDurationDefaultsToSampleDuration:
 
 
 class TestStreamExistenceConditions:
-    """Le condizioni di esistenza di uno stream sono tre: stream_id, onset,
-    sample. `duration` non e' piu' fra queste."""
+    """Le condizioni di esistenza di uno stream sono due: stream_id e sample.
+    Ne' `duration` (issue #205) ne' `onset` (issue #220) sono fra queste."""
 
-    def test_missing_onset_still_fails_and_does_not_name_duration(self, tmp_path):
+    def test_missing_sample_still_fails_and_does_not_name_duration(self, tmp_path):
         _write_wav(tmp_path)
-        params = {'stream_id': 'test_stream', 'sample': 'tone.wav'}
+        params = {'stream_id': 'test_stream', 'onset': 0.0}
 
         with pytest.raises(MissingFieldError) as exc_info:
             Stream(params, samples_dir=str(tmp_path))
 
         err = exc_info.value
-        assert err.fields == ['onset']
+        assert err.fields == ['sample']
         assert err.stream_id == 'test_stream'
 
     def test_missing_stream_id_still_fails(self, tmp_path):
         _write_wav(tmp_path)
         params = {'onset': 0.0, 'sample': 'tone.wav'}
+
+        with pytest.raises(MissingFieldError) as exc_info:
+            Stream(params, samples_dir=str(tmp_path))
+
+        assert exc_info.value.fields == ['stream_id']
+
+    def test_missing_stream_id_names_neither_duration_nor_onset(self, tmp_path):
+        """Con i due default in vigore, l'unico campo mancante e' quello che
+        manca davvero: l'errore non deve trascinarsi dietro le chiavi che
+        adesso hanno un valore neutro."""
+        _write_wav(tmp_path)
+        params = {'sample': 'tone.wav'}
 
         with pytest.raises(MissingFieldError) as exc_info:
             Stream(params, samples_dir=str(tmp_path))

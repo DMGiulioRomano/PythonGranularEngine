@@ -228,27 +228,32 @@ class TestStreamContextFromYaml:
 class TestStreamContextAllowNone:
     """Test allow_none su StreamContext.from_yaml()."""
 
+    # NOTA: il vettore di questi due test era `onset`, che dal #220 non serve
+    # piu' allo scopo — entrambi i rami passano da resolve_stream_onset e non
+    # arrivano mai al dataclass con None. Il vettore e' ora `stream_id`, che
+    # e' rimasto un campo senza default e senza risoluzione.
+
     def test_allow_none_true_includes_none_values(self, sample_dur):
         """allow_none=True include campi con valore None."""
         yaml_data = {
-            'stream_id': 's1',
-            'onset': None,       # None esplicito
+            'stream_id': None,   # None esplicito
+            'onset': 0.0,
             'duration': 5.0,
             'sample': 'test.wav',
         }
-        # Con allow_none=True, onset=None viene incluso
+        # Con allow_none=True, stream_id=None viene incluso
         ctx = StreamContext.from_yaml(yaml_data, sample_dur_sec=sample_dur, allow_none=True)
-        assert ctx.onset is None
+        assert ctx.stream_id is None
 
     def test_allow_none_false_excludes_none_values(self, sample_dur):
         """allow_none=False esclude campi con valore None -> TypeError se obbligatori."""
         yaml_data = {
-            'stream_id': 's1',
-            'onset': None,       # Escluso con allow_none=False
+            'stream_id': None,   # Escluso con allow_none=False
+            'onset': 0.0,
             'duration': 5.0,
             'sample': 'test.wav',
         }
-        # onset escluso -> TypeError (campo obbligatorio senza default)
+        # stream_id escluso -> TypeError (campo obbligatorio senza default)
         with pytest.raises(TypeError):
             StreamContext.from_yaml(yaml_data, sample_dur_sec=sample_dur, allow_none=False)
 

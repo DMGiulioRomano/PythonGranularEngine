@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: bbd4709
+last_synced_commit: 8bd9d21
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -37,7 +37,9 @@ Sezioni rilevanti in questo doc:
 - [Seed (Riproducibilità)](#seed-riproducibilità) — render NumPy riproducibili;
   `rng_group` per condividere la sequenza fra stream
 - [Parameter Syntax](#parameter-syntax) — scalari, tuple, dict, envelope
-- [Campi Obbligatori di Stream](#campi-obbligatori-di-stream) — `stream_id`, `onset`, `sample`
+- [Campi Obbligatori di Stream](#campi-obbligatori-di-stream) — `stream_id`, `sample`
+- [Posizione dello Stream](#posizione-dello-stream-onset-opzionale) — `onset` opzionale,
+  assente = origine della timeline
 - [Durata dello Stream](#durata-dello-stream-duration-opzionale) — `duration` opzionale,
   assente = durata del sample
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
@@ -205,13 +207,61 @@ Qualsiasi parametro numerico accetta le seguenti forme:
 ```yaml
 streams:
   - stream_id: "nome_univoco"   # stringa identificativa
-    onset: 0.0                  # tempo di inizio in secondi (assoluto)
     sample: "file.wav"          # nome file (cercato in Media/)
 ```
 
-Le condizioni di esistenza di uno stream sono tre. `onset` resta obbligatorio:
-la posizione in timeline non è deducibile da nulla. Per `duration`, che
-obbligatoria non è, vedi [Durata dello Stream](#durata-dello-stream-duration-opzionale).
+Le condizioni di esistenza di uno stream sono due. Uno stream a riposo **è il
+sample**: stessa origine, stessa durata, contenuto risintetizzato. Tutto il
+resto è override compositivo — vedi
+[Posizione dello Stream](#posizione-dello-stream-onset-opzionale) e
+[Durata dello Stream](#durata-dello-stream-duration-opzionale).
+
+```yaml
+streams:
+  - stream_id: "risintesi"      # parte da 0, dura quanto il sample
+    sample: "file.wav"
+```
+
+---
+
+## Posizione dello Stream (`onset` opzionale)
+
+`onset` è un campo **opzionale**: se assente lo stream comincia all'origine
+della timeline, cioè a `0.0` secondi.
+
+```yaml
+streams:
+  - stream_id: "dall_origine"   # parte da 0
+    sample: "file.wav"
+
+  - stream_id: "spostato"       # override compositivo esplicito
+    onset: 12.5
+    sample: "file.wav"
+```
+
+0 non è "nulla", è l'origine: uno stream che non dichiara una posizione non ha
+una posizione indeterminata, ne ha una neutra. Dichiararla è una scelta
+compositiva, e le scelte compositive stanno bene come override espliciti.
+
+| Dichiarazione | Posizione dello stream |
+|---------------|------------------------|
+| chiave assente | `0.0` s (origine della timeline) |
+| `onset: null` | `0.0` s (come chiave assente) |
+| `onset: 12.5` | 12.5 s (l'esplicito vince sempre) |
+| `onset: 0` | `0.0` s — dichiarazione esplicita, stesso risultato del default |
+
+`onset` è **sempre assoluto in secondi**: `time_mode: normalized` riguarda
+l'asse degli envelope dentro lo stream, non la posizione dello stream nella
+timeline.
+
+**Costo del default.** Un `onset` cancellato per sbaglio non produce più un
+errore: lo stream si impila silenziosamente a `t=0`. È lo stesso prezzo già
+accettato per `duration`.
+
+**Asimmetria con `duration`.** Il default di `duration` è derivato da un dato
+(la lunghezza del file audio), quello di `onset` è la costante `0.0`. Stesso
+gesto, natura diversa: è il motivo per cui la durata risolta entra nel
+fingerprint della cache e la posizione risolta no.
 
 ---
 

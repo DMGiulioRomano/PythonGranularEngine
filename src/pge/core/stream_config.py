@@ -38,6 +38,42 @@ def resolve_stream_duration(yaml_data: dict, sample_dur_sec: float) -> float:
     return yaml_data['duration']
 
 
+def stream_onset_is_implicit(yaml_data: dict) -> bool:
+    """True quando lo stream non dichiara una posizione propria (issue #220).
+
+    Stesso predicato di stream_duration_is_implicit e per la stessa ragione:
+    `is None` copre sia la chiave assente sia `onset: null` esplicito, e lascia
+    fuori `onset: 0`, che nel risultato e' indistinguibile dal default ma
+    nell'intenzione e' una dichiarazione.
+
+    A differenza del gemello, questo predicato NON e' condiviso: lo usa solo
+    resolve_stream_onset qui sotto. Il fingerprint della cache importa
+    stream_duration_is_implicit perche' la durata ereditata dipende da un file
+    audio mutabile e va registrata; l'onset ereditato e' la costante 0.0, non
+    dipende da niente di esterno, e non c'e' niente da registrare. Chi cerca il
+    consumatore fuori da questo modulo non lo trova perche' non deve esistere.
+    """
+    return yaml_data.get('onset') is None
+
+
+def resolve_stream_onset(yaml_data: dict) -> float:
+    """Posizione dello stream: quella dichiarata, o l'origine (issue #220).
+
+    Uno stream che non dichiara nulla comincia all'origine della timeline: 0
+    non e' "nulla", e' l'origine. `onset` e' un override compositivo.
+
+    A differenza di resolve_stream_duration non prende nessun dato esterno: il
+    default e' la costante 0.0, non un valore derivato dal file audio. E' il
+    motivo per cui qui il fingerprint della cache non si muove.
+
+    Punto unico di risoluzione: la usano sia StreamContext.from_yaml sia
+    Stream._init_stream_context, che scrivono lo stesso onset su due oggetti.
+    """
+    if stream_onset_is_implicit(yaml_data):
+        return 0.0
+    return yaml_data['onset']
+
+
 @dataclass(frozen=True)
 class StreamContext:
     stream_id: str
@@ -91,10 +127,14 @@ class StreamContext:
                 if name in yaml_data and yaml_data[name] is not None
             }
         kwargs['sample_dur_sec'] = sample_dur_sec
-        # duration assente o null -> durata del sample (issue #205). Risolta
-        # prima di cls(**kwargs): il dataclass non puo' avere un default,
-        # e' dichiarato prima di sample/sample_dur_sec che ne resterebbero
-        # obbligati ad averne uno.
+        # onset assente o null -> origine della timeline (issue #220), duration
+        # assente o null -> durata del sample (issue #205). Entrambe risolte
+        # prima di cls(**kwargs): nessuna delle due puo' avere un default nel
+        # dataclass, sono dichiarate prima di sample/sample_dur_sec che ne
+        # resterebbero obbligati ad averne uno. Senza questa riga `onset: null`
+        # entrerebbe nel dataclass frozen come None e l'errore riemergerebbe
+        # lontano, come TypeError nell'aritmetica dei grani.
+        kwargs['onset'] = resolve_stream_onset(kwargs)
         kwargs['duration'] = resolve_stream_duration(kwargs, sample_dur_sec)
         return cls(**kwargs)
 
