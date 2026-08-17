@@ -18,6 +18,7 @@ from pge.shared.exceptions import (
     ConfigError,
     InvalidFieldValueError,
     InvalidParameterError,
+    ParameterBoundError,
 )
 
 
@@ -119,3 +120,26 @@ def test_parse_raw_value_invalid_type_raises_invalid_parameter_error():
     err = exc_info.value
     assert isinstance(err, ConfigError)
     assert "deviation_probability" in err.param_name
+
+
+def test_engine_error_del_builder_risale_intatto():
+    """L'`EngineError` del builder non viene riavvolto (issue #209).
+
+    Il corpo qui sotto e' un envelope ben formato: quello che esplode e' la
+    coppia `ratio ** n_reps` dentro la distribuzione temporale, e l'errore che
+    ne esce nomina gia' il parametro e la coppia. Riavvolgerlo in un
+    `InvalidFieldValueError` su `deviation_probability.volume` direbbe che il
+    corpo non e' un envelope — che e' falso — e perderebbe l'hint che dice
+    quale dei due valori ridurre.
+    """
+    compatto_che_trabocca = [
+        [[0, 5], [100, 50]], 10.0, 400, 'linear',
+        {'type': 'geometric', 'ratio': 10},
+    ]
+
+    with pytest.raises(ParameterBoundError) as exc_info:
+        _create_gate(compatto_che_trabocca)
+
+    err = exc_info.value
+    assert not isinstance(err, InvalidFieldValueError)
+    assert err.hint
