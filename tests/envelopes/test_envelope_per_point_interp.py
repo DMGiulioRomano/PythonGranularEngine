@@ -47,23 +47,23 @@ class TestParserDisambiguation:
     """Disambiguazione tra compact format e 3-tuple breakpoint."""
 
     def test_3tuple_not_recognized_as_compact(self):
-        assert EnvelopeBuilder._is_compact_format([0.5, 1.0, 'cubic']) is False
+        assert EnvelopeBuilder.is_compact_format([0.5, 1.0, 'cubic']) is False
 
     def test_compact_not_recognized_as_3tuple(self):
-        assert EnvelopeBuilder._is_3tuple_breakpoint(
+        assert EnvelopeBuilder.is_3tuple_breakpoint(
             [[[0, 0], [100, 1]], 0.4, 4]
         ) is False
 
     def test_compact_still_recognized(self):
-        assert EnvelopeBuilder._is_compact_format(
+        assert EnvelopeBuilder.is_compact_format(
             [[[0, 0], [100, 1]], 0.4, 4]
         ) is True
 
     def test_3tuple_recognized(self):
-        assert EnvelopeBuilder._is_3tuple_breakpoint([0.5, 1.0, 'cubic']) is True
+        assert EnvelopeBuilder.is_3tuple_breakpoint([0.5, 1.0, 'cubic']) is True
 
     def test_2elem_not_3tuple(self):
-        assert EnvelopeBuilder._is_3tuple_breakpoint([0.5, 1.0]) is False
+        assert EnvelopeBuilder.is_3tuple_breakpoint([0.5, 1.0]) is False
 
     def test_invalid_2elem_with_string_raises(self):
         # Forma vietata: [0.5, 'cubic'] — elem[1] non numerico
@@ -73,31 +73,31 @@ class TestParserDisambiguation:
     def test_compact_4elem_not_3tuple(self):
         # Compact con interp: 4 elem → non confondibile con 3-tuple
         item = [[[0, 0], [100, 1]], 0.4, 4, 'cubic']
-        assert EnvelopeBuilder._is_compact_format(item) is True
-        assert EnvelopeBuilder._is_3tuple_breakpoint(item) is False
+        assert EnvelopeBuilder.is_compact_format(item) is True
+        assert EnvelopeBuilder.is_3tuple_breakpoint(item) is False
 
     def test_compact_5elem_not_3tuple(self):
         # Compact con time_dist: 5 elem
         item = [[[0, 0], [100, 1]], 0.4, 4, 'cubic', 'exponential']
-        assert EnvelopeBuilder._is_compact_format(item) is True
-        assert EnvelopeBuilder._is_3tuple_breakpoint(item) is False
+        assert EnvelopeBuilder.is_compact_format(item) is True
+        assert EnvelopeBuilder.is_3tuple_breakpoint(item) is False
 
     def test_3tuple_with_negative_time(self):
         # 3-tuple con t negativo riconosciuto
-        assert EnvelopeBuilder._is_3tuple_breakpoint([-0.5, 1, 'cubic']) is True
+        assert EnvelopeBuilder.is_3tuple_breakpoint([-0.5, 1, 'cubic']) is True
 
     def test_3tuple_with_int_time_and_value(self):
         # 3-tuple con int (non float) riconosciuto
-        assert EnvelopeBuilder._is_3tuple_breakpoint([0, 1, 'step']) is True
+        assert EnvelopeBuilder.is_3tuple_breakpoint([0, 1, 'step']) is True
 
     def test_3tuple_with_bool_rejected(self):
         # bool è sottoclasse di int — non deve passare
-        assert EnvelopeBuilder._is_3tuple_breakpoint([True, 1, 'step']) is False
-        assert EnvelopeBuilder._is_3tuple_breakpoint([0, True, 'step']) is False
+        assert EnvelopeBuilder.is_3tuple_breakpoint([True, 1, 'step']) is False
+        assert EnvelopeBuilder.is_3tuple_breakpoint([0, True, 'step']) is False
 
     def test_3tuple_with_invalid_type_string_still_recognized_as_3tuple(self):
-        # _is_3tuple_breakpoint solo struttura; validazione type avviene dopo
-        assert EnvelopeBuilder._is_3tuple_breakpoint([0, 1, 'foo']) is True
+        # is_3tuple_breakpoint solo struttura; validazione type avviene dopo
+        assert EnvelopeBuilder.is_3tuple_breakpoint([0, 1, 'foo']) is True
 
     def test_legacy_dict_format_still_works(self):
         # Vecchio dict {type, points} con bare [t,v] continua a funzionare
@@ -122,8 +122,8 @@ class TestParserDisambiguation:
 
     def test_empty_3tuple_breakpoint(self):
         # Lista vuota non confondibile
-        assert EnvelopeBuilder._is_3tuple_breakpoint([]) is False
-        assert EnvelopeBuilder._is_compact_format([]) is False
+        assert EnvelopeBuilder.is_3tuple_breakpoint([]) is False
+        assert EnvelopeBuilder.is_compact_format([]) is False
 
     def test_3tuple_passed_as_raw_envelope_not_misread(self):
         # Envelope([0.5, 1, 'cubic']) → iter sugli elementi 0.5, 1, 'cubic' → errore

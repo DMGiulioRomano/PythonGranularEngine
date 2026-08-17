@@ -311,6 +311,7 @@ class ParameterBoundError(ConfigError):
         max_bound: float | None,
         value: float | None = None,
         violations: list[tuple[float, float]] | None = None,
+        hint: str | None = None,
     ):
         if value is None and not violations:
             raise TypeError("ParameterBoundError richiede 'value' o 'violations'")
@@ -320,6 +321,11 @@ class ParameterBoundError(ConfigError):
         self.violations = list(violations or [])
         self.min_bound = min_bound
         self.max_bound = max_bound
+        # Il vincolo violato non e' sempre un intervallo sul singolo valore
+        # (issue #212): `ratio ** n_reps` trabocca per la coppia, e la coppia
+        # non si stampa come [min, max]. L'hint la nomina, come nelle sorelle
+        # della stessa famiglia (InvalidFieldValueError, InvalidParameterError).
+        self.hint = hint
         if violations:
             base = f"Envelope '{param_name}' fuori bounds: {len(violations)} violazione(i)"
         else:
@@ -327,10 +333,15 @@ class ParameterBoundError(ConfigError):
         super().__init__(base)
 
     def user_message(self) -> str:
+        # Bounds entrambi ignoti: la riga non si stampa. Un intervallo che non
+        # esiste scritto come `[None, None]` e' rumore che sembra un dato.
+        ha_bounds = self.min_bound is not None or self.max_bound is not None
         bounds = f"[{self.min_bound}, {self.max_bound}]"
         if self.violations:
             head = f"[ERRORE] Envelope '{self.param_name}' fuori bounds"
-            lines = [head, f"  Bounds:       {bounds}"]
+            lines = [head]
+            if ha_bounds:
+                lines.append(f"  Bounds:       {bounds}")
             for t, y in self.violations:
                 lines.append(f"  t={t}: {self.value_type}={y}")
         else:
@@ -338,7 +349,10 @@ class ParameterBoundError(ConfigError):
             lines = [
                 head,
                 f"  {self.value_type}:        {self.value}",
-                f"  Bounds:       {bounds}",
             ]
+            if ha_bounds:
+                lines.append(f"  Bounds:       {bounds}")
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
         return "\n".join(lines)

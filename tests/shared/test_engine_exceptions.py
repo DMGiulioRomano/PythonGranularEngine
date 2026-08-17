@@ -253,6 +253,88 @@ def test_parameter_bound_error_includes_optional_context():
     assert "c.yml" in msg
 
 
+def test_parameter_bound_error_accepts_hint():
+    """`hint` opzionale, come nelle sorelle della stessa famiglia (issue #212).
+
+    Serve dove il vincolo violato non e' un intervallo sul singolo valore:
+    l'overflow di `ratio ** n_reps` non ha un bound da stampare, ha una coppia
+    da nominare.
+    """
+    from pge.shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="ratio",
+        value_type="value",
+        value=10,
+        min_bound=None,
+        max_bound=None,
+        hint="ratio=10 con n_reps=400 trabocca",
+    )
+    msg = err.user_message()
+    assert "Hint:" in msg
+    assert "n_reps=400" in msg
+
+
+def test_parameter_bound_error_omits_bounds_when_unknown():
+    """Senza bounds la riga Bounds sparisce, invece di stampare `[None, None]`.
+
+    Un intervallo che non esiste non va scritto come se esistesse: il valore
+    non e' fuori da nessun `[min, max]`, e' la sua combinazione con un altro
+    a non stare in un float.
+    """
+    from pge.shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="ratio",
+        value_type="value",
+        value=10,
+        min_bound=None,
+        max_bound=None,
+        hint="la coppia trabocca",
+    )
+    msg = err.user_message()
+    assert "Bounds:" not in msg
+    assert "None" not in msg
+
+
+def test_parameter_bound_error_keeps_bounds_when_known():
+    """Il caso storico non cambia: con bounds dichiarati la riga resta."""
+    from pge.shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="density",
+        value_type="value",
+        value=999.0,
+        min_bound=0.0,
+        max_bound=100.0,
+    )
+    msg = err.user_message()
+    assert "Bounds:" in msg
+    assert "[0.0, 100.0]" in msg
+
+
+def test_parameter_bound_error_keeps_bounds_when_partially_known():
+    """Un solo bound dichiarato basta a stampare la riga.
+
+    Non e' un caso di laboratorio: `parser.py` clippa gia' con `max_bound`
+    None (bound superiore aperto), e in quel caso `[0.0, None]` e' il dato
+    vero — il minimo esiste, il massimo no. Sopprimere la riga qui
+    nasconderebbe l'unico bound che c'e'.
+    """
+    from pge.shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="grain_duration",
+        value_type="value",
+        value=-1.0,
+        min_bound=0.0,
+        max_bound=None,
+    )
+    msg = err.user_message()
+    assert "Bounds:" in msg
+    assert "[0.0, None]" in msg
+
+
 def test_parameter_bound_error_supports_envelope_violations():
     """ParameterBoundError accetta lista violazioni per envelope."""
     from pge.shared.exceptions import ParameterBoundError

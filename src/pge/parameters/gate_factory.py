@@ -8,7 +8,24 @@ from typing import Optional, Any, Union
 from pge.shared.probability_gate import *
 from enum import Enum
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
-from pge.shared.exceptions import InvalidParameterError
+from pge.shared.exceptions import (
+    EngineError,
+    InvalidFieldValueError,
+    InvalidParameterError,
+)
+
+# La chiave nello YAML: identita' del campo in ogni errore. In modalita'
+# per-parametro il campo e' la coppia `deviation_probability.<chiave>`, che e'
+# quanto l'utente ha scritto e quanto PGE-ls deve poter attribuire.
+DEVIATION_PROBABILITY_FIELD = 'deviation_probability'
+
+_ENVELOPE_HINT = (
+    "il valore di deviation_probability e' una probabilita' (0-100) o un "
+    "envelope in una delle forme note: lista di breakpoint [[t, v], ...], "
+    "dict {points: [...]}, BP group o formato compatto. Questo corpo non si "
+    "costruisce come envelope."
+)
+
 
 class DeviationProbabilityMode(Enum):
     """Stati semantici di deviation_probability."""
@@ -80,8 +97,9 @@ class GateFactory:
             return GateFactory._create_probability_gate(float(deviation_probability), rng)
         elif mode == DeviationProbabilityMode.GLOBAL_ENV:
             # Crea Envelope dai dati grezzi
-            envelope = create_scaled_envelope(deviation_probability, duration, time_mode)
-            return EnvelopeGate(envelope, rng=rng)
+            return GateFactory._envelope_gate(
+                deviation_probability, duration, time_mode, rng
+            )
         elif mode == DeviationProbabilityMode.SPECIFIC:
             # Chiave assente o null: il parametro non ha probabilità dichiarata e
             # segue la semantica range-only (come deviation_probability:false). Il range
@@ -93,12 +111,12 @@ class GateFactory:
                 raw_value = deviation_probability[param_key]
                 if raw_value is None:
                     return GateFactory._range_only_gate(has_explicit_range)
-                elif GateFactory._is_envelope_like(raw_value):
-                    # Valore envelope per questo parametro specifico
-                    envelope = create_scaled_envelope(raw_value, duration, time_mode)
-                    return EnvelopeGate(envelope, rng=rng)
-                else:
-                    return GateFactory._parse_raw_value(raw_value, duration, time_mode, rng)
+                # Envelope o numero, la distinzione la fa _parse_raw_value: da
+                # #209 i due rami convergono li' dentro, e sceglierne uno qui
+                # significava solo anticipare la stessa domanda.
+                return GateFactory._parse_raw_value(
+                    raw_value, duration, time_mode, rng, param_key
+                )
             else:
                 return GateFactory._range_only_gate(has_explicit_range)
         return NeverGate()
@@ -130,7 +148,58 @@ class GateFactory:
             return RandomGate(probability, rng=rng)
 
     @staticmethod
-    def _parse_raw_value(raw_value: Any, duration: float, time_mode: str, rng=None) -> ProbabilityGate:
+    def _field_name(param_key: Optional[str] = None) -> str:
+        """Il campo da nominare nell'errore: la chiave come l'utente l'ha scritta."""
+        if param_key is None:
+            return DEVIATION_PROBABILITY_FIELD
+        return f"{DEVIATION_PROBABILITY_FIELD}.{param_key}"
+
+    @staticmethod
+    def _envelope_gate(
+        raw_value: Any,
+        duration: float,
+        time_mode: str,
+        rng=None,
+        param_key: Optional[str] = None,
+    ) -> ProbabilityGate:
+        """Costruisce l'EnvelopeGate, o dichiara che quel corpo non e' un envelope.
+
+        Punto unico in cui `deviation_probability` diventa un envelope (issue
+        #209). Prima ce n'erano tre, e rispondevano in tre modi diversi allo
+        stesso guasto: il corpo che superava `_is_envelope_like` faceva risalire
+        il `ValueError` nudo del builder, quello piu' malformato veniva
+        silenziato con un `AlwaysGate` e un log. Piu' l'errore era grossolano,
+        meno il sistema lo segnalava — e `AlwaysGate` non e' un ripiego neutro:
+        e' il gate piu' lontano da quanto scritto, applicato al 100% dei grani.
+
+        Gli `EngineError` risalgono intatti: sono gia' nella gerarchia, portano
+        gia' il proprio campo e il proprio hint, e riavvolgerli qui li
+        renderebbe meno precisi, non piu'.
+        """
+        try:
+            envelope = create_scaled_envelope(raw_value, duration, time_mode)
+        except EngineError:
+            raise
+        except Exception as exc:
+            # L'elenco delle forme dice cosa era lecito scrivere, non quale
+            # delle forme si stava sbagliando: quello lo sa solo l'eccezione
+            # che arriva dal builder, e va letta prima di buttarla via. Col
+            # tipo davanti, perche' da solo un KeyError e' la chiave nuda.
+            raise InvalidFieldValueError(
+                field=GateFactory._field_name(param_key),
+                value=raw_value,
+                hint=f"{_ENVELOPE_HINT} Causa: {type(exc).__name__}: {exc}",
+            ) from exc
+        return EnvelopeGate(envelope, rng=rng)
+
+    @staticmethod
+    def _parse_raw_value(
+        raw_value: Any,
+        duration: float,
+        time_mode: str,
+        rng=None,
+        param_key: Optional[str] = None,
+    ) -> ProbabilityGate:
         # Numero
         if isinstance(raw_value, (int, float)):
             prob = float(raw_value)
@@ -141,21 +210,19 @@ class GateFactory:
             else:
                 return RandomGate(prob, rng=rng)
 
-        # Envelope (con gestione errori)
-        if isinstance(raw_value, (list, dict)):
-            try:
-                envelope = create_scaled_envelope(raw_value, duration, time_mode)
-                return EnvelopeGate(envelope, rng=rng)
-            except Exception as e:
-                # Envelope malformato - fallback con logging
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(
-                    f"Envelope deviation_probability invalido: {raw_value}. "
-                    f"Errore: {e}. Usando AlwaysGate (probabilità 100%) come fallback."
-                )
-                return AlwaysGate()
-        
+        # Envelope: se non si costruisce, e' un errore di scrittura come ogni
+        # altro (issue #209) e lo dice la stessa funzione che lo dice al corpo
+        # riconosciuto come envelope.
+        #
+        # `Envelope` sta nella tupla perche' e' l'unico corpo che
+        # `_is_envelope_like` riconosce senza essere ne' lista ne' dict: e' cio'
+        # che rende questa funzione l'unico ingresso, invece di lasciare al
+        # chiamante un ramo suo per quel caso solo.
+        if isinstance(raw_value, (list, dict, Envelope)):
+            return GateFactory._envelope_gate(
+                raw_value, duration, time_mode, rng, param_key
+            )
+
         # Tipo completamente sbagliato
         raise InvalidParameterError(
             param_name="deviation_probability",

@@ -331,48 +331,48 @@ class TestBPGroupRecognition:
     """Disambiguazione shape: gruppo vs breakpoint vs 3-tuple vs loop block."""
 
     def test_group_recognized(self):
-        assert EnvelopeBuilder._is_bp_group([[[0.0, 0], [1.0, 1]], 'cubic']) is True
+        assert EnvelopeBuilder.is_bp_group([[[0.0, 0], [1.0, 1]], 'cubic']) is True
 
     def test_group_with_3tuple_point_recognized(self):
-        assert EnvelopeBuilder._is_bp_group(
+        assert EnvelopeBuilder.is_bp_group(
             [[[0.0, 0], [1.0, 1, 'step']], 'cubic']
         ) is True
 
     def test_group_with_invalid_interp_still_structurally_group(self):
-        # Come _is_3tuple_breakpoint: check strutturale, validazione dopo
-        assert EnvelopeBuilder._is_bp_group([[[0.0, 0], [1.0, 1]], 'qubic']) is True
+        # Come is_3tuple_breakpoint: check strutturale, validazione dopo
+        assert EnvelopeBuilder.is_bp_group([[[0.0, 0], [1.0, 1]], 'qubic']) is True
 
     def test_bare_breakpoint_not_group(self):
-        assert EnvelopeBuilder._is_bp_group([0.5, 1.0]) is False
+        assert EnvelopeBuilder.is_bp_group([0.5, 1.0]) is False
 
     def test_2elem_with_string_value_not_group(self):
-        assert EnvelopeBuilder._is_bp_group([0.5, 'cubic']) is False
+        assert EnvelopeBuilder.is_bp_group([0.5, 'cubic']) is False
 
     def test_single_point_with_marker_not_group(self):
         # elem[0] è UN punto [t, v], non una lista di punti
-        assert EnvelopeBuilder._is_bp_group([[0, 5], 'cycle']) is False
+        assert EnvelopeBuilder.is_bp_group([[0, 5], 'cycle']) is False
 
     def test_3tuple_breakpoint_not_group(self):
-        assert EnvelopeBuilder._is_bp_group([0.5, 1.0, 'cubic']) is False
+        assert EnvelopeBuilder.is_bp_group([0.5, 1.0, 'cubic']) is False
 
     def test_loop_blocks_not_group(self):
-        assert EnvelopeBuilder._is_bp_group([[[0, 0], [100, 1]], 0.4, 4]) is False
-        assert EnvelopeBuilder._is_bp_group(
+        assert EnvelopeBuilder.is_bp_group([[[0, 0], [100, 1]], 0.4, 4]) is False
+        assert EnvelopeBuilder.is_bp_group(
             [[[0, 0], [100, 1]], 0.4, 4, 'cubic', 'exponential']
         ) is False
 
     def test_group_not_compact_nor_3tuple(self):
         group = [[[0.0, 0], [1.0, 1]], 'cubic']
-        assert EnvelopeBuilder._is_compact_format(group) is False
-        assert EnvelopeBuilder._is_3tuple_breakpoint(group) is False
+        assert EnvelopeBuilder.is_compact_format(group) is False
+        assert EnvelopeBuilder.is_3tuple_breakpoint(group) is False
 
     def test_group_with_non_string_interp_not_group(self):
-        assert EnvelopeBuilder._is_bp_group([[[0.0, 0], [1.0, 1]], 4]) is False
+        assert EnvelopeBuilder.is_bp_group([[[0.0, 0], [1.0, 1]], 4]) is False
 
     def test_bool_poisoned_points_not_group(self):
-        assert EnvelopeBuilder._is_bp_group([[[True, 0], [1.0, 1]], 'cubic']) is False
-        assert EnvelopeBuilder._is_bp_group([[[0.0, True], [1.0, 1]], 'cubic']) is False
+        assert EnvelopeBuilder.is_bp_group([[[True, 0], [1.0, 1]], 'cubic']) is False
+        assert EnvelopeBuilder.is_bp_group([[[0.0, True], [1.0, 1]], 'cubic']) is False
 
     def test_plain_two_breakpoint_envelope_not_group(self):
         # Envelope nudo a 2 breakpoint: elem[1] non è stringa
-        assert EnvelopeBuilder._is_bp_group([[0.0, 0], [1.0, 1]]) is False
+        assert EnvelopeBuilder.is_bp_group([[0.0, 0], [1.0, 1]]) is False

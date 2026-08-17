@@ -29,6 +29,7 @@ from pge.shared.probability_gate import (
     ProbabilityGate, NeverGate, AlwaysGate, RandomGate, EnvelopeGate
 )
 from pge.envelopes.envelope import Envelope
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================
@@ -710,32 +711,34 @@ class TestParseRawValue:
         # Con normalized: t=1.0*5.0=5.0
         assert gate.get_probability_value(5.0) == pytest.approx(100.0)
 
-    def test_malformed_envelope_returns_always_gate_fallback(self):
-        """Envelope malformato (lista vuota) → fallback AlwaysGate."""
-        # Lista vuota causa "Envelope deve contenere almeno un breakpoint"
-        gate = GateFactory._parse_raw_value(
-            [], duration=1.0, time_mode='absolute'
-        )
-        assert isinstance(gate, AlwaysGate)
+    def test_malformed_envelope_raises(self):
+        """Envelope malformato (lista vuota) → InvalidFieldValueError (issue #209).
 
-    def test_envelope_generic_error_fallback(self):
-        """Dict senza 'points' → fallback AlwaysGate (KeyError interno)."""
-        gate = GateFactory._parse_raw_value(
-            {"not_points": "invalid"}, duration=1.0, time_mode='absolute'
-        )
-        assert isinstance(gate, AlwaysGate)
-
-    def test_malformed_envelope_logs_error(self, caplog):
-        """Fallback per envelope malformato logga l'errore."""
-        with caplog.at_level(logging.ERROR):
+        Tornava `AlwaysGate`: il gate piu' lontano da quanto scritto, applicato
+        al 100% dei grani, per un envelope che non si costruisce.
+        """
+        with pytest.raises(InvalidFieldValueError):
             GateFactory._parse_raw_value([], duration=1.0, time_mode='absolute')
-        
-        assert any("Envelope deviation_probability invalido" in record.message for record in caplog.records)
-        """Fallback per envelope malformato logga l'errore."""
+
+    def test_envelope_generic_error_raises(self):
+        """Dict senza 'points' → InvalidFieldValueError (era KeyError interno)."""
+        with pytest.raises(InvalidFieldValueError):
+            GateFactory._parse_raw_value(
+                {"not_points": "invalid"}, duration=1.0, time_mode='absolute'
+            )
+
+    def test_malformed_envelope_does_not_log(self, caplog):
+        """Nessun log di fallback: non c'e' piu' un fallback (issue #209)."""
         with caplog.at_level(logging.ERROR):
-            GateFactory._parse_raw_value([1, 2, 3], duration=1.0, time_mode='absolute')
-        
-        assert any("Envelope deviation_probability invalido" in record.message for record in caplog.records)
+            with pytest.raises(InvalidFieldValueError):
+                GateFactory._parse_raw_value(
+                    [1, 2, 3], duration=1.0, time_mode='absolute'
+                )
+
+        assert not any(
+            "Envelope deviation_probability invalido" in record.getMessage()
+            for record in caplog.records
+        )
 
     # --- Tipo invalido ---
 
@@ -1112,3 +1115,33 @@ class TestCreateGateFallthrough:
             )
 
         assert isinstance(gate, NeverGate)
+
+def test_envelope_gia_costruito_e_respinto_come_envelope_non_come_tipo():
+    """Un `Envelope` gia' costruito non si ricostruisce, e lo dice come tale.
+
+    Non arriva dallo YAML — arriva da chi chiama la factory con un envelope in
+    mano. `_is_envelope_like` lo riconosce da sempre (e' il suo primo caso),
+    quindi il corpo entra dal ramo envelope e ne esce con l'errore di quel
+    ramo: campo `deviation_probability.volume`, non "tipo non supportato".
+
+    Che poi `create_scaled_envelope` non sappia ricostruire un `Envelope` e'
+    un'altra questione, aperta prima di questa PR. Qui conta *da quale ramo*
+    passa: nessun test lo osservava, e il ramo si poteva rimuovere lasciando
+    la suite verde.
+    """
+    from pge.envelopes.envelope import Envelope
+    from pge.shared.exceptions import InvalidFieldValueError
+
+    envelope = Envelope([[0.0, 0.0], [1.0, 100.0]])
+
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        GateFactory.create_gate(
+            deviation_probability={'volume': envelope},
+            param_key='volume',
+            default_prob=1.0,
+            has_explicit_range=False,
+            duration=1.0,
+            time_mode='absolute',
+        )
+
+    assert exc_info.value.field == 'deviation_probability.volume'

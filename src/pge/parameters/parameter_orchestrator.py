@@ -22,6 +22,7 @@ from pge.parameters.parameter_schema import ParameterSpec, resolve_yaml_path
 from pge.parameters.parameter_definitions import DEFAULT_PROB
 from pge.parameters.exclusive_selector import ExclusiveGroupSelector
 from pge.core.stream_config import StreamConfig
+from pge.shared.exceptions import ConfigError
 from pge.shared.seeding import component_rng
 
 class ParameterOrchestrator:
@@ -112,20 +113,42 @@ class ParameterOrchestrator:
 
         # 2. Crea il ProbabilityGate corrispondente, con RNG per-componente
         # (issue #154): i draw del gate non shiftano gli altri componenti.
-        gate = GateFactory.create_gate(
-            deviation_probability=self._config.deviation_probability,
+        gate = self._create_gate(
             param_key=param_spec.deviation_probability_key,
-            default_prob=DEFAULT_PROB,
             has_explicit_range=has_explicit_range,
-            range_always_active=self._config.range_always_active,
-            duration=self._config.context.duration,
-            time_mode=self._config.time_mode,
-            rng=self._gate_rng(param_spec.deviation_probability_key),
         )
         # 3. Inietta il gate nel Parameter (modifica la classe Parameter)
         param.set_probability_gate(gate)
 
         return param
+
+    def _create_gate(
+        self,
+        param_key: Optional[str],
+        has_explicit_range: bool,
+    ) -> ProbabilityGate:
+        """Il gate del parametro, attribuito allo stream se non si costruisce.
+
+        `GateFactory` e' isolata per progetto: non conosce lo stream, e infatti
+        i suoi errori nominano il campo (`deviation_probability.<chiave>`) e
+        basta. L'attribuzione tocca al chiamante, come gia' fa il parser per i
+        propri — senza, la riga `Stream:` che `docs/reference/errors.md`
+        promette negli esempi non compare.
+        """
+        try:
+            return GateFactory.create_gate(
+                deviation_probability=self._config.deviation_probability,
+                param_key=param_key,
+                default_prob=DEFAULT_PROB,
+                has_explicit_range=has_explicit_range,
+                range_always_active=self._config.range_always_active,
+                duration=self._config.context.duration,
+                time_mode=self._config.time_mode,
+                rng=self._gate_rng(param_key),
+            )
+        except ConfigError as err:
+            err.stream_id = self._config.context.stream_id
+            raise
 
     def _gate_rng(self, deviation_probability_key: Optional[str]):
         """RNG locale del gate, derivato da (seed, rng_id, gate:<key>) —
@@ -157,15 +180,9 @@ class ParameterOrchestrator:
             range_raw=range_raw,
             bounds_override=bounds,
         )
-        gate = GateFactory.create_gate(
-            deviation_probability=self._config.deviation_probability,
+        gate = self._create_gate(
             param_key=deviation_probability_key,
-            default_prob=DEFAULT_PROB,
             has_explicit_range=param.has_explicit_range,
-            range_always_active=self._config.range_always_active,
-            duration=self._config.context.duration,
-            time_mode=self._config.time_mode,
-            rng=self._gate_rng(deviation_probability_key),
         )
         param.set_probability_gate(gate)
         return param
