@@ -34,16 +34,25 @@ ne ha uno), che e' la condizione in cui la tabella di #210 e' stata misurata:
 con un `_range` dichiarato le righe `NeverGate` darebbero `AlwaysGate`, che e'
 la semantica *range-only* e non ha niente a che vedere con queste scritture.
 """
+from dataclasses import fields
+
 import pytest
 
+from pge.core.stream_config import StreamConfig
 from pge.parameters.gate_factory import GateFactory
 from pge.parameters.parameter_definitions import DEFAULT_PROB
 from pge.shared.exceptions import InvalidFieldValueError
 from pge.shared.probability_gate import NeverGate, RandomGate
 
-# Il valore che StreamConfig porta quando la chiave e' assente dallo YAML
-# (`stream_config.py`): la chiave omessa non e' `None`, e' `False`.
-OMESSA = False
+# Il valore che StreamConfig porta quando la chiave e' assente dallo YAML: la
+# chiave omessa non e' `None`, e' `False`. Letto dal default reale invece che
+# ricopiato — scritto a mano, questo era un secondo `False` che non seguiva il
+# primo: cambiando il default in `stream_config.py` la tabella qui sotto
+# restava verde continuando a misurare la scrittura sbagliata.
+OMESSA = next(
+    campo.default for campo in fields(StreamConfig)
+    if campo.name == 'deviation_probability'
+)
 
 
 def _gate(deviation_probability):
