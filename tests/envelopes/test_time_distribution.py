@@ -601,5 +601,81 @@ class TestDistributionsDifferInShape:
                 starts, durations, self.TOTAL_TIME) is True
 
 
+# =============================================================================
+# 6. OVERFLOW DELLE POTENZE (issue #212)
+# =============================================================================
+
+class TestOverflowDellePotenze:
+    """Le tre potenze del registro traboccano, e lo dicono (issue #212).
+
+    Nessuna delle tre e' un bound sul singolo valore: `ratio: 10` e
+    `n_reps: 400` sono entrambi legittimi, e insieme chiedono `10 ** 400`.
+    Per questo l'intercettazione sta dove il calcolo avviene e non nel
+    costruttore — la soglia dipende dai due valori insieme, e il costruttore
+    `n_reps` non lo vede nemmeno.
+
+    Prima di #212 l'`OverflowError` di CPython risaliva nudo: fuori dalla
+    gerarchia `EngineError`, senza campo, senza stream_id, e con un testo
+    ("integer division result too large for a float") che non nomina nessuna
+    delle due cose da cambiare.
+    """
+
+    # (distribuzione, parametro, valore che trabocca, n_reps che lo fa
+    #  traboccare, n_reps innocuo con lo stesso valore)
+    COPPIE = [
+        # Repro della issue: geometric con ratio grande.
+        (GeometricDistribution, 'ratio', 10, 400, 2),
+        # Repro della issue: exponential con rate infinitesimo. Il peso e'
+        # `rate ** -i`, quindi a traboccare e' l'inverso di un numero piccolo.
+        (ExponentialDistribution, 'rate', 1e-300, 400, 2),
+        # `power` non ha bound sull'esponente, che e' proprio il motivo per cui
+        # puo' esplodere: qualunque reale e' legittimo, e qui bastano due cicli.
+        (PowerDistribution, 'exponent', 1e10, 2, 1),
+    ]
+
+    @pytest.mark.parametrize("dist,parametro,valore,n_reps,_innocuo", COPPIE)
+    def test_overflow_diventa_parameter_bound_error(
+            self, dist, parametro, valore, n_reps, _innocuo):
+        """L'errore nomina ENTRAMBI i valori, il parametro e `n_reps`.
+
+        Senza entrambi l'utente non sa quale ridurre: non c'e' un colpevole,
+        c'e' una coppia.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            dist(**{parametro: valore}).calculate_distribution(10.0, n_reps)
+
+        messaggio = exc.value.user_message()
+        assert parametro in messaggio
+        assert str(valore) in messaggio
+        assert 'n_reps' in messaggio
+        assert str(n_reps) in messaggio
+
+    def test_resta_dentro_la_gerarchia_engine_error(self):
+        """Catturabile come EngineError: e' un errore di configurazione."""
+        from pge.shared.exceptions import ConfigError, EngineError
+
+        with pytest.raises(EngineError) as exc:
+            GeometricDistribution(ratio=10).calculate_distribution(10.0, 400)
+
+        assert isinstance(exc.value, ConfigError)
+        assert isinstance(exc.value, ValueError)
+
+    @pytest.mark.parametrize("dist,parametro,valore,_n_reps,innocuo", COPPIE)
+    def test_la_coppia_innocua_continua_a_rendere(
+            self, dist, parametro, valore, _n_reps, innocuo):
+        """Gli stessi valori con meno cicli non hanno mai avuto un problema.
+
+        La controprova che il rifiuto e' della coppia e non del valore: nessuno
+        dei tre e' diventato un bound del costruttore.
+        """
+        starts, durations = dist(
+            **{parametro: valore}).calculate_distribution(10.0, innocuo)
+
+        assert len(durations) == innocuo
+        assert sum(durations) == pytest.approx(10.0)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
