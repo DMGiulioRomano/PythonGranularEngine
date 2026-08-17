@@ -111,15 +111,12 @@ class GateFactory:
                 raw_value = deviation_probability[param_key]
                 if raw_value is None:
                     return GateFactory._range_only_gate(has_explicit_range)
-                elif GateFactory._is_envelope_like(raw_value):
-                    # Valore envelope per questo parametro specifico
-                    return GateFactory._envelope_gate(
-                        raw_value, duration, time_mode, rng, param_key
-                    )
-                else:
-                    return GateFactory._parse_raw_value(
-                        raw_value, duration, time_mode, rng, param_key
-                    )
+                # Envelope o numero, la distinzione la fa _parse_raw_value: da
+                # #209 i due rami convergono li' dentro, e sceglierne uno qui
+                # significava solo anticipare la stessa domanda.
+                return GateFactory._parse_raw_value(
+                    raw_value, duration, time_mode, rng, param_key
+                )
             else:
                 return GateFactory._range_only_gate(has_explicit_range)
         return NeverGate()
@@ -212,11 +209,15 @@ class GateFactory:
         # Envelope: se non si costruisce, e' un errore di scrittura come ogni
         # altro (issue #209) e lo dice la stessa funzione che lo dice al corpo
         # riconosciuto come envelope.
-        if isinstance(raw_value, (list, dict)):
+        #
+        # `Envelope` sta nella tupla perche' e' l'unico corpo che
+        # `_is_envelope_like` riconosce senza essere ne' lista ne' dict: e' cio'
+        # che rende questa funzione l'unico ingresso, invece di lasciare al
+        # chiamante un ramo suo per quel caso solo.
+        if isinstance(raw_value, (list, dict, Envelope)):
             return GateFactory._envelope_gate(
                 raw_value, duration, time_mode, rng, param_key
             )
-
 
         # Tipo completamente sbagliato
         raise InvalidParameterError(
