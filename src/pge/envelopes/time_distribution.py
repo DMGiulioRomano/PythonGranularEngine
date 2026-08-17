@@ -294,8 +294,15 @@ class GeometricDistribution(TimeDistributionStrategy):
                 'ratio', self.ratio, n_reps, 'ratio ** n_reps'
             ) from exc
         first_duration = total_time / sum_geometric
-        
+
         # Genera durate
+        # La quarta potenza del file resta fuori dal try, e non per svista:
+        # qui l'esponente `i` e' sempre < n_reps, quindi con ratio > 1 questa
+        # potenza e' minore di `ratio ** n_reps`, che poche righe sopra e' gia'
+        # passata; con ratio < 1 decresce verso zero e non trabocca in alcun
+        # caso. Il prodotto nemmeno: con ratio > 1 `sum_geometric` e' grande
+        # nella stessa misura, quindi `first_duration` e' piccolo e le durate
+        # restano nell'ordine di `total_time`.
         cycle_durations = [first_duration * (self.ratio ** i) for i in range(n_reps)]
         
         # Normalizza per garantire sum == total_time (correzione errori floating point)
