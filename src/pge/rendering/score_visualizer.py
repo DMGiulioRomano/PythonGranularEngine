@@ -209,7 +209,15 @@ class ScoreVisualizer:
         Senza: scala fissa pitch_range in ratio, solo se il subplot ha grani
         visibili (cents_range None copre anche il caso zero grani). Se non c'e'
         nulla da disegnare la cella resta vuota (nessun asse creato).
+
+        Niente colorbar dove le altezze non variano (issue #217): l'autozoom
+        allarga comunque al floor di mezzo semitono, quindi la scala mostrerebbe
+        un gradiente pieno sopra grani tutti dello stesso colore. Vale anche col
+        range fisso, dove il colore unico resta unico.
         """
+        if not grain_visuals.has_pitch_variation(streams, page_start, page_end):
+            return
+
         if cents_range is not None:
             norm = Normalize(cents_range[0], cents_range[1])
             label = 'pitch (cents)'
@@ -327,7 +335,18 @@ class ScoreVisualizer:
         # cosi' un testo piu' grande non viene croppato. A fs=1.0 e' identita'.
         fs = self.config['font_scale']
         waveform_ratio = self.config['waveform_width_ratio'] * fs
-        colorbar_ratio = self.config['colorbar_width_ratio']
+        # La colonna della colorbar si riserva solo se almeno uno stream della
+        # pagina ha davvero un'escursione di altezza (issue #217). Le colorbar
+        # sono impilate in quella sola colonna: basta uno stream che varii
+        # perche' serva, e se non varia nessuno la larghezza torna all'area
+        # dati invece di restare una cella vuota. La decisione va presa qui e
+        # non dentro _add_pitch_colorbar: dopo il GridSpec la colonna c'e' gia'.
+        page_has_pitch_variation = any(
+            grain_visuals.has_pitch_variation([s], page_start, page_end)
+            for s in active_streams
+        )
+        colorbar_ratio = (self.config['colorbar_width_ratio']
+                          if page_has_pitch_variation else 0.0)
         envelope_ratio = self.config['envelope_panel_ratio'] if has_envelopes else 0.0
 
         # Altezza banda per stream (divisa equamente). Con envelope attivi ogni

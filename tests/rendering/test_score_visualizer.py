@@ -114,6 +114,36 @@ def single_stream_scene():
     return [make_stream('s1', onset=0.0, duration=20.0, sample='piano.wav')]
 
 
+def make_pitched_stream(stream_id='s1', onset=0.0, duration=20.0,
+                        sample='piano.wav', n_grains=4, cents_span=120.0):
+    """Come make_stream, ma coi grani distribuiti su un'escursione di pitch
+    reale (default: un semitono, oltre il floor dell'autozoom).
+
+    Serve ai test che guardano la colonna della colorbar: dalla issue #217 la
+    colonna esiste solo dove un'escursione da leggere c'e' davvero, e i grani
+    di make_stream hanno tutti lo stesso pitch_ratio.
+    """
+    s = make_stream(stream_id, onset=onset, duration=duration,
+                    sample=sample, n_grains=0)
+    spacing = duration / max(n_grains, 1)
+    half = cents_span / 2.0
+    s.voices = [[
+        make_grain(
+            onset + i * spacing,
+            pitch_ratio=2.0 ** ((-half + i * cents_span / max(n_grains - 1, 1))
+                                / 1200.0))
+        for i in range(n_grains)
+    ]]
+    return s
+
+
+def pitched_single_stream_scene():
+    """single_stream_scene con un'escursione di pitch: la pagina riserva la
+    colonna della colorbar."""
+    return [make_pitched_stream('s1', onset=0.0, duration=20.0,
+                                sample='piano.wav')]
+
+
 def two_stream_single_sample_scene():
     """Due stream sullo stesso sample, sovrapposti parzialmente."""
     return [
@@ -1237,6 +1267,114 @@ class TestPitchColorAutozoom:
 
 
 # =============================================================================
+# GROUP - Colorbar solo dove il pitch varia davvero (issue #217)
+# =============================================================================
+
+class TestPitchColorbarSuppression:
+    """Una scala di colore ha senso solo se c'e' un'escursione da leggere.
+
+    Con l'autozoom il range non e' mai nullo — `pitch_cents_range` allarga
+    comunque al floor di mezzo semitono — quindi grani tutti alla stessa
+    altezza ottenevano una colorbar con un gradiente pieno e, sotto, grani
+    tutti dello stesso colore: una scala che promette informazione e non ne
+    ha. La soppressione e' per-stream; la colonna del GridSpec si recupera
+    solo se nessuno stream della pagina varia."""
+
+    @staticmethod
+    def _uniform_stream(sid='s1'):
+        """Tre grani, stesso pitch: nessuna escursione da colorare."""
+        s = make_stream(sid, onset=0.0, duration=10.0,
+                        sample='piano.wav', n_grains=0)
+        s.voices = [[make_grain(onset=1.0 + i, pitch_ratio=1.5)
+                     for i in range(3)]]
+        return s
+
+    @staticmethod
+    def _varied_stream(sid='s2'):
+        """Grani distribuiti su un semitono: un'escursione reale."""
+        return make_pitched_stream(sid, onset=0.0, duration=10.0,
+                                   sample='piano.wav')
+
+    @staticmethod
+    def _colorbar_axes(fig):
+        return [ax for ax in fig.axes if ax.get_label() == '<colorbar>']
+
+    @staticmethod
+    def _width_ratios(fig):
+        ax = next(ax for ax in fig.axes
+                  if ax.get_ylabel().startswith('Read position (s)'))
+        return list(ax.get_subplotspec().get_gridspec().get_width_ratios())
+
+    def _render(self, streams, config=None):
+        cfg = {'page_duration': 30.0}
+        cfg.update(config or {})
+        viz = make_viz(streams, config=cfg)
+        with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
+            viz.analyze()
+            fig = viz.render_page(0)
+        return viz, fig
+
+    def test_no_colorbar_when_all_pitches_are_equal(self):
+        """Il caso della issue: un solo pitch, nessuna colorbar."""
+        _, fig = self._render([self._uniform_stream()])
+        assert self._colorbar_axes(fig) == []
+
+    def test_colorbar_stays_when_pitches_differ(self):
+        """Nessuna regressione dove la scala serve davvero."""
+        _, fig = self._render([self._varied_stream()])
+        assert len(self._colorbar_axes(fig)) == 1
+
+    def test_colorbar_only_on_the_stream_that_varies(self):
+        """Due stream, uno solo con escursione: una colorbar sola, e sulla
+        riga giusta (la soppressione e' per-stream, non per-pagina)."""
+        streams = [self._uniform_stream('s1'), self._varied_stream('s2')]
+        _, fig = self._render(streams)
+        cbars = self._colorbar_axes(fig)
+        assert len(cbars) == 1
+        # Senza envelope c'e' una riga per stream: la riga 1 e' quella di s2.
+        assert cbars[0].get_subplotspec().rowspan.start == 1
+
+    def test_column_kept_when_at_least_one_stream_varies(self):
+        """La colonna resta riservata anche se una sola riga la usa: le
+        colorbar sono impilate in una colonna sola."""
+        viz, fig = self._render(
+            [self._uniform_stream('s1'), self._varied_stream('s2')])
+        wr = self._width_ratios(fig)
+        assert wr[2] == pytest.approx(viz.config['colorbar_width_ratio'])
+
+    def test_column_is_recovered_when_no_stream_varies(self):
+        """Nessuno stream con escursione: la larghezza della colonna non resta
+        una cella vuota, torna all'area dati."""
+        _, fig = self._render(
+            [self._uniform_stream('s1'), self._uniform_stream('s2')])
+        wr = self._width_ratios(fig)
+        assert wr[2] == 0.0
+        assert wr[1] == pytest.approx(1.0 - wr[0])
+
+    def test_column_is_recovered_when_the_page_has_no_grains(self):
+        """Stesso trattamento per una pagina senza grani: non c'e' scala da
+        disegnare, quindi non c'e' colonna da riservare."""
+        s = make_stream('s1', onset=0.0, duration=10.0, n_grains=0)
+        _, fig = self._render([s])
+        wr = self._width_ratios(fig)
+        assert wr[2] == 0.0
+
+    def test_no_colorbar_when_pitches_are_equal_and_autozoom_off(self):
+        """Anche col range fisso la scala mentirebbe allo stesso modo: i grani
+        sono tutti dello stesso colore comunque."""
+        _, fig = self._render([self._uniform_stream()],
+                              config={'pitch_color_autozoom': {'enabled': False}})
+        assert self._colorbar_axes(fig) == []
+
+    def test_colorbar_stays_with_autozoom_off_when_pitches_differ(self):
+        """Col range fisso e un'escursione reale la colorbar resta: dice su
+        quale scala (ratio) sono stati scelti i colori."""
+        _, fig = self._render([self._varied_stream()],
+                              config={'pitch_color_autozoom': {'enabled': False}})
+        assert len(self._colorbar_axes(fig)) == 1
+
+
+# =============================================================================
 # GROUP - Allineamento larghezza envelope/stream (colonna colorbar dedicata)
 # =============================================================================
 
@@ -1249,12 +1387,14 @@ class TestEnvelopeStreamWidthAlignment:
 
     @staticmethod
     def _scene():
-        """Due stream con grani (-> colorbar) e un envelope dinamico
-        (pointer_speed) -> esiste il pannello envelope sotto agli stream."""
+        """Due stream con grani di altezza variabile (-> colorbar, issue #217)
+        e un envelope dinamico (pointer_speed) -> esiste il pannello envelope
+        sotto agli stream."""
         from pge.envelopes.envelope import Envelope
         streams = []
         for sid in ('s1', 's2'):
-            s = make_stream(sid, onset=0.0, duration=10.0, sample='piano.wav')
+            s = make_pitched_stream(sid, onset=0.0, duration=10.0,
+                                    sample='piano.wav')
             s.pointer_speed = Envelope([[0, -2.0], [10, 4.0]])
             streams.append(s)
         return streams
@@ -1434,7 +1574,9 @@ class TestFontScaleLayout:
     togliere lo spazio attorno alle parole."""
 
     def _render(self, config):
-        viz = make_viz(single_stream_scene(), config=config)
+        # Scena con escursione di pitch: le tre colonne esistono tutte solo
+        # dove la colorbar serve davvero (issue #217).
+        viz = make_viz(pitched_single_stream_scene(), config=config)
         with patch('soundfile.read', return_value=(FAKE_AUDIO, SR)):
             viz.analyze()
             return viz.render_page(0)
@@ -1447,7 +1589,8 @@ class TestFontScaleLayout:
 
     def test_font_scale_1_preserves_default_columns(self):
         """A font_scale=1.0 le colonne restano ai valori di default."""
-        viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
+        viz = make_viz(pitched_single_stream_scene(),
+                       config={'page_duration': 30.0})
         wr = self._width_ratios(self._render({'page_duration': 30.0}))
         assert wr[0] == pytest.approx(viz.config['waveform_width_ratio'])
         assert wr[2] == pytest.approx(viz.config['colorbar_width_ratio'])
