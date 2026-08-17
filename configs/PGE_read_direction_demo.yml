@@ -1,0 +1,172 @@
+composition:
+  title: "read_direction demo - issue #207"
+
+# Un uso diverso della chiave per stream, onset sequenziali ogni 5 secondi.
+# L'osservabile e' il segno di pitch_ratio nei grani: +1 il grano legge il
+# sample in avanti, -1 all'indietro. Tutti gli stream durano 4 secondi.
+
+streams:
+
+  # -------------------------------------------------------------------
+  # 1-2. SCALARE: il verso vale per tutto lo stream
+  # -------------------------------------------------------------------
+
+  - stream_id: "01_scalare_avanti"
+    onset: 0.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: 1
+
+  - stream_id: "02_scalare_indietro"
+    onset: 5.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: -1
+
+  # -------------------------------------------------------------------
+  # 3. INDIPENDENZA DALLA TESTINA: pointer all'indietro, grani in avanti
+  # -------------------------------------------------------------------
+
+  - stream_id: "03_testina_indietro_grani_avanti"
+    onset: 10.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    pointer:
+      speed_ratio: -1
+    grain:
+      duration: 0.05
+      read_direction: 1
+
+  # -------------------------------------------------------------------
+  # 4-5. ENVELOPE: la x e' il tempo. In absolute sono secondi,
+  #      in normalized e' una frazione della duration dello stream.
+  # -------------------------------------------------------------------
+
+  # Flip a 1.0 s e ritorno a 2.5 s
+  - stream_id: "04_envelope_absolute"
+    onset: 15.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: [[0, 1], [1.0, -1], [2.5, 1]]
+
+  # Gli stessi istanti scritti come frazione di 4.0 s: 0.25 e 0.625
+  - stream_id: "05_envelope_normalized"
+    time_mode: normalized
+    onset: 20.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: [[0, 1], [0.25, -1], [0.625, 1]]
+
+  # -------------------------------------------------------------------
+  # 6. FORMA DICT: time_unit locale, sovrascrive quello dello stream
+  # -------------------------------------------------------------------
+
+  - stream_id: "06_dict_time_unit"
+    onset: 25.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction:
+        time_unit: normalized
+        points: [[0, 1], [0.5, -1]]
+
+  # -------------------------------------------------------------------
+  # 7-8. FORMATO COMPATTO: qui la x del pattern e' una percentuale
+  #      del ciclo, in [0, 100]. end_time resta in secondi assoluti.
+  # -------------------------------------------------------------------
+
+  # Stesso pattern, 2 cicli: il flip cade a meta' di ciascuno
+  - stream_id: "07_loop_2_cicli"
+    onset: 30.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: [[[0, 1], [50, -1]], 4.0, 2]
+
+  # Stesso pattern, 8 cicli: il 50% cade in otto istanti diversi
+  - stream_id: "08_loop_8_cicli"
+    onset: 35.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: [[[0, 1], [50, -1]], 4.0, 8]
+
+  # -------------------------------------------------------------------
+  # 9. DISTRIBUZIONE TEMPORALE: i cicli non durano uguale
+  # -------------------------------------------------------------------
+
+  # ratio 2.0: ogni ciclo dura il doppio del precedente
+  - stream_id: "09_loop_geometrico"
+    onset: 40.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: [[[0, 1], [50, -1]], 4.0, 4, 'step', {type: geometric, ratio: 2.0}]
+
+  # -------------------------------------------------------------------
+  # 10. VARIAZIONE PER-GRANO: chiave dedicata, il verso base e' +1
+  #     e circa meta' dei grani lo ribalta
+  # -------------------------------------------------------------------
+
+  - stream_id: "10_deviation_probability"
+    onset: 45.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: 1
+    deviation_probability:
+      read_direction: 50
+
+  # -------------------------------------------------------------------
+  # 11-12. LA PROBABILITA' CAMBIA NEL TEMPO: anche deviation_probability
+  #        e' un envelope, con le stesse forme del verso
+  # -------------------------------------------------------------------
+
+  # Rampa 0 -> 100: si parte deterministici in avanti e si finisce
+  # ribaltando ogni grano. Il passaggio e' graduale, non un gradino.
+  - stream_id: "11_prob_rampa"
+    onset: 50.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: 1
+    deviation_probability:
+      read_direction: [[0, 0], [4.0, 100]]
+
+  # Il verso base gia' cambia da solo a meta' stream; sopra ci si mette
+  # una probabilita' che pulsa in tre cicli, ciascuno 0 -> 100 -> 0.
+  - stream_id: "12_prob_ciclica_su_verso_variabile"
+    onset: 55.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 20
+    grain:
+      duration: 0.05
+      read_direction: [[0, 1], [2.0, -1]]
+    deviation_probability:
+      read_direction: [[[0, 0], [50, 100], [100, 0]], 4.0, 3]
