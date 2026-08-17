@@ -6,7 +6,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
-## [Unreleased]
+## [v7.3.0] — "Declared Reverse" — 2026-08-17
 
 ### Aggiunto
 
