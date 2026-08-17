@@ -199,7 +199,15 @@ class Stream:
         }
 
     def _check_required_context_fields(self, params, stream_id):
-        """Verifica campi obbligatori StreamContext prima di StreamConfig.from_yaml."""
+        """Verifica campi obbligatori StreamContext prima di StreamConfig.from_yaml.
+
+        Oggi il ramo plurale non scatta mai da qui: i campi richiesti sono due,
+        stream_id e sample, e `sample` e' controllato prima in __init__, che si
+        ferma li'. Quindi `missing` e' al massimo {'stream_id'}. Il sorted() e
+        il ramo plurale restano per il prossimo campo di contesto senza default
+        — e sono ancora raggiungibili da chi chiama questo metodo bypassando
+        __init__ (tests/core/test_stream.py).
+        """
         missing = self._required_context_fields() - set(params.keys())
         if missing:
             missing_list = sorted(missing)

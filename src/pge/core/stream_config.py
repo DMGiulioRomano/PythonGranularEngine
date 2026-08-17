@@ -45,6 +45,13 @@ def stream_onset_is_implicit(yaml_data: dict) -> bool:
     `is None` copre sia la chiave assente sia `onset: null` esplicito, e lascia
     fuori `onset: 0`, che nel risultato e' indistinguibile dal default ma
     nell'intenzione e' una dichiarazione.
+
+    A differenza del gemello, questo predicato NON e' condiviso: lo usa solo
+    resolve_stream_onset qui sotto. Il fingerprint della cache importa
+    stream_duration_is_implicit perche' la durata ereditata dipende da un file
+    audio mutabile e va registrata; l'onset ereditato e' la costante 0.0, non
+    dipende da niente di esterno, e non c'e' niente da registrare. Chi cerca il
+    consumatore fuori da questo modulo non lo trova perche' non deve esistere.
     """
     return yaml_data.get('onset') is None
 
