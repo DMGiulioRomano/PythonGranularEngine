@@ -718,3 +718,69 @@ class TestParserDynamicGrainDurationMin:
             parser.parse_parameter(
                 'grain_duration', [[0.0, 0.05], [5.0, 0.5 / 48000]]
             )
+
+
+# =============================================================================
+# 11. ATTRIBUZIONE ALLO STREAM DEGLI ERRORI DEL GATE (review #216)
+# =============================================================================
+
+class TestGateErroriAttribuitiAlloStream:
+    """L'errore che nasce in `GateFactory` porta lo stream che l'ha scritto.
+
+    `GateFactory` e' isolata per progetto: non conosce lo stream, e infatti
+    nomina il campo (`deviation_probability.<chiave>`) e non altro.
+    L'attribuzione tocca al chiamante — qui, come gia' fa il parser dieci righe
+    piu' su nel proprio file. Senza, la riga `Stream:` promessa da
+    `docs/reference/errors.md` non compare.
+    """
+
+    def _config_con_envelope_rotto(self, chiave: str) -> StreamConfig:
+        context = StreamContext(
+            stream_id='drone_gate',
+            onset=0.0,
+            duration=10.0,
+            sample='test.wav',
+            sample_dur_sec=5.0,
+        )
+        return StreamConfig(
+            context=context,
+            deviation_probability={chiave: ['x']},
+        )
+
+    def test_gate_del_parametro_normale(self):
+        from pge.shared.exceptions import InvalidFieldValueError
+
+        orchestrator = ParameterOrchestrator(
+            self._config_con_envelope_rotto('volume')
+        )
+        spec = ParameterSpec(
+            name='volume',
+            yaml_path='volume',
+            default=0.0,
+            range_path='volume_range',
+            deviation_probability_key='volume',
+        )
+
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            orchestrator.create_parameter_with_gate({'volume': 0.0}, spec)
+
+        assert exc_info.value.stream_id == 'drone_gate'
+
+    def test_gate_del_pitch(self):
+        from pge.shared.exceptions import InvalidFieldValueError
+        from pge.parameters.pitch_unit import make_pitch_unit
+
+        orchestrator = ParameterOrchestrator(
+            self._config_con_envelope_rotto('pitch')
+        )
+        unit = make_pitch_unit('semitones')
+
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            orchestrator.create_pitch_parameter(
+                name='pitch_semitones',
+                value_raw=0.0,
+                range_raw=None,
+                bounds=unit.value_bounds(),
+            )
+
+        assert exc_info.value.stream_id == 'drone_gate'
