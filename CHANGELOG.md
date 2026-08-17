@@ -6,6 +6,35 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Unreleased]
+
+### Modificato
+
+- **La colorbar del pitch compare solo dove le altezze variano davvero**
+  (#217). Prima si disegnava su ogni subplot con almeno un grano visibile: con
+  l'auto-zoom attivo (default) il range non è mai nullo — `pitch_cents_range`
+  allarga comunque al floor `min_span_cents` di mezzo semitono — quindi una
+  pagina di grani tutti alla stessa altezza otteneva una scala col gradiente
+  pieno sopra grani tutti dello stesso colore: prometteva un'escursione che non
+  c'era.
+
+  La soglia è **1 cent**, non l'uguaglianza esatta: i `pitch_ratio` arrivano da
+  rapporti calcolati in float (semitoni moltiplicati uno alla volta, cent
+  convertiti in rapporti) e la stessa altezza raggiunta per due strade diverse
+  differisce all'ultimo bit — con l'uguaglianza esatta quella deriva
+  riaccenderebbe la scala. Un cent è anche sotto la soglia percettiva, quindi
+  la soglia sbaglia solo dove sbagliare non si sente, con la stessa
+  motivazione del floor di mezzo semitono.
+
+  La soppressione è **per-stream** e vale anche col range fisso
+  (`pitch_color_autozoom.enabled: false`), dove un colore unico resta unico. La
+  **colonna** del GridSpec riservata da `colorbar_width_ratio` si recupera solo
+  se **nessuno** stream della pagina varia: in quel caso la larghezza torna
+  all'area dati invece di restare una cella vuota. Nessuna nuova chiave di
+  config e nessun opt-out: le partiture con pitch variabile sono invariate.
+
+---
+
 ## [v7.3.0] — "Declared Reverse" — 2026-08-17
 
 ### Aggiunto

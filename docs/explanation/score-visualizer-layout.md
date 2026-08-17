@@ -11,7 +11,7 @@ sources:
   - src/pge/rendering/magnifier_projection.py
   - src/pge/rendering/score_visualizer.py
   - src/pge/rendering/visualizer_config.py
-last_synced_commit: 51c49f8
+last_synced_commit: 1e9c892
 ---
 
 # Il layout della partitura: separare i numeri dal disegno
@@ -98,6 +98,24 @@ questa.
 `pan_range`, `hist_bins`, `page_duration`: i moduli non conoscono il dict di
 config, è l'adapter a leggerlo e a passarne i valori. È anche ciò che rende
 possibile tipizzare la config senza toccare le regole.
+
+### Una decisione che deve precedere il disegno
+
+Non tutto quello che il visualizer chiede ai moduli riguarda un artista già
+esistente. La colorbar del pitch (#217) si disegna solo dove i grani hanno
+davvero altezze diverse, e la domanda «variano?» non è quella a cui risponde
+`pitch_cents_range`: quello è un range da colorare, e lo restituisce sempre non
+nullo perché applica il floor `min_span_cents`. Il dato grezzo — l'escursione
+in cent dei grani visibili, confrontata con una soglia di un cent che assorbe
+la deriva float dei `pitch_ratio` — è `grain_visuals.has_pitch_variation`.
+
+Le due conseguenze cadono in due punti diversi, e per una ragione strutturale:
+la soppressione della singola colorbar è per-stream e sta dove la colorbar si
+disegna, ma la **colonna** che la ospita è una colonna sola per tutta la pagina,
+riservata dal `GridSpec`. Recuperarne la larghezza quando nessuno stream varia
+significa deciderlo **prima** di costruire il `GridSpec`: dopo, la colonna
+esiste già e l'unica cosa ancora possibile è lasciarla vuota. È lo stesso
+motivo per cui `has_envelopes` si calcola in cima a `render_page`.
 
 ### I dati dichiarati
 
