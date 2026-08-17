@@ -1131,6 +1131,27 @@ class TestIndiciFormatoCompatto:
         assert espanso[-1][0] == pytest.approx(1.0)
         assert EnvelopeBuilder.extract_interp_type(compatto) == 'step'
 
+    def test_l_estrazione_dell_interp_segue_lo_slot(self, monkeypatch):
+        """Anche chi legge il solo interp lo legge dalla costante.
+
+        `extract_interp_type` decodificava lo slot con un `3` scritto a mano,
+        due volte (il compatto diretto e quello dentro una lista mista). Con
+        l'interp spostato di posto tornava `None` invece del tipo dichiarato:
+        non un errore, un envelope interpolato col default.
+
+        Qui lo slot 3 resta occupato da `None` — cosi' la lista e' ancora un
+        compatto valido per `is_compact_format`, che il layout lo definisce e
+        non va toccata — e l'interp vero sta al 4.
+        """
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_INTERP', 4)
+
+        compatto = [[[0, 0], [100, 1]], 1.0, 2, None, 'step']
+        assert EnvelopeBuilder.is_compact_format(compatto)
+
+        assert EnvelopeBuilder.extract_interp_type(compatto) == 'step'
+        # Stessa cosa per il compatto annidato in una lista mista.
+        assert EnvelopeBuilder.extract_interp_type([compatto]) == 'step'
+
     def test_il_validatore_segue_gli_slot_insieme_all_espansione(self, monkeypatch):
         """Il lato che valida si muove con quello che espande.
 

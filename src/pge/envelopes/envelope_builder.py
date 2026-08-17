@@ -699,17 +699,21 @@ class EnvelopeBuilder:
         """
         # FIX 2: Controlla PRIMA se raw_points STESSO è formato compatto con tipo
         if cls.is_compact_format(raw_points):
-            # Formato compatto con >= 4 elementi include interp_type in posizione 3
-            if len(raw_points) >= 4 and raw_points[3] is not None:
-                return raw_points[3]
+            # Lo slot dell'interp e' quello nominato (issue #213): scritto a
+            # mano, un giorno che cambiasse posizione questa funzione tornerebbe
+            # None invece del tipo dichiarato — non un errore, un envelope
+            # interpolato col default.
+            if (len(raw_points) > cls.COMPACT_INTERP
+                    and raw_points[cls.COMPACT_INTERP] is not None):
+                return raw_points[cls.COMPACT_INTERP]
             return None
 
         # Altrimenti itera sugli elementi (formato misto)
         for item in raw_points:
             if cls.is_compact_format(item):
-                # Formato compatto con >= 4 elementi include interp_type in posizione 3
-                if len(item) >= 4 and item[3] is not None:
-                    return item[3]
+                if (len(item) > cls.COMPACT_INTERP
+                        and item[cls.COMPACT_INTERP] is not None):
+                    return item[cls.COMPACT_INTERP]
 
         return None
 
