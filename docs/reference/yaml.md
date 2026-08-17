@@ -11,7 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
-last_synced_commit: 3ffcf1c
+last_synced_commit: bbd4709
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -738,6 +738,37 @@ deviation_probability:
   volume: [[0, 0], [30, 80]]
   pan: 50
 ```
+
+### Le cinque scritture della chiave
+
+Ci sono cinque modi di scrivere `deviation_probability` "senza dirgli niente",
+e **quattro su cinque danno lo stesso risultato**. Misurato su uno stream reale
+(79 grani, `grain.read_direction: 1`, seed fisso, nessun `_range` dichiarato):
+
+| YAML | gate | grani deviati |
+|---|---|---|
+| chiave **omessa** | `NeverGate` | 0 / 79 |
+| `deviation_probability:` (scritta, vuota → `null`) | **probabilità implicita** (`DEFAULT_PROB`, 1%) | 1 / 79 |
+| `deviation_probability: {}` | `NeverGate` | 0 / 79 |
+| `deviation_probability: false` | `NeverGate` | 0 / 79 |
+| `deviation_probability: {<chiave>: null}` | `NeverGate` | 0 / 79 |
+
+L'eccezione è la seconda riga: **la chiave scritta e lasciata vuota è l'unica a
+non dare `NeverGate`**. `null` non significa "assente" — significa *modalità
+implicita*, cioè l'1% di jitter per grano su ogni parametro dello schema.
+
+È la scrittura che più assomiglia a "non voglio deviazione" e fa l'opposto. Se
+l'intenzione è disattivare, la scrittura da usare è `false` (o l'omissione); la
+chiave vuota è una dichiarazione, non un'assenza.
+
+> Non è specifico di un parametro: la modalità implicita vale per tutti. Si
+> nota di più su `grain.read_direction`, dove il flip è udibile come inversione
+> del verso, mentre su un parametro additivo l'1% si confonde con la grana.
+>
+> Con un `_range` esplicito le righe `NeverGate` diventano `AlwaysGate`: è la
+> semantica *range-only* descritta qui sotto, e non riguarda queste scritture.
+
+Il contratto è fissato da `tests/parameters/test_deviation_probability_scritture.py`.
 
 > **Default in modalità per-parametro.** Una chiave **assente** dal dict — o
 > impostata esplicitamente a **`null`** — non riceve probabilità: si comporta come
@@ -1977,6 +2008,13 @@ Vedi `GateFactory._classify_deviation_probability`: il dispatch usa
 `Envelope.is_envelope_like` per riconoscere il formato e crea un
 `EnvelopeGate` invece di un `RandomGate` scalare.
 
+> **Un envelope che non si costruisce è un errore.** Un corpo malformato —
+> `[]`, `['x']`, un dict senza `points` — solleva `InvalidFieldValueError` sul
+> campo `deviation_probability.<chiave>` (o `deviation_probability` per la
+> forma globale). Prima veniva accettato in silenzio come probabilità 100%,
+> cioè la variazione applicata a **tutti** i grani: il contrario di quanto
+> scritto, e senza nulla in output che lo dicesse.
+
 #### 10.3 `voices.*.curve` per window transition
 
 Il campo `curve` dentro `grain.envelope.transition` e `grain.envelope.multistate`
@@ -2180,7 +2218,7 @@ un envelope dal YAML al runtime è:
 - `src/pge/envelopes/envelope.py` — classe `Envelope`, `is_envelope_like`,
   `create_scaled_envelope`, `_scale_raw_values_y`
 - `src/pge/envelopes/envelope_builder.py` — `EnvelopeBuilder.parse`,
-  `_is_compact_format`, `_expand_compact_format`, `_is_bp_group`,
+  `is_compact_format`, `_expand_compact_format`, `is_bp_group`,
   `_expand_bp_group`, `DISCONTINUITY_OFFSET`
 - `src/pge/envelopes/envelope_interpolation.py` — `LinearInterpolation`,
   `StepInterpolation`, `CubicInterpolation`

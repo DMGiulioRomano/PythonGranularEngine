@@ -3,7 +3,7 @@
 Test suite COMPLETA per EnvelopeBuilder.
 
 Coverage:
-1. Test riconoscimento formato compatto (_is_compact_format)
+1. Test riconoscimento formato compatto (is_compact_format)
 2. Test espansione formato compatto (_expand_compact_format)
 3. Test estrazione tipo interpolazione (extract_interp_type)
 4. Test parse - formato diretto
@@ -22,6 +22,7 @@ Coverage:
 import pytest
 from unittest.mock import patch, MagicMock, call
 from pge.envelopes.envelope_builder import EnvelopeBuilder, detect_format_type
+from pge.shared.exceptions import InvalidFieldValueError
 
 
 # =============================================================================
@@ -92,69 +93,69 @@ def mixed_with_interp():
 # =============================================================================
 
 class TestIsCompactFormat:
-    """Test _is_compact_format() - riconoscimento pattern."""
+    """Test is_compact_format() - riconoscimento pattern."""
     
     def test_recognize_simple_compact(self, simple_compact):
         """Riconosce formato compatto semplice (3 elementi)."""
-        assert EnvelopeBuilder._is_compact_format(simple_compact)
+        assert EnvelopeBuilder.is_compact_format(simple_compact)
     
     def test_recognize_compact_with_interp(self, compact_with_interp):
         """Riconosce formato compatto con interpolazione (4 elementi)."""
-        assert EnvelopeBuilder._is_compact_format(compact_with_interp)
+        assert EnvelopeBuilder.is_compact_format(compact_with_interp)
     
     def test_recognize_compact_three_points(self, compact_three_points):
         """Riconosce formato compatto con 3 punti nel pattern."""
-        assert EnvelopeBuilder._is_compact_format(compact_three_points)
+        assert EnvelopeBuilder.is_compact_format(compact_three_points)
     
     def test_recognize_compact_single_rep(self, compact_single_rep):
         """Riconosce formato compatto con singola ripetizione."""
-        assert EnvelopeBuilder._is_compact_format(compact_single_rep)
+        assert EnvelopeBuilder.is_compact_format(compact_single_rep)
     
     def test_reject_legacy_breakpoint(self):
         """Rifiuta breakpoint legacy [t, v]."""
-        assert not EnvelopeBuilder._is_compact_format([0, 10])
+        assert not EnvelopeBuilder.is_compact_format([0, 10])
     
     def test_reject_legacy_list(self, legacy_breakpoints):
         """Rifiuta lista di breakpoints legacy."""
-        assert not EnvelopeBuilder._is_compact_format(legacy_breakpoints)
+        assert not EnvelopeBuilder.is_compact_format(legacy_breakpoints)
     
 
     
     def test_reject_empty_list(self):
         """Rifiuta lista vuota."""
-        assert not EnvelopeBuilder._is_compact_format([])
+        assert not EnvelopeBuilder.is_compact_format([])
     
     def test_reject_wrong_length(self):
         """Rifiuta liste con lunghezza sbagliata."""
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4])  # 2 elementi (troppo pochi)
+        assert not EnvelopeBuilder.is_compact_format([[[0, 0]], 0.4])  # 2 elementi (troppo pochi)
         # 6° elemento (wrap) deve essere bool, non stringa
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'linear', 'altro'])
+        assert not EnvelopeBuilder.is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'linear', 'altro'])
         # 7 elementi (troppi)
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'linear', True, 'extra'])
+        assert not EnvelopeBuilder.is_compact_format([[[0, 0]], 0.4, 4, 'linear', 'linear', True, 'extra'])
 
     def test_reject_non_list(self):
         """Rifiuta non-liste."""
-        assert not EnvelopeBuilder._is_compact_format(42)
-        assert not EnvelopeBuilder._is_compact_format("compact")
-        assert not EnvelopeBuilder._is_compact_format(None)
+        assert not EnvelopeBuilder.is_compact_format(42)
+        assert not EnvelopeBuilder.is_compact_format("compact")
+        assert not EnvelopeBuilder.is_compact_format(None)
     
     def test_reject_wrong_types(self):
         """Rifiuta tipi sbagliati negli elementi."""
         # Pattern non-lista
-        assert not EnvelopeBuilder._is_compact_format(["pattern", 0.4, 4])
+        assert not EnvelopeBuilder.is_compact_format(["pattern", 0.4, 4])
         
         # Total_time non-numero
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], "0.4", 4])
+        assert not EnvelopeBuilder.is_compact_format([[[0, 0]], "0.4", 4])
         
         # N_reps non-int
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4.5])
+        assert not EnvelopeBuilder.is_compact_format([[[0, 0]], 0.4, 4.5])
         
         # Interp_type non-string
-        assert not EnvelopeBuilder._is_compact_format([[[0, 0]], 0.4, 4, 123])
+        assert not EnvelopeBuilder.is_compact_format([[[0, 0]], 0.4, 4, 123])
     
     def test_accept_empty_pattern(self):
         """Accetta pattern vuoto (validazione in expand)."""
-        assert EnvelopeBuilder._is_compact_format([[], 0.4, 4])
+        assert EnvelopeBuilder.is_compact_format([[], 0.4, 4])
 
 
 # =============================================================================
@@ -777,11 +778,11 @@ class TestRobustnessMalformedInput:
         assert len(expanded) == 4  # 2*2 + 1
     
     def test_float_n_reps_rejected(self):
-        """n_reps float rifiutato da _is_compact_format."""
+        """n_reps float rifiutato da is_compact_format."""
         compact = [[[0, 0], [100, 1]], 0.4, 4.5]
         
-        # _is_compact_format deve rifiutare
-        assert not EnvelopeBuilder._is_compact_format(compact)
+        # is_compact_format deve rifiutare
+        assert not EnvelopeBuilder.is_compact_format(compact)
 
     # Test aggiuntivi per _log_compact_transformation (da aggiungere a TestLoggingTransformations)
 
@@ -968,7 +969,7 @@ class TestEnvelopeBuilderMissingLines:
         """
         # 5 elementi con quinto elemento intero (non str, non dict)
         item = [[[0, 0], [100, 1]], 1.0, 2, 'linear', 42]
-        assert EnvelopeBuilder._is_compact_format(item) is False
+        assert EnvelopeBuilder.is_compact_format(item) is False
 
     def test_log_compact_transformation_with_time_dist_spec(self):
         """
@@ -1054,3 +1055,140 @@ class TestLogTransformationsFlag:
         )
 
         assert mock_logger.info.called
+
+# =============================================================================
+# 15. SUPERFICIE PUBBLICA E INDICI DEL FORMATO COMPATTO (issue #213)
+# =============================================================================
+
+class TestSuperficiePubblica:
+    """I tre riconoscitori di forma sono pubblici (issue #213, punto 1).
+
+    `read_direction.py` e' l'unico chiamante fuori da `pge.envelopes`, e
+    chiamava tre metodi privati. Usarli era la scelta giusta — riconoscere le
+    forme da capo sarebbe stata duplicazione peggiore, ed e' cio' che garantisce
+    che validatore e costruttore riconoscano *le stesse* forme — ma allora la
+    superficie deve dirlo.
+    """
+
+    def test_i_riconoscitori_sono_pubblici(self):
+        assert EnvelopeBuilder.is_compact_format([[[0, 0], [100, 1]], 0.4, 4])
+        assert EnvelopeBuilder.is_bp_group([[[0, 0], [1, 1]], 'linear'])
+        assert EnvelopeBuilder.is_3tuple_breakpoint([0.5, 1.0, 'cubic'])
+
+    @pytest.mark.parametrize("privato", [
+        '_is_compact_format',
+        '_is_bp_group',
+        '_is_3tuple_breakpoint',
+    ])
+    def test_nessun_alias_privato_dietro(self, privato):
+        """Promuovere e lasciare l'alias sarebbe due nomi per una cosa sola.
+
+        Con i chiamanti aggiornati insieme non serve una transizione: l'alias
+        sopravviverebbe a se stesso e il prossimo chiamante sceglierebbe a caso.
+        """
+        assert not hasattr(EnvelopeBuilder, privato)
+
+
+class TestIndiciFormatoCompatto:
+    """Gli slot del formato compatto hanno un nome (issue #213, punto 2).
+
+    Il rischio non era un errore ma un silenzio: i due lati — chi espande e chi
+    valida — decodificavano le stesse posizioni per conto proprio, quindi se il
+    `time_dist_spec` avesse cambiato slot il validatore avrebbe continuato a
+    controllare quello vecchio senza che nessun test se ne accorgesse. Con una
+    costante sola letta da entrambi, quel disallineamento non e' esprimibile.
+    """
+
+    def test_gli_slot_sono_nominati(self):
+        assert EnvelopeBuilder.COMPACT_PATTERN == 0
+        assert EnvelopeBuilder.COMPACT_END_TIME == 1
+        assert EnvelopeBuilder.COMPACT_N_REPS == 2
+        assert EnvelopeBuilder.COMPACT_INTERP == 3
+        assert EnvelopeBuilder.COMPACT_TIME_DIST == 4
+        assert EnvelopeBuilder.COMPACT_WRAP == 5
+
+    def test_l_espansione_legge_gli_slot_nominati(self):
+        """Un compatto costruito per posizione a partire dalle costanti.
+
+        Se un giorno le costanti cambiassero valore, questo test cambierebbe
+        con loro — ed e' esattamente il punto: il layout esiste in un posto
+        solo, e chi lo legge non puo' averne una copia propria.
+        """
+        compatto = [None] * 6
+        compatto[EnvelopeBuilder.COMPACT_PATTERN] = [[0, 0], [100, 1]]
+        compatto[EnvelopeBuilder.COMPACT_END_TIME] = 1.0
+        compatto[EnvelopeBuilder.COMPACT_N_REPS] = 2
+        compatto[EnvelopeBuilder.COMPACT_INTERP] = 'step'
+        compatto[EnvelopeBuilder.COMPACT_TIME_DIST] = 'linear'
+        compatto[EnvelopeBuilder.COMPACT_WRAP] = False
+
+        assert EnvelopeBuilder.is_compact_format(compatto)
+
+        espanso = EnvelopeBuilder._expand_compact_format(compatto)
+
+        # Due cicli sul pattern a due punti, ultimo breakpoint a end_time.
+        assert len(espanso) == 4
+        assert espanso[-1][0] == pytest.approx(1.0)
+        assert EnvelopeBuilder.extract_interp_type(compatto) == 'step'
+
+    def test_l_estrazione_dell_interp_segue_lo_slot(self, monkeypatch):
+        """Anche chi legge il solo interp lo legge dalla costante.
+
+        `extract_interp_type` decodificava lo slot con un `3` scritto a mano,
+        due volte (il compatto diretto e quello dentro una lista mista). Con
+        l'interp spostato di posto tornava `None` invece del tipo dichiarato:
+        non un errore, un envelope interpolato col default.
+
+        Qui lo slot 3 resta occupato da `None` — cosi' la lista e' ancora un
+        compatto valido per `is_compact_format`, che il layout lo definisce e
+        non va toccata — e l'interp vero sta al 4.
+        """
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_INTERP', 4)
+
+        compatto = [[[0, 0], [100, 1]], 1.0, 2, None, 'step']
+        assert EnvelopeBuilder.is_compact_format(compatto)
+
+        assert EnvelopeBuilder.extract_interp_type(compatto) == 'step'
+        # Stessa cosa per il compatto annidato in una lista mista.
+        assert EnvelopeBuilder.extract_interp_type([compatto]) == 'step'
+
+    def test_il_validatore_segue_gli_slot_insieme_all_espansione(self, monkeypatch):
+        """Il lato che valida si muove con quello che espande.
+
+        Il test qui sopra fissa una meta' dell'invariante: che l'espansione
+        legga le costanti. Ma il rischio di #213 e' il *disallineamento* fra i
+        due lati, e nessuno lo osserva finche' non si muove il layout.
+
+        Qui il layout si muove davvero: `n_reps` e `end_time` si scambiano di
+        posto nelle costanti, e i due lati devono seguire lo scambio. Chi
+        avesse una copia propria degli indici resterebbe sul layout vecchio —
+        dove nella lista permutata c'e' comunque qualcosa di plausibile, che e'
+        il motivo per cui il guasto sarebbe silenzioso.
+
+        `is_compact_format` non e' toccata di proposito: e' lei a *definire* il
+        layout per posizione, quindi le due funzioni si chiamano dirette, come
+        fa il builder dopo che il riconoscimento e' gia' avvenuto.
+        """
+        from pge.parameters import read_direction
+
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_END_TIME', 2)
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_N_REPS', 1)
+
+        # Lista scritta nel layout permutato: n_reps allo slot 1, end_time al 2.
+        permutato = [[[0, -1], [100, 1]], 3, 1.0, 'step']
+
+        # Lato che espande: tre cicli su un pattern a due punti, fine a 1.0.
+        espanso = EnvelopeBuilder._expand_compact_format(permutato)
+        assert len(espanso) == 6
+        assert espanso[-1][0] == pytest.approx(1.0)
+
+        # Lato che valida: accetta lo stesso corpo.
+        read_direction._check_compact(permutato)
+
+        # E rifiuta `n_reps` dove le costanti dicono che sta ora. Un validatore
+        # fermo al layout vecchio rifiuterebbe anche lui, ma come `end_time`:
+        # e' l'hint a dire quale dei due slot ha davvero letto.
+        rotto = [[[0, -1], [100, 1]], 0, 1.0, 'step']
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            read_direction._check_compact(rotto)
+        assert exc_info.value.hint == read_direction._REPS_ARITY_HINT

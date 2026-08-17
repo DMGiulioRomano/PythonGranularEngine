@@ -4,11 +4,22 @@
 """
 Issue #38, PR2 — GateFactory solleva InvalidParameterError per deviation_probability
 malformato (tipo non supportato o valore non parsabile).
+
+Issue #209 — anche l'envelope che non si costruisce e' un errore: il ramo
+envelope non torna piu' `AlwaysGate` con un log, e i due percorsi che portano
+a costruirlo rispondono uguale.
 """
+import logging
+
 import pytest
 
 from pge.parameters.gate_factory import GateFactory
-from pge.shared.exceptions import ConfigError, InvalidParameterError
+from pge.shared.exceptions import (
+    ConfigError,
+    InvalidFieldValueError,
+    InvalidParameterError,
+    ParameterBoundError,
+)
 
 
 def test_classify_deviation_probability_invalid_type_raises_invalid_parameter_error():
@@ -21,6 +32,86 @@ def test_classify_deviation_probability_invalid_type_raises_invalid_parameter_er
     assert "deviation_probability" in err.param_name
 
 
+def _create_gate(raw_value):
+    """Il gate per una chiave del dict per-parametro, come lo crea lo Stream."""
+    return GateFactory.create_gate(
+        deviation_probability={'volume': raw_value},
+        param_key='volume',
+        default_prob=1.0,
+        has_explicit_range=False,
+        duration=1.0,
+        time_mode='absolute',
+    )
+
+
+@pytest.mark.parametrize("raw_value", [
+    # Supera `_is_envelope_like`: prima di #209 arrivava a
+    # `create_scaled_envelope` senza rete e ne risaliva il ValueError nudo.
+    {'points': []},
+    {'type': 'linear', 'points': []},
+    # Non lo supera: prima di #209 finiva nel ramo con `except Exception`,
+    # che tornava AlwaysGate e loggava. Piu' l'errore era grossolano, meno il
+    # sistema lo segnalava.
+    [],
+    ['x'],
+    {'punti': [[0, 50]]},
+])
+def test_envelope_malformato_alza_invalid_field_value_error(raw_value):
+    """I due percorsi verso l'envelope rispondono uguale (issue #209).
+
+    La forma dell'errore non dipende piu' da quanto il corpo somigliasse a un
+    envelope: stessa classe, stesso campo, in entrambi i casi dentro la
+    gerarchia `EngineError` — cioe' attribuibile allo stream da chi la
+    intercetta risalendo.
+    """
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        _create_gate(raw_value)
+
+    err = exc_info.value
+    assert isinstance(err, ConfigError)
+    assert err.field == 'deviation_probability.volume'
+    assert err.value == raw_value
+    assert err.hint
+
+
+def test_envelope_malformato_non_e_piu_un_fallback_da_loggare(caplog):
+    """Il `logger.error` sparisce: non c'e' piu' nessun fallback da tracciare.
+
+    Il log serviva a rendere visibile una scelta presa in silenzio. Ora la
+    scelta non c'e' — il valore non viene interpretato in un altro modo, viene
+    rifiutato — e un log di errore accanto a un'eccezione dice la stessa cosa
+    due volte.
+    """
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(InvalidFieldValueError):
+            _create_gate([])
+
+    assert not [
+        r for r in caplog.records
+        if 'deviation_probability' in r.getMessage()
+    ]
+
+
+def test_envelope_globale_malformato_alza_lo_stesso_errore():
+    """Anche l'envelope globale, non solo quello per-chiave (issue #209).
+
+    `deviation_probability: {points: []}` e' envelope-like, quindi finiva
+    nell'unico altro punto del file che costruiva senza rete: stesso ValueError
+    nudo, fuori dalla gerarchia. Restava l'ultima delle asimmetrie.
+    """
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        GateFactory.create_gate(
+            deviation_probability={'points': []},
+            param_key='volume',
+            default_prob=1.0,
+            has_explicit_range=False,
+            duration=1.0,
+            time_mode='absolute',
+        )
+
+    assert exc_info.value.field == 'deviation_probability'
+
+
 def test_parse_raw_value_invalid_type_raises_invalid_parameter_error():
     """Valore deviation_probability per chiave specifica con tipo invalido → InvalidParameterError."""
     with pytest.raises(InvalidParameterError) as exc_info:
@@ -29,3 +120,44 @@ def test_parse_raw_value_invalid_type_raises_invalid_parameter_error():
     err = exc_info.value
     assert isinstance(err, ConfigError)
     assert "deviation_probability" in err.param_name
+
+
+def test_engine_error_del_builder_risale_intatto():
+    """L'`EngineError` del builder non viene riavvolto (issue #209).
+
+    Il corpo qui sotto e' un envelope ben formato: quello che esplode e' la
+    coppia `ratio ** n_reps` dentro la distribuzione temporale, e l'errore che
+    ne esce nomina gia' il parametro e la coppia. Riavvolgerlo in un
+    `InvalidFieldValueError` su `deviation_probability.volume` direbbe che il
+    corpo non e' un envelope — che e' falso — e perderebbe l'hint che dice
+    quale dei due valori ridurre.
+    """
+    compatto_che_trabocca = [
+        [[0, 5], [100, 50]], 10.0, 400, 'linear',
+        {'type': 'geometric', 'ratio': 10},
+    ]
+
+    with pytest.raises(ParameterBoundError) as exc_info:
+        _create_gate(compatto_che_trabocca)
+
+    err = exc_info.value
+    assert not isinstance(err, InvalidFieldValueError)
+    assert err.hint
+
+
+def test_l_hint_riporta_la_causa_precisa():
+    """L'hint elenca le forme note *e* dice cosa e' andato storto (review #216).
+
+    Senza la causa, l'utente legge che il suo corpo "non si costruisce come
+    envelope" e deve indovinare quale delle forme elencate stava sbagliando.
+    La causa la conosce solo l'eccezione che arriva dal builder, e va letta
+    prima di buttarla via.
+    """
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        _create_gate({'punti': [[0, 50]]})
+
+    hint = exc_info.value.hint
+    # Le forme note restano.
+    assert "formato compatto" in hint
+    # E in coda la ragione, come l'ha detta il builder.
+    assert str(exc_info.value.__cause__) in hint

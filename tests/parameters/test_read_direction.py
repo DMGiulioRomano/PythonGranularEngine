@@ -331,7 +331,7 @@ class TestGuardDiArita:
 
     @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
     def test_macro_forma_dentro_il_pattern_di_un_ciclo(self, ingresso):
-        """`_is_compact_format` guarda solo la lunghezza dei punti del pattern
+        """`is_compact_format` guarda solo la lunghezza dei punti del pattern
         (2 o 3), e un BP group e' lungo 2: passa quel filtro e arriva al
         builder, che sul primo elemento fa `x_pct / 100.0` e solleva un
         TypeError nudo. Qui il punto del pattern deve essere piatto."""
@@ -341,7 +341,7 @@ class TestGuardDiArita:
         with pytest.raises(InvalidFieldValueError) as exc:
             normalize_read_direction(raw)
         # Il valore dice QUALE elemento e' caduto: il gruppo annidato, non la
-        # lista che lo contiene. Se un domani `_is_compact_format` si
+        # lista che lo contiene. Se un domani `is_compact_format` si
         # stringesse e il corpo finisse su `_check_item`, cadrebbe `corpo[0]`
         # e questa asserzione lo direbbe.
         assert exc.value.value == corpo[0][0]

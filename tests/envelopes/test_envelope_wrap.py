@@ -19,34 +19,34 @@ from pge.envelopes.envelope import Envelope
 # =============================================================================
 
 class TestWrapParser:
-    """Test _is_compact_format con 6° elemento wrap."""
+    """Test is_compact_format con 6° elemento wrap."""
 
     def test_accept_wrap_true(self):
-        assert EnvelopeBuilder._is_compact_format(
+        assert EnvelopeBuilder.is_compact_format(
             [[[0, 0], [50, 1]], 1.0, 2, 'linear', None, True]
         )
 
     def test_accept_wrap_false(self):
-        assert EnvelopeBuilder._is_compact_format(
+        assert EnvelopeBuilder.is_compact_format(
             [[[0, 0], [50, 1]], 1.0, 2, 'linear', None, False]
         )
 
     def test_accept_wrap_none(self):
         """None ammesso (default False)."""
-        assert EnvelopeBuilder._is_compact_format(
+        assert EnvelopeBuilder.is_compact_format(
             [[[0, 0], [50, 1]], 1.0, 2, 'linear', None, None]
         )
 
     def test_reject_wrap_non_bool(self):
-        assert not EnvelopeBuilder._is_compact_format(
+        assert not EnvelopeBuilder.is_compact_format(
             [[[0, 0], [50, 1]], 1.0, 2, 'linear', None, 'wrap']
         )
-        assert not EnvelopeBuilder._is_compact_format(
+        assert not EnvelopeBuilder.is_compact_format(
             [[[0, 0], [50, 1]], 1.0, 2, 'linear', None, 1]
         )
 
     def test_reject_7_elements(self):
-        assert not EnvelopeBuilder._is_compact_format(
+        assert not EnvelopeBuilder.is_compact_format(
             [[[0, 0]], 1.0, 2, 'linear', None, True, 'extra']
         )
 

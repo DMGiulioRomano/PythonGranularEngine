@@ -11,6 +11,19 @@ from typing import List, Tuple, Union, Dict, Any
 import math
 
 
+# Come uscire da un overflow, per parametro (issue #212, review #216). Non e'
+# lo stesso consiglio per tutti: `ratio` e `rate` sono fattori di una
+# progressione, e verso 1 la progressione si appiattisce e la potenza smette di
+# crescere; `exponent` e' una scala, dove 1 e' un valore ordinario e a
+# traboccare e' l'ordine di grandezza. Un parametro non elencato ricade su
+# "riduci <nome>", che e' vero per costruzione: l'overflow arriva dall'alto.
+_RIMEDI_OVERFLOW = {
+    'ratio': "avvicina ratio a 1",
+    'rate': "avvicina rate a 1",
+    'exponent': "riduci exponent in valore assoluto",
+}
+
+
 # =============================================================================
 # ABSTRACT BASE CLASS
 # =============================================================================
@@ -50,6 +63,41 @@ class TimeDistributionStrategy(ABC):
         """Nome della distribuzione."""
         pass
     
+    def _overflow(self, param_name: str, value, n_reps: int, formula: str):
+        """L'errore di una potenza che trabocca (issue #212).
+
+        Non e' un bound sul valore e non poteva esserlo: `ratio: 10` e
+        `n_reps: 400` sono legittimi da soli, e il costruttore che riceve il
+        primo non vede il secondo. La soglia esatta oltre cui `ratio ** n_reps`
+        esce dai float dipende dai due insieme, e replicarla a monte sarebbe
+        aritmetica destinata a divergere dal comportamento reale di CPython.
+        Il punto in cui l'overflow accade e' gia' quello che sa entrambi.
+
+        Per la stessa ragione il messaggio li nomina entrambi: nessuno dei due
+        e' il colpevole, quindi dire solo l'uno o solo l'altro non direbbe
+        all'utente quale ridurre.
+
+        Il rimedio finale, invece, dipende dal parametro: `ratio` e `rate` sono
+        fattori, e verso 1 la progressione diventa uniforme; `exponent` no — 1
+        e' un esponente ordinario, ed e' la sua scala a essere fuori misura.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        return ParameterBoundError(
+            param_name=param_name,
+            value_type="value",
+            min_bound=None,
+            max_bound=None,
+            value=value,
+            hint=(
+                f"la distribuzione '{self.name}' calcola {formula} con "
+                f"n_reps={n_reps}, e il risultato non sta in un float. "
+                f"Ne' {param_name}={value} ne' n_reps={n_reps} e' fuori posto "
+                f"da solo: e' la coppia a esplodere. Riduci n_reps, oppure "
+                f"{_RIMEDI_OVERFLOW.get(param_name, f'riduci {param_name}')}."
+            ),
+        )
+
     def _validate_inputs(self, total_time: float, n_reps: int):
         """Validazione comune."""
         if n_reps < 1:
@@ -135,7 +183,12 @@ class ExponentialDistribution(TimeDistributionStrategy):
         self._validate_inputs(total_time, n_reps)
         
         # Genera pesi esponenziali decrescenti
-        weights = [self.rate ** (-i) for i in range(n_reps)]
+        try:
+            weights = [self.rate ** (-i) for i in range(n_reps)]
+        except OverflowError as exc:
+            raise self._overflow(
+                'rate', self.rate, n_reps, 'rate ** -i'
+            ) from exc
         sum_weights = sum(weights)
         
         # Normalizza a total_time
@@ -231,10 +284,25 @@ class GeometricDistribution(TimeDistributionStrategy):
         
         # Progressione geometrica: a, a*r, a*r^2, ..., a*r^(n-1)
         # Somma = a * (1 - r^n) / (1 - r)
-        sum_geometric = (1 - self.ratio ** n_reps) / (1 - self.ratio)
+        # Con `ratio` intero la potenza non trabocca — Python la calcola esatta
+        # su interi illimitati — ma la divisione che segue si': l'intercettazione
+        # va attorno all'espressione, non attorno alla sola potenza.
+        try:
+            sum_geometric = (1 - self.ratio ** n_reps) / (1 - self.ratio)
+        except OverflowError as exc:
+            raise self._overflow(
+                'ratio', self.ratio, n_reps, 'ratio ** n_reps'
+            ) from exc
         first_duration = total_time / sum_geometric
-        
+
         # Genera durate
+        # La quarta potenza del file resta fuori dal try, e non per svista:
+        # qui l'esponente `i` e' sempre < n_reps, quindi con ratio > 1 questa
+        # potenza e' minore di `ratio ** n_reps`, che poche righe sopra e' gia'
+        # passata; con ratio < 1 decresce verso zero e non trabocca in alcun
+        # caso. Il prodotto nemmeno: con ratio > 1 `sum_geometric` e' grande
+        # nella stessa misura, quindi `first_duration` e' piccolo e le durate
+        # restano nell'ordine di `total_time`.
         cycle_durations = [first_duration * (self.ratio ** i) for i in range(n_reps)]
         
         # Normalizza per garantire sum == total_time (correzione errori floating point)
@@ -310,7 +378,12 @@ class PowerDistribution(TimeDistributionStrategy):
         self._validate_inputs(total_time, n_reps)
                 
         # Genera pesi usando power law
-        weights = [(i + 1) ** self.exponent for i in range(n_reps)]
+        try:
+            weights = [(i + 1) ** self.exponent for i in range(n_reps)]
+        except OverflowError as exc:
+            raise self._overflow(
+                'exponent', self.exponent, n_reps, '(i + 1) ** exponent'
+            ) from exc
         sum_weights = sum(weights)
         
         # Normalizza

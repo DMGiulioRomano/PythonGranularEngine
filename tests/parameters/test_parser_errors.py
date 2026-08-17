@@ -70,3 +70,25 @@ def test_parser_envelope_out_of_bounds_raises_parameter_bound_error():
     assert err.stream_id == "drone_c"
     assert err.param_name == "density"
     assert len(err.violations) >= 1
+
+
+def test_parser_errore_dentro_la_costruzione_envelope_e_attribuito_allo_stream():
+    """L'errore che nasce *costruendo* l'envelope porta lo stream (review #216).
+
+    I due errori qui sopra sono sollevati dal parser stesso, che si attribuisce
+    da se'. Questo no: nasce dentro `create_scaled_envelope`, che lo stream non
+    lo conosce — e senza attribuzione la riga `Stream:` di
+    `docs/reference/errors.md` non compare, mentre l'esempio la promette.
+    """
+    parser = _make_parser(stream_id="drone_d", duration=10.0)
+    compatto_che_trabocca = [
+        [[0, 5], [100, 50]], 10.0, 400, 'linear',
+        {'type': 'geometric', 'ratio': 10},
+    ]
+
+    with pytest.raises(ParameterBoundError) as exc_info:
+        parser.parse_parameter(name="density", value_raw=compatto_che_trabocca)
+
+    err = exc_info.value
+    assert isinstance(err, ConfigError)
+    assert err.stream_id == "drone_d"
