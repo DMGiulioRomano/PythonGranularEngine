@@ -197,12 +197,25 @@ Pages are 30 seconds wide in A3 landscape format. A 120-second piece produces a 
 
 ## YAML Configuration
 
-A minimal stream configuration:
+A minimal stream configuration — `stream_id` and `sample` are the only
+required fields. Without `onset` the stream starts at the timeline origin;
+without `duration` it lasts as long as the sample:
 
 ```yaml
 streams:
   - stream_id: "s01"
-    onset: 0.0
+    sample: "source.wav"
+    grain:
+      duration: 0.05
+```
+
+Both are compositional overrides, written only when they differ from the
+sample:
+
+```yaml
+streams:
+  - stream_id: "s01"
+    onset: 12.5
     duration: 30
     sample: "source.wav"
     grain:
