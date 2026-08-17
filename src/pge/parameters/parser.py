@@ -22,6 +22,7 @@ from pge.shared.distribution_strategy import (
     validate_range_anchor,
 )
 from pge.shared.exceptions import (
+    ConfigError,
     InvalidFieldValueError,
     InvalidParameterError,
     ParameterBoundError,
@@ -172,7 +173,16 @@ class GranularParser:
 
         # Caso 2: Struttura complessa (Lista o Dict) -> Envelope
         if isinstance(raw_data, (list, dict)):
-            return create_scaled_envelope(raw_data, self.duration, self.time_mode)
+            # La costruzione dell'envelope ha errori suoi (bounds del formato
+            # compatto, overflow delle potenze): nascono dove lo stream non si
+            # conosce, e vanno attribuiti qui come ogni altro errore del parser.
+            try:
+                return create_scaled_envelope(
+                    raw_data, self.duration, self.time_mode
+                )
+            except ConfigError as err:
+                err.stream_id = self.stream_id
+                raise
         # Caso Errore: Tipo non supportato
         err = InvalidParameterError(
             param_name=context_info,
