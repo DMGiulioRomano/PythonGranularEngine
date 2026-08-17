@@ -313,6 +313,28 @@ def test_parameter_bound_error_keeps_bounds_when_known():
     assert "[0.0, 100.0]" in msg
 
 
+def test_parameter_bound_error_keeps_bounds_when_partially_known():
+    """Un solo bound dichiarato basta a stampare la riga.
+
+    Non e' un caso di laboratorio: `parser.py` clippa gia' con `max_bound`
+    None (bound superiore aperto), e in quel caso `[0.0, None]` e' il dato
+    vero — il minimo esiste, il massimo no. Sopprimere la riga qui
+    nasconderebbe l'unico bound che c'e'.
+    """
+    from pge.shared.exceptions import ParameterBoundError
+
+    err = ParameterBoundError(
+        param_name="grain_duration",
+        value_type="value",
+        value=-1.0,
+        min_bound=0.0,
+        max_bound=None,
+    )
+    msg = err.user_message()
+    assert "Bounds:" in msg
+    assert "[0.0, None]" in msg
+
+
 def test_parameter_bound_error_supports_envelope_violations():
     """ParameterBoundError accetta lista violazioni per envelope."""
     from pge.shared.exceptions import ParameterBoundError
