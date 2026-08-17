@@ -393,6 +393,12 @@ class EnvelopeBuilder:
         from pge.envelopes.time_distribution import TimeDistributionFactory
         
         # Parse input
+        # Precondizione: `compact` ha gia' passato `is_compact_format`, che
+        # ammette da 3 a 6 elementi. I tre `len(compact) > SLOT` qui sotto
+        # distinguono quindi solo gli slot opzionali assenti — non c'e' un
+        # settimo slot da cui difendersi, e `COMPACT_WRAP` e' l'ultimo per
+        # costruzione: e' quel limite superiore a rendere questi test
+        # esaustivi invece che parziali.
         pattern_points_pct = compact[cls.COMPACT_PATTERN]
         end_time = compact[cls.COMPACT_END_TIME]  # Tempo assoluto finale
         n_reps = compact[cls.COMPACT_N_REPS]
