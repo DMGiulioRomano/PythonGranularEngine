@@ -53,6 +53,13 @@ ifneq ($(strip $(PAGE_DURATION)),)
 PYFLAGS += --page-duration $(PAGE_DURATION)
 endif
 
+# 2c-bis. Se GRAIN_HEIGHT e' non-vuoto, aggiungi --grain-height (issue #223):
+# che cosa misura l'altezza del grano sull'asse del buffer nella partitura.
+# Vuoto = default 'duration' di main.py (geometria storica).
+ifneq ($(strip $(GRAIN_HEIGHT)),)
+PYFLAGS += --grain-height $(GRAIN_HEIGHT)
+endif
+
 # 2d. Se MAGNIFY e' true, aggiungi --magnify (lente automatica sul cluster denso)
 ifeq ($(MAGNIFY), true)
 PYFLAGS += --magnify

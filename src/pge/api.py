@@ -403,6 +403,7 @@ def export_score_pdf(
         'envelope_filter': None,
         'magnify_auto': False,
         'magnify_targets': [],
+        'grain_height': 'duration',
     }
     if config:
         merged.update(config)
