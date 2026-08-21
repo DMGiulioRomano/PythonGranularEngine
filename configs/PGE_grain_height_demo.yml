@@ -10,6 +10,11 @@
 # altezza, qualunque sia il ratio; con --grain-height read-span l'altezza
 # segue la porzione letta, che e' quella che il renderer percorre davvero.
 #
+# La densita' e' bassa e la finestra e' asimmetrica (`expodec`) apposta: cosi'
+# i grani restano staccati e la demo si legge anche con la forma `window`
+# (config del visualizer `grain_shape: window`), dove il bordo del grano
+# traccia la curva della sua finestra invece della freccia.
+#
 #   python src/main.py configs/PGE_grain_height_demo.yml output/demo.wav \
 #       --renderer numpy --format wav --visualize --grain-height read-span
 #
@@ -29,10 +34,10 @@ streams:
     duration: 12
     sample: demo_pulses.wav
     time_mode: normalized
-    density: 9
+    density: 3.5
     grain:
       duration: 0.25
-      envelope: hanning
+      envelope: expodec
     pointer:
       start: 0.12
       speed_ratio: 0
@@ -53,10 +58,10 @@ streams:
     duration: 12
     sample: demo_pulses.wav
     time_mode: normalized
-    density: 9
+    density: 3.5
     grain:
       duration: 0.25
-      envelope: hanning
+      envelope: expodec
       reverse:
     pointer:
       start: 0.88

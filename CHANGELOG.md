@@ -58,7 +58,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   l'errore da cui nasce questa distinzione. `configs/PGE_grain_height_demo.yml`
   è la demo: un `pitch.ratio` che spazza gli estremi dell'unità (0.001 → 3) con
   la testina ferma, così l'unica cosa che si muove nel disegno è quanto sample
-  il grano attraversa.
+  il grano attraversa. Densità bassa e finestra asimmetrica (`expodec`) perché
+  la stessa demo si legga anche con `grain_shape: window`, dove il bordo del
+  grano traccia la curva della propria finestra invece della freccia.
 
 ### Documentazione
 
