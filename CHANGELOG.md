@@ -6,6 +6,73 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Non rilasciato]
+
+### Aggiunto
+
+- **`--grain-height duration|read-span`: l'altezza del grano nella mappa può
+  ora misurare la porzione di sample che il grano percorre davvero.** Sull'asse
+  Y della mappa (`Read position (s)`) l'altezza disegnata era `grain.duration`,
+  cioè la porzione che il grano percorrerebbe **leggendo a velocità 1**. La
+  porzione che percorre è `duration × pitch_ratio`, ed è il conto che fanno
+  entrambe le pipeline: nel renderer NumPy i campioni sorgente consumati sono
+  `n_out × increment` con `increment = pitch_ratio × file_sr / output_sr`, in
+  Csound la fase percorsa in `duration` secondi è
+  `duration × pitch_ratio / iSampleLen`. Le due coincidono solo a
+  `|pitch_ratio| = 1`, ed è per questo che la geometria sbagliata non si
+  vedeva: a `pitch: semitones: 12` la freccia dichiarava metà del buffer che il
+  renderer legge, e la pendenza apparente restava 45 gradi qualunque fosse la
+  trasposizione (issue #223).
+
+  ```bash
+  python src/main.py configs/brano.yml --visualize --grain-height read-span
+  make all FILE=brano AUTOVISUAL=true GRAIN_HEIGHT=read-span
+  ```
+
+  **Non è un fix silenzioso, è un modo**, e il default resta quello storico
+  (`duration`): la geometria fedele cambia l'aspetto di **ogni** partitura già
+  generata con un `pitch` diverso da zero o una voce con `pitch_factor ≠ 1`, e
+  una figura che cambia forma sotto i piedi di chi l'ha stampata è un'altra
+  figura, non la stessa più corretta. Per la stessa ragione la mappa dichiara
+  la propria geometria: con `read-span` l'etichetta dell'asse porta
+  `(grain height = read span)`, così due mappe della stessa composizione nei
+  due modi non sono indistinguibili fuori contesto.
+
+  Il modo vale per entrambe le forme del grano (`grain_shape: arrow` e
+  `window`) e per il contenuto della lente, che passa dallo stesso disegno.
+  Due conseguenze della separazione fra altezza e larghezza:
+
+  - la **testa della freccia** è ora metà dell'**altezza** e non metà della
+    larghezza: erano lo stesso numero finché l'altezza era la durata;
+  - un grano veloce vicino alla fine del sample supera `sample_duration` più
+    spesso e viene **tagliato** dal bordo del subplot, mentre il renderer
+    wrappa (`read_indices % n_source`). Il taglio resta, dichiarato invece che
+    corretto (issue #223, punto 2).
+
+  Superficie: `grain_visuals.grain_height` con le costanti
+  `GRAIN_HEIGHT_DURATION` / `GRAIN_HEIGHT_READ_SPAN` / `GRAIN_HEIGHT_MODES`;
+  `arrow_vertices` e `window_vertices` prendono `height_mode` keyword-only; la
+  config del visualizer ha la chiave `grain_height`; la variabile Make è
+  `GRAIN_HEIGHT`. Un modo sconosciuto solleva `ValueError` col nome del refuso
+  invece di ripiegare in silenzio sulla geometria storica — che è esattamente
+  l'errore da cui nasce questa distinzione. `configs/PGE_grain_height_demo.yml`
+  è la demo: un `pitch.ratio` che spazza gli estremi dell'unità (0.001 → 3) con
+  la testina ferma, così l'unica cosa che si muove nel disegno è quanto sample
+  il grano attraversa. Densità bassa e finestra asimmetrica (`expodec`) perché
+  la stessa demo si legga anche con `grain_shape: window`, dove il bordo del
+  grano traccia la curva della propria finestra invece della freccia.
+
+### Documentazione
+
+- `docs/reference/cli.md`: flag `--grain-height`, vincoli e nota sul taglio ai
+  bordi del sample.
+- `docs/explanation/score-visualizer-layout.md`: sezione «Due letture dello
+  stesso asse» — perché l'altezza è una porzione di buffer, perché il modo
+  fedele non è il default, e le tre conseguenze della separazione fra altezza
+  e larghezza.
+
+---
+
 ## [v8.0.0] — "Timeline Origin" — 2026-08-17
 
 ### Aggiunto

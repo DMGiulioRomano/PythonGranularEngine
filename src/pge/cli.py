@@ -113,6 +113,16 @@ def _parse_jobs(argv):
     return value
 
 
+# Valori di --grain-height, e il modo di grain_visuals a cui corrispondono.
+# Sulla CLI il valore composto si scrive col trattino, come i flag; nella
+# config del visualizer resta snake_case, come ogni altra chiave. Un dict e non
+# una coppia di frozenset: la traduzione fra le due grafie e' proprio il dato.
+_GRAIN_HEIGHT_CLI_MODES = {
+    'duration': 'duration',
+    'read-span': 'read_span',
+}
+
+
 # Chiavi ammesse in un target di --magnify-at. Numeriche (float) e stringa.
 _MAGNIFY_NUMERIC_KEYS = frozenset({'t', 'y', 'zoom', 'out', 'src'})
 _MAGNIFY_STR_KEYS = frozenset({'stream'})
@@ -178,6 +188,7 @@ def main():
             "[--plot-envelopes nomi,csv] "
             "[--magnify] [--magnify-at SPEC] "
             "[--page-duration SECONDI] "
+            "[--grain-height duration|read-span] "
             "[--per-stream] "
             "[--renderer csound|numpy] "
             "[--jobs N|auto] "
@@ -238,6 +249,23 @@ def main():
                     f"Validi: {', '.join(sorted(PLOT_ENVELOPE_KEYS))}"
                 )
                 sys.exit(1)
+    # --grain-height duration|read-span (issue #223): che cosa misura
+    # l'altezza del grano sull'asse del buffer nella partitura. 'duration' e'
+    # la geometria storica (la porzione che il grano percorrerebbe a velocita'
+    # 1), 'read-span' quella che percorre davvero (durata x |pitch_ratio|).
+    # Come --plot-envelopes la validazione e' sempre attiva: il refuso non
+    # resta muto solo perche' manca --visualize.
+    grain_height = _GRAIN_HEIGHT_CLI_MODES['duration']
+    if '--grain-height' in sys.argv:
+        idx = sys.argv.index('--grain-height')
+        if idx + 1 < len(sys.argv):
+            raw = sys.argv[idx + 1]
+            if raw not in _GRAIN_HEIGHT_CLI_MODES:
+                print(f"--grain-height non valido: '{raw}'. "
+                      f"Valori: {', '.join(_GRAIN_HEIGHT_CLI_MODES)}")
+                sys.exit(1)
+            grain_height = _GRAIN_HEIGHT_CLI_MODES[raw]
+
     # --magnify: lente automatica sul cluster piu' denso (una per pagina).
     # Effetto solo con --visualize, come --show-static. Token esatto: '--magnify'
     # non collide con '--magnify-at' (sono elementi distinti di sys.argv).
@@ -466,6 +494,7 @@ def main():
                 'envelope_filter': plot_envelopes,
                 'magnify_auto': magnify_auto,
                 'magnify_targets': magnify_targets,
+                'grain_height': grain_height,
             })
 
         print(f"Log: {get_clip_log_path()}")

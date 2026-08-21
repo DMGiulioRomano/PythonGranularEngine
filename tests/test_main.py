@@ -318,6 +318,71 @@ class TestPlotEnvelopesFlag:
 
 
 # =============================================================================
+# TEST FLAG --grain-height
+# =============================================================================
+
+class TestGrainHeightFlag:
+    """
+    --grain-height duration|read-span sceglie che cosa misura l'altezza del
+    grano sull'asse del buffer (issue #223): la durata (storico) o la porzione
+    di sample che il grano percorre davvero. Il valore arriva alla config di
+    ScoreVisualizer come `grain_height`, in snake_case. Valore ignoto: exit 1.
+    """
+
+    def _get_viz_config(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        _, kwargs = mocks['ScoreVisualizer'].call_args
+        return kwargs['config']
+
+    def test_default_is_duration(self, mocks):
+        """Senza flag la geometria e' quella storica: nessuna partitura gia'
+        generata cambia aspetto da sola."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize'])
+        assert config.get('grain_height') == 'duration'
+
+    def test_read_span_reaches_the_config(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--grain-height', 'read-span'])
+        assert config.get('grain_height') == 'read_span'
+
+    def test_duration_can_be_asked_explicitly(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--grain-height', 'duration'])
+        assert config.get('grain_height') == 'duration'
+
+    def test_unknown_value_exits_with_1(self, mocks):
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--grain-height', 'banana']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+    def test_underscore_form_is_refused(self, mocks):
+        """Sulla CLI i valori composti si scrivono col trattino, come i flag:
+        una sola grafia, invece di due che passano entrambe."""
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize',
+                           '--grain-height', 'read_span']):
+            with pytest.raises(SystemExit):
+                mocks['main'].main()
+
+    def test_validation_happens_without_visualize(self, mocks):
+        """Come --plot-envelopes: il valore si valida comunque, anche se senza
+        --visualize non ha effetto. Un refuso non resta muto."""
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif',
+                           '--grain-height', 'banana']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+
+# =============================================================================
 # TEST FLAG --page-duration
 # =============================================================================
 

@@ -25,6 +25,7 @@ USAGE = (
     "[--plot-envelopes nomi,csv] "
     "[--magnify] [--magnify-at SPEC] "
     "[--page-duration SECONDI] "
+    "[--grain-height duration|read-span] "
     "[--per-stream] "
     "[--renderer csound|numpy] "
     "[--jobs N|auto] "
@@ -169,6 +170,18 @@ class TestMagnifyAtValidationGolden:
         assert capsys.readouterr().out == (
             "--magnify-at: nessun target valido nello SPEC.\n"
         )
+
+
+class TestGrainHeightValidationGolden:
+    """Messaggio esatto di --grain-height (valore fuori dai due modi)."""
+
+    def test_unknown_mode_message(self, mocks, capsys):
+        _run_expect_exit(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize',
+                    '--grain-height', 'banana'])
+        assert capsys.readouterr().out == (
+            "--grain-height non valido: 'banana'. "
+            "Valori: duration, read-span\n")
 
 
 class TestSvLayoutValidationGolden:

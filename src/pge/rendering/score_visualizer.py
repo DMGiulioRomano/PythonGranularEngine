@@ -488,7 +488,7 @@ class ScoreVisualizer:
             # Configura assi waveform
             ax_wave.set_ylim(-0.02, sample_duration+0.02)
             ax_wave.set_xlim(-1.1, 1.1)
-            ax_wave.set_ylabel(f"Read position (s)\n{sample_path}",
+            ax_wave.set_ylabel(f"{self._read_position_label()}\n{sample_path}",
                             fontsize=self._fs(self.config['label_fontsize']))
             ax_wave.set_xticks([])
             # Scarta i tick estremi dell'asse buffer: con le righe impilate
@@ -818,16 +818,36 @@ class ScoreVisualizer:
         )
 
 
-    def _grain_arrow_vertices(self, grain):
+    def _grain_height_mode(self):
+        """Che cosa misura l'altezza del grano sull'asse del buffer.
+
+        Config `grain_height`: 'duration' (storico) o 'read_span' (la porzione
+        che il grano percorre davvero). Vedi grain_visuals.grain_height."""
+        return self.config.get(
+            'grain_height', grain_visuals.GRAIN_HEIGHT_DURATION)
+
+    def _read_position_label(self):
+        """Etichetta dell'asse del buffer, che dichiara la propria geometria.
+
+        Con l'altezza fedele alla porzione letta la stessa figura racconta
+        un'altra cosa: due partiture della stessa composizione, una per modo,
+        sarebbero indistinguibili se l'asse non lo dicesse."""
+        if self._grain_height_mode() == grain_visuals.GRAIN_HEIGHT_READ_SPAN:
+            return "Read position (s)\n(grain height = read span)"
+        return "Read position (s)"
+
+    def _grain_arrow_vertices(self, grain, height_mode=None):
         """Vertici della freccia direzionale (forma storica del grano).
         Delega a rendering.grain_visuals.arrow_vertices."""
-        return grain_visuals.arrow_vertices(grain)
+        return grain_visuals.arrow_vertices(
+            grain, height_mode=height_mode or self._grain_height_mode())
 
-    def _grain_window_vertices(self, grain, xs, w):
+    def _grain_window_vertices(self, grain, xs, w, height_mode=None):
         """Vertici della silhouette "testa/bordo": base piatta sul pointer, il
         bordo superiore segue la curva della finestra w.
         Delega a rendering.grain_visuals.window_vertices."""
-        return grain_visuals.window_vertices(grain, xs, w)
+        return grain_visuals.window_vertices(
+            grain, xs, w, height_mode=height_mode or self._grain_height_mode())
 
     def _window_silhouette(self, name, resolution):
         """Curva finestra normalizzata su [0,1] in ampiezza e dominio.
@@ -877,6 +897,10 @@ class ScoreVisualizer:
         # volta per stream) e la risoluzione di campionamento.
         grain_shape = self.config.get('grain_shape', 'arrow')
         window_mode = grain_shape == 'window'
+        # Letto una volta per chiamata e non per grano: il modo e' una
+        # proprieta' della figura, non del singolo grano. Un modo ignoto
+        # solleva al primo grano, dentro grain_visuals.grain_height.
+        height_mode = self._grain_height_mode()
         if window_mode:
             name_map = self._window_name_map(stream)
             resolution = self.config['window_shape_resolution']
@@ -897,9 +921,10 @@ class ScoreVisualizer:
             if use_window:
                 xs, w = self._window_silhouette(
                     name_map[grain.envelope_table], resolution)
-                vertices = self._grain_window_vertices(grain, xs, w)
+                vertices = self._grain_window_vertices(
+                    grain, xs, w, height_mode)
             else:
-                vertices = self._grain_arrow_vertices(grain)
+                vertices = self._grain_arrow_vertices(grain, height_mode)
 
             # Crea poligono
             poly = mpatches.Polygon(vertices, closed=True)

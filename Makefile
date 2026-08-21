@@ -62,6 +62,10 @@ SHOWSTATIC ?= false
 PLOT_ENVELOPES ?=
 # Durata (secondi) di una pagina nel plot della partitura (richiede AUTOVISUAL=true)
 PAGE_DURATION ?= 15
+# Che cosa misura l'altezza del grano nella partitura (issue #223):
+# duration = la durata (storico), read-span = la porzione di sample che il
+# grano percorre davvero (durata x |pitch_ratio|). Vuoto = duration.
+GRAIN_HEIGHT ?=
 FILE ?= PGE_test
 TEST ?= false
 PRECLEAN ?=true
@@ -134,6 +138,7 @@ help:
 	@echo "  AUTOPEN=true/false   - Auto-apri file generati"
 	@echo "  AUTOVISUAL=true/false- Genera visualizzazioni PDF"
 	@echo "  PAGE_DURATION=secondi - Durata pagina nel plot partitura (default: 15, richiede AUTOVISUAL=true)"
+	@echo "  GRAIN_HEIGHT=duration|read-span - Altezza del grano nella partitura: durata (default) o porzione di sample letta davvero (richiede AUTOVISUAL=true)"
 	@echo "  TEST=true/false      - Build tutti i file o solo FILE"
 	@echo "  CLEAN_RPP=true/false - make clean rimuove anche .rpp (default: false, preserva lavoro REAPER)"
 	@echo "  REAPER=true/false        - Esporta progetto Reaper .rpp"

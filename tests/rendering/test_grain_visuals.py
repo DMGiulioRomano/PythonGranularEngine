@@ -18,8 +18,12 @@ from types import SimpleNamespace
 import pytest
 
 from pge.rendering.grain_visuals import (
+    GRAIN_HEIGHT_DURATION,
+    GRAIN_HEIGHT_MODES,
+    GRAIN_HEIGHT_READ_SPAN,
     WINDOW_SILHOUETTE_CACHE_SIZE,
     arrow_vertices,
+    grain_height,
     window_silhouette,
     window_vertices,
     visible_grains,
@@ -492,3 +496,134 @@ class TestWindowNameMap:
         interamente sulla freccia."""
         assert window_name_map(SimpleNamespace()) == {}
         assert window_name_map(SimpleNamespace(window_table_map=None)) == {}
+
+
+class TestGrainHeightMode:
+    """Quanto sample il grano percorre davvero (issue #223).
+
+    L'altezza sull'asse Y della mappa e' una porzione di buffer, e la porzione
+    che il grano percorre e' `duration * pitch_ratio`: `duration` da sola e' la
+    porzione che percorrerebbe leggendo a velocita' 1. Le due coincidono solo a
+    |ratio| = 1, ed e' per questo che il modo storico non si vedeva sbagliato.
+
+    Due modi, perche' la geometria giusta cambia l'aspetto di ogni partitura
+    gia' generata: `duration` resta il default, `read_span` e' la lettura
+    fedele al rendering.
+    """
+
+    def test_duration_mode_ignores_the_ratio(self):
+        """Modo storico: l'altezza e' la durata, qualunque sia la
+        trasposizione. Resta il default perche' e' la geometria di ogni figura
+        gia' pubblicata."""
+        for ratio in (0.5, 1.0, 2.0, -2.0):
+            assert grain_height(grain(duration=0.1, pitch_ratio=ratio),
+                                GRAIN_HEIGHT_DURATION) == pytest.approx(0.1)
+
+    def test_read_span_mode_scales_with_the_ratio(self):
+        """Un grano a un'ottava sopra legge il doppio di buffer nello stesso
+        tempo: e' il fattore `increment` del renderer NumPy, e la fase di
+        `poscil` in Csound, scritti come geometria."""
+        assert grain_height(grain(duration=0.1, pitch_ratio=2.0),
+                            GRAIN_HEIGHT_READ_SPAN) == pytest.approx(0.2)
+        assert grain_height(grain(duration=0.1, pitch_ratio=0.5),
+                            GRAIN_HEIGHT_READ_SPAN) == pytest.approx(0.05)
+
+    def test_read_span_mode_takes_the_absolute_ratio(self):
+        """Il verso lo decide gia' il segno, ribaltando la forma sotto il
+        pointer: l'altezza e' una lunghezza, e una lunghezza non e' negativa."""
+        assert grain_height(grain(duration=0.1, pitch_ratio=-2.0),
+                            GRAIN_HEIGHT_READ_SPAN) == pytest.approx(0.2)
+
+    def test_unknown_mode_is_refused_by_name(self):
+        """Un refuso nel modo non deve disegnare in silenzio la geometria
+        sbagliata: e' esattamente l'errore che questa issue chiude."""
+        with pytest.raises(ValueError, match='read-span'):
+            grain_height(grain(), 'read-span')
+
+    def test_the_two_modes_are_the_declared_set(self):
+        assert GRAIN_HEIGHT_MODES == frozenset(
+            {GRAIN_HEIGHT_DURATION, GRAIN_HEIGHT_READ_SPAN})
+
+
+class TestArrowVerticesReadSpan:
+    """La freccia in modo `read_span`: la punta cade dove il grano smette
+    davvero di leggere."""
+
+    def test_tip_reaches_the_read_span(self):
+        verts = arrow_vertices(
+            grain(onset=0.0, duration=0.1, pointer_pos=1.0, pitch_ratio=3.0),
+            height_mode=GRAIN_HEIGHT_READ_SPAN)
+        assert verts[3][1] == pytest.approx(1.3)
+
+    def test_head_still_takes_half_the_height(self):
+        """La testa resta meta' dell'altezza, non meta' della larghezza: le
+        due erano lo stesso numero solo finche' l'altezza era la durata."""
+        verts = arrow_vertices(
+            grain(onset=0.0, duration=0.1, pointer_pos=0.0, pitch_ratio=3.0),
+            height_mode=GRAIN_HEIGHT_READ_SPAN)
+        shoulders = [verts[2][1], verts[4][1]]
+        assert shoulders == [pytest.approx(0.15), pytest.approx(0.15)]
+
+    def test_reverse_head_still_takes_half_the_height(self):
+        verts = arrow_vertices(
+            grain(onset=0.0, duration=0.1, pointer_pos=0.0, pitch_ratio=-3.0),
+            height_mode=GRAIN_HEIGHT_READ_SPAN)
+        shoulders = [verts[2][1], verts[4][1]]
+        assert shoulders == [pytest.approx(-0.15), pytest.approx(-0.15)]
+
+    def test_width_stays_the_duration(self):
+        """Solo l'asse Y cambia significato: sull'asse X il grano occupa il
+        tempo che dura, trasposto o no."""
+        verts = arrow_vertices(
+            grain(onset=2.0, duration=0.1, pitch_ratio=3.0),
+            height_mode=GRAIN_HEIGHT_READ_SPAN)
+        xs = [x for x, _ in verts]
+        assert (min(xs), max(xs)) == pytest.approx((2.0, 2.1))
+
+    def test_a_nearly_still_grain_collapses_to_its_pointer(self):
+        """Ratio 0.001: il grano attraversa un millesimo del buffer che la
+        durata suggerisce. La freccia si appiattisce sulla posizione di
+        lettura, ed e' quello che il rendering fa davvero."""
+        verts = arrow_vertices(
+            grain(onset=0.0, duration=1.0, pointer_pos=0.5, pitch_ratio=0.001),
+            height_mode=GRAIN_HEIGHT_READ_SPAN)
+        assert len(verts) == 5
+        assert verts[3][1] == pytest.approx(0.501)
+
+    def test_duration_mode_is_the_default(self):
+        """Chi non chiede niente ha la geometria storica: il modo nuovo si
+        accende, non si subisce."""
+        g = grain(onset=0.0, duration=0.1, pointer_pos=0.0, pitch_ratio=3.0)
+        assert arrow_vertices(g) == arrow_vertices(
+            g, height_mode=GRAIN_HEIGHT_DURATION)
+        assert arrow_vertices(g)[3][1] == pytest.approx(0.1)
+
+
+class TestWindowVerticesReadSpan:
+    """La silhouette in modo `read_span`: l'asse Y porta l'ampiezza della
+    finestra scalata sulla porzione letta, non piu' sulla durata."""
+
+    def test_edge_peaks_at_the_read_span(self):
+        xs, w = window_silhouette('hanning', 33)
+        verts = window_vertices(
+            grain(onset=0.0, duration=0.1, pointer_pos=1.0, pitch_ratio=3.0),
+            xs, w, height_mode=GRAIN_HEIGHT_READ_SPAN)
+        ys = [y for _, y in verts]
+        assert max(ys) == pytest.approx(1.3)
+        assert min(ys) == pytest.approx(1.0)
+
+    def test_reverse_edge_falls_by_the_read_span(self):
+        xs, w = window_silhouette('hanning', 33)
+        verts = window_vertices(
+            grain(onset=0.0, duration=0.1, pointer_pos=1.0, pitch_ratio=-3.0),
+            xs, w, height_mode=GRAIN_HEIGHT_READ_SPAN)
+        ys = [y for _, y in verts]
+        assert min(ys) == pytest.approx(0.7)
+        assert max(ys) == pytest.approx(1.0)
+
+    def test_duration_mode_is_the_default(self):
+        xs, w = window_silhouette('hanning', 33)
+        g = grain(onset=0.0, duration=0.1, pointer_pos=1.0, pitch_ratio=3.0)
+        assert (window_vertices(g, xs, w)
+                == window_vertices(g, xs, w, height_mode=GRAIN_HEIGHT_DURATION))
+        assert max(y for _, y in window_vertices(g, xs, w)) == pytest.approx(1.1)
