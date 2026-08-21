@@ -1,9 +1,9 @@
 # project: PGE_test
-# saved:   2026-05-26T14:44:20.222Z
+# saved:   2026-08-18T18:05:22.201Z
 # editor:  PGE-ui
 
 title: il mondo dorme
-duration: 60
+duration: 55
 bpm: 120
 streams:
   - stream_id: stream1
@@ -12,88 +12,30 @@ streams:
     sample: pino.wav
     time_mode: normalized
     distribution_mode: gaussian
-    density:
-      - - 0
-        - 10
-      - - 0.15
-        - 10
-      - - 0.4
-        - 50
-      - - 0.6
-        - 30
-      - - 1
-        - 30
-    distribution:
-      - - 0
-        - 0
-      - - 0.5
-        - 1
-      - - 1
-        - 0
+    density: [[0, 10], [0.15, 10], [0.4, 50], [0.6, 30], [1, 30]]
+    distribution: [[0, 0], [0.5, 1], [1, 0]]
     grain:
-      duration:
-        - - 0
-          - 0.05
-        - - 0.5
-          - 0.08
-        - - 1
-          - 0.05
+      duration: [[0, 0.05], [0.5, 0.08], [1, 0.05]]
       duration_range: 0.01
       envelope: hanning
     pointer:
       start: 0
-      speed_ratio:
-        - - 0
-          - -1
-        - - 1
-          - 1
+      speed_ratio: [[0, -1], [1, 1]]
     pitch:
       semitones: 0
     pan: 0
     volume: -6
-    deviation_probability:
-      - - 0
-        - 50
-      - - 0.5
-        - 0
-      - - 1
-        - 30
+    deviation_probability: [[0, 50], [0.5, 0], [1, 30]]
   - stream_id: stream2
     onset: 40
     duration: 5
     sample: pino.wav
     time_mode: normalized
     distribution_mode: uniform
-    density:
-      - - - - 0
-            - 5
-          - - 50
-            - 40
-          - - 100
-            - 5
-        - 1
-        - 6
-        - cubic
-        - exponential
+    density: [[[[0, 5], [50, 40], [100, 5]], 1, 6, cubic, exponential]]
     distribution: 0
     grain:
-      duration:
-        - - 0
-          - 0.02
-        - - 0.1
-          - 0.02
-        - - - - 0
-              - 0.05
-            - - 50
-              - 0.18
-            - - 100
-              - 0.05
-          - 0.9
-          - 5
-          - linear
-          - geometric
-        - - 1
-          - 0.05
+      duration: [[0, 0.02], [0.1, 0.02], [[[0, 0.05], [50, 0.18], [100, 0.05]], 0.9, 5, linear, geometric], [1, 0.05]]
       envelope: hanning
     pointer:
       start: 0
@@ -141,22 +83,7 @@ streams:
       speed_ratio: 1
     pitch:
       semitones: 0
-    pan:
-      - - - - 0
-            - -45
-          - - 25
-            - 45
-          - - 50
-            - -45
-          - - 75
-            - 45
-          - - 100
-            - -45
-        - 1
-        - 4
-        - cubic
-        - type: logarithmic
-          base: 3
+    pan: [[[[0, -45], [25, 45], [50, -45], [75, 45], [100, -45]], 1, 4, cubic, {type: logarithmic, base: 3}]]
     volume: -6
   - stream_id: stream5
     onset: 0
@@ -165,34 +92,14 @@ streams:
     time_mode: normalized
     distribution_mode: gaussian
     density: 3
-    distribution:
-      - - 0
-        - 0
-      - - 0.5
-        - 1
-      - - 1
-        - 0
+    distribution: [[0, 0], [0.5, 1], [1, 0]]
     grain:
-      duration:
-        - - 0
-          - 0.05
-        - - 0.112
-          - 0.0876
-        - - 0.6823
-          - 0.0421
-        - - 0.9349
-          - 0.0919
-        - - 1
-          - 0.05
+      duration: [[0, 0.05], [0.112, 0.0876], [0.6823, 0.0421], [0.9349, 0.0919], [1, 0.05]]
       envelope: gaussian
     pointer:
       start: 0
       speed_ratio: 1
     pitch:
       semitones: 0
-    pan:
-      - - 0
-        - -3600
-      - - 1
-        - 3600
+    pan: [[0, -3600], [1, 3600]]
     volume: -9

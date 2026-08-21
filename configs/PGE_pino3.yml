@@ -1,50 +1,44 @@
-composition:
-  title: "il mondo dorme"
+# project: PGE_pino3
+# saved:   2026-08-18T18:07:51.750Z
+# editor:  PGE-ui
 
+duration: 87
+bpm: 120
 streams:
-  - stream_id: "texture1"
-    time_mode: "normalized"
-    onset: 0.0
+  - stream_id: texture1
+    onset: 0
     duration: 60
-    #range_always_active:
-    sample: "001-0_0-3_0.wav"
-    pointer:
-      #loop_unite: absolute
-      #loop_start: [[[0,.6],[100,.1]],1,5]
-      #loop_dur: [[[0,.6],[100,.1]],1,3]
-      speed_ratio: .003
-      offset_range: .2
-      #speed_ratio: [[[0,-1],[25,0.1],[75,.4],[100,1]],1.0,3]
+    sample: 001-0_0-3_0.wav
+    time_mode: normalized
     density: 2000
     distribution: 1
     grain:
-      duration: .05
-      duration_range: .02
-      reverse:
+      duration: 0.05
+      duration_range: 0.02
+      reverse: null
+    pointer:
+      speed_ratio: 0.003
+      offset_range: 0.2
+    pan: [[0, 40], [0.6, -30], [1, -70]]
     volume: -30
-    deviation_probability: [[0,1],[.5,100],[1,0]]
-    pan: [[0,40],[.6,-30],[1,-70]]
-
-  - stream_id: "texture1"
-    time_mode: "normalized"
+    deviation_probability: [[0, 1], [0.5, 100], [1, 0]]
+  - stream_id: texture1#2
     onset: 7
     duration: 70
-    #range_always_active:
-    sample: "002-34_468-3_219.wav"
-    pointer:
-      #loop_unite: absolute
-      loop_start: .25 #[[[0,.25],[100,.5]],1,5]
-      loop_dur: [[[0,.6],[100,.1]],1,5]
-      speed_ratio: -.03
-      offset_range: [[[0,.02], [100,.2]],1,5]
-      #speed_ratio: [[[0,-1],[25,0.1],[75,.4],[100,1]],1.0,3]
+    sample: 002-34_468-3_219.wav
+    time_mode: normalized
     density: 3000
     distribution: 1
     grain:
-      duration: .05
-      duration_range: .02
-      reverse:
-    #volume: -20
-    pan_range: [[0,60],[1,100]]
-    deviation_probability: [[0,1],[.5,100],[1,0]]
-
+      duration: 0.05
+      duration_range: 0.02
+      reverse: null
+    pointer:
+      speed_ratio: "-.03"
+      loop_start: 0.25
+      loop_dur: [[[0, 0.6], [100, 0.1]], 1, 5]
+      offset_range: [[[0, 0.02], [100, 0.2]], 1, 5]
+    pan_range: [[0, 60], [1, 100]]
+    deviation_probability: [[0, 1], [0.5, 100], [1, 0]]
+composition:
+  title: il mondo dorme
