@@ -105,18 +105,72 @@ def visible_grains(stream, t_start, t_end):
     ]
 
 
-def arrow_vertices(grain):
+# =============================================================================
+# ALTEZZA DEL GRANO: due letture dello stesso asse
+# =============================================================================
+
+# Storico: l'altezza e' la durata, cioe' la porzione di buffer che il grano
+# percorrerebbe leggendo a velocita' 1. Resta il default perche' e' la
+# geometria di ogni partitura gia' generata.
+GRAIN_HEIGHT_DURATION = 'duration'
+# Fedele al rendering: la porzione che il grano percorre DAVVERO, durata
+# scalata per il rapporto di trasposizione.
+GRAIN_HEIGHT_READ_SPAN = 'read_span'
+
+GRAIN_HEIGHT_MODES = frozenset({GRAIN_HEIGHT_DURATION, GRAIN_HEIGHT_READ_SPAN})
+
+
+def grain_height(grain, height_mode=GRAIN_HEIGHT_DURATION):
+    """Quanto buffer occupa il grano sull'asse Y, secondo il modo scelto.
+
+    L'asse Y della mappa e' la posizione di lettura nel sample, quindi
+    l'altezza di un grano e' una porzione di buffer. Quale porzione, pero',
+    dipende da cosa si vuole leggere:
+
+    - `duration` — la porzione che il grano percorrerebbe a velocita' 1. E' il
+      tempo del grano riportato sull'asse del buffer, e coincide con la
+      porzione vera solo a |ratio| = 1.
+    - `read_span` — la porzione che il grano percorre davvero, `duration *
+      |pitch_ratio|`. E' il conto che fanno entrambe le pipeline: nel renderer
+      NumPy i campioni sorgente consumati sono `n_out * increment`, con
+      `increment = pitch_ratio * file_sr / output_sr`; in Csound la fase
+      percorsa in `duration` secondi e' `duration * pitch_ratio / iSampleLen`.
+
+    Valore assoluto: il verso lo decide gia' il segno del ratio, ribaltando la
+    forma sotto il pointer (come per il colore in `_visible_cents`). Un'altezza
+    e' una lunghezza, e una lunghezza non e' negativa.
+
+    Un modo sconosciuto e' un errore e non un default silenzioso: disegnare
+    di nascosto la geometria sbagliata e' esattamente il problema da cui
+    nasce questa distinzione (issue #223).
+    """
+    if height_mode == GRAIN_HEIGHT_DURATION:
+        return grain.duration
+    if height_mode == GRAIN_HEIGHT_READ_SPAN:
+        return grain.duration * abs(grain.pitch_ratio)
+    raise ValueError(
+        f"modo di altezza del grano sconosciuto: '{height_mode}'. "
+        f"Validi: {', '.join(sorted(GRAIN_HEIGHT_MODES))}")
+
+
+def arrow_vertices(grain, *, height_mode=GRAIN_HEIGHT_DURATION):
     """Vertici della freccia direzionale (forma storica del grano).
 
-    Rettangolo [onset, onset+duration] x [pointer, pointer+duration] con la
-    punta triangolare verso l'alto. L'altezza e' la durata: quanto sample il
-    grano consuma.
+    Rettangolo [onset, onset+duration] x [pointer, pointer+altezza] con la
+    punta triangolare verso l'alto. Sull'asse X il grano occupa il tempo che
+    dura; sull'asse Y l'altezza dice quanto sample attraversa, secondo
+    `height_mode` (vedi `grain_height`).
+
+    La testa occupa meta' dell'ALTEZZA. Era scritta come meta' della larghezza
+    perche' le due erano lo stesso numero finche' l'altezza era la durata; con
+    `read_span` si separano, e la proporzione che rende la freccia leggibile e'
+    quella verticale.
     """
     x = grain.onset
     width = grain.duration
     pointer_y = grain.pointer_pos
-    height = grain.duration
-    head_width = width * 0.5
+    height = grain_height(grain, height_mode)
+    head_height = height * 0.5
 
     if grain.pitch_ratio < 0:
         # Lettura all'indietro: la freccia si ribalta sotto il pointer. Il
@@ -125,36 +179,45 @@ def arrow_vertices(grain):
         return [
             (x, pointer_y),                     # base sinistra
             (x + width, pointer_y),             # base destra
-            (x + width, y_tip + head_width),    # spalla destra
+            (x + width, y_tip + head_height),   # spalla destra
             (x + width / 2, y_tip),             # punta
-            (x, y_tip + head_width),            # spalla sinistra
+            (x, y_tip + head_height),           # spalla sinistra
         ]
 
     y_tip = pointer_y + height
     return [
         (x, pointer_y),                         # base sinistra
         (x + width, pointer_y),                 # base destra
-        (x + width, y_tip - head_width),        # spalla destra
+        (x + width, y_tip - head_height),       # spalla destra
         (x + width / 2, y_tip),                 # punta
-        (x, y_tip - head_width),                # spalla sinistra
+        (x, y_tip - head_height),               # spalla sinistra
     ]
 
 
-def window_vertices(grain, xs, w):
+def window_vertices(grain, xs, w, *, height_mode=GRAIN_HEIGHT_DURATION):
     """Vertici della silhouette: base piatta sul pointer, bordo che segue la
     finestra.
 
     Args:
         grain: il grano da disegnare.
         xs, w: la curva normalizzata su [0,1] (vedi window_silhouette).
+        height_mode: su cosa si scala l'ampiezza della finestra (vedi
+            `grain_height`).
 
     Il verso segue il segno di pitch_ratio come per la freccia: sopra il
     pointer in avanti, sotto all'indietro.
+
+    Qui l'asse Y porta l'ampiezza della finestra, non la porzione letta: e'
+    una lettura diversa dello stesso asse, e vale la pena dirlo. Scalarla
+    sulla stessa altezza della freccia tiene le due forme coerenti — la
+    silhouette resta iscritta nell'estensione che il grano occupa davvero —
+    ma il picco della curva non e' un punto del buffer: e' il massimo della
+    finestra, disegnato all'altezza a cui il grano arriva.
     """
     x = grain.onset
     width = grain.duration
     pointer_y = grain.pointer_pos
-    height = grain.duration
+    height = grain_height(grain, height_mode)
 
     xs_abs = x + xs * width
     if grain.pitch_ratio < 0:
