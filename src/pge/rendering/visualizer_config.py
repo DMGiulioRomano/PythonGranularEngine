@@ -180,6 +180,14 @@ class VisualizerConfig:
     # grano ripiega sulla freccia: e' il cap al costo vettoriale sugli score
     # densi.
     window_shape_min_px: float = 3
+    # Che cosa misura l'ALTEZZA del grano sull'asse del buffer (issue #223).
+    # 'duration' -> la durata, cioe' la porzione che il grano percorrerebbe a
+    # velocita' 1 (comportamento storico); 'read_span' -> la porzione che
+    # percorre davvero, durata scalata per |pitch_ratio|. Il default resta
+    # 'duration' perche' il modo fedele cambia la geometria di ogni partitura
+    # gia' generata: e' una scelta di lettura, non un fix silenzioso.
+    # Valori ammessi: pge.rendering.grain_visuals.GRAIN_HEIGHT_MODES.
+    grain_height: str = 'duration'
 
     # --- WAVEFORM E COLORBAR -------------------------------------------------
     waveform_alpha: float = 0.3
