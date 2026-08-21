@@ -1,0 +1,72 @@
+# Demo dell'altezza del grano nella mappa (issue #223).
+#
+# L'asse Y della mappa e' la posizione di lettura nel sample, quindi l'altezza
+# di un grano e' una porzione di buffer. Qui il pitch e' scritto in `ratio` —
+# il moltiplicatore diretto della velocita' di lettura dentro il grano — e
+# spazza gli estremi dell'unita': da 0.001 (il grano resta quasi fermo su un
+# punto del file) a 3 (in un quarto di secondo ne attraversa tre quarti).
+#
+# Renderizzata con --grain-height duration tutti i grani hanno la stessa
+# altezza, qualunque sia il ratio; con --grain-height read-span l'altezza
+# segue la porzione letta, che e' quella che il renderer percorre davvero.
+#
+#   python src/main.py configs/PGE_grain_height_demo.yml output/demo.wav \
+#       --renderer numpy --format wav --visualize --grain-height read-span
+#
+# Il sample `demo_pulses.wav` non e' versionato (refs/ e' gitignored): un file
+# qualunque di ~4 s va bene, basta cambiare la chiave `sample`.
+
+title: altezza del grano - durata contro porzione letta
+duration: 12
+seed: 223
+
+streams:
+  # Testina ferma: l'unica cosa che si muove nel disegno e' quanto sample il
+  # grano attraversa. La scala di colore racconta la stessa cosa in altezza
+  # percepita, la forma la racconta in estensione.
+  - stream_id: sweep_forward
+    onset: 0
+    duration: 12
+    sample: demo_pulses.wav
+    time_mode: normalized
+    density: 9
+    grain:
+      duration: 0.25
+      envelope: hanning
+    pointer:
+      start: 0.12
+      speed_ratio: 0
+    pitch:
+      ratio:
+        - [0, 0.001]
+        - [0.25, 0.25]
+        - [0.5, 1.0]
+        - [0.75, 2.0]
+        - [1, 3.0]
+    pan: -30
+    volume: -6
+
+  # Stesso sweep letto all'indietro: il verso resta questione di segno, e la
+  # porzione letta si estende sotto la posizione di lettura invece che sopra.
+  - stream_id: sweep_reverse
+    onset: 0
+    duration: 12
+    sample: demo_pulses.wav
+    time_mode: normalized
+    density: 9
+    grain:
+      duration: 0.25
+      envelope: hanning
+      reverse:
+    pointer:
+      start: 0.88
+      speed_ratio: 0
+    pitch:
+      ratio:
+        - [0, 0.001]
+        - [0.25, 0.25]
+        - [0.5, 1.0]
+        - [0.75, 2.0]
+        - [1, 3.0]
+    pan: 30
+    volume: -6

@@ -99,6 +99,48 @@ questa.
 config, è l'adapter a leggerlo e a passarne i valori. È anche ciò che rende
 possibile tipizzare la config senza toccare le regole.
 
+### Due letture dello stesso asse
+
+L'asse Y della mappa è la posizione di lettura nel sample, quindi l'altezza di
+un grano non è una quantità astratta: è **una porzione di buffer**. Quale,
+però, non è ovvio, e per anni il disegno ne ha usata una senza dirlo.
+
+Il grano ha una durata nel tempo dello stream, e una velocità di lettura al
+proprio interno — il blocco `pitch`, che in Csound si chiama letteralmente
+`iSpeed` (p5). La porzione di sample che attraversa è il prodotto delle due:
+`durata × pitch_ratio`. Il disegno usava la sola durata, cioè la porzione che
+il grano percorrerebbe leggendo a velocità 1. Le due coincidono solo a
+`|ratio| = 1` — e siccome è il caso più comune, l'errore non si vedeva: a
+un'ottava sopra la freccia dichiarava metà del buffer che il renderer legge, e
+la pendenza apparente restava 45 gradi qualunque fosse la trasposizione,
+mentre la pendenza *è* l'informazione che quella forma porta (issue #223).
+
+La correzione è una riga, ma non è un fix: è un **modo**. `grain_visuals.grain_height`
+espone le due letture — `duration` (storica) e `read_span` (fedele al
+rendering) — e la config `grain_height` sceglie, con la CLI che la accende
+(`--grain-height read-span`). Il default resta la lettura storica per una
+ragione che non è prudenza: la geometria nuova cambia l'aspetto di **ogni**
+partitura già generata, e una figura che cambia forma sotto i piedi di chi
+l'ha stampata è un'altra figura, non la stessa più corretta. Per lo stesso
+motivo l'etichetta dell'asse dichiara il modo attivo: due mappe della stessa
+composizione, una per modo, altrimenti sarebbero indistinguibili fuori
+contesto.
+
+Tre conseguenze cadono dove il modo si separa dalla durata:
+
+- **la testa della freccia è metà dell'altezza, non metà della larghezza.**
+  Erano lo stesso numero finché l'altezza era la durata; slegate, la
+  proporzione che rende la freccia leggibile è quella verticale.
+- **`grain_shape: window` si scala sulla stessa altezza**, ma lì l'asse porta
+  l'ampiezza della finestra, non la porzione letta: la silhouette resta
+  iscritta nell'estensione che il grano occupa davvero, e il picco della curva
+  è il massimo della finestra disegnato a quell'altezza, non un punto del
+  buffer.
+- **un grano veloce può uscire dal file**, e il subplot lo taglia. Il renderer
+  invece wrappa (`read_indices % n_source`), come `_draw_loop_mask` già fa
+  spezzando la banda in due: qui il taglio resta, dichiarato invece che
+  corretto.
+
 ### Una decisione che deve precedere il disegno
 
 Non tutto quello che il visualizer chiede ai moduli riguarda un artista già

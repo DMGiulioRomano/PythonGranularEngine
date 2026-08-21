@@ -5,6 +5,8 @@ status: stable
 tags: [cli, flags, make, rendering, export]
 sources:
   - src/main.py
+  - src/pge/cli.py
+  - src/pge/rendering/grain_visuals.py
   - make/build.mk
 last_synced_commit: 95fd483
 entry_for: [cli-flags, build-flags]
@@ -77,6 +79,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--sco-dir DIR` | `generated` | — | destinazione `.sco` (attivo solo con `--keep-sco`) |
 | `--reaper-path FILE` | `{yaml_basename}.rpp` | `REAPER_PATH` | percorso del progetto Reaper |
 | `--plot-envelopes nomi` | tutti | `PLOT_ENVELOPES` | filtro selettivo degli envelope nella partitura: nomi comma-separated (es. `pitch,density,volume_prob`); nome non valido: messaggio con elenco dei validi + exit 1 |
+| `--grain-height duration\|read-span` | `duration` | `GRAIN_HEIGHT` | che cosa misura l'**altezza** del grano sull'asse del buffer nella partitura: `duration` = la durata (la porzione che il grano percorrerebbe leggendo a velocità 1, geometria storica), `read-span` = la porzione che percorre davvero (`durata × |pitch_ratio|`). Valore fuori dai due: messaggio + exit 1 |
 | `--magnify-at SPEC` | — | `MAGNIFY_AT` | lente/i di ingrandimento esplicite nella partitura. `SPEC` = target separati da `;`, ciascuno coppie `chiave=valore` separate da `,`. Chiave `t` (tempo s) obbligatoria; opzionali `y` (posizione di lettura), `zoom` (fattore), `out` (raggio cerchio di uscita, frazione figura), `src` (raggio cerchio di partenza, frazione figura; default `out/zoom`), `stream` (stream_id). SPEC malformato (`t` mancante, valore non numerico, chiave ignota): messaggio + exit 1 |
 
 ## Bounds
@@ -143,6 +146,20 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   `markersize`/`labels` per lo stile). Niente da proiettare, niente
   disegnato: stream senza curve dinamiche, o istante fuori dall'estensione
   dello stream.
+- **`--grain-height`** ha effetto solo insieme a `--visualize`; la
+  validazione del valore avviene comunque (valore ignoto → exit 1 anche
+  senza `--visualize`), come per `--plot-envelopes`. Il valore è un modo di
+  lettura dell'asse Y, non una correzione da applicare sempre: `read-span`
+  cambia la geometria di **ogni** grano trasposto, quindi due partiture
+  della stessa composizione nei due modi non sono confrontabili a occhio —
+  per questo il modo attivo è scritto nell'etichetta dell'asse
+  (`Read position (s)` / `(grain height = read span)`). Vale per entrambe
+  le forme del grano (`grain_shape: arrow` e `window`) e per il contenuto
+  della lente, che passa dallo stesso disegno. Con `read-span` un grano
+  veloce vicino alla fine del sample supera `sample_duration` più spesso di
+  prima e viene **tagliato** dal bordo del subplot: il renderer invece
+  wrappa (`read_indices % n_source`), quindi lì la figura tace su una
+  porzione che l'audio contiene (vedi issue #223, punto 2).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
   la flag viene ignorata senza errore.
 
@@ -173,6 +190,12 @@ python src/main.py configs/brano.yml --visualize --plot-envelopes pitch,density
 
 # Equivalente via Make
 make all FILE=brano AUTOVISUAL=true PLOT_ENVELOPES=pitch,density
+
+# Partitura in cui l'altezza del grano e' la porzione di sample letta davvero
+python src/main.py configs/brano.yml --visualize --grain-height read-span
+
+# Equivalente via Make
+make all FILE=brano AUTOVISUAL=true GRAIN_HEIGHT=read-span
 
 # Partitura con lente automatica sul cluster piu' denso di ogni pagina
 python src/main.py configs/brano.yml --visualize --magnify
