@@ -50,6 +50,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Il clamp `min_val = 1/output_sr` su `grain_duration` continua a garantire
   N ≥ 1 e non c'entra: impediva N=0, non intercettava N=2.
 
+- **`configs/PGE_grain_duration_samples_demo.yml`: lo stream `s2_short_512samples`
+  scriveva `duration: 2` invece di `512`.** Difetto indipendente dal precedente,
+  trovato indagandolo. Con `duration_unit: samples` quei 2 campioni sono 41.7 µs
+  — dentro la banda fatale — e con `envelope: hanning` lo stream era
+  **completamente muto**. Tre indizi nel file concordavano sul valore giusto: lo
+  `stream_id`, il commento inline (`# ~10.7 ms`, che è 512/48000 s, non 2
+  campioni) e lo stream 4, dichiarato «controprova retrocompatibile: stessi ~512
+  campioni ma in secondi» con `duration: 0.01067`. Corretto: s2 e s4 rendono ora
+  lo stesso picco (0.5637) e sono di nuovo la coppia di controprova che il file
+  dichiara di essere. È anche la prova che il bug della finestra collassata
+  passava inosservato: stava in una demo del repo, e si presentava come uno
+  stream silenzioso invece che come un errore.
+
 ### Aggiunto
 
 - **`--grain-height duration|read-span`: l'altezza del grano nella mappa può
