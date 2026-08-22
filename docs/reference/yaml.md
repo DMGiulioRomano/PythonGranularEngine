@@ -11,6 +11,7 @@ sources:
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
+  - src/pge/rendering/numpy_window_registry.py
 last_synced_commit: 8bd9d21
 entry_for: [yaml-syntax, envelope-syntax]
 ---
@@ -624,17 +625,37 @@ in ogni unità: il renderer arrotonda al campione più vicino
 
 Note sui grani a precisione di campione:
 
-- **Finestre simmetriche su grani di 2-3 campioni**: `hanning`, `bartlett`,
-  `blackman`, `half_sine`, `sinc` hanno estremi nulli — a 2 campioni il grano
-  è silenzio, a 3 sopravvive solo il campione centrale. È la matematica della
-  finestra, non un bug. Per grani ultra-corti usare `rectangle` (piatta),
-  `hamming` (estremi 0.08) o la famiglia `expodec` (parte da 1.0).
-- **Divergenza NumPy/Csound**: il renderer NumPy campiona la finestra a
-  `n_out` punti (`hanning` a 1 campione = `[1.0]`, impulso pieno); Csound
-  legge la tabella finestra con `poscil` a `1/p3` Hz e su un grano di 1
-  campione ne legge solo il primo punto (per `hanning` = 0, grano silente).
-  I due renderer non sono mai stati dichiarati bit-equivalenti; a queste
-  durate la scelta della finestra domina il risultato.
+- **Nessun grano è muto** (issue #225). A 1-2 campioni il campionamento
+  discreto non riesce a rappresentare la forma della finestra: le simmetriche
+  cadono sui due estremi, che valgono zero (`np.hanning(2) == [0, 0]`), e le
+  asimmetriche che partono da zero cadono sul solo punto di partenza
+  (`exporise(1) == [0]`). Il renderer NumPy riconosce la finestra collassata —
+  picco sotto -60 dB rispetto all'1.0 di progetto — e la sostituisce con la
+  piatta: sotto i 3 campioni non c'è salita, picco e discesa da rappresentare.
+  Riguarda `hanning`, `bartlett`/`triangle`, `blackman`, `blackman_harris`,
+  `sinc`, `half_sine` a N≤2 e `exporise`, `exporise_strong`, `rexporise` a N=1.
+  Prima della fix questi grani venivano generati, moltiplicati per zero e resi
+  come silenzio digitale, senza scarto e senza log: con `grain.duration` dentro
+  la banda `round(dur * output_sr) == 2` — **31.25-52.08 µs a 48 kHz**, estremi
+  inclusi perché `round()` in Python è half-to-even — il risultato era un buco
+  di centinaia di ms.
+- **Finestre attenuate, non riparate**: `hamming` (estremi 0.08), `gaussian`
+  (0.044) e `kaiser` (0.015) a N≤2 restano come sono. Sono basse ma udibili, e
+  un grano piano porta ancora informazione: alzarle significherebbe inventare
+  un livello che nessuno dei due renderer produce. Stesso discorso per
+  `expodec`/`rexpodec`, che a N=2 valgono `[1, 0]` — una decadenza vera, non un
+  caso degenere. Per grani ultra-corti con livello pieno resta consigliata
+  `rectangle` (piatta) o la famiglia `expodec` (parte da 1.0).
+- **Divergenza NumPy/Csound**: i due renderer non sono mai stati dichiarati
+  bit-equivalenti e a queste durate restano diversi ai due estremi — la fix
+  sopra non li allinea, toglie il silenzio. Csound legge la tabella finestra
+  con `poscil` a `1/p3` Hz e fase iniziale 0: su un grano di 1 campione ne
+  legge solo il primo punto, quindi è **muto a N=1** su tutte le finestre che
+  partono da zero (nove: `hanning`, `bartlett`/`triangle`, `blackman`,
+  `blackman_harris`, `sinc`, `half_sine`, `exporise`, `exporise_strong`,
+  `rexporise`), mentre a N=2 legge gli indici 0 e 512 della tabella e sta
+  bene. NumPy è l'opposto: sano a N=1, collassato a N=2. A queste durate la
+  scelta della finestra e del renderer domina il risultato.
 - **Densità derivata**: con `fill_factor` e grani da 1 campione la density
   `fill_factor/duration` satura al bound massimo (4000 g/s).
 
