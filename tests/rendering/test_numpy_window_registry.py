@@ -573,3 +573,87 @@ class TestCatalogueParity:
         from pge.controllers.window_registry import WindowRegistry
 
         assert set(registry.available_windows()) == set(WindowRegistry.all_names())
+
+
+# =============================================================================
+# NESSUNA FINESTRA E' MUTA (issue #225)
+# =============================================================================
+
+class TestNeverSilentWindow:
+    """Un grano valido non e' mai silenzio.
+
+    A N piccolissimi il campionamento discreto della finestra collassa: le
+    simmetriche vengono campionate sugli estremi (`np.hanning(2) == [0, 0]`)
+    e le asimmetriche sul solo punto di partenza (`exporise(1) == [0]`). Il
+    grano viene generato, moltiplicato per zero e reso come silenzio, senza
+    scarto e senza log. Con `grain.duration` che entra nella banda fatale
+    (31.25-52.08 us a 48 kHz, cioe' `round(dur*sr) == 2`) il risultato e' un
+    buco di silenzio digitale largo centinaia di ms.
+
+    La guardia sta sul RISULTATO, non su `n`: si ripara la finestra che e'
+    collassata, non ogni finestra corta. Cosi' `expodec` a N=2 resta `[1, 0]`
+    -- una decadenza vera, non un caso degenere -- e le finestre solo
+    attenuate (`hamming` 0.08, `gaussian` 0.044, `kaiser` 0.015) restano come
+    sono: un grano piano porta ancora informazione, e alzarlo significherebbe
+    inventare un livello che nessuno dei due renderer produce.
+    """
+
+    # Soglia di collasso: -60 dB rispetto al picco di progetto (1.0) di ogni
+    # finestra del catalogo. Non e' un numero critico -- fra il picco piu' alto
+    # fra quelli riparati (blackman_harris, 6e-5) e il piu' basso fra quelli
+    # lasciati stare (kaiser, 0.0149) c'e' un vuoto di 248x, e la soglia ci sta
+    # in mezzo con due ordini di grandezza di margine per lato.
+    FLOOR = 1e-3
+
+    @pytest.mark.parametrize("n", list(range(1, 17)))
+    def test_no_window_collapses_at_small_n(self, registry, n):
+        """Nessun nome del catalogo produce una finestra sotto la soglia di
+        collasso, per nessun N fra 1 e 16.
+
+        Il criterio e' il PICCO, non la somma: `sum() > 0` passerebbe per
+        `sinc` a N=1 (somma 3.9e-17, inudibile) e fallirebbe per `blackman` a
+        N=2 per il motivo sbagliato (somma negativa, -2.8e-17). Quello che
+        conta e' se il grano si sente.
+        """
+        for name in registry.available_windows():
+            window = registry.get(name, n)
+            peak = float(np.max(np.abs(window)))
+            assert peak > self.FLOOR, f"{name} n={n}: picco {peak:.4g}, grano muto"
+
+    @pytest.mark.parametrize("name,n", [
+        ('hanning', 2), ('bartlett', 2), ('triangle', 2), ('blackman', 2),
+        ('sinc', 1), ('sinc', 2), ('half_sine', 1), ('half_sine', 2),
+        ('blackman_harris', 1), ('blackman_harris', 2),
+        ('exporise', 1), ('exporise_strong', 1), ('rexporise', 1),
+    ])
+    def test_collapsed_window_becomes_flat_unit(self, registry, name, n):
+        """I casi degeneri noti diventano la finestra piatta a 1.0.
+
+        Sotto i 3 campioni non c'e' forma da rappresentare: niente salita,
+        picco e discesa. La finestra piatta e' l'unica lettura onesta.
+        """
+        np.testing.assert_array_equal(registry.get(name, n), np.ones(n))
+
+    @pytest.mark.parametrize("name,n,expected", [
+        # asimmetriche: a N=2 [1, 0] e' una decadenza vera, non un collasso
+        ('expodec', 2, [1.0, 0.0]),
+        ('expodec_strong', 2, [1.0, 0.0]),
+        ('rexpodec', 2, [1.0, 0.0]),
+        # attenuate ma udibili: restano intatte
+        ('hamming', 2, [0.08, 0.08]),
+        ('gaussian', 1, [0.043937]),
+        ('rectangle', 2, [1.0, 1.0]),
+    ])
+    def test_informative_small_windows_are_untouched(self, registry, name, n, expected):
+        """La guardia ripara solo cio' che e' collassato.
+
+        Se la finestra corta porta ancora informazione -- una decadenza, o
+        semplicemente un livello basso ma udibile -- resta esattamente com'e'.
+        """
+        np.testing.assert_allclose(registry.get(name, n), expected, atol=1e-6)
+
+    def test_repair_does_not_touch_normal_lengths(self, registry):
+        """A lunghezze normali le finestre restano la loro matematica: la
+        guardia non deve poter scattare su una finestra sana."""
+        w = registry.get('hanning', 1024)
+        np.testing.assert_array_almost_equal(w, np.hanning(1024))
