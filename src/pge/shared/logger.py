@@ -391,6 +391,42 @@ def log_window_curve_warning(
     )
 
 
+def log_unreadable_curve_warning(
+    stream_id: str,
+    curve_key: str,
+    face: str,
+    reason,
+):
+    """
+    Logga lo scarto di una faccia che non e' una curva.
+
+    Dentro un Parameter puo' esserci un valore fuori dal dominio di
+    ParameterCurve: `Parameter.__init__` non valida, e chi lo costruisce a
+    mano puo' metterci dentro qualunque cosa. Il lettore delle curve
+    (rendering.envelope_extractor) lo salta invece di far cadere l'estrazione
+    — le curve di uno stream sono decine, e un parametro malformato non deve
+    portarsi via la partitura intera. Saltarlo in silenzio pero' rende
+    indistinguibile "questo parametro non ha una curva" da "questo parametro
+    ha un valore che non so leggere" (issue #192).
+
+    Args:
+        stream_id:  ID dello stream
+        curve_key:  nome pubblicato della riga (--plot-envelopes, layer SV)
+        face:       'value', 'range' o 'probability'
+        reason:     il TypeError di ParameterCurve.classify, che nomina tipo
+                    e valore
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    logger.warning(
+        f"[UNREADABLE_CURVE] [{stream_id}] "
+        f"'{curve_key}' (faccia '{face}') non e' una curva: {reason}. "
+        f"La riga non viene pubblicata; le altre curve dello stream restano."
+    )
+
+
 def log_loop_init(
     stream_id: str,
     loop_start: float,

@@ -16,6 +16,7 @@ from pge.shared.logger import (
     log_loop_drift_warning,
     log_loop_dynamic_mode,
     log_loop_init,
+    log_unreadable_curve_warning,
     CLIP_LOG_CONFIG,
 
 )
@@ -1094,3 +1095,90 @@ class TestIntegration:
         content = log_file.read_text()
         assert '[CONFIG]' in content
 
+
+
+# =============================================================================
+# TEST: log_unreadable_curve_warning (issue #192)
+# =============================================================================
+
+class TestLogUnreadableCurveWarning:
+    """Dentro un Parameter puo' esserci un valore che non e' una curva:
+    l'estrattore lo salta invece di far cadere la partitura intera. Saltarlo
+    in silenzio pero' rende indistinguibile "questo parametro non ha una
+    curva" da "questo parametro ha un valore che non so leggere".
+    """
+
+    def _capture(self, tmp_path, yaml_name, *args):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name=yaml_name
+        )
+        l = get_clip_logger()
+        captured = []
+        with patch.object(l, 'warning', side_effect=lambda msg: captured.append(msg)):
+            log_unreadable_curve_warning(*args)
+        return captured
+
+    def test_does_not_raise_when_logger_none(self):
+        configure_clip_logger(enabled=False)
+        get_clip_logger()
+        log_unreadable_curve_warning('s1', 'volume', 'value', 'motivo')
+
+    def test_calls_logger_warning(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='curvewarn'
+        )
+        l = get_clip_logger()
+        with patch.object(l, 'warning') as mock_warn:
+            log_unreadable_curve_warning('s1', 'volume', 'value', 'motivo')
+            mock_warn.assert_called_once()
+
+    def test_message_contains_unreadable_curve_tag(self, tmp_path):
+        captured = self._capture(tmp_path, 'curvetag', 's1', 'volume', 'value', 'motivo')
+        assert '[UNREADABLE_CURVE]' in captured[0]
+
+    def test_message_contains_stream_id(self, tmp_path):
+        captured = self._capture(tmp_path, 'curvestream', 'STREAM_X', 'volume', 'value', 'motivo')
+        assert 'STREAM_X' in captured[0]
+
+    def test_message_contains_curve_key(self, tmp_path):
+        """La chiave e' il nome pubblicato della riga (--plot-envelopes, layer
+        SV): senza, il warning non dice quale curva manca dalla partitura."""
+        captured = self._capture(tmp_path, 'curvekey', 's1', 'pointer_deviation_range', 'range', 'motivo')
+        assert 'pointer_deviation_range' in captured[0]
+
+    def test_message_contains_the_face(self, tmp_path):
+        """Un Parameter ha tre facce: quella fuori dominio va nominata, o si
+        cerca il valore sbagliato."""
+        captured = self._capture(tmp_path, 'curveface', 's1', 'volume', 'probability', 'motivo')
+        assert 'probability' in captured[0]
+
+    def test_message_contains_the_reason(self, tmp_path):
+        """E' il messaggio di ParameterCurve.classify, che nomina tipo e
+        valore: e' li' che sta l'informazione utile a correggere lo YAML."""
+        captured = self._capture(
+            tmp_path, 'curvereason', 's1', 'volume', 'value',
+            "ricevuto str: 'rumore'")
+        assert "ricevuto str: 'rumore'" in captured[0]
+
+    def test_message_written_to_file(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='curvefile'
+        )
+        l = get_clip_logger()
+        log_unreadable_curve_warning('s1', 'volume', 'value', 'motivo')
+        for h in l.handlers:
+            h.flush()
+        content = (tmp_path / 'envelope_clips_curvefile.log').read_text()
+        assert '[UNREADABLE_CURVE]' in content

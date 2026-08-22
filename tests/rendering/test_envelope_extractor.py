@@ -15,8 +15,9 @@ Copre:
 
 import sys
 
+import numpy as np
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from pge.envelopes.envelope import Envelope
 from pge.parameters.parameter import Parameter
@@ -746,6 +747,67 @@ class TestValueOutsideTheDomain:
         from pge.parameters.parameter_curve import ParameterCurve
         with pytest.raises(TypeError):
             ParameterCurve.classify('rumore')
+
+    def test_the_skip_leaves_a_trace(self, tmp_path):
+        """Saltare in silenzio rende indistinguibile "questo parametro non ha
+        una curva" da "questo parametro ha un valore che non so leggere":
+        la partitura esce senza la riga, e nessuno sa perche' (issue #192)."""
+        import pge.shared.logger as logger_module
+        from pge.shared.logger import configure_clip_logger, get_clip_logger
+
+        configure_clip_logger(enabled=True, file_enabled=True,
+                              console_enabled=False, log_dir=str(tmp_path),
+                              yaml_name='unreadable')
+        logger = get_clip_logger()
+        captured = []
+        try:
+            with patch.object(logger, 'warning',
+                              side_effect=lambda msg: captured.append(msg)):
+                get_stream_envelopes(self._stream_with('rumore'), show_static=True)
+        finally:
+            for handler in logger.handlers[:]:
+                handler.close()
+                logger.removeHandler(handler)
+            logger_module._clip_logger = None
+            logger_module._clip_logger_initialized = False
+            configure_clip_logger()
+
+        assert any('volume' in msg for msg in captured)
+
+
+class TestANumberInAnyWriting:
+    """Un numero resta una curva costante comunque sia scritto (issue #192).
+
+    Il dominio di ParameterCurve filtrava con `isinstance(raw, (int, float))`:
+    `np.float64` passava perche' e' sottoclasse di `float`, `np.float32` no, e
+    la faccia spariva dalla partitura per un dettaglio di ereditarieta' di
+    numpy. Qui si guarda dal lato di chi legge: la riga deve esserci.
+    """
+
+    def _keys(self, value):
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.volume = Parameter('volume', value, GRANULAR_PARAMETERS['volume'])
+        return get_stream_envelopes(s, show_static=True)
+
+    @pytest.mark.parametrize('value', [
+        np.float32(-6.0), np.float64(-6.0), np.int64(-6), np.int32(-6),
+    ])
+    def test_a_numpy_scalar_is_published(self, value):
+        assert 'volume' in self._keys(value)
+
+    def test_the_published_curve_carries_the_value(self):
+        """Non basta che la chiave ci sia: la costante appiattita deve valere
+        quel numero, o la partitura disegna una riga sbagliata."""
+        env = self._keys(np.float32(-6.0))['volume']
+        assert env.breakpoints[0][1] == pytest.approx(-6.0)
+
+    def test_a_raw_numpy_source_is_published_too(self):
+        """La stessa domanda sul path senza Parameter: `pitch` arriva allo
+        Stream gia' risolto (Envelope o scalare), e il filtro che decide se
+        e' leggibile e' un secondo isinstance, con la stessa linea storta."""
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        s.pitch_value = np.float32(3.0)
+        assert 'pitch' in get_stream_envelopes(s, show_static=True)
 
 
 class TestFlattenSpansTheStream:

@@ -18,6 +18,7 @@ offset sull'onset globale e' responsabilita' del consumatore.
 """
 from __future__ import annotations
 
+import numbers
 import re
 from dataclasses import dataclass
 from typing import Callable
@@ -192,13 +193,38 @@ def _readable(obj):
 
     Tutto il resto — stringhe (grain_envelope), None dei gruppi esclusivi,
     attributi che non esistono — non lo e'.
+
+    "Numero" e' `numbers.Real`, non `(int, float)`: un `np.float32` sullo
+    Stream e' un numero come il suo `np.float64`, che passava per la sola
+    ragione di ereditare da `float` (issue #192). Non e' pero' il duck-typing
+    su `__float__` che usa ParameterCurve, e la differenza e' voluta: li' il
+    valore e' *dato*, qui e' *trovato* — questa funzione guarda un attributo
+    qualunque di un oggetto qualunque, e la tolleranza ha il costo opposto.
     """
     from pge.envelopes.envelope import Envelope
     from pge.parameters.parameter import Parameter
 
-    if isinstance(obj, (Parameter, Envelope, int, float)):
+    if isinstance(obj, (Parameter, Envelope, numbers.Real)):
         return obj
     return None
+
+
+def _unreadable(source, stream, exc):
+    """Lo scarto di una faccia fuori dominio: assente, ma non in silenzio.
+
+    Saltarla e' l'unica reazione proporzionata — far cadere questa faccia vuol
+    dire far cadere tutte le altre curve dello stream, cioe' la partitura
+    intera, o l'intera sessione Sonic Visualiser. Il warning e' il resto della
+    reazione: senza, "questo parametro non ha una curva" e "questo parametro
+    ha un valore che non so leggere" arrivano identici a chi guarda la
+    partitura (issue #192).
+    """
+    from pge.parameters.parameter_curve import ParameterCurve
+    from pge.shared.logger import log_unreadable_curve_warning
+
+    log_unreadable_curve_warning(
+        getattr(stream, 'stream_id', None), source.key, source.face, exc)
+    return ParameterCurve(kind='absent')
 
 
 def _curve_of(source, stream):
@@ -217,19 +243,22 @@ def _curve_of(source, stream):
         }[source.face]
         try:
             return face(obj)
-        except TypeError:
+        except TypeError as exc:
             # Dentro un Parameter puo' esserci un valore fuori dal dominio di
-            # ParameterCurve: Parameter non valida al costruttore. Qui non e'
-            # una curva e non se ne pubblica nessuna — ma saltarla e' l'unica
-            # reazione proporzionata, perche' far cadere questa faccia vuol
-            # dire far cadere tutte le altre curve dello stream, cioe' la
-            # partitura intera. Il value object resta stretto: e' il lettore a
-            # essere tollerante, come lo era prima del refactor.
-            return ParameterCurve(kind='absent')
+            # ParameterCurve: Parameter non valida al costruttore. Il value
+            # object resta stretto: e' il lettore a essere tollerante, come lo
+            # era prima del refactor.
+            return _unreadable(source, stream, exc)
     # Sorgente grezza (pitch_value): ha solo il valore, niente range ne' gate.
     if source.face != 'value':
         return ParameterCurve(kind='absent')
-    return ParameterCurve.classify(obj)
+    try:
+        return ParameterCurve.classify(obj)
+    except TypeError as exc:
+        # `_readable` ha gia' detto che e' un numero, ma `numbers.Real` non
+        # promette che la conversione riesca. Stessa tolleranza dell'altro
+        # ramo: una riga in meno, non una partitura in meno.
+        return _unreadable(source, stream, exc)
 
 
 def _voice_curves(stream):
