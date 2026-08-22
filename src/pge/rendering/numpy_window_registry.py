@@ -21,6 +21,25 @@ from typing import Dict, List, Tuple
 from pge.controllers.window_registry import WindowRegistry
 
 
+# Sotto quanti campioni la finestra non viene applicata (issue #225).
+#
+# A queste lunghezze la finestra non taglia i bordi: decima il grano.
+# `hanning(3)` e' `[0, 1, 0]` -- tiene un campione su tre e paga tre campioni
+# di budget; a 4 ne tiene due su quattro. Non c'e' una forma con un interno:
+# ci sono due zeri agli estremi e uno o due punti in mezzo.
+#
+# E l'effetto spettrale e' l'opposto di cio' per cui la finestra esiste. Su un
+# tono a 440 Hz la quota di energia sopra 2 kHz -- lo sporco da troncamento --
+# vale 0.767 per il grano non finestrato a 3 campioni contro 0.917 per lo
+# stesso grano con `hanning`: finestrare accorcia il grano piu' di quanto ne
+# smussi i bordi. Il pareggio arriva intorno ai 30 campioni; 10 e' la linea
+# scelta, conservativa rispetto alla misura.
+#
+# Il caso degenere della issue (`np.hanning(2) == [0, 0]`, grano reso come
+# silenzio digitale assoluto) e' un sottocaso: sta sotto la soglia.
+WINDOW_MIN_SHAPE_SAMPLES = 10
+
+
 class NumpyWindowRegistry:
     """
     Registry con caching per finestre grano come array NumPy.
@@ -92,6 +111,11 @@ class NumpyWindowRegistry:
         if canonical is None:
             from pge.shared.exceptions import InvalidWindowError
             raise InvalidWindowError(name=name, available=self.available_windows())
+
+        # Sotto la soglia non c'e' forma da rappresentare: nessuna finestra,
+        # e nemmeno il costo di generarla. Vedi WINDOW_MIN_SHAPE_SAMPLES.
+        if n < WINDOW_MIN_SHAPE_SAMPLES:
+            return np.ones(n, dtype=np.float64)
 
         key = (canonical, n)
         if key in self._cache:

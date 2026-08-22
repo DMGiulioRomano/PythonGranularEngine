@@ -8,6 +8,76 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Corretto
+
+- **Grani muti: sotto i 10 campioni non si finestra più** (issue #225). Con
+  `grain.duration` dentro la banda `round(dur * output_sr) == 2` —
+  **31.25-52.08 µs a 48 kHz**, estremi inclusi perché `round()` in Python è
+  half-to-even — il renderer NumPy produceva **silenzio digitale assoluto**. A
+  quelle lunghezze il campionamento discreto non riesce a rappresentare la
+  forma della finestra: le simmetriche cadono sui due estremi, che valgono
+  zero (`np.hanning(2) == [0, 0]`), e le asimmetriche che partono da zero
+  cadono sul solo punto di partenza (`exporise(1) == [0]`). Il grano veniva
+  generato regolarmente, moltiplicato per la finestra e reso come silenzio:
+  non veniva scartato e non loggava nulla. Con `duration_range` attivo si
+  azzerava solo la frazione di grani che cadeva nella banda — buchi sparsi e
+  irregolari; con la curva `duration` stabilmente dentro la banda, un buco
+  continuo (nel caso di riproduzione: **4 secondi** a zero assoluto, con tutti
+  i grani presenti).
+
+  La correzione non guarda il caso degenere, guarda la lunghezza: sotto i
+  **10 campioni (208.3 µs)** la finestra non viene applicata. Vedi la voce in
+  «Modificato» per il perché e per cosa cambia.
+
+  Il clamp `min_val = 1/output_sr` su `grain_duration` continua a garantire
+  N ≥ 1 e non c'entra: impediva N=0, non intercettava N=2.
+
+- **`configs/PGE_grain_duration_samples_demo.yml`: lo stream `s2_short_512samples`
+  scriveva `duration: 2` invece di `512`.** Difetto indipendente dal precedente,
+  trovato indagandolo. Con `duration_unit: samples` quei 2 campioni sono 41.7 µs
+  — dentro la banda fatale — e con `envelope: hanning` lo stream era
+  **completamente muto**. Tre indizi nel file concordavano sul valore giusto: lo
+  `stream_id`, il commento inline (`# ~10.7 ms`, che è 512/48000 s, non 2
+  campioni) e lo stream 4, dichiarato «controprova retrocompatibile: stessi ~512
+  campioni ma in secondi» con `duration: 0.01067`. Corretto: s2 e s4 rendono ora
+  lo stesso picco (0.5637) e sono di nuovo la coppia di controprova che il file
+  dichiara di essere. È anche la prova che il bug della finestra collassata
+  passava inosservato: stava in una demo del repo, e si presentava come uno
+  stream silenzioso invece che come un errore.
+
+### Modificato
+
+- **Il renderer NumPy ignora `envelope` sotto i 10 campioni (208.3 µs).** A
+  quelle lunghezze la finestra non taglia i bordi: decima il grano.
+  `hanning(3)` è `[0, 1, 0]` — tiene un campione su tre e paga tre campioni di
+  budget; a 4 ne tiene due su quattro. Non c'è una forma con un interno, ci
+  sono due zeri agli estremi e uno o due punti in mezzo. E l'effetto spettrale
+  è l'opposto di quello per cui la finestra esiste: su un tono a 440 Hz la
+  quota di energia sopra 2 kHz — lo sporco da troncamento — vale 0.767 per il
+  grano non finestrato a 3 campioni contro 0.917 per lo stesso grano con
+  `hanning`. Finestrare accorcia il grano più di quanto ne smussi i bordi. Il
+  pareggio arriva intorno ai 30 campioni; 10 è la linea scelta, conservativa
+  rispetto alla misura.
+
+  **Cosa cambia in pratica.** I grani sotto i 208.3 µs che oggi si sentono
+  diventano più forti, di quanto dipende dalla finestra: +36.6 dB per `kaiser`
+  a 2 campioni, +27.1 dB per `gaussian`, +21.9 dB per `hamming`, +2 e +7 dB
+  per il resto a 3-4 campioni. Sono le stesse lunghezze a cui la scelta della
+  finestra decideva un livello e non una forma: adesso il livello è uno solo,
+  e `kaiser` e `hanning` non differiscono più di 36 dB sullo stesso grano di
+  2 campioni. Nel repo l'unica config toccata è
+  `PGE_grain_duration_samples_demo.yml`, stream `s1_click_train_1sample`.
+
+  **Il salto alla soglia è dichiarato**: attraversando i 208.3 µs il livello
+  scende di colpo, da −0.4 dB (`expodec_strong`) a −7.3 dB (`rexpodec`),
+  −4.3 dB con `hanning`. È la finestra che entra in funzione. Con `rectangle`
+  non c'è salto, perché è piatta da entrambi i lati.
+
+  **Non allinea NumPy e Csound**, li allontana: Csound la finestra la applica
+  comunque, leggendo la ftable con `poscil` a fase 0, ed è muto a N=1 sulle
+  nove finestre che partono da zero. Sotto i 10 campioni la scelta del
+  renderer domina il risultato più della scelta della finestra.
+
 ### Aggiunto
 
 - **`--grain-height duration|read-span`: l'altezza del grano nella mappa può
@@ -92,6 +162,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Documentazione
 
+- `docs/reference/yaml.md`, note sui grani a precisione di campione: riscritte
+  per la issue #225. La nota diceva che il silenzio a 2 campioni era «la
+  matematica della finestra, non un bug» — ora non lo è più. Il testo dichiara
+  la soglia dei 10 campioni e la misura che la motiva, la banda fatale corretta
+  (31.25-52.08 µs, non 35-52), il salto di livello alla soglia finestra per
+  finestra, e in che modo NumPy e Csound divergono là sotto.
 - `docs/reference/cli.md`: flag `--grain-height`, vincoli e nota sul taglio ai
   bordi del sample.
 - `docs/explanation/score-visualizer-layout.md`: sezione «Due letture dello

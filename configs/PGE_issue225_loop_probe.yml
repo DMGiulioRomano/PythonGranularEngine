@@ -1,0 +1,149 @@
+# PGE_issue225_loop_probe.yml
+# Prova empirica per la PR #226 (issue #225): grani cortissimi dentro una
+# finestra di loop stretta, fill_factor 1, renderer NumPy.
+#
+# Banda fatale a 48 kHz: round(dur * 48000) == 2, cioe' 31.25-52.08 us.
+#   n=1 -> dur < 31.25 us      n=2 -> 31.25-52.08 us      n=3 -> 52.08-72.9 us
+#
+# Lancia con:  make FILE=PGE_issue225_loop_probe RENDERER=numpy STEMS=true
+seed: 20250822
+
+streams:
+
+  # 1. Sweep attraverso la banda: 100 us -> 21 us. Attraversa n=4,3,2,1.
+  #    Con hanning il tratto n=2 e' il buco.
+  - stream_id: "s1_sweep_hanning"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: [[0.0, 0.0001], [4.0, 0.000021]]
+      envelope: hanning
+
+  # 2. Stesso sweep, envelope expodec: controllo, la fix non lo tocca.
+  - stream_id: "s2_sweep_expodec"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: [[0.0, 0.0001], [4.0, 0.000021]]
+      envelope: expodec
+
+  # 3. Fisso dentro la banda fatale: 2 campioni esatti, hanning.
+  #    Pre-fix: stream interamente muto.
+  - stream_id: "s3_fixed_n2_hanning"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: 2
+      duration_unit: samples
+      envelope: hanning
+
+  # 4. Un campione: NumPy sano prima e dopo (hanning(1) == [1.0]).
+  - stream_id: "s4_fixed_n1_hanning"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: 1
+      duration_unit: samples
+      envelope: hanning
+
+  # 5. Loop mobile + durata dentro la banda: il buco si muove col loop.
+  - stream_id: "s5_loop_mobile_n2"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: [[0.0, 0.5], [4.0, 3.5]]
+      loop_dur: 0.05
+      speed_ratio: 1.0
+    grain:
+      duration: 2
+      duration_unit: samples
+      envelope: hanning
+
+  # 6. Riferimento sano: 480 campioni (10 ms), stesso loop, stesso fill_factor.
+  - stream_id: "s6_reference_10ms"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: 480
+      duration_unit: samples
+      envelope: hanning
+
+  # 7. Stessa banda, envelope kaiser: la fix non lo tocca (picco 0.0149).
+  #    Confronto di livello con s3 (hanning riparata a 1.0).
+  - stream_id: "s7_fixed_n2_kaiser"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: 2
+      duration_unit: samples
+      envelope: kaiser
+
+  # 8. Idem con gaussian (picco 0.0439).
+  - stream_id: "s8_fixed_n2_gaussian"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: 2
+      duration_unit: samples
+      envelope: gaussian
+
+  # 9. Sweep attraverso la soglia: 5 -> 20 campioni (104 -> 417 us).
+  #    A 10 campioni (208.3 us, meta' esatta dello stream) la finestra entra
+  #    in funzione e il livello scende di colpo.
+  - stream_id: "s9_sweep_threshold"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    fill_factor: 1.0
+    pointer:
+      loop_start: 1.0
+      loop_end: 1.05
+      speed_ratio: 1.0
+    grain:
+      duration: [[0.0, 5], [4.0, 20]]
+      duration_unit: samples
+      envelope: hanning

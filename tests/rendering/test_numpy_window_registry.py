@@ -573,3 +573,79 @@ class TestCatalogueParity:
         from pge.controllers.window_registry import WindowRegistry
 
         assert set(registry.available_windows()) == set(WindowRegistry.all_names())
+
+
+# =============================================================================
+# SOTTO I 10 CAMPIONI NON SI FINESTRA (issue #225)
+# =============================================================================
+
+class TestNoWindowingBelowShapeThreshold:
+    """Sotto i 10 campioni la finestra non viene applicata.
+
+    A quelle lunghezze non taglia i bordi: decima il grano. `hanning(3)` e'
+    `[0, 1, 0]` -- tiene un campione su tre e paga tre campioni di budget;
+    a 4 ne tiene due su quattro. Non c'e' una forma con un interno, ci sono
+    due zeri agli estremi e uno o due punti in mezzo.
+
+    La conseguenza spettrale e' l'opposto di cio' per cui la finestra esiste.
+    Su un tono a 440 Hz la quota di energia sopra 2 kHz -- lo sporco da
+    troncamento -- vale 0.767 per il grano non finestrato a 3 campioni contro
+    0.917 per lo stesso grano con `hanning`: finestrare accorcia il grano piu'
+    di quanto ne smussi i bordi, e il risultato e' piu' sporco. Il pareggio
+    arriva intorno ai 30 campioni; 10 e' la linea scelta.
+
+    Il caso degenere della issue -- `np.hanning(2) == [0, 0]`, grano generato,
+    moltiplicato per zero e reso come silenzio digitale assoluto senza scarto
+    e senza log -- e' un sottocaso: sta sotto la soglia e non si finestra.
+    """
+
+    @pytest.mark.parametrize("n", list(range(1, 10)))
+    def test_every_window_is_flat_below_threshold(self, registry, n):
+        """Ogni nome del catalogo, sotto i 10 campioni, e' la finestra piatta.
+
+        Il livello del grano non dipende piu' dalla finestra scelta a queste
+        lunghezze: non c'e' forma da rappresentare, quindi non c'e' scelta da
+        rispettare. E' la differenza rispetto a una guardia sul solo caso
+        degenere, che avrebbe lasciato `kaiser` a 0.0149 e `hanning` a 1.0
+        sullo stesso grano di 2 campioni -- 36 dB di scarto deciso da una
+        parola nello YAML.
+        """
+        for name in registry.available_windows():
+            np.testing.assert_array_equal(
+                registry.get(name, n), np.ones(n),
+                err_msg=f"{name} n={n}: finestrato sotto la soglia"
+            )
+
+    def test_threshold_boundary_is_windowed(self, registry):
+        """A 10 campioni esatti la finestra torna a essere la sua matematica.
+
+        E' il confine: sotto non si finestra, da qui in su si' -- e il salto
+        di livello che ne segue (circa 4 dB fra 9 e 10 campioni) e' dichiarato
+        in docs/reference/yaml.md.
+        """
+        np.testing.assert_array_almost_equal(
+            registry.get('hanning', 10), np.hanning(10)
+        )
+
+    def test_normal_lengths_are_untouched(self, registry):
+        """A lunghezze normali nulla cambia: la soglia non deve poter scattare
+        su una finestra che una forma ce l'ha."""
+        np.testing.assert_array_almost_equal(
+            registry.get('hanning', 1024), np.hanning(1024)
+        )
+
+    @pytest.mark.parametrize("n", list(range(1, 17)))
+    def test_no_window_is_ever_silent(self, registry, n):
+        """L'invariante che la issue #225 chiedeva: nessun nome del catalogo
+        produce un grano muto, per nessun N.
+
+        Il criterio e' il PICCO, non la somma: `sum() > 0` passerebbe per
+        `sinc` a N=1 (somma 3.9e-17, inudibile) e fallirebbe per `blackman` a
+        N=2 per il motivo sbagliato (somma negativa, -2.8e-17). Quello che
+        conta e' se il grano si sente. Sotto la soglia lo garantisce la
+        finestra piatta; sopra, il fatto che ogni finestra del catalogo abbia
+        picco 1.0 gia' da 3 campioni.
+        """
+        for name in registry.available_windows():
+            peak = float(np.max(np.abs(registry.get(name, n))))
+            assert peak > 1e-3, f"{name} n={n}: picco {peak:.4g}, grano muto"
