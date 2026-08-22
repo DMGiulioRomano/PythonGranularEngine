@@ -62,6 +62,34 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   la stessa demo si legga anche con `grain_shape: window`, dove il bordo del
   grano traccia la curva della propria finestra invece della freccia.
 
+### Corretto
+
+- **Un `np.float32` non è più una curva che sparisce dalla partitura.**
+  `ParameterCurve.classify` filtrava con `isinstance(raw, (int, float))`, e la
+  linea che tracciava non era il dominio che dichiara: era un dettaglio di
+  ereditarietà di numpy. `np.float64` passava perché è sottoclasse di `float`;
+  `np.float32`, `np.int64`, `Decimal` e `Fraction` no, pur essendo numeri che
+  `float()` legge da sempre — ed erano numeri che `float()` leggeva anche qui,
+  prima del refactor delle facce. Il criterio è ora quello dichiarato:
+  «numero» è ciò che `float()` sa leggere, cioè chi espone `__float__`. Le
+  stringhe restano fuori, ed è per loro che il controllo esiste
+  (`grain_envelope` è il nome di una finestra, non una curva); chi espone
+  `__float__` e poi rifiuta la conversione — un array a più elementi — viene
+  rifiutato con lo stesso errore di dominio, non con la formulazione di numpy.
+  Stesso allargamento in `envelope_extractor._readable`, dove però il predicato
+  è `numbers.Real`: lì il valore non è *dato* ma *trovato* su un attributo
+  qualunque di un oggetto qualunque, e la tolleranza ha il costo opposto
+  (issue #192).
+
+- **Lo scarto di una faccia illeggibile non è più muto.** Il lettore delle
+  curve salta la faccia fuori dominio invece di far cadere l'estrazione — le
+  curve di uno stream sono decine, e un parametro malformato non deve portarsi
+  via la partitura intera — ma farlo in silenzio rendeva indistinguibile
+  «questo parametro non ha una curva» da «questo parametro ha un valore che non
+  so leggere». Ora `log_unreadable_curve_warning` emette `[UNREADABLE_CURVE]`
+  sul clip logger, nominando stream, chiave pubblicata, faccia e motivo
+  (issue #192).
+
 ### Documentazione
 
 - `docs/reference/cli.md`: flag `--grain-height`, vincoli e nota sul taglio ai
@@ -70,6 +98,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   stesso asse» — perché l'altezza è una porzione di buffer, perché il modo
   fedele non è il default, e le tre conseguenze della separazione fra altezza
   e larghezza.
+- `docs/explanation/parameter-curve.md`: l'implicazione «Il dominio lo dichiara
+  il value object, la tolleranza è di chi legge» dice ora dov'è la linea del
+  dominio e perché la tolleranza del lettore lascia una traccia.
 
 ---
 

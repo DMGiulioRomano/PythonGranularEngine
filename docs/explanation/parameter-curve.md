@@ -9,7 +9,8 @@ sources:
   - src/pge/controllers/voice_manager.py
   - src/pge/shared/probability_gate.py
   - src/pge/rendering/envelope_extractor.py
-last_synced_commit: 33aed88
+  - src/pge/shared/logger.py
+last_synced_commit: d0d40c6
 ---
 
 # ParameterCurve: come si legge il comportamento nel tempo di un parametro
@@ -197,6 +198,28 @@ il modulo dei parametri.
   Le curve di uno stream sono decine: un parametro malformato non deve
   portarsi via anche le altre, cioè la partitura intera o l'intera sessione
   Sonic Visualiser.
+- **Dov'è la linea del dominio, e perché non è la stessa nei due punti.**
+  «Numero» è ciò che `float()` sa leggere — chi espone `__float__` — non ciò
+  che eredita da `float`. Un `isinstance(raw, (int, float))` tracciava la linea
+  dove passa l'ereditarietà di numpy, non dove passa il dominio: `np.float64`
+  dentro perché sottoclasse di `float`, `np.float32` fuori, pur essendo lo
+  stesso numero scritto con meno bit (issue #192). Esporre `__float__` non
+  garantisce però la conversione — un array a più elementi ce l'ha e poi
+  rifiuta — e in quel caso l'errore torna quello del dominio, o il chiamante
+  tollerante catturerebbe la formulazione di numpy senza sapere di che
+  parametro parla. `envelope_extractor._readable` si ferma un passo prima, a
+  `numbers.Real`, e la differenza è voluta: lì il valore non è *dato* ma
+  *trovato* su un attributo qualunque di un oggetto qualunque, e la tolleranza
+  ha il costo opposto — un duck-typing su `__float__` accetterebbe qualsiasi
+  cosa sappia fingersi un numero.
+- **La tolleranza del lettore lascia una traccia.** Saltare in silenzio rende
+  indistinguibile «questo parametro non ha una curva» da «questo parametro ha
+  un valore che non so leggere»: la partitura esce senza la riga e non c'è modo
+  di sapere perché. `_curve_of` chiama `log_unreadable_curve_warning`
+  (`shared/logger.py`), che emette `[UNREADABLE_CURVE]` sul clip logger con
+  stream, chiave pubblicata, faccia e il messaggio di `classify`. Il
+  comportamento non cambia — la faccia resta `absent` — cambia che se ne sappia
+  qualcosa.
 - `envelope_extractor` è passato da 394 a 287 righe: i sei blocchi duplicati e
   i tre meccanismi di accesso sono una tabella sola, con **un unico punto di
   appiattimento** — l'unico che ha bisogno di `stream.duration`.
