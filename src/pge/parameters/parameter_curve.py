@@ -18,6 +18,13 @@ CONSTANT = 'constant'
 ABSENT = 'absent'
 
 
+def _not_a_number(raw) -> TypeError:
+    """L'errore di dominio, in un posto solo: lo alzano due rami di classify."""
+    return TypeError(
+        "ParameterCurve.classify accetta Envelope, numero o None; "
+        f"ricevuto {type(raw).__name__}: {raw!r}")
+
+
 @dataclass(frozen=True)
 class ParameterCurve:
     """Classificazione di una faccia di Parameter: curva, costante o assente."""
@@ -29,6 +36,15 @@ class ParameterCurve:
     @classmethod
     def classify(cls, raw) -> 'ParameterCurve':
         """Classifica un valore grezzo (Envelope, numero o None).
+
+        "Numero" e' cio' che `float()` sa leggere — chi espone `__float__` —
+        non cio' che eredita da `float`. Un `isinstance(raw, (int, float))`
+        traccerebbe la linea dove passa l'ereditarieta' di numpy, non dove
+        passa il dominio: `np.float64` dentro perche' sottoclasse di `float`,
+        `np.float32` fuori, pur essendo lo stesso numero scritto con meno bit
+        (issue #192). Le stringhe restano fuori perche' non hanno `__float__`,
+        ed e' per loro che il controllo esiste: `grain_envelope` e' il nome di
+        una finestra, non una curva.
 
         Raises:
             TypeError: se `raw` non e' nessuno dei tre. Il dominio e' scritto
@@ -45,11 +61,17 @@ class ParameterCurve:
                 # Costante travestita: breakpoint tutti uguali.
                 return cls(kind=CONSTANT, value=float(values[0]))
             return cls(kind=VARYING, envelope=raw)
-        if not isinstance(raw, (int, float)):
-            raise TypeError(
-                "ParameterCurve.classify accetta Envelope, numero o None; "
-                f"ricevuto {type(raw).__name__}: {raw!r}")
-        return cls(kind=CONSTANT, value=float(raw))
+        if not hasattr(type(raw), '__float__'):
+            raise _not_a_number(raw)
+        try:
+            return cls(kind=CONSTANT, value=float(raw))
+        except (TypeError, ValueError) as exc:
+            # Esporre `__float__` non garantisce la conversione: un array a
+            # piu' elementi ce l'ha e poi rifiuta. Il rifiuto torna quello del
+            # dominio — stesso tipo, stesso messaggio parlante — cosi' il
+            # chiamante tollerante non si trova a catturare la formulazione di
+            # numpy senza sapere di che parametro parla.
+            raise _not_a_number(raw) from exc
 
     @classmethod
     def from_gate(cls, gate) -> 'ParameterCurve':

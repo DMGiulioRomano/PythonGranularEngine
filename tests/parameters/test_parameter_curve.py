@@ -9,6 +9,10 @@ di essere ripetuta da ogni consumatore che legge i privati di Parameter.
 
 Qui si testa il modello puro: niente Stream, niente matplotlib, niente mock.
 """
+from decimal import Decimal
+from fractions import Fraction
+
+import numpy as np
 import pytest
 
 from pge.envelopes.envelope import Envelope
@@ -72,6 +76,57 @@ class TestClassifyScalarAndAbsent:
         arrivi."""
         with pytest.raises(TypeError, match="str.*hanning"):
             ParameterCurve.classify('hanning')
+
+
+class TestTheNumericDomain:
+    """"Numero" e' cio' che `float()` sa leggere, non cio' che eredita da
+    `float` (issue #192).
+
+    Il filtro era `isinstance(raw, (int, float))`, e la linea che tracciava non
+    era il dominio del value object: era un dettaglio di ereditarieta' di
+    numpy. `np.float64` passava perche' e' sottoclasse di `float`, `np.float32`
+    no — pur essendo lo stesso numero scritto con meno bit. Prima del refactor
+    la riga era `float(raw)`, e li leggeva tutti.
+    """
+
+    @pytest.mark.parametrize('raw, expected', [
+        (np.float32(1.5), 1.5),
+        (np.float64(1.5), 1.5),
+        (np.int64(3), 3.0),
+        (np.int32(3), 3.0),
+        (Decimal('1.5'), 1.5),
+        (Fraction(3, 2), 1.5),
+    ])
+    def test_any_numeric_type_is_a_constant(self, raw, expected):
+        curve = ParameterCurve.classify(raw)
+        assert (curve.kind, curve.value) == ('constant', expected)
+
+    def test_the_payload_is_a_python_float(self):
+        """Il value object normalizza: chi legge `value` non deve sapere da
+        quale libreria arrivava il numero."""
+        assert type(ParameterCurve.classify(np.float32(1.5)).value) is float
+
+    def test_float32_and_float64_are_the_same_curve(self):
+        """La regressione in una riga: due scritture dello stesso numero
+        davano due esiti diversi."""
+        assert (ParameterCurve.classify(np.float32(2.0))
+                == ParameterCurve.classify(np.float64(2.0)))
+
+    def test_a_string_is_still_outside(self):
+        """L'allargamento non e' una resa: il caso per cui il controllo esiste
+        — `grain_envelope`, che e' il nome di una finestra — resta fuori,
+        perche' una stringa non sa diventare un float."""
+        with pytest.raises(TypeError):
+            ParameterCurve.classify('hanning')
+
+    def test_something_that_only_looks_like_a_number_is_rejected_the_same_way(self):
+        """Un array a piu' elementi espone `__float__` e poi fallisce la
+        conversione. Il rifiuto deve restare quello del dominio — stesso tipo,
+        stesso messaggio parlante — o il chiamante tollerante si troverebbe a
+        catturare la formulazione di numpy senza sapere di che parametro
+        parla."""
+        with pytest.raises(TypeError, match="ndarray"):
+            ParameterCurve.classify(np.array([1.0, 2.0]))
 
 
 class TestFromGate:
