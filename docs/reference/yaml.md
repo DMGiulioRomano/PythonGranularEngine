@@ -625,37 +625,39 @@ in ogni unità: il renderer arrotonda al campione più vicino
 
 Note sui grani a precisione di campione:
 
-- **Nessun grano è muto** (issue #225). A 1-2 campioni il campionamento
-  discreto non riesce a rappresentare la forma della finestra: le simmetriche
-  cadono sui due estremi, che valgono zero (`np.hanning(2) == [0, 0]`), e le
-  asimmetriche che partono da zero cadono sul solo punto di partenza
-  (`exporise(1) == [0]`). Il renderer NumPy riconosce la finestra collassata —
-  picco sotto -60 dB rispetto all'1.0 di progetto — e la sostituisce con la
-  piatta: sotto i 3 campioni non c'è salita, picco e discesa da rappresentare.
-  Riguarda `hanning`, `bartlett`/`triangle`, `blackman`, `blackman_harris`,
-  `sinc`, `half_sine` a N≤2 e `exporise`, `exporise_strong`, `rexporise` a N=1.
-  Prima della fix questi grani venivano generati, moltiplicati per zero e resi
-  come silenzio digitale, senza scarto e senza log: con `grain.duration` dentro
-  la banda `round(dur * output_sr) == 2` — **31.25-52.08 µs a 48 kHz**, estremi
-  inclusi perché `round()` in Python è half-to-even — il risultato era un buco
-  di centinaia di ms.
-- **Finestre attenuate, non riparate**: `hamming` (estremi 0.08), `gaussian`
-  (0.044) e `kaiser` (0.015) a N≤2 restano come sono. Sono basse ma udibili, e
-  un grano piano porta ancora informazione: alzarle significherebbe inventare
-  un livello che nessuno dei due renderer produce. Stesso discorso per
-  `expodec`/`rexpodec`, che a N=2 valgono `[1, 0]` — una decadenza vera, non un
-  caso degenere. Per grani ultra-corti con livello pieno resta consigliata
-  `rectangle` (piatta) o la famiglia `expodec` (parte da 1.0).
+- **Sotto i 10 campioni non si finestra** (issue #225). Il renderer NumPy
+  ignora `envelope` per i grani più corti di **208.3 µs** (10 campioni a
+  48 kHz) e li rende piatti. A quelle lunghezze la finestra non taglia i
+  bordi: decima il grano. `hanning(3)` è `[0, 1, 0]` — tiene un campione su
+  tre e paga tre campioni di budget; a 4 ne tiene due su quattro. E l'effetto
+  spettrale è l'opposto di quello per cui la finestra esiste: su un tono a
+  440 Hz la quota di energia sopra 2 kHz (lo sporco da troncamento) vale
+  0.767 per il grano non finestrato a 3 campioni contro 0.917 per lo stesso
+  grano con `hanning`. Il pareggio arriva intorno ai 30 campioni; 10 è la
+  linea scelta, conservativa rispetto alla misura.
+- **Il grano muto non esiste più.** Era il caso degenere della stessa
+  faccenda: a 1-2 campioni le finestre simmetriche cadono sui due estremi,
+  che valgono zero (`np.hanning(2) == [0, 0]`), e le asimmetriche che partono
+  da zero cadono sul solo punto di partenza (`exporise(1) == [0]`). Il grano
+  veniva generato, moltiplicato per zero e reso come **silenzio digitale
+  assoluto**, senza scarto e senza log: con `grain.duration` dentro la banda
+  `round(dur * output_sr) == 2` — **31.25-52.08 µs**, estremi inclusi perché
+  `round()` in Python è half-to-even — il risultato era un buco di centinaia
+  di ms. Ora quelle lunghezze stanno sotto la soglia e non vengono finestrate.
+- **Il salto alla soglia è dichiarato**: attraversando i 208.3 µs il livello
+  del grano scende di colpo, da −0.4 dB (`expodec_strong`) a −7.3 dB
+  (`rexpodec`), −4.3 dB con `hanning`. È la finestra che entra in funzione.
+  Con una `duration` che sweepa attraverso la soglia si sente uno scalino:
+  se dà fastidio, usare `rectangle`, che è piatta da entrambi i lati.
 - **Divergenza NumPy/Csound**: i due renderer non sono mai stati dichiarati
-  bit-equivalenti e a queste durate restano diversi ai due estremi — la fix
-  sopra non li allinea, toglie il silenzio. Csound legge la tabella finestra
-  con `poscil` a `1/p3` Hz e fase iniziale 0: su un grano di 1 campione ne
-  legge solo il primo punto, quindi è **muto a N=1** su tutte le finestre che
-  partono da zero (nove: `hanning`, `bartlett`/`triangle`, `blackman`,
-  `blackman_harris`, `sinc`, `half_sine`, `exporise`, `exporise_strong`,
-  `rexporise`), mentre a N=2 legge gli indici 0 e 512 della tabella e sta
-  bene. NumPy è l'opposto: sano a N=1, collassato a N=2. A queste durate la
-  scelta della finestra e del renderer domina il risultato.
+  bit-equivalenti e sotto i 10 campioni divergono di più di prima, perché
+  Csound la finestra la applica comunque. Legge la tabella con `poscil` a
+  `1/p3` Hz e fase iniziale 0: su un grano di 1 campione ne legge solo il
+  primo punto, quindi è **muto a N=1** su tutte le finestre che partono da
+  zero (`hanning`, `bartlett`/`triangle`, `blackman`, `blackman_harris`,
+  `sinc`, `half_sine`, `exporise`, `exporise_strong`, `rexporise`). Sotto i
+  10 campioni la scelta del renderer domina il risultato più della scelta
+  della finestra.
 - **Densità derivata**: con `fill_factor` e grani da 1 campione la density
   `fill_factor/duration` satura al bound massimo (4000 g/s).
 

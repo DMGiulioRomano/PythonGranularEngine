@@ -21,13 +21,23 @@ from typing import Dict, List, Tuple
 from pge.controllers.window_registry import WindowRegistry
 
 
-# Soglia di collasso della finestra (issue #225). Ogni finestra del catalogo e'
-# per costruzione una forma normalizzata con picco 1.0; sotto -60 dB da quel
-# picco non e' piu' attenuata, e' collassata. Non e' un numero critico: fra il
-# picco piu' alto fra i casi degeneri (blackman_harris a N<=2, 6e-5) e il piu'
-# basso fra quelli sani (kaiser a N=2, 0.0149) c'e' un vuoto di 248x, e la
-# soglia ci sta in mezzo con due ordini di grandezza di margine per lato.
-WINDOW_COLLAPSE_FLOOR = 1e-3
+# Sotto quanti campioni la finestra non viene applicata (issue #225).
+#
+# A queste lunghezze la finestra non taglia i bordi: decima il grano.
+# `hanning(3)` e' `[0, 1, 0]` -- tiene un campione su tre e paga tre campioni
+# di budget; a 4 ne tiene due su quattro. Non c'e' una forma con un interno:
+# ci sono due zeri agli estremi e uno o due punti in mezzo.
+#
+# E l'effetto spettrale e' l'opposto di cio' per cui la finestra esiste. Su un
+# tono a 440 Hz la quota di energia sopra 2 kHz -- lo sporco da troncamento --
+# vale 0.767 per il grano non finestrato a 3 campioni contro 0.917 per lo
+# stesso grano con `hanning`: finestrare accorcia il grano piu' di quanto ne
+# smussi i bordi. Il pareggio arriva intorno ai 30 campioni; 10 e' la linea
+# scelta, conservativa rispetto alla misura.
+#
+# Il caso degenere della issue (`np.hanning(2) == [0, 0]`, grano reso come
+# silenzio digitale assoluto) e' un sottocaso: sta sotto la soglia.
+WINDOW_MIN_SHAPE_SAMPLES = 10
 
 
 class NumpyWindowRegistry:
@@ -102,11 +112,16 @@ class NumpyWindowRegistry:
             from pge.shared.exceptions import InvalidWindowError
             raise InvalidWindowError(name=name, available=self.available_windows())
 
+        # Sotto la soglia non c'e' forma da rappresentare: nessuna finestra,
+        # e nemmeno il costo di generarla. Vedi WINDOW_MIN_SHAPE_SAMPLES.
+        if n < WINDOW_MIN_SHAPE_SAMPLES:
+            return np.ones(n, dtype=np.float64)
+
         key = (canonical, n)
         if key in self._cache:
             return self._cache[key]
 
-        window = self._repair_if_collapsed(self._generate(canonical, n), n)
+        window = self._generate(canonical, n)
         self._cache[key] = window
         return window
 
@@ -131,39 +146,6 @@ class NumpyWindowRegistry:
     # =========================================================================
     # GENERAZIONE
     # =========================================================================
-
-    @staticmethod
-    def _repair_if_collapsed(window: np.ndarray, n: int) -> np.ndarray:
-        """Un grano valido non e' mai silenzio: ripara la finestra collassata.
-
-        A N piccolissimi il campionamento discreto non riesce a rappresentare
-        la forma. Le simmetriche cadono sui due estremi, che valgono zero
-        (`np.hanning(2) == [0, 0]`); le asimmetriche che partono da zero
-        cadono sul solo punto di partenza (`exporise(1) == [0]`). Il grano
-        viene generato regolarmente, moltiplicato per la finestra e reso come
-        silenzio digitale: non viene scartato e non logga nulla. Con
-        `grain.duration` dentro la banda `round(dur * sr) == 2` (31.25-52.08 us
-        a 48 kHz) il risultato e' un buco di centinaia di ms.
-
-        La guardia sta sul risultato, non su `n`, e questa e' la differenza che
-        conta: si ripara la finestra che e' collassata, non ogni finestra
-        corta. `expodec` a N=2 e' `[1, 0]` -- una decadenza vera, non un caso
-        degenere -- e resta com'e'; cosi' `hamming` (0.08), `gaussian` (0.044)
-        e `kaiser` (0.015), attenuate ma udibili. Un grano piano porta ancora
-        informazione, e alzarlo significherebbe inventare un livello che
-        nessuno dei due renderer produce.
-
-        Il rimpiazzo e' la finestra piatta: sotto i 3 campioni non c'e' forma
-        da rappresentare -- niente salita, picco e discesa -- quindi e'
-        l'unica lettura onesta. Non allinea a Csound, che a queste lunghezze
-        legge la ftable con `poscil` a fase 0 ed e' muto a N=1 su nove
-        finestre e sano a N=2: i due renderer restano diversi ai due estremi,
-        come dice docs/reference/yaml.md, ma nessuno dei due tace dove l'altro
-        suona per un accidente aritmetico.
-        """
-        if np.max(np.abs(window)) > WINDOW_COLLAPSE_FLOOR:
-            return window
-        return np.ones(n, dtype=np.float64)
 
     def _generate(self, name: str, n: int) -> np.ndarray:
         """Genera l'array finestra per il nome dato."""

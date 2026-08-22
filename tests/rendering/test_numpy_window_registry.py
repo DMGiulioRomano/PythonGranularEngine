@@ -576,84 +576,76 @@ class TestCatalogueParity:
 
 
 # =============================================================================
-# NESSUNA FINESTRA E' MUTA (issue #225)
+# SOTTO I 10 CAMPIONI NON SI FINESTRA (issue #225)
 # =============================================================================
 
-class TestNeverSilentWindow:
-    """Un grano valido non e' mai silenzio.
+class TestNoWindowingBelowShapeThreshold:
+    """Sotto i 10 campioni la finestra non viene applicata.
 
-    A N piccolissimi il campionamento discreto della finestra collassa: le
-    simmetriche vengono campionate sugli estremi (`np.hanning(2) == [0, 0]`)
-    e le asimmetriche sul solo punto di partenza (`exporise(1) == [0]`). Il
-    grano viene generato, moltiplicato per zero e reso come silenzio, senza
-    scarto e senza log. Con `grain.duration` che entra nella banda fatale
-    (31.25-52.08 us a 48 kHz, cioe' `round(dur*sr) == 2`) il risultato e' un
-    buco di silenzio digitale largo centinaia di ms.
+    A quelle lunghezze non taglia i bordi: decima il grano. `hanning(3)` e'
+    `[0, 1, 0]` -- tiene un campione su tre e paga tre campioni di budget;
+    a 4 ne tiene due su quattro. Non c'e' una forma con un interno, ci sono
+    due zeri agli estremi e uno o due punti in mezzo.
 
-    La guardia sta sul RISULTATO, non su `n`: si ripara la finestra che e'
-    collassata, non ogni finestra corta. Cosi' `expodec` a N=2 resta `[1, 0]`
-    -- una decadenza vera, non un caso degenere -- e le finestre solo
-    attenuate (`hamming` 0.08, `gaussian` 0.044, `kaiser` 0.015) restano come
-    sono: un grano piano porta ancora informazione, e alzarlo significherebbe
-    inventare un livello che nessuno dei due renderer produce.
+    La conseguenza spettrale e' l'opposto di cio' per cui la finestra esiste.
+    Su un tono a 440 Hz la quota di energia sopra 2 kHz -- lo sporco da
+    troncamento -- vale 0.767 per il grano non finestrato a 3 campioni contro
+    0.917 per lo stesso grano con `hanning`: finestrare accorcia il grano piu'
+    di quanto ne smussi i bordi, e il risultato e' piu' sporco. Il pareggio
+    arriva intorno ai 30 campioni; 10 e' la linea scelta.
+
+    Il caso degenere della issue -- `np.hanning(2) == [0, 0]`, grano generato,
+    moltiplicato per zero e reso come silenzio digitale assoluto senza scarto
+    e senza log -- e' un sottocaso: sta sotto la soglia e non si finestra.
     """
 
-    # Soglia di collasso: -60 dB rispetto al picco di progetto (1.0) di ogni
-    # finestra del catalogo. Non e' un numero critico -- fra il picco piu' alto
-    # fra quelli riparati (blackman_harris, 6e-5) e il piu' basso fra quelli
-    # lasciati stare (kaiser, 0.0149) c'e' un vuoto di 248x, e la soglia ci sta
-    # in mezzo con due ordini di grandezza di margine per lato.
-    FLOOR = 1e-3
+    @pytest.mark.parametrize("n", list(range(1, 10)))
+    def test_every_window_is_flat_below_threshold(self, registry, n):
+        """Ogni nome del catalogo, sotto i 10 campioni, e' la finestra piatta.
+
+        Il livello del grano non dipende piu' dalla finestra scelta a queste
+        lunghezze: non c'e' forma da rappresentare, quindi non c'e' scelta da
+        rispettare. E' la differenza rispetto a una guardia sul solo caso
+        degenere, che avrebbe lasciato `kaiser` a 0.0149 e `hanning` a 1.0
+        sullo stesso grano di 2 campioni -- 36 dB di scarto deciso da una
+        parola nello YAML.
+        """
+        for name in registry.available_windows():
+            np.testing.assert_array_equal(
+                registry.get(name, n), np.ones(n),
+                err_msg=f"{name} n={n}: finestrato sotto la soglia"
+            )
+
+    def test_threshold_boundary_is_windowed(self, registry):
+        """A 10 campioni esatti la finestra torna a essere la sua matematica.
+
+        E' il confine: sotto non si finestra, da qui in su si' -- e il salto
+        di livello che ne segue (circa 4 dB fra 9 e 10 campioni) e' dichiarato
+        in docs/reference/yaml.md.
+        """
+        np.testing.assert_array_almost_equal(
+            registry.get('hanning', 10), np.hanning(10)
+        )
+
+    def test_normal_lengths_are_untouched(self, registry):
+        """A lunghezze normali nulla cambia: la soglia non deve poter scattare
+        su una finestra che una forma ce l'ha."""
+        np.testing.assert_array_almost_equal(
+            registry.get('hanning', 1024), np.hanning(1024)
+        )
 
     @pytest.mark.parametrize("n", list(range(1, 17)))
-    def test_no_window_collapses_at_small_n(self, registry, n):
-        """Nessun nome del catalogo produce una finestra sotto la soglia di
-        collasso, per nessun N fra 1 e 16.
+    def test_no_window_is_ever_silent(self, registry, n):
+        """L'invariante che la issue #225 chiedeva: nessun nome del catalogo
+        produce un grano muto, per nessun N.
 
         Il criterio e' il PICCO, non la somma: `sum() > 0` passerebbe per
         `sinc` a N=1 (somma 3.9e-17, inudibile) e fallirebbe per `blackman` a
         N=2 per il motivo sbagliato (somma negativa, -2.8e-17). Quello che
-        conta e' se il grano si sente.
+        conta e' se il grano si sente. Sotto la soglia lo garantisce la
+        finestra piatta; sopra, il fatto che ogni finestra del catalogo abbia
+        picco 1.0 gia' da 3 campioni.
         """
         for name in registry.available_windows():
-            window = registry.get(name, n)
-            peak = float(np.max(np.abs(window)))
-            assert peak > self.FLOOR, f"{name} n={n}: picco {peak:.4g}, grano muto"
-
-    @pytest.mark.parametrize("name,n", [
-        ('hanning', 2), ('bartlett', 2), ('triangle', 2), ('blackman', 2),
-        ('sinc', 1), ('sinc', 2), ('half_sine', 1), ('half_sine', 2),
-        ('blackman_harris', 1), ('blackman_harris', 2),
-        ('exporise', 1), ('exporise_strong', 1), ('rexporise', 1),
-    ])
-    def test_collapsed_window_becomes_flat_unit(self, registry, name, n):
-        """I casi degeneri noti diventano la finestra piatta a 1.0.
-
-        Sotto i 3 campioni non c'e' forma da rappresentare: niente salita,
-        picco e discesa. La finestra piatta e' l'unica lettura onesta.
-        """
-        np.testing.assert_array_equal(registry.get(name, n), np.ones(n))
-
-    @pytest.mark.parametrize("name,n,expected", [
-        # asimmetriche: a N=2 [1, 0] e' una decadenza vera, non un collasso
-        ('expodec', 2, [1.0, 0.0]),
-        ('expodec_strong', 2, [1.0, 0.0]),
-        ('rexpodec', 2, [1.0, 0.0]),
-        # attenuate ma udibili: restano intatte
-        ('hamming', 2, [0.08, 0.08]),
-        ('gaussian', 1, [0.043937]),
-        ('rectangle', 2, [1.0, 1.0]),
-    ])
-    def test_informative_small_windows_are_untouched(self, registry, name, n, expected):
-        """La guardia ripara solo cio' che e' collassato.
-
-        Se la finestra corta porta ancora informazione -- una decadenza, o
-        semplicemente un livello basso ma udibile -- resta esattamente com'e'.
-        """
-        np.testing.assert_allclose(registry.get(name, n), expected, atol=1e-6)
-
-    def test_repair_does_not_touch_normal_lengths(self, registry):
-        """A lunghezze normali le finestre restano la loro matematica: la
-        guardia non deve poter scattare su una finestra sana."""
-        w = registry.get('hanning', 1024)
-        np.testing.assert_array_almost_equal(w, np.hanning(1024))
+            peak = float(np.max(np.abs(registry.get(name, n))))
+            assert peak > 1e-3, f"{name} n={n}: picco {peak:.4g}, grano muto"
