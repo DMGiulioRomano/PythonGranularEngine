@@ -169,6 +169,29 @@ class TestClassifyDeviationProbability:
         with pytest.raises(ValueError):
             GateFactory._classify_deviation_probability({1, 2, 3})
 
+    def test_list_of_dict_breakpoints_is_global_env(self):
+        """Curva scritta coi breakpoint in forma dict: e' un envelope che
+        Envelope() costruisce, quindi qui vale come GLOBAL_ENV. Prima di #234
+        il predicato non la riconosceva e questa riga sollevava."""
+        assert GateFactory._classify_deviation_probability(
+            [{'t': 0, 'v': 50}, {'t': 1, 'v': 80}]
+        ) == DeviationProbabilityMode.GLOBAL_ENV
+
+    def test_list_of_3tuple_breakpoints_is_global_env(self):
+        """Stessa storia con l'interp per-punto su ogni breakpoint."""
+        assert GateFactory._classify_deviation_probability(
+            [[0, 50, 'cubic'], [1, 80, 'linear']]
+        ) == DeviationProbabilityMode.GLOBAL_ENV
+
+    def test_per_param_dict_with_envelope_values_stays_specific(self):
+        """Il guardrail di #209/#212: un dict per-chiave resta SPECIFIC anche
+        se i suoi VALORI sono envelope. Il ramo dict del predicato guarda solo
+        `'points' in obj` e #234 non lo tocca — ma e' il punto che si e' gia'
+        rotto una volta, e va tenuto fermo da un test, non dalla memoria."""
+        assert GateFactory._classify_deviation_probability(
+            {'volume': [[0, 10], [1, 20]], 'pan': 30}
+        ) == DeviationProbabilityMode.SPECIFIC
+
     @patch.object(GateFactory, '_is_envelope_like', return_value=False)
     def test_list_non_envelope_checked_before_dict(self, mock_is_env):
         """Lista non-envelope: _is_envelope_like viene chiamato prima del check dict."""

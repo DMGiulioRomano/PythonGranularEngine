@@ -1,0 +1,422 @@
+# PGE_issue234_envelope_grafie.yml
+#
+# Banco di prova di #234: la GRAFIA di un envelope non deve cambiare il
+# risultato. Il difetto era proprio questo — `is_envelope_like` non
+# riconosceva due grafie che `EnvelopeBuilder` costruisce, e i tre chiamanti
+# del predicato si comportavano di conseguenza in tre modi sbagliati diversi.
+#
+# Il file e' costruito a GRUPPI DI EQUIVALENZA. Dentro un gruppo tutti gli
+# stream dicono la STESSA curva, scritta in grafie diverse, e condividono
+# `rng_group` — cosi' (issue #169) pescano le stesse sequenze pseudo-casuali
+# e la grafia resta l'unica variabile. Il confronto e' esatto: i grani devono
+# venire IDENTICI, non simili.
+#
+#   python src/main.py configs/PGE_issue234_envelope_grafie.yml out.aif \
+#       --grain-json --per-stream --renderer numpy
+#   python utils/check_envelope_grafie.py /tmp        # confronto esatto
+#
+#   python src/main.py configs/PGE_issue234_envelope_grafie.yml out.aif --visualize
+#                                                     # partitura, per l'occhio
+#
+# Gli stream sono impilati sulla stessa finestra temporale di proposito: nello
+# score visualizer i gruppi vanno letti come sovrapposizioni, e due grafie che
+# non coincidono si vedono come due file di grani sfasate.
+
+seed: 234
+
+streams:
+
+  # ===========================================================================
+  # GRUPPO A — grain.duration con duration_unit: milliseconds
+  # La curva: da 50 ms a 100 ms sui 4 secondi. A0 la dice in secondi e fa da
+  # verita' di riferimento: verifica anche il fattore, non solo la parita'
+  # fra grafie.
+  # ===========================================================================
+
+  - stream_id: "A0_secondi_riferimento"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 0.05], [4.0, 0.1]]
+      envelope: hanning
+
+  - stream_id: "A1_ms_breakpoint_nudi"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 50], [4.0, 100]]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  # Prima di #234: NON convertito. Il motore leggeva 50 e 100 SECONDI.
+  - stream_id: "A2_ms_3tuple_su_tutti_i_punti"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 50, 'linear'], [4.0, 100, 'linear']]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  # Bastava UN breakpoint nudo perche' tornasse a funzionare: il guasto
+  # dipendeva dalla grafia, non dal contenuto.
+  - stream_id: "A3_ms_misto_nudo_e_3tuple"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 50, 'linear'], [4.0, 100]]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  # Prima di #234: NON convertito.
+  - stream_id: "A4_ms_dict_su_tutti_i_punti"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [{t: 0.0, v: 50}, {t: 4.0, v: 100}]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  - stream_id: "A5_ms_misto_dict_e_nudo"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [{t: 0.0, v: 50}, [4.0, 100]]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  - stream_id: "A6_ms_forma_tipata"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration:
+        type: linear
+        points: [[0.0, 50], [4.0, 100]]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  - stream_id: "A7_ms_forma_tipata_punti_dict"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration:
+        type: linear
+        points: [{t: 0.0, v: 50}, {t: 4.0, v: 100}]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  - stream_id: "A8_ms_bp_group"
+    rng_group: "gA"
+    onset: 0.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[[0.0, 50], [4.0, 100]], 'linear']
+      duration_unit: milliseconds
+      envelope: hanning
+
+  # ===========================================================================
+  # GRUPPO B — duration_unit: samples
+  # Stessa curva: 2400 campioni (50 ms) -> 4800 (100 ms) a 48 kHz.
+  # B0 in secondi verifica il fattore 1/output_sr.
+  # ===========================================================================
+
+  - stream_id: "B0_secondi_riferimento"
+    rng_group: "gB"
+    onset: 4.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 0.05], [4.0, 0.1]]
+      envelope: hanning
+
+  - stream_id: "B1_smp_breakpoint_nudi"
+    rng_group: "gB"
+    onset: 4.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 2400], [4.0, 4800]]
+      duration_unit: samples
+      envelope: hanning
+
+  - stream_id: "B2_smp_dict"
+    rng_group: "gB"
+    onset: 4.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [{t: 0.0, v: 2400}, {t: 4.0, v: 4800}]
+      duration_unit: samples
+      envelope: hanning
+
+  - stream_id: "B3_smp_3tuple"
+    rng_group: "gB"
+    onset: 4.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[0.0, 2400, 'linear'], [4.0, 4800, 'linear']]
+      duration_unit: samples
+      envelope: hanning
+
+  # ===========================================================================
+  # GRUPPO C — il pattern del formato compatto e l'interp per-punto
+  # Il secondo difetto di #234: scalando, il pattern perdeva `p[2]`. C0 in
+  # secondi e C1 in millisecondi dicono lo stesso ciclo con lo stesso 'step'
+  # sul primo punto — se l'interp si perde solo in C1, le due divergono.
+  # ===========================================================================
+
+  - stream_id: "C0_compatto_secondi_interp_per_punto"
+    rng_group: "gC"
+    onset: 8.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[[0, 0.05, 'step'], [50, 0.1, 'linear'], [100, 0.05]], 4.0, 2]
+      envelope: hanning
+
+  - stream_id: "C1_compatto_ms_interp_per_punto"
+    rng_group: "gC"
+    onset: 8.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: [[[0, 50, 'step'], [50, 100, 'linear'], [100, 50]], 4.0, 2]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  # ===========================================================================
+  # GRUPPO D — duration_range nell'unita' dichiarata
+  # Il range segue la stessa unita' della base: se una grafia non viene
+  # convertita, la banda cambia larghezza e i grani divergono.
+  # ===========================================================================
+
+  - stream_id: "D0_range_secondi"
+    rng_group: "gD"
+    onset: 12.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability: 100
+    grain:
+      duration: 0.05
+      duration_range: [[0.0, 0.005], [4.0, 0.02]]
+      envelope: hanning
+
+  - stream_id: "D1_range_ms_dict"
+    rng_group: "gD"
+    onset: 12.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability: 100
+    grain:
+      duration: 50
+      duration_range: [{t: 0.0, v: 5}, {t: 4.0, v: 20}]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  - stream_id: "D2_range_ms_3tuple"
+    rng_group: "gD"
+    onset: 12.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability: 100
+    grain:
+      duration: 50
+      duration_range: [[0.0, 5, 'linear'], [4.0, 20, 'linear']]
+      duration_unit: milliseconds
+      envelope: hanning
+
+  # ===========================================================================
+  # GRUPPO E — loop_unit: normalized (il secondo chiamante della conversione,
+  # PointerController). Qui il riferimento e' E1: fra grafie normalized il
+  # risultato non deve cambiare.
+  # ===========================================================================
+
+  - stream_id: "E1_loop_norm_nudi"
+    rng_group: "gE"
+    onset: 16.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 12.0
+    pointer:
+      start: 0.1
+      speed_ratio: 0.2
+      loop_start: 0.1
+      loop_dur: [[0.0, 0.2], [4.0, 0.5]]
+      loop_unit: normalized
+    grain:
+      duration: 0.05
+      envelope: hanning
+
+  - stream_id: "E2_loop_norm_dict"
+    rng_group: "gE"
+    onset: 16.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 12.0
+    pointer:
+      start: 0.1
+      speed_ratio: 0.2
+      loop_start: 0.1
+      loop_dur: [{t: 0.0, v: 0.2}, {t: 4.0, v: 0.5}]
+      loop_unit: normalized
+    grain:
+      duration: 0.05
+      envelope: hanning
+
+  - stream_id: "E3_loop_norm_3tuple"
+    rng_group: "gE"
+    onset: 16.0
+    duration: 4.0
+    sample: "pino.wav"
+    density: 12.0
+    pointer:
+      start: 0.1
+      speed_ratio: 0.2
+      loop_start: 0.1
+      loop_dur: [[0.0, 0.2, 'linear'], [4.0, 0.5, 'linear']]
+      loop_unit: normalized
+    grain:
+      duration: 0.05
+      envelope: hanning
+
+  # ===========================================================================
+  # GRUPPO F — deviation_probability come envelope (secondo chiamante del
+  # predicato). Prima di #234 le grafie F2 e F3 sollevavano
+  # InvalidParameterError: non erano rese sbagliate, erano RIFIUTATE.
+  # ===========================================================================
+
+  - stream_id: "F1_devprob_env_nudi"
+    rng_group: "gF"
+    onset: 20.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability: [[0.0, 0], [4.0, 100]]
+    grain:
+      duration: 0.05
+      duration_range: 0.02
+      envelope: hanning
+
+  - stream_id: "F2_devprob_env_dict"
+    rng_group: "gF"
+    onset: 20.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability: [{t: 0.0, v: 0}, {t: 4.0, v: 100}]
+    grain:
+      duration: 0.05
+      duration_range: 0.02
+      envelope: hanning
+
+  - stream_id: "F3_devprob_env_3tuple"
+    rng_group: "gF"
+    onset: 20.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability: [[0.0, 0, 'linear'], [4.0, 100, 'linear']]
+    grain:
+      duration: 0.05
+      duration_range: 0.02
+      envelope: hanning
+
+  - stream_id: "F4_devprob_env_tipata"
+    rng_group: "gF"
+    onset: 20.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    deviation_probability:
+      type: linear
+      points: [[0.0, 0], [4.0, 100]]
+    grain:
+      duration: 0.05
+      duration_range: 0.02
+      envelope: hanning
+
+  # ===========================================================================
+  # GRUPPO G — strategy kwarg come envelope (terzo chiamante). Prima di #234
+  # le grafie G2 e G3 non venivano convertite in Envelope: la lista grezza
+  # finiva alla strategy factory.
+  # ===========================================================================
+
+  - stream_id: "G1_step_env_nudi"
+    rng_group: "gG"
+    onset: 24.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    voices:
+      num_voices: 3
+      pitch:
+        strategy: step
+        step: [[0.0, 0], [4.0, 12]]
+
+  - stream_id: "G2_step_env_dict"
+    rng_group: "gG"
+    onset: 24.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    voices:
+      num_voices: 3
+      pitch:
+        strategy: step
+        step: [{t: 0.0, v: 0}, {t: 4.0, v: 12}]
+
+  - stream_id: "G3_step_env_3tuple"
+    rng_group: "gG"
+    onset: 24.0
+    duration: 4.0
+    sample: "sinus.wav"
+    density: 12.0
+    grain:
+      duration: 0.05
+      envelope: hanning
+    voices:
+      num_voices: 3
+      pitch:
+        strategy: step
+        step: [[0.0, 0, 'linear'], [4.0, 12, 'linear']]

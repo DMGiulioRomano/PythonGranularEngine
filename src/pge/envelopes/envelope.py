@@ -387,6 +387,15 @@ class Envelope:
                 # BP group dentro lista
                 if EnvelopeBuilder.is_bp_group(item):
                     return True
+                # 3-tuple e breakpoint dict: EnvelopeBuilder li costruisce,
+                # quindi sono envelope-like. Prima di #234 non lo erano, e una
+                # lista di soli 3-tuple o di soli dict veniva trattata come non
+                # envelope: la conversione d'unita' la saltava e il motore la
+                # leggeva nella scala vecchia, in silenzio.
+                if EnvelopeBuilder.is_3tuple_breakpoint(item):
+                    return True
+                if isinstance(item, dict) and 't' in item and 'v' in item:
+                    return True
             return False
         
         # Dict con 'points'
@@ -406,20 +415,33 @@ class Envelope:
         from pge.envelopes.envelope_builder import EnvelopeBuilder
         import copy
         
+        def _is_num(x):
+            # Un breakpoint [t, v] e' fatto di numeri. Senza questa condizione
+            # il ramo qui sotto prende anche liste a due elementi che
+            # breakpoint non sono — `[{t, v}, {t, v}]`, cioe' un BP group con i
+            # punti scritti in forma dict — e moltiplica un dict per un float.
+            # Quella forma il costruttore la rifiuta gia' nominando l'elemento:
+            # il compito qui e' arrivarci, non esplodere prima (issue #234).
+            return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+        def _scale_points_y(points):
+            # Una lista di breakpoint [t, v] o [t, v, interp]: l'interp
+            # per-punto va conservato. La usano il pattern del compatto e i
+            # punti del BP group, che scalano la stessa cosa allo stesso modo —
+            # tenerne tre copie e' come e' nato il difetto del compatto, dove
+            # la lunghezza cablata a 2 buttava via il terzo elemento a ogni
+            # render sotto un'unita' non-seconds (issue #234).
+            return [[p[0], p[1] * scale_factor, *p[2:]] for p in points]
+
         def _scale_group_y(group):
-            scaled_points = [
-                [p[0], p[1] * scale_factor] if len(p) == 2
-                else [p[0], p[1] * scale_factor, p[2]]
-                for p in group[0]
-            ]
-            return [scaled_points, group[1]]
+            return [_scale_points_y(group[0]), group[1]]
 
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
                 if EnvelopeBuilder.is_compact_format(item):
                     pattern = item[0]
-                    scaled_pattern = [[p[0], p[1] * scale_factor] for p in pattern]
+                    scaled_pattern = _scale_points_y(pattern)
                     new_item = list(item)
                     new_item[0] = scaled_pattern
                     scaled.append(new_item)
@@ -428,7 +450,8 @@ class Envelope:
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
                     # è una lista a 2 elementi.
                     scaled.append(_scale_group_y(item))
-                elif isinstance(item, list) and len(item) == 2:
+                elif (isinstance(item, list) and len(item) == 2
+                      and _is_num(item[0]) and _is_num(item[1])):
                     scaled.append([item[0], item[1] * scale_factor])
                 elif EnvelopeBuilder.is_3tuple_breakpoint(item):
                     scaled.append([item[0], item[1] * scale_factor, item[2]])
@@ -449,7 +472,7 @@ class Envelope:
         if isinstance(raw_data, list):
             if EnvelopeBuilder.is_compact_format(raw_data):
                 pattern = raw_data[0]
-                scaled_pattern = [[p[0], p[1] * scale_factor] for p in pattern]
+                scaled_pattern = _scale_points_y(pattern)
                 new_data = list(raw_data)
                 new_data[0] = scaled_pattern
                 return new_data

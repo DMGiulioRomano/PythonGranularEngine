@@ -10,6 +10,8 @@ Coverage:
 3. Gestione formati complessi (Compact, Dict, Mixed) durante lo scaling
 """
 
+import copy
+
 import pytest
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 
@@ -287,6 +289,22 @@ class TestScaleRawValuesY:
         assert result[0][0][0][1] == 2.0   # 0.5 * 4
         assert result[0][0][1][1] == 4.0   # 1.0 * 4
 
+    def test_compact_pattern_keeps_per_point_interp(self):
+        """Il pattern del compatto conserva l'interp per-punto, nudo e annidato.
+
+        Ovunque altrove nello stesso metodo la 3-tupla e' preservata (il ramo
+        is_3tuple_breakpoint, _scale_group_y, e lo scaling temporale): solo qui
+        la lunghezza era cablata a 2 e il terzo elemento spariva. Non un
+        rifiuto, una perdita silenziosa a ogni render sotto un'unita'
+        non-seconds (issue #234)."""
+        nudo = [[[0, 0.001, 'cubic'], [50, 0.1, 'linear']], 1.0, 4]
+        assert Envelope._scale_raw_values_y(copy.deepcopy(nudo), 1000.0) == \
+            [[[0, 1.0, 'cubic'], [50, 100.0, 'linear']], 1.0, 4]
+
+        annidato = [copy.deepcopy(nudo)]
+        assert Envelope._scale_raw_values_y(annidato, 1000.0) == \
+            [[[[0, 1.0, 'cubic'], [50, 100.0, 'linear']], 1.0, 4]]
+
     def test_invalid_format_raises(self):
         """Formato non supportato solleva ValueError."""
         with pytest.raises(ValueError, match="_scale_raw_values_y"):
@@ -487,6 +505,88 @@ class TestTimeUnitWithCompactFormat:
 # 5. TEST SCALE_RAW_PARAM_VALUES (HELPER CONDIVISO SCALARE/ENVELOPE)
 # =============================================================================
 
+# Il corpus della parita' (issue #234). Ogni forma che l'editor o uno YAML
+# scritto a mano possono produrre: nude, tipate, annidate, degeneri. Le
+# aspettative NON sono scritte a mano — vengono chieste al costruttore.
+PARITY_CORPUS = [
+    # liste di breakpoint, nelle tre grafie e mescolate
+    [[0, 0.05], [1, 0.1]],
+    [[0, 0.05, 'cubic'], [1, 0.1, 'linear']],
+    [{'t': 0, 'v': 0.05}, {'t': 1, 'v': 0.1}],
+    [{'t': 0, 'v': 0.05}],
+    [{'t': 0, 'v': 0.05}, [1, 0.1]],
+    [[0, 0.05, 'cubic'], [1, 0.1]],
+    # BP group, nudo e malformato
+    [[[0, 0.05], [1, 0.1]], 'cubic'],
+    [[[0, 0.05, 'cubic'], [1, 0.1]], 'linear'],
+    [[{'t': 0, 'v': 0.05}, {'t': 1, 'v': 0.1}], 'cubic'],
+    [[], 'cubic'],
+    # formato compatto, nudo e annidato
+    [[[0, 0.05], [50, 0.1]], 1, 4],
+    [[[[0, 0.05], [50, 0.1]], 1, 4]],
+    [[[0, 0.05, 'cubic'], [50, 0.1]], 1, 4],
+    [[{'t': 0, 'v': 0.05}, {'t': 50, 'v': 0.1}], 1, 4],
+    [[], 0.4, 4],
+    # forma tipata
+    {'type': 'linear', 'points': [[0, 0.05], [1, 0.1]]},
+    {'type': 'linear', 'points': [{'t': 0, 'v': 0.05}, {'t': 1, 'v': 0.1}]},
+    {'type': 'linear'},
+    # degeneri
+    [],
+    [0.05, 0.1],
+    0.05,
+    'hanning',
+    None,
+]
+
+
+class TestEnvelopeLikeParity:
+    """
+    L'invariante di #234, in UNA direzione sola.
+
+    `is_envelope_like` non risponde a «questo e' valido?» ma a «questo e'
+    INTESO come envelope?». E' strutturale di proposito — `is_bp_group` lo
+    dichiara nella sua docstring — cosi' una forma malformata ma
+    riconoscibile arriva al costruttore, che sa dire perche' e' rotta. Un
+    predicato che la rifiutasse la farebbe passare oltre in silenzio, e
+    l'errore arriverebbe piu' a valle e peggiore.
+
+    Quel che invece NON puo' succedere e' il contrario: un envelope che il
+    costruttore accetta e il predicato non riconosce. Li' non c'e' nessun
+    errore da rendere preciso — c'e' solo un envelope trattato come se non
+    lo fosse, che e' come e' nato #234 (la conversione d'unita' lo saltava e
+    il motore lo leggeva nella scala vecchia, senza dirlo).
+
+        Envelope(x) si costruisce  =>  is_envelope_like(x)
+
+    Il verso opposto non e' richiesto, ed e' un progetto, non una svista.
+    """
+
+    @staticmethod
+    def _builds(raw):
+        try:
+            Envelope(copy.deepcopy(raw))
+            return True
+        except Exception:
+            return False
+
+    @pytest.mark.parametrize("raw", PARITY_CORPUS, ids=lambda r: repr(r)[:48])
+    def test_builder_implies_predicate(self, raw):
+        if not self._builds(raw):
+            pytest.skip("il costruttore la rifiuta: il predicato e' libero di ammetterla")
+        assert Envelope.is_envelope_like(copy.deepcopy(raw)) is True
+
+    @pytest.mark.parametrize("raw", PARITY_CORPUS, ids=lambda r: repr(r)[:48])
+    def test_scaling_never_raises(self, raw):
+        """Il rovescio del predicato permissivo: se la porta ammette una forma
+        malformata perche' sia il COSTRUTTORE a dire cos'ha che non va, allora
+        lo scaler non puo' esplodere prima. Su quel che non sa maneggiare lascia
+        l'item com'e' e passa la palla — un TypeError nudo da una
+        moltiplicazione non nomina ne' il campo ne' lo stream (issue #234)."""
+        from pge.envelopes.envelope import scale_raw_param_values
+        scale_raw_param_values(copy.deepcopy(raw), 1000.0)
+
+
 class TestScaleRawParamValues:
     """
     Testa envelopes.envelope.scale_raw_param_values: scaling di un valore
@@ -503,6 +603,15 @@ class TestScaleRawParamValues:
         from pge.envelopes.envelope import scale_raw_param_values
         result = scale_raw_param_values([[0.0, 0.5], [2.0, 1.0]], 100.0)
         assert result == [[0.0, 50.0], [2.0, 100.0]]
+
+    def test_list_of_dict_breakpoints_is_scaled(self):
+        """Lista di soli breakpoint dict: Envelope() la costruisce, quindi la
+        conversione d'unita' deve scalarla come ogni altro envelope. Se la porta
+        la salta, il motore la legge nella scala vecchia senza dirlo (issue #234)."""
+        from pge.envelopes.envelope import scale_raw_param_values
+        raw = [{'t': 0, 'v': 0.001}, {'t': 1, 'v': 0.1}]
+        result = scale_raw_param_values(raw, 1000.0)
+        assert result == [{'t': 0, 'v': 1.0}, {'t': 1, 'v': 100.0}]
 
     def test_envelope_like_dict_scales_points(self):
         from pge.envelopes.envelope import scale_raw_param_values
