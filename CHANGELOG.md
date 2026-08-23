@@ -10,6 +10,60 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
+  #234). `Envelope.is_envelope_like` era piu' stretta di quel che
+  `EnvelopeBuilder` costruisce: una lista di **soli** breakpoint dict
+  `[{t, v}, ...]` o di **sole** 3-tuple `[[t, v, interp], ...]` non la
+  soddisfaceva, mentre `Envelope()` le costruisce senza fiatare. Bastava un
+  breakpoint nudo in mezzo perche' tutto tornasse a funzionare, il che rendeva
+  il guasto dipendente dalla grafia e non dal contenuto.
+
+  Il predicato ha **tre** chiamanti, e sbagliavano tutti e tre:
+
+  - `scale_raw_param_values` (conversione d'unita' di `grain.duration_unit` e
+    `loop_unit: normalized`) **non convertiva** quelle curve: con
+    `duration_unit: milliseconds` il motore le leggeva in secondi, cioe' grani
+    mille volte piu' lunghi di quel che il file dichiara, senza un avviso;
+  - `GateFactory._classify_deviation_probability` le **rifiutava** con
+    `InvalidParameterError`, benche' la reference documenti «globale con
+    envelope» senza restringere le grafie;
+  - `Stream._parse_strategy_kwarg` passava a valle la **lista grezza** invece
+    di un `Envelope`.
+
+  L'invariante e' ora fissata da un test, in una direzione sola: *un envelope
+  che `Envelope()` accetta deve essere riconosciuto dal predicato*. Il verso
+  opposto resta libero di proposito — una forma malformata ma riconoscibile
+  deve arrivare al costruttore, che sa dire cos'ha che non va, e
+  `is_bp_group` lo dichiara gia' nella propria docstring. Il corpus di 23
+  forme che fissa la parita' chiede le aspettative al costruttore invece di
+  scriverle a mano.
+
+  **Cambia il comportamento**: un progetto che oggi usa una di quelle grafie
+  sotto un'unita' non-seconds suona diverso — corretto invece che sbagliato.
+  Nessun file in `configs/` e' interessato (i valori sotto `duration_unit` e
+  `loop_unit` sono scalari o breakpoint nudi); un progetto esterno si controlla
+  cercando `{t:` o una terza voce nei breakpoint accanto a quelle chiavi.
+
+- **Il pattern del formato compatto perdeva l'interp per-punto quando veniva
+  scalato** (issue #234). In `_scale_raw_values_y` la lunghezza del breakpoint
+  era cablata a 2, in due copie (compatto annidato e compatto nudo):
+  `[[0, 0.001, 'cubic'], [0.5, 0.1, 'linear']]` tornava
+  `[[0, 1e-06], [0.5, 0.0001]]`. Ovunque altrove nello stesso metodo la
+  3-tupla e' preservata — il ramo `is_3tuple_breakpoint`, `_scale_group_y`, lo
+  scaling temporale — quindi era un'incoerenza interna, non una scelta. La
+  perdita avveniva a ogni render sotto un'unita' non-seconds, che l'envelope
+  fosse stato toccato o no: la preview disegnava l'interp dichiarato, il render
+  lo ignorava.
+
+- **`TypeError` nudo al posto di un errore che nomina il campo** (issue #234).
+  Un BP group coi punti scritti in forma dict — `[[{t, v}, {t, v}], 'cubic']` —
+  passa il predicato (e' *inteso* come envelope) ma il costruttore lo rifiuta.
+  Lo scaler pero' ci arrivava prima e moltiplicava un dict per un float:
+  `TypeError: unsupported operand type(s) for *: 'dict' and 'float'`, senza
+  `stream_id` ne' nome del campo. Il ramo `[t, v]` ora pretende due numeri,
+  come ogni altro riconoscitore del modulo, e l'item passa invariato: l'errore
+  arriva da `Envelope()`, che nomina l'elemento.
+
 - **Grani muti: sotto i 10 campioni non si finestra più** (issue #225). Con
   `grain.duration` dentro la banda `round(dur * output_sr) == 2` —
   **31.25-52.08 µs a 48 kHz**, estremi inclusi perché `round()` in Python è
