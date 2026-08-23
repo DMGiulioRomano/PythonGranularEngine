@@ -21,9 +21,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Il predicato ha **tre** chiamanti, e sbagliavano tutti e tre:
 
   - `scale_raw_param_values` (conversione d'unita' di `grain.duration_unit` e
-    `loop_unit: normalized`) **non convertiva** quelle curve: con
-    `duration_unit: milliseconds` il motore le leggeva in secondi, cioe' grani
-    mille volte piu' lunghi di quel che il file dichiara, senza un avviso;
+    `loop_unit: normalized`) **non convertiva** quelle curve: il motore le
+    leggeva nella scala vecchia. Con `duration_unit: milliseconds` il guasto ha
+    due regimi, separati dal `max_val` di `grain_duration` (10 s). Sopra —
+    `duration: 50` letto come 50 secondi — il bound check ferma il render:
+    rumoroso e innocuo. **Sotto e' peggio di quanto sembri**: un valore che sta
+    nei bound produce grani piu' lunghi dello stream intero, che spariscono
+    tutti. Misurato su uno stream da 2 s con
+    `duration: [{t: 0, v: 5}, {t: 2, v: 8}]` in millisecondi: **zero grani,
+    uscita pulita, nessun avviso e nessun log** — dove la versione in secondi ne
+    genera 20. E' la banda delle durate corte, quella in cui la sintesi
+    granulare vive, ed e' la stessa classe di guasto di #225 («grani muti») per
+    una strada diversa;
   - `GateFactory._classify_deviation_probability` le **rifiutava** con
     `InvalidParameterError`, benche' la reference documenti «globale con
     envelope» senza restringere le grafie;
@@ -37,6 +46,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `is_bp_group` lo dichiara gia' nella propria docstring. Il corpus di 23
   forme che fissa la parita' chiede le aspettative al costruttore invece di
   scriverle a mano.
+
+  Il banco di prova e' `configs/PGE_issue234_envelope_grafie.yml`: 28 stream in
+  sette gruppi di equivalenza, dove la grafia e' l'unica variabile (stesso
+  `rng_group`, stesso `seed`) e i grani devono venire identici, non simili.
+  `utils/check_envelope_grafie.py` fa il confronto sui JSON di `--grain-json`.
+  Sul codice precedente cinque gruppi su sette non rendono affatto e due
+  divergono in silenzio.
 
   **Cambia il comportamento**: un progetto che oggi usa una di quelle grafie
   sotto un'unita' non-seconds suona diverso — corretto invece che sbagliato.
