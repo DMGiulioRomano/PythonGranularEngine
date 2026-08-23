@@ -44,6 +44,7 @@ import pytest
 from unittest.mock import patch, Mock
 
 from pge.core.stream import Stream
+from pge.envelopes.envelope import Envelope
 from pge.controllers.voice_manager import VoiceManager, VoiceConfig
 from pge.strategies.voice_pitch_strategy import (
     StepPitchStrategy, RangePitchStrategy,
@@ -793,6 +794,14 @@ class TestStrategyKwargsEnvelope:
         vc1 = s._voice_manager.get_voice_config(1, 1.0)
         assert vc0.pitch_factor == pytest.approx(vc1.pitch_factor)
         assert vc0.pitch_factor == pytest.approx(_f(2.0))
+
+    def test_dict_breakpoints_kwarg_becomes_envelope(self):
+        """Un kwarg scritto coi breakpoint in forma dict e' un envelope, e come
+        tale va convertito. Prima di #234 il predicato non lo riconosceva e la
+        lista grezza finiva a valle come se fosse un valore qualsiasi."""
+        from pge.core.stream import _parse_strategy_kwarg
+        out = _parse_strategy_kwarg([{'t': 0, 'v': 0}, {'t': 10, 'v': 12}], 10.0)
+        assert isinstance(out, Envelope)
 
     # --- list envelope ---
 
