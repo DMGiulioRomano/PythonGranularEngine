@@ -387,8 +387,13 @@ class Envelope:
                 # BP group dentro lista
                 if EnvelopeBuilder.is_bp_group(item):
                     return True
-                # Breakpoint dict {t, v}: EnvelopeBuilder lo costruisce, quindi
-                # e' envelope-like (issue #234).
+                # 3-tuple e breakpoint dict: EnvelopeBuilder li costruisce,
+                # quindi sono envelope-like. Prima di #234 non lo erano, e una
+                # lista di soli 3-tuple o di soli dict veniva trattata come non
+                # envelope: la conversione d'unita' la saltava e il motore la
+                # leggeva nella scala vecchia, in silenzio.
+                if EnvelopeBuilder.is_3tuple_breakpoint(item):
+                    return True
                 if isinstance(item, dict) and 't' in item and 'v' in item:
                     return True
             return False
