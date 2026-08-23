@@ -289,6 +289,22 @@ class TestScaleRawValuesY:
         assert result[0][0][0][1] == 2.0   # 0.5 * 4
         assert result[0][0][1][1] == 4.0   # 1.0 * 4
 
+    def test_compact_pattern_keeps_per_point_interp(self):
+        """Il pattern del compatto conserva l'interp per-punto, nudo e annidato.
+
+        Ovunque altrove nello stesso metodo la 3-tupla e' preservata (il ramo
+        is_3tuple_breakpoint, _scale_group_y, e lo scaling temporale): solo qui
+        la lunghezza era cablata a 2 e il terzo elemento spariva. Non un
+        rifiuto, una perdita silenziosa a ogni render sotto un'unita'
+        non-seconds (issue #234)."""
+        nudo = [[[0, 0.001, 'cubic'], [50, 0.1, 'linear']], 1.0, 4]
+        assert Envelope._scale_raw_values_y(copy.deepcopy(nudo), 1000.0) == \
+            [[[0, 1.0, 'cubic'], [50, 100.0, 'linear']], 1.0, 4]
+
+        annidato = [copy.deepcopy(nudo)]
+        assert Envelope._scale_raw_values_y(annidato, 1000.0) == \
+            [[[[0, 1.0, 'cubic'], [50, 100.0, 'linear']], 1.0, 4]]
+
     def test_invalid_format_raises(self):
         """Formato non supportato solleva ValueError."""
         with pytest.raises(ValueError, match="_scale_raw_values_y"):
