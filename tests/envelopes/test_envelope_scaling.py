@@ -560,6 +560,16 @@ class TestEnvelopeLikeParity:
             pytest.skip("il costruttore la rifiuta: il predicato e' libero di ammetterla")
         assert Envelope.is_envelope_like(copy.deepcopy(raw)) is True
 
+    @pytest.mark.parametrize("raw", PARITY_CORPUS, ids=lambda r: repr(r)[:48])
+    def test_scaling_never_raises(self, raw):
+        """Il rovescio del predicato permissivo: se la porta ammette una forma
+        malformata perche' sia il COSTRUTTORE a dire cos'ha che non va, allora
+        lo scaler non puo' esplodere prima. Su quel che non sa maneggiare lascia
+        l'item com'e' e passa la palla — un TypeError nudo da una
+        moltiplicazione non nomina ne' il campo ne' lo stream (issue #234)."""
+        from pge.envelopes.envelope import scale_raw_param_values
+        scale_raw_param_values(copy.deepcopy(raw), 1000.0)
+
 
 class TestScaleRawParamValues:
     """

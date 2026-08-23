@@ -415,6 +415,15 @@ class Envelope:
         from pge.envelopes.envelope_builder import EnvelopeBuilder
         import copy
         
+        def _is_num(x):
+            # Un breakpoint [t, v] e' fatto di numeri. Senza questa condizione
+            # il ramo qui sotto prende anche liste a due elementi che
+            # breakpoint non sono — `[{t, v}, {t, v}]`, cioe' un BP group con i
+            # punti scritti in forma dict — e moltiplica un dict per un float.
+            # Quella forma il costruttore la rifiuta gia' nominando l'elemento:
+            # il compito qui e' arrivarci, non esplodere prima (issue #234).
+            return isinstance(x, (int, float)) and not isinstance(x, bool)
+
         def _scale_group_y(group):
             scaled_points = [
                 [p[0], p[1] * scale_factor] if len(p) == 2
@@ -437,7 +446,8 @@ class Envelope:
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
                     # è una lista a 2 elementi.
                     scaled.append(_scale_group_y(item))
-                elif isinstance(item, list) and len(item) == 2:
+                elif (isinstance(item, list) and len(item) == 2
+                      and _is_num(item[0]) and _is_num(item[1])):
                     scaled.append([item[0], item[1] * scale_factor])
                 elif EnvelopeBuilder.is_3tuple_breakpoint(item):
                     scaled.append([item[0], item[1] * scale_factor, item[2]])
