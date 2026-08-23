@@ -387,6 +387,10 @@ class Envelope:
                 # BP group dentro lista
                 if EnvelopeBuilder.is_bp_group(item):
                     return True
+                # Breakpoint dict {t, v}: EnvelopeBuilder lo costruisce, quindi
+                # e' envelope-like (issue #234).
+                if isinstance(item, dict) and 't' in item and 'v' in item:
+                    return True
             return False
         
         # Dict con 'points'

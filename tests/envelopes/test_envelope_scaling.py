@@ -504,6 +504,15 @@ class TestScaleRawParamValues:
         result = scale_raw_param_values([[0.0, 0.5], [2.0, 1.0]], 100.0)
         assert result == [[0.0, 50.0], [2.0, 100.0]]
 
+    def test_list_of_dict_breakpoints_is_scaled(self):
+        """Lista di soli breakpoint dict: Envelope() la costruisce, quindi la
+        conversione d'unita' deve scalarla come ogni altro envelope. Se la porta
+        la salta, il motore la legge nella scala vecchia senza dirlo (issue #234)."""
+        from pge.envelopes.envelope import scale_raw_param_values
+        raw = [{'t': 0, 'v': 0.001}, {'t': 1, 'v': 0.1}]
+        result = scale_raw_param_values(raw, 1000.0)
+        assert result == [{'t': 0, 'v': 1.0}, {'t': 1, 'v': 100.0}]
+
     def test_envelope_like_dict_scales_points(self):
         from pge.envelopes.envelope import scale_raw_param_values
         raw = {'type': 'linear', 'points': [[0, 0.1], [1, 0.2]]}
