@@ -424,27 +424,24 @@ class Envelope:
             # il compito qui e' arrivarci, non esplodere prima (issue #234).
             return isinstance(x, (int, float)) and not isinstance(x, bool)
 
-        def _scale_pattern_y(pattern):
-            # Il pattern del compatto e' fatto di [x%, y] o [x%, y, interp]:
-            # il terzo elemento va conservato, come in ogni altro ramo di
-            # questo metodo. Cablare la lunghezza a 2 lo buttava via a ogni
+        def _scale_points_y(points):
+            # Una lista di breakpoint [t, v] o [t, v, interp]: l'interp
+            # per-punto va conservato. La usano il pattern del compatto e i
+            # punti del BP group, che scalano la stessa cosa allo stesso modo —
+            # tenerne tre copie e' come e' nato il difetto del compatto, dove
+            # la lunghezza cablata a 2 buttava via il terzo elemento a ogni
             # render sotto un'unita' non-seconds (issue #234).
-            return [[p[0], p[1] * scale_factor, *p[2:]] for p in pattern]
+            return [[p[0], p[1] * scale_factor, *p[2:]] for p in points]
 
         def _scale_group_y(group):
-            scaled_points = [
-                [p[0], p[1] * scale_factor] if len(p) == 2
-                else [p[0], p[1] * scale_factor, p[2]]
-                for p in group[0]
-            ]
-            return [scaled_points, group[1]]
+            return [_scale_points_y(group[0]), group[1]]
 
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
                 if EnvelopeBuilder.is_compact_format(item):
                     pattern = item[0]
-                    scaled_pattern = _scale_pattern_y(pattern)
+                    scaled_pattern = _scale_points_y(pattern)
                     new_item = list(item)
                     new_item[0] = scaled_pattern
                     scaled.append(new_item)
@@ -475,7 +472,7 @@ class Envelope:
         if isinstance(raw_data, list):
             if EnvelopeBuilder.is_compact_format(raw_data):
                 pattern = raw_data[0]
-                scaled_pattern = _scale_pattern_y(pattern)
+                scaled_pattern = _scale_points_y(pattern)
                 new_data = list(raw_data)
                 new_data[0] = scaled_pattern
                 return new_data
