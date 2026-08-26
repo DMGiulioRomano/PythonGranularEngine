@@ -89,6 +89,11 @@ def build_mock_modules():
 
     factory_cls = MagicMock(name='RendererFactory')
     factory_cls.create.return_value = renderer_instance
+    # available_types() finisce nei messaggi d'errore e in api.renderer_types():
+    # il mock deve rispondere con l'elenco vero, altrimenti il test verifica
+    # una lista inventata qui.
+    from pge.rendering.renderer_factory import RendererFactory as _RealFactory
+    factory_cls.available_types.return_value = _RealFactory.available_types()
     factory_mod = types.ModuleType('pge.rendering.renderer_factory')
     factory_mod.RendererFactory = factory_cls
 

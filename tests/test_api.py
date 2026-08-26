@@ -157,6 +157,135 @@ class TestBuildRendererCsound:
         assert capsys.readouterr().out == ''
 
 
+class TestBuildRendererSuperCollider:
+    """build_renderer('supercollider', ..., supercollider=SuperColliderOptions(...)):
+    kwargs esatti a RendererFactory.create (issue #228)."""
+
+    def _table_map(self):
+        return {1: ('sample', 'voice.wav'), 2: ('window', 'hanning')}
+
+    def test_factory_receives_supercollider_type(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = self._table_map()
+        api_mocks['api'].build_renderer('supercollider', gen)
+        assert api_mocks['RendererFactory'].create.call_args.args[0] == 'supercollider'
+
+    def test_table_map_dal_generator(self, api_mocks):
+        """Come il ramo numpy: i numeri di tabella del FtableManager
+        diventano numeri di buffer."""
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = self._table_map()
+        api_mocks['api'].build_renderer('supercollider', gen)
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['table_map'] == self._table_map()
+
+    def test_default_sc_config(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        api_mocks['api'].build_renderer('supercollider', gen)
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['sc_config'] == {
+            'synthdef_source': 'supercollider/pge_grain.scd',
+            'synthdef_dir': 'generated',
+            'scsynth_bin': 'scsynth',
+            'sclang_bin': 'sclang',
+            'block_size': 1,
+            'max_nodes': 32768,
+        }
+        assert kwargs['osc_dir'] is None
+        assert kwargs['cache_manager'] is None
+
+    def test_custom_sc_options(self, api_mocks):
+        api = api_mocks['api']
+        gen = api_mocks['generator_instance']
+        opts = api.SuperColliderOptions(
+            synthdef_source='/custom/grain.scd',
+            synthdef_dir='/custom/defs',
+            scsynth_bin='/opt/sc/scsynth',
+            sclang_bin='/opt/sc/sclang',
+            block_size=64,
+            max_nodes=2048,
+            osc_dir='/tmp/osc',
+        )
+        api.build_renderer('supercollider', gen, supercollider=opts)
+
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['sc_config'] == {
+            'synthdef_source': '/custom/grain.scd',
+            'synthdef_dir': '/custom/defs',
+            'scsynth_bin': '/opt/sc/scsynth',
+            'sclang_bin': '/opt/sc/sclang',
+            'block_size': 64,
+            'max_nodes': 2048,
+        }
+        assert kwargs['osc_dir'] == '/tmp/osc'
+
+    def test_samples_dir_col_separatore_finale(self, api_mocks):
+        """SuperColliderScoreWriter concatena base + filename, come
+        SampleRegistry: senza separatore il path finisce incollato."""
+        gen = api_mocks['generator_instance']
+        api_mocks['api'].build_renderer(
+            'supercollider', gen, samples_dir='/media/wavs')
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['samples_dir'] == '/media/wavs/'
+
+    def test_output_sr_e_formato_inoltrati(self, api_mocks):
+        from pge.rendering.audio_format import FORMATS
+
+        gen = api_mocks['generator_instance']
+        api_mocks['api'].build_renderer(
+            'supercollider', gen, output_sr=96000,
+            audio_format=FORMATS['wav'])
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['output_sr'] == 96000
+        assert kwargs['audio_format'] is FORMATS['wav']
+
+    def test_cache_manager_iniettato(self, api_mocks, capsys):
+        scm_mod, scm_cls, scm_instance = _make_scm_module()
+        gen = api_mocks['generator_instance']
+
+        with patch.dict(sys.modules,
+                        {'pge.rendering.stream_cache_manager': scm_mod}):
+            api_mocks['api'].build_renderer(
+                'supercollider', gen, cache_manifest_path='cache/z.json')
+
+        kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
+        assert kwargs['cache_manager'] is scm_instance
+        assert kwargs['stream_data_map'] is gen.stream_data_map
+        assert capsys.readouterr().out == ''
+
+    def test_nessun_sample_caricato_in_memoria(self, api_mocks):
+        """A differenza del ramo numpy: i sample li legge scsynth, non noi.
+        Caricarli qui sarebbe il doppio della RAM per niente."""
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = self._table_map()
+        sample_reg = sys.modules['pge.rendering.sample_registry'].SampleRegistry
+        api_mocks['api'].build_renderer('supercollider', gen)
+        sample_reg.assert_not_called()
+
+    def test_no_print(self, api_mocks, capsys):
+        api_mocks['api'].build_renderer(
+            'supercollider', api_mocks['generator_instance'])
+        assert capsys.readouterr().out == ''
+
+
+class TestRendererTypes:
+    """api.renderer_types(): l'elenco dei backend, per chi deve mostrarlo
+    (CLI, PGE-ui) senza tenerne una copia propria."""
+
+    def test_include_i_tre_backend(self, api_mocks):
+        tipi = api_mocks['api'].renderer_types()
+        assert 'numpy' in tipi
+        assert 'csound' in tipi
+        assert 'supercollider' in tipi
+
+    def test_errore_su_tipo_ignoto_li_elenca_tutti(self, api_mocks):
+        from pge.shared.exceptions import InvalidRendererError
+        with pytest.raises(InvalidRendererError) as exc:
+            api_mocks['api'].build_renderer(
+                'bogus', api_mocks['generator_instance'])
+        assert 'supercollider' in exc.value.available
+
+
 class TestBuildRendererCache:
     """cache_manifest_path esplicito -> StreamCacheManager(cache_path=...)
     iniettato nel factory, senza print (il print [CACHE] e' policy CLI)."""

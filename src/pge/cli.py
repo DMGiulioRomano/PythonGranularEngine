@@ -38,7 +38,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     (i print sono policy CLI, l'API non stampa).
 
     Args:
-        renderer_type: 'csound' o 'numpy'
+        renderer_type: 'csound', 'numpy' o 'supercollider'
         generator: istanza di Generator con streams gia' creati
         **kwargs: argomenti specifici per ogni renderer
 
@@ -51,9 +51,11 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     from pge.rendering.audio_format import DEFAULT_FORMAT
 
     # Il print del manifest avveniva dentro i rami numpy/csound: per un tipo
-    # ignoto l'errore arrivava senza print. Parita' preservata col guard.
+    # ignoto l'errore arrivava senza print. Parita' preservata col guard, che
+    # ora chiede l'elenco all'API invece di tenerne una copia -- e' cosi' che
+    # un backend nuovo eredita l'annuncio del manifest.
     cache_manifest_path = None
-    if renderer_type in ('numpy', 'csound') and kwargs.get('use_cache'):
+    if renderer_type in api.renderer_types() and kwargs.get('use_cache'):
         import os as _os
         yaml_basename = kwargs['yaml_basename']
         cache_dir = kwargs.get('cache_dir', 'cache')
@@ -72,6 +74,16 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             sco_dir=kwargs.get('sco_dir'),
         )
 
+    sc_options = None
+    if renderer_type == 'supercollider':
+        sc_options = api.SuperColliderOptions(
+            synthdef_source=kwargs.get(
+                'sc_synthdef_source', 'supercollider/pge_grain.scd'),
+            synthdef_dir=kwargs.get('sc_synthdef_dir', 'generated'),
+            block_size=kwargs.get('sc_block_size', 1),
+            osc_dir=kwargs.get('osc_dir'),
+        )
+
     return api.build_renderer(
         renderer_type,
         generator,
@@ -80,6 +92,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
         cache_manifest_path=cache_manifest_path,
         csound=csound_options,
+        supercollider=sc_options,
     )
 
 
@@ -190,12 +203,14 @@ def main():
             "[--page-duration SECONDI] "
             "[--grain-height duration|read-span] "
             "[--per-stream] "
-            "[--renderer csound|numpy] "
+            "[--renderer csound|numpy|supercollider] "
             "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
+            "[--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] "
+            "[--sc-block-size N] [--keep-osc] [--osc-dir DIR] "
             "[--cache] [--cache-dir DIR] "
             "[--reaper] [--reaper-path FILE] "
             "[--grain-json] "
@@ -376,6 +391,45 @@ def main():
             if idx + 1 < len(sys.argv):
                 sco_dir = sys.argv[idx + 1]
 
+    # --- SuperCollider config args ---
+
+    sc_synthdef_source = 'supercollider/pge_grain.scd'
+    if '--sc-synthdef-source' in sys.argv:
+        idx = sys.argv.index('--sc-synthdef-source')
+        if idx + 1 < len(sys.argv):
+            sc_synthdef_source = sys.argv[idx + 1]
+
+    sc_synthdef_dir = 'generated'
+    if '--sc-synthdef-dir' in sys.argv:
+        idx = sys.argv.index('--sc-synthdef-dir')
+        if idx + 1 < len(sys.argv):
+            sc_synthdef_dir = sys.argv[idx + 1]
+
+    # --sc-block-size N: 1 (default) = onset campione-accurati, come ksmps=1
+    # di csound/main.orc. Alzarlo accorcia il render e quantizza gli onset.
+    sc_block_size = 1
+    if '--sc-block-size' in sys.argv:
+        idx = sys.argv.index('--sc-block-size')
+        if idx + 1 < len(sys.argv):
+            raw = sys.argv[idx + 1]
+            try:
+                sc_block_size = int(raw)
+            except ValueError:
+                print(f"--sc-block-size non valido: '{raw}'. Deve essere un intero >= 1.")
+                sys.exit(1)
+            if sc_block_size < 1:
+                print(f"--sc-block-size deve essere >= 1, ricevuto: {sc_block_size}")
+                sys.exit(1)
+
+    # --keep-osc: conserva gli score .osc intermedi (omologo di --keep-sco)
+    osc_dir = None
+    if '--keep-osc' in sys.argv:
+        osc_dir = 'generated'
+        if '--osc-dir' in sys.argv:
+            idx = sys.argv.index('--osc-dir')
+            if idx + 1 < len(sys.argv):
+                osc_dir = sys.argv[idx + 1]
+
     # --format aiff|wav|flac (default: aiff)
     from pge.rendering.audio_format import FORMATS, DEFAULT_FORMAT
     audio_format = DEFAULT_FORMAT
@@ -427,6 +481,10 @@ def main():
             yaml_basename=yaml_basename,
             sco_dir=sco_dir,
             audio_format=audio_format,
+            sc_synthdef_source=sc_synthdef_source,
+            sc_synthdef_dir=sc_synthdef_dir,
+            sc_block_size=sc_block_size,
+            osc_dir=osc_dir,
         )
 
         # Garbage collection: rimuove stream orfani (rimossi/rinominati nel YAML)

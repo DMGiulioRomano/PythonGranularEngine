@@ -10,6 +10,10 @@ sono la rete di sicurezza che garantisce che la CLI non cambi mentre
 l'orchestrazione migra in api.py e i package vengono rinominati.
 
 Usa la stessa fixture a sys.modules di test_main.py (tests/main_mocks.py).
+
+Il golden si muove solo quando la CLI acquista superficie di proposito --
+non durante un refactor, che e' il vincolo che questo file difende. Ultimo
+movimento: issue #228, il terzo backend audio e i suoi flag.
 """
 
 import sys
@@ -27,12 +31,14 @@ USAGE = (
     "[--page-duration SECONDI] "
     "[--grain-height duration|read-span] "
     "[--per-stream] "
-    "[--renderer csound|numpy] "
+    "[--renderer csound|numpy|supercollider] "
     "[--jobs N|auto] "
     "[--format aiff|wav|flac] "
     "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
     "[--log-dir DIR] [--message-level N] "
     "[--keep-sco] [--sco-dir DIR] "
+    "[--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] "
+    "[--sc-block-size N] [--keep-osc] [--osc-dir DIR] "
     "[--cache] [--cache-dir DIR] "
     "[--reaper] [--reaper-path FILE] "
     "[--grain-json] "
@@ -192,6 +198,23 @@ class TestSvLayoutValidationGolden:
             mocks, ['main.py', 'test.yml', '--sv-layout', 'bogus'])
         assert capsys.readouterr().out == (
             "--sv-layout non valido: 'bogus'. Valori: multi, single\n"
+        )
+
+
+class TestScBlockSizeValidationGolden:
+    """Messaggi esatti di --sc-block-size (valore non numerico / < 1)."""
+
+    def test_non_numeric_message(self, mocks, capsys):
+        _run_expect_exit(
+            mocks, ['main.py', 'test.yml', '--sc-block-size', 'molti'])
+        assert capsys.readouterr().out == (
+            "--sc-block-size non valido: 'molti'. Deve essere un intero >= 1.\n"
+        )
+
+    def test_zero_message(self, mocks, capsys):
+        _run_expect_exit(mocks, ['main.py', 'test.yml', '--sc-block-size', '0'])
+        assert capsys.readouterr().out == (
+            "--sc-block-size deve essere >= 1, ricevuto: 0\n"
         )
 
 
