@@ -193,7 +193,24 @@ class VisualizerConfig:
     waveform_alpha: float = 0.3
     waveform_color: str = 'steelblue'
     waveform_width_ratio: float = 0.06    # frazione della larghezza pagina
-    waveform_downsample: int = 200        # 1 punto ogni N campioni
+    # Risoluzione della waveform (issue #233). Il disegno e' un inviluppo
+    # min/max: il segnale si divide in bucket e di ognuno si tiene la coppia
+    # (minimo, massimo), come fa qualunque editor audio. Prima era un
+    # sottocampionamento a passo fisso, che perdeva i transienti, aliasava le
+    # frequenze alte su quelle basse, e costava in proporzione alla durata del
+    # file. Vedi rendering.waveform_peaks.
+    #
+    # Quante colonne min/max disegnare. E' una risoluzione, non un passo: il
+    # costo del disegno non dipende da quanto e' lungo il sample, e un sample
+    # corto viene disegnato intero invece che a manciate di punti.
+    waveform_buckets: int = 2000
+    # Larghezza del bucket in campioni. La manopola storica ("1 punto ogni N
+    # campioni"): se data vince su waveform_buckets. None = assente, cioe' la
+    # larghezza si deriva dal conteggio. Resta perche' fissare la risoluzione
+    # in campioni e' legittimo — e' come si confrontano allo stesso dettaglio
+    # due sample di lunghezza diversa — e perche' la config di ScoreVisualizer
+    # e' superficie pubblica.
+    waveform_downsample: Optional[int] = None
     # La colorbar del pitch vive in una colonna propria del GridSpec, cosi' i
     # subplot dei grani e quello degli envelope condividono la colonna centrale
     # e restano allineati sullo stesso bordo destro.
