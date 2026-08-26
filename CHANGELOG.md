@@ -10,6 +10,54 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **La waveform della partitura non era il segnale, era la griglia di lettura**
+  (issue #233). `ScoreVisualizer._load_waveform` riduceva il sample con
+  `audio[::200]` — un campione ogni duecento — e disegnava quello. Tre difetti,
+  che sono tre difetti diversi:
+
+  - **i transienti sparivano.** Un attacco largo meno del passo non veniva mai
+    pescato. Su un sample con un picco di 30 campioni a fondo scala la
+    partitura dichiarava un'ampiezza di meta' scala: non una versione
+    approssimata del segnale, un segnale che non esiste;
+  - **aliasing.** Sottocampionare senza filtrare ripiega le frequenze alte su
+    quelle basse. Una sinusoide a 220 Hz letta ogni 200 campioni (cioe' a
+    220.5 Hz) veniva disegnata come un'onda a 0.4 Hz. Su una nota pizzicata
+    l'effetto e' un lobo asimmetrico con un pettine di ondulazioni al posto del
+    decadimento: la forma che si legge sulla pagina non e' una semplificazione
+    di quella vera, e' un artefatto della griglia;
+  - **la scala verticale seguiva la manopola.** Si normalizzava su
+    `max(|audio[::ds]|)`, cioe' sul massimo dei campioni *sopravvissuti*.
+    Abbassare `waveform_downsample` per avere piu' dettaglio riscalava anche il
+    disegno, quindi due partiture generate a risoluzioni diverse non erano
+    confrontabili. E' il motivo per cui il «fix rapido» proposto nella issue
+    (200 -> 20) non era un fix: cambiava anche cio' che non doveva.
+
+  A questi si aggiungeva un asse temporale stirato — `linspace(0, duration, ...)`
+  mappava l'**ultimo campione pescato** sulla fine del sample, e su un sample
+  corto l'ultimo pescato e' lontano dalla fine — e un costo proporzionale alla
+  durata del file: un sample di dieci minuti produceva 132mila vertici, uno di
+  un secondo duecento.
+
+  Il rimedio e' l'inviluppo min/max, come disegna la waveform qualunque editor
+  audio: si legge **ogni** campione, il segnale si divide in bucket, e di ogni
+  bucket si tiene la coppia (minimo, massimo). Il picco c'e' sempre, perche' i
+  bucket partizionano il segnale. La lettura resta lineare nei campioni — deve
+  esserlo, e' il prezzo per non perderli — ma quel che arriva a matplotlib e'
+  limitato dal numero di bucket: **4000 vertici** che il sample duri cinque
+  secondi o dieci minuti (36 ms di riduzione sul secondo caso).
+
+  La regola vive nel modulo puro `rendering.waveform_peaks` (numpy e basta,
+  niente matplotlib e niente I/O); `_load_waveform` resta l'adapter che apre il
+  file, legge la config e tiene la cache.
+
+  Nella stessa passata: il **sample che non si apre** ora si prova una volta
+  sola. La waveform fittizia del ramo d'errore non finiva in cache, quindi ogni
+  subplot di ogni pagina ritentava l'apertura e ristampava lo stesso avviso —
+  due volte per stream, una per la durata e una per il disegno — mentre il
+  commento in cima al ciclo dichiarava il contrario.
+
+  **Cambia il disegno, non l'audio**: nessun renderer legge questo codice.
+
 - **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
   #234). `Envelope.is_envelope_like` era piu' stretta di quel che
   `EnvelopeBuilder` costruisce: una lista di **soli** breakpoint dict
@@ -116,6 +164,28 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   stream silenzioso invece che come un errore.
 
 ### Modificato
+
+- **La risoluzione della waveform si chiede in colonne, non in campioni**
+  (issue #233). Nuova chiave di config di `ScoreVisualizer`:
+  **`waveform_buckets`** (default `2000`), il numero di colonne min/max da
+  disegnare. E' una risoluzione, non un passo: il costo del disegno non dipende
+  piu' da quanto e' lungo il sample, e un sample corto viene disegnato intero
+  invece che a manciate di punti.
+
+  **`waveform_downsample` resta e non e' un errore passarla**, ma il default
+  scende da `200` a `None` e il significato si sposta di un passo: era il passo
+  del sottocampionamento, ora e' la **larghezza del bucket in campioni**, e se
+  data vince su `waveform_buckets`. Chi la passava ottiene la stessa densita' di
+  colonne di prima, con dentro il picco invece di un campione a caso. Assente
+  significa «derivala dal conteggio». Resta perche' fissare la risoluzione in
+  campioni e' legittimo — e' come si confrontano allo stesso dettaglio due
+  sample di lunghezza diversa — e perche' la config di `ScoreVisualizer` e'
+  superficie pubblica, che passa da `api.export_score_pdf` e dagli esempi del
+  paper.
+
+  L'avvertenza della issue resta vera per quella sola manopola:
+  `waveform_downsample: 1` su un sample lungo produce ancora milioni di
+  vertici. E' l'unico modo rimasto per arrivarci, ed e' esplicito.
 
 - **Il renderer NumPy ignora `envelope` sotto i 10 campioni (208.3 µs).** A
   quelle lunghezze la finestra non taglia i bordi: decima il grano.
