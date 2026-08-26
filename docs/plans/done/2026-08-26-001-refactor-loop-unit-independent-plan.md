@@ -1,7 +1,7 @@
 ---
 title: "refactor(pointer): loop_unit non eredita piu' da time_mode"
 type: refactor
-status: active
+status: done
 date: 2026-08-26
 issue: 222
 ---
