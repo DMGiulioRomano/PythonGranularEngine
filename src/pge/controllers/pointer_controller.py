@@ -40,17 +40,22 @@ _LOOP_UNIT_SCOPE = ('start', 'loop_start', 'loop_end', 'loop_dur')
 
 
 def _rescaling_would_change(value) -> bool:
-    """True se moltiplicare `value` per `sample_dur_sec` ne cambierebbe il senso.
+    """True se la conversione a secondi muoverebbe `value`.
 
-    Serve solo all'avviso di migrazione di #222: uno zero e' zero in tutt'e due
-    le letture, quindi non c'e' niente da migrare. Envelope, dict e formati
-    compatti li tocca la conversione, quindi contano.
+    Serve solo all'avviso di migrazione di #222, e per essere utile deve essere
+    lo specchio di cio' che `scale_raw_param_values` tocca davvero: numeri ed
+    envelope-like, e nient'altro. Due esclusioni, per due motivi diversi:
+
+    - uno zero e' zero sotto qualunque fattore di scala, quindi non ha niente
+      da migrare (ed e' la forma piu' comune nel corpus dei config);
+    - quel che la conversione lascia passare invariato — una stringa, per dire
+      — non si muoveva nemmeno prima.
     """
     if value is None or isinstance(value, bool):
         return False
     if isinstance(value, (int, float)):
         return value != 0
-    return True
+    return Envelope.is_envelope_like(value)
 
 
 
@@ -281,11 +286,10 @@ class PointerController:
 
         return scaled
 
+    # ponytail: si toglie dopo una release, quando il vecchio comportamento
+    # di loop_unit non e' piu' memoria viva di nessuno.
     def _warn_loop_unit_migration(self, params: dict) -> None:
         """Avvisa gli stream a cui #222 cambia il significato dei numeri.
-
-        # ponytail: si toglie dopo una release, quando il vecchio
-        # comportamento non e' piu' memoria viva di nessuno.
 
         Prima di #222 un `loop_unit` mancante ereditava da `time_mode`: su uno
         stream `normalized` queste posizioni venivano scalate per

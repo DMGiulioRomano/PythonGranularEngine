@@ -2884,6 +2884,14 @@ class TestLoopUnitMigrationWarning:
 
         assert self._warn_calls(mock_config, {'start': 0.6}) == []
 
+    def test_silent_on_what_the_conversion_never_touched(self, mock_config):
+        """`scale_raw_param_values` lascia passare invariato quel che non e'
+        ne' un numero ne' un envelope: una stringa non si muoveva nemmeno
+        prima, quindi non ha niente da migrare."""
+        mock_config.time_mode = 'normalized'
+
+        assert self._warn_calls(mock_config, {'start': '0.6'}) == []
+
     def test_warns_on_envelope_values(self, mock_config):
         """Un envelope veniva scalato punto per punto: cambia anche lui."""
         mock_config.time_mode = 'normalized'
