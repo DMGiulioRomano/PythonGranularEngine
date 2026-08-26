@@ -427,6 +427,41 @@ def log_unreadable_curve_warning(
     )
 
 
+def log_loop_unit_migration_warning(
+    stream_id: str,
+    keys,
+    sample_dur_sec: float,
+):
+    """
+    Logga il cambio di semantica di `loop_unit` (issue #222).
+
+    Prima di #222 un `loop_unit` mancante ereditava da `time_mode`: su uno
+    stream `normalized` le posizioni nel sample venivano scalate per
+    `sample_dur_sec`. Ora il default e' `seconds` e vengono lette come sono.
+
+    Parla solo a chi cambia davvero — `time_mode: normalized`, nessun
+    `loop_unit`, almeno un valore che la conversione muoveva. Uno zero resta
+    zero sotto qualunque fattore di scala.
+
+    Args:
+        stream_id:      ID dello stream
+        keys:           chiavi del blocco pointer che cambiano lettura
+        sample_dur_sec: durata del sample, il fattore che non si applica piu'
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    logger.warning(
+        f"[LOOP_UNIT] [{stream_id}] "
+        f"{', '.join(keys)}: ora in secondi. 'loop_unit' non eredita piu' da "
+        f"'time_mode' (issue #222); prima questi valori venivano scalati per "
+        f"sample_dur_sec={sample_dur_sec}. "
+        f"Per il comportamento precedente aggiungi 'loop_unit: normalized' al "
+        f"blocco pointer."
+    )
+
+
 def log_loop_init(
     stream_id: str,
     loop_start: float,

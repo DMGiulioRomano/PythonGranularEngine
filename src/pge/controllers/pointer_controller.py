@@ -16,8 +16,44 @@ from pge.envelopes.envelope import Envelope, scale_raw_param_values
 from pge.parameters.parameter_schema import POINTER_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 from pge.core.stream_config import StreamConfig
-from pge.shared.logger import log_config_warning, log_loop_drift_warning, log_loop_dynamic_mode, log_loop_init
+from pge.shared.logger import (
+    log_config_warning,
+    log_loop_drift_warning,
+    log_loop_dynamic_mode,
+    log_loop_init,
+    log_loop_unit_migration_warning,
+)
 from pge.shared.exceptions import InvalidFieldValueError
+
+# Vocabolario di 'loop_unit' (issue #222). Fuori di qui e' un errore.
+#
+# 'seconds' e' la grafia canonica — allinea loop_unit a grain.duration_unit,
+# l'unita' nata «sul modello di loop_unit» (CHANGELOG v5.1.0) — e 'absolute'
+# l'alias storico, quello che i config e la reference hanno sempre scritto.
+# Sono la stessa lettura: valori gia' in secondi assoluti, nessuna conversione.
+LOOP_UNITS = ('seconds', 'absolute', 'normalized')
+
+# Le chiavi del blocco pointer che 'loop_unit' interpreta. 'start' e' fra
+# queste benche' loop non sia: e' una posizione nel sample come loop_start,
+# stesso dominio e stessa unita' (reference §10.1).
+_LOOP_UNIT_SCOPE = ('start', 'loop_start', 'loop_end', 'loop_dur')
+
+
+def _rescaling_would_change(value) -> bool:
+    """True se moltiplicare `value` per `sample_dur_sec` ne cambierebbe il senso.
+
+    Serve solo all'avviso di migrazione di #222: uno zero e' zero in tutt'e due
+    le letture, quindi non c'e' niente da migrare. Envelope, dict e formati
+    compatti li tocca la conversione, quindi contano.
+    """
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    return True
+
+
+
 class PointerController:
     """
     Gestisce il posizionamento della testina di lettura nel sample.
@@ -192,11 +228,20 @@ class PointerController:
 
     def _pre_normalize_loop_params(self, params: dict) -> dict:
         """
-        Conversione di unita' per i parametri loop.
-        
-        Se loop_unit == 'normalized', scala i valori dei parametri loop
-        da [0.0-1.0] a secondi assoluti usando sample_dur_sec dal context.
-        
+        Conversione di unita' per le posizioni nel sample.
+
+        `loop_unit: normalized` scala i valori di `start`, `loop_start`,
+        `loop_end` e `loop_dur` da [0.0-1.0] a secondi assoluti usando
+        `sample_dur_sec` dal context. Il default e' `seconds`: nessuna
+        conversione.
+
+        `loop_unit` NON eredita da `time_mode` (issue #222). Le due chiavi
+        governano assi diversi con riferimenti diversi: `time_mode` scala
+        l'asse X (tempo) degli envelope sulla `duration` dello stream,
+        `loop_unit` scala l'asse Y (valore) sulla `sample_dur_sec` del file
+        audio. Restano indipendenti e possono coesistere sullo stesso
+        envelope — e' la coesistenza documentata in §10.1 della reference.
+
         Questo metodo e' l'unico punto nel sistema che legge 'loop_unit'
         dal dizionario grezzo, ed e' il motivo legittimo: loop_unit e' un
         meta-parametro che controlla l'interpretazione degli altri, non un
@@ -205,25 +250,65 @@ class PointerController:
         if params is None:
             return {}
 
-        loop_unit = params.get('loop_unit') or self._config.time_mode
+        if 'loop_unit' not in params:
+            self._warn_loop_unit_migration(params)
+            return params  # default 'seconds': valori gia' in secondi assoluti
+
+        loop_unit = params['loop_unit']
+        if loop_unit not in LOOP_UNITS:
+            # Stessa forma di Stream._pre_normalize_grain_params: la chiave
+            # e' scritta, quindi il refuso va nominato invece di ricadere in
+            # silenzio su "assoluto".
+            err = InvalidFieldValueError(
+                field='pointer.loop_unit',
+                value=loop_unit,
+                hint=f"unità disponibili: {list(LOOP_UNITS)}",
+            )
+            err.stream_id = self._config.context.stream_id
+            raise err
+
         if loop_unit != 'normalized':
-            return params  # Valori gia' in secondi assoluti
+            return params  # 'seconds'/'absolute': gia' in secondi assoluti
 
         scale = self._sample_dur_sec
 
         # Copia superficiale: non modificare il dizionario originale
+        # (il fingerprint della cache e stream_data_map leggono i dati grezzi).
         scaled = dict(params)
-
-        # Scala start (indipendente dalla presenza di loop_start)
-        if 'start' in scaled and scaled['start'] is not None:
-            scaled['start'] = self._scale_value(scaled['start'], scale)
-
-        # Scala i parametri loop
-        for key in ('loop_start', 'loop_end', 'loop_dur'):
-            if key in scaled and scaled[key] is not None:
+        for key in _LOOP_UNIT_SCOPE:
+            if scaled.get(key) is not None:
                 scaled[key] = self._scale_value(scaled[key], scale)
 
         return scaled
+
+    def _warn_loop_unit_migration(self, params: dict) -> None:
+        """Avvisa gli stream a cui #222 cambia il significato dei numeri.
+
+        # ponytail: si toglie dopo una release, quando il vecchio
+        # comportamento non e' piu' memoria viva di nessuno.
+
+        Prima di #222 un `loop_unit` mancante ereditava da `time_mode`: su uno
+        stream `normalized` queste posizioni venivano scalate per
+        `sample_dur_sec`. Ora non piu'.
+
+        Avvisa solo chi cambia davvero: uno zero resta zero sotto qualunque
+        fattore di scala, e `start: 0` e' la forma piu' comune nel corpus dei
+        config — senza il filtro sarebbero undici avvisi su stream in cui non
+        si muove un campione, con i tre casi veri in mezzo al rumore.
+        """
+        if self._config.time_mode != 'normalized':
+            return
+
+        affected = [key for key in _LOOP_UNIT_SCOPE
+                    if _rescaling_would_change(params.get(key))]
+        if not affected:
+            return
+
+        log_loop_unit_migration_warning(
+            stream_id=self._config.context.stream_id,
+            keys=affected,
+            sample_dur_sec=self._sample_dur_sec,
+        )
 
 
     def _scale_value(self, value, scale: float):

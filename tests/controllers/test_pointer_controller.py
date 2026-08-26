@@ -1424,45 +1424,50 @@ class TestPreNormalization:
 
         assert pointer.has_loop is False
 
-    def test_time_mode_normalized_as_fallback(self, mock_config):
-        """Se loop_unit non specificato, usa config.time_mode come fallback."""
+    def test_time_mode_normalized_does_not_scale_loop_params(self, mock_config):
+        """Senza loop_unit i valori loop restano in secondi, anche su uno
+        stream 'normalized' (issue #222).
+
+        Era il contrario: `loop_unit` mancante ereditava da `time_mode`, e
+        `loop_start: 2.0` su uno stream normalized diventava 16.0 — fuori dal
+        bound dinamico (max_val = sample_dur_sec), quindi un render che si
+        ferma su un valore che l'utente non ha mai scritto.
+        """
         mock_config.time_mode = 'normalized'
         mock_config.context.sample_dur_sec = 8.0
 
-        raw_params = {
-            'loop_start': 0.25,
-            'loop_end': 0.75,
-            # Nessun loop_unit esplicito -> fallback a config.time_mode
-        }
-        # 0.25*8=2.0, 0.75*8=6.0
-        real = _build_real_params(loop_start=2.0, loop_end=6.0)
-        pointer = _make_pointer(mock_config, real, raw_params)
+        real = _build_real_params(start=0.0)
+        pointer = _make_pointer(mock_config, real, {})
 
-        assert pointer.has_loop is True
+        result = pointer._pre_normalize_loop_params(
+            {'loop_start': 2.0, 'loop_dur': 1.0}
+        )
 
-    def test_start_normalized_scales_with_sample_dur(self, mock_config):
+        assert result['loop_start'] == pytest.approx(2.0)
+        assert result['loop_dur'] == pytest.approx(1.0)
+
+    def test_start_scales_with_loop_unit_normalized(self, mock_config):
+        """La scala di 'start' la chiede `loop_unit`, non `time_mode`.
+
+        `start` e' una posizione nel sample come `loop_start`: stesso dominio,
+        stessa unita' (reference §10.1).
         """
-        RED: con time_mode='normalized', il valore di 'start' deve essere
-        moltiplicato per sample_dur_sec.
-        BUG ATTUALE: _pre_normalize_loop_params scala solo i parametri loop,
-        non 'start'. Il metodo scalera' start solo dopo il fix.
-        """
-        mock_config.time_mode = 'normalized'
+        mock_config.time_mode = 'absolute'
         mock_config.context.sample_dur_sec = 10.0
 
         real = _build_real_params(start=0.0)
         pointer = _make_pointer(mock_config, real, {})
 
-        result = pointer._pre_normalize_loop_params({'start': 0.5})
+        result = pointer._pre_normalize_loop_params(
+            {'start': 0.5, 'loop_unit': 'normalized'}
+        )
 
         assert result['start'] == pytest.approx(5.0)
 
 
     def test_start_absolute_mode_no_scaling(self, mock_config):
         """
-        Con time_mode='absolute', 'start' NON deve essere scalato.
-        Questo test deve rimanere GREEN sia prima che dopo il fix:
-        verifica che la modalita' assoluta non introduca regressioni.
+        Con loop_unit assente (default 'seconds'), 'start' NON viene scalato.
         """
         mock_config.time_mode = 'absolute'
         mock_config.context.sample_dur_sec = 10.0
@@ -1475,13 +1480,14 @@ class TestPreNormalization:
         assert result['start'] == pytest.approx(2.0)
 
 
-    def test_start_normalized_without_loop_params(self, mock_config):
-        """
-        RED: con time_mode='normalized' e nessun 'loop_start' nel dict,
-        'start' deve essere comunque scalato.
-        BUG ATTUALE: il return anticipato su 'loop_start' not in params
-        blocca tutta la normalizzazione prima ancora di arrivare a 'start'.
-        Questo e' il caso piu' comune: start senza loop.
+    def test_start_not_scaled_by_time_mode_alone(self, mock_config):
+        """Il guasto piu' grave di #222: `start` spostato in silenzio.
+
+        Uno stream che dichiara `time_mode` per i propri envelope non ha detto
+        niente sulla testina di lettura. `start` e' `is_smart=False`, quindi
+        non ha bounds: 2.0 che diventa 16.0 su un file da 8 secondi non solleva
+        niente, wrappa modularmente e rende un suono diverso da quello scritto.
+        Nessun `loop_start` in gioco: e' il caso piu' comune, start senza loop.
         """
         mock_config.time_mode = 'normalized'
         mock_config.context.sample_dur_sec = 8.0
@@ -1489,11 +1495,10 @@ class TestPreNormalization:
         real = _build_real_params(start=0.0)
         pointer = _make_pointer(mock_config, real, {})
 
-        # Nessun 'loop_start' nel dict: il bug si manifesta qui
-        result = pointer._pre_normalize_loop_params({'start': 0.25})
+        result = pointer._pre_normalize_loop_params({'start': 2.0})
 
-        assert result['start'] == pytest.approx(2.0)  # 0.25 * 8.0 = 2.0
-        
+        assert result['start'] == pytest.approx(2.0)
+
 # =============================================================================
 # GRUPPO 11: DEVIATION SCALING
 # =============================================================================
@@ -2692,3 +2697,265 @@ class TestStartMustBeScalar:
         il pointer parte da loop_start."""
         stream = build_stream(pointer={'speed_ratio': 1.0})
         assert stream._pointer.start == pytest.approx(0.0)
+
+
+# =============================================================================
+# GRUPPO 21: LOOP_UNIT NON EREDITA DA TIME_MODE (issue #222)
+# =============================================================================
+
+from pge.controllers.pointer_controller import LOOP_UNITS
+
+
+def _real_config(time_mode='absolute', sample_dur_sec=8.0, duration=20.0,
+                 stream_id='s1'):
+    """StreamConfig VERO, non mockato.
+
+    `TestPreNormalization` e i suoi vicini mockano l'orchestratore, quindi
+    vedono solo meta' del lavoro: la pre-normalizzazione dei valori (asse Y).
+    Lo scaling temporale (asse X) lo fa il parser, a valle. Per osservare i due
+    assi insieme serve la pipeline intera.
+    """
+    context = StreamContext(
+        stream_id=stream_id,
+        onset=0.0,
+        duration=duration,
+        sample='x.wav',
+        sample_dur_sec=sample_dur_sec,
+    )
+    return StreamConfig(context=context, time_mode=time_mode)
+
+
+class TestLoopUnitVocabulary:
+    """`loop_unit` ha un vocabolario, e fuori di li' e' un errore.
+
+    Prima qualunque stringa diversa da 'normalized' voleva dire "assoluto":
+    `normalised`, `Normalized`, `loop_unite` (il refuso e' scritto davvero, in
+    `configs/PGE_pino4.yml`) spegnevano la conversione senza un errore. Sotto
+    l'ereditarieta' il refuso era peggio che inerte: su uno stream
+    `time_mode: normalized` *cambiava* il risultato invece di lasciarlo com'era.
+    """
+
+    @pytest.mark.parametrize('unit', ['normalised', 'Normalized', 'assoluto',
+                                      'absolut', '', 'SECONDS'])
+    def test_unknown_unit_raises(self, mock_config, unit):
+        real = _build_real_params(loop_start=0.25)
+
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            _make_pointer(mock_config, real,
+                          {'loop_start': 0.25, 'loop_unit': unit})
+
+        err = exc_info.value
+        assert err.field == 'pointer.loop_unit'
+        assert err.value == unit
+        assert err.stream_id == 'test_stream'
+        # L'hint elenca le unita', come quello di grain.duration_unit.
+        for known in LOOP_UNITS:
+            assert known in err.hint
+
+    def test_empty_key_raises_instead_of_inheriting(self, mock_config):
+        """`loop_unit:` scritto e lasciato vuoto e' None, non "assente".
+
+        Era il quarto caso, quello che la issue non nomina: lo `or` trattava
+        None come falsy e faceva scattare l'ereditarieta'. Una chiave
+        dichiarata a meta' finiva per farsela decidere da `time_mode`.
+        """
+        mock_config.time_mode = 'normalized'
+        real = _build_real_params(loop_start=0.25)
+
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            _make_pointer(mock_config, real,
+                          {'loop_start': 0.25, 'loop_unit': None})
+
+        assert exc_info.value.field == 'pointer.loop_unit'
+
+    def test_unknown_unit_raises_even_with_nothing_to_convert(self, mock_config):
+        """La validazione guarda la chiave, non il suo lavoro.
+
+        Un `loop_unit` scritto su un blocco pointer che non ha ancora posizioni
+        e' comunque un refuso: segnalarlo solo quando c'e' qualcosa da scalare
+        renderebbe l'errore dipendente dal resto del blocco.
+        """
+        real = _build_real_params()
+
+        with pytest.raises(InvalidFieldValueError):
+            _make_pointer(mock_config, real, {'loop_unit': 'normalised'})
+
+    @pytest.mark.parametrize('unit', ['seconds', 'absolute'])
+    def test_seconds_and_absolute_are_the_same_reading(self, mock_config, unit):
+        """`seconds` e' la grafia canonica, `absolute` l'alias storico.
+
+        `absolute` e' quel che `configs/PGE_cim.yml` scrive in undici blocchi
+        pointer e quel che la reference ha sempre documentato; `seconds` allinea
+        `loop_unit` a `grain.duration_unit`, l'unita' nata «sul modello di
+        loop_unit». Le due grafie devono dare lo stesso numero.
+        """
+        mock_config.time_mode = 'normalized'   # non deve contare piu'
+        mock_config.context.sample_dur_sec = 8.0
+        real = _build_real_params(start=0.0)
+        pointer = _make_pointer(mock_config, real, {})
+
+        result = pointer._pre_normalize_loop_params(
+            {'start': 0.25, 'loop_start': 0.25, 'loop_unit': unit}
+        )
+
+        assert result['start'] == pytest.approx(0.25)
+        assert result['loop_start'] == pytest.approx(0.25)
+
+    def test_normalized_still_scales(self, mock_config):
+        """La controprova: l'unita' che fa qualcosa continua a farlo."""
+        mock_config.time_mode = 'absolute'
+        mock_config.context.sample_dur_sec = 8.0
+        real = _build_real_params(start=0.0)
+        pointer = _make_pointer(mock_config, real, {})
+
+        result = pointer._pre_normalize_loop_params({
+            'start': 0.25, 'loop_start': 0.25, 'loop_end': 0.75,
+            'loop_dur': 0.1, 'loop_unit': 'normalized',
+        })
+
+        assert result['start'] == pytest.approx(2.0)
+        assert result['loop_start'] == pytest.approx(2.0)
+        assert result['loop_end'] == pytest.approx(6.0)
+        assert result['loop_dur'] == pytest.approx(0.8)
+
+
+class TestLoopUnitMigrationWarning:
+    """L'avviso di migrazione parla solo a chi cambia davvero.
+
+    `# ponytail:` nel sorgente: si toglie dopo una release.
+    """
+
+    def _warn_calls(self, mock_config, params):
+        # L'orchestratore e' mockato: se il dict grezzo dichiara un loop, il
+        # Parameter corrispondente deve esistere o `has_loop` trova None.
+        real = _build_real_params(
+            start=0.0,
+            loop_start=1.0 if 'loop_start' in params else None,
+            loop_dur=1.0 if 'loop_dur' in params else None,
+        )
+        with patch('pge.controllers.pointer_controller'
+                   '.log_loop_unit_migration_warning') as warn:
+            _make_pointer(mock_config, real, params)
+        return warn.call_args_list
+
+    def test_warns_when_the_reading_changes(self, mock_config):
+        mock_config.time_mode = 'normalized'
+        mock_config.context.sample_dur_sec = 8.0
+
+        calls = self._warn_calls(mock_config, {'start': 0.6})
+
+        assert len(calls) == 1
+        assert calls[0].kwargs['stream_id'] == 'test_stream'
+        assert calls[0].kwargs['keys'] == ['start']
+
+    def test_warns_on_loop_params_too(self, mock_config):
+        mock_config.time_mode = 'normalized'
+
+        calls = self._warn_calls(mock_config,
+                                 {'loop_start': 0.25, 'loop_dur': 0.1})
+
+        assert len(calls) == 1
+        assert calls[0].kwargs['keys'] == ['loop_start', 'loop_dur']
+
+    def test_silent_on_zero(self, mock_config):
+        """Uno zero resta zero sotto qualunque fattore di scala.
+
+        Non e' un dettaglio: `start: 0` e' la forma piu' comune nel corpus dei
+        config (`PGE_cim` ×5, `PGE_test` ×4, `PGE_cubic_smoothstep_demo` ×2).
+        Avvisarli sarebbe undici righe di rumore attorno ai tre casi veri.
+        """
+        mock_config.time_mode = 'normalized'
+
+        assert self._warn_calls(mock_config, {'start': 0}) == []
+        assert self._warn_calls(mock_config, {'start': 0.0}) == []
+
+    def test_silent_when_loop_unit_is_declared(self, mock_config):
+        """Chi ha gia' dichiarato l'unita' non ha niente da migrare."""
+        mock_config.time_mode = 'normalized'
+
+        assert self._warn_calls(
+            mock_config, {'start': 0.6, 'loop_unit': 'normalized'}) == []
+        assert self._warn_calls(
+            mock_config, {'start': 0.6, 'loop_unit': 'seconds'}) == []
+
+    def test_silent_on_absolute_streams(self, mock_config):
+        """`time_mode: absolute` non ereditava niente: nulla cambia."""
+        mock_config.time_mode = 'absolute'
+
+        assert self._warn_calls(mock_config, {'start': 0.6}) == []
+
+    def test_warns_on_envelope_values(self, mock_config):
+        """Un envelope veniva scalato punto per punto: cambia anche lui."""
+        mock_config.time_mode = 'normalized'
+
+        calls = self._warn_calls(
+            mock_config, {'loop_start': [[0, 0.25], [1, 0.75]]})
+
+        assert len(calls) == 1
+        assert calls[0].kwargs['keys'] == ['loop_start']
+
+
+class TestLoopUnitAxesCoexist:
+    """Il test che conta: i due assi restano indipendenti.
+
+    `time_mode: normalized` scala l'asse X (tempo) sulla `duration` dello
+    stream; `loop_unit: normalized` scala l'asse Y (valore) sulla
+    `sample_dur_sec` del file audio. Sono la coesistenza documentata in §10.1
+    della reference, ed e' la ragione per cui #222 stacca le due chiavi invece
+    di fonderle. Non deve regredire.
+    """
+
+    def test_x_on_stream_duration_y_on_sample_dur(self):
+        config = _real_config(time_mode='normalized',
+                              sample_dur_sec=8.0, duration=20.0)
+        pointer = PointerController(
+            {
+                'loop_start': [[0, 0.25], [1, 0.75]],
+                'loop_dur': 0.1,
+                'loop_unit': 'normalized',
+            },
+            config,
+        )
+
+        # Asse Y: 0.25 e 0.75 della durata del SAMPLE (8.0).
+        # Asse X: i tempi 0 e 1 sulla durata dello STREAM (20.0).
+        assert pointer.loop_start.get_value(0.0) == pytest.approx(2.0)
+        assert pointer.loop_start.get_value(20.0) == pytest.approx(6.0)
+        # Il punto di mezzo prova che la X e' stata scalata: senza, l'envelope
+        # sarebbe gia' finito a t=1 e terrebbe 6.0 per tutto il resto.
+        assert pointer.loop_start.get_value(10.0) == pytest.approx(4.0)
+        assert pointer.loop_dur.get_value(0.0) == pytest.approx(0.8)
+
+    def test_y_alone_without_time_mode(self):
+        """La controprova sull'asse X: senza `time_mode` l'envelope resta in
+        secondi assoluti, e la Y si scala lo stesso."""
+        config = _real_config(time_mode='absolute',
+                              sample_dur_sec=8.0, duration=20.0)
+        pointer = PointerController(
+            {
+                'loop_start': [[0, 0.25], [20, 0.75]],
+                'loop_dur': 0.1,
+                'loop_unit': 'normalized',
+            },
+            config,
+        )
+
+        assert pointer.loop_start.get_value(0.0) == pytest.approx(2.0)
+        assert pointer.loop_start.get_value(20.0) == pytest.approx(6.0)
+
+    def test_time_mode_normalized_alone_leaves_values_in_seconds(self):
+        """Lo stesso stream senza `loop_unit`: la X si scala, la Y no.
+
+        Sulla pipeline vera, non sul mock. Prima, `loop_start: 2.0` diventava
+        16.0 e sfondava il bound dinamico (max_val = sample_dur_sec = 8.0).
+        """
+        config = _real_config(time_mode='normalized',
+                              sample_dur_sec=8.0, duration=20.0)
+        pointer = PointerController(
+            {'loop_start': [[0, 2.0], [1, 6.0]], 'loop_dur': 1.0},
+            config,
+        )
+
+        assert pointer.loop_start.get_value(0.0) == pytest.approx(2.0)
+        assert pointer.loop_start.get_value(20.0) == pytest.approx(6.0)
+        assert pointer.loop_dur.get_value(0.0) == pytest.approx(1.0)
