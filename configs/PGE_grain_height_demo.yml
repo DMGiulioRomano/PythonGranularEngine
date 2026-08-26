@@ -39,6 +39,9 @@ streams:
       duration: 0.25
       envelope: expodec
     pointer:
+      # loop_unit esplicito da #222: `start` e' una frazione del sample (il
+      # file di demo dura ~4 s), non secondi. Prima lo ereditava da time_mode.
+      loop_unit: normalized
       start: 0.12
       speed_ratio: 0
     pitch:
@@ -64,6 +67,9 @@ streams:
       envelope: expodec
       reverse:
     pointer:
+      # loop_unit esplicito da #222: `start` e' una frazione del sample (il
+      # file di demo dura ~4 s), non secondi. Prima lo ereditava da time_mode.
+      loop_unit: normalized
       start: 0.88
       speed_ratio: 0
     pitch:

@@ -186,19 +186,35 @@ La issue elenca tre config. Il corpus completo ne conta **dieci** stream con
 `time_mode: normalized` e una posizione dichiarata senza `loop_unit`; di questi,
 quelli in cui il numero si muove sono quattro:
 
-| config / stream | valore | cosa cambia |
+| config / stream | valore | perche' e' una frazione |
 |---|---|---|
-| `PGE_pino3.yml` / `texture1#2` | `loop_start: 0.25`, `loop_dur` envelope | **va corretto**: e' una frazione |
-| `PGE_grain_height_demo.yml` / `sweep_forward` | `start: 0.12` | **va corretto**: 12% del file, con `speed_ratio: 0` |
-| `PGE_grain_height_demo.yml` / `sweep_reverse` | `start: 0.88` | **va corretto**: 88% del file, e' la coppia del precedente |
-| `PGE_cim.yml` / `stream24` | `start: 0.6` | si lascia: in `PGE_cim` `start` e' scritto in secondi ovunque (`1.47`, `0.35`, `1.1`), la nuova lettura e' quella giusta |
-| `PGE_pino4.yml` / `texture1` (2°) | `start: 0.6` | si lascia: accanto c'e' `#loop_unite: absolute` commentato, cioe' l'intenzione dichiarata dall'autore e' proprio "assoluto" |
+| `PGE_pino3.yml` / `texture1#2` | `loop_start: 0.25`, `loop_dur` envelope | il caso che la issue aveva gia' censito |
+| `PGE_grain_height_demo.yml` / `sweep_forward` | `start: 0.12` | 12% di un file che l'intestazione dichiara «~4 s», con `speed_ratio: 0` |
+| `PGE_grain_height_demo.yml` / `sweep_reverse` | `start: 0.88` | 88%, ed e' la coppia speculare del precedente: in secondi i due sweep collasserebbero nel primo secondo del file |
+| `PGE_cim.yml` / `stream24` | `start: 0.6` | tutto il blocco pointer di quello stream ragiona in frazioni: `voices.pointer` ha `normalized: true` con `pointer_range: 1` |
+| `PGE_pino4.yml` / `texture1` (2°) | `start: .6` | il `#loop_unite: absolute` accanto e' commentato **e** ha un refuso nel nome, quindi non ha mai avuto effetto: quel che si sente e' sempre stato normalized |
 
 Gli altri sei hanno `start: 0` e non si accorgono di niente.
+
+A tutti e cinque si aggiunge `loop_unit: normalized`, cioe' si scrive l'unita'
+che era in vigore: il corpus rende identico a prima e nessuno dei suoi stream
+emette l'avviso di migrazione. E' la direzione conservativa — questo piano
+toglie un accoppiamento implicito, non ridiscute le scelte di nessuno — ed e'
+la ragione per cui tocca anche i due config che la issue dava per invariati:
+la issue li dava per tali perche' «dichiarano gia' la chiave», che e' vero per
+undici blocchi pointer di `PGE_cim.yml` e falso per il dodicesimo.
 
 `PGE_grain_height_demo.yml` e' il caso che la issue non aveva visto, ed e' il
 piu' netto: `0.88` secondi su un file di demo non e' un numero che qualcuno
 scrive, `88%` si'.
+
+### Un refuso che resta fuori portata
+
+`configs/PGE_pino4.yml` scrive `loop_unite` (commentato). Il vocabolario nuovo
+intercetta il valore sbagliato di una chiave giusta, non il nome sbagliato di
+una chiave: `loop_unite` resta una chiave ignota che il blocco pointer accetta
+in silenzio. Validare le chiavi ignote e' un lavoro suo — vale per ogni blocco,
+non solo per questo — e non entra qui.
 
 ### Fuori dal cambiamento
 
