@@ -356,3 +356,57 @@ class ParameterBoundError(ConfigError):
             lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
         return "\n".join(lines)
+
+
+class SuperColliderRenderError(EngineRuntimeError, RuntimeError):
+    """Subprocess SuperCollider fallito -- scsynth o sclang (issue #228).
+
+    Eredita RuntimeError come la sorella Csound, per simmetria con i catch
+    generici gia' in giro.
+    """
+
+    def __init__(self, returncode: int, command: list[str], stderr: str,
+                 stage: str = "scsynth"):
+        self.returncode = returncode
+        self.command = list(command)
+        self.stderr = stderr
+        # 'scsynth' (rendering) o 'sclang' (compilazione della SynthDef): due
+        # guasti con due rimedi diversi, e il messaggio deve dire quale.
+        self.stage = stage
+        super().__init__(
+            f"{stage} ha fallito con codice {returncode}.\n"
+            f"Comando: {' '.join(command)}\n"
+            f"Stderr: {stderr}"
+        )
+
+    def user_message(self) -> str:
+        lines = [
+            f"[ERRORE] {self.stage} fallito (exit code {self.returncode})",
+            f"  Comando:      {' '.join(self.command)}",
+        ]
+        if self.stderr.strip():
+            stderr_first = self.stderr.strip().splitlines()[0]
+            lines.append(f"  Stderr:       {stderr_first}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
+class SuperColliderNotFoundError(EngineRuntimeError):
+    """Binario SuperCollider o sorgente della SynthDef non trovati (issue #228).
+
+    NON eredita FileNotFoundError di proposito: la CLI intercetta quel tipo
+    per annunciare 'file YAML non trovato', e un binario mancante che
+    passasse di li' verrebbe riportato come una configurazione inesistente.
+    """
+
+    def __init__(self, what: str, hint: str | None = None):
+        self.what = what
+        self.hint = hint
+        super().__init__(f"SuperCollider: {what} non trovato")
+
+    def user_message(self) -> str:
+        lines = [f"[ERRORE] SuperCollider: {self.what} non trovato"]
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
