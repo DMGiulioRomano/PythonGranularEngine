@@ -23,6 +23,12 @@ import pytest
 
 from pge.core.grain import Grain
 
+# Questo file esercita `.grains` di proposito: e' il file che ne fissa il
+# contratto finche' esiste. Il DeprecationWarning e' atteso ovunque tranne
+# dove e' lui il soggetto (TestDeprecazione, che usa pytest.warns e vede
+# comunque il warning attraverso questo filtro).
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
 
 @pytest.fixture
 def stream(build_stream):
@@ -152,3 +158,32 @@ class TestRepr:
 
         assert 'grains=lazy' in repr(s)
         assert s.generated is False
+
+
+# =============================================================================
+# 4. DEPRECAZIONE
+# =============================================================================
+
+class TestDeprecazione:
+    """La vista resta leggibile per un ciclo, poi sparisce (#201).
+
+    Non ha consumatori noti — ne' in PGE, ne' in PGE-ls o PGE-ui (che consuma
+    il JSON di GrainJsonWriter, non l'API Python), ne' negli script del repo
+    del paper CIM 2026 che pinna PGE come submodule — ma e' superficie
+    pubblica di una libreria a SemVer, quindi se ne va con un preavviso
+    invece che di colpo.
+    """
+
+    def test_leggerla_avvisa(self, stream):
+        with pytest.warns(DeprecationWarning, match="9.0.0"):
+            stream.grains
+
+    def test_l_avviso_nomina_il_rimpiazzo(self, stream):
+        with pytest.warns(DeprecationWarning, match=r"stream\.voices"):
+            stream.grains
+
+    def test_voices_non_avvisa(self, stream, recwarn):
+        """La fonte di verita' non e' toccata dalla deprecazione."""
+        stream.voices
+
+        assert not [w for w in recwarn if w.category is DeprecationWarning]

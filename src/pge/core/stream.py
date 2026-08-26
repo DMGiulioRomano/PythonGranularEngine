@@ -15,6 +15,7 @@ Ispirato al DMX-1000 di Barry Truax (1988).
 from __future__ import annotations
 
 import random
+import warnings
 from math import ceil, floor, log10
 from typing import List, Optional, Union
 
@@ -962,21 +963,39 @@ class Stream:
 
     @property
     def grains(self) -> List[Grain]:
-        """Vista flat dei grani, ordinata per onset (backward compat).
+        """DEPRECATA (issue #201), rimozione prevista in 9.0.0.
 
-        DERIVATA da `voices`, non memorizzata: ricalcolata a ogni lettura
-        (issue #201). Prima era un secondo campo, allineato solo lungo il
-        percorso `generate_grains()`; fuori da li' le due viste divergevano
-        in silenzio. Costruirla qui costa O(N log N) a chi la legge, e nulla
-        a chi non la legge — cioe' a tutti i backend, che iterano `voices`.
+        Vista flat dei grani, ordinata per onset. DERIVATA da `voices`, non
+        memorizzata: ricalcolata a ogni lettura. Prima era un secondo campo,
+        allineato solo lungo il percorso `generate_grains()`; fuori da li' le
+        due viste divergevano in silenzio.
 
-        Attenzione all'ordine: `voices` e' voice-major, questa e' per onset.
-        I renderer dipendono dal primo (l'ordine delle somme float e' quello
-        che rende un rendering riproducibile), quindi non e' un rimpiazzo di
-        `[g for voice in stream.voices for g in voice]`.
+        Rimpiazzo, a seconda di cosa serve:
+
+            [g for voice in stream.voices for g in voice]          # voice-major
+            sorted(..., key=lambda g: g.onset)                     # per onset
+
+        Non sono intercambiabili, ed e' il motivo per cui questa property se
+        ne va invece di restare: `Grain` non porta l'indice di voce, quindi la
+        vista flat e' lossy rispetto a `voices`, e l'ordine per onset non e'
+        quello su cui i renderer sommano (l'ordine delle somme float e' quel
+        che rende un rendering riproducibile). Nessun backend la legge —
+        score_writer, numpy_audio_renderer, grain_visuals e grain_json_writer
+        iterano tutti `voices`.
 
         Lazy come `voices`: la lettura genera i grani al primo accesso.
         """
+        warnings.warn(
+            "Stream.grains e' deprecata (issue #201) e sara' rimossa in "
+            "PGE 9.0.0: e' una vista derivata di Stream.voices, lossy "
+            "(il Grain non porta l'indice di voce) e ordinata per onset "
+            "invece che per voce. Usa "
+            "'[g for voice in stream.voices for g in voice]', aggiungendo "
+            "un sorted(..., key=lambda g: g.onset) se serve l'ordine per "
+            "onset.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Il sort e' stabile: a parita' di onset i grani restano in ordine
         # voice-major, come nella versione memorizzata.
         return sorted(
@@ -987,6 +1006,9 @@ class Stream:
     @grains.setter
     def grains(self, value: List[Grain]) -> None:
         """Sempre rifiutato: `voices` e' l'unico ingresso (issue #201).
+
+        Non deprecato ma rimosso subito, senza ciclo di preavviso: un setter
+        che riesce e produce silenzio non ha una versione "che avvisa".
 
         Il setter esisteva e marcava `generated = True` senza toccare
         `_voices`: lo stream restava senza grani da renderizzare e usciva
