@@ -6,7 +6,7 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
-last_synced_commit: e829fc1
+last_synced_commit: 8249cdb
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -129,8 +129,7 @@ Stream._init_voice_manager()
 
     ▼
 Stream.generate_grains()
-    └─ voices: List[List[Grain]]   (indicizzati per voce)
-         + grains: List[Grain]     (flat, ordinato per onset — backward compat)
+    └─ voices: List[List[Grain]]   (indicizzati per voce — unica fonte di verità)
 ```
 
 ---
@@ -609,10 +608,25 @@ def _init_voice_manager(self, params: dict) -> None:
 ```python
 # Struttura restituita
 self.voices: List[List[Grain]]   # voices[voice_idx][grain_idx]
-self.grains: List[Grain]         # flat, ordinato per onset (backward compat)
 ```
 
-Con N voci e densità costante, `len(self.grains) == N × len(singola_voce)`.
+Con N voci e densità costante, `len(voices[i])` è uguale per ogni voce attiva:
+il totale dei grani è `N × len(singola_voce)`.
+
+`Stream.grains` esiste ancora — vista flat e ordinata per onset — ma è
+**derivata** da `voices` e **deprecata** (issue #201): sarà rimossa in 9.0.0.
+Non è memorizzata e non ha una setter: assegnarla lasciava `voices` vuoto e lo
+stream renderizzava silenzio senza segnalare nulla. Chi ha bisogno della lista
+piatta la costruisce dove serve:
+
+```python
+[g for voice in stream.voices for g in voice]                    # voice-major
+sorted(_, key=lambda g: g.onset)                                 # per onset
+```
+
+I due ordini non sono intercambiabili: `Grain` non porta l'indice di voce
+(la vista flat è lossy) e i renderer sommano in ordine voice-major, che è
+quel che rende un rendering riproducibile.
 
 ### Fade frazionario di `num_voices`
 
@@ -798,7 +812,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | Riproducibilità stochastic | Seed = `hash(stream_id + voice_index)` → stesso YAML → stesso output |
 | Pitch moltiplicativo | `pitch_ratio *= pitch_factor` (fattore materializzato dalla `PitchUnit`) → compatibile con ratio audio standard |
 | Fade frazionario voci | La parte decimale di `num_voices` interpolato attenua la voce di confine (`volume += 20·log10(frac)`); `step` con breakpoint interi → on/off netto come prima |
-| Backward compatibility | `self.grains` rimane piatto e ordinato per tutti i consumer esistenti; config scalari esistenti e `step` con breakpoint interi invariati |
+| Backward compatibility | `voices` è l'unica fonte di verità; `stream.grains` resta leggibile come vista derivata ma è deprecata (#201). Config scalari esistenti e `step` con breakpoint interi invariati |
 
 ---
 

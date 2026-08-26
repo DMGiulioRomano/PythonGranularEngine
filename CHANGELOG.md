@@ -10,6 +10,38 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`Stream.grains` poteva ammutolire uno stream senza dire niente** (issue
+  #201). `generate_grains()` teneva gli stessi eventi in due campi — `_voices`,
+  annidato per voce, e `_grains`, flat e ordinato per onset — allineati solo
+  lungo il percorso di generazione. Fuori da li' divergevano in silenzio, in
+  due direzioni, e la issue ne mostrava solo la prima:
+
+  - `stream.voices = [...]` lasciava `_grains` fermo al valore vecchio.
+    Innocuo: nessun backend legge `grains`;
+  - `stream.grains = [...]` lasciava `_voices` **vuoto** e marcava
+    `generated = True`. Non innocuo: *tutti* i backend leggono `voices`
+    (`score_writer`, `numpy_audio_renderer`, `grain_visuals`,
+    `grain_json_writer`), quindi lo stream restava senza grani da
+    renderizzare.
+
+  Misurato su uno stream da 1 s: 48 grani iniettati attraverso la setter
+  pubblica — documentata come «iniezione esplicita dei grani (test/consumer)» —
+  e un file di **silenzio puro**, picco 0.0000, uscita pulita, nessun avviso e
+  nessun log. Con `__repr__` che nel frattempo continuava a dichiarare
+  `grains=48`, cioe' confermava che i grani c'erano. E' la stessa classe di
+  guasto di #225 e #234: non un errore, un file muto.
+
+  `_voices` diventa l'unico backing field e `grains` una vista **derivata**,
+  ricalcolata a ogni lettura: la divergenza non e' piu' esprimibile. La setter
+  non c'e' piu' — assegnare solleva `AttributeError` nominando il rimpiazzo
+  (`stream.voices = [[grano, ...], ...]`) invece di riuscire e produrre
+  silenzio. `__repr__` conta da `_voices` e smette di mentire.
+
+  Il rendering non cambia: stesso `sha256` sull'audio di un config a seed
+  fisso. Il flatten+sort eager che spariva dentro `generate_grains()` valeva
+  il 2.9% del tempo di generazione e **8.1 MB ritenuti per milione di grani**,
+  per una lista che nessuno leggeva.
+
 - **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
   #234). `Envelope.is_envelope_like` era piu' stretta di quel che
   `EnvelopeBuilder` costruisce: una lista di **soli** breakpoint dict
@@ -114,6 +146,30 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   dichiara di essere. È anche la prova che il bug della finestra collassata
   passava inosservato: stava in una demo del repo, e si presentava come uno
   stream silenzioso invece che come un errore.
+
+### Deprecato
+
+- **`Stream.grains`**, rimozione prevista in **9.0.0** (issue #201). Resta
+  leggibile, come vista derivata di `stream.voices`, ed emette
+  `DeprecationWarning`. Rimpiazzo:
+
+  ```python
+  [g for voice in stream.voices for g in voice]          # voice-major
+  sorted(_, key=lambda g: g.onset)                       # per onset
+  ```
+
+  I due ordini non sono intercambiabili, ed e' la ragione per cui la property
+  se ne va invece di restare: `Grain` non porta l'indice di voce, quindi la
+  vista flat e' **lossy** rispetto a `voices`, e l'ordine per onset non e'
+  quello su cui i renderer sommano — l'ordine delle somme float e' quel che
+  rende un rendering riproducibile.
+
+  Nessun consumatore noto: i quattro backend di PGE iterano `voices`; `PGE-ls`
+  non nomina `grains`; `PGE-ui` consuma il JSON di `GrainJsonWriter`, dove
+  `grains` e' una chiave dello schema e non l'API Python; nel repo del paper
+  CIM 2026, che pinna PGE come submodule, nessuno degli script Python la legge.
+  Il ciclo di preavviso c'e' comunque perche' `pge` e' una libreria
+  installabile a SemVer.
 
 ### Modificato
 
