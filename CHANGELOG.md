@@ -8,6 +8,37 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Aggiunto
+
+- **`--samples-dir DIR`: la directory dei sample smette di essere il cwd**
+  (issue #235). `Generator(yaml, samples_dir=...)` e `api.build_renderer(...,
+  samples_dir=...)` accettavano una directory arbitraria da sempre, ma nessuno
+  gliela passava: la CLI costruiva `Generator(yaml_file)` e basta, e il
+  fallback e' il globale `PATHSAMPLES` (`'./refs/'`), **relativo al cwd del
+  processo**. Renderizzare da una directory di lavoro qualsiasi era
+  impossibile, e per PGE-ui era il motivo per cui il bridge deve scrivere i
+  progetti dentro `configs/` del motore e lanciare il processo con `cwd=`:
+  YAML, output e cache erano gia' parametrizzabili, i sample no.
+
+  Il flag raggiunge i **tre** posti da cui un run CLI legge i file audio
+  sorgente: il `Generator` (durata dello stream, via `Stream` ->
+  `get_sample_duration`), il renderer (`SampleRegistry` con numpy, SSDIR con
+  csound) e il visualizer (waveform in partitura). Assente, ogni default resta
+  quello di prima.
+
+  **`--ssdir` non copriva il caso csound**, benche' lo sembri. SSDIR dice a
+  Csound dove cercare i soundfile *in fase di render*, ma la durata del sample
+  la risolve `Stream.__init__` molto prima, e quel passo legge `PATHSAMPLES`:
+  con `--ssdir /altrove` da un cwd senza `refs/` il run muore in
+  `SampleNotFoundError` — stampando `./refs/...`, non SSDIR — prima ancora che
+  il renderer esista, identico al caso numpy. L'asimmetria fra i due renderer
+  non era quella che sembrava: il lato Python era hardcoded per entrambi.
+
+  La regola di precedenza `--ssdir` esplicito > `--samples-dir` > `refs`
+  esisteva gia' in `api.build_renderer` ma era **irraggiungibile dalla CLI**,
+  che passava sempre `ssdir='refs'`. Ora la CLI passa `None` quando `--ssdir`
+  non c'e'; senza nessuno dei due flag SSDIR resta `refs`, come sempre.
+
 ### Corretto
 
 - **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
