@@ -24,6 +24,7 @@ from pge.shared.exceptions import (
     MissingFieldError,
     ParameterBoundError,
 )
+from conftest import flat_grains
 
 
 SAMPLE_DUR = 10.0
@@ -52,10 +53,10 @@ class TestDurationUnitSamples:
 
     def test_scalar_duration_in_samples(self):
         s = _make_stream({'duration': 480, 'duration_unit': 'samples'})
-        assert len(s.grains) > 0
+        assert len(flat_grains(s)) > 0
         assert all(
             g.duration == pytest.approx(480 / DEFAULT_OUTPUT_SR)
-            for g in s.grains
+            for g in flat_grains(s)
         )
 
     def test_one_sample_grain_is_valid(self):
@@ -63,9 +64,9 @@ class TestDurationUnitSamples:
         s = _make_stream({'duration': 1, 'duration_unit': 'samples'})
         assert all(
             g.duration == pytest.approx(1.0 / DEFAULT_OUTPUT_SR)
-            for g in s.grains
+            for g in flat_grains(s)
         )
-        assert len(s.grains) > 0
+        assert len(flat_grains(s)) > 0
 
     def test_envelope_duration_in_samples(self):
         """Envelope: i valori Y sono campioni, l'asse X resta tempo."""
@@ -73,9 +74,9 @@ class TestDurationUnitSamples:
             'duration': [[0.0, 48], [1.0, 4800]],
             'duration_unit': 'samples',
         })
-        first = s.grains[0]
+        first = flat_grains(s)[0]
         assert first.duration == pytest.approx(48 / DEFAULT_OUTPUT_SR, rel=1e-3)
-        assert max(g.duration for g in s.grains) > 10 * first.duration
+        assert max(g.duration for g in flat_grains(s)) > 10 * first.duration
 
     def test_duration_range_in_samples(self):
         """duration_range condivide l'unita' del blocco: i grani variano
@@ -85,7 +86,7 @@ class TestDurationUnitSamples:
              'duration_unit': 'samples'},
             range_always_active=True,
         )
-        durations = [g.duration for g in s.grains]
+        durations = [g.duration for g in flat_grains(s)]
         lo = (480 - 48) / DEFAULT_OUTPUT_SR
         hi = (480 + 48) / DEFAULT_OUTPUT_SR
         assert all(lo - 1e-12 <= d <= hi + 1e-12 for d in durations)
@@ -96,7 +97,7 @@ class TestDurationUnitSamples:
         s = _make_stream({'duration': 48.5, 'duration_unit': 'samples'})
         assert all(
             g.duration == pytest.approx(48.5 / DEFAULT_OUTPUT_SR)
-            for g in s.grains
+            for g in flat_grains(s)
         )
 
 
@@ -105,16 +106,16 @@ class TestDurationUnitMilliseconds:
 
     def test_scalar_duration_in_milliseconds(self):
         s = _make_stream({'duration': 10, 'duration_unit': 'milliseconds'})
-        assert len(s.grains) > 0
-        assert all(g.duration == pytest.approx(0.01) for g in s.grains)
+        assert len(flat_grains(s)) > 0
+        assert all(g.duration == pytest.approx(0.01) for g in flat_grains(s))
 
     def test_conversion_factor_is_fixed_not_sample_rate(self):
         """Il fattore e' 1e-3, non 1/output_sr: lo stesso numero letto come
         millisecondi e come campioni da' due durate diverse."""
         ms = _make_stream({'duration': 50, 'duration_unit': 'milliseconds'})
         smp = _make_stream({'duration': 50, 'duration_unit': 'samples'})
-        assert ms.grains[0].duration == pytest.approx(0.05)
-        assert smp.grains[0].duration == pytest.approx(50 / DEFAULT_OUTPUT_SR)
+        assert flat_grains(ms)[0].duration == pytest.approx(0.05)
+        assert flat_grains(smp)[0].duration == pytest.approx(50 / DEFAULT_OUTPUT_SR)
 
     def test_envelope_duration_in_milliseconds(self):
         """Envelope: i valori Y sono millisecondi, l'asse X resta tempo."""
@@ -122,9 +123,9 @@ class TestDurationUnitMilliseconds:
             'duration': [[0.0, 1], [1.0, 100]],
             'duration_unit': 'milliseconds',
         })
-        first = s.grains[0]
+        first = flat_grains(s)[0]
         assert first.duration == pytest.approx(0.001, rel=1e-3)
-        assert max(g.duration for g in s.grains) > 10 * first.duration
+        assert max(g.duration for g in flat_grains(s)) > 10 * first.duration
 
     def test_duration_range_in_milliseconds(self):
         """duration_range condivide l'unita' del blocco: i grani variano
@@ -134,7 +135,7 @@ class TestDurationUnitMilliseconds:
              'duration_unit': 'milliseconds'},
             range_always_active=True,
         )
-        durations = [g.duration for g in s.grains]
+        durations = [g.duration for g in flat_grains(s)]
         lo = (10 - 2) / 1000.0
         hi = (10 + 2) / 1000.0
         assert all(lo - 1e-12 <= d <= hi + 1e-12 for d in durations)
@@ -142,7 +143,7 @@ class TestDurationUnitMilliseconds:
 
     def test_fractional_milliseconds_allowed(self):
         s = _make_stream({'duration': 4.5, 'duration_unit': 'milliseconds'})
-        assert all(g.duration == pytest.approx(0.0045) for g in s.grains)
+        assert all(g.duration == pytest.approx(0.0045) for g in flat_grains(s))
 
     def test_below_one_sample_in_milliseconds_rejected(self):
         """Il bound minimo resta 1 campione: 0.001 ms sta sotto."""
@@ -177,18 +178,18 @@ class TestDurationUnitSeconds:
 
     def test_default_unit_is_seconds(self):
         s = _make_stream({'duration': 0.05})
-        assert all(g.duration == pytest.approx(0.05) for g in s.grains)
+        assert all(g.duration == pytest.approx(0.05) for g in flat_grains(s))
 
     def test_explicit_seconds_is_noop(self):
         s = _make_stream({'duration': 0.05, 'duration_unit': 'seconds'})
-        assert all(g.duration == pytest.approx(0.05) for g in s.grains)
+        assert all(g.duration == pytest.approx(0.05) for g in flat_grains(s))
 
     def test_seconds_down_to_one_sample_valid(self):
         """Anche in secondi la soglia minima e' ora 1 campione, non 1 ms."""
         s = _make_stream({'duration': 1.0 / DEFAULT_OUTPUT_SR})
         assert all(
             g.duration == pytest.approx(1.0 / DEFAULT_OUTPUT_SR)
-            for g in s.grains
+            for g in flat_grains(s)
         )
 
     def test_seconds_below_one_sample_rejected(self):
@@ -234,7 +235,7 @@ class TestDurationUnitValidation:
         s = _make_stream(
             {'duration': 480, 'duration_range': 96, 'duration_unit': 'samples'},
         )
-        assert len(s.grains) > 0
+        assert len(flat_grains(s)) > 0
 
 
 class TestDurationUnitDoesNotLeak:
@@ -277,8 +278,8 @@ class TestSamplesUnitRenderIntegration:
         renderer = GrainRenderer(reg, NumpyWindowRegistry(),
                                  output_sr=DEFAULT_OUTPUT_SR)
 
-        assert len(s.grains) > 0
-        for grain in s.grains[:10]:
+        assert len(flat_grains(s)) > 0
+        for grain in flat_grains(s)[:10]:
             buf = renderer.render(grain, 'test.wav', 'rectangle')
             assert buf.shape == (1, 2)          # esattamente 1 frame stereo
             assert np.abs(buf).max() > 0.5      # impulso non silente

@@ -24,6 +24,7 @@ import soundfile as sf
 
 from pge.core.stream import Stream
 from pge.shared.exceptions import InvalidFieldValueError
+from conftest import flat_grains
 
 SR = 48000
 
@@ -60,7 +61,7 @@ def build(tmp_path):
 
 def _segni(stream):
     """I segni di pitch_ratio dei grani generati, in ordine di onset."""
-    return [g.pitch_ratio < 0 for g in stream.grains]
+    return [g.pitch_ratio < 0 for g in flat_grains(stream)]
 
 
 def _transizioni(stream):
@@ -72,7 +73,7 @@ def _transizioni(stream):
     anche quando il comportamento cambia del tutto.
     """
     out, precedente = [], None
-    for grain in stream.grains:
+    for grain in flat_grains(stream):
         segno = 1 if grain.pitch_ratio > 0 else -1
         if segno != precedente:
             out.append((round(grain.onset, 4), segno))
@@ -149,7 +150,7 @@ class TestScalare:
     def test_il_modulo_del_pitch_non_cambia(self, build):
         """La chiave governa il verso, non la trasposizione."""
         stream = build(grain={'read_direction': -1})
-        assert {abs(g.pitch_ratio) for g in stream.grains} == {1.0}
+        assert {abs(g.pitch_ratio) for g in flat_grains(stream)} == {1.0}
 
 
 # =============================================================================
@@ -162,8 +163,8 @@ class TestEnvelope:
     def test_il_verso_cambia_al_breakpoint(self, build):
         stream = build(grain={'read_direction': [[0, 1], [1.0, -1]]})
 
-        prima = [g.pitch_ratio for g in stream.grains if g.onset < 1.0]
-        dopo = [g.pitch_ratio for g in stream.grains if g.onset >= 1.0]
+        prima = [g.pitch_ratio for g in flat_grains(stream) if g.onset < 1.0]
+        dopo = [g.pitch_ratio for g in flat_grains(stream) if g.onset >= 1.0]
 
         assert prima and dopo
         assert all(r > 0 for r in prima)
@@ -173,7 +174,7 @@ class TestEnvelope:
         """`step` imposto: fra i due stati non c'e' rampa, quindi i grani
         portano solo i valori dichiarati."""
         stream = build(grain={'read_direction': [[0, 1], [1.0, -1]]})
-        assert {g.pitch_ratio for g in stream.grains} == {1.0, -1.0}
+        assert {g.pitch_ratio for g in flat_grains(stream)} == {1.0, -1.0}
 
     def test_step_esplicito_stessa_semantica(self, build):
         nudo = build(grain={'read_direction': [[0, 1], [1.0, -1]]})
@@ -185,7 +186,7 @@ class TestEnvelope:
         stream = build(grain={'read_direction': [[0, 1], [0.6, -1], [1.4, 1]]})
 
         def verso(t0, t1):
-            return {g.pitch_ratio for g in stream.grains
+            return {g.pitch_ratio for g in flat_grains(stream)
                     if t0 <= g.onset < t1}
 
         assert verso(0.0, 0.6) == {1.0}
@@ -204,8 +205,8 @@ class TestEnvelope:
         gruppo = build(grain={'read_direction': {
             'points': [[[0, 1], [1.0, -1]], 'step']}})
 
-        assert {g.pitch_ratio for g in compatto.grains} == {1.0, -1.0}
-        assert {g.pitch_ratio for g in gruppo.grains} == {1.0, -1.0}
+        assert {g.pitch_ratio for g in flat_grains(compatto)} == {1.0, -1.0}
+        assert {g.pitch_ratio for g in flat_grains(gruppo)} == {1.0, -1.0}
 
     def test_punto_del_pattern_senza_interp_renderizza(self, build):
         """`[x%, y, None]` dentro il pattern di un ciclo: il validatore lo
@@ -221,7 +222,7 @@ class TestEnvelope:
         senza = build(grain={'read_direction':
                              [[[0, 1], [100, 1]], 2.0, 2]})
 
-        assert {g.pitch_ratio for g in con.grains} == {1.0, -1.0}
+        assert {g.pitch_ratio for g in flat_grains(con)} == {1.0, -1.0}
         assert _transizioni(con) != _transizioni(senza)
 
     def test_time_unit_del_dict_resta_onorato(self, build):
@@ -230,8 +231,8 @@ class TestEnvelope:
         stream = build(grain={'read_direction': {
             'points': [[0, 1], [0.5, -1]], 'time_unit': 'normalized'}})
 
-        prima = [g.pitch_ratio for g in stream.grains if g.onset < 1.0]
-        dopo = [g.pitch_ratio for g in stream.grains if g.onset >= 1.0]
+        prima = [g.pitch_ratio for g in flat_grains(stream) if g.onset < 1.0]
+        dopo = [g.pitch_ratio for g in flat_grains(stream) if g.onset >= 1.0]
         assert prima and dopo
         assert all(r > 0 for r in prima)
         assert all(r < 0 for r in dopo)

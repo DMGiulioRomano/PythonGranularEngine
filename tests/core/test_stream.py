@@ -33,6 +33,7 @@ from unittest.mock import Mock, patch, MagicMock, PropertyMock, call
 from dataclasses import dataclass
 from pge.core.stream_config import StreamContext, StreamConfig
 from pge.core.stream import Stream
+from conftest import flat_grains
 
 
 # =============================================================================
@@ -576,7 +577,7 @@ class TestStreamInit:
 class TestLazyGrainGeneration:
     """
     Contratto lazy: i grani si materializzano alla PRIMA lettura di
-    .voices/.grains, non alla costruzione. Questo permette al Generator di
+    .voices, non alla costruzione. Questo permette al Generator di
     non generare i grani per gli stream cache-clean (il renderer short-circuita
     su is_dirty prima di leggere .voices), realizzando il risparmio di #117.
     """
@@ -591,16 +592,6 @@ class TestLazyGrainGeneration:
         assert s.generated is True
         assert len(voices) == 1            # max_voices=1
         assert len(voices[0]) > 0
-
-    def test_accessing_grains_triggers_generation(self, stream_factory):
-        """Leggere .grains su uno stream non generato innesca generate_grains."""
-        s = stream_factory(duration=0.5, inter_onset=0.1)
-        assert s.generated is False
-
-        grains = s.grains
-
-        assert s.generated is True
-        assert len(grains) > 0
 
     def test_voices_memoized_single_generation(self, stream_factory):
         """Accessi multipli a .voices generano i grani una sola volta."""
@@ -625,7 +616,7 @@ class TestLazyGrainGeneration:
         """__repr__ NON deve materializzare i grani.
 
         _create_streams stampa {stream} per ogni stream: se __repr__ leggesse la
-        property .grains, rigenererebbe tutti gli stream annullando il risparmio.
+        property .voices, rigenererebbe tutti gli stream annullando il risparmio.
         """
         s = stream_factory(duration=0.5, inter_onset=0.1)
 
@@ -683,15 +674,6 @@ class TestGenerateGrainsSingleVoice:
 
         assert len(s.voices) == 1
         assert len(s.voices[0]) in (10, 11)  # floating point accumulation
-
-    def test_grains_flattened_for_backward_compat(self, stream_factory):
-        """self.grains contiene versione flattened."""
-        s = stream_factory(duration=0.5, inter_onset=0.1)
-
-        s.generate_grains()
-
-        assert len(s.grains) == len(s.voices[0])
-        assert s.grains == s.voices[0]
 
     def test_generated_flag_set(self, stream_factory):
         """generated diventa True dopo generate_grains."""
@@ -765,10 +747,10 @@ class TestGenerateGrainsState:
         s = stream_factory(duration=0.3, inter_onset=0.1)
 
         s.generate_grains()
-        first_count = len(s.grains)
+        first_count = len(flat_grains(s))
 
         s.generate_grains()
-        second_count = len(s.grains)
+        second_count = len(flat_grains(s))
 
         # Deve aver resettato, non accumulato
         assert first_count == second_count
@@ -1123,7 +1105,7 @@ class TestStreamRepr:
 
         r = repr(s)
 
-        assert f'grains={len(s.grains)}' in r
+        assert f'grains={len(flat_grains(s))}' in r
 
     def test_repr_fill_factor_mode(self, stream_factory):
         """repr mostra mode=fill_factor se fill_factor presente."""
@@ -1221,7 +1203,7 @@ class TestStreamIntegration:
 
         s.generate_grains()
 
-        for grain in s.grains:
+        for grain in flat_grains(s):
             assert grain.onset >= 1.0
             assert grain.duration == pytest.approx(0.05)
             assert grain.volume == pytest.approx(-6.0)
@@ -1236,7 +1218,7 @@ class TestStreamIntegration:
         s.generate_grains()
 
         expected_total = sum(len(v) for v in s.voices)
-        assert len(s.grains) == expected_total
+        assert len(flat_grains(s)) == expected_total
 
     def test_onsets_monotonically_increasing_per_voice(self, stream_factory):
         """Dentro ogni voce, gli onset crescono."""
@@ -1254,7 +1236,7 @@ class TestStreamIntegration:
 
         s.generate_grains()
 
-        total_grains = len(s.grains)
+        total_grains = len(flat_grains(s))
         assert s._pitch.calculate.call_count == total_grains
 
     def test_pointer_controller_called_every_grain(self, stream_factory):
@@ -1263,7 +1245,7 @@ class TestStreamIntegration:
 
         s.generate_grains()
 
-        total_grains = len(s.grains)
+        total_grains = len(flat_grains(s))
         assert s._pointer.calculate.call_count == total_grains
 
     def test_window_selection_per_grain(self, stream_factory):
@@ -1272,7 +1254,7 @@ class TestStreamIntegration:
 
         s.generate_grains()
 
-        assert s._window_controller.select_window.call_count == len(s.grains)
+        assert s._window_controller.select_window.call_count == len(flat_grains(s))
 
 
 # =============================================================================

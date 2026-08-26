@@ -66,7 +66,6 @@ def mock_stream():
     stream = MagicMock()
     stream.stream_id = 'test_stream'
     stream.voices = [[]]
-    stream.grains = []
     return stream
 
 

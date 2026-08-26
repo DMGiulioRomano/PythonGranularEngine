@@ -114,6 +114,15 @@ class TestSemanticaDellaVista:
 
         assert [g.volume for g in s.grains] == [0.1, 0.2]
 
+    def test_su_grani_generati_e_il_flatten_di_voices(self, stream):
+        """Non solo su voci iniettate: anche sul percorso di generazione."""
+        stream.generate_grains()
+        attesi = sorted((g for voice in stream.voices for g in voice),
+                        key=lambda g: g.onset)
+
+        assert stream.grains
+        assert stream.grains == attesi
+
     def test_lettura_su_stream_non_generato_innesca_la_generazione(self, stream):
         s = stream
         assert s.generated is False

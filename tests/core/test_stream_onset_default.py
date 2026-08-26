@@ -18,6 +18,7 @@ import soundfile as sf
 
 from pge.core.stream import Stream
 from pge.core.stream_config import StreamContext, stream_onset_is_implicit
+from conftest import flat_grains
 
 
 SR = 48000
@@ -66,13 +67,13 @@ class TestOnsetDefaultsToOrigin:
 
     def test_grains_start_at_the_timeline_origin(self, tmp_path):
         """Il default e' visibile sui grani, non solo sull'attributo: la
-        generazione e' lazy, quindi il test legge `.grains` (issue #220)."""
+        generazione e' lazy, quindi il test materializza i grani (issue #220)."""
         _write_wav(tmp_path, seconds=2.0)
 
         stream = _build(tmp_path)
 
         assert stream.onset == pytest.approx(0.0)
-        onsets = [g.onset for g in stream.grains]
+        onsets = [g.onset for g in flat_grains(stream)]
         assert onsets, "senza onset lo stream deve comunque generare grani"
         assert min(onsets) == pytest.approx(0.0, abs=0.05)
         assert max(onsets) < 1.0, (
@@ -92,7 +93,7 @@ class TestOnsetDeclarationForms:
         stream = _build(tmp_path, onset=None)
 
         assert stream.onset == pytest.approx(0.0)
-        assert min(g.onset for g in stream.grains) == pytest.approx(0.0, abs=0.05)
+        assert min(g.onset for g in flat_grains(stream)) == pytest.approx(0.0, abs=0.05)
 
     def test_explicit_onset_still_wins(self, tmp_path):
         """Nessuna regressione sugli YAML esistenti: la posizione dichiarata
@@ -102,7 +103,7 @@ class TestOnsetDeclarationForms:
         stream = _build(tmp_path, onset=5.0)
 
         assert stream.onset == pytest.approx(5.0)
-        onsets = [g.onset for g in stream.grains]
+        onsets = [g.onset for g in flat_grains(stream)]
         assert min(onsets) >= 5.0
         assert max(onsets) < 6.0
 
