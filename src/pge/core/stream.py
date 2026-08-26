@@ -98,8 +98,11 @@ class Stream:
     Mantiene compatibilità con Generator e ScoreVisualizer.
     
     Attributes:
-        voices: List[List[Grain]] - grani organizzati per voce
-        grains: List[Grain] - lista flattened (backward compatibility)
+        voices: List[List[Grain]] - grani organizzati per voce, unica
+                fonte di verita' su quali grani esistono
+        grains: List[Grain] - vista DERIVATA di voices, flat e ordinata per
+                onset (backward compatibility). Ricalcolata a ogni lettura:
+                non e' un secondo stato da tenere in sync (issue #201)
     """
     
     def __init__(self, params: dict, seed=None, samples_dir=None):
@@ -175,8 +178,9 @@ class Stream:
         # generate_grains() al primo accesso. Cosi' il Generator non genera i
         # grani per gli stream cache-clean (il renderer short-circuita su
         # is_dirty prima di leggere .voices), risparmiando il costo dominante.
+        # _voices e' l'unico backing field: la vista flat .grains e' derivata
+        # (issue #201), non un secondo campo da mantenere allineato.
         self._voices: List[List[Grain]] = []
-        self._grains: List[Grain] = []  # backward compatibility (flat)
         self.generated = False
 
     @staticmethod
@@ -703,10 +707,6 @@ class Stream:
         # Assegna ai backing field, non alle property: il getter di .voices
         # innescherebbe ricorsivamente generate_grains (generated ancora False).
         self._voices = clip_strategy.apply(all_voice_grains, self)
-        # Flatten e sort per onset (backward compatibility)
-        all_grains = [g for voice in self._voices for g in voice]
-        all_grains.sort(key=lambda g: g.onset)
-        self._grains = all_grains
         self.generated = True
 
         return self._voices
@@ -962,15 +962,42 @@ class Stream:
 
     @property
     def grains(self) -> List[Grain]:
-        """Vista flat dei grani (backward compat). Lazy: genera al primo accesso."""
-        if not self.generated:
-            self.generate_grains()
-        return self._grains
+        """Vista flat dei grani, ordinata per onset (backward compat).
+
+        DERIVATA da `voices`, non memorizzata: ricalcolata a ogni lettura
+        (issue #201). Prima era un secondo campo, allineato solo lungo il
+        percorso `generate_grains()`; fuori da li' le due viste divergevano
+        in silenzio. Costruirla qui costa O(N log N) a chi la legge, e nulla
+        a chi non la legge — cioe' a tutti i backend, che iterano `voices`.
+
+        Attenzione all'ordine: `voices` e' voice-major, questa e' per onset.
+        I renderer dipendono dal primo (l'ordine delle somme float e' quello
+        che rende un rendering riproducibile), quindi non e' un rimpiazzo di
+        `[g for voice in stream.voices for g in voice]`.
+
+        Lazy come `voices`: la lettura genera i grani al primo accesso.
+        """
+        # Il sort e' stabile: a parita' di onset i grani restano in ordine
+        # voice-major, come nella versione memorizzata.
+        return sorted(
+            (g for voice in self.voices for g in voice),
+            key=lambda g: g.onset,
+        )
 
     @grains.setter
     def grains(self, value: List[Grain]) -> None:
-        self._grains = value
-        self.generated = True
+        """Sempre rifiutato: `voices` e' l'unico ingresso (issue #201).
+
+        Il setter esisteva e marcava `generated = True` senza toccare
+        `_voices`: lo stream restava senza grani da renderizzare e usciva
+        muto, con `__repr__` che continuava a dichiararli presenti.
+        """
+        raise AttributeError(
+            "Stream.grains e' una vista derivata, in sola lettura (issue #201): "
+            "assegnarla lasciava .voices vuoto e lo stream renderizzava "
+            "silenzio senza segnalare nulla. Per iniettare i grani usa "
+            "'stream.voices = [[grano, ...], ...]', una lista per voce."
+        )
 
     # =========================================================================
     # REPR
@@ -980,6 +1007,9 @@ class Stream:
         mode = "fill_factor" if self.fill_factor is not None else "density"
         # NON innescare la generazione lazy: _create_streams stampa {stream} per
         # ogni stream; leggere la property .grains rigenererebbe tutto.
-        grain_count = len(self._grains) if self.generated else 'lazy'
+        # Il conteggio viene da _voices: leggerlo dal vecchio campo _grains
+        # faceva mentire il repr su ogni stream con le voci iniettate (#201).
+        grain_count = (sum(len(v) for v in self._voices)
+                       if self.generated else 'lazy')
         return (f"Stream(id={self.stream_id}, onset={self.onset}, "
                 f"dur={self.duration}, mode={mode}, grains={grain_count})")

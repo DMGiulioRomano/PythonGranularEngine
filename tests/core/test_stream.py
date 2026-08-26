@@ -205,8 +205,9 @@ def stream_factory():
         s._clip_strategy = PassthroughClipStrategy()
 
         # Stato
+        # `voices` e' l'unico ingresso: `grains` e' una vista derivata
+        # e non ha piu' un setter (issue #201).
         s.voices = []
-        s.grains = []
         s.generated = False
 
         return s
@@ -550,11 +551,12 @@ class TestStreamInit:
 
             assert s.stream_id == 'test_stream'
             assert s.duration == 2.0
-            # Contratto lazy: la costruzione NON genera i grani. Si ispezionano i
-            # backing field grezzi, non le property voices/grains, che innescano
+            # Contratto lazy: la costruzione NON genera i grani. Si ispeziona il
+            # backing field grezzo, non la property voices, che innesca
             # generate_grains() al primo accesso.
             assert s._voices == []
-            assert s._grains == []
+            # Backing field unico (#201): la vista flat .grains e' derivata.
+            assert not hasattr(s, '_grains')
             assert s.generated is False
             assert s.sample_table_num is None
             assert s.envelope_table_num is None

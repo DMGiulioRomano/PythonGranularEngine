@@ -162,8 +162,9 @@ def _make_stream(
     from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
     s._clip_strategy = PassthroughClipStrategy()
 
+    # `voices` e' l'unico ingresso: `grains` e' una vista derivata
+    # e non ha piu' un setter (issue #201).
     s.voices = []
-    s.grains = []
     s.generated = False
 
     return s
