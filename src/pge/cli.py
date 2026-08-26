@@ -65,7 +65,9 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         csound_options = api.CsoundOptions(
             orc_path=kwargs.get('orc_path', 'csound/main.orc'),
             incdir=kwargs.get('incdir', 'src'),
-            ssdir=kwargs.get('ssdir', 'refs'),
+            # None (nessun --ssdir): la precedenza la risolve l'API,
+            # che ricade su samples_dir e poi sul default storico 'refs'.
+            ssdir=kwargs.get('ssdir'),
             sfdir=kwargs.get('sfdir', 'output'),
             log_dir=kwargs.get('log_dir', 'logs'),
             message_level=kwargs.get('message_level', 134),
@@ -78,6 +80,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         output_sr=kwargs.get('output_sr', DEFAULT_OUTPUT_SR),
         jobs=kwargs.get('jobs', 'auto'),
         audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
+        samples_dir=kwargs.get('samples_dir'),
         cache_manifest_path=cache_manifest_path,
         csound=csound_options,
     )
@@ -193,6 +196,7 @@ def main():
             "[--renderer csound|numpy] "
             "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
+            "[--samples-dir DIR] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
@@ -329,6 +333,19 @@ def main():
         if idx + 1 < len(sys.argv):
             cache_dir = sys.argv[idx + 1]
 
+    # --samples-dir DIR (issue #235): directory dei sample audio, per
+    # entrambi i renderer. Assente (None) -> fallback storico su PATHSAMPLES
+    # ('./refs/', relativo al cwd). Non e' un doppione di --ssdir: SSDIR dice
+    # a csound dove cercare i soundfile in fase di render, mentre la durata
+    # del sample la risolve il Generator (Stream -> get_sample_duration) prima
+    # che esista un renderer — senza questo flag quel passo cerca in './refs/'
+    # con entrambi i renderer.
+    samples_dir = None
+    if '--samples-dir' in sys.argv:
+        idx = sys.argv.index('--samples-dir')
+        if idx + 1 < len(sys.argv):
+            samples_dir = sys.argv[idx + 1]
+
     # --- Csound config args ---
 
     orc_path = 'csound/main.orc'
@@ -343,7 +360,10 @@ def main():
         if idx + 1 < len(sys.argv):
             incdir = sys.argv[idx + 1]
 
-    ssdir = 'refs'
+    # Default None e non 'refs': cosi' la regola di precedenza dell'API
+    # (--ssdir esplicito > --samples-dir > 'refs') e' raggiungibile dalla CLI.
+    # Senza nessuno dei due flag SSDIR resta 'refs', come sempre.
+    ssdir = None
     if '--ssdir' in sys.argv:
         idx = sys.argv.index('--ssdir')
         if idx + 1 < len(sys.argv):
@@ -403,7 +423,7 @@ def main():
     configure_engine_logger(yaml_name=yaml_basename, log_dir='./logs')
 
     try:
-        generator = Generator(yaml_file)
+        generator = Generator(yaml_file, samples_dir=samples_dir)
 
         print(f"Caricamento {yaml_file}...")
         generator.load_yaml()
@@ -427,6 +447,7 @@ def main():
             yaml_basename=yaml_basename,
             sco_dir=sco_dir,
             audio_format=audio_format,
+            samples_dir=samples_dir,
         )
 
         # Garbage collection: rimuove stream orfani (rimossi/rinominati nel YAML)
@@ -495,7 +516,7 @@ def main():
                 'magnify_auto': magnify_auto,
                 'magnify_targets': magnify_targets,
                 'grain_height': grain_height,
-            })
+            }, samples_dir=samples_dir)
 
         print(f"Log: {get_clip_log_path()}")
 
