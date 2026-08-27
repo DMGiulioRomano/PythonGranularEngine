@@ -58,13 +58,22 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   Nella stessa passata, tre casi in cui il buffer reale non e' il buffer del
   test: un **bucket piu' largo del sample** viene tagliato sulla lunghezza del
-  segnale (senza il taglio il padding cresceva con la manopola invece che con
-  l'audio, e `waveform_downsample` alto costava gigabyte su un sample da un
-  secondo); un **NaN isolato** non avvelena piu' il picco globale, che si
+  segnale, perche' un bucket piu' largo del segnale *e'* il segnale; un **NaN
+  isolato** non avvelena piu' il picco globale, che si
   calcola nan-safe — prima bastava un campione a lasciare non normalizzata
   *tutta* la curva, che finiva clippata contro i bordi; un **file di lunghezza
   zero** torna al placeholder da un secondo invece di dare durata nulla, che
   schiacciava grani, loop mask e label dello stream su un asse degenere.
+
+  E la riduzione non ricopia piu' il buffer. L'ultimo bucket veniva riempito
+  fino alla misura per poterlo reshapare con gli altri, e quella `concatenate`
+  costava una copia dell'**intero** segnale ogni volta che la lunghezza non era
+  multiplo esatto della larghezza — cioe' quasi sempre: **212 MB e 26 ms** su
+  dieci minuti di audio per aggiungere in coda meno di duemila campioni,
+  contro **0.1 MB e 7 ms** ora che i bucket pieni sono una view su una fetta e
+  l'ultimo si riduce da se'. Era l'unico punto in cui «il costo non dipende
+  piu' dalla durata» restava falso per la memoria. Il riempimento era comunque
+  un no-op semantico, quindi sparisce invece di essere documentato.
 
   E il `try` di `_load_waveform` copre di nuovo la sola apertura del file: un
   guasto della riduzione (memoria, manopola fuori scala) non si traveste piu'
@@ -198,11 +207,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   superficie pubblica, che passa da `api.export_score_pdf` e dagli esempi del
   paper.
 
-  L'avvertenza della issue resta vera per quella sola manopola:
+  L'avvertenza della issue resta vera, e vale per **entrambe** le manopole:
   `waveform_downsample: 1` su un sample lungo produce ancora milioni di
-  vertici. E' l'unico modo rimasto per arrivarci, ed e' esplicito. All'altro
-  capo la manopola e' invece tagliata sulla lunghezza del sample: un bucket
-  piu' largo del segnale *e'* il segnale, e non costa niente in piu'.
+  vertici, e `waveform_buckets` piu' grande della lunghezza del sample arriva
+  allo stesso tetto (`2 * len(audio)`) per la strada opposta. Nessuna delle due
+  e' tagliata verso l'alto: chiedere una risoluzione piu' fine del segnale e'
+  legittimo quanto chiederla piu' grossolana, ed e' esplicito in entrambi i
+  casi. Verso il basso invece `waveform_downsample` e' tagliata sulla lunghezza
+  del sample, perche' li' non c'e' niente da guadagnare: un bucket piu' largo
+  del segnale *e'* il segnale.
 
 - **Il renderer NumPy ignora `envelope` sotto i 10 campioni (208.3 µs).** A
   quelle lunghezze la finestra non taglia i bordi: decima il grano.

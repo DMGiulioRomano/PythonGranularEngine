@@ -70,8 +70,7 @@ def bucket_width(n_samples, buckets, width=None):
     """
     if width is not None:
         # Tagliata sulla lunghezza: un bucket piu' largo del segnale *e'* il
-        # segnale, e lasciarlo crescere costerebbe padding — memoria in
-        # proporzione alla manopola invece che all'audio.
+        # segnale, e lasciarlo crescere non aggiungerebbe niente al disegno.
         return max(1, min(int(width), int(n_samples) or 1))
     buckets = max(1, int(buckets))
     return max(1, -(-int(n_samples) // buckets))
@@ -113,20 +112,29 @@ def peak_envelope(audio, sr, *, buckets=DEFAULT_BUCKETS, width=None):
         return np.zeros(0), np.zeros(0)
 
     w = bucket_width(n, buckets, width)
+    n_full = n // w
     n_buckets = -(-n // w)
 
-    pad = n_buckets * w - n
-    if pad:
-        # Riempito con l'ultimo campione, che appartiene *gia'* all'ultimo
-        # bucket: min e max di quel bucket non si spostano di un capello.
-        # Con degli zeri, invece, la coda di un sample che finisce forte
-        # guadagnerebbe uno zero che il segnale non ha.
-        audio = np.concatenate(
-            [audio, np.full(pad, audio[-1], dtype=audio.dtype)])
+    mins = np.empty(n_buckets, dtype=np.float64)
+    maxs = np.empty(n_buckets, dtype=np.float64)
 
-    blocks = audio.reshape(n_buckets, w)
-    mins = blocks.min(axis=1).astype(np.float64)
-    maxs = blocks.max(axis=1).astype(np.float64)
+    # I bucket pieni sono una `reshape` di una *fetta*, che e' una view: non
+    # copia niente. L'alternativa — riempire l'ultimo bucket fino alla misura
+    # e reshapare tutto — costerebbe una copia dell'intero buffer ogni volta
+    # che la lunghezza non e' multiplo esatto della larghezza, cioe' quasi
+    # sempre: duecento megabyte su dieci minuti di audio per aggiungere in
+    # coda meno di duemila campioni.
+    if n_full:
+        blocks = audio[:n_full * w].reshape(n_full, w)
+        mins[:n_full] = blocks.min(axis=1)
+        maxs[:n_full] = blocks.max(axis=1)
+
+    # L'ultimo bucket, se parziale, si riduce da se': e' gia' una fetta, e min
+    # e max non hanno bisogno che sia della misura giusta.
+    if n_buckets > n_full:
+        tail = audio[n_full * w:]
+        mins[-1] = tail.min()
+        maxs[-1] = tail.max()
 
     # I bucket partizionano il segnale, quindi il picco globale e' gia' qui:
     # nessuna seconda passata sui campioni (su un sample lungo sarebbero

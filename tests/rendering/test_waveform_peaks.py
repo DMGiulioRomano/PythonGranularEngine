@@ -24,6 +24,8 @@ campioni — deve esserlo, e' il prezzo per non perdere i picchi — ma quello c
 arriva a matplotlib e' costante.
 """
 
+import tracemalloc
+
 import numpy as np
 import pytest
 
@@ -271,3 +273,20 @@ class TestDegenerateInput:
         audio[1000] = np.nan
         _, amplitude = peak_envelope(audio, SR, buckets=200)
         assert np.nanmax(np.abs(amplitude)) == pytest.approx(1.0)
+
+    def test_the_last_partial_bucket_does_not_copy_the_buffer(self):
+        """L'argomento di #233 e' che il costo smette di dipendere dalla
+        durata. Vale per i vertici, e deve valere anche per la memoria: se
+        l'ultimo bucket e' parziale — cioe' quasi sempre, perche' basta che la
+        lunghezza non sia multiplo esatto della larghezza — riempirlo con una
+        `concatenate` ricopia l'**intero** buffer per aggiungere in coda meno
+        di un bucket. Su dieci minuti sono duecento megabyte per duemila
+        campioni, e su uno stereo si sommano alla copia del mixdown."""
+        audio = np.zeros(2_000_001)  # non multiplo di w: ultimo bucket parziale
+        tracemalloc.start()
+        try:
+            peak_envelope(audio, SR, buckets=2000)
+            _, allocated = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        assert allocated < audio.nbytes / 10
