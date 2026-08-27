@@ -142,3 +142,34 @@ class TestSsdirIsNotEnoughForCsound:
         except SystemExit:
             pass
         assert "Sample non trovato" not in capsys.readouterr().out
+
+
+class TestMissingValueIsNotSilent:
+    """`--samples-dir` in coda, senza directory: messaggio + exit 1.
+
+    L'idioma `if idx + 1 < len(sys.argv)` senza `else` e' quello di tutti i
+    flag del file, e altrove costa poco. Qui no: chi scrive `--samples-dir`
+    e non gli da' un valore si sente rispondere `./refs/`, cioe' esattamente
+    la directory da cui il flag serviva ad andarsene. Il fallimento silenzioso
+    somiglia troppo al successo.
+    """
+
+    def test_exits_1_with_a_message(self, altrove, capsys):
+        with pytest.raises(SystemExit) as exc:
+            _run(['main.py', 'mini.yml', 'output/mini.wav',
+                  '--renderer', 'numpy', '--format', 'wav', '--samples-dir'])
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert '--samples-dir' in out
+        # Il messaggio parla del flag, non del sample: l'errore vero e' che
+        # la directory non e' stata scritta.
+        assert 'Sample non trovato' not in out
+
+    def test_it_does_not_reach_the_generator(self, altrove):
+        """Esce durante il parsing degli argomenti: nessun caricamento YAML,
+        nessuno stem, nessun log."""
+        work, _ = altrove
+        with pytest.raises(SystemExit):
+            _run(['main.py', 'mini.yml', 'output/mini.wav',
+                  '--renderer', 'numpy', '--format', 'wav', '--samples-dir'])
+        assert not (work / "output" / "mini.wav").exists()

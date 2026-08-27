@@ -340,11 +340,19 @@ def main():
     # del sample la risolve il Generator (Stream -> get_sample_duration) prima
     # che esista un renderer — senza questo flag quel passo cerca in './refs/'
     # con entrambi i renderer.
+    #
+    # Unico flag del file che rifiuta il valore mancante invece di ignorarlo:
+    # altrove il silenzio costa poco, qui chi scrive `--samples-dir` senza
+    # directory si sente rispondere './refs/', cioe' il posto da cui il flag
+    # serviva ad andarsene — un fallimento che somiglia troppo al successo.
     samples_dir = None
     if '--samples-dir' in sys.argv:
         idx = sys.argv.index('--samples-dir')
-        if idx + 1 < len(sys.argv):
-            samples_dir = sys.argv[idx + 1]
+        if idx + 1 >= len(sys.argv):
+            print("--samples-dir richiede una directory. "
+                  "Esempio: --samples-dir /percorso/ai/sample")
+            sys.exit(1)
+        samples_dir = sys.argv[idx + 1]
 
     # --- Csound config args ---
 

@@ -70,7 +70,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--jobs N\|auto` | `auto` | `JOBS` | worker del rendering NumPy multi-processo. `auto` = core disponibili - 1 (min 1, via affinity dove disponibile); `1` = sequenziale, campioni bit-identici allo storico; `0`, negativi o non numerici: messaggio + exit 1. Ignorato con `--renderer csound` |
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
-| `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo |
+| `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
 | `--incdir DIR` | `src` | — | include dir per Csound |
 | `--ssdir DIR` | `--samples-dir`, altrimenti `refs` | — | sample search dir di Csound (variabile d'ambiente SSDIR). Vince su `--samples-dir` quando è esplicito; **non basta da solo** (vedi Bounds) |
@@ -183,7 +183,11 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   wrappa (`read_indices % n_source`), quindi lì la figura tace su una
   porzione che l'audio contiene (vedi issue #223, punto 2).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
-  la flag viene ignorata senza errore.
+  la flag viene ignorata senza errore. **Unica eccezione: `--samples-dir`**,
+  che con il valore mancante stampa un messaggio ed esce con 1. Il silenzio
+  costa poco sugli altri flag, mentre qui ricadrebbe su `./refs/` — cioè
+  proprio la directory da cui il flag serve ad andarsene — e il fallimento
+  somiglierebbe al successo.
 
 ## Esempi
 
