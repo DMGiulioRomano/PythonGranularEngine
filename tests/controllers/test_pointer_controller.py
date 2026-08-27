@@ -2822,7 +2822,8 @@ class TestLoopUnitVocabulary:
 class TestLoopUnitMigrationWarning:
     """L'avviso di migrazione parla solo a chi cambia davvero.
 
-    `# ponytail:` nel sorgente: si toglie dopo una release.
+    `# ponytail:` nel sorgente: si toglie dopo una release, insieme a questa
+    classe. Rimozione tracciata dalla issue #242.
     """
 
     def _warn_calls(self, mock_config, params):

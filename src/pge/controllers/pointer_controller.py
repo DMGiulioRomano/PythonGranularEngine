@@ -287,7 +287,9 @@ class PointerController:
         return scaled
 
     # ponytail: si toglie dopo una release, quando il vecchio comportamento
-    # di loop_unit non e' piu' memoria viva di nessuno.
+    # di loop_unit non e' piu' memoria viva di nessuno. Il conto lo tiene la
+    # issue #242, che elenca tutto cio' che va via insieme a questo metodo:
+    # il marcatore da solo non lo greperebbe nessuno.
     def _warn_loop_unit_migration(self, params: dict) -> None:
         """Avvisa gli stream a cui #222 cambia il significato dei numeri.
 

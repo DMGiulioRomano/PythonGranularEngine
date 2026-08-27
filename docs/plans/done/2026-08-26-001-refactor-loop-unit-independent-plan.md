@@ -137,7 +137,8 @@ issue chiede.
 
 ### 5. Warning di migrazione
 
-Una release, poi si toglie (marcato `# ponytail:`). Con `time_mode: normalized`,
+Una release, poi si toglie (marcato `# ponytail:`, rimozione tracciata
+dalla issue #242). Con `time_mode: normalized`,
 nessun `loop_unit` e una posizione dichiarata, il motore nomina il cambio di
 semantica e dice cosa scrivere per riavere il comportamento precedente.
 
@@ -202,7 +203,9 @@ emette l'avviso di migrazione. E' la direzione conservativa — questo piano
 toglie un accoppiamento implicito, non ridiscute le scelte di nessuno — ed e'
 la ragione per cui tocca anche i due config che la issue dava per invariati:
 la issue li dava per tali perche' «dichiarano gia' la chiave», che e' vero per
-undici blocchi pointer di `PGE_cim.yml` e falso per il dodicesimo.
+quindici dei ventuno blocchi pointer di `PGE_cim.yml` (dieci `absolute`, cinque
+`normalized`) e falso per i sei restanti — uno dei quali, `stream24`, ha una
+posizione non nulla e va migrato.
 
 `PGE_grain_height_demo.yml` e' il caso che la issue non aveva visto, ed e' il
 piu' netto: `0.88` secondi su un file di demo non e' un numero che qualcuno
