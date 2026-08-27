@@ -73,7 +73,9 @@ EngineError                                  (Exception)
 │   └── FtableError                          PR4 — incoerenza FtableManager
 │
 └── EngineRuntimeError                       PR4 — errori runtime (non config)
-    └── CsoundRenderError                    (anche RuntimeError, backward-compat)
+    ├── CsoundRenderError                    (anche RuntimeError, backward-compat)
+    ├── SuperColliderRenderError             #228 — scsynth/sclang exit != 0
+    └── SuperColliderNotFoundError           #228 — binario o sorgente assente
 ```
 
 **Regole di design:**
@@ -81,6 +83,13 @@ EngineError                                  (Exception)
 - `ConfigError` eredita anche da `ValueError` → catch espliciti pre-esistenti
   continuano a funzionare.
 - `CsoundRenderError` eredita anche da `RuntimeError` → idem.
+  `SuperColliderRenderError` fa lo stesso, per simmetria.
+- **`SuperColliderNotFoundError` NON eredita da `FileNotFoundError`**, anche
+  se descrive un file che non c'è. La CLI intercetta `FileNotFoundError`
+  *prima* di `EngineError`, per annunciare «file YAML non trovato»: un
+  binario mancante che passasse di lì verrebbe riportato all'utente come una
+  configurazione inesistente. Il tipo di un errore serve a chi lo cattura,
+  non a descriverne la causa.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
   (es. errori I/O di rendering) si appendono qui.
 - Ogni sotto-classe override `user_message()` con formato strutturato.
@@ -176,9 +185,13 @@ ramo dedicato per sotto-classe.
 CLI: `--renderer foo`
 ```
 [ERRORE] Renderer non supportato: 'foo'
-  Disponibili:  csound, numpy
+  Disponibili:  csound, numpy, supercollider
   Dettagli:     /tmp/engine.log
 ```
+
+L'elenco non è scritto a mano nel messaggio: viene da
+`RendererFactory.available_types()`, così un backend nuovo compare qui senza
+che nessuno aggiorni la stringa.
 
 ### Window name sconosciuto
 ```yaml
@@ -248,6 +261,23 @@ streams:
   Stderr:       error: undefined opcode
   Stream:       drone_low
   Config:       configs/PGE_test.yml
+  Dettagli:     /tmp/engine.log
+```
+
+### SuperCollider subprocess fallito
+Il campo `stage` distingue i due binari, perché hanno rimedi diversi:
+`scsynth` è il rendering, `sclang` è la compilazione della SynthDef.
+```
+[ERRORE] scsynth fallito (exit code 1)
+  Comando:      scsynth -o 2 -i 0 -z 1 -n 32768 -N /tmp/x.osc _ out.aif 48000 AIFF float
+  Stderr:       ERROR: Buffer UGen: no buffer data
+  Dettagli:     /tmp/engine.log
+```
+
+### SuperCollider non installato
+```
+[ERRORE] SuperCollider: binario 'scsynth' non trovato
+  Hint:         Installa SuperCollider (Debian/Ubuntu: apt install supercollider; macOS: brew install --cask supercollider) oppure usa --renderer numpy.
   Dettagli:     /tmp/engine.log
 ```
 

@@ -7,6 +7,7 @@ sources:
   - src/main.py
   - src/pge/cli.py
   - src/pge/rendering/grain_visuals.py
+  - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
 last_synced_commit: 95fd483
 entry_for: [cli-flags, build-flags]
@@ -20,7 +21,7 @@ variabili Make che le espongono (`make/build.mk`).
 
 **Documenti collegati:** [[INDEX]] · [[architecture]] (renderer, render mode) ·
 [[caching]] (`--cache`) · [[errors]] (uscite d'errore) · [[reaper]]
-(`--reaper`).
+(`--reaper`) · [[supercollider-backend]] (flag `--sc-*`).
 
 ---
 
@@ -61,12 +62,13 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--reaper` | — | off | `REAPER` | esporta progetto Reaper `.rpp` (vedi [[reaper]]) |
 | `--grain-json` | — | off | `GRAIN_JSON` | sidecar JSON dei grani per stream (richiede `--per-stream`) |
 | `--keep-sco` | — | off | — | conserva i file `.sco` intermedi (solo renderer csound) |
+| `--keep-osc` | — | off | `KEEP_OSC` | conserva gli score `.osc` intermedi (solo renderer supercollider) |
 
 ### Flag con valore
 
 | Flag | Default | Variabile Make | Descrizione |
 |------|---------|----------------|-------------|
-| `--renderer csound\|numpy` | `csound` | `RENDERER` | motore di rendering; valore non valido solleva `InvalidRendererError` |
+| `--renderer csound\|numpy\|supercollider` | `csound` | `RENDERER` | motore di rendering; valore non valido solleva `InvalidRendererError`, che elenca i tipi validi chiedendoli a `RendererFactory.available_types()` |
 | `--jobs N\|auto` | `auto` | `JOBS` | worker del rendering NumPy multi-processo. `auto` = core disponibili - 1 (min 1, via affinity dove disponibile); `1` = sequenziale, campioni bit-identici allo storico; `0`, negativi o non numerici: messaggio + exit 1. Ignorato con `--renderer csound` |
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
@@ -77,6 +79,10 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log |
 | `--message-level N` | `134` | — | message level di Csound |
 | `--sco-dir DIR` | `generated` | — | destinazione `.sco` (attivo solo con `--keep-sco`) |
+| `--sc-synthdef-source PATH` | `supercollider/pge_grain.scd` | `SC_SYNTHDEF_SOURCE` | sorgente della SynthDef del grano (omologo di `--orc-path`) |
+| `--sc-synthdef-dir DIR` | `generated` | `SC_SYNTHDEF_DIR` | dove sta (o viene scritto) il `.scsyndef` compilato |
+| `--sc-block-size N` | `1` | `SC_BLOCK_SIZE` | block size di scsynth. `1` = onset campione-accurati, come `ksmps=1` di `main.orc`; valori più alti accorciano il render e quantizzano gli onset a `N/sr` secondi. `0`, negativi o non numerici: messaggio + exit 1 |
+| `--osc-dir DIR` | `generated` | `GENDIR` | destinazione `.osc` (attivo solo con `--keep-osc`) |
 | `--reaper-path FILE` | `{yaml_basename}.rpp` | `REAPER_PATH` | percorso del progetto Reaper |
 | `--plot-envelopes nomi` | tutti | `PLOT_ENVELOPES` | filtro selettivo degli envelope nella partitura: nomi comma-separated (es. `pitch,density,volume_prob`); nome non valido: messaggio con elenco dei validi + exit 1 |
 | `--grain-height duration\|read-span` | `duration` | `GRAIN_HEIGHT` | che cosa misura l'**altezza** del grano sull'asse del buffer nella partitura: `duration` = la durata (la porzione che il grano percorrerebbe leggendo a velocità 1, geometria storica), `read-span` = la porzione che percorre davvero (`durata × |pitch_ratio|`). Valore fuori dai due: messaggio + exit 1 |
@@ -95,11 +101,16 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   --per-stream`) ed **exit 0**: nessun errore rilevabile dal return code.
   Lato Make la combinazione non si forma: `GRAIN_JSON` accumula
   `--grain-json` solo nel ramo `STEMS=true` di `make/build.mk`.
-- **`--cache` è effettivo solo con `--per-stream`** (e, via Make, solo con
-  `RENDERER=csound`): la build incrementale esiste solo per stream. La
+- **`--cache` è effettivo solo con `--per-stream`**: la build incrementale
+  esiste solo per stream, e vale per tutti e tre i renderer. La
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
-  (il renderer numpy non produce `.sco`).
+  (gli altri renderer non producono `.sco`).
+- **`--keep-osc` / `--osc-dir` / `--sc-*`** hanno effetto solo con
+  `--renderer supercollider`. Il backend richiede `scsynth` nel PATH e,
+  la prima volta, `sclang` per compilare la SynthDef: binario assente →
+  `SuperColliderNotFoundError`, che nomina quale dei due manca (vedi
+  [[errors]]). Dettagli e trade-off in [[supercollider-backend]].
 - **`--jobs`** ha effetto solo con `--renderer numpy`. Sotto una soglia di
   grani per render (`PARALLEL_MIN_GRAINS`, `src/pge/rendering/numpy_parallel.py`)
   il path resta sequenziale anche con `--jobs > 1` (l'overhead del pool
@@ -184,6 +195,13 @@ make all FILE=brano RENDERER=numpy JOBS=4
 
 # Debug csound: conserva gli .sco intermedi
 python src/main.py configs/brano.yml --renderer csound --keep-sco --sco-dir generated
+
+# SuperCollider (NRT), stems, score .osc conservati per ispezione
+python src/main.py configs/brano.yml output/brano.aif \
+  --renderer supercollider --per-stream --keep-osc
+
+# SuperCollider più veloce, onset quantizzati a 64 campioni (1.33 ms a 48 kHz)
+python src/main.py configs/brano.yml --renderer supercollider --sc-block-size 64
 
 # Partitura con i soli envelope di pitch e density
 python src/main.py configs/brano.yml --visualize --plot-envelopes pitch,density

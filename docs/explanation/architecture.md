@@ -11,13 +11,13 @@ last_synced_commit: 1aba65c
 
 # Architettura Renderer
 
-**Documenti collegati:** [[INDEX]] · [[caching]] (StreamCacheManager dedicato) · [[yaml]] · [[multi-voice]] · [[errors]] · [[reaper]] · [[add-renderer]]
+**Documenti collegati:** [[INDEX]] · [[caching]] (StreamCacheManager dedicato) · [[yaml]] · [[multi-voice]] · [[errors]] · [[reaper]] · [[add-renderer]] · [[supercollider-backend]]
 
 ---
 
 ## Problema
 
-Il sistema deve renderizzare YAML in audio usando back-end multipli (Csound, NumPy, in futuro SuperCollider/altri). Senza disciplina, aggiungere un renderer significa modificare `main.py` con `if renderer_type == 'csound': ...` ovunque — accumulazione di switch case nel core. Inoltre, la decisione "un file per stream" (stems) vs "un file unico" (mix) deve essere ortogonale alla scelta del renderer.
+Il sistema deve renderizzare YAML in audio usando back-end multipli (Csound, NumPy, SuperCollider, in futuro altri). Senza disciplina, aggiungere un renderer significa modificare `main.py` con `if renderer_type == 'csound': ...` ovunque — accumulazione di switch case nel core. Inoltre, la decisione "un file per stream" (stems) vs "un file unico" (mix) deve essere ortogonale alla scelta del renderer.
 
 ## Modello
 
@@ -30,8 +30,9 @@ main.py
 
 RenderingEngine (Facade)
   ├── AudioRenderer (ABC)      ← interfaccia atomica
-  │     ├── CsoundRenderer     ← adapter su ScoreWriter + subprocess csound
-  │     └── NumpyAudioRenderer ← rendering NumPy puro (overlap-add)
+  │     ├── CsoundRenderer         ← adapter su ScoreWriter + subprocess csound
+  │     ├── NumpyAudioRenderer     ← rendering NumPy puro (overlap-add)
+  │     └── SuperColliderRenderer  ← adapter su score .osc + subprocess scsynth -N
   ├── NamingStrategy           ← genera path output
   └── RenderMode (Strategy)
         ├── StemsRenderMode    ← un file per stream
@@ -165,7 +166,11 @@ Sequenza e invarianti:
 - Aggiungere un renderer: vedi [[add-renderer]] (3 step, zero modifiche a main.py)
 - Aggiungere una mode (es. per-voice): nuova `RenderMode` subclass + uso in main; ABC invariata
 - Caching: vedi [[caching]]
-- Errori specifici renderer: `CsoundRenderError`, `InvalidRendererError` (vedi [[errors]])
+- Errori specifici renderer: `CsoundRenderError`, `SuperColliderRenderError`,
+  `SuperColliderNotFoundError`, `InvalidRendererError` (vedi [[errors]])
+- L'elenco dei tipi validi vive in `RendererFactory.available_types()`, ed è
+  quello che i messaggi d'errore e la CLI interrogano: un backend nuovo non
+  richiede di aggiornare nessuna lista scritta a mano
 
 ### Copertura test
 
@@ -186,6 +191,8 @@ Il marker `e2e` è deselezionato di default (`addopts = -m "not e2e"` in
 **E2E Csound** (`tests/e2e/test_cache_e2e.py`): pipeline `make → Python → Csound → filesystem` in `STEMS=true CACHE=true`. Copre first build, incremental, partial rebuild, garbage collection.
 
 **E2E NumPy** (`tests/e2e/test_numpy_renderer_e2e.py`): pipeline `make → Python → NumPy → filesystem`, no Csound. Copre stems, mix, rendering multi-processo (`JOBS`) intra-stream e a livello di stream (stem byte-identici a `JOBS=1`, cache clean).
+
+**E2E SuperCollider** (`tests/e2e/test_supercollider_e2e.py`): pipeline `make → Python → .osc → scsynth → filesystem`. È l'unico punto in cui il grafo della SynthDef viene davvero eseguito, e include il confronto misurato con NumPy (durata, picco, correlazione delle curve RMS). Vedi [[supercollider-backend]].
 
 Gli altri file sotto `tests/e2e/` coprono export e pulizia REAPER
 (`test_reaper_export_e2e.py`, `test_reaper_makefile_e2e.py`,
@@ -209,7 +216,7 @@ sta.
 - macOS: fully supported (Apple Silicon e Intel)
 - Linux: fully supported (iZotope RX integration disabled automatically)
 - Python: 3.12+
-- Dipendenze: csound (Csound renderer), sox (audio trimming), NumPy/SciPy (NumPy renderer)
+- Dipendenze: csound (Csound renderer), supercollider/scsynth+sclang (SuperCollider renderer), sox (audio trimming), NumPy/SciPy (NumPy renderer)
 
 ## Vedi anche
 
