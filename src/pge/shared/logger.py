@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime
 import os
 
@@ -448,11 +449,7 @@ def log_loop_unit_migration_warning(
         keys:           chiavi del blocco pointer che cambiano lettura
         sample_dur_sec: durata del sample, il fattore che non si applica piu'
     """
-    logger = get_clip_logger()
-    if logger is None:
-        return
-
-    logger.warning(
+    message = (
         f"[LOOP_UNIT] [{stream_id}] "
         f"{', '.join(keys)}: ora in secondi. 'loop_unit' non eredita piu' da "
         f"'time_mode' (issue #222); prima questi valori venivano scalati per "
@@ -460,6 +457,18 @@ def log_loop_unit_migration_warning(
         f"Per il comportamento precedente aggiungi 'loop_unit: normalized' al "
         f"blocco pointer."
     )
+
+    logger = get_clip_logger()
+    if logger is not None:
+        logger.warning(message)
+
+    # A differenza degli altri avvisi del clip logger, questo annuncia un
+    # cambio di semantica che altera l'audio in silenzio: deve arrivare
+    # all'utente anche quando la console del clip logger e' spenta — come la
+    # configura la CLI (cli.py: console_enabled=False). Il file di log da
+    # solo non lo raggiungerebbe.
+    if not CLIP_LOG_CONFIG['console_enabled'] or logger is None:
+        print(f"CLIP: {message}", file=sys.stderr)
 
 
 def log_loop_init(

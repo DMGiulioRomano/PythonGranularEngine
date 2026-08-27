@@ -157,7 +157,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   **Migrazione:** scrivere `loop_unit: normalized` nel blocco pointer. Per una
   release il motore lo dice da sé — un warning `[LOOP_UNIT]` che nomina le
-  chiavi interessate e la riga da aggiungere; poi si toglie. In `configs/` i
+  chiavi interessate e la riga da aggiungere; poi si toglie. A differenza degli
+  altri avvisi del clip logger l'avviso esce su **stderr** anche quando la
+  console del clip logger è spenta, com'è sotto la CLI: un avviso che vive solo
+  in `./logs/` non raggiungerebbe chi lancia `make` e sente un suono diverso. In `configs/` i
   cinque stream interessati sono già stati resi espliciti
   (`PGE_pino3.yml`, `PGE_grain_height_demo.yml` ×2, `PGE_cim.yml` stream24,
   `PGE_pino4.yml`), quindi il corpus rende identico a prima.
