@@ -56,6 +56,21 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   due volte per stream, una per la durata e una per il disegno — mentre il
   commento in cima al ciclo dichiarava il contrario.
 
+  Nella stessa passata, tre casi in cui il buffer reale non e' il buffer del
+  test: un **bucket piu' largo del sample** viene tagliato sulla lunghezza del
+  segnale (senza il taglio il padding cresceva con la manopola invece che con
+  l'audio, e `waveform_downsample` alto costava gigabyte su un sample da un
+  secondo); un **NaN isolato** non avvelena piu' il picco globale, che si
+  calcola nan-safe — prima bastava un campione a lasciare non normalizzata
+  *tutta* la curva, che finiva clippata contro i bordi; un **file di lunghezza
+  zero** torna al placeholder da un secondo invece di dare durata nulla, che
+  schiacciava grani, loop mask e label dello stream su un asse degenere.
+
+  E il `try` di `_load_waveform` copre di nuovo la sola apertura del file: un
+  guasto della riduzione (memoria, manopola fuori scala) non si traveste piu'
+  da «Impossibile caricare waveform», che lo avrebbe messo in cache e reso
+  silenzioso per il resto del rendering.
+
   **Cambia il disegno, non l'audio**: nessun renderer legge questo codice.
 
 - **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
@@ -185,7 +200,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   L'avvertenza della issue resta vera per quella sola manopola:
   `waveform_downsample: 1` su un sample lungo produce ancora milioni di
-  vertici. E' l'unico modo rimasto per arrivarci, ed e' esplicito.
+  vertici. E' l'unico modo rimasto per arrivarci, ed e' esplicito. All'altro
+  capo la manopola e' invece tagliata sulla lunghezza del sample: un bucket
+  piu' largo del segnale *e'* il segnale, e non costa niente in piu'.
 
 - **Il renderer NumPy ignora `envelope` sotto i 10 campioni (208.3 µs).** A
   quelle lunghezze la finestra non taglia i bordi: decima il grano.

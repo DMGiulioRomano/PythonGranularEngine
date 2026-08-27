@@ -2087,3 +2087,35 @@ class TestWaveformFailureIsCached:
             time_axis, amplitude, duration = viz._load_waveform('piano.wav')
         assert len(time_axis) == len(amplitude)
         assert duration > 0
+
+
+class TestWaveformOfADegenerateFile:
+    """Il file si apre ma non c'e' niente dentro, o la riduzione non riesce.
+
+    Sono due strade diverse da quella del file mancante, e prima di #233
+    finivano entrambe nello stesso `except`: la prima perche' `np.max` su un
+    array vuoto sollevava, la seconda perche' il try avvolgeva anche la
+    riduzione. Ora la riduzione non solleva piu' sul vuoto, quindi il vuoto va
+    riconosciuto; e un guasto della riduzione non e' un file che non si apre.
+    """
+
+    def test_a_zero_length_file_falls_back_to_the_placeholder(self):
+        """Senza fallback la durata scende a zero e l'intero subplot dello
+        stream — grani, loop mask, label — collassa su un asse degenere."""
+        viz = make_viz(single_stream_scene())
+        with patch('soundfile.read', return_value=(np.zeros(0), SR)):
+            time_axis, amplitude, duration = viz._load_waveform('piano.wav')
+        assert duration > 0
+        assert len(time_axis) == len(amplitude) > 0
+
+    def test_a_failing_reduction_is_not_reported_as_a_missing_file(self, capsys):
+        """Un guasto della riduzione (memoria, manopola fuori scala) non deve
+        travestirsi da errore di apertura e finire in cache: sarebbe silenzioso
+        per tutto il resto del rendering."""
+        viz = make_viz(single_stream_scene())
+        with patch('soundfile.read', return_value=(np.zeros(SR), SR)), \
+                patch('pge.rendering.waveform_peaks.peak_envelope',
+                      side_effect=MemoryError('too big')):
+            with pytest.raises(MemoryError):
+                viz._load_waveform('piano.wav')
+        assert 'Impossibile caricare waveform' not in capsys.readouterr().out

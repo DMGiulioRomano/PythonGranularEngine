@@ -69,7 +69,10 @@ def bucket_width(n_samples, buckets, width=None):
     brevi, che col passo fisso erano i piu' maltrattati.
     """
     if width is not None:
-        return max(1, int(width))
+        # Tagliata sulla lunghezza: un bucket piu' largo del segnale *e'* il
+        # segnale, e lasciarlo crescere costerebbe padding — memoria in
+        # proporzione alla manopola invece che all'audio.
+        return max(1, min(int(width), int(n_samples) or 1))
     buckets = max(1, int(buckets))
     return max(1, -(-int(n_samples) // buckets))
 
@@ -128,7 +131,9 @@ def peak_envelope(audio, sr, *, buckets=DEFAULT_BUCKETS, width=None):
     # I bucket partizionano il segnale, quindi il picco globale e' gia' qui:
     # nessuna seconda passata sui campioni (su un sample lungo sarebbero
     # milioni di letture per un numero che abbiamo in mano).
-    peak = max(maxs.max(), -mins.min())
+    # nan-safe: un solo campione NaN renderebbe NaN il picco, quindi falso il
+    # confronto qui sotto, quindi non normalizzata *tutta* la curva.
+    peak = max(np.nanmax(maxs), -np.nanmin(mins))
     if peak > 0:
         mins /= peak
         maxs /= peak

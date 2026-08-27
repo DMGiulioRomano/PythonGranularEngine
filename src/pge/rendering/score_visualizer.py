@@ -161,21 +161,29 @@ class ScoreVisualizer:
         # Costruisci path completo (samples_dir iniettato o fallback globale)
         full_path = self.samples_dir + sample_path
 
+        # Il try copre l'apertura, non la riduzione: un guasto di quest'ultima
+        # (memoria, manopola fuori scala) non e' un file che non si apre, e
+        # travestirlo da tale lo renderebbe silenzioso — messo in cache, non
+        # ristampato piu'. Meglio che salga.
         try:
             audio, sr = sf.read(full_path)
-            duration = len(audio) / sr
-            time_axis, amplitude = waveform_peaks.peak_envelope(
-                audio, sr,
-                buckets=self.config['waveform_buckets'],
-                width=self.config['waveform_downsample'])
-            result = (time_axis, amplitude, duration)
-
+            if len(audio) == 0:
+                # La riduzione qui non solleva (torna curve vuote), ma una
+                # durata nulla schiaccerebbe l'intero subplot dello stream su
+                # un asse degenere: meglio il placeholder, che si legge.
+                raise ValueError('file audio di lunghezza zero')
         except Exception as e:
             print(f"⚠️  Impossibile caricare waveform {sample_path}: {e}")
             # Waveform fittizia: piatta, lunga un secondo. Va in cache come le
             # altre, altrimenti ogni subplot di ogni pagina ritenterebbe
             # l'apertura di un file che non si apre e ristamperebbe l'avviso.
             result = (np.array([0.0, 1.0]), np.array([0.0, 0.0]), 1.0)
+        else:
+            time_axis, amplitude = waveform_peaks.peak_envelope(
+                audio, sr,
+                buckets=self.config['waveform_buckets'],
+                width=self.config['waveform_downsample'])
+            result = (time_axis, amplitude, len(audio) / sr)
 
         self.waveform_cache[sample_path] = result
         return result

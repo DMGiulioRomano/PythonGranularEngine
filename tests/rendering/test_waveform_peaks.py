@@ -247,3 +247,27 @@ class TestDefaultBuckets:
         massimo un paio di migliaia di pixel: sotto quella soglia il dettaglio
         si vedrebbe mancare, sopra si pagherebbe per pixel che non ci sono."""
         assert DEFAULT_BUCKETS >= 1000
+
+
+class TestDegenerateInput:
+    """Due modi in cui un buffer reale non e' il buffer del test."""
+
+    def test_a_bucket_wider_than_the_signal_is_the_signal(self):
+        """La manopola storica e' una larghezza in campioni, e chi vuole una
+        waveform grossolana la alza: niente le impedisce di superare la
+        lunghezza del sample. Il bucket va allora tagliato sul segnale, perche'
+        e' lui a dettare il padding: senza il taglio si allocano `width`
+        campioni di riempimento per un file che ne ha mille, e la memoria
+        finisce per dipendere dalla manopola invece che dall'audio."""
+        assert bucket_width(1000, buckets=2000, width=10 ** 9) == 1000
+
+    def test_a_single_nan_does_not_unnormalize_the_whole_curve(self):
+        """Un NaN nel buffer avvelena min e max del suo bucket, e da li' il
+        picco globale: la divisione salta e *tutta* la waveform resta in scala
+        assoluta, cioe' schiacciata o fuori dai bordi. Col passo fisso un NaN
+        isolato veniva quasi sempre saltato; ora si legge ogni campione, quindi
+        il caso va gestito invece che evitato per fortuna."""
+        audio = tone(1.0, amp=0.5).astype(np.float64)
+        audio[1000] = np.nan
+        _, amplitude = peak_envelope(audio, SR, buckets=200)
+        assert np.nanmax(np.abs(amplitude)) == pytest.approx(1.0)
