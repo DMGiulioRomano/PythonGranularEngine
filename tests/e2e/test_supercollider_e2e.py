@@ -79,6 +79,33 @@ streams:
 """ % (PROBE_SAMPLE, PROBE_SAMPLE)
 
 
+# Stream che legge una zona precisa della sonda, lontana dall'inizio. Serve al
+# test della posizione di lettura: la` la sonda vale ~1/3 dell'ampiezza che ha
+# a zero, quindi un grano che legge dal punto sbagliato si vede come un fattore
+# tre sul picco, non come una sfumatura.
+READ_START_SEC = 2.0
+
+_YAML_READ_POS = """\
+composition:
+  title: "e2e supercollider - posizione di lettura"
+
+seed: 3
+
+streams:
+  - stream_id: "fisso"
+    onset: 0.0
+    duration: 1.0
+    sample: "%s"
+    density: 10
+    pointer:
+      start: %s
+      speed: 0.0
+    grain:
+      duration: 0.05
+      envelope: "hanning"
+""" % (PROBE_SAMPLE, READ_START_SEC)
+
+
 # =============================================================================
 # HELPERS
 # =============================================================================
@@ -111,7 +138,8 @@ def probe_sample():
         os.remove(path)
 
 
-def _make_build(tmp_path, renderer='supercollider', stems=False, extra=()):
+def _make_build(tmp_path, renderer='supercollider', stems=False, extra=(),
+                yaml_text=None):
     """Invoca `make all` con directory temporanee. Ritorna (proc, output)."""
     sfdir = tmp_path / "output"
     logdir = tmp_path / "logs"
@@ -121,7 +149,7 @@ def _make_build(tmp_path, renderer='supercollider', stems=False, extra=()):
 
     for d in (sfdir, logdir, ymldir, cachedir, gendir):
         d.mkdir(exist_ok=True)
-    (ymldir / "e2e_sc_test.yml").write_text(_YAML)
+    (ymldir / "e2e_sc_test.yml").write_text(yaml_text or _YAML)
 
     cmd = [
         'make', 'all',
@@ -236,7 +264,61 @@ class TestKeepOsc:
 
 
 # =============================================================================
-# 4. PARITA' CON NUMPY
+# 4. POSIZIONE DI LETTURA
+# =============================================================================
+
+@pytest.mark.e2e
+class TestPosizioneDiLettura:
+    """Il grano legge dalla posizione che lo score dichiara, non dall'inizio
+    del file.
+
+    E' il test che serviva e che all'inizio non c'era: la prima versione della
+    SynthDef passava l'offset a `Phasor` come `resetPos`, che senza un trigger
+    non viene mai usato -- ogni grano leggeva da zero. Il suono c'era comunque,
+    il file durava il giusto, i picchi erano nello stesso ordine di grandezza:
+    solo il materiale era quello sbagliato. Una misura statistica lo vedeva
+    appena (correlazione RMS 0.65); questa lo vede come un fattore tre.
+
+    Il confronto e' con NumPy sullo stesso YAML, non con un numero scritto a
+    mano: la posizione giusta e' quella che dice il motore.
+    """
+
+    def _render_both(self, tmp_path):
+        sc_dir = tmp_path / "sc"
+        np_dir = tmp_path / "np"
+        sc_dir.mkdir()
+        np_dir.mkdir()
+        _make_build(sc_dir, renderer='supercollider', yaml_text=_YAML_READ_POS)
+        _make_build(np_dir, renderer='numpy', yaml_text=_YAML_READ_POS)
+        return (sc_dir / "output" / "e2e_sc_test.aif",
+                np_dir / "output" / "e2e_sc_test.aif")
+
+    def test_picchi_quasi_uguali(self, tmp_path):
+        sc_peak, np_peak = (_peak(p) for p in self._render_both(tmp_path))
+        assert np_peak > 1e-4, "il riferimento NumPy non ha prodotto suono"
+        rapporto = sc_peak / np_peak
+        assert 0.85 < rapporto < 1.15, (
+            f"picchi troppo distanti: sc={sc_peak:.4f} numpy={np_peak:.4f} "
+            f"(rapporto {rapporto:.2f}). Con la sonda a rampa decrescente un "
+            f"rapporto intorno a 3 significa che i grani leggono dall'inizio "
+            f"del file invece che da {READ_START_SEC}s."
+        )
+
+    def test_ampiezza_coerente_con_la_zona_letta(self, tmp_path):
+        """Prova indipendente da NumPy: a READ_START_SEC la sonda vale
+        1 - t/PROBE_DUR_SEC, e nessun grano puo' suonare piu' forte di cosi'
+        (finestra e pan attenuano, non amplificano)."""
+        sc_path, _ = self._render_both(tmp_path)
+        massimo_teorico = 1.0 - READ_START_SEC / PROBE_DUR_SEC
+        assert _peak(sc_path) < massimo_teorico * 1.05, (
+            f"picco {_peak(sc_path):.4f} sopra l'ampiezza della sonda nella "
+            f"zona letta ({massimo_teorico:.4f}): i grani stanno leggendo "
+            f"altrove."
+        )
+
+
+# =============================================================================
+# 5. PARITA' CON NUMPY
 # =============================================================================
 
 @pytest.mark.e2e

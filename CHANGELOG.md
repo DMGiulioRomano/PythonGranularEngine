@@ -52,6 +52,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   serializzato a mano invece nessuno lo rilegge come DSP e nessun test lo
   valida senza un server.
 
+  Due trappole trovate facendo girare l'e2e davvero, che sono la ragione per
+  cui il job CI installa supercollider invece di lasciar skippare il test:
+  l'offset di lettura del grano va sommato FUORI dal `Phasor` e non passato
+  come `resetPos` (senza trigger il Phasor parte da `start`, cioe' da zero:
+  ogni grano leggeva dall'inizio del file, con il suono che c'era comunque e
+  solo il materiale sbagliato); e sclang, linkato a Qt, senza display aborta
+  prima di eseguire una riga.
+
   Nota operativa: sclang e' linkato a Qt e su una macchina senza display
   aborta prima di eseguire una riga dello script. Il renderer e
   `make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola

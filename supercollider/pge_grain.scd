@@ -55,21 +55,27 @@ var dir = "PGE_SYNTHDEF_DIR".getenv ? ".";
 SynthDef(\pgeGrain, { |out = 0, buf = 0, envBuf = 1, dur = 0.05,
                       startSec = 0.0, rate = 1.0, amp = 1.0, panRad = 0.0|
 
-    var phase, source, envIndex, env, sig, mid, side;
+    var frames, phase, source, envIndex, env, sig, mid, side;
 
     // --- lettura del sample -------------------------------------------------
-    // Phasor parte da resetPos e avvolge in [0, frames): e' il `% n_source`
-    // del renderer NumPy e il ciclo di poscil sulla tabella Csound.
-    // rate negativo (grano al contrario) avvolge all'indietro.
-    // BufRateScale compensa un sample rate del file diverso da quello del
-    // server, come `pitch_ratio * file_sr / output_sr` in NumPy.
-    phase = Phasor.ar(
-        trig: 0,
-        rate: rate * BufRateScale.kr(buf),
-        start: 0,
-        end: BufFrames.kr(buf),
-        resetPos: startSec * BufSampleRate.kr(buf)
-    );
+    // Phasor avvolge in [0, frames): e' il `% n_source` del renderer NumPy e
+    // il ciclo di poscil sulla tabella Csound. rate negativo (grano al
+    // contrario) avvolge all'indietro. BufRateScale compensa un sample rate
+    // del file diverso da quello del server, come
+    // `pitch_ratio * file_sr / output_sr` in NumPy.
+    //
+    // ATTENZIONE, e' costato un giro di CI: l'offset di lettura si somma
+    // FUORI dal Phasor, non si passa come `resetPos`. resetPos e' il valore a
+    // cui saltare quando arriva un trigger; senza trigger il Phasor parte da
+    // `start`, cioe' da 0. Passandolo li' ogni grano leggeva dall'inizio del
+    // file invece che dalla propria posizione -- un guasto silenzioso, perche'
+    // il suono c'e' comunque ed e' solo il materiale sbagliato. Sommandolo
+    // qui il risultato non dipende piu' da quale input il costruttore legga.
+    frames = BufFrames.kr(buf);
+    phase = (
+        Phasor.ar(trig: 0, rate: rate * BufRateScale.kr(buf), start: 0, end: frames)
+        + (startSec * BufSampleRate.kr(buf))
+    ) % frames;
     source = BufRd.ar(1, buf, phase, loop: 1, interpolation: 2);
 
     // --- finestra -----------------------------------------------------------

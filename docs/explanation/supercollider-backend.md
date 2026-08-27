@@ -137,6 +137,30 @@ suonare insieme: una densità alta con grani lunghi lo supererebbe e il render
 morirebbe a metà. Il backend chiede 32768 — è una hash table di puntatori,
 costa memoria trascurabile.
 
+**La trappola di `Phasor`, che è costata due giri di CI.** L'offset di lettura
+del grano si somma **fuori** dal `Phasor`, non si passa come `resetPos`:
+`resetPos` è il valore a cui saltare quando arriva un *trigger*, e senza
+trigger il Phasor parte da `start`, cioè da zero. Con l'offset passato lì ogni
+grano leggeva dall'inizio del file invece che dalla propria posizione — e il
+guasto era **silenzioso nel modo peggiore**: il suono c'era, la durata era
+giusta, i canali erano due, i picchi nello stesso ordine di grandezza. Solo il
+materiale era quello sbagliato.
+
+Vale la pena registrare come è stato trovato, perché la tecnica si riusa. Il
+sintomo era una correlazione RMS di 0.652 contro NumPy. Riprodurre in locale le
+divergenze *dichiarate* (niente DC blocker, niente clamp, finestra letta da
+tabella) dava `r = 1.0000`: nessuna di quelle spiegava niente. Simulando invece
+un candidato guasto alla volta sulla stessa lista di grani — «e se tutti
+leggessero da zero?», «e se non ci fosse finestra?», «e se l'ampiezza fosse
+ignorata?» — solo il primo riproduceva `r = 0.6516`. Una firma numerica a tre
+cifre, ottenuta senza avere SuperCollider a disposizione.
+
+La lezione che è finita in un test: `TestPosizioneDiLettura` misura la
+posizione di lettura **direttamente** invece che per correlazione. La sonda
+dell'e2e ha un'ampiezza che decresce nel tempo, quindi leggere dal punto
+sbagliato si vede come un fattore tre sul picco, non come una sfumatura
+statistica.
+
 **Cosa i test possono e non possono dire.** Encoder OSC, score writer, riga di
 comando, cache ed errori sono verificabili senza SuperCollider installato, e lo
 sono. Il grafo della SynthDef no: esiste un solo posto in cui `pge_grain.scd`
