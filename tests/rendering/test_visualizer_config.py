@@ -282,3 +282,39 @@ class TestConfigMustBeAMapping:
     def test_none_is_still_the_empty_configuration(self):
         """None resta il default: nessuno scarto, tutti i valori dichiarati."""
         assert VisualizerConfig.from_overrides(None).as_dict()['page_duration'] == 30.0
+
+
+class TestWaveformResolution:
+    """Le due manopole della waveform (issue #233).
+
+    `waveform_buckets` chiede un numero di colonne min/max, cioe' una
+    risoluzione che non dipende da quanto e' lungo il sample.
+    `waveform_downsample` e' la manopola storica: fissa la larghezza del bucket
+    in campioni e vince sull'altra. Resta perche' e' superficie pubblica — la
+    config di ScoreVisualizer e' un dizionario che passa da api.py e dagli
+    esempi del paper — e perche' quel che chiede e' legittimo: due sample di
+    lunghezza diversa allo stesso dettaglio temporale.
+    """
+
+    def test_the_bucket_count_has_a_default(self):
+        config = VisualizerConfig.from_overrides(None).as_dict()
+        assert config['waveform_buckets'] == 2000
+
+    def test_the_historical_knob_defaults_to_absent(self):
+        """None, non 200: assente significa 'derivala dal conteggio', ed e' il
+        modo di distinguere chi la manopola non l'ha toccata."""
+        config = VisualizerConfig.from_overrides(None).as_dict()
+        assert config['waveform_downsample'] is None
+
+    def test_the_historical_knob_is_still_accepted(self):
+        """Retrocompatibilita': una config che la passa non deve morire sulla
+        guardia delle chiavi sconosciute."""
+        config = VisualizerConfig.from_overrides(
+            {'waveform_downsample': 50}).as_dict()
+        assert config['waveform_downsample'] == 50
+
+    def test_the_two_knobs_coexist(self):
+        config = VisualizerConfig.from_overrides(
+            {'waveform_buckets': 800, 'waveform_downsample': 20}).as_dict()
+        assert config['waveform_buckets'] == 800
+        assert config['waveform_downsample'] == 20
