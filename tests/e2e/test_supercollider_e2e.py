@@ -18,7 +18,7 @@ Scenari:
 
 Requisiti:
   - supercollider (scsynth + sclang) nel PATH
-  - sox nel PATH, .venv configurato (make venv-setup)
+  - .venv configurato (make venv-setup)
 
 Esegui con:
   make e2e-tests
@@ -40,6 +40,15 @@ PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..')
 )
 
+# Il campione di prova non e' un tono stazionario, ed e' una scelta.
+# Con un seno costante la posizione di lettura del grano non si vede in
+# nessuna misura d'ampiezza: leggere dal punto sbagliato darebbe la stessa
+# curva RMS, e il confronto con NumPy passerebbe anche con il puntatore
+# rotto. Una rampa d'ampiezza decrescente rende la posizione di lettura
+# osservabile: il grano che legge piu' avanti nel file suona piu' piano.
+PROBE_SAMPLE = "e2e_sc_probe.wav"
+PROBE_DUR_SEC = 3.0
+
 _YAML = """\
 composition:
   title: "e2e supercollider"
@@ -50,25 +59,57 @@ streams:
   - stream_id: "s1"
     onset: 0.0
     duration: 1.0
-    sample: "pino.wav"
+    sample: "%s"
     density: 20
+    pointer:
+      speed: 1.0
     grain:
       duration: 0.05
       envelope: "hanning"
   - stream_id: "s2"
     onset: 1.0
     duration: 1.0
-    sample: "pino.wav"
+    sample: "%s"
     density: 20
+    pointer:
+      speed: 1.0
     grain:
       duration: 0.05
       envelope: "hanning"
-"""
+""" % (PROBE_SAMPLE, PROBE_SAMPLE)
 
 
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+@pytest.fixture(scope="module", autouse=True)
+def probe_sample():
+    """Scrive il campione di prova in refs/ e lo rimuove alla fine.
+
+    Sta in refs/ e non in tmp_path perche' e' la sample dir che i renderer
+    usano di default, la stessa per i tre backend. Il file e' generato qui
+    invece di dipendere da refs/pino.wav (che esiste solo in CI): un test che
+    salta per un file mancante non verifica niente.
+    """
+    import numpy as np
+    import soundfile as sf
+
+    sr = 48000
+    n = int(PROBE_DUR_SEC * sr)
+    t = np.arange(n) / sr
+    # Seno a 440 Hz con ampiezza che decresce linearmente: l'ampiezza dice
+    # da dove si sta leggendo.
+    audio = (np.sin(2 * np.pi * 440 * t) * (1.0 - t / PROBE_DUR_SEC))
+
+    refs = os.path.join(PROJECT_ROOT, "refs")
+    os.makedirs(refs, exist_ok=True)
+    path = os.path.join(refs, PROBE_SAMPLE)
+    sf.write(path, audio.astype("float32"), sr)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
 
 def _make_build(tmp_path, renderer='supercollider', stems=False, extra=()):
     """Invoca `make all` con directory temporanee. Ritorna (proc, output)."""
@@ -236,7 +277,10 @@ class TestParitaConNumpy:
     def test_energia_distribuita_allo_stesso_modo_nel_tempo(self, tmp_path):
         """Confronto sulla forma, non sui campioni: l'RMS su finestre da
         100 ms deve seguire la stessa curva. E' la traduzione misurabile di
-        'stessa densita', stessa traiettoria del pointer'."""
+        'stessa densita', stessa traiettoria del pointer' -- e regge solo
+        perche' il campione di prova ha un'ampiezza che varia nel tempo
+        (vedi PROBE_SAMPLE): su un tono stazionario questa misura sarebbe
+        cieca alla posizione di lettura."""
         import numpy as np
         import soundfile as sf
 
