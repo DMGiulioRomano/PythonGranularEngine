@@ -60,6 +60,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   solo il materiale sbagliato); e sclang, linkato a Qt, senza display aborta
   prima di eseguire una riga.
 
+  Il `.scsyndef` compilato sta accanto al `.scd` (`supercollider/`,
+  gitignorato) e **non** in `generated/`: quella la svuota `make clean`, e con
+  `CACHE=false` il clean e' un prerequisito di `all`. Un artefatto persistente
+  li' dentro farebbe ripartire sclang a ogni build, riportandolo da dipendenza
+  di build a dipendenza di runtime.
+
   Nota operativa: sclang e' linkato a Qt e su una macchina senza display
   aborta prima di eseguire una riga dello script. Il renderer e
   `make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola
@@ -79,8 +85,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   in `docs/explanation/supercollider-backend.md`.
 
   Flag nuove: `--renderer supercollider`, `--sc-synthdef-source`,
-  `--sc-synthdef-dir`, `--sc-block-size`, `--keep-osc`, `--osc-dir`. Variabili
-  Make: `SC_SYNTHDEF_SOURCE`, `SC_SYNTHDEF_DIR`, `SC_BLOCK_SIZE`, `KEEP_OSC`,
+  `--sc-synthdef-dir`, `--sc-block-size`, `--sc-max-nodes`, `--keep-osc`,
+  `--osc-dir`. Variabili Make: `SC_SYNTHDEF_SOURCE`, `SC_SYNTHDEF_DIR`,
+  `SC_BLOCK_SIZE`, `SC_MAX_NODES`, `KEEP_OSC`,
   piu' il target `make sc-synthdef`. Errori nuovi:
   `SuperColliderRenderError` (che distingue `scsynth` da `sclang` nel campo
   `stage`) e `SuperColliderNotFoundError` -- che **non** eredita da
@@ -149,6 +156,21 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   vuota, quindi gira su un clone pulito.
 
 ### Cambiato
+
+- **Il manifest della cache porta il nome del renderer**:
+  `cache/{basename}.{renderer}.json` invece di `cache/{basename}.json`
+  (review di #228). Il fingerprint degli stem guarda il solo dict YAML dello
+  stream, quindi con un manifest condiviso rendere con un backend e
+  rilanciare con un altro lasciava ogni stream `clean`: nessuno veniva
+  rirenderizzato e in `output/` restava l'audio del primo, annunciato come
+  del secondo. Con tre backend che esistono per essere confrontati, e' lo
+  scenario d'uso, non un caso limite. **Invalida una volta le cache
+  esistenti**, e cambia il path che PGE-ui legge da
+  `GET /cache_manifest/<basename>`.
+
+  Resta scoperto un caso della stessa famiglia, dichiarato e non risolto qui:
+  il DSP non entra nel fingerprint, quindi modificare `pge_grain.scd` o
+  `main.orc` non invalida nulla.
 
 - **Il ramo del Makefile chiede «se non csound» invece di «se numpy»**. La
   struttura interna di `make/build.mk` era `ifeq ($(RENDERER), numpy)` con

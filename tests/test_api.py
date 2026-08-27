@@ -185,7 +185,7 @@ class TestBuildRendererSuperCollider:
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['sc_config'] == {
             'synthdef_source': 'supercollider/pge_grain.scd',
-            'synthdef_dir': 'generated',
+            'synthdef_dir': 'supercollider',
             'scsynth_bin': 'scsynth',
             'sclang_bin': 'sclang',
             'block_size': 1,

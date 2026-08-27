@@ -75,10 +75,21 @@ endif
 
 # 2e-bis. Flag del backend SuperCollider (issue #228). Vuoti = default della
 # CLI: block size 1 (onset campione-accurati) e .osc temporanei.
+# Ogni flag e' guardato sul valore non vuoto, come JOBS: `SC_X=` esplicito
+# emetterebbe il flag nudo, e il parsing della CLI (sys.argv[idx+1], che non
+# controlla il prefisso --) si mangerebbe il flag successivo come valore.
 ifeq ($(RENDERER), supercollider)
-PYFLAGS += --sc-synthdef-source $(SC_SYNTHDEF_SOURCE) --sc-synthdef-dir $(SC_SYNTHDEF_DIR)
+ifneq ($(strip $(SC_SYNTHDEF_SOURCE)),)
+PYFLAGS += --sc-synthdef-source $(SC_SYNTHDEF_SOURCE)
+endif
+ifneq ($(strip $(SC_SYNTHDEF_DIR)),)
+PYFLAGS += --sc-synthdef-dir $(SC_SYNTHDEF_DIR)
+endif
 ifneq ($(strip $(SC_BLOCK_SIZE)),)
 PYFLAGS += --sc-block-size $(SC_BLOCK_SIZE)
+endif
+ifneq ($(strip $(SC_MAX_NODES)),)
+PYFLAGS += --sc-max-nodes $(SC_MAX_NODES)
 endif
 ifeq ($(KEEP_OSC), true)
 PYFLAGS += --keep-osc --osc-dir $(GENDIR)

@@ -81,7 +81,8 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--message-level N` | `134` | — | message level di Csound |
 | `--sco-dir DIR` | `generated` | — | destinazione `.sco` (attivo solo con `--keep-sco`) |
 | `--sc-synthdef-source PATH` | `supercollider/pge_grain.scd` | `SC_SYNTHDEF_SOURCE` | sorgente della SynthDef del grano (omologo di `--orc-path`) |
-| `--sc-synthdef-dir DIR` | `generated` | `SC_SYNTHDEF_DIR` | dove sta (o viene scritto) il `.scsyndef` compilato |
+| `--sc-synthdef-dir DIR` | `supercollider` | `SC_SYNTHDEF_DIR` | dove sta (o viene scritto) il `.scsyndef` compilato. **Non** `generated/`: quella la svuota `make clean`, e con `CACHE=false` il clean è un prerequisito di `all` — un artefatto persistente lì dentro farebbe ripartire sclang a ogni build |
+| `--sc-max-nodes N` | `32768` | `SC_MAX_NODES` | grani che scsynth ammette simultaneamente. Il default di scsynth è 1024: una densità alta con grani lunghi lo supera e il render muore a metà. `0`, negativi o non numerici: messaggio + exit 1 |
 | `--sc-block-size N` | `1` | `SC_BLOCK_SIZE` | block size di scsynth. `1` = onset campione-accurati, come `ksmps=1` di `main.orc`; valori più alti accorciano il render e quantizzano gli onset a `N/sr` secondi. `0`, negativi o non numerici: messaggio + exit 1 |
 | `--osc-dir DIR` | `generated` | `GENDIR` | destinazione `.osc` (attivo solo con `--keep-osc`) |
 | `--reaper-path FILE` | `{yaml_basename}.rpp` | `REAPER_PATH` | percorso del progetto Reaper |
@@ -103,7 +104,13 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   Lato Make la combinazione non si forma: `GRAIN_JSON` accumula
   `--grain-json` solo nel ramo `STEMS=true` di `make/build.mk`.
 - **`--cache` è effettivo solo con `--per-stream`**: la build incrementale
-  esiste solo per stream, e vale per tutti e tre i renderer. La
+  esiste solo per stream, e vale per tutti e tre i renderer. Il manifest è
+  `cache/{basename}.{renderer}.json`: **uno per backend**, perché il
+  fingerprint guarda il solo dict YAML dello stream e con un manifest
+  condiviso passare da un renderer all'altro lascerebbe ogni stream `clean`
+  — nessun re-render e in `output/` l'audio del backend precedente. Nota che
+  il DSP non entra nel fingerprint: modificare `pge_grain.scd` o `main.orc`
+  non invalida nulla. La
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (gli altri renderer non producono `.sco`).

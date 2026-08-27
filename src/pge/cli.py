@@ -59,7 +59,14 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         import os as _os
         yaml_basename = kwargs['yaml_basename']
         cache_dir = kwargs.get('cache_dir', 'cache')
-        cache_manifest_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
+        # Il nome porta il renderer: il fingerprint guarda solo il dict YAML
+        # dello stream, quindi con un manifest solo, rendere con un backend e
+        # rilanciare con un altro lascerebbe ogni stream `clean` -- e in
+        # output l'audio del primo annunciato come del secondo. Il confronto
+        # A/B fra backend e' proprio lo scenario che restituiva stem stantii
+        # in silenzio. Invalida una volta le cache preesistenti.
+        cache_manifest_path = _os.path.join(
+            cache_dir, f"{yaml_basename}.{renderer_type}.json")
         print(f"[CACHE] Manifest: {cache_manifest_path}")
 
     csound_options = None
@@ -81,8 +88,9 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         sc_options = api.SuperColliderOptions(
             synthdef_source=kwargs.get(
                 'sc_synthdef_source', 'supercollider/pge_grain.scd'),
-            synthdef_dir=kwargs.get('sc_synthdef_dir', 'generated'),
+            synthdef_dir=kwargs.get('sc_synthdef_dir', 'supercollider'),
             block_size=kwargs.get('sc_block_size', 1),
+            max_nodes=kwargs.get('sc_max_nodes', 32768),
             osc_dir=kwargs.get('osc_dir'),
         )
 
@@ -214,7 +222,8 @@ def main():
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
             "[--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] "
-            "[--sc-block-size N] [--keep-osc] [--osc-dir DIR] "
+            "[--sc-block-size N] [--sc-max-nodes N] "
+            "[--keep-osc] [--osc-dir DIR] "
             "[--cache] [--cache-dir DIR] "
             "[--reaper] [--reaper-path FILE] "
             "[--grain-json] "
@@ -427,7 +436,7 @@ def main():
         if idx + 1 < len(sys.argv):
             sc_synthdef_source = sys.argv[idx + 1]
 
-    sc_synthdef_dir = 'generated'
+    sc_synthdef_dir = 'supercollider'
     if '--sc-synthdef-dir' in sys.argv:
         idx = sys.argv.index('--sc-synthdef-dir')
         if idx + 1 < len(sys.argv):
@@ -447,6 +456,23 @@ def main():
                 sys.exit(1)
             if sc_block_size < 1:
                 print(f"--sc-block-size deve essere >= 1, ricevuto: {sc_block_size}")
+                sys.exit(1)
+
+    # --sc-max-nodes N: nodi simultanei di scsynth, cioe' quanti grani possono
+    # suonare insieme. Il default di scsynth e' 1024: una densita' alta con
+    # grani lunghi lo supera e il render muore a meta'.
+    sc_max_nodes = 32768
+    if '--sc-max-nodes' in sys.argv:
+        idx = sys.argv.index('--sc-max-nodes')
+        if idx + 1 < len(sys.argv):
+            raw = sys.argv[idx + 1]
+            try:
+                sc_max_nodes = int(raw)
+            except ValueError:
+                print(f"--sc-max-nodes non valido: '{raw}'. Deve essere un intero >= 1.")
+                sys.exit(1)
+            if sc_max_nodes < 1:
+                print(f"--sc-max-nodes deve essere >= 1, ricevuto: {sc_max_nodes}")
                 sys.exit(1)
 
     # --keep-osc: conserva gli score .osc intermedi (omologo di --keep-sco)
@@ -513,6 +539,7 @@ def main():
             sc_synthdef_source=sc_synthdef_source,
             sc_synthdef_dir=sc_synthdef_dir,
             sc_block_size=sc_block_size,
+            sc_max_nodes=sc_max_nodes,
             osc_dir=osc_dir,
         )
 

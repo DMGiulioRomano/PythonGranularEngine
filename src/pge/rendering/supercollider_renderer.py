@@ -48,7 +48,13 @@ from pge.shared.constants import DEFAULT_OUTPUT_SR
 # working directory, come `csound/main.orc` per il backend Csound: e' la
 # convenzione del progetto, e Makefile e CLI lo passano esplicito.
 DEFAULT_SYNTHDEF_SOURCE = 'supercollider/pge_grain.scd'
-DEFAULT_SYNTHDEF_DIR = 'generated'
+# Accanto al sorgente che lo genera, come un .o accanto al .c -- e non in
+# `generated/`, che e' la directory che `make clean` svuota (e con
+# CACHE=false il clean e' un prerequisito di `all`). Un artefatto
+# persistente cancellato a ogni build fa girare sclang a ogni render, con
+# l'avvio di Qt in mezzo: il fallback funziona, ma la dipendenza da sclang
+# torna a essere di runtime invece che di build.
+DEFAULT_SYNTHDEF_DIR = 'supercollider'
 
 # Block size di scsynth. 1 = onset campione-accurati, la stessa scelta di
 # main.orc, che gira a ksmps=1 (sr=kr=48000 in testa al file). Col default di
@@ -205,12 +211,22 @@ class SuperColliderRenderer(AudioRenderer):
         ))
 
     def _sample_format(self) -> str:
+        """subtype libsndfile -> sample format di scsynth.
+
+        Un subtype ignoto e' un errore di CONFIGURAZIONE, non un binario che
+        non si trova: dirlo con SuperColliderNotFoundError manderebbe a
+        cercare un'installazione che c'e'. Il ramo non e' raggiungibile dalla
+        CLI (i tre FORMATS sono tutti mappati) ma lo e' da un AudioFormat
+        costruito a mano via API.
+        """
         subtype = self.audio_format.sf_subtype
         if subtype not in _SAMPLE_FORMATS:
-            from pge.shared.exceptions import SuperColliderNotFoundError
-            raise SuperColliderNotFoundError(
-                what=f"formato campione '{subtype}'",
-                hint=f"scsynth accetta: {', '.join(sorted(set(_SAMPLE_FORMATS.values())))}",
+            from pge.shared.exceptions import InvalidFieldValueError
+            raise InvalidFieldValueError(
+                field='audio_format.sf_subtype',
+                value=subtype,
+                hint=("scsynth accetta: "
+                      f"{', '.join(sorted(set(_SAMPLE_FORMATS.values())))}"),
             )
         return _SAMPLE_FORMATS[subtype]
 

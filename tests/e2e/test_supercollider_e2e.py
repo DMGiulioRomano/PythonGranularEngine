@@ -139,7 +139,7 @@ def probe_sample():
 
 
 def _make_build(tmp_path, renderer='supercollider', stems=False, extra=(),
-                yaml_text=None):
+                yaml_text=None, fmt='aiff'):
     """Invoca `make all` con directory temporanee. Ritorna (proc, output)."""
     sfdir = tmp_path / "output"
     logdir = tmp_path / "logs"
@@ -157,6 +157,7 @@ def _make_build(tmp_path, renderer='supercollider', stems=False, extra=(),
         f'RENDERER={renderer}',
         f'STEMS={"true" if stems else "false"}',
         'CACHE=false',
+        f'FORMAT={fmt}',
         'AUTOKILL=false', 'AUTOPEN=false', 'AUTOVISUAL=false',
         'SHOWSTATIC=false', 'PRECLEAN=false', 'REAPER=false',
         f'SFDIR={sfdir}', f'LOGDIR={logdir}', f'YMLDIR={ymldir}',
@@ -264,7 +265,35 @@ class TestKeepOsc:
 
 
 # =============================================================================
-# 4. POSIZIONE DI LETTURA
+# 4. FORMATI AUDIO
+# =============================================================================
+
+@pytest.mark.e2e
+class TestFormatiAudio:
+    """`_SAMPLE_FORMATS` traduce il subtype libsndfile nel sample format di
+    scsynth, ed era plausibile ma non verificata contro il binario: l'e2e
+    girava solo su AIFF (review PR #240, punto 3).
+
+    Un formato che scsynth non digerisce non da' un errore chiaro: il render
+    esce comunque e il file non e' leggibile.
+    """
+
+    @pytest.mark.parametrize("fmt, ext", [("wav", ".wav"), ("flac", ".flac")])
+    def test_il_file_e_leggibile_e_suona(self, tmp_path, fmt, ext):
+        import soundfile as sf
+
+        proc, output = _make_build(tmp_path, fmt=fmt)
+        assert proc.returncode == 0, f"make fallito con FORMAT={fmt}:\n{output}"
+
+        path = tmp_path / "output" / f"e2e_sc_test{ext}"
+        assert path.exists(), f"nessun file {ext} prodotto"
+        info = sf.info(str(path))
+        assert info.channels == 2
+        assert _peak(path) > 1e-4, "file prodotto ma silenzioso"
+
+
+# =============================================================================
+# 5. POSIZIONE DI LETTURA
 # =============================================================================
 
 @pytest.mark.e2e
@@ -318,7 +347,7 @@ class TestPosizioneDiLettura:
 
 
 # =============================================================================
-# 5. PARITA' CON NUMPY
+# 6. PARITA' CON NUMPY
 # =============================================================================
 
 @pytest.mark.e2e

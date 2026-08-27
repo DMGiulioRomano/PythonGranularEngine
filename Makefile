@@ -76,8 +76,12 @@ RENDERER ?= numpy
 # block size di scsynth (vuoto = 1, onset campione-accurati) e conservazione
 # degli score .osc intermedi.
 SC_SYNTHDEF_SOURCE ?= supercollider/pge_grain.scd
-SC_SYNTHDEF_DIR ?= generated
+# NON $(GENDIR): quella la svuota `make clean`, e con CACHE=false il clean e'
+# un prerequisito di `all`. Il .scsyndef e' un artefatto persistente e sta
+# accanto al sorgente che lo genera (gitignorato).
+SC_SYNTHDEF_DIR ?= supercollider
 SC_BLOCK_SIZE ?=
+SC_MAX_NODES ?=
 KEEP_OSC ?= false
 FORMAT ?= aiff
 # Worker per il rendering NumPy multi-processo (--jobs): vuoto = auto
@@ -156,6 +160,7 @@ help:
 	@echo "  FORMAT=aiff|wav|flac     - Formato audio output (default: aiff)"
 	@echo "  RENDERER=csound|numpy|supercollider - Backend audio (default: numpy)"
 	@echo "  SC_BLOCK_SIZE=N          - Block size scsynth (default 1 = onset campione-accurati)"
+	@echo "  SC_MAX_NODES=N           - Grani simultanei ammessi da scsynth (default 32768)"
 	@echo "  KEEP_OSC=true/false      - Conserva gli score .osc in \$$(GENDIR)"
 
 .PHONY: install-system-deps check-system-deps

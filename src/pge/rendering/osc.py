@@ -9,7 +9,8 @@ trasporto UDP e la gestione dei pattern, che qui non servono a nulla; il
 formato, invece, e' congelato dal 2002 e sta in un centinaio di righe.
 
 Regole di formato (OSC 1.0):
-- stringa: ASCII, terminatore nullo, paddata con nulli a multipli di 4 byte
+- stringa: UTF-8 (OSC 1.0 dice ASCII, scsynth legge UTF-8), terminatore
+  nullo, paddata con nulli a multipli di 4 byte
   (una stringa gia' allineata riceve comunque 4 nulli: il terminatore c'e'
   sempre);
 - int32 / float32: big-endian;
@@ -44,8 +45,14 @@ def _pad(data: bytes) -> bytes:
 
 
 def encode_string(value: str) -> bytes:
-    """Stringa OSC: ASCII + terminatore nullo + padding a multipli di 4."""
-    return _pad(value.encode('ascii') + b'\x00')
+    """Stringa OSC: UTF-8 + terminatore nullo + padding a multipli di 4.
+
+    OSC 1.0 dice ASCII, ma scsynth legge UTF-8 e nello score finiscono i
+    path dei sample, assoluti: dipendono anche da dove sta il checkout, non
+    solo dai nomi dei file in `refs/`. Con `ascii` un accento qualunque
+    sollevava UnicodeEncodeError dentro l'encoder, senza dire quale file.
+    """
+    return _pad(value.encode('utf-8') + b'\x00')
 
 
 def encode_int32(value: int) -> bytes:

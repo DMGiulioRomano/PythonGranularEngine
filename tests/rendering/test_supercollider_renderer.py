@@ -297,6 +297,37 @@ class TestSynthDef:
                 renderer.synthdef_bytes()
 
 
+class TestSynthDefNonEStrizzataDaClean:
+    """Il .scsyndef e' un artefatto persistente e non puo' stare dove
+    `make clean` passa (review PR #240, punto 1).
+
+    Il default era `generated`, cioe' `$(GENDIR)`, che `make clean` svuota --
+    e con `CACHE=false` il clean e' un prerequisito di `all`. Ogni build
+    ricompilava la SynthDef con sclang, il che non e' un guasto (il fallback
+    funziona) ma smentisce la premessa del design: sclang una volta per
+    checkout, il rendering solo scsynth. Diventava una dipendenza di runtime,
+    con l'avvio di Qt in mezzo.
+    """
+
+    def test_default_fuori_da_gendir(self):
+        from pge.rendering.supercollider_renderer import DEFAULT_SYNTHDEF_DIR
+        assert DEFAULT_SYNTHDEF_DIR != 'generated'
+
+    def test_default_accanto_al_sorgente(self):
+        """Sta accanto al .scd che lo genera, come un .o accanto al .c."""
+        import os
+        from pge.rendering.supercollider_renderer import (
+            DEFAULT_SYNTHDEF_DIR, DEFAULT_SYNTHDEF_SOURCE,
+        )
+        assert DEFAULT_SYNTHDEF_DIR == os.path.dirname(DEFAULT_SYNTHDEF_SOURCE)
+
+    def test_api_e_renderer_concordano(self):
+        """Tre default della stessa cosa (renderer, API, CLI) che divergono
+        sono tre comportamenti diversi a seconda di come si entra."""
+        from pge.api import SuperColliderOptions
+        from pge.rendering.supercollider_renderer import DEFAULT_SYNTHDEF_DIR
+        assert SuperColliderOptions().synthdef_dir == DEFAULT_SYNTHDEF_DIR
+
 # =============================================================================
 # 3. RIGA DI COMANDO
 # =============================================================================
@@ -339,6 +370,18 @@ class TestCommand:
         dettaglio."""
         cmd = self._cmd(renderer)
         assert cmd[cmd.index('-z') + 1] == '1'
+
+    def test_max_nodes_configurabile(self, tmp_path, synthdef_file):
+        """E' il limite che il commento descrive come quello che fa morire il
+        render a meta': deve essere raggiungibile senza passare dall'API
+        (review PR #240, punto 4)."""
+        renderer = SuperColliderRenderer(
+            table_map=TABLE_MAP, window_registry=NumpyWindowRegistry(),
+            samples_dir=str(tmp_path),
+            sc_config={'synthdef_dir': str(tmp_path), 'max_nodes': 4096},
+        )
+        cmd = self._cmd(renderer)
+        assert cmd[cmd.index('-n') + 1] == '4096'
 
     def test_block_size_configurabile(self, tmp_path, synthdef_file):
         renderer = SuperColliderRenderer(
@@ -525,6 +568,37 @@ class TestKeepOsc:
 # =============================================================================
 # 7. ERRORI
 # =============================================================================
+
+class TestFormatoNonSupportato:
+    """Un subtype che scsynth non conosce e' un errore di CONFIGURAZIONE, non
+    un binario che non si trova (review PR #240, punto 3). Il ramo non e'
+    raggiungibile dalla CLI -- i tre FORMATS sono tutti mappati -- ma lo e'
+    da un AudioFormat costruito a mano via API, ed e' li' che il messaggio
+    conta: 'SuperCollider: formato campione X non trovato' manda a cercare
+    un'installazione che c'e'."""
+
+    def test_e_un_config_error(self, tmp_path, synthdef_file):
+        from pge.rendering.audio_format import AudioFormat
+        from pge.shared.exceptions import ConfigError, SuperColliderNotFoundError
+
+        renderer = SuperColliderRenderer(
+            table_map=TABLE_MAP, window_registry=NumpyWindowRegistry(),
+            samples_dir=str(tmp_path),
+            audio_format=AudioFormat('strano', '.xx', 'WAV', 'PCM_U8'),
+            sc_config={'synthdef_dir': str(tmp_path)},
+        )
+        with pytest.raises(ConfigError) as exc:
+            with patch('pge.rendering.supercollider_renderer.subprocess.run',
+                       return_value=ok()):
+                renderer.render_single_stream(FakeStream(), '/out/x.xx')
+
+        assert not isinstance(exc.value, SuperColliderNotFoundError)
+        msg = exc.value.user_message()
+        assert 'PCM_U8' in msg
+        assert 'int24' in msg or 'float' in msg
+
+
+
 
 class TestErrors:
 

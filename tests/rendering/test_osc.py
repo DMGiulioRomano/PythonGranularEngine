@@ -40,7 +40,7 @@ from pge.rendering import osc
 
 def _read_string(data, pos):
     end = data.index(b'\x00', pos)
-    value = data[pos:end].decode('ascii')
+    value = data[pos:end].decode('utf-8')
     pos = end + 1
     while pos % 4 != 0:
         assert data[pos] == 0, "padding non nullo"
@@ -126,6 +126,20 @@ class TestEncodeStrings:
     def test_lunghezza_sempre_multiplo_di_quattro(self):
         for n in range(0, 32):
             assert len(osc.encode_string("x" * n)) % 4 == 0
+
+    def test_utf8(self):
+        """Nello score finiscono path di file, assoluti: dipendono anche da
+        dove sta il checkout, non solo dai nomi in refs/. Un accento faceva
+        UnicodeEncodeError dentro l'encoder, senza dire quale file
+        (review PR #240, punto 4). scsynth accetta UTF-8."""
+        encoded = osc.encode_string("/musica/però/tromba.wav")
+        assert len(encoded) % 4 == 0
+        assert encoded.rstrip(b'\x00').decode('utf-8') == "/musica/però/tromba.wav"
+
+    def test_percorso_non_ascii_sopravvive_al_round_trip(self):
+        _, args = decode_message(
+            osc.message('/b_allocReadChannel', 1, "/rèfs/ottavìno.wav", 0, 0, 0))
+        assert args[1] == "/rèfs/ottavìno.wav"
 
 
 # =============================================================================

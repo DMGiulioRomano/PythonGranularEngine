@@ -135,7 +135,28 @@ sono scelte di cui vale la pena sapere.
 **Nodi.** Il default di `scsynth` è 1024 nodi, cioè quanti grani possono
 suonare insieme: una densità alta con grani lunghi lo supererebbe e il render
 morirebbe a metà. Il backend chiede 32768 — è una hash table di puntatori,
-costa memoria trascurabile.
+costa memoria trascurabile — e `--sc-max-nodes` / `SC_MAX_NODES` lo alza
+ancora, perché un limite che fa morire un render a metà deve essere
+raggiungibile senza passare dall'API.
+
+**Dove vive il `.scsyndef`, e perché non in `generated/`.** È un artefatto di
+build persistente, quindi non può stare nella directory che `make clean`
+svuota: con `CACHE=false` il clean è un prerequisito di `all`, e ogni build
+lo cancellerebbe facendo ripartire sclang — con l'avvio di Qt in mezzo. La
+dipendenza da sclang tornerebbe a essere di *runtime* invece che di build, che
+è l'opposto della premessa su cui il backend è progettato. Sta perciò accanto
+al `.scd` che lo genera, come un `.o` accanto al `.c`, ed è gitignorato. La
+combinazione dei default è coperta da `tests/e2e/test_supercollider_makefile_e2e.py`,
+che gira su `make -n` e non richiede SuperCollider.
+
+**Un manifest di cache per backend.** `cache/{basename}.{renderer}.json`: il
+fingerprint degli stem guarda il solo dict YAML dello stream, quindi con un
+manifest condiviso rendere con un backend e rilanciare con un altro lascerebbe
+ogni stream `clean` — nessun re-render, e in `output/` l'audio del primo
+annunciato come del secondo. È esattamente lo scenario A/B per cui questo
+backend esiste. Resta scoperto un caso della stessa famiglia: **il DSP non
+entra nel fingerprint**, quindi modificare `pge_grain.scd` (o `main.orc`) non
+invalida niente.
 
 **La trappola di `Phasor`, che è costata due giri di CI.** L'offset di lettura
 del grano si somma **fuori** dal `Phasor`, non si passa come `resetPos`:

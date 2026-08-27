@@ -50,10 +50,12 @@ class SuperColliderOptions:
     l'omologo di `orc_path` per Csound -- e `synthdef_dir` la directory dove
     sta (o viene scritto) il .scsyndef compilato, che e' un artefatto di
     build: sclang gira solo quando manca o quando il sorgente e' piu'
-    recente, il rendering vero invoca solo scsynth.
+    recente, il rendering vero invoca solo scsynth. Per questo il default
+    NON e' `generated/`, che `make clean` svuota: un artefatto persistente
+    cancellato a ogni build farebbe di sclang una dipendenza di runtime.
     """
     synthdef_source: str = 'supercollider/pge_grain.scd'
-    synthdef_dir: str = 'generated'
+    synthdef_dir: str = 'supercollider'   # accanto al .scd, fuori da GENDIR
     scsynth_bin: str = 'scsynth'
     sclang_bin: str = 'sclang'
     # 1 = onset campione-accurati, come ksmps=1 di csound/main.orc.
