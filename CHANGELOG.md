@@ -39,6 +39,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   che passava sempre `ssdir='refs'`. Ora la CLI passa `None` quando `--ssdir`
   non c'e'; senza nessuno dei due flag SSDIR resta `refs`, come sempre.
 
+  **Presente senza valore, il flag stampa un messaggio ed esce con 1**: unica
+  eccezione all'idioma della CLI, dove una flag con valore mancante viene
+  ignorata in silenzio. Altrove il silenzio costa poco; qui il fallback
+  sarebbe `./refs/`, cioe' la directory da cui il flag serve ad andarsene, e
+  il fallimento somiglierebbe al successo.
+
 ### Corretto
 
 - **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
