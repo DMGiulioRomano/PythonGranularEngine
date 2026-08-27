@@ -321,4 +321,6 @@ sc-synthdef: $(GENDIR)
 	}
 	@echo "[SC] Compilazione SynthDef $(SC_SYNTHDEF_SOURCE) → $(SC_SYNTHDEF_DIR)/"
 	@mkdir -p $(SC_SYNTHDEF_DIR)
-	PGE_SYNTHDEF_DIR=$(SC_SYNTHDEF_DIR) sclang $(SC_SYNTHDEF_SOURCE)
+	PGE_SYNTHDEF_DIR=$(SC_SYNTHDEF_DIR) \
+	QT_QPA_PLATFORM=$${QT_QPA_PLATFORM:-offscreen} \
+	sclang $(SC_SYNTHDEF_SOURCE)

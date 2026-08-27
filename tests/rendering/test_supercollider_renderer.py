@@ -176,6 +176,56 @@ class TestSynthDef:
             renderer.synthdef_bytes()
         assert run.call_count == 1
 
+    def test_sclang_gira_headless(self, tmp_path):
+        """sclang su Debian/Ubuntu e' linkato a Qt: senza un display aborta
+        con SIGABRT (`qt.qpa.xcb: could not connect to display`) prima di
+        eseguire una riga dello script. Su un runner CI, o su un server, e'
+        la condizione normale -- non un caso limite."""
+        source = tmp_path / "pge_grain.scd"
+        source.write_text("// sorgente")
+
+        renderer = SuperColliderRenderer(
+            table_map=TABLE_MAP, window_registry=NumpyWindowRegistry(),
+            samples_dir=str(tmp_path),
+            sc_config={'synthdef_source': str(source),
+                       'synthdef_dir': str(tmp_path)},
+        )
+
+        def fake_sclang(cmd, **kwargs):
+            (tmp_path / "pgeGrain.scsyndef").write_bytes(b'X')
+            return ok()
+
+        with patch('pge.rendering.supercollider_renderer.subprocess.run',
+                   side_effect=fake_sclang) as run:
+            renderer.synthdef_bytes()
+
+        assert run.call_args.kwargs['env']['QT_QPA_PLATFORM'] == 'offscreen'
+
+    def test_una_scelta_esplicita_di_piattaforma_qt_vince(self, tmp_path,
+                                                          monkeypatch):
+        """Chi ha un display e lo vuole usare non deve essere scavalcato: il
+        default vale come default, non come imposizione."""
+        monkeypatch.setenv('QT_QPA_PLATFORM', 'xcb')
+        source = tmp_path / "pge_grain.scd"
+        source.write_text("// sorgente")
+
+        renderer = SuperColliderRenderer(
+            table_map=TABLE_MAP, window_registry=NumpyWindowRegistry(),
+            samples_dir=str(tmp_path),
+            sc_config={'synthdef_source': str(source),
+                       'synthdef_dir': str(tmp_path)},
+        )
+
+        def fake_sclang(cmd, **kwargs):
+            (tmp_path / "pgeGrain.scsyndef").write_bytes(b'X')
+            return ok()
+
+        with patch('pge.rendering.supercollider_renderer.subprocess.run',
+                   side_effect=fake_sclang) as run:
+            renderer.synthdef_bytes()
+
+        assert run.call_args.kwargs['env']['QT_QPA_PLATFORM'] == 'xcb'
+
     def test_sclang_assente_e_un_errore_azionabile(self, tmp_path):
         from pge.shared.exceptions import SuperColliderNotFoundError
 

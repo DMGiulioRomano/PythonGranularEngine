@@ -8,7 +8,7 @@ sources:
   - src/pge/rendering/sc_score_writer.py
   - src/pge/rendering/osc.py
   - supercollider/pge_grain.scd
-last_synced_commit: 2da308b
+last_synced_commit: 47bbeb9
 ---
 
 # Backend SuperCollider — la partitura è un file OSC
@@ -95,6 +95,14 @@ quello sta nel repository come **sorgente leggibile e versionata**. Il
 manca o quando il sorgente è più recente, con la stessa regola di un Makefile
 — e i suoi byte viaggiano dentro lo score via `/d_recv`, così il `.osc` è
 autosufficiente.
+
+Una nota operativa che costa un giro di CI a chi non la sa: **sclang è linkato
+a Qt**, e su una macchina senza display aborta (SIGABRT, `qt.qpa.xcb: could not
+connect to display`) prima di eseguire una riga dello script. Il renderer e
+`make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola
+compilazione — come default, non come imposizione: chi ha un display e lo
+vuole usare lo dichiara nel proprio ambiente e vince. `scsynth` non ne ha
+bisogno: è headless per costruzione.
 
 L'alternativa era emettere il binario `.scsyndef` direttamente da Python,
 eliminando sclang: la issue #228 la indicava come strada preferita, ed è stata

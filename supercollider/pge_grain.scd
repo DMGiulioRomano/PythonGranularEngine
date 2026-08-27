@@ -12,6 +12,11 @@
 //
 // oppure, dal Makefile:   make sc-synthdef
 //
+// Su una macchina senza display serve anche QT_QPA_PLATFORM=offscreen:
+// sclang e' linkato a Qt e senza un server X aborta (SIGABRT) prima di
+// eseguire una riga di questo file. Il target make e il renderer lo
+// impostano da soli.
+//
 // Il .scsyndef prodotto e' un artefatto di build (come un .o): il renderer
 // lo ricompila da solo quando manca o quando questo file e' piu' recente.
 // sclang serve solo qui, una volta; il rendering vero invoca solo scsynth.

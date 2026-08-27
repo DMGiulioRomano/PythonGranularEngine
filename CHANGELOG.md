@@ -52,6 +52,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   serializzato a mano invece nessuno lo rilegge come DSP e nessun test lo
   valida senza un server.
 
+  Nota operativa: sclang e' linkato a Qt e su una macchina senza display
+  aborta prima di eseguire una riga dello script. Il renderer e
+  `make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola
+  compilazione, come default sovrascrivibile. scsynth non ne ha bisogno.
+
   Block size 1 per default (`--sc-block-size` per cambiarlo): e' la stessa
   scelta di `main.orc`, che gira a `ksmps=1`. Col default di scsynth gli onset
   si quantizzerebbero a 1.33 ms a 48 kHz, e nella sintesi granulare la

@@ -262,6 +262,14 @@ class SuperColliderRenderer(AudioRenderer):
             )
 
         os.makedirs(target_dir, exist_ok=True)
+        # QT_QPA_PLATFORM: sclang su Debian/Ubuntu e' linkato a Qt e senza un
+        # display aborta con SIGABRT (`qt.qpa.xcb: could not connect to
+        # display`) prima di eseguire una riga dello script. Su un runner CI o
+        # su un server e' la condizione normale, non un caso limite. E' un
+        # default, non un'imposizione: chi ha un display e lo vuole usare lo
+        # dichiara nel proprio ambiente e vince.
+        env = {**os.environ, 'PGE_SYNTHDEF_DIR': target_dir}
+        env.setdefault('QT_QPA_PLATFORM', 'offscreen')
         self._run(
             [self.sc_config.get('sclang_bin', 'sclang'), source],
             stage='sclang',
@@ -269,7 +277,7 @@ class SuperColliderRenderer(AudioRenderer):
                   "Serve sclang, che arriva nello stesso pacchetto di "
                   "scsynth; in alternativa compilala altrove e indica la "
                   "directory con --sc-synthdef-dir."),
-            env={**os.environ, 'PGE_SYNTHDEF_DIR': target_dir},
+            env=env,
         )
 
         if not os.path.exists(compiled):
