@@ -44,6 +44,22 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ignorata in silenzio. Altrove il silenzio costa poco; qui il fallback
   sarebbe `./refs/`, cioe' la directory da cui il flag serve ad andarsene, e
   il fallimento somiglierebbe al successo.
+- **`make bench` e `docs/explanation/costo-rendering.md`: quanto costa un
+  rendering, e da cosa dipende.** Il costo si scompone in due termini
+  indipendenti, `t = a * N_grani + b * D_secondi`, con `a` circa 32 us per grano
+  e `b` circa 1,3 ms per secondo di uscita (Apple M2 Max, sequenziale). I due
+  termini pareggiano attorno ai 40 grani al secondo: sopra quella densita' —
+  cioe' nel regime d'uso — il costo lo governa la popolazione, sotto lo governa
+  la durata del file. Il modello sta su 23 punti di misura fra 10^2 e 3*10^4
+  grani e fra 5 e 320 secondi, con errore mediano sotto l'1,5%.
+
+  Il nuovo `utils/bench_cost.py` produce le misure: tre sweep, il fit ai minimi
+  quadrati e — con `make bench YAML=<file>` — la ripartizione delle fasi su
+  materiale reale. Su `configs/PGE_cim.yml` (994.291 grani, 92,5 s, 28,9 s
+  totali) circa un terzo del tempo se ne va a costruire gli oggetti `Grain` e il
+  resto a sommarli e scrivere il file: il prezzo della rappresentazione
+  intermedia esplicita. Lo script genera un sample sintetico se `refs/` e'
+  vuota, quindi gira su un clone pulito.
 
 ### Corretto
 
