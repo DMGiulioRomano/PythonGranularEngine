@@ -123,11 +123,16 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   `--samples-dir` > `refs`. Senza nessuno dei due, SSDIR resta `refs`.
 - **`--samples-dir` non entra nel fingerprint della cache.** *Dove* stanno i
   sample non è un parametro dello stem: spostare la directory non marca
-  dirty nulla (vedi [[caching]]). Ne consegue anche il contrario: due
-  directory diverse con file omonimi e contenuto diverso condividono lo
-  stesso manifest e lo stesso stem, e la cache non se ne accorge — è la
-  stessa proprietà per cui il contenuto del file audio non è mai stato
-  nell'hash.
+  dirty nulla (vedi [[caching]]). Ne consegue che due directory diverse con
+  file omonimi possono condividere manifest e stem — ma la cecità non è
+  totale, e il confine è la durata dichiarata. Per gli stream **senza**
+  `duration` (issue #205) la durata risolta dal file audio *è* nell'hash
+  (`StreamCacheManager.compute_fingerprint` aggiunge `sample_dur_sec` quando
+  `stream_duration_is_implicit`), e quel valore lo risolve proprio
+  `samples_dir`: puntare a un omonimo di lunghezza diversa marca quello
+  stream dirty. Resta cieca su due casi: stream con `duration` esplicita, e
+  omonimi di pari durata con contenuto diverso — quest'ultimo è la stessa
+  proprietà per cui il contenuto del file audio non è mai stato nell'hash.
 - **`--show-static`** ha effetto solo insieme a `--visualize`.
 - **`--show-voice-offsets`** ha effetto solo insieme a `--visualize`. Gli
   offset per-voce vengono campionati dalle voice strategy
