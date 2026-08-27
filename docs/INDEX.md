@@ -16,6 +16,7 @@
 |------|--------|------|
 | [architecture](explanation/architecture.md) | stable | architecture, rendering, ocp |
 | [caching](explanation/caching.md) | stable | caching, rendering, csound |
+| [costo-rendering](explanation/costo-rendering.md) | stable | rendering, performance, grains, numpy |
 | [library-vs-cli](explanation/library-vs-cli.md) | stable | api, cli, architecture, refactor |
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
 | [parameter-curve](explanation/parameter-curve.md) | stable | parameters, envelopes, architecture, refactor |

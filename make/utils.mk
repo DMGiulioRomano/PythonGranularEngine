@@ -3,10 +3,16 @@
 
 COMMIT?="." 
 
-.PHONY: open pdf sync rx-stop reaper-stop
+.PHONY: open pdf sync rx-stop reaper-stop bench
 
 open:
 	$(OPEN_CMD) $(SFDIR)/*.aif
+
+# bench: costo del rendering in funzione di grani e durata (vedi
+# docs/explanation/costo-rendering.md). Sequenziale di proposito.
+# YAML=<file> aggiunge un caso di riferimento su materiale reale.
+bench: venv-setup
+	$(VENV_DIR)/bin/python utils/bench_cost.py $(YAML)
 
 pdf:
 	$(OPEN_CMD) $(SFDIR)/*.pdf

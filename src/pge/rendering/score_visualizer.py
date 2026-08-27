@@ -54,6 +54,7 @@ from pge.rendering import grain_visuals  # noqa: E402
 from pge.rendering import magnifier_projection  # noqa: E402
 from pge.rendering import magnifier_targets  # noqa: E402
 from pge.rendering import page_layout  # noqa: E402
+from pge.rendering import waveform_peaks  # noqa: E402
 from pge.rendering.visualizer_config import VisualizerConfig  # noqa: E402
 
 
@@ -140,45 +141,52 @@ class ScoreVisualizer:
     # =========================================================================
 
     def _load_waveform(self, sample_path):
-        """Carica e processa waveform per visualizzazione."""
-        
+        """Carica il sample e lo riduce alla curva che si disegna.
+
+        Qui vive l'I/O e la cache; la riduzione e' di
+        rendering.waveform_peaks, che e' puro. Il risultato e'
+        `(time_axis, amplitude, duration)`: due array della stessa lunghezza
+        piu' la durata vera del file, con l'ampiezza normalizzata sul picco
+        del segnale intero.
+
+        La curva e' un inviluppo min/max, non un sottocampionamento a passo
+        fisso (issue #233): due punti per bucket, il minimo e il massimo dei
+        campioni che contiene. Il passo fisso perdeva i transienti piu'
+        stretti del passo, aliasava, e produceva un numero di vertici
+        proporzionale alla durata del file.
+        """
         if sample_path in self.waveform_cache:
             return self.waveform_cache[sample_path]
-        
+
         # Costruisci path completo (samples_dir iniettato o fallback globale)
         full_path = self.samples_dir + sample_path
-        
+
+        # Il try copre l'apertura, non la riduzione: un guasto di quest'ultima
+        # (memoria, manopola fuori scala) non e' un file che non si apre, e
+        # travestirlo da tale lo renderebbe silenzioso — messo in cache, non
+        # ristampato piu'. Meglio che salga.
         try:
-            # Carica audio
             audio, sr = sf.read(full_path)
-            
-            # Mono mix se stereo
-            if audio.ndim > 1:
-                audio = np.mean(audio, axis=1)
-            
-            # Downsample per visualizzazione
-            ds = self.config['waveform_downsample']
-            audio_ds = audio[::ds]
-            
-            # Asse temporale
-            duration = len(audio) / sr
-            time_axis = np.linspace(0, duration, len(audio_ds))
-            
-            # Normalizza ampiezza
-            max_amp = np.max(np.abs(audio_ds))
-            if max_amp > 0:
-                amplitude = audio_ds / max_amp
-            else:
-                amplitude = audio_ds
-            
-            result = (time_axis, amplitude, duration)
-            self.waveform_cache[sample_path] = result
-            return result
-            
+            if len(audio) == 0:
+                # La riduzione qui non solleva (torna curve vuote), ma una
+                # durata nulla schiaccerebbe l'intero subplot dello stream su
+                # un asse degenere: meglio il placeholder, che si legge.
+                raise ValueError('file audio di lunghezza zero')
         except Exception as e:
             print(f"⚠️  Impossibile caricare waveform {sample_path}: {e}")
-            # Ritorna waveform fittizia
-            return (np.array([0, 1]), np.array([0, 0]), 1.0)
+            # Waveform fittizia: piatta, lunga un secondo. Va in cache come le
+            # altre, altrimenti ogni subplot di ogni pagina ritenterebbe
+            # l'apertura di un file che non si apre e ristamperebbe l'avviso.
+            result = (np.array([0.0, 1.0]), np.array([0.0, 0.0]), 1.0)
+        else:
+            time_axis, amplitude = waveform_peaks.peak_envelope(
+                audio, sr,
+                buckets=self.config['waveform_buckets'],
+                width=self.config['waveform_downsample'])
+            result = (time_axis, amplitude, len(audio) / sr)
+
+        self.waveform_cache[sample_path] = result
+        return result
     
     def _get_sample_duration(self, sample_path):
         """Ottiene la durata del sample."""

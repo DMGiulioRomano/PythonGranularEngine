@@ -131,6 +131,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ignorata in silenzio. Altrove il silenzio costa poco; qui il fallback
   sarebbe `./refs/`, cioe' la directory da cui il flag serve ad andarsene, e
   il fallimento somiglierebbe al successo.
+- **`make bench` e `docs/explanation/costo-rendering.md`: quanto costa un
+  rendering, e da cosa dipende.** Il costo si scompone in due termini
+  indipendenti, `t = a * N_grani + b * D_secondi`, con `a` circa 32 us per grano
+  e `b` circa 1,3 ms per secondo di uscita (Apple M2 Max, sequenziale). I due
+  termini pareggiano attorno ai 40 grani al secondo: sopra quella densita' —
+  cioe' nel regime d'uso — il costo lo governa la popolazione, sotto lo governa
+  la durata del file. Il modello sta su 23 punti di misura fra 10^2 e 3*10^4
+  grani e fra 5 e 320 secondi, con errore mediano sotto l'1,5%.
+
+  Il nuovo `utils/bench_cost.py` produce le misure: tre sweep, il fit ai minimi
+  quadrati e — con `make bench YAML=<file>` — la ripartizione delle fasi su
+  materiale reale. Su `configs/PGE_cim.yml` (994.291 grani, 92,5 s, 28,9 s
+  totali) circa un terzo del tempo se ne va a costruire gli oggetti `Grain` e il
+  resto a sommarli e scrivere il file: il prezzo della rappresentazione
+  intermedia esplicita. Lo script genera un sample sintetico se `refs/` e'
+  vuota, quindi gira su un clone pulito.
+
 ### Cambiato
 
 - **Il ramo del Makefile chiede «se non csound» invece di «se numpy»**. La
@@ -151,6 +168,78 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   skippa non verifica niente.
 
 ### Corretto
+
+- **La waveform della partitura non era il segnale, era la griglia di lettura**
+  (issue #233). `ScoreVisualizer._load_waveform` riduceva il sample con
+  `audio[::200]` — un campione ogni duecento — e disegnava quello. Tre difetti,
+  che sono tre difetti diversi:
+
+  - **i transienti sparivano.** Un attacco largo meno del passo non veniva mai
+    pescato. Su un sample con un picco di 30 campioni a fondo scala la
+    partitura dichiarava un'ampiezza di meta' scala: non una versione
+    approssimata del segnale, un segnale che non esiste;
+  - **aliasing.** Sottocampionare senza filtrare ripiega le frequenze alte su
+    quelle basse. Una sinusoide a 220 Hz letta ogni 200 campioni (cioe' a
+    220.5 Hz) veniva disegnata come un'onda a 0.4 Hz. Su una nota pizzicata
+    l'effetto e' un lobo asimmetrico con un pettine di ondulazioni al posto del
+    decadimento: la forma che si legge sulla pagina non e' una semplificazione
+    di quella vera, e' un artefatto della griglia;
+  - **la scala verticale seguiva la manopola.** Si normalizzava su
+    `max(|audio[::ds]|)`, cioe' sul massimo dei campioni *sopravvissuti*.
+    Abbassare `waveform_downsample` per avere piu' dettaglio riscalava anche il
+    disegno, quindi due partiture generate a risoluzioni diverse non erano
+    confrontabili. E' il motivo per cui il «fix rapido» proposto nella issue
+    (200 -> 20) non era un fix: cambiava anche cio' che non doveva.
+
+  A questi si aggiungeva un asse temporale stirato — `linspace(0, duration, ...)`
+  mappava l'**ultimo campione pescato** sulla fine del sample, e su un sample
+  corto l'ultimo pescato e' lontano dalla fine — e un costo proporzionale alla
+  durata del file: un sample di dieci minuti produceva 132mila vertici, uno di
+  un secondo duecento.
+
+  Il rimedio e' l'inviluppo min/max, come disegna la waveform qualunque editor
+  audio: si legge **ogni** campione, il segnale si divide in bucket, e di ogni
+  bucket si tiene la coppia (minimo, massimo). Il picco c'e' sempre, perche' i
+  bucket partizionano il segnale. La lettura resta lineare nei campioni — deve
+  esserlo, e' il prezzo per non perderli — ma quel che arriva a matplotlib e'
+  limitato dal numero di bucket: **4000 vertici** che il sample duri cinque
+  secondi o dieci minuti (36 ms di riduzione sul secondo caso).
+
+  La regola vive nel modulo puro `rendering.waveform_peaks` (numpy e basta,
+  niente matplotlib e niente I/O); `_load_waveform` resta l'adapter che apre il
+  file, legge la config e tiene la cache.
+
+  Nella stessa passata: il **sample che non si apre** ora si prova una volta
+  sola. La waveform fittizia del ramo d'errore non finiva in cache, quindi ogni
+  subplot di ogni pagina ritentava l'apertura e ristampava lo stesso avviso —
+  due volte per stream, una per la durata e una per il disegno — mentre il
+  commento in cima al ciclo dichiarava il contrario.
+
+  Nella stessa passata, tre casi in cui il buffer reale non e' il buffer del
+  test: un **bucket piu' largo del sample** viene tagliato sulla lunghezza del
+  segnale, perche' un bucket piu' largo del segnale *e'* il segnale; un **NaN
+  isolato** non avvelena piu' il picco globale, che si
+  calcola nan-safe — prima bastava un campione a lasciare non normalizzata
+  *tutta* la curva, che finiva clippata contro i bordi; un **file di lunghezza
+  zero** torna al placeholder da un secondo invece di dare durata nulla, che
+  schiacciava grani, loop mask e label dello stream su un asse degenere.
+
+  E la riduzione non ricopia piu' il buffer. L'ultimo bucket veniva riempito
+  fino alla misura per poterlo reshapare con gli altri, e quella `concatenate`
+  costava una copia dell'**intero** segnale ogni volta che la lunghezza non era
+  multiplo esatto della larghezza — cioe' quasi sempre: **212 MB e 26 ms** su
+  dieci minuti di audio per aggiungere in coda meno di duemila campioni,
+  contro **0.1 MB e 7 ms** ora che i bucket pieni sono una view su una fetta e
+  l'ultimo si riduce da se'. Era l'unico punto in cui «il costo non dipende
+  piu' dalla durata» restava falso per la memoria. Il riempimento era comunque
+  un no-op semantico, quindi sparisce invece di essere documentato.
+
+  E il `try` di `_load_waveform` copre di nuovo la sola apertura del file: un
+  guasto della riduzione (memoria, manopola fuori scala) non si traveste piu'
+  da «Impossibile caricare waveform», che lo avrebbe messo in cache e reso
+  silenzioso per il resto del rendering.
+
+  **Cambia il disegno, non l'audio**: nessun renderer legge questo codice.
 
 - **Un envelope su tre grafie non veniva riconosciuto come envelope** (issue
   #234). `Envelope.is_envelope_like` era piu' stretta di quel che
@@ -258,6 +347,34 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   stream silenzioso invece che come un errore.
 
 ### Modificato
+
+- **La risoluzione della waveform si chiede in colonne, non in campioni**
+  (issue #233). Nuova chiave di config di `ScoreVisualizer`:
+  **`waveform_buckets`** (default `2000`), il numero di colonne min/max da
+  disegnare. E' una risoluzione, non un passo: il costo del disegno non dipende
+  piu' da quanto e' lungo il sample, e un sample corto viene disegnato intero
+  invece che a manciate di punti.
+
+  **`waveform_downsample` resta e non e' un errore passarla**, ma il default
+  scende da `200` a `None` e il significato si sposta di un passo: era il passo
+  del sottocampionamento, ora e' la **larghezza del bucket in campioni**, e se
+  data vince su `waveform_buckets`. Chi la passava ottiene la stessa densita' di
+  colonne di prima, con dentro il picco invece di un campione a caso. Assente
+  significa «derivala dal conteggio». Resta perche' fissare la risoluzione in
+  campioni e' legittimo — e' come si confrontano allo stesso dettaglio due
+  sample di lunghezza diversa — e perche' la config di `ScoreVisualizer` e'
+  superficie pubblica, che passa da `api.export_score_pdf` e dagli esempi del
+  paper.
+
+  L'avvertenza della issue resta vera, e vale per **entrambe** le manopole:
+  `waveform_downsample: 1` su un sample lungo produce ancora milioni di
+  vertici, e `waveform_buckets` piu' grande della lunghezza del sample arriva
+  allo stesso tetto (`2 * len(audio)`) per la strada opposta. Nessuna delle due
+  e' tagliata verso l'alto: chiedere una risoluzione piu' fine del segnale e'
+  legittimo quanto chiederla piu' grossolana, ed e' esplicito in entrambi i
+  casi. Verso il basso invece `waveform_downsample` e' tagliata sulla lunghezza
+  del sample, perche' li' non c'e' niente da guadagnare: un bucket piu' largo
+  del segnale *e'* il segnale.
 
 - **Il renderer NumPy ignora `envelope` sotto i 10 campioni (208.3 µs).** A
   quelle lunghezze la finestra non taglia i bordi: decima il grano.
