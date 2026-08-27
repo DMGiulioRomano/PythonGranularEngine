@@ -313,7 +313,11 @@ class SuperColliderRenderer(AudioRenderer):
         )
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            # stdin chiuso: sclang senza terminale resta in attesa sullo
+            # stdin invece di uscire, e un render che non finisce e' peggio
+            # di uno che fallisce.
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    env=env, stdin=subprocess.DEVNULL)
         except FileNotFoundError:
             raise SuperColliderNotFoundError(
                 what=f"binario '{cmd[0]}'",

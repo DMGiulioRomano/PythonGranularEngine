@@ -72,6 +72,13 @@ PRECLEAN ?=true
 STEMS ?= true
 GRAIN_JSON ?= false   # esporta JSON sidecar dei grani (richiede STEMS=true, issue #99)
 RENDERER ?= numpy
+# Backend SuperCollider (issue #228): sorgente e destinazione della SynthDef,
+# block size di scsynth (vuoto = 1, onset campione-accurati) e conservazione
+# degli score .osc intermedi.
+SC_SYNTHDEF_SOURCE ?= supercollider/pge_grain.scd
+SC_SYNTHDEF_DIR ?= generated
+SC_BLOCK_SIZE ?=
+KEEP_OSC ?= false
 FORMAT ?= aiff
 # Worker per il rendering NumPy multi-processo (--jobs): vuoto = auto
 # (core disponibili - 1), N = numero esplicito, 1 = sequenziale
@@ -118,6 +125,7 @@ help:
 	@echo " Build:"
 	@echo "  make all             - Build pipeline (YAML→SCO→AIF)"
 	@echo "  make FILE=nome       - Build singolo file"
+	@echo "  make sc-synthdef     - Compila la SynthDef del backend SuperCollider (serve sclang)"
 	@echo ""
 	@echo " Testing:"
 	@echo "  make tests  - Esegui test"
@@ -146,6 +154,9 @@ help:
 	@echo "  AUTOKILL_REAPER=true/false - Chiudi REAPER prima del build e riapri dopo"
 	@echo "  REAPER_REUSE_TAB=true/false - Chiudi tab esistente stesso .rpp e riapri (single-tab reload)"
 	@echo "  FORMAT=aiff|wav|flac     - Formato audio output (default: aiff)"
+	@echo "  RENDERER=csound|numpy|supercollider - Backend audio (default: numpy)"
+	@echo "  SC_BLOCK_SIZE=N          - Block size scsynth (default 1 = onset campione-accurati)"
+	@echo "  KEEP_OSC=true/false      - Conserva gli score .osc in \$$(GENDIR)"
 
 .PHONY: install-system-deps check-system-deps
 
@@ -158,6 +169,9 @@ check-system-deps:
 	}
 	@if [ "$(RENDERER)" = "csound" ]; then \
 		command -v csound >/dev/null 2>&1 || { echo "ERRORE: csound non trovato."; exit 1; }; \
+	fi
+	@if [ "$(RENDERER)" = "supercollider" ]; then \
+		command -v scsynth >/dev/null 2>&1 || { echo "ERRORE: scsynth non trovato. Esegui: make install-system-deps"; exit 1; }; \
 	fi
 	@command -v sox >/dev/null 2>&1 || { echo "ERRORE: sox non trovato."; exit 1; }
 

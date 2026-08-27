@@ -1,5 +1,6 @@
 # make/build.mk
-# Pipeline di generazione: YAML → SCO → AIF (csound) oppure YAML → AIF (numpy)
+# Pipeline di generazione: YAML → SCO → AIF (csound) oppure YAML → AIF
+# (ogni altro renderer: numpy, supercollider)
 
 # Variabili derivate per la pipeline
 PYTHON_SOURCES := $(wildcard $(INCDIR)/*.py)
@@ -11,7 +12,8 @@ AIF_FILES      := $(patsubst $(GENDIR)/%.sco,$(SFDIR)/%.aif,$(SCO_FILES))
 .SECONDARY: $(SCO_FILES)
 
 # MODIFICA 1: default del renderer. Sovrascrivibile da riga di comando.
-# Questo blocco rispecchia il contratto con main.py: --renderer csound|numpy
+# Questo blocco rispecchia il contratto con main.py:
+#   --renderer csound|numpy|supercollider
 RENDERER ?= csound
 
 # --- Logica condizionale per flags ---
@@ -69,6 +71,18 @@ endif
 # Le virgolette proteggono il ';' fra target dalla shell.
 ifneq ($(strip $(MAGNIFY_AT)),)
 PYFLAGS += --magnify-at "$(MAGNIFY_AT)"
+endif
+
+# 2e-bis. Flag del backend SuperCollider (issue #228). Vuoti = default della
+# CLI: block size 1 (onset campione-accurati) e .osc temporanei.
+ifeq ($(RENDERER), supercollider)
+PYFLAGS += --sc-synthdef-source $(SC_SYNTHDEF_SOURCE) --sc-synthdef-dir $(SC_SYNTHDEF_DIR)
+ifneq ($(strip $(SC_BLOCK_SIZE)),)
+PYFLAGS += --sc-block-size $(SC_BLOCK_SIZE)
+endif
+ifeq ($(KEEP_OSC), true)
+PYFLAGS += --keep-osc --osc-dir $(GENDIR)
+endif
 endif
 
 # 2f. Se JOBS e' non-vuoto, aggiungi --jobs (rendering NumPy multi-processo;
@@ -178,11 +192,14 @@ ifeq ($(GRAIN_JSON), true)
 PYFLAGS += --grain-json
 endif
 
-# --- STEMS + RENDERER=numpy ---
+# --- STEMS + renderer senza flag propri (numpy, supercollider) ---
 # Python produce N .aif direttamente in SFDIR (uno per stream).
 # Non c'e' file .sco intermedio, non c'e' invocazione di csound.
 # Comportamento identico a STEMS+csound: --per-stream attiva StemsRenderMode.
-ifeq ($(RENDERER), numpy)
+# La condizione e' "non csound" e non "numpy": csound e' l'unico che ha
+# bisogno di CSOUND_FLAGS, quindi e' lui il caso speciale. Un backend nuovo
+# entra qui senza toccare il Makefile -- che e' il punto dell'OCP anche qui.
+ifneq ($(RENDERER), csound)
 
 PYFLAGS += --per-stream
 
@@ -195,8 +212,8 @@ all: $(ALL_PRE) stems-build
 
 .PHONY: stems-build
 stems-build: venv-setup $(SFDIR) $(CACHEDIR)
-	@echo "[NUMPY][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
-	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE)$(FORMAT_EXT) --renderer numpy $(PYFLAGS)
+	@echo "[$(RENDERER)][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
+	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE)$(FORMAT_EXT) --renderer $(RENDERER) $(PYFLAGS)
 	$(autopen_stems)
 
 else
@@ -233,13 +250,13 @@ else
 
 # =============================================================================
 # MODIFICA 3: pipeline normale (STEMS=false)
-# Con RENDERER=numpy: regola unica YAML → AIF via Python (nessun csound).
+# Con RENDERER != csound: regola unica YAML → AIF via Python (nessun csound).
 # Con RENDERER=csound: regole identiche all'originale (YAML→SCO, SCO→AIF).
 # =============================================================================
 
-ifeq ($(RENDERER), numpy)
+ifneq ($(RENDERER), csound)
 
-# --- Normale + RENDERER=numpy ---
+# --- Normale + renderer senza flag propri (numpy, supercollider) ---
 # Il secondo argomento di main.py e' il path .aif di output diretto.
 # Make conosce solo la dipendenza YAML→AIF: nessuna regola SCO→AIF.
 
@@ -252,7 +269,7 @@ endif
 
 # YAML → AIF (Python, una sola fase)
 $(SFDIR)/%$(FORMAT_EXT): $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
-	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer numpy $(PYFLAGS)
+	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer $(RENDERER) $(PYFLAGS)
 	$(autopen_single)
 
 else
@@ -283,3 +300,25 @@ endif
 
 endif
 # fine ifeq STEMS
+
+# =============================================================================
+# SUPERCOLLIDER: compilazione della SynthDef
+#
+# La SynthDef del grano e' l'unico DSP scritto a mano del backend (l'omologo
+# di csound/main.orc). Il .scsyndef e' un artefatto di build: si compila una
+# volta con sclang e poi il rendering invoca solo scsynth. Il renderer lo
+# ricompila da solo quando manca o quando il sorgente e' piu' recente; questo
+# target serve a farlo esplicitamente, e a dire subito che sclang manca.
+# =============================================================================
+
+.PHONY: sc-synthdef
+sc-synthdef: $(GENDIR)
+	@command -v sclang >/dev/null 2>&1 || { \
+		echo "ERRORE: sclang non trovato. Installa SuperCollider"; \
+		echo "  Debian/Ubuntu: sudo apt install supercollider"; \
+		echo "  macOS:         brew install --cask supercollider"; \
+		exit 1; \
+	}
+	@echo "[SC] Compilazione SynthDef $(SC_SYNTHDEF_SOURCE) → $(SC_SYNTHDEF_DIR)/"
+	@mkdir -p $(SC_SYNTHDEF_DIR)
+	PGE_SYNTHDEF_DIR=$(SC_SYNTHDEF_DIR) sclang $(SC_SYNTHDEF_SOURCE)

@@ -25,7 +25,7 @@ jobs:
       - run: python -m pytest
 
   e2e:
-    name: e2e tests (csound + numpy + reaper export)
+    name: e2e tests (csound + numpy + supercollider + reaper export)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: install native deps
-        run: sudo apt-get update && sudo apt-get install -y csound sox
+        # supercollider porta scsynth (rendering NRT) e sclang (compilazione
+        # della SynthDef, una volta sola): senza, l'e2e del terzo backend si
+        # skippa, e un test che si skippa non verifica niente.
+        run: sudo apt-get update && sudo apt-get install -y csound sox supercollider
       - name: generate input sample refs/pino.wav
         run: sox -n refs/pino.wav synth 3 sine 440
       # make e2e-tests fa venv-setup (richiesto: gli e2e lanciano `make all`
