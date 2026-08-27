@@ -12,7 +12,7 @@ sources:
   - src/pge/rendering/score_visualizer.py
   - src/pge/rendering/visualizer_config.py
   - src/pge/rendering/waveform_peaks.py
-last_synced_commit: 41733f9
+last_synced_commit: 5fcfde7
 ---
 
 # Il layout della partitura: separare i numeri dal disegno
