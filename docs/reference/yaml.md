@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 8bbfd75
+last_synced_commit: fb01d7f
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -704,7 +704,7 @@ nel sample, stesso dominio. Il vocabolario è chiuso — `seconds`, `absolute`,
 `normalized` — e un'unità fuori da quello è `InvalidFieldValueError`, non un
 silenzioso "assoluto".
 
-Fino alla v7.2.0 `loop_unit` assente ereditava da `time_mode`: uno stream
+Fino alla v8.0.0 inclusa `loop_unit` assente ereditava da `time_mode`: uno stream
 `normalized` vedeva `start` e i parametri di loop scalati per `sample_dur_sec`
 anche senza nessun loop dichiarato. Le due chiavi parlano di assi diversi (vedi
 §10.1) e ora sono indipendenti. (issue #222)
@@ -2091,7 +2091,7 @@ pointer:
 Con un sample da 8 secondi: a `t=0` il loop parte da 2.0 s del file, a `t=20`
 da 6.0 s, a metà stream da 4.0 s.
 
-**`loop_unit` non eredita da `time_mode`** (issue #222). Fino alla v7.2.0 lo
+**`loop_unit` non eredita da `time_mode`** (issue #222). Fino alla v8.0.0 inclusa lo
 faceva, e un solo keyword finiva per governare i due assi: uno stream che
 dichiarava `time_mode` per i propri envelope si vedeva spostare anche la
 testina di lettura, `start` compreso, senza aver detto niente al riguardo.
