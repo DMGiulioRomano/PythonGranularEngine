@@ -82,7 +82,9 @@ def _write_yaml(tmp_path, content: str):
 def _load_manifest(tmp_path) -> dict:
     """Carica il manifest JSON dalla cache temporanea."""
     import json
-    manifest_path = tmp_path / "cache" / "e2e_numpy_test.json"
+    # Il nome del manifest porta il renderer da #228 (un manifest condiviso
+    # fra backend lasciava ogni stream `clean` passando dall'uno all'altro).
+    manifest_path = tmp_path / "cache" / "e2e_numpy_test.numpy.json"
     if not manifest_path.exists():
         return {}
     return json.loads(manifest_path.read_text())
