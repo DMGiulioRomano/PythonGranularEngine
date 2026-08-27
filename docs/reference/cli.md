@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/grain_visuals.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: 95fd483
+last_synced_commit: 9764017
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -72,9 +72,10 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--jobs N\|auto` | `auto` | `JOBS` | worker del rendering NumPy multi-processo. `auto` = core disponibili - 1 (min 1, via affinity dove disponibile); `1` = sequenziale, campioni bit-identici allo storico; `0`, negativi o non numerici: messaggio + exit 1. Ignorato con `--renderer csound` |
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
+| `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
 | `--incdir DIR` | `src` | — | include dir per Csound |
-| `--ssdir DIR` | `refs` | — | sample search dir (file sorgente audio) |
+| `--ssdir DIR` | `--samples-dir`, altrimenti `refs` | — | sample search dir di Csound (variabile d'ambiente SSDIR). Vince su `--samples-dir` quando è esplicito; **non basta da solo** (vedi Bounds) |
 | `--sfdir DIR` | `output` | `SFDIR` | sound file dir di Csound |
 | `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log |
 | `--message-level N` | `134` | — | message level di Csound |
@@ -122,6 +123,27 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   byte-identico tra run perché libsndfile scrive un timestamp wall-clock nel
   PEAK chunk dell'header; confronta i campioni (`soundfile.read`), non i byte
   grezzi.
+- **`--ssdir` non sostituisce `--samples-dir`, nemmeno con `--renderer
+  csound`.** SSDIR dice a Csound dove cercare i soundfile *in fase di
+  render*, ma la durata del sample la risolve `Stream.__init__` (via
+  `get_sample_duration`) prima che esista un renderer, e quel passo legge
+  `PATHSAMPLES`. Da un cwd senza `refs/`, `--ssdir /altrove` da solo muore
+  con `SampleNotFoundError` esattamente come il renderer numpy — il path
+  stampato è `./refs/…`, non SSDIR, e il render non è nemmeno iniziato. La
+  precedenza fra i due, quando entrambi contano: `--ssdir` esplicito >
+  `--samples-dir` > `refs`. Senza nessuno dei due, SSDIR resta `refs`.
+- **`--samples-dir` non entra nel fingerprint della cache.** *Dove* stanno i
+  sample non è un parametro dello stem: spostare la directory non marca
+  dirty nulla (vedi [[caching]]). Ne consegue che due directory diverse con
+  file omonimi possono condividere manifest e stem — ma la cecità non è
+  totale, e il confine è la durata dichiarata. Per gli stream **senza**
+  `duration` (issue #205) la durata risolta dal file audio *è* nell'hash
+  (`StreamCacheManager.compute_fingerprint` aggiunge `sample_dur_sec` quando
+  `stream_duration_is_implicit`), e quel valore lo risolve proprio
+  `samples_dir`: puntare a un omonimo di lunghezza diversa marca quello
+  stream dirty. Resta cieca su due casi: stream con `duration` esplicita, e
+  omonimi di pari durata con contenuto diverso — quest'ultimo è la stessa
+  proprietà per cui il contenuto del file audio non è mai stato nell'hash.
 - **`--show-static`** ha effetto solo insieme a `--visualize`.
 - **`--show-voice-offsets`** ha effetto solo insieme a `--visualize`. Gli
   offset per-voce vengono campionati dalle voice strategy
@@ -172,7 +194,11 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   wrappa (`read_indices % n_source`), quindi lì la figura tace su una
   porzione che l'audio contiene (vedi issue #223, punto 2).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
-  la flag viene ignorata senza errore.
+  la flag viene ignorata senza errore. **Unica eccezione: `--samples-dir`**,
+  che con il valore mancante stampa un messaggio ed esce con 1. Il silenzio
+  costa poco sugli altri flag, mentre qui ricadrebbe su `./refs/` — cioè
+  proprio la directory da cui il flag serve ad andarsene — e il fallimento
+  somiglierebbe al successo.
 
 ## Esempi
 
@@ -192,6 +218,13 @@ python src/main.py configs/brano.yml --renderer numpy --jobs 1
 
 # Numero esplicito di worker via Make (vuoto = auto = core-1)
 make all FILE=brano RENDERER=numpy JOBS=4
+
+# Sample fuori dal checkout del motore: render da una directory di lavoro
+# qualsiasi (nessun refs/ nel cwd), con entrambi i renderer
+python src/main.py brano.yml output/brano.wav \
+  --renderer numpy --format wav --samples-dir /media/wavs
+python src/main.py brano.yml output/brano.aif \
+  --renderer csound --samples-dir /media/wavs   # alimenta anche SSDIR
 
 # Debug csound: conserva gli .sco intermedi
 python src/main.py configs/brano.yml --renderer csound --keep-sco --sco-dir generated

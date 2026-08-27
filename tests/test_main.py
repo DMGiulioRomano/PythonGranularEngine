@@ -66,9 +66,11 @@ class TestNormalFlow:
     """
 
     def test_generator_created_with_yaml_path(self, mocks):
+        """samples_dir e' sempre esplicito (issue #235); None = fallback
+        storico su PATHSAMPLES."""
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
             mocks['main'].main()
-        mocks['Generator'].assert_called_once_with('test.yml')
+        mocks['Generator'].assert_called_once_with('test.yml', samples_dir=None)
 
     def test_load_yaml_called(self, mocks):
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
@@ -745,14 +747,22 @@ class TestCsoundArgs:
         return build_mock.call_args.kwargs['csound']
 
     def test_default_csound_options(self, mocks):
-        """Senza flag: default storici della CLI, ssdir esplicito 'refs'."""
+        """Senza flag: default storici della CLI.
+
+        `ssdir=None` non e' un default perso: e' la CLI che smette di
+        imporre 'refs' per lasciare all'API la precedenza --ssdir >
+        --samples-dir > 'refs' (issue #235). Che SSDIR resti 'refs' senza
+        nessuno dei due flag lo verifica
+        TestSamplesDirFlag::test_csound_ssdir_unchanged_without_any_flag,
+        che guarda il valore risolto e non l'opzione.
+        """
         opts = self._get_csound_options(
             mocks, ['main.py', 'test.yml', 'out.aif'])
         api_mod = mocks['main'].api
         assert opts == api_mod.CsoundOptions(
             orc_path='csound/main.orc',
             incdir='src',
-            ssdir='refs',
+            ssdir=None,
             sfdir='output',
             log_dir='logs',
             message_level=134,
@@ -1444,3 +1454,115 @@ class TestExportSvFlag:
                 mocks['main'].main()
         sv_cls.return_value.export.assert_not_called()
         assert 'export-sv' in capsys.readouterr().out
+
+
+# =============================================================================
+# TEST FLAG --samples-dir (issue #235)
+# =============================================================================
+
+class TestSamplesDirFlag:
+    """
+    --samples-dir DIR: la directory dei sample smette di essere il globale
+    './refs/', relativo al cwd del processo.
+
+    In un run CLI i file audio sorgente vengono letti da tre posti diversi, e
+    il flag deve raggiungerli tutti:
+
+    - il **Generator**, che risolve la durata del sample dentro `Stream`
+      (`get_sample_duration`) prima ancora che esista un renderer — e' il
+      punto in cui oggi fallisce anche il renderer csound, che pure ha gia'
+      `--ssdir`;
+    - il **renderer**: `SampleRegistry(base_path=...)` con numpy, SSDIR con
+      csound (dove `--ssdir` esplicito resta prioritario);
+    - il **visualizer**, che disegna la waveform del sample in partitura.
+
+    Qui si verifica la mappa argv -> kwargs dell'API; la propagazione dentro
+    l'API e' coperta da tests/test_api.py.
+    """
+
+    def _build_call(self, mocks, argv):
+        """Esegue main() con api.build_renderer patchata; ritorna i kwargs."""
+        api_mod = mocks['main'].api
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='csound', per_stream=False)
+        with patch.object(api_mod, 'build_renderer') as build_mock, \
+             patch.object(api_mod, 'render', return_value=result):
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
+        return build_mock.call_args.kwargs
+
+    def _ssdir(self, mocks, argv):
+        """SSDIR risolto davvero: main() -> api.build_renderer (non
+        patchata) -> RendererFactory.create."""
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        kwargs = mocks['RendererFactory'].create.call_args.kwargs
+        return kwargs['csound_config']['env_vars']['SSDIR']
+
+    # --- Generator -----------------------------------------------------------
+
+    def test_flag_reaches_generator(self, mocks):
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif',
+                                        '--samples-dir', '/media/wavs']):
+            mocks['main'].main()
+        mocks['Generator'].assert_called_once_with(
+            'test.yml', samples_dir='/media/wavs')
+
+    def test_absent_leaves_generator_on_the_historical_default(self, mocks):
+        """Assente -> samples_dir None: il Generator ricade su PATHSAMPLES."""
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
+            mocks['main'].main()
+        mocks['Generator'].assert_called_once_with('test.yml', samples_dir=None)
+
+    # --- Renderer ------------------------------------------------------------
+
+    def test_flag_reaches_build_renderer(self, mocks):
+        kwargs = self._build_call(
+            mocks, ['main.py', 'test.yml', 'out.aif',
+                    '--samples-dir', '/media/wavs'])
+        assert kwargs['samples_dir'] == '/media/wavs'
+
+    def test_absent_passes_none_to_build_renderer(self, mocks):
+        kwargs = self._build_call(mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert kwargs['samples_dir'] is None
+
+    # --- SSDIR (csound): la regola di precedenza gia' scritta in api.py ------
+
+    def test_csound_ssdir_unchanged_without_any_flag(self, mocks):
+        """Parita' col comportamento storico: niente flag -> SSDIR 'refs'."""
+        assert self._ssdir(mocks, ['main.py', 'test.yml', 'out.aif']) == 'refs'
+
+    def test_csound_ssdir_follows_samples_dir(self, mocks):
+        """Senza --ssdir, --samples-dir alimenta SSDIR (senza slash finale,
+        convenzione csound)."""
+        ssdir = self._ssdir(mocks, ['main.py', 'test.yml', 'out.aif',
+                                    '--samples-dir', '/media/wavs/'])
+        assert ssdir == '/media/wavs'
+
+    def test_csound_explicit_ssdir_wins_over_samples_dir(self, mocks):
+        ssdir = self._ssdir(mocks, ['main.py', 'test.yml', 'out.aif',
+                                    '--samples-dir', '/media/wavs',
+                                    '--ssdir', '/altro/refs'])
+        assert ssdir == '/altro/refs'
+
+    # --- Visualizer ----------------------------------------------------------
+
+    def test_flag_reaches_the_visualizer_config(self, mocks):
+        """Il visualizer concatena base + filename: serve lo slash finale,
+        che api.export_score_pdf aggiunge."""
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif',
+                                        '--visualize',
+                                        '--samples-dir', '/media/wavs']):
+            mocks['main'].main()
+        cfg = mocks['ScoreVisualizer'].call_args.kwargs['config']
+        assert cfg['samples_dir'] == '/media/wavs/'
+
+    def test_absent_leaves_the_visualizer_config_untouched(self, mocks):
+        """Nessuna chiave iniettata: il default None del VisualizerConfig
+        tiene il fallback storico su PATHSAMPLES."""
+        with patch.object(sys, 'argv',
+                          ['main.py', 'test.yml', 'out.aif', '--visualize']):
+            mocks['main'].main()
+        cfg = mocks['ScoreVisualizer'].call_args.kwargs['config']
+        assert 'samples_dir' not in cfg
