@@ -1954,3 +1954,168 @@ class TestEnvelopeColorsConfig:
         assert PLOT_ENVELOPE_KEYS == frozenset(viz.config['envelope_colors'])
         assert 'pitch' in PLOT_ENVELOPE_KEYS
         assert 'volume_prob' in PLOT_ENVELOPE_KEYS
+
+
+# =============================================================================
+# GROUP - Risoluzione della waveform (issue #233)
+# =============================================================================
+
+class TestWaveformResolution:
+    """La waveform disegnata e' un inviluppo min/max, non un sottocampionamento.
+
+    La regola vive in rendering.waveform_peaks (modulo puro, testato a parte);
+    qui si verifica che _load_waveform la usi davvero e che le manopole di
+    config ci arrivino. La differenza si vede su un transiente: un picco largo
+    meno di un bucket, che il vecchio `audio[::200]` non pescava mai.
+    """
+
+    SPIKE_AT = 2.0
+    SPIKE_WIDTH = 30
+
+    def _audio_with_spike(self):
+        """Sinusoide a meta' scala con un transiente a fondo scala. Il picco
+        cade fuori dalla griglia del vecchio passo fisso: e' il caso che la
+        issue descrive, non uno costruito per essere gentile."""
+        audio = (0.5 * np.sin(
+            2 * np.pi * 220 * np.linspace(0, DUR, int(SR * DUR)))
+        ).astype(np.float64)
+        i = int(self.SPIKE_AT * SR) + 1
+        audio[i:i + self.SPIKE_WIDTH] = 1.0
+        return audio
+
+    def _load(self, config=None):
+        viz = make_viz(single_stream_scene(), config=config)
+        with patch('soundfile.read',
+                   return_value=(self._audio_with_spike(), SR)):
+            return viz._load_waveform('piano.wav')
+
+    def test_the_transient_reaches_the_drawing(self):
+        _, amplitude, _ = self._load()
+        assert np.max(np.abs(amplitude)) == pytest.approx(1.0)
+
+    def test_the_old_subsampling_would_have_lost_it(self):
+        """Regressione dichiarata: senza questa riga il test sopra passerebbe
+        anche su un'implementazione che il transiente lo pesca per fortuna."""
+        assert np.max(np.abs(self._audio_with_spike()[::200])) < 0.9
+
+    def test_the_transient_is_drawn_where_it_happens(self):
+        time_axis, amplitude, duration = self._load()
+        at_full_scale = time_axis[np.abs(amplitude) > 0.99]
+        assert at_full_scale.size > 0
+        assert np.all(np.abs(at_full_scale - self.SPIKE_AT) < duration / 2000)
+
+    def test_the_vertical_scale_does_not_follow_the_resolution(self):
+        """Il difetto silenzioso: si normalizzava sul massimo dei campioni
+        sopravvissuti al passo, quindi cambiare la manopola riscalava il
+        disegno invece di dettagliarlo. Due partiture generate a risoluzioni
+        diverse non erano confrontabili."""
+        peaks = [
+            np.max(np.abs(self._load({'waveform_buckets': b})[1]))
+            for b in (200, 2000, 20_000)
+        ]
+        assert peaks == pytest.approx([1.0, 1.0, 1.0])
+
+    def test_the_bucket_count_bounds_what_matplotlib_draws(self):
+        _, amplitude, _ = self._load({'waveform_buckets': 300})
+        assert len(amplitude) <= 2 * 300
+
+    def test_the_default_is_denser_than_the_old_fixed_stride(self):
+        """Il motivo per cui la issue e' aperta: su un sample di 4s a 44.1 kHz
+        il passo fisso disegnava ~880 punti."""
+        _, amplitude, _ = self._load()
+        assert len(amplitude) > 2 * len(self._audio_with_spike()[::200])
+
+    def test_the_historical_knob_still_sets_the_resolution(self):
+        """`waveform_downsample` sopravvive come larghezza del bucket: chi la
+        passava ottiene la stessa densita' di colonne di prima, con dentro il
+        picco invece di un campione a caso."""
+        audio = self._audio_with_spike()
+        _, amplitude, _ = self._load({'waveform_downsample': 200})
+        assert len(amplitude) == 2 * -(-len(audio) // 200)
+
+    def test_the_historical_knob_wins_over_the_bucket_count(self):
+        audio = self._audio_with_spike()
+        _, amplitude, _ = self._load(
+            {'waveform_buckets': 50, 'waveform_downsample': 200})
+        assert len(amplitude) == 2 * -(-len(audio) // 200)
+
+    def test_the_time_axis_stays_inside_the_sample(self):
+        """E' lo stesso asse su cui sono disegnati i grani: una waveform
+        stirata oltre la durata non ci si allinea piu'."""
+        time_axis, _, duration = self._load()
+        assert time_axis[0] >= 0.0
+        assert time_axis[-1] <= duration
+
+    def test_stereo_still_collapses_to_one_curve(self):
+        mono = self._audio_with_spike()
+        stereo = np.stack([mono, mono * 0.5], axis=1)
+        viz = make_viz(single_stream_scene())
+        with patch('soundfile.read', return_value=(stereo, SR)):
+            time_axis, amplitude, duration = viz._load_waveform('piano.wav')
+        assert len(time_axis) == len(amplitude)
+        assert duration == pytest.approx(DUR)
+
+
+class TestWaveformFailureIsCached:
+    """Il sample che non si apre si prova una volta sola.
+
+    Il commento in cima al ciclo dei subplot dice che _load_waveform fa cache,
+    quindi nessun re-read: sulla strada dell'errore era falso. Ogni subplot di
+    ogni pagina ritentava l'apertura e ristampava lo stesso avviso, due volte
+    per stream (una per la durata, una per il disegno).
+    """
+
+    def test_the_file_is_opened_once(self):
+        viz = make_viz(multi_page_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read',
+                   side_effect=OSError('file not found')) as mock_sf:
+            viz.render_all()
+        piano_calls = [c for c in mock_sf.call_args_list
+                       if 'piano.wav' in str(c)]
+        assert len(piano_calls) == 1
+
+    def test_the_warning_is_printed_once(self, capsys):
+        viz = make_viz(single_stream_scene(), config={'page_duration': 30.0})
+        with patch('soundfile.read', side_effect=OSError('file not found')):
+            viz.render_all()
+        printed = capsys.readouterr().out
+        assert printed.count('Impossibile caricare waveform') == 1
+
+    def test_the_fallback_curve_is_still_drawable(self):
+        viz = make_viz(single_stream_scene())
+        with patch('soundfile.read', side_effect=OSError('nope')):
+            time_axis, amplitude, duration = viz._load_waveform('piano.wav')
+        assert len(time_axis) == len(amplitude)
+        assert duration > 0
+
+
+class TestWaveformOfADegenerateFile:
+    """Il file si apre ma non c'e' niente dentro, o la riduzione non riesce.
+
+    Sono due strade diverse da quella del file mancante, e prima di #233
+    finivano entrambe nello stesso `except`: la prima perche' `np.max` su un
+    array vuoto sollevava, la seconda perche' il try avvolgeva anche la
+    riduzione. Ora la riduzione non solleva piu' sul vuoto, quindi il vuoto va
+    riconosciuto; e un guasto della riduzione non e' un file che non si apre.
+    """
+
+    def test_a_zero_length_file_falls_back_to_the_placeholder(self):
+        """Senza fallback la durata scende a zero e l'intero subplot dello
+        stream — grani, loop mask, label — collassa su un asse degenere."""
+        viz = make_viz(single_stream_scene())
+        with patch('soundfile.read', return_value=(np.zeros(0), SR)):
+            time_axis, amplitude, duration = viz._load_waveform('piano.wav')
+        assert duration > 0
+        assert len(time_axis) == len(amplitude) > 0
+
+    def test_a_failing_reduction_is_not_reported_as_a_missing_file(self, capsys):
+        """Un guasto della riduzione (memoria, manopola fuori scala) non deve
+        travestirsi da errore di apertura e finire in cache: sarebbe silenzioso
+        per tutto il resto del rendering."""
+        viz = make_viz(single_stream_scene())
+        with patch('soundfile.read', return_value=(np.zeros(SR), SR)), \
+                patch('pge.rendering.waveform_peaks.peak_envelope',
+                      side_effect=MemoryError('too big')):
+            with pytest.raises(MemoryError):
+                viz._load_waveform('piano.wav')
+        assert 'Impossibile caricare waveform' not in capsys.readouterr().out

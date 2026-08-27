@@ -11,7 +11,8 @@ sources:
   - src/pge/rendering/magnifier_projection.py
   - src/pge/rendering/score_visualizer.py
   - src/pge/rendering/visualizer_config.py
-last_synced_commit: 62ec803
+  - src/pge/rendering/waveform_peaks.py
+last_synced_commit: 5fcfde7
 ---
 
 # Il layout della partitura: separare i numeri dal disegno
@@ -90,9 +91,27 @@ costruire il `Polygon` è dell'adapter.
 `self.page_layouts` e stampa. Il modulo gli dà le pagine, lui le assegna: lo
 stato resta dell'oggetto, la regola no.
 
-**`_load_waveform` non si è mosso.** Non è geometria, è I/O con `soundfile` più
-una cache. Se ha una casa è `sample_registry`, ed è una domanda diversa da
-questa.
+**`_load_waveform` non si è mosso — ma metà di lui sì** (issue #233). Il metodo
+è I/O con `soundfile` più una cache, e quello resta dell'adapter: leggere il
+file, leggere la config, ricordarsi il risultato. Dentro però c'era anche una
+*regola* — come si riduce un buffer di centinaia di migliaia di campioni a una
+curva che sta in una colonna alta pochi centimetri — e quella è aritmetica pura,
+quindi è uscita in `waveform_peaks`, insieme agli altri moduli matplotlib-free.
+
+Non è stato un trasloco a costo zero, perché la regola era sbagliata. Riduceva
+con `audio[::200]`, un campione ogni duecento: i transienti più stretti del
+passo non venivano mai pescati, le frequenze alte aliasavano su quelle basse
+(una nota a 220 Hz letta a 220.5 Hz si disegnava come un'onda a 0.4 Hz), e la
+normalizzazione — fatta sul massimo dei campioni *sopravvissuti* — legava la
+scala verticale del disegno alla manopola della risoluzione. Ora è un inviluppo
+min/max: si legge ogni campione, si tiene la coppia (minimo, massimo) di ogni
+bucket, e il numero di vertici che arriva a matplotlib dipende dai bucket
+richiesti invece che dalla durata del file.
+
+Che questo sia diventato un modulo a sé è la stessa scelta del resto della
+famiglia, e si vede dal test: verificare che un picco di trenta campioni
+sopravviva alla riduzione non richiede più un `Generator` finto e la pila di
+plotting, richiede un array.
 
 **Le manopole di config diventano keyword argument.** `pad_ratio`, `samples`,
 `pan_range`, `hist_bins`, `page_duration`: i moduli non conoscono il dict di
