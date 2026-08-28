@@ -16,6 +16,7 @@ from pge.shared.logger import (
     log_loop_drift_warning,
     log_loop_dynamic_mode,
     log_loop_init,
+    log_loop_unit_migration_warning,
     log_unreadable_curve_warning,
     CLIP_LOG_CONFIG,
 
@@ -1182,3 +1183,64 @@ class TestLogUnreadableCurveWarning:
             h.flush()
         content = (tmp_path / 'envelope_clips_curvefile.log').read_text()
         assert '[UNREADABLE_CURVE]' in content
+
+
+# =============================================================================
+# TEST: log_loop_unit_migration_warning — canale visibile
+# =============================================================================
+
+class TestLoopUnitMigrationWarningIsVisible:
+    """
+    L'avviso di migrazione di `loop_unit` (issue #222) e' l'unico segnale di
+    una modifica che cambia l'audio in silenzio. La CLI configura il clip
+    logger con `console_enabled=False`: se l'avviso vivesse solo li', chi
+    lancia `make` sentirebbe un suono diverso senza vedere nulla.
+    """
+
+    def test_stderr_even_when_clip_console_disabled(self, tmp_path, capsys):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopunitcli'
+        )
+        get_clip_logger()
+        log_loop_unit_migration_warning('s1', ['loop_start'], 2.5)
+        err = capsys.readouterr().err
+        assert '[LOOP_UNIT]' in err
+        assert 's1' in err
+
+    def test_stderr_even_when_clip_logger_disabled(self, capsys):
+        configure_clip_logger(enabled=False)
+        log_loop_unit_migration_warning('s2', ['loop_end'], 1.0)
+        assert '[LOOP_UNIT]' in capsys.readouterr().err
+
+    def test_still_written_to_file(self, tmp_path):
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=False,
+            log_dir=str(tmp_path),
+            yaml_name='loopunitfile'
+        )
+        l = get_clip_logger()
+        log_loop_unit_migration_warning('s1', ['loop_start'], 2.5)
+        for h in l.handlers:
+            h.flush()
+        content = (tmp_path / 'envelope_clips_loopunitfile.log').read_text()
+        assert '[LOOP_UNIT]' in content
+
+    def test_no_duplicate_on_console_enabled(self, tmp_path, capsys):
+        """Con la console del clip logger attiva l'avviso resta uno solo: su
+        stderr passa dal logger, non anche dal print."""
+        configure_clip_logger(
+            enabled=True,
+            file_enabled=True,
+            console_enabled=True,
+            log_dir=str(tmp_path),
+            yaml_name='loopunitdup'
+        )
+        get_clip_logger()
+        log_loop_unit_migration_warning('s1', ['loop_start'], 2.5)
+        assert capsys.readouterr().err.count('[LOOP_UNIT]') == 1
