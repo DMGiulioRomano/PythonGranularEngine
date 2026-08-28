@@ -581,6 +581,10 @@ streams:
       duration: [[0, 0.01], [0.1222, 0.0098], [0.2231, 0.0099], [0.2564, 0.3972], [0.2604, 0.0001], [0.3468, 0.0001], [0.3623, 0.1063], [0.3664, 0.0107], [0.4966, 0.0148], [0.533, 0.0071], [1, 0.001]]
       envelope: rexporise
     pointer:
+      # loop_unit esplicito da #222: `start` e' una frazione del sample, come
+      # il pointer_range delle voci qui sotto (normalized: true). Prima lo
+      # ereditava da time_mode; renderlo esplicito tiene il render identico.
+      loop_unit: normalized
       start: 0.6
       speed_ratio: 0.25
     pitch:

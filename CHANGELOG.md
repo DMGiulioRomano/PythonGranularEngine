@@ -368,6 +368,68 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   passava inosservato: stava in una demo del repo, e si presentava come uno
   stream silenzioso invece che come un errore.
 
+### Modificato (breaking)
+
+- **`loop_unit` non eredita più da `time_mode`: il default è `seconds`**
+  (issue #222). Le due chiavi governavano due assi con due riferimenti diversi
+  e una sola parola: `time_mode: normalized` scala l'asse **X** (tempo) degli
+  envelope sulla `duration` dello stream, `loop_unit: normalized` scala l'asse
+  **Y** (valore) delle posizioni nel sample sulla `sample_dur_sec` del file
+  audio. La reference lo diceva già — §10.1, «I due possono coesistere» — e
+  trenta righe più su documentava che, se non dichiaravi `loop_unit`, la
+  seconda decisione la prendeva la prima.
+
+  **Il guasto peggiore non riguardava il loop.** La pre-normalizzazione scalava
+  `pointer.start` «indipendentemente dalla presenza di `loop_start`», e `start`
+  è `is_smart=False`, quindi non ha bounds: su uno stream `normalized` con un
+  sample da 8 secondi, `start: 2.0` diventava 16.0, wrappava modularmente e
+  rendeva un suono diverso da quello scritto — nessun errore, nessun log.
+  Uno stream che dichiara `time_mode` per i propri envelope non ha detto niente
+  sulla testina di lettura. Sui parametri di loop il bound dinamico
+  (`max_val = sample_dur_sec`) intercettava almeno il caso grosso; i valori che
+  restavano dentro il file passavano silenziosi.
+
+  **`loop_unit` ha ora un vocabolario**: `seconds` (canonico, allineato a
+  `grain.duration_unit` — l'unità nata «sul modello di `loop_unit`»),
+  `absolute` (alias storico, quello che `configs/PGE_cim.yml` scrive in dieci
+  dei suoi ventuno blocchi pointer) e `normalized`. Fuori di lì è
+  `InvalidFieldValueError` con `stream_id` e hint, come per
+  `grain.duration_unit`. Prima qualunque stringa diversa da `normalized` voleva
+  dire "assoluto": `normalised`, `Normalized`, `loop_unite` spegnevano la
+  conversione senza un errore — e sotto l'ereditarietà il refuso era peggio che
+  inerte, perché su uno stream `normalized` *cambiava* il risultato invece di
+  lasciarlo com'era. Cambia anche `loop_unit:` scritto e lasciato vuoto: era
+  `None`, cioè falsy, cioè ereditarietà; ora è un errore.
+
+  `start` resta legato a `loop_unit`, come prima e come documentato: è una
+  posizione nel sample come `loop_start`, stesso dominio e stessa unità.
+
+  **Chi lo vede:** solo gli stream con `time_mode: normalized`, **senza**
+  `loop_unit`, che dichiarano `pointer.start` o un parametro di loop con un
+  valore diverso da zero. Uno zero resta zero sotto qualunque fattore di scala.
+
+  **Migrazione:** scrivere `loop_unit: normalized` nel blocco pointer. Per una
+  release il motore lo dice da sé — un warning `[LOOP_UNIT]` che nomina le
+  chiavi interessate e la riga da aggiungere; poi si toglie, e la rimozione è
+  tracciata dalla issue #242. A differenza degli altri avvisi del clip logger
+  l'avviso esce su **stderr** anche quando la console del clip logger è spenta,
+  com'è sotto la CLI: un avviso che vive solo in `./logs/` non raggiungerebbe
+  chi lancia `make` e sente un suono diverso. In `configs/` i
+  cinque stream interessati sono già stati resi espliciti
+  (`PGE_pino3.yml`, `PGE_grain_height_demo.yml` ×2, `PGE_cim.yml` stream24,
+  `PGE_pino4.yml`), quindi il corpus rende identico a prima.
+
+  `VARIATION_SEMANTICS_VERSION` passa da 2 a 3: il fingerprint di uno stem gira
+  sul dict YAML grezzo, quindi a YAML invariato l'hash non si muoverebbe, lo
+  stem resterebbe `clean` e si continuerebbe ad ascoltare l'audio con la
+  semantica vecchia. Un bump marca dirty ogni stream di ogni progetto: un
+  re-render completo al primo run, poi la cache incrementale riparte normalmente.
+
+  Fuori dal cambiamento: `stream.loop_start` espone il `Parameter` già
+  convertito, quindi `ScoreVisualizer` e i renderer non toccano mai il valore
+  grezzo. `PointerController` resta l'unico lettore di `loop_unit`, come
+  `Stream._pre_normalize_grain_params` è l'unico di `duration_unit`.
+
 ### Modificato
 
 - **La risoluzione della waveform si chiede in colonne, non in campioni**
