@@ -6,6 +6,7 @@ Rules (see docs/SCHEMAS.md — transitorio fino a Step 6, poi spostato in CLAUDE
 - slug uguale al basename del file (no .md)
 - type ∈ {reference, explanation, how-to}, status ∈ {stable, draft, deprecated}
 - sources path esistenti
+- last_synced_commit risolvibile a un oggetto git
 - Sezioni obbligatorie per tipo presenti, nell'ordine atteso
 - Wikilink [[slug]] risolvibili a uno slug noto
 - Nessun doc orfano (linkato da INDEX o da almeno un altro doc, esclusi i reference)
@@ -15,6 +16,7 @@ Exit code 0 se pulito, 1 altrimenti.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -107,6 +109,16 @@ class Linter:
                 p = REPO_ROOT / src
                 if not p.exists():
                     self.err(path, f"sources path does not exist: {src}")
+        sha = str(fm["last_synced_commit"]).strip()
+        # Senza questo, la drift detection e' decorativa: uno SHA che non
+        # risolve non e' un riferimento, e' una stringa.
+        if subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode:
+            self.err(path, f"last_synced_commit non risolve a un commit: {sha}")
 
     def check_sections(self, path: Path, fm: dict, body: str) -> None:
         type_ = fm.get("type")

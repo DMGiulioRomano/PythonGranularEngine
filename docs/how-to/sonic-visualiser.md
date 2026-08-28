@@ -7,7 +7,7 @@ sources:
   - src/pge/export/sv_exporter.py
   - src/pge/rendering/envelope_extractor.py
   - src/main.py
-last_synced_commit: a730371
+last_synced_commit: 4c3069c
 entry_for: [export-sonic-visualiser]
 ---
 

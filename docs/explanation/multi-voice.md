@@ -6,7 +6,7 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
-last_synced_commit: 8249cdb
+last_synced_commit: 8a8029c
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
