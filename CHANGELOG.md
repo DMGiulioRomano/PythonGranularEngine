@@ -166,7 +166,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   del secondo. Con tre backend che esistono per essere confrontati, e' lo
   scenario d'uso, non un caso limite. **Invalida una volta le cache
   esistenti**, e cambia il path che PGE-ui legge da
-  `GET /cache_manifest/<basename>`.
+  `GET /cache_manifest/<basename>`. Il costo dell'invalidazione e' pero'
+  condiviso: #222 alza `VARIATION_SEMANTICS_VERSION` a 3 nello stesso ciclo
+  di rilascio, quindi le cache si rifanno comunque.
 
   Resta scoperto un caso della stessa famiglia, dichiarato e non risolto qui:
   il DSP non entra nel fingerprint, quindi modificare `pge_grain.scd` o
