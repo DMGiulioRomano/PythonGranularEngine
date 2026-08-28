@@ -2784,10 +2784,10 @@ class TestLoopUnitVocabulary:
     def test_seconds_and_absolute_are_the_same_reading(self, mock_config, unit):
         """`seconds` e' la grafia canonica, `absolute` l'alias storico.
 
-        `absolute` e' quel che `configs/PGE_cim.yml` scrive in undici blocchi
-        pointer e quel che la reference ha sempre documentato; `seconds` allinea
-        `loop_unit` a `grain.duration_unit`, l'unita' nata «sul modello di
-        loop_unit». Le due grafie devono dare lo stesso numero.
+        `absolute` e' quel che `configs/PGE_cim.yml` scrive in dieci dei suoi
+        ventuno blocchi pointer e quel che la reference ha sempre documentato;
+        `seconds` allinea `loop_unit` a `grain.duration_unit`, l'unita' nata
+        «sul modello di loop_unit». Le due grafie devono dare lo stesso numero.
         """
         mock_config.time_mode = 'normalized'   # non deve contare piu'
         mock_config.context.sample_dur_sec = 8.0
