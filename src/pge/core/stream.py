@@ -993,7 +993,11 @@ class Stream:
             "'[g for voice in stream.voices for g in voice]', aggiungendo "
             "un sorted(..., key=lambda g: g.onset) se serve l'ordine per "
             "onset.",
-            DeprecationWarning,
+            # FutureWarning, non DeprecationWarning: il secondo Python lo
+            # filtra di default fuori da __main__, quindi lo vedrebbe solo
+            # questo repo sotto pytest — cioe' nessuno dei consumatori a cui
+            # il preavviso serve.
+            FutureWarning,
             stacklevel=2,
         )
         # Il sort e' stabile: a parita' di onset i grani restano in ordine

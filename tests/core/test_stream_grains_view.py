@@ -19,15 +19,17 @@ Qui si fissa il contratto che rende la divergenza impossibile per costruzione:
 una sola fonte di verita' (`_voices`) e `grains` calcolata a ogni lettura.
 """
 
+import warnings
+
 import pytest
 
 from pge.core.grain import Grain
 
 # Questo file esercita `.grains` di proposito: e' il file che ne fissa il
-# contratto finche' esiste. Il DeprecationWarning e' atteso ovunque tranne
+# contratto finche' esiste. Il FutureWarning e' atteso ovunque tranne
 # dove e' lui il soggetto (TestDeprecazione, che usa pytest.warns e vede
 # comunque il warning attraverso questo filtro).
-pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+pytestmark = pytest.mark.filterwarnings("ignore::FutureWarning")
 
 
 @pytest.fixture
@@ -175,15 +177,31 @@ class TestDeprecazione:
     """
 
     def test_leggerla_avvisa(self, stream):
-        with pytest.warns(DeprecationWarning, match="9.0.0"):
+        with pytest.warns(FutureWarning, match="9.0.0"):
             stream.grains
 
     def test_l_avviso_nomina_il_rimpiazzo(self, stream):
-        with pytest.warns(DeprecationWarning, match=r"stream\.voices"):
+        with pytest.warns(FutureWarning, match=r"stream\.voices"):
             stream.grains
+
+    def test_l_avviso_e_visibile_a_un_consumatore(self, stream):
+        """Il preavviso deve arrivare a chi importa `pge`, non solo a pytest.
+
+        Python filtra `DeprecationWarning` di default fuori da `__main__`:
+        con quella classe l'unico a vedere l'avviso sarebbe questo repo, cioe'
+        proprio chi non ne ha bisogno. Qui si simulano i filtri di default di
+        un consumatore.
+        """
+        with warnings.catch_warnings(record=True) as visti:
+            warnings.resetwarnings()
+            warnings.simplefilter("default")
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            stream.grains
+
+        assert [w for w in visti if issubclass(w.category, FutureWarning)]
 
     def test_voices_non_avvisa(self, stream, recwarn):
         """La fonte di verita' non e' toccata dalla deprecazione."""
         stream.voices
 
-        assert not [w for w in recwarn if w.category is DeprecationWarning]
+        assert not [w for w in recwarn if w.category is FutureWarning]
