@@ -139,8 +139,18 @@ class TestSetupBundle:
         assert args[1] == str(tmp_path / 'pino.wav')
         assert args[2:5] == [0, 0, 0]             # da frame 0, tutto, canale 0
 
-    def test_percorso_del_sample_e_assoluto(self, tmp_path):
-        """scsynth non condivide la working directory del renderer."""
+    def test_percorso_del_sample_e_assoluto(self, tmp_path, monkeypatch):
+        """scsynth non condivide la working directory del renderer.
+
+        La `samples_dir` e' deliberatamente relativa -- e' il caso che il
+        test verifica -- quindi il sample va messo dove quella la risolve:
+        `refs/` del cwd, non del repo. Puntare al `refs/` vero legherebbe il
+        test a un file gitignorato, che in CI non esiste.
+        """
+        refs = tmp_path / "refs"
+        refs.mkdir()
+        (refs / "pino.wav").write_bytes(b'RIFF')
+        monkeypatch.chdir(tmp_path)
         writer = SuperColliderScoreWriter(
             table_map=TABLE_MAP,
             window_registry=NumpyWindowRegistry(),
