@@ -61,6 +61,31 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   intermedia esplicita. Lo script genera un sample sintetico se `refs/` e'
   vuota, quindi gira su un clone pulito.
 
+### Modificato (breaking)
+
+- **`Stream.grains` non ha piu' una setter** (issue #201). Assegnarla solleva
+  `AttributeError` nominando il rimpiazzo (`stream.voices = [[grano, ...],
+  ...]`). **Questo rende major la prossima release**: e' rimozione di
+  superficie pubblica senza ciclo di preavviso, al contrario della property in
+  lettura, che ne ottiene uno (vedi `### Deprecato`).
+
+  I due criteri divergono di proposito. La property in lettura restituisce
+  qualcosa di corretto, quindi puo' continuare a farlo per un ciclo. La setter
+  no: riusciva, lasciava `_voices` vuoto, marcava `generated = True` e
+  produceva un file di silenzio senza segnalare nulla (vedi `### Corretto`).
+  Non esiste una versione «che avvisa» di un comportamento cosi': avvisare e
+  poi ammutolire lo stream comunque non e' un preavviso, e' lo stesso guasto
+  con una riga di log. E delegare a `voices = [value]` sarebbe una
+  supposizione — una voce sola dove il chiamante ne intendeva N — cioe' un
+  rendering diverso da quello atteso, di nuovo in silenzio. Un
+  `AttributeError` rumoroso e' l'unica uscita che non inventa niente.
+
+  Nel repo la setter aveva cinque chiamanti, tutti in `tests/`: tre inerti su
+  `MagicMock`, due che rimettevano `generated = False` due righe sotto. Fuori
+  dal repo non se ne conoscono: `PGE-ls` non nomina `grains`, `PGE-ui` consuma
+  il JSON di `GrainJsonWriter` e nel repo del paper CIM 2026 nessuno script
+  Python la tocca.
+
 ### Corretto
 
 - **`Stream.grains` poteva ammutolire uno stream senza dire niente** (issue
@@ -85,10 +110,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   guasto di #225 e #234: non un errore, un file muto.
 
   `_voices` diventa l'unico backing field e `grains` una vista **derivata**,
-  ricalcolata a ogni lettura: la divergenza non e' piu' esprimibile. La setter
-  non c'e' piu' — assegnare solleva `AttributeError` nominando il rimpiazzo
-  (`stream.voices = [[grano, ...], ...]`) invece di riuscire e produrre
-  silenzio. `__repr__` conta da `_voices` e smette di mentire.
+  ricalcolata a ogni lettura: la divergenza non e' piu' esprimibile.
+  `__repr__` conta da `_voices` e smette di mentire. La setter e' rimossa —
+  breaking, vedi sotto.
 
   Il rendering non cambia: stesso `sha256` sull'audio di un config a seed
   fisso. Il flatten+sort eager che spariva dentro `generate_grains()` valeva
