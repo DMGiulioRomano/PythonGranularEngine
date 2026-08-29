@@ -320,10 +320,24 @@ endif
 # volta con sclang e poi il rendering invoca solo scsynth. Il renderer lo
 # ricompila da solo quando manca o quando il sorgente e' piu' recente; questo
 # target serve a farlo esplicitamente, e a dire subito che sclang manca.
+#
+# QT_QPA_PLATFORM: sclang e' linkato a Qt e su Linux senza display aborta con
+# SIGABRT prima di eseguire una riga. Su macOS NO: il bundle
+# SuperCollider.app spedisce il solo plugin `cocoa`, e chiedere `offscreen`
+# lo fa abortire allo stesso modo. Il default vale per piattaforma, e resta
+# sovrascrivibile dall'ambiente.
 # =============================================================================
 
+ifeq ($(OS), Darwin)
+SC_QT_PLATFORM ?= $${QT_QPA_PLATFORM:-cocoa}
+else
+SC_QT_PLATFORM ?= $${QT_QPA_PLATFORM:-offscreen}
+endif
+
 .PHONY: sc-synthdef
-sc-synthdef: $(GENDIR)
+# Nessun prerequisito su $(GENDIR): il target non ci scrive niente, e il
+# .scsyndef sta apposta fuori dalla directory che `make clean` svuota.
+sc-synthdef:
 	@command -v sclang >/dev/null 2>&1 || { \
 		echo "ERRORE: sclang non trovato. Installa SuperCollider"; \
 		echo "  Debian/Ubuntu: sudo apt install supercollider"; \
@@ -333,5 +347,5 @@ sc-synthdef: $(GENDIR)
 	@echo "[SC] Compilazione SynthDef $(SC_SYNTHDEF_SOURCE) → $(SC_SYNTHDEF_DIR)/"
 	@mkdir -p $(SC_SYNTHDEF_DIR)
 	PGE_SYNTHDEF_DIR=$(SC_SYNTHDEF_DIR) \
-	QT_QPA_PLATFORM=$${QT_QPA_PLATFORM:-offscreen} \
+	QT_QPA_PLATFORM=$(SC_QT_PLATFORM) \
 	sclang $(SC_SYNTHDEF_SOURCE)

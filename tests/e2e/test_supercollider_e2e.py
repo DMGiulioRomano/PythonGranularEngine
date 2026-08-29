@@ -169,6 +169,18 @@ def _make_build(tmp_path, renderer='supercollider', stems=False, extra=(),
     return proc, (proc.stdout or '') + (proc.stderr or '')
 
 
+def _render_coppia(base, yaml_text=None):
+    """Rende lo stesso YAML coi due backend. Ritorna (path_sc, path_numpy)."""
+    sc_dir = base / "sc"
+    np_dir = base / "np"
+    sc_dir.mkdir()
+    np_dir.mkdir()
+    _make_build(sc_dir, renderer='supercollider', yaml_text=yaml_text)
+    _make_build(np_dir, renderer='numpy', yaml_text=yaml_text)
+    return (sc_dir / "output" / "e2e_sc_test.aif",
+            np_dir / "output" / "e2e_sc_test.aif")
+
+
 def _peak(path):
     """Picco assoluto del file audio, per distinguere il suono dal silenzio."""
     import numpy as np
@@ -312,18 +324,21 @@ class TestPosizioneDiLettura:
     mano: la posizione giusta e' quella che dice il motore.
     """
 
-    def _render_both(self, tmp_path):
-        sc_dir = tmp_path / "sc"
-        np_dir = tmp_path / "np"
-        sc_dir.mkdir()
-        np_dir.mkdir()
-        _make_build(sc_dir, renderer='supercollider', yaml_text=_YAML_READ_POS)
-        _make_build(np_dir, renderer='numpy', yaml_text=_YAML_READ_POS)
-        return (sc_dir / "output" / "e2e_sc_test.aif",
-                np_dir / "output" / "e2e_sc_test.aif")
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def resa(tmp_path_factory):
+        """Una coppia di build per tutta la classe.
 
-    def test_picchi_quasi_uguali(self, tmp_path):
-        sc_peak, np_peak = (_peak(p) for p in self._render_both(tmp_path))
+        I test leggono lo stesso identico output: renderla a ogni metodo
+        significava un `make all` in piu' per ciascuno, ognuno col proprio
+        venv-setup e -- visto che SC_SYNTHDEF_DIR punta a un tmp diverso ogni
+        volta -- la propria compilazione sclang, con l'avvio di Qt in mezzo.
+        """
+        return _render_coppia(tmp_path_factory.mktemp("lettura"),
+                              yaml_text=_YAML_READ_POS)
+
+    def test_picchi_quasi_uguali(self, resa):
+        sc_peak, np_peak = (_peak(p) for p in resa)
         assert np_peak > 1e-4, "il riferimento NumPy non ha prodotto suono"
         rapporto = sc_peak / np_peak
         assert 0.85 < rapporto < 1.15, (
@@ -333,14 +348,15 @@ class TestPosizioneDiLettura:
             f"del file invece che da {READ_START_SEC}s."
         )
 
-    def test_ampiezza_coerente_con_la_zona_letta(self, tmp_path):
+    def test_ampiezza_coerente_con_la_zona_letta(self, resa):
         """Prova indipendente da NumPy: a READ_START_SEC la sonda vale
         1 - t/PROBE_DUR_SEC, e nessun grano puo' suonare piu' forte di cosi'
         (finestra e pan attenuano, non amplificano)."""
-        sc_path, _ = self._render_both(tmp_path)
+        sc_path, _ = resa
+        picco = _peak(sc_path)
         massimo_teorico = 1.0 - READ_START_SEC / PROBE_DUR_SEC
-        assert _peak(sc_path) < massimo_teorico * 1.05, (
-            f"picco {_peak(sc_path):.4f} sopra l'ampiezza della sonda nella "
+        assert picco < massimo_teorico * 1.05, (
+            f"picco {picco:.4f} sopra l'ampiezza della sonda nella "
             f"zona letta ({massimo_teorico:.4f}): i grani stanno leggendo "
             f"altrove."
         )
@@ -362,30 +378,27 @@ class TestParitaConNumpy:
     rendering, non la generazione.
     """
 
-    def _render_both(self, tmp_path):
-        sc_dir = tmp_path / "sc"
-        np_dir = tmp_path / "np"
-        sc_dir.mkdir()
-        np_dir.mkdir()
-        _make_build(sc_dir, renderer='supercollider')
-        _make_build(np_dir, renderer='numpy')
-        return (sc_dir / "output" / "e2e_sc_test.aif",
-                np_dir / "output" / "e2e_sc_test.aif")
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def resa(tmp_path_factory):
+        """Una coppia di build per tutta la classe (vedi
+        TestPosizioneDiLettura.resa)."""
+        return _render_coppia(tmp_path_factory.mktemp("parita"))
 
-    def test_stessa_durata(self, tmp_path):
+    def test_stessa_durata(self, resa):
         import soundfile as sf
 
-        sc_path, np_path = self._render_both(tmp_path)
+        sc_path, np_path = resa
         assert sf.info(str(sc_path)).duration == pytest.approx(
             sf.info(str(np_path)).duration, abs=0.15)
 
-    def test_ampiezze_dello_stesso_ordine(self, tmp_path):
-        sc_peak, np_peak = (_peak(p) for p in self._render_both(tmp_path))
+    def test_ampiezze_dello_stesso_ordine(self, resa):
+        sc_peak, np_peak = (_peak(p) for p in resa)
         assert sc_peak > 1e-4 and np_peak > 1e-4
         assert 0.5 < sc_peak / np_peak < 2.0, (
             f"picchi troppo distanti: sc={sc_peak:.4f} numpy={np_peak:.4f}")
 
-    def test_energia_distribuita_allo_stesso_modo_nel_tempo(self, tmp_path):
+    def test_energia_distribuita_allo_stesso_modo_nel_tempo(self, resa):
         """Confronto sulla forma, non sui campioni: l'RMS su finestre da
         100 ms deve seguire la stessa curva. E' la traduzione misurabile di
         'stessa densita', stessa traiettoria del pointer' -- e regge solo
@@ -395,7 +408,7 @@ class TestParitaConNumpy:
         import numpy as np
         import soundfile as sf
 
-        sc_path, np_path = self._render_both(tmp_path)
+        sc_path, np_path = resa
         sc_audio, sr = sf.read(str(sc_path))
         np_audio, _ = sf.read(str(np_path))
 

@@ -177,6 +177,9 @@ check-system-deps:
 	fi
 	@if [ "$(RENDERER)" = "supercollider" ]; then \
 		command -v scsynth >/dev/null 2>&1 || { echo "ERRORE: scsynth non trovato. Esegui: make install-system-deps"; exit 1; }; \
+		if [ ! -f "$(SC_SYNTHDEF_DIR)/pgeGrain.scsyndef" ]; then \
+			command -v sclang >/dev/null 2>&1 || { echo "ERRORE: sclang non trovato e $(SC_SYNTHDEF_DIR)/pgeGrain.scsyndef non compilato. Esegui: make install-system-deps"; exit 1; }; \
+		fi; \
 	fi
 	@command -v sox >/dev/null 2>&1 || { echo "ERRORE: sox non trovato."; exit 1; }
 
