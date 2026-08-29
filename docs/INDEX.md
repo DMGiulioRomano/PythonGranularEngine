@@ -15,7 +15,7 @@
 | Slug | Status | Tags |
 |------|--------|------|
 | [architecture](explanation/architecture.md) | stable | architecture, rendering, ocp |
-| [caching](explanation/caching.md) | stable | caching, rendering, csound |
+| [caching](explanation/caching.md) | stable | caching, rendering, csound, supercollider |
 | [costo-rendering](explanation/costo-rendering.md) | stable | rendering, performance, grains, numpy |
 | [library-vs-cli](explanation/library-vs-cli.md) | stable | api, cli, architecture, refactor |
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |

@@ -73,8 +73,9 @@ EngineError                                  (Exception)
 │   └── FtableError                          PR4 — incoerenza FtableManager
 │
 └── EngineRuntimeError                       PR4 — errori runtime (non config)
-    ├── CsoundRenderError                    (anche RuntimeError, backward-compat)
-    ├── SuperColliderRenderError             #228 — scsynth/sclang exit != 0
+    ├── _SubprocessRenderError               base dei render delegati a un binario
+    │   ├── CsoundRenderError                (anche RuntimeError, backward-compat)
+    │   └── SuperColliderRenderError         #228 — scsynth/sclang exit != 0
     └── SuperColliderNotFoundError           #228 — binario o sorgente assente
 ```
 
@@ -83,7 +84,13 @@ EngineError                                  (Exception)
 - `ConfigError` eredita anche da `ValueError` → catch espliciti pre-esistenti
   continuano a funzionare.
 - `CsoundRenderError` eredita anche da `RuntimeError` → idem.
-  `SuperColliderRenderError` fa lo stesso, per simmetria.
+  `SuperColliderRenderError` fa lo stesso, per simmetria: entrambe lo
+  ereditano dalla base comune `_SubprocessRenderError`, che tiene
+  `returncode`, `command`, `stderr`, `stdout` e il formato del messaggio in
+  un posto solo. La riga `Output:` pesca dalla diagnostica del subprocess —
+  la prima riga per csound, l'ultima per sclang/scsynth, che aprono sempre
+  con il proprio preambolo — e considera **anche lo stdout**, che è dove
+  entrambi i binari SuperCollider scrivono i loro errori.
 - **`SuperColliderNotFoundError` NON eredita da `FileNotFoundError`**, anche
   se descrive un file che non c'è. La CLI intercetta `FileNotFoundError`
   *prima* di `EngineError`, per annunciare «file YAML non trovato»: un
@@ -258,7 +265,7 @@ streams:
 ```
 [ERRORE] Csound rendering fallito (exit code 2)
   Comando:      csound -o out.aif score.csd
-  Stderr:       error: undefined opcode
+  Output:       error: undefined opcode
   Stream:       drone_low
   Config:       configs/PGE_test.yml
   Dettagli:     /tmp/engine.log
@@ -269,8 +276,8 @@ Il campo `stage` distingue i due binari, perché hanno rimedi diversi:
 `scsynth` è il rendering, `sclang` è la compilazione della SynthDef.
 ```
 [ERRORE] scsynth fallito (exit code 1)
-  Comando:      scsynth -o 2 -i 0 -z 1 -n 32768 -N /tmp/x.osc _ out.aif 48000 AIFF float
-  Stderr:       ERROR: Buffer UGen: no buffer data
+  Comando:      scsynth -o 2 -i 0 -z 1 -n 32768 -m 32768 -N /tmp/x.osc _ out.aif 48000 AIFF float
+  Output:       ERROR: Buffer UGen: no buffer data
   Dettagli:     /tmp/engine.log
 ```
 
