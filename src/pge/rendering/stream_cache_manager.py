@@ -50,7 +50,10 @@ FINGERPRINT_IGNORE_KEYS = frozenset({"solo", "mute"})
 # 1 -> semantica storica (uniform ±range/2, gaussian con range = sigma)
 # 2 -> range e' sempre la larghezza della banda; gaussian troncata con
 #      sigma = larghezza/6; introdotta l'ancora range_anchor
-VARIATION_SEMANTICS_VERSION = 2
+# 3 -> loop_unit non eredita piu' da time_mode (issue #222): su uno stream
+#      'normalized' senza loop_unit, pointer.start e i parametri di loop
+#      restano in secondi invece di essere scalati per sample_dur_sec
+VARIATION_SEMANTICS_VERSION = 3
 
 
 class StreamCacheManager:

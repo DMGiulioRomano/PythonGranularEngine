@@ -34,6 +34,9 @@ streams:
       duration_range: 0.02
       reverse: null
     pointer:
+      # loop_unit esplicito da #222: loop_start e loop_dur sono frazioni del
+      # sample, non secondi. Prima lo ereditavano da time_mode.
+      loop_unit: normalized
       speed_ratio: "-.03"
       loop_start: 0.25
       loop_dur: [[[0, 0.6], [100, 0.1]], 1, 5]

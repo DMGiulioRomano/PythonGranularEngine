@@ -34,6 +34,11 @@ streams:
     #range_always_active:
     sample: "002-34_468-3_219.wav"
     pointer:
+      # loop_unit esplicito da #222: `start` e' una frazione del sample. La
+      # riga qui sotto e' commentata (e ha un refuso nel nome), quindi non ha
+      # mai avuto effetto: quel che si sente e' sempre stato normalized,
+      # ereditato da time_mode.
+      loop_unit: normalized
       #loop_unite: absolute
       speed_ratio: -.03
       offset_range: [[[0,.02], [100,.6]],1,5]

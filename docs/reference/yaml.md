@@ -6,13 +6,14 @@ tags: [yaml, syntax, parameters, envelopes]
 sources:
   - src/pge/engine/generator.py
   - src/pge/core/stream.py
+  - src/pge/controllers/
   - src/pge/parameters/
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 8bd9d21
+last_synced_commit: fb01d7f
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -692,10 +693,21 @@ pointer:
   loop_start: [[0, 1.0], [30, 5.0]]   # finestra di loop mobile
   loop_dur: [[0, 0.5], [30, 3.0]]
 
-  # Unità per i valori loop (opzionale)
+  # Unità delle posizioni nel sample (opzionale)
   loop_unit: normalized   # "normalized": valori [0,1] scalati su sample_dur_sec
-                          # default: eredita da time_mode dello stream
+                          # "seconds" (canonico) / "absolute" (alias): secondi
+                          # default: seconds — NON eredita da time_mode
 ```
+
+`loop_unit` governa i tre parametri di loop **e** `start`: sono tutte posizioni
+nel sample, stesso dominio. Il vocabolario è chiuso — `seconds`, `absolute`,
+`normalized` — e un'unità fuori da quello è `InvalidFieldValueError`, non un
+silenzioso "assoluto".
+
+Fino alla v8.0.0 inclusa `loop_unit` assente ereditava da `time_mode`: uno stream
+`normalized` vedeva `start` e i parametri di loop scalati per `sample_dur_sec`
+anche senza nessun loop dichiarato. Le due chiavi parlano di assi diversi (vedi
+§10.1) e ora sono indipendenti. (issue #222)
 
 Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
 
@@ -1546,12 +1558,13 @@ density:
   time_unit: normalized
 ```
 
-**(c) Solo per i parametri loop del pointer: `loop_unit`**
+**(c) Solo per le posizioni nel sample: `loop_unit`**
 
 I parametri `loop_start`, `loop_end`, `loop_dur` (e `start`, che è scalare ma
 segue la stessa unità) hanno una semantica aggiuntiva: `loop_unit: normalized`
 scala i **valori** (asse Y) da `[0, 1]` a `[0, sample_dur_sec]`. Non agisce
-sull'asse X. È documentato nella sezione 10.
+sull'asse X, e **non** si deduce da `time_mode`: il suo default è `seconds`. È
+documentato nella sezione 10.
 
 #### 3.3 Scaling del formato compatto
 
@@ -2036,6 +2049,10 @@ pointer:
   loop_dur:   0.5                    # = 0.5 * sample_dur_sec
 ```
 
+Unità ammesse: `seconds` (canonico), `absolute` (alias di `seconds`),
+`normalized`. **Default `seconds`**, indipendente da qualsiasi altra chiave;
+un'unità fuori vocabolario è `InvalidFieldValueError`.
+
 Con envelope normalizzato sui valori:
 
 ```yaml
@@ -2049,13 +2066,44 @@ Internamente `PointerController._pre_normalize_loop_params` usa
 `sample_dur_sec` prima di costruire l'`Envelope`. Funziona anche su formati
 compatti: il pattern `[x%, y]` viene scalato sul valore.
 
-Differenza chiave da `time_mode`:
+### Differenza chiave da `time_mode`
 
-- `time_mode: normalized` scala l'asse **X** (tempo) usando la `duration` dello stream
-- `loop_unit: normalized` scala l'asse **Y** (valore) usando la `sample_dur_sec`
-  del file audio caricato
+Sono due chiavi indipendenti, e la ragione è che parlano di grandezze che non
+hanno niente in comune:
 
-I due possono coesistere.
+|  | `time_mode: normalized` | `loop_unit: normalized` |
+|---|---|---|
+| asse | **X** (tempo) | **Y** (valore) |
+| riferimento | `duration` dello stream | `sample_dur_sec` del file audio |
+| dominio | la timeline della composizione | la lunghezza di un file su disco |
+
+I due **coesistono**, e su uno stesso envelope agiscono insieme senza toccarsi:
+
+```yaml
+duration: 20
+time_mode: normalized
+pointer:
+  loop_unit: normalized
+  loop_start: [[0, 0.25], [1, 0.75]]   # X: 0..1 → 0..20 s di stream
+                                       # Y: 0.25..0.75 → 25%..75% del sample
+```
+
+Con un sample da 8 secondi: a `t=0` il loop parte da 2.0 s del file, a `t=20`
+da 6.0 s, a metà stream da 4.0 s.
+
+**`loop_unit` non eredita da `time_mode`** (issue #222). Fino alla v8.0.0 inclusa lo
+faceva, e un solo keyword finiva per governare i due assi: uno stream che
+dichiarava `time_mode` per i propri envelope si vedeva spostare anche la
+testina di lettura, `start` compreso, senza aver detto niente al riguardo.
+`start` è `is_smart=False` e quindi non ha bounds, per cui lo spostamento non
+sollevava nulla: wrappava modularmente e rendeva un suono diverso da quello
+scritto.
+
+**Migrazione:** per riavere il comportamento precedente basta scrivere
+`loop_unit: normalized` nel blocco pointer. Per una release il motore lo dice
+da sé — con `time_mode: normalized`, nessun `loop_unit` e almeno una posizione
+diversa da zero, emette un warning `[LOOP_UNIT]` che nomina le chiavi
+interessate.
 
 #### 10.2 `deviation_probability` come envelope
 
@@ -2254,7 +2302,7 @@ Sintesi di tutte le forme accettate. `T` indica il tempo, `V` il valore.
 | Formato misto                                 | `[[0, 10], [5, 10], [[[0, 30], [100, 50]], 25, 4]]`| Offset automatico |
 | BP group diretto                              | `[[[0, 0], [0.5, 30], [1, 5]], 'cubic']`           | Macrozona unica con interp proprio (§2.7) |
 | BP group in misto                             | `[[[[0, 0], [0.4, 8]], 'cubic'], [[[0.75, 6], [1, 0]], 'step']]` | Macrozone con interp diversi; tempi assoluti |
-| Loop pointer normalizzato (valori)            | `loop_unit: normalized` + `loop_start: 0.0`        | Scala Y per sample_dur_sec |
+| Loop pointer normalizzato (valori)            | `loop_unit: normalized` + `loop_start: 0.0`        | Scala Y per sample_dur_sec; default `seconds`, indipendente da `time_mode` |
 | Time mode globale                             | `time_mode: normalized` a livello stream           | Scala X per stream duration |
 | Espressione matematica                        | `[[0, 0], [(pi*5), 1]]`                            | Valutata a parse-time |
 | deviation_probability globale envelope                      | `deviation_probability: [[0, 0], [30, 80]]`                      | Probabilità time-varying |
@@ -2321,9 +2369,9 @@ un envelope dal YAML al runtime è:
 | `read_direction` | -1 | +1 | — | solo `-1` e `+1`; assente = modalità `auto` |
 | `pointer_speed_ratio` | -100 | 100 | 1.0 | negativo = indietro |
 | `pointer_deviation` | -1 | 1 | 0.0 | offset per-grano |
-| `loop_start` | 0 | sample_dur | — | secondi |
-| `loop_end` | 0 | sample_dur | — | secondi |
-| `loop_dur` | 0.005 | sample_dur | — | secondi |
+| `loop_start` | 0 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |
+| `loop_end` | 0 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |
+| `loop_dur` | 0.005 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |
 | `num_voices` | 1 | 256 | 1 | intero |
 | `scatter` | 0 | 1 | 0.0 | 0=sync, 1=indip. |
 
