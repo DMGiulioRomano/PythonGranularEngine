@@ -66,10 +66,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   li' dentro farebbe ripartire sclang a ogni build, riportandolo da dipendenza
   di build a dipendenza di runtime.
 
-  Nota operativa: sclang e' linkato a Qt e su una macchina senza display
-  aborta prima di eseguire una riga dello script. Il renderer e
-  `make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola
-  compilazione, come default sovrascrivibile. scsynth non ne ha bisogno.
+  Nota operativa: sclang e' linkato a Qt e su una macchina Linux senza
+  display aborta prima di eseguire una riga dello script. Il renderer e
+  `make sc-synthdef` impostano percio' `QT_QPA_PLATFORM=offscreen` per la
+  sola compilazione, come default sovrascrivibile -- ma **non su macOS**,
+  dove il bundle `SuperCollider.app` spedisce il solo plugin `cocoa` e
+  chiedere `offscreen` fa abortire sclang con lo stesso SIGABRT che il
+  default vuole evitare altrove. scsynth non ne ha bisogno: e' headless per
+  costruzione.
 
   Block size 1 per default (`--sc-block-size` per cambiarlo): e' la stessa
   scelta di `main.orc`, che gira a `ksmps=1`. Col default di scsynth gli onset
@@ -95,7 +99,50 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   «file YAML non trovato», e un binario mancante che passasse di li' verrebbe
   riportato come una configurazione inesistente.
 
-  La cache incrementale per stem funziona come per gli altri due backend.
+  La cache incrementale per stem funziona come per gli altri due backend, e
+  il fingerprint ora include il **backend** (vedi sotto).
+
+  Correzioni raccolte nella review della PR:
+
+  - **scsynth esce 0 anche quando non ha reso niente.** Output non apribile,
+    `/b_allocReadChannel` su un sample mancante, `/s_new` fallito per nodi o
+    memoria esauriti: tre guasti reali che lasciavano la CLI annunciare
+    «Rendering completato» su un file inesistente o di puro silenzio. Il
+    renderer verifica ora che l'output esista e non sia vuoto, e promuove a
+    errore i marcatori (`FAILURE IN SERVER`, `could not be opened`,
+    `alloc failed`) con cui scsynth riporta a parole cio' che non riporta col
+    codice d'uscita.
+  - **Sample mancante = `SampleNotFoundError`, non un file di silenzio.** Il
+    ramo numpy verificava i sample caricandoli col `SampleRegistry`, che
+    questo backend non istanzia (li apre scsynth). Non serve caricarli per
+    verificarli: lo score writer controlla il path mentre lo scrive.
+  - **Lo stdout dei subprocess entra nel messaggio d'errore.** sclang e
+    scsynth scrivono li' i propri errori (`ERROR: Parse error`,
+    `FAILURE IN SERVER`); veniva catturato e scartato, e un refuso nella
+    SynthDef arrivava all'utente con la sola riga dell'exit code.
+  - **Timeout sui subprocess** (default un'ora per scsynth, due minuti per
+    la compilazione, configurabili via API). Chiudere lo stdin copre sclang
+    che aspetta comandi, non un blocco che non arriva a `0.exit`.
+  - **La compilazione della SynthDef aspetta il file, non il codice
+    d'uscita.** Su macOS `0.exit` non termina sclang: lo script scrive il
+    `.scsyndef` in un secondo e poi il processo resta dentro l'event loop di
+    Cocoa (`-[NSApplication run]`), vivo e inerte. Aspettarne l'uscita
+    significava aspettare il timeout a ogni compilazione — un blocco
+    travestito da attesa, che rendeva l'e2e su macOS di fatto infinito. Il
+    risultato di quel passo e' l'artefatto: quello si attende, e il processo
+    si chiude dopo. Su Linux sclang esce da solo e il ramo normale non
+    cambia.
+  - **`-m` cresce insieme a `-n`.** Alzare i nodi non basta: il `Graph` di
+    ogni `/s_new` esce dal real-time memory pool, fermo a 8192 KB, che si
+    esaurisce a qualche migliaio di grani simultanei con `alloc failed`, nodo
+    non creato ed exit 0 -- cioe' i grani spariscono in silenzio proprio alla
+    densita' per cui il flag era stato alzato.
+  - `check-system-deps` chiede anche **sclang** quando il `.scsyndef` non e'
+    ancora compilato, invece di dichiarare le dipendenze soddisfatte e
+    fallire molto piu' avanti.
+  - I default SuperCollider vivono **solo** nelle costanti del renderer: API
+    e CLI passano `None` quando l'utente non si e' pronunciato, invece di
+    ricopiare quattro valori in cinque posti.
 
 - **`RendererFactory.available_types()` e `api.renderer_types()`** (issue
   #228). L'elenco dei backend esisteva in tre copie -- il set del factory, la
@@ -157,22 +204,30 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
-- **Il manifest della cache porta il nome del renderer**:
-  `cache/{basename}.{renderer}.json` invece di `cache/{basename}.json`
-  (review di #228). Il fingerprint degli stem guarda il solo dict YAML dello
-  stream, quindi con un manifest condiviso rendere con un backend e
-  rilanciare con un altro lasciava ogni stream `clean`: nessuno veniva
-  rirenderizzato e in `output/` restava l'audio del primo, annunciato come
-  del secondo. Con tre backend che esistono per essere confrontati, e' lo
-  scenario d'uso, non un caso limite. **Invalida una volta le cache
-  esistenti**, e cambia il path che PGE-ui legge da
-  `GET /cache_manifest/<basename>`. Il costo dell'invalidazione e' pero'
-  condiviso: #222 alza `VARIATION_SEMANTICS_VERSION` a 3 nello stesso ciclo
-  di rilascio, quindi le cache si rifanno comunque.
+- **Il backend entra nel fingerprint della cache degli stem** (issue #228).
+  `compute_fingerprint` guardava il solo dict YAML dello stream: rendere con
+  `RENDERER=numpy` e rilanciare con `RENDERER=supercollider` lasciava ogni
+  stream `clean`, senza re-render e con in `output/` l'audio del primo
+  annunciato come del secondo -- cioe' proprio il confronto A/B fra backend.
+  Il `renderer` sta ora nel payload accanto a `VARIATION_SEMANTICS_VERSION`,
+  che esiste per la stessa classe di dipendenza: qualcosa da cui lo stem
+  dipende e che il testo YAML non dice. Il manifest resta
+  `cache/{yaml_basename}.json`, uno per progetto.
 
-  Resta scoperto un caso della stessa famiglia, dichiarato e non risolto qui:
-  il DSP non entra nel fingerprint, quindi modificare `pge_grain.scd` o
-  `main.orc` non invalida nulla.
+  **Conseguenza al merge: le cache esistenti si invalidano una volta**, per
+  tutti e tre i backend. Il costo e' pero' condiviso: #222 alza
+  `VARIATION_SEMANTICS_VERSION` a 3 nello stesso ciclo di rilascio, quindi le
+  cache si rifanno comunque.
+
+  Resta scoperto un caso della stessa famiglia, dichiarato e non chiuso qui:
+  il **DSP non entra nel fingerprint**, quindi modificare `pge_grain.scd` o
+  `main.orc` lascia tutti gli stem `clean`.
+
+- **`CsoundRenderError` e `SuperColliderRenderError` condividono una base**
+  (`_SubprocessRenderError`): erano la stessa classe scritta due volte, e una
+  correzione al formato del messaggio andava applicata due volte o a meta'.
+  La riga del messaggio utente si chiama ora `Output:` invece di `Stderr:`,
+  perche' pesca anche dallo stdout.
 
 - **Il ramo del Makefile chiede «se non csound» invece di «se numpy»**. La
   struttura interna di `make/build.mk` era `ifeq ($(RENDERER), numpy)` con

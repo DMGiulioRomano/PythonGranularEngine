@@ -97,12 +97,43 @@ manca o quando il sorgente è più recente, con la stessa regola di un Makefile
 autosufficiente.
 
 Una nota operativa che costa un giro di CI a chi non la sa: **sclang è linkato
-a Qt**, e su una macchina senza display aborta (SIGABRT, `qt.qpa.xcb: could not
-connect to display`) prima di eseguire una riga dello script. Il renderer e
-`make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola
+a Qt**, e su una macchina Linux senza display aborta (SIGABRT, `qt.qpa.xcb:
+could not connect to display`) prima di eseguire una riga dello script. Il
+renderer e `make sc-synthdef` impostano `QT_QPA_PLATFORM=offscreen` per la sola
 compilazione — come default, non come imposizione: chi ha un display e lo
 vuole usare lo dichiara nel proprio ambiente e vince. `scsynth` non ne ha
 bisogno: è headless per costruzione.
+
+**Ma il default vale per piattaforma, e su macOS è l'opposto.** Il bundle
+`SuperCollider.app` spedisce il solo plugin Qt `cocoa`: chiedergli `offscreen`
+lo fa abortire con lo stesso SIGABRT (`Available platform plugins are:
+cocoa.`) che il default vuole evitare su Linux. Un rimedio che diventa il
+guasto sull'altra piattaforma non è un default, è un bug con due facce —
+trovato facendo girare l'e2e su macOS, dove l'unico sintomo visibile era
+`sclang fallito (exit code -6)`.
+
+**E un secondo difetto macOS che il primo nascondeva.** Con `cocoa` sclang
+parte davvero — e poi non muore: lo script scrive il `.scsyndef` in un secondo,
+`0.exit` viene eseguito, ma il processo resta dentro `-[NSApplication run]`,
+vivo e inerte, con tutti i thread ausiliari in attesa. Aspettarne il codice
+d'uscita significa aspettare il timeout a ogni compilazione: un blocco
+travestito da attesa, che sull'e2e valeva quaranta minuti per singola build.
+
+Il rimedio non è un timeout più corto, è cambiare cosa si aspetta: **il
+risultato di quel passo è il file, non il codice d'uscita**. Il renderer
+cancella il `.scsyndef` vecchio, lancia sclang, attende che l'artefatto
+compaia, concede una grazia perché il processo esca da solo e poi lo chiude.
+Su Linux sclang esce per conto suo e il ramo normale resta quello di sempre.
+È il rovescio esatto del controllo su `scsynth`, dove `exit 0` non basta e
+serve il file: in entrambi i casi la verità è l'artefatto, non il codice
+d'uscita.
+
+Corollario per chi legge questa pagina su un Mac: SuperCollider installa i
+binari **dentro il bundle**, non nel PATH — `scsynth` in
+`/Applications/SuperCollider.app/Contents/Resources/`, `sclang` in
+`Contents/MacOS/`. Finché non stanno nel PATH l'e2e si skippa, e *un e2e che si
+skippa non verifica niente*: è lo stesso argomento per cui il job CI installa
+supercollider invece di lasciar passare il test in verde.
 
 L'alternativa era emettere il binario `.scsyndef` direttamente da Python,
 eliminando sclang: la issue #228 la indicava come strada preferita, ed è stata
@@ -132,12 +163,21 @@ sono scelte di cui vale la pena sapere.
 | Coda della finestra | ultimo campione = `w[n-1]` | `Line` si ferma un passo prima di `end` | meno di un passo di tabella |
 | Durata in campioni | `round(dur*sr)` | `trunc(dur*sr)` | sotto il campione |
 
-**Nodi.** Il default di `scsynth` è 1024 nodi, cioè quanti grani possono
-suonare insieme: una densità alta con grani lunghi lo supererebbe e il render
-morirebbe a metà. Il backend chiede 32768 — è una hash table di puntatori,
-costa memoria trascurabile — e `--sc-max-nodes` / `SC_MAX_NODES` lo alza
-ancora, perché un limite che fa morire un render a metà deve essere
-raggiungibile senza passare dall'API.
+**Nodi, e la memoria che vanno a prendere.** Il default di `scsynth` è 1024
+nodi, cioè quanti grani possono suonare insieme: una densità alta con grani
+lunghi lo supererebbe e il render morirebbe a metà. Il backend chiede 32768,
+e `--sc-max-nodes` / `SC_MAX_NODES` lo alza ancora.
+
+Ma `-n` da solo non basta, ed è una trappola della stessa famiglia di quelle
+che questo backend combatte. `-n` dimensiona la hash table dei nodi
+(puntatori, memoria trascurabile), mentre ogni `/s_new` alloca anche il
+`Graph` del synth — unit, wire buffer, calc unit — dal **real-time memory
+pool**, che al default di `-m 8192` KB si esaurisce intorno a qualche
+migliaio di grani simultanei: molto prima dei 32768. E si esaurisce nel modo
+peggiore, con `alloc failed`, il nodo non creato, il render che prosegue e
+`scsynth` che esce 0. Il renderer alza quindi `-m` insieme a `-n`, 1 KB per
+nodo — abbondante per una decina di UGen a block size 1 — così il tetto
+promesso è davvero raggiungibile.
 
 **Dove vive il `.scsyndef`, e perché non in `generated/`.** È un artefatto di
 build persistente, quindi non può stare nella directory che `make clean`
@@ -149,14 +189,30 @@ al `.scd` che lo genera, come un `.o` accanto al `.c`, ed è gitignorato. La
 combinazione dei default è coperta da `tests/e2e/test_supercollider_makefile_e2e.py`,
 che gira su `make -n` e non richiede SuperCollider.
 
-**Un manifest di cache per backend.** `cache/{basename}.{renderer}.json`: il
-fingerprint degli stem guarda il solo dict YAML dello stream, quindi con un
-manifest condiviso rendere con un backend e rilanciare con un altro lascerebbe
+**Il backend entra nel fingerprint della cache.** Prima guardava il solo dict
+YAML dello stream: rendere con un backend e rilanciare con un altro lasciava
 ogni stream `clean` — nessun re-render, e in `output/` l'audio del primo
 annunciato come del secondo. È esattamente lo scenario A/B per cui questo
-backend esiste. Resta scoperto un caso della stessa famiglia: **il DSP non
-entra nel fingerprint**, quindi modificare `pge_grain.scd` (o `main.orc`) non
-invalida niente.
+backend esiste. La correzione sta in `compute_fingerprint`, accanto a
+`VARIATION_SEMANTICS_VERSION`, perché è la stessa classe di dipendenza: una
+cosa da cui lo stem dipende e che il testo YAML non dice. Il manifest resta
+`cache/{basename}.json`, uno per progetto — il GC continua a vederli tutti e
+il path non cambia per chi lo legge da fuori. Resta scoperto un caso della
+stessa famiglia: **il DSP non entra nel fingerprint**, quindi modificare
+`pge_grain.scd` (o `main.orc`) non invalida niente.
+
+**Il guasto silenzioso di `scsynth`: esce 0 anche quando non ha reso nulla.**
+Output non apribile, `/b_allocReadChannel` su un sample mancante, `/s_new`
+fallito per nodi o memoria esauriti: tre guasti reali con `returncode` 0, e
+la CLI che annuncia «Rendering completato» su un file inesistente o di puro
+silenzio. Csound in questi casi esce non-zero e NumPy solleva. Il renderer
+verifica perciò dopo ogni `scsynth`: che l'output esista e non sia vuoto, e
+che nei due flussi non compaiano i marcatori (`FAILURE IN SERVER`,
+`could not be opened`, `alloc failed`) che `scsynth` usa per riportare a
+parole ciò che non riporta col codice d'uscita. I sample sono controllati
+ancora prima, mentre lo score si scrive: il ramo NumPy li verifica caricandoli
+col `SampleRegistry`, qui non serve caricarli per verificarli, e un
+`SampleNotFoundError` col nome del file batte un `.aif` di silenzio.
 
 **La trappola di `Phasor`, che è costata due giri di CI.** L'offset di lettura
 del grano si somma **fuori** dal `Phasor`, non si passa come `resetPos`:
