@@ -124,7 +124,6 @@ class TestRenderSingleStreamContract:
         stream = MagicMock()
         stream.stream_id = 'test_stream'
         stream.voices = [[]]
-        stream.grains = []
         return stream
 
     def test_returns_string(self, renderer, mock_stream):

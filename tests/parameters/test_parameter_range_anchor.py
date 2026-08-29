@@ -27,6 +27,7 @@ from pge.parameters.parser import GranularParser
 from pge.parameters.parameter_definitions import ParameterBounds
 from pge.shared.distribution_strategy import ANCHOR_CENTER, ANCHOR_MIN
 from pge.shared.exceptions import InvalidFieldValueError
+from conftest import flat_grains
 
 
 BASE = 10.0
@@ -256,7 +257,7 @@ class TestYamlSurface:
         gen.load_yaml()
         with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen.create_elements()
-            return [g.duration for s in gen.streams for g in s.grains]
+            return [g.duration for s in gen.streams for g in flat_grains(s)]
 
     def test_end_to_end_min_never_below_base(self, tmp_path):
         durations = self._render(tmp_path, 'min')

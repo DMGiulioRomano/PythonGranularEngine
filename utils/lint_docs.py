@@ -6,6 +6,7 @@ Rules (see docs/SCHEMAS.md — transitorio fino a Step 6, poi spostato in CLAUDE
 - slug uguale al basename del file (no .md)
 - type ∈ {reference, explanation, how-to}, status ∈ {stable, draft, deprecated}
 - sources path esistenti
+- last_synced_commit risolvibile a un oggetto git
 - Sezioni obbligatorie per tipo presenti, nell'ordine atteso
 - Wikilink [[slug]] risolvibili a uno slug noto
 - Nessun doc orfano (linkato da INDEX o da almeno un altro doc, esclusi i reference)
@@ -15,7 +16,9 @@ Exit code 0 se pulito, 1 altrimenti.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
+from functools import cache
 from pathlib import Path
 
 import yaml
@@ -24,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCS = REPO_ROOT / "docs"
 TYPES = {"reference", "explanation", "how-to"}
 STATUSES = {"stable", "draft", "deprecated"}
+SHA_RE = re.compile(r"[0-9a-f]{7,40}")
 REQUIRED_FM_KEYS = {"slug", "type", "status", "tags", "sources", "last_synced_commit"}
 
 REQUIRED_SECTIONS = {
@@ -63,6 +67,26 @@ def strip_code_blocks(text: str) -> str:
         if not in_code:
             out.append(INLINE_CODE_RE.sub("", line))
     return "\n".join(out)
+
+
+@cache
+def history_available() -> bool:
+    """True se git puo' rispondere sulla history di questo albero.
+
+    False su un clone shallow (non risolve niente per costruzione), ma anche
+    dove git non c'e' o .git non c'e': sorgenti copiati, vendoring, archivio.
+    In tutti quei casi il check sugli SHA va spento, non fallito.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+    except (OSError, FileNotFoundError):
+        return False
+    if out.returncode:
+        return False
+    return out.stdout.strip() != "true"
 
 
 class Linter:
@@ -107,6 +131,33 @@ class Linter:
                 p = REPO_ROOT / src
                 if not p.exists():
                     self.err(path, f"sources path does not exist: {src}")
+        # Uno SHA breve di sole cifre non e' quotato per convenzione (lo sono
+        # tutti nei doc), quindi PyYAML lo consegna int: str() lo rende, e
+        # 9764017 resta 9764017. Irrecuperabile e' solo lo zero iniziale, che
+        # YAML 1.1 legge ottale (0123456 -> 42798): li' l'informazione e'
+        # persa, e il messaggio deve nominare il quoting invece di far
+        # sembrare stantio un doc che non lo e'.
+        sha = str(fm["last_synced_commit"]).strip()
+        if not SHA_RE.fullmatch(sha):
+            self.err(
+                path,
+                f"last_synced_commit non e' uno SHA breve: {sha} "
+                "(se e' di sole cifre con lo zero iniziale, quotalo: "
+                "YAML lo legge come ottale)",
+            )
+            return
+        # Senza questo, la drift detection e' decorativa: uno SHA che non
+        # risolve non e' un riferimento, e' una stringa. Dove la history non
+        # e' interrogabile il check si spegne invece di segnalare venti falsi
+        # positivi (in CI il job docs fa fetch-depth: 0 apposta per tenerlo
+        # acceso).
+        if history_available() and subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode:
+            self.err(path, f"last_synced_commit non risolve a un commit: {sha}")
 
     def check_sections(self, path: Path, fm: dict, body: str) -> None:
         type_ = fm.get("type")
