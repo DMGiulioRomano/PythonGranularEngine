@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/numpy_audio_renderer.py
   - src/pge/core/stream.py
   - utils/bench_cost.py
-last_synced_commit: 4f2708a
+last_synced_commit: f138d06
 ---
 
 # Costo del rendering — PythonGranularEngine
@@ -44,14 +44,19 @@ da 5 a 320 secondi), Apple M2 Max, Python 3.11, rendering sequenziale:
 
 | coefficiente | valore | cosa paga |
 |---|---|---|
-| `a` | ~32 µs per grano | costruire il `Grain`, finestrarlo, sommarlo nel buffer |
-| `b` | ~1,3 ms per secondo di uscita | allocare, normalizzare e scrivere il buffer |
+| `a` | ~34 µs per grano | costruire il `Grain`, finestrarlo, sommarlo nel buffer |
+| `b` | ~1,4 ms per secondo di uscita | allocare, normalizzare e scrivere il buffer |
 
-Errore relativo mediano sotto l'1,5%, massimo ~5%. Due parametri coprono tre
-ordini di grandezza di grani e due di durata. Fra run ripetute i coefficienti
-oscillano di qualche punto percentuale.
+Errore relativo mediano sotto l'1%, massimo ~9% (il punto peggiore è il più
+piccolo dello sweep, dove il costo fisso dell'avvio pesa). Due parametri coprono
+tre ordini di grandezza di grani e due di durata. Fra run ripetute i
+coefficienti oscillano di qualche punto percentuale: i valori qui vengono da una
+misura successiva alla issue #201, che ha tolto da `generate_grains()` il
+flatten+sort eager della vista `Stream.grains`, e restano gli stessi entro
+quell'oscillazione — il flatten valeva il ~3% della sola generazione, cioè meno
+del rumore fra run.
 
-**I due termini pareggiano attorno ai 40 grani al secondo.** Sotto quella
+**I due termini pareggiano attorno ai 42 grani al secondo.** Sotto quella
 densità comanda la durata dell'uscita; sopra comandano i grani. Il regime
 granulare d'uso sta sopra — a densità 100 il termine dei grani pesa 2,4 volte
 quello della durata, a densità 800 pesa venti volte — quindi *nella pratica* il
@@ -65,22 +70,26 @@ I grani sono **lazy**: `Stream.voices` è una property che chiama
 `generate_grains()` al primo accesso (`src/pge/core/stream.py`). Chi li tocca per
 primo è il render, quindi senza forzare la materializzazione il costo di
 costruire gli oggetti finisce dentro il tempo di rendering. Forzarla prima non
-cambia il totale — 1,071 s contro 1,085 s sullo stesso materiale — ma separa le
-due metà del lavoro:
+cambia il totale — è lo stesso lavoro, spostato — ma separa le due metà:
 
 | materiale | grani | durata | parse | costruzione dei `Grain` | overlap-add + scrittura | totale |
 |---|---|---|---|---|---|---|
-| esempio didattico multi-stream | 38 072 | 32,4 s | 0,008 s | 0,52 s (13,7 µs/grano) | 0,57 s | **1,10 s** |
-| `configs/PGE_cim.yml` | 994 291 | 92,5 s | 0,036 s | 8,87 s (8,9 µs/grano) | 19,94 s | **28,85 s** |
+| `configs/PGE_ff2_rassegna.yml` | 221 082 | 1 698 s | 0,12 s | 1,72 s (7,8 µs/grano) | 13,11 s | **14,95 s** |
+| `configs/PGE_cim.yml` | 994 555 | 92,5 s | 0,04 s | 9,73 s (9,8 µs/grano) | 20,45 s | **30,22 s** |
 
-Circa un terzo del costo, in un caso reale, è **materializzare la popolazione**,
-non il DSP. È il prezzo della rappresentazione intermedia esplicita: la lista di
+I due casi hanno il rapporto grani/durata rovesciato — 130 grani al secondo il
+primo, 10 700 il secondo — ed è il motivo per cui la quota di costruzione
+cambia: un ottavo del totale sul primo, quasi un terzo sul secondo. Nel regime
+denso **materializzare la popolazione** costa quanto una fetta consistente del
+DSP. È il prezzo della rappresentazione intermedia esplicita: la lista di
 `Grain` esiste come oggetto ispezionabile prima di diventare campioni, ed è
 quello che rende possibili la `map`, gli export e il debugging.
 
 In memoria quella lista costa poco: **~225 byte per grano** (`Grain` ha
 `__slots__` e 8 campi), cioè 8,5 MB per 38 000 grani. Il picco del processo è
-dominato da NumPy e dal buffer audio, non dai grani.
+dominato da NumPy e dal buffer audio, non dai grani. Se ne teneva una seconda
+copia — la vista flat, ~8 MB per milione di grani — finché la issue #201 non
+l'ha resa derivata.
 
 ## Trade-off
 
@@ -108,11 +117,17 @@ circa 0,3 s a invocazione, che su un rendering breve non è trascurabile.
 - `src/pge/rendering/numpy_audio_renderer.py` — `_overlap_add` sceglie fra il
   path sequenziale e `_overlap_add_parallel` in base a `jobs` e
   `min_parallel_grains`; è il termine `a` del modello.
-- `src/pge/core/stream.py` — la property `grains` e la generazione lazy; è la
-  metà del termine `a` che non è DSP.
+- `src/pge/core/stream.py` — la property `voices` e la generazione lazy; è la
+  metà del termine `a` che non è DSP. (`grains` è una vista derivata di
+  `voices`, deprecata dalla issue #201: non partecipa al costo se non la si
+  legge, e il benchmark non la legge.)
 - `utils/bench_cost.py` — produce tutte le misure di questa pagina. Non ha
   dipendenze oltre a quelle del motore e genera un sample sintetico se `refs/`
-  è vuota, quindi gira su un clone pulito.
+  è vuota, ma **su un clone pulito non gira lo stesso**: `_load()` costruisce
+  il `Generator` senza `samples_dir` e `_render()` passa il sample sintetico
+  come `ssdir`, che vale solo per Csound — entrambi i percorsi ricadono sul
+  globale `./refs/` e lo script muore in `SampleNotFoundError` prima di
+  misurare. Difetto noto, tracciato a parte.
 
 Un cambiamento che tocchi la costruzione del `Grain` o l'overlap-add si vede
 sul coefficiente `a`; uno che tocchi la scrittura del file si vede su `b`.
