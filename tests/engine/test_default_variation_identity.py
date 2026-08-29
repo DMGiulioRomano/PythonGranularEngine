@@ -33,6 +33,7 @@ import yaml
 from unittest.mock import patch
 
 from pge.engine.generator import Generator
+from conftest import flat_grains
 
 
 # =============================================================================
@@ -99,7 +100,7 @@ def _materialize(tmp_path):
                 repr(g.onset), repr(g.duration), repr(g.pointer_pos),
                 repr(g.pitch_ratio), repr(g.volume), repr(g.pan),
             ]
-            for s in gen.streams for g in s.grains
+            for s in gen.streams for g in flat_grains(s)
         ]
     return rows
 

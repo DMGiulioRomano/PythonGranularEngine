@@ -468,6 +468,7 @@ class TestStochasticStreamIdInjection:
 
 import hashlib
 import random as _random
+from conftest import flat_grains
 
 
 def _seeded_pos(seed, stream_id, vi, lo=-1.0, hi=1.0):
@@ -622,7 +623,7 @@ class TestVoicesYamlIntegration:
         s1.generate_grains()
         s2.generate_grains()
 
-        assert len(s2.grains) == len(s1.grains) * 2
+        assert len(flat_grains(s2)) == len(flat_grains(s1)) * 2
 
     def test_high_voice_count_renders(self):
         """Voci elevate (256): generate_grains rende senza errori, una lista per voce."""
@@ -632,7 +633,7 @@ class TestVoicesYamlIntegration:
         s.generate_grains()
 
         assert len(s.voices) == 256
-        assert len(s.grains) > 0
+        assert len(flat_grains(s)) > 0
 
     def test_chord_dom7_pitch_ratios_in_grains(self):
         """Voce 1 con dom7 ha pitch_ratio base × 2^(4/12)."""

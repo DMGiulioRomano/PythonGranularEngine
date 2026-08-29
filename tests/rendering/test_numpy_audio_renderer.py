@@ -119,7 +119,6 @@ def make_mock_stream(stream_id='s1', onset=0.0, duration=1.0,
         voices = [grains]
 
     stream.voices = voices
-    stream.grains = [g for voice in voices for g in voice]
     return stream
 
 

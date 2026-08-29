@@ -69,7 +69,7 @@ Questo progetto ha copertura test estensiva. Mantieni questo standard di qualit�
 - **Grain is a frozen dataclass** — never mutate after creation
 - **Window Registry:** WindowController pre-registers all window functions at Stream init — FtableManager table numbering depends on this; don't lazy-register
 - **Stream Cache:** active only with `STEMS=true CACHE=true RENDERER=csound`; StreamCacheManager fingerprints YAML per stream, only dirty streams re-render
-- **Voice System:** each voice generates its own grain list; interleaved into `self.grains` (flat, ordered by onset) for backward compatibility
+- **Voice System:** each voice generates its own grain list; `stream.voices` (`List[List[Grain]]`) is the single source of truth. `stream.grains` is a *derived* flat view, ordered by onset, deprecated since #201 (removal in 9.0.0) and with no setter — assigning it left `voices` empty and rendered silence. Flatten at the call site instead; note `voices` is voice-major and the renderers depend on that order
 - **Time Modes:** `time_mode: normalized` maps 0.0–1.0 to actual duration at grain generation time
 - **Math in YAML:** expressions like `(pi)` and `(10/2)` are evaluated via safe_eval before parsing
 

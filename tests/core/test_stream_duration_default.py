@@ -18,6 +18,7 @@ import soundfile as sf
 
 from pge.core.stream import Stream
 from pge.shared.exceptions import MissingFieldError
+from conftest import flat_grains
 
 
 SR = 48000
@@ -66,12 +67,12 @@ class TestDurationDefaultsToSampleDuration:
 
     def test_grains_span_the_sample_duration(self, tmp_path):
         """Il default e' visibile sui grani, non solo sull'attributo: la
-        generazione e' lazy, quindi il test legge `.grains` (issue #205)."""
+        generazione e' lazy, quindi il test materializza i grani (issue #205)."""
         _write_wav(tmp_path, seconds=2.0)
 
         stream = _build(tmp_path)
 
-        onsets = [g.onset for g in stream.grains]
+        onsets = [g.onset for g in flat_grains(stream)]
         assert onsets, "senza duration lo stream deve comunque generare grani"
         assert max(onsets) < 2.0
         assert max(onsets) > 1.0, (
@@ -85,7 +86,7 @@ class TestDurationDefaultsToSampleDuration:
         stream = _build(tmp_path, duration=0.5)
 
         assert stream.duration == pytest.approx(0.5)
-        assert max(g.onset for g in stream.grains) < 0.5
+        assert max(g.onset for g in flat_grains(stream)) < 0.5
 
     def test_explicit_null_behaves_as_absent_key(self, tmp_path):
         """`duration: null` e' una dichiarazione vuota, non un valore: vale
@@ -95,7 +96,7 @@ class TestDurationDefaultsToSampleDuration:
         stream = _build(tmp_path, duration=None)
 
         assert stream.duration == pytest.approx(2.0)
-        assert max(g.onset for g in stream.grains) > 1.0
+        assert max(g.onset for g in flat_grains(stream)) > 1.0
 
     def test_zero_duration_is_not_replaced_by_the_sample(self, tmp_path):
         """`duration: 0` resta zero: il default scatta sull'assenza, non sulla
@@ -106,7 +107,7 @@ class TestDurationDefaultsToSampleDuration:
         stream = _build(tmp_path, duration=0)
 
         assert stream.duration == 0
-        assert stream.grains == []
+        assert flat_grains(stream) == []
 
     def test_normalized_time_mode_maps_onto_the_resolved_duration(self, tmp_path):
         """`time_mode: normalized` mappa 0.0-1.0 sulla duration risolta: senza
@@ -122,7 +123,7 @@ class TestDurationDefaultsToSampleDuration:
         # A meta' del sample l'envelope e' a meta' corsa. Se 0.0-1.0 fosse
         # mappato su una duration diversa (1 s, o un default arbitrario), qui
         # il valore sarebbe gia' saturo a 0.02.
-        midpoint = min(stream.grains, key=lambda g: abs(g.onset - 1.0))
+        midpoint = min(flat_grains(stream), key=lambda g: abs(g.onset - 1.0))
         assert midpoint.duration == pytest.approx(0.05, abs=1e-3)
 
 

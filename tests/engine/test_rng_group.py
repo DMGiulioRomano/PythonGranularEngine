@@ -29,6 +29,7 @@ import yaml
 from unittest.mock import patch
 
 from pge.engine.generator import Generator
+from conftest import flat_grains
 
 
 # =============================================================================
@@ -93,7 +94,7 @@ def _render_streams(tmp_path, streams, seed=42, filename='rng_group.yml'):
     with patch('pge.core.stream.get_sample_duration', return_value=10.0):
         gen.create_elements()
         for s in gen.streams:
-            _ = s.grains  # materializza (lazy)
+            _ = flat_grains(s)  # materializza (lazy)
     return gen
 
 
@@ -110,7 +111,7 @@ def _grain_signature(stream):
             round(g.pan, 9),
             inv_windows[g.envelope_table],
         )
-        for g in stream.grains
+        for g in flat_grains(stream)
     ]
 
 
@@ -174,13 +175,13 @@ class TestCousins:
     def _onsets(self, gen, stream_id):
         for s in gen.streams:
             if s.stream_id == stream_id:
-                return [round(g.onset, 9) for g in s.grains]
+                return [round(g.onset, 9) for g in flat_grains(s)]
         raise AssertionError(f"stream {stream_id} non trovato")
 
     def _field(self, gen, stream_id, attr):
         for s in gen.streams:
             if s.stream_id == stream_id:
-                return [round(getattr(g, attr), 9) for g in s.grains]
+                return [round(getattr(g, attr), 9) for g in flat_grains(s)]
         raise AssertionError(f"stream {stream_id} non trovato")
 
     def test_cousins_share_the_temporal_grid(self, tmp_path):

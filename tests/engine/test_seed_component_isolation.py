@@ -39,6 +39,7 @@ from pge.controllers.window_selection_strategy import (
 )
 from pge.envelopes.envelope import Envelope
 from pge.parameters.parser import GranularParser
+from conftest import flat_grains
 
 
 # =============================================================================
@@ -84,7 +85,7 @@ def _render_streams(tmp_path, yaml_data, filename='iso.yml'):
     with patch('pge.core.stream.get_sample_duration', return_value=10.0):
         gen.create_elements()
         for s in gen.streams:
-            _ = s.grains  # materializza (lazy)
+            _ = flat_grains(s)  # materializza (lazy)
     return gen
 
 
@@ -101,7 +102,7 @@ def _grain_signature(stream):
             round(g.pan, 9),
             inv_windows[g.envelope_table],
         )
-        for g in stream.grains
+        for g in flat_grains(stream)
     ]
 
 
@@ -161,7 +162,7 @@ class TestSoloMuteInvariance:
 class TestLazyOrderInvariance:
 
     def test_materialization_order_is_irrelevant(self, tmp_path):
-        """I grani non dipendono dall'ordine di lettura di .grains: uno
+        """I grani non dipendono dall'ordine di materializzazione: uno
         stream cache-clean saltato non shifta i draw degli stream dirty."""
         data = _yaml_data([_stream_dict('s1'), _stream_dict('s2')])
 
@@ -171,8 +172,8 @@ class TestLazyOrderInvariance:
         gen_a.load_yaml()
         with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen_a.create_elements()
-            _ = gen_a.streams[0].grains  # s1 prima
-            _ = gen_a.streams[1].grains
+            _ = gen_a.streams[0].voices  # s1 prima
+            _ = gen_a.streams[1].voices
 
         cfg_b = tmp_path / 'order_b.yml'
         cfg_b.write_text(yaml.safe_dump(data))
@@ -180,8 +181,8 @@ class TestLazyOrderInvariance:
         gen_b.load_yaml()
         with patch('pge.core.stream.get_sample_duration', return_value=10.0):
             gen_b.create_elements()
-            _ = gen_b.streams[1].grains  # s2 prima (come con s1 cache-clean)
-            _ = gen_b.streams[0].grains
+            _ = gen_b.streams[1].voices  # s2 prima (come con s1 cache-clean)
+            _ = gen_b.streams[0].voices
 
         assert _signature_of(gen_a, 's2') == _signature_of(gen_b, 's2')
         assert _signature_of(gen_a, 's1') == _signature_of(gen_b, 's1')

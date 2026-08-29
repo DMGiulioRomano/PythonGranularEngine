@@ -45,7 +45,12 @@ jobs:
     name: docs lint + index check
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 perche' lint_docs.py risolve ogni last_synced_commit
+      # contro la storia: col checkout shallow di default esiste un commit
+      # solo e non risolverebbe nessuno.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

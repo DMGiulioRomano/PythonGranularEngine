@@ -5,6 +5,8 @@ Fixtures e helpers condivisi tra tutte le test suite.
 Contenuto:
 - mock_config: StreamConfig/StreamContext mockato per i controller tests
   Usato da: test_density_controller, test_pitch_controller, test_pointer_controller
+- build_stream: Stream veri, costruiti attraverso __init__
+- flat_grains: la vista flat dei grani, per i test che ne hanno bisogno
 """
 
 import pytest
@@ -99,3 +101,21 @@ def make_mock_stream_for_generator(stream_id='stream_01', sample='test.wav'):
     stream.__repr__ = Mock(return_value=f"Stream({stream_id})")
     stream.__str__ = Mock(return_value=f"Stream({stream_id})")
     return stream
+
+
+def flat_grains(stream):
+    """Tutti i grani dello stream, flat e ordinati per onset.
+
+    Rimpiazza le letture di `stream.grains`, deprecata (issue #201). La
+    vista
+    flat non e' uno stato dello Stream: e' una comodita' per chi guarda gli
+    eventi senza distinguere le voci, e questa e' la riga che la costruisce.
+
+    Stessa semantica della property: il sort e' stabile, quindi a parita' di
+    onset i grani restano in ordine voice-major. Chi ha bisogno DELL'ordine
+    voice-major (i renderer) itera `stream.voices` e non passa di qui.
+    """
+    return sorted(
+        (g for voice in stream.voices for g in voice),
+        key=lambda g: g.onset,
+    )

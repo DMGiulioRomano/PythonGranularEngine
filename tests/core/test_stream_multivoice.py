@@ -12,7 +12,7 @@ Principi testati:
 - Voce 0 produce grani identici al comportamento mono-voice
 - N voci → ~N volte i grani (overall density = per_voice_density × N)
 - Ogni voce applica gli offset di VoiceConfig ai parametri del grano
-- self.grains è il flatten ordinato per onset di tutte le voci
+- flat_grains(self) è il flatten ordinato per onset di tutte le voci
 - self.voices ha un entry per ogni voce con grani
 
 Queste suite si appoggiano alla stessa infrastruttura di mock di test_stream.py.
@@ -162,8 +162,9 @@ def _make_stream(
     from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
     s._clip_strategy = PassthroughClipStrategy()
 
+    # `voices` e' l'unico ingresso: `grains` e' una vista derivata
+    # e non ha piu' un setter (issue #201).
     s.voices = []
-    s.grains = []
     s.generated = False
 
     return s
@@ -180,22 +181,17 @@ class TestGenerateGrainsBackwardCompat:
         """1 voce, duration=1.0, inter_onset=0.1 → ~10 grani (floating point tolerance)."""
         s = _make_stream(duration=1.0, inter_onset=0.1)
         s.generate_grains()
-        assert len(s.grains) in (10, 11)
+        assert len(flat_grains(s)) in (10, 11)
 
     def test_single_voice_voices_list_has_one_entry(self):
         s = _make_stream(duration=1.0, inter_onset=0.1)
         s.generate_grains()
         assert len(s.voices) == 1
 
-    def test_single_voice_grains_equals_voices_0(self):
-        s = _make_stream(duration=1.0, inter_onset=0.1)
-        s.generate_grains()
-        assert s.grains == s.voices[0]
-
     def test_single_voice_onset_is_absolute(self):
         s = _make_stream(duration=0.5, onset=2.0, inter_onset=0.1)
         s.generate_grains()
-        assert s.grains[0].onset == pytest.approx(2.0)
+        assert flat_grains(s)[0].onset == pytest.approx(2.0)
 
     def test_generated_flag_set(self):
         s = _make_stream()
@@ -216,7 +212,7 @@ class TestGenerateGrainsMultiVoiceCount:
         s2 = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s1.generate_grains()
         s2.generate_grains()
-        assert len(s2.grains) == len(s1.grains) * 2
+        assert len(flat_grains(s2)) == len(flat_grains(s1)) * 2
 
     def test_three_voices_triple_grain_count(self):
         vm = VoiceManager(max_voices=3)
@@ -224,7 +220,7 @@ class TestGenerateGrainsMultiVoiceCount:
         s3 = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s1.generate_grains()
         s3.generate_grains()
-        assert len(s3.grains) == len(s1.grains) * 3
+        assert len(flat_grains(s3)) == len(flat_grains(s1)) * 3
 
     def test_two_voices_voices_list_has_two_entries(self):
         vm = VoiceManager(max_voices=2)
@@ -238,23 +234,6 @@ class TestGenerateGrainsMultiVoiceCount:
         s.generate_grains()
         counts = [len(v) for v in s.voices]
         assert counts[0] == counts[1] == counts[2]
-
-    def test_grains_is_flatten_of_all_voices(self):
-        vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
-        s.generate_grains()
-        expected = sorted(
-            [g for voice in s.voices for g in voice],
-            key=lambda g: g.onset
-        )
-        assert s.grains == expected
-
-    def test_grains_sorted_by_onset(self):
-        vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
-        s.generate_grains()
-        onsets = [g.onset for g in s.grains]
-        assert onsets == sorted(onsets)
 
 
 # =============================================================================
@@ -535,9 +514,9 @@ class TestGenerateGrainsReset:
         vm = VoiceManager(max_voices=2)
         s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
-        first_count = len(s.grains)
+        first_count = len(flat_grains(s))
         s.generate_grains()
-        assert len(s.grains) == first_count
+        assert len(flat_grains(s)) == first_count
 
     def test_voices_cleared_on_regeneration(self):
         vm = VoiceManager(max_voices=2)
@@ -733,6 +712,7 @@ class TestNumVoicesFractionalFade:
 # =============================================================================
 
 import itertools
+from conftest import flat_grains
 
 class TestScatter:
     """
@@ -767,14 +747,6 @@ class TestScatter:
         s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         assert len(s.voices) == 3
-
-    def test_scatter_zero_grains_sorted_by_onset(self):
-        """scatter=0 → s.grains ordinato per onset."""
-        vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
-        s.generate_grains()
-        onsets = [g.onset for g in s.grains]
-        assert onsets == sorted(onsets)
 
     # ── SCATTER INERTE (IOT COSTANTE) ──────────────────────────────────────
 
@@ -851,19 +823,6 @@ class TestScatter:
         s.generate_grains()
         ticks = len(s.voices[0])
         assert s._scatter.get_value.call_count == ticks
-
-    def test_scatter_grains_sorted_by_onset_with_diverging_cursors(self):
-        """Anche con cursori divergenti, s.grains è ordinato per onset."""
-        vm = VoiceManager(max_voices=2)
-        iots = itertools.cycle([0.1, 0.2])
-        s = _make_stream(
-            duration=1.0, voice_manager=vm,
-            scatter_fn=lambda t: 1.0,
-            density_side_effect=lambda t, gd: next(iots),
-        )
-        s.generate_grains()
-        onsets = [g.onset for g in s.grains]
-        assert onsets == sorted(onsets)
 
 
 # =============================================================================
@@ -972,7 +931,7 @@ class TestGrainClipStrategyIntegration:
         assert len(s.voices[1]) == 0
 
     def test_default_grains_flat_excludes_out_of_bounds(self):
-        """stream.grains (flatten) non contiene grain fuori bounds."""
+        """flat_grains(stream) (flatten) non contiene grain fuori bounds."""
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
@@ -981,7 +940,7 @@ class TestGrainClipStrategyIntegration:
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
         stream_end = s.onset + s.duration
-        for g in s.grains:
+        for g in flat_grains(s):
             assert g.onset < stream_end
             assert g.onset + g.duration <= stream_end
 
@@ -1006,9 +965,9 @@ class TestGrainClipStrategyIntegration:
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.25, grain_dur=0.25)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
-        onsets = [g.onset for g in s.grains]
+        onsets = [g.onset for g in flat_grains(s)]
         assert any(o == pytest.approx(0.75) for o in onsets)
-        for g in s.grains:
+        for g in flat_grains(s):
             assert g.onset + g.duration <= 1.0 + 1e-9
 
     def test_grain_with_tail_overflow_excluded(self):
@@ -1018,7 +977,7 @@ class TestGrainClipStrategyIntegration:
         s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
-        for g in s.grains:
+        for g in flat_grains(s):
             assert g.onset + g.duration <= 1.0
 
     def test_margin_allows_tail_overflow(self):
@@ -1031,12 +990,12 @@ class TestGrainClipStrategyIntegration:
         s_loose._clip_strategy = OverflowMarginClipStrategy(margin=0.5)
         s_loose.generate_grains()
         # con margin=0.0 grain con coda > 1.0 esclusi, con margin=0.5 inclusi
-        assert len(s_loose.grains) > len(s_strict.grains)
+        assert len(flat_grains(s_loose)) > len(flat_grains(s_strict))
         # coda max con margin=0.0
-        for g in s_strict.grains:
+        for g in flat_grains(s_strict):
             assert g.onset + g.duration <= 1.0 + 1e-9
         # coda max con margin=0.5
-        for g in s_loose.grains:
+        for g in flat_grains(s_loose):
             assert g.onset + g.duration <= 1.5 + 1e-9
 
     def test_stream_with_nonzero_onset(self):
@@ -1045,7 +1004,7 @@ class TestGrainClipStrategyIntegration:
         s = _make_stream(duration=1.0, onset=5.0, inter_onset=0.1, grain_dur=0.05)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
-        for g in s.grains:
+        for g in flat_grains(s):
             assert g.onset >= 5.0
             assert g.onset < 6.0 + 1e-9
             assert g.onset + g.duration <= 6.0 + 1e-9

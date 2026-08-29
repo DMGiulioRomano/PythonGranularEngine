@@ -32,6 +32,7 @@ import yaml
 from unittest.mock import patch
 
 from pge.engine.generator import Generator
+from conftest import flat_grains
 
 
 PROJECT_ROOT = os.path.abspath(
@@ -73,7 +74,7 @@ def _materialize_onsets(tmp_path, yaml_data):
     gen.load_yaml()
     with patch('pge.core.stream.get_sample_duration', return_value=10.0):
         gen.create_elements()
-        onsets = [round(g.onset, 9) for s in gen.streams for g in s.grains]
+        onsets = [round(g.onset, 9) for s in gen.streams for g in flat_grains(s)]
     return onsets
 
 

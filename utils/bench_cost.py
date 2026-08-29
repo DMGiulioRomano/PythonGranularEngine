@@ -124,7 +124,7 @@ def once(dur, den):
         handle.write(YAML_TEMPLATE.format(dur=dur, den=den, sample=SAMPLE))
     generator = _load(path)
     t = _render(generator)
-    return t, sum(len(s.grains) for s in generator.streams)
+    return t, sum(len(v) for s in generator.streams for v in s.voices)
 
 
 def run(dur, den):
@@ -138,17 +138,23 @@ def run(dur, den):
 def once_yaml(path):
     """Come once(), su uno YAML reale, separando le tre fasi.
 
-    I grani sono lazy: `Stream.grains` li materializza al primo accesso, e senza
+    I grani sono lazy: `Stream.voices` li materializza al primo accesso, e senza
     forzarlo quel costo finisce dentro il tempo di render. Toccarli qui non
     cambia il totale, ma separa la costruzione della popolazione dalla sua somma
     nel buffer.
+
+    Si conta da `voices`, non dalla vista flat `Stream.grains` (deprecata,
+    issue #201): quella e' derivata e ricalcolata a ogni lettura, quindi
+    leggerla qui aggiungerebbe un flatten piu' un sort O(N log N) dentro
+    `t_build` — su un milione di grani circa 0,4 s attribuiti alla costruzione
+    che costruzione non sono.
     """
     t0 = time.perf_counter()
     generator = _load(path)
     t_setup = time.perf_counter() - t0
 
     t0 = time.perf_counter()
-    n = sum(len(s.grains) for s in generator.streams)
+    n = sum(len(v) for s in generator.streams for v in s.voices)
     t_build = time.perf_counter() - t0
 
     t_mix = _render(generator)
