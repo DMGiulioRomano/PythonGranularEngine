@@ -303,9 +303,12 @@ class TestFingerprintImplicitDuration:
         assert before == after
 
     def test_explicit_duration_payload_is_unchanged(self, cache_path, tmp_path):
-        """Il payload di uno stream con `duration` esplicita e' identico a
-        quello di prima di #205: qualunque variazione invaliderebbe la cache di
-        ogni stem gia' renderizzato."""
+        """Uno stream con `duration` esplicita non aggiunge chiavi al payload:
+        e' quello che #205 doveva garantire, e resta vero.
+
+        Il riferimento include `renderer`, che #228 ha aggiunto per tutti e
+        tre i backend (lo stem dipende da chi lo rende, e il testo YAML non lo
+        dice): quella e' l'unica invalidazione, ed e' una volta sola."""
         import hashlib
         d = {'stream_id': 's1', 'onset': 0.0, 'duration': 3.0, 'sample': 'tono.wav'}
         self._write_wav(tmp_path, 'tono.wav', 2.0)
@@ -313,6 +316,7 @@ class TestFingerprintImplicitDuration:
         legacy_payload = {
             'semantics': scm.VARIATION_SEMANTICS_VERSION,
             'stream': d,
+            'renderer': None,
         }
         legacy = hashlib.sha256(
             json.dumps(legacy_payload, sort_keys=True).encode('utf-8')).hexdigest()
@@ -897,3 +901,42 @@ class TestConfigurableExtension:
         )
 
         assert not wav_s2.exists()
+
+class TestFingerprintRenderer:
+    """Il backend entra nel fingerprint (#228).
+
+    Lo stem dipende da chi lo rende, e il testo YAML non lo dice: e' la
+    stessa classe di dipendenza per cui esiste VARIATION_SEMANTICS_VERSION.
+    Senza, rendere con un backend e rilanciare con un altro sullo stesso YAML
+    lascia ogni stream `clean` e in output l'audio del primo, annunciato come
+    del secondo -- cioe' proprio il confronto A/B fra backend.
+    """
+
+    STREAM = {'stream_id': 's1', 'onset': 0.0, 'duration': 3.0}
+
+    def _fp(self, cache_path, renderer):
+        return StreamCacheManager(
+            cache_path=cache_path, renderer_type=renderer
+        ).compute_fingerprint(self.STREAM)
+
+    def test_backend_diversi_danno_fingerprint_diversi(self, cache_path):
+        fps = {self._fp(cache_path, r)
+               for r in ('numpy', 'csound', 'supercollider')}
+        assert len(fps) == 3
+
+    def test_lo_stesso_backend_da_lo_stesso_fingerprint(self, cache_path):
+        assert self._fp(cache_path, 'numpy') == self._fp(cache_path, 'numpy')
+
+    def test_uno_stem_reso_da_un_altro_backend_e_dirty(self, cache_path,
+                                                       tmp_path):
+        """L'invariante vera: non l'hash, ma che lo stem venga rirenderizzato."""
+        aif = tmp_path / 'PGE_test__s1.aif'
+        aif.touch()
+        numpy_mgr = StreamCacheManager(cache_path=cache_path,
+                                       renderer_type='numpy')
+        numpy_mgr.update_after_build([self.STREAM])
+
+        sc_mgr = StreamCacheManager(cache_path=cache_path,
+                                    renderer_type='supercollider')
+        assert sc_mgr.is_dirty(self.STREAM, str(aif))
+        assert not numpy_mgr.is_dirty(self.STREAM, str(aif))

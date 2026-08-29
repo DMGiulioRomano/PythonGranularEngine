@@ -50,18 +50,22 @@ class SuperColliderOptions:
     l'omologo di `orc_path` per Csound -- e `synthdef_dir` la directory dove
     sta (o viene scritto) il .scsyndef compilato, che e' un artefatto di
     build: sclang gira solo quando manca o quando il sorgente e' piu'
-    recente, il rendering vero invoca solo scsynth. Per questo il default
-    NON e' `generated/`, che `make clean` svuota: un artefatto persistente
-    cancellato a ogni build farebbe di sclang una dipendenza di runtime.
+    recente, il rendering vero invoca solo scsynth.
+
+    Tutti i default sono `None` = "il default del renderer", e i valori veri
+    vivono in un posto solo (le costanti DEFAULT_* di
+    supercollider_renderer). Ricopiarli qui e nella CLI faceva quattro valori
+    in cinque posti, e tre default della stessa cosa che divergono sono tre
+    comportamenti diversi a seconda di come si entra.
     """
-    synthdef_source: str = 'supercollider/pge_grain.scd'
-    synthdef_dir: str = 'supercollider'   # accanto al .scd, fuori da GENDIR
-    scsynth_bin: str = 'scsynth'
-    sclang_bin: str = 'sclang'
-    # 1 = onset campione-accurati, come ksmps=1 di csound/main.orc.
-    block_size: int = 1
-    max_nodes: int = 32768
-    osc_dir: Optional[str] = None      # None -> .osc temporanei (--keep-osc off)
+    synthdef_source: Optional[str] = None   # -> DEFAULT_SYNTHDEF_SOURCE
+    synthdef_dir: Optional[str] = None      # -> DEFAULT_SYNTHDEF_DIR (fuori da GENDIR)
+    scsynth_bin: Optional[str] = None       # -> 'scsynth' dal PATH
+    sclang_bin: Optional[str] = None        # -> 'sclang' dal PATH
+    block_size: Optional[int] = None        # -> DEFAULT_BLOCK_SIZE (1, come ksmps=1)
+    max_nodes: Optional[int] = None         # -> DEFAULT_MAX_NODES
+    timeout: Optional[float] = None         # -> DEFAULT_TIMEOUT_SEC
+    osc_dir: Optional[str] = None           # None -> .osc temporanei (--keep-osc off)
 
 
 @dataclass
@@ -161,18 +165,22 @@ def _with_trailing_sep(samples_dir):
 
 
 def _make_cache_manager(cache_manifest_path: Optional[str],
-                        samples_dir: Optional[str] = None):
+                        samples_dir: Optional[str] = None,
+                        renderer_type: Optional[str] = None):
     """StreamCacheManager sul manifest esplicito; None = cache disattiva.
 
     `samples_dir` serve al fingerprint degli stream senza `duration` (#205),
     che risolve la durata dal file audio: senza, la risoluzione userebbe
-    PATHSAMPLES anche quando i sample stanno altrove.
+    PATHSAMPLES anche quando i sample stanno altrove. `renderer_type` ci
+    entra per lo stesso motivo (#228): lo stem dipende dal backend che lo
+    rende, e il testo YAML non lo dice.
     """
     if cache_manifest_path is None:
         return None
     from pge.rendering.stream_cache_manager import StreamCacheManager
     return StreamCacheManager(cache_path=cache_manifest_path,
-                              samples_dir=samples_dir)
+                              samples_dir=samples_dir,
+                              renderer_type=renderer_type)
 
 
 def build_renderer(
@@ -219,7 +227,8 @@ def build_renderer(
             window_registry=window_reg,
             table_map=table_map,
             output_sr=output_sr,
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
+                                              renderer_type),
             stream_data_map=generator.stream_data_map,
             audio_format=audio_format,
             jobs=jobs,
@@ -250,7 +259,8 @@ def build_renderer(
             'csound',
             score_writer=generator.score_writer,
             csound_config=csound_config,
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
+                                              renderer_type),
             stream_data_map=generator.stream_data_map,
             sco_dir=opts.sco_dir,
         )
@@ -269,15 +279,21 @@ def build_renderer(
             samples_dir=_with_trailing_sep(samples_dir) or './refs/',
             output_sr=output_sr,
             audio_format=audio_format,
+            # Le chiavi None non entrano: il default e' quello del
+            # renderer, che e' l'unico posto dove i valori sono scritti.
             sc_config={
-                'synthdef_source': opts.synthdef_source,
-                'synthdef_dir': opts.synthdef_dir,
-                'scsynth_bin': opts.scsynth_bin,
-                'sclang_bin': opts.sclang_bin,
-                'block_size': opts.block_size,
-                'max_nodes': opts.max_nodes,
+                k: v for k, v in {
+                    'synthdef_source': opts.synthdef_source,
+                    'synthdef_dir': opts.synthdef_dir,
+                    'scsynth_bin': opts.scsynth_bin,
+                    'sclang_bin': opts.sclang_bin,
+                    'block_size': opts.block_size,
+                    'max_nodes': opts.max_nodes,
+                    'timeout': opts.timeout,
+                }.items() if v is not None
             },
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
+                                              renderer_type),
             stream_data_map=generator.stream_data_map,
             osc_dir=opts.osc_dir,
         )

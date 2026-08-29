@@ -65,11 +65,16 @@ class StreamCacheManager:
         samples_dir: directory dei sample audio, usata solo per risolvere la
             durata di uno stream che non dichiara `duration` (issue #205).
             None -> fallback su PATHSAMPLES, come nel resto del motore.
+        renderer_type: backend che produce gli stem ('numpy' | 'csound' |
+            'supercollider'). Entra nel fingerprint: lo stesso YAML reso da
+            due backend diversi da' due file diversi (issue #228).
     """
 
-    def __init__(self, cache_path: str, samples_dir: Optional[str] = None):
+    def __init__(self, cache_path: str, samples_dir: Optional[str] = None,
+                 renderer_type: Optional[str] = None):
         self.cache_path = cache_path
         self.samples_dir = samples_dir
+        self.renderer_type = renderer_type
 
     def _sample_dur_sec(self, sample) -> Optional[float]:
         """Durata del sample, o None se non risolvibile.
@@ -117,6 +122,14 @@ class StreamCacheManager:
         payload = {
             'semantics': VARIATION_SEMANTICS_VERSION,
             'stream': filtered,
+            # Il backend sta accanto a VARIATION_SEMANTICS_VERSION perche' e'
+            # la stessa classe di dipendenza: qualcosa da cui lo stem dipende
+            # e che il testo YAML non dice. Senza, rendere con un backend e
+            # rilanciare con un altro lascia ogni stream `clean` -- e in
+            # output l'audio del primo, annunciato come del secondo. Il
+            # confronto A/B fra backend, che #228 esiste per rendere
+            # possibile, era esattamente lo scenario rotto.
+            'renderer': self.renderer_type,
         }
         # `duration` omessa (issue #205): la lunghezza dello stem viene dal file
         # audio, e il contenuto del file non e' mai stato nell'hash. Entra qui la

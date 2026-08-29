@@ -180,17 +180,12 @@ class TestBuildRendererSuperCollider:
         assert kwargs['table_map'] == self._table_map()
 
     def test_default_sc_config(self, api_mocks):
+        """Opzioni non specificate = chiavi assenti: il default e' quello del
+        renderer, scritto in un posto solo (review PR #240)."""
         gen = api_mocks['generator_instance']
         api_mocks['api'].build_renderer('supercollider', gen)
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
-        assert kwargs['sc_config'] == {
-            'synthdef_source': 'supercollider/pge_grain.scd',
-            'synthdef_dir': 'supercollider',
-            'scsynth_bin': 'scsynth',
-            'sclang_bin': 'sclang',
-            'block_size': 1,
-            'max_nodes': 32768,
-        }
+        assert kwargs['sc_config'] == {}
         assert kwargs['osc_dir'] is None
         assert kwargs['cache_manager'] is None
 
@@ -300,7 +295,9 @@ class TestBuildRendererCache:
             api_mocks['api'].build_renderer(
                 'numpy', gen, cache_manifest_path='cache/x.json')
 
-        scm_cls.assert_called_once_with(cache_path='cache/x.json', samples_dir=None)
+        scm_cls.assert_called_once_with(cache_path='cache/x.json',
+                                        samples_dir=None,
+                                        renderer_type='numpy')
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['cache_manager'] is scm_instance
         assert capsys.readouterr().out == ''
@@ -314,7 +311,9 @@ class TestBuildRendererCache:
             api_mocks['api'].build_renderer(
                 'csound', gen, cache_manifest_path='cache/y.json')
 
-        scm_cls.assert_called_once_with(cache_path='cache/y.json', samples_dir=None)
+        scm_cls.assert_called_once_with(cache_path='cache/y.json',
+                                        samples_dir=None,
+                                        renderer_type='csound')
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['cache_manager'] is scm_instance
         assert capsys.readouterr().out == ''
@@ -335,7 +334,8 @@ class TestBuildRendererCache:
                 samples_dir='/media/wavs')
 
         scm_cls.assert_called_once_with(cache_path='cache/y.json',
-                                        samples_dir='/media/wavs')
+                                        samples_dir='/media/wavs',
+                                        renderer_type='csound')
 
 
 class TestBuildRendererUnknownType:

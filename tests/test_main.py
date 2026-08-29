@@ -644,28 +644,22 @@ class TestRendererFlag:
             mocks, ['main.py', 'test.yml', 'out.aif'])
         assert build_mock.call_args.kwargs['cache_manifest_path'] is None
 
-    def test_cache_manifest_composed_from_cache_dir_yaml_and_renderer(self, mocks, capsys):
-        """--cache: la CLI compone cache_dir/{yaml_basename}.{renderer}.json
-        e stampa [CACHE] Manifest: (policy CLI, l'API non stampa).
-
-        Il nome portava il solo basename fino alla review di #228. Il
-        fingerprint guarda solo il dict YAML dello stream, quindi con un
-        manifest condiviso rendere con un backend e rilanciare con un altro
-        lasciava ogni stream `clean`: nessuno veniva rirenderizzato e in
-        output restava l'audio del primo, annunciato come del secondo."""
+    def test_cache_manifest_composed_from_cache_dir_and_yaml(self, mocks, capsys):
+        """--cache: la CLI compone cache_dir/{yaml_basename}.json e stampa
+        [CACHE] Manifest: (policy CLI, l'API non stampa)."""
         import os
         build_mock, _, _ = self._run_delegated(
             mocks,
             ['main.py', 'configs/PGE_test.yml', 'out.aif',
              '--cache', '--cache-dir', 'mycache'])
-        expected = os.path.join('mycache', 'PGE_test.csound.json')
+        expected = os.path.join('mycache', 'PGE_test.json')
         assert build_mock.call_args.kwargs['cache_manifest_path'] == expected
         assert f"[CACHE] Manifest: {expected}\n" in capsys.readouterr().out
 
-    def test_cache_manifest_separa_i_backend(self, mocks):
-        """Due renderer, due manifest: e' l'invariante, non un dettaglio del
-        nome."""
-        import os
+    def test_cache_manifest_uno_per_progetto(self, mocks):
+        """Il backend NON entra nel nome del manifest: separa gli stem dal
+        fingerprint (vedi TestFingerprintRenderer). Un manifest solo tiene il
+        GC che li vede tutti e il path che PGE-ui gia' conosce."""
         visti = set()
         for renderer in ('numpy', 'csound', 'supercollider'):
             build_mock, _, _ = self._run_delegated(
@@ -673,7 +667,7 @@ class TestRendererFlag:
                 ['main.py', 'configs/PGE_test.yml', 'out.aif',
                  '--renderer', renderer, '--cache'])
             visti.add(build_mock.call_args.kwargs['cache_manifest_path'])
-        assert len(visti) == 3, visti
+        assert len(visti) == 1, visti
 
     def test_csound_none_for_numpy(self, mocks):
         build_mock, _, _ = self._run_delegated(
@@ -867,16 +861,11 @@ class TestSuperColliderArgs:
                 '--renderer', 'supercollider', *extra]
 
     def test_default_options(self, mocks):
+        """Senza flag la CLI non si pronuncia: tutto None, e a decidere e' il
+        renderer -- unica sede dei valori (review PR #240)."""
         opts = self._get_sc_options(mocks, self._sc_argv())
         api_mod = mocks['main'].api
-        assert opts == api_mod.SuperColliderOptions(
-            synthdef_source='supercollider/pge_grain.scd',
-            # accanto al .scd, non in generated/: quella la svuota `make clean`
-            synthdef_dir='supercollider',
-            block_size=1,
-            max_nodes=32768,
-            osc_dir=None,
-        )
+        assert opts == api_mod.SuperColliderOptions()
 
     def test_synthdef_source(self, mocks):
         opts = self._get_sc_options(
@@ -939,16 +928,9 @@ class TestSuperColliderArgs:
                     '--sc-synthdef-dir', 'da/ignorare'])
         assert opts is None
 
-    def test_manifest_cache_per_backend(self, mocks, capsys):
-        """Il manifest porta il nome del renderer (review PR #240, punto 2).
-
-        Era `cache/<basename>.json` per tutti e tre i backend, e il
-        fingerprint guarda solo il dict YAML dello stream: rendere con numpy
-        e poi rilanciare con supercollider lasciava ogni stream `clean`, con
-        in output l'audio del primo backend annunciato come del secondo. Il
-        confronto A/B fra backend e' il motivo per cui questa PR esiste, ed
-        era esattamente lo scenario che restituiva stem stantii in silenzio.
-        """
+    def test_manifest_cache_uno_per_progetto(self, mocks, capsys):
+        """Un manifest per progetto anche col terzo backend: la separazione
+        fra backend sta nel fingerprint, non nel nome del file."""
         api_mod = mocks['main'].api
         result = api_mod.RenderResult(
             audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
@@ -960,7 +942,7 @@ class TestSuperColliderArgs:
                     '--per-stream', '--cache')):
                 mocks['main'].main()
         out = capsys.readouterr().out
-        assert 'test.supercollider.json' in out
+        assert '[CACHE] Manifest: cache/test.json' in out
 
     def test_manifest_cache_annunciato(self, mocks, capsys):
         """Il print [CACHE] Manifest esisteva solo per numpy e csound: un

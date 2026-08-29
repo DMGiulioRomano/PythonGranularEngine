@@ -59,14 +59,12 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         import os as _os
         yaml_basename = kwargs['yaml_basename']
         cache_dir = kwargs.get('cache_dir', 'cache')
-        # Il nome porta il renderer: il fingerprint guarda solo il dict YAML
-        # dello stream, quindi con un manifest solo, rendere con un backend e
-        # rilanciare con un altro lascerebbe ogni stream `clean` -- e in
-        # output l'audio del primo annunciato come del secondo. Il confronto
-        # A/B fra backend e' proprio lo scenario che restituiva stem stantii
-        # in silenzio. Invalida una volta le cache preesistenti.
-        cache_manifest_path = _os.path.join(
-            cache_dir, f"{yaml_basename}.{renderer_type}.json")
+        # Un manifest per progetto, come sempre: la separazione fra backend
+        # sta nel fingerprint (StreamCacheManager.compute_fingerprint), che
+        # e' il livello a cui vive il problema -- il manifest resta uno, il
+        # GC continua a vederli tutti e il path non cambia per chi lo legge
+        # da fuori (PGE-ui).
+        cache_manifest_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
         print(f"[CACHE] Manifest: {cache_manifest_path}")
 
     csound_options = None
@@ -85,12 +83,13 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
 
     sc_options = None
     if renderer_type == 'supercollider':
+        # Nessun default ricopiato: cio' che la CLI non ha visto resta None,
+        # e a decidere e' il renderer (unica sede dei valori).
         sc_options = api.SuperColliderOptions(
-            synthdef_source=kwargs.get(
-                'sc_synthdef_source', 'supercollider/pge_grain.scd'),
-            synthdef_dir=kwargs.get('sc_synthdef_dir', 'supercollider'),
-            block_size=kwargs.get('sc_block_size', 1),
-            max_nodes=kwargs.get('sc_max_nodes', 32768),
+            synthdef_source=kwargs.get('sc_synthdef_source'),
+            synthdef_dir=kwargs.get('sc_synthdef_dir'),
+            block_size=kwargs.get('sc_block_size'),
+            max_nodes=kwargs.get('sc_max_nodes'),
             osc_dir=kwargs.get('osc_dir'),
         )
 
@@ -430,13 +429,14 @@ def main():
 
     # --- SuperCollider config args ---
 
-    sc_synthdef_source = 'supercollider/pge_grain.scd'
+    # None = non specificato: il default sta nel renderer.
+    sc_synthdef_source = None
     if '--sc-synthdef-source' in sys.argv:
         idx = sys.argv.index('--sc-synthdef-source')
         if idx + 1 < len(sys.argv):
             sc_synthdef_source = sys.argv[idx + 1]
 
-    sc_synthdef_dir = 'supercollider'
+    sc_synthdef_dir = None
     if '--sc-synthdef-dir' in sys.argv:
         idx = sys.argv.index('--sc-synthdef-dir')
         if idx + 1 < len(sys.argv):
@@ -444,7 +444,7 @@ def main():
 
     # --sc-block-size N: 1 (default) = onset campione-accurati, come ksmps=1
     # di csound/main.orc. Alzarlo accorcia il render e quantizza gli onset.
-    sc_block_size = 1
+    sc_block_size = None
     if '--sc-block-size' in sys.argv:
         idx = sys.argv.index('--sc-block-size')
         if idx + 1 < len(sys.argv):
@@ -461,7 +461,7 @@ def main():
     # --sc-max-nodes N: nodi simultanei di scsynth, cioe' quanti grani possono
     # suonare insieme. Il default di scsynth e' 1024: una densita' alta con
     # grani lunghi lo supera e il render muore a meta'.
-    sc_max_nodes = 32768
+    sc_max_nodes = None
     if '--sc-max-nodes' in sys.argv:
         idx = sys.argv.index('--sc-max-nodes')
         if idx + 1 < len(sys.argv):

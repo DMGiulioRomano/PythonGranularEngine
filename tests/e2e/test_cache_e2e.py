@@ -141,13 +141,13 @@ def _make_build(tmp_path):
 
 
 def _manifest_path(tmp_path, renderer: str = "csound"):
-    """Path del manifest per un renderer.
+    """Path del manifest: uno per progetto, non per backend.
 
-    Il nome porta il renderer da #228: il fingerprint guarda il solo dict
-    YAML dello stream, quindi un manifest condiviso fra backend lasciava
-    ogni stream `clean` passando dall'uno all'altro.
+    A separare i backend e' il fingerprint, che include il `renderer` (#228).
+    Il parametro resta nella firma perche' i chiamanti dicono con quale
+    backend hanno reso, ma il path non ne dipende.
     """
-    return tmp_path / "cache" / f"e2e_test.{renderer}.json"
+    return tmp_path / "cache" / "e2e_test.json"
 
 
 def _load_manifest(tmp_path, renderer: str = "csound") -> dict:
@@ -188,21 +188,19 @@ class TestFirstBuild:
         assert "s1" in manifest, "s1 mancante nel manifest"
         assert "s2" in manifest, "s2 mancante nel manifest"
 
-    def test_manifest_porta_il_nome_del_renderer(self, tmp_path):
+    def test_un_solo_manifest_per_progetto(self, tmp_path):
         """Il nome del file sul disco, non solo quello che la CLI annuncia.
 
-        La separazione per backend (#228) e' verificata sui mock in
-        tests/test_main.py; qui si guarda il filesystem, che e' dove il
-        manifest condiviso faceva danno.
+        La separazione fra backend (#228) sta nel fingerprint, non nel nome:
+        il manifest resta uno, cosi' il GC continua a vedere tutti gli stem.
         """
         _write_yaml(tmp_path, _YAML_TWO_STREAMS)
         result, output = _make_build(tmp_path)
         assert result.returncode == 0, f"make fallito:\n{output}"
 
-        assert _manifest_path(tmp_path, "csound").exists()
-        assert not (tmp_path / "cache" / "e2e_test.json").exists(), (
-            "il manifest senza renderer nel nome e' quello condiviso fra "
-            "backend che #228 ha separato")
+        assert (tmp_path / "cache" / "e2e_test.json").exists()
+        assert list((tmp_path / "cache").glob("e2e_test*.json")) == [
+            tmp_path / "cache" / "e2e_test.json"]
 
     def test_both_streams_reported_dirty(self, tmp_path):
         """Stdout riporta entrambi gli stream come DIRTY alla prima build."""
