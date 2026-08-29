@@ -67,6 +67,14 @@ def strip_code_blocks(text: str) -> str:
     return "\n".join(out)
 
 
+def is_shallow() -> bool:
+    out = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+    return out.stdout.strip() == "true"
+
+
 class Linter:
     def __init__(self) -> None:
         self.errors: list[str] = []
@@ -111,7 +119,12 @@ class Linter:
                     self.err(path, f"sources path does not exist: {src}")
         sha = str(fm["last_synced_commit"]).strip()
         # Senza questo, la drift detection e' decorativa: uno SHA che non
-        # risolve non e' un riferimento, e' una stringa.
+        # risolve non e' un riferimento, e' una stringa. Su un clone shallow
+        # non risolve niente per costruzione, quindi li' il check si spegne
+        # invece di segnalare venti falsi positivi (in CI il job docs fa
+        # fetch-depth: 0 apposta per tenerlo acceso).
+        if is_shallow():
+            return
         if subprocess.run(
             ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
             cwd=REPO_ROOT,
