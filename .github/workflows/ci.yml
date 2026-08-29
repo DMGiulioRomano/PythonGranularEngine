@@ -37,8 +37,12 @@ jobs:
         # della SynthDef, una volta sola): senza, l'e2e del terzo backend si
         # skippa, e un test che si skippa non verifica niente.
         run: sudo apt-get update && sudo apt-get install -y csound sox supercollider
-      - name: generate input sample refs/pino.wav
-        run: sox -n refs/pino.wav synth 3 sine 440
+      # I sample di prova li genera uno script versionato, non una riga di
+      # workflow: cosi' la loro definizione sta nel repo e chi lavora in
+      # locale ha esattamente cio' che ha la CI. `make e2e-tests` lo chiama
+      # da se' -- qui e' esplicito solo per vederlo nel log.
+      - name: generate test samples
+        run: pip install numpy soundfile && python utils/make_test_samples.py
       # make e2e-tests fa venv-setup (richiesto: gli e2e lanciano `make all`
       # come subprocess, che usa .venv/bin/python) e poi pytest -m e2e.
       - name: run e2e suite
