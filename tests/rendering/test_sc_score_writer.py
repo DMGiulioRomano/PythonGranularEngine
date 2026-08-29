@@ -64,6 +64,15 @@ def grain(onset, duration=0.05, pointer_pos=0.0, pitch_ratio=1.0,
 TABLE_MAP = {1: ('sample', 'pino.wav'), 2: ('window', 'hanning')}
 
 
+@pytest.fixture(autouse=True)
+def sample_file(tmp_path):
+    """Il sample di TABLE_MAP, su disco: il writer verifica che i sample
+    esistano prima di metterne il path nello score."""
+    path = tmp_path / "pino.wav"
+    path.write_bytes(b'RIFF')
+    return path
+
+
 @pytest.fixture
 def writer(tmp_path):
     return SuperColliderScoreWriter(
@@ -191,6 +200,7 @@ class TestWindowBuffers:
     def test_alias_risolto_dalla_registry(self, tmp_path):
         """'triangle' e' alias di 'bartlett': il writer non tiene un secondo
         elenco di nomi validi."""
+        (tmp_path / "p.wav").write_bytes(b'RIFF')
         writer = SuperColliderScoreWriter(
             table_map={1: ('sample', 'p.wav'), 5: ('window', 'triangle')},
             window_registry=NumpyWindowRegistry(),
@@ -457,3 +467,25 @@ class TestWriteScore:
             assert data[pos + 4:pos + 12] == b'#bundle\x00'
             pos += 4 + size
         assert pos == len(data)
+
+
+class TestSampleMancante:
+    """Il ramo numpy verifica i sample col SampleRegistry e csound esce
+    non-zero su una GEN01 che non trova il file. Senza controllo qui, il path
+    finirebbe nello score senza mai toccare il filesystem e scsynth su
+    /b_allocReadChannel fallito stampa e prosegue: un nome sbagliato darebbe
+    un file di puro silenzio, exit 0."""
+
+    def test_e_un_errore_col_nome_del_file(self, tmp_path):
+        from pge.shared.exceptions import SampleNotFoundError
+
+        writer = SuperColliderScoreWriter(
+            table_map={1: ('sample', 'pinoo.wav')},
+            window_registry=NumpyWindowRegistry(),
+            synthdef_bytes=b'SCgf-FAKE',
+            samples_dir=str(tmp_path),
+            output_sr=48000,
+        )
+        with pytest.raises(SampleNotFoundError) as exc:
+            writer.build_bundles([FakeStream('s1', 0.0, 1.0, [[]])])
+        assert 'pinoo.wav' in str(exc.value)

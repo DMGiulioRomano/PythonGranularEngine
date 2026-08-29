@@ -80,6 +80,10 @@ def _render(progetto, **kwargs):
         with open(cmd[cmd.index('-N') + 1], 'rb') as f:
             catturato.setdefault('score', []).append(decode_nrt(f.read()))
         catturato.setdefault('cmd', []).append(cmd)
+        # scsynth vero scrive il file: senza, il controllo post-render del
+        # renderer lo vedrebbe mancante e solleverebbe.
+        with open(cmd[cmd.index('-N') + 3], 'wb') as f:
+            f.write(b'\0' * 64)
         return MagicMock(returncode=0, stdout='', stderr='')
 
     with patch('pge.rendering.supercollider_renderer.subprocess.run',

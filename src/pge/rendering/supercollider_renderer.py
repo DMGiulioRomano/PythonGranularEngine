@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
+import time
 import tempfile
 from typing import Any, Dict, List, Optional
 
@@ -66,9 +68,36 @@ DEFAULT_BLOCK_SIZE = 1
 
 # Nodi massimi. Il default di scsynth e' 1024, cioe' il numero di grani che
 # possono suonare insieme: una densita' alta con grani lunghi lo supera e il
-# render muore a meta'. La struttura e' una hash table di puntatori, quindi
-# alzarla costa memoria trascurabile.
+# render muore a meta'.
 DEFAULT_MAX_NODES = 32768
+
+# Real-time memory pool di scsynth, in KB. Alzare i nodi da solo non basta:
+# `-n` dimensiona la hash table dei nodi (puntatori, memoria trascurabile),
+# ma ogni /s_new alloca anche il Graph del synth -- unit, wire buffer, calc
+# units -- da questo pool, che al default di 8192 KB si esaurisce intorno a
+# qualche migliaio di grani simultanei. E si esaurisce nel modo peggiore:
+# scsynth stampa `alloc failed`, non crea il nodo, prosegue e esce 0. Il
+# tetto va quindi alzato insieme, non al posto: 1 KB per nodo e' abbondante
+# per una decina di UGen a block size 1, e 32 MB di picco per il default
+# restano niente rispetto ai buffer dei sample.
+RT_MEMORY_KB_PER_NODE = 1
+DEFAULT_RT_MEMORY_KB = 8192
+
+# Timeout dei subprocess, in secondi. Chiudere lo stdin copre sclang che
+# aspetta comandi, non un blocco parentesizzato che non arriva a `0.exit`:
+# li' sclang resta vivo col suo event loop, e con capture_output=True la
+# pipe non mostra niente. Un render che non finisce e' peggio di uno che
+# fallisce, e su CI si paga fino al timeout del job.
+DEFAULT_TIMEOUT_SEC = 3600
+
+# Timeout della sola compilazione, molto piu' corto: scrivere una SynthDef
+# e' lavoro di un secondo, non di un'ora, e qui il timeout serve solo al
+# caso in cui sclang non scriva NULLA (vedi _compile_synthdef: l'attesa
+# normale finisce quando compare il file, non quando esce il processo).
+DEFAULT_COMPILE_TIMEOUT_SEC = 120
+
+# Grazia concessa a sclang per uscire da solo dopo aver scritto il file.
+COMPILE_EXIT_GRACE_SEC = 5.0
 
 # subtype di libsndfile -> sample format di scsynth. Il header format
 # (AIFF/WAV/FLAC) invece coincide gia' con `AudioFormat.sf_format`.
@@ -79,6 +108,16 @@ _SAMPLE_FORMATS = {
     'PCM_24': 'int24',
     'PCM_32': 'int32',
 }
+
+
+# Marcatori dei guasti che scsynth riporta senza codice d'errore.
+_FAILURE_MARKERS = (
+    'FAILURE IN SERVER',
+    'could not be opened',
+    "Couldn't open",
+    'alloc failed',
+    'exception in GraphDef_Recv',
+)
 
 
 class SuperColliderRenderer(AudioRenderer):
@@ -193,22 +232,74 @@ class SuperColliderRenderer(AudioRenderer):
         Le opzioni precedono `-N`: tutto cio' che segue viene letto come
         argomento posizionale (score, input, output, sr, header, formato).
         """
+        max_nodes = int(self.sc_config.get('max_nodes', DEFAULT_MAX_NODES))
         cmd = [
             self.sc_config.get('scsynth_bin', 'scsynth'),
             '-o', '2',                                     # uscita stereo
             '-i', '0',                                     # nessun ingresso
             '-z', str(self.sc_config.get('block_size', DEFAULT_BLOCK_SIZE)),
-            '-n', str(self.sc_config.get('max_nodes', DEFAULT_MAX_NODES)),
+            '-n', str(max_nodes),
+            '-m', str(self._rt_memory_kb(max_nodes)),
             '-N', osc_path, '_', output_path,
             str(self.output_sr),
             self.audio_format.sf_format,
             self._sample_format(),
         ]
-        self._run(cmd, stage='scsynth', hint=(
+        result = self._run(cmd, stage='scsynth', hint=(
             "Installa SuperCollider (Debian/Ubuntu: apt install supercollider; "
             "macOS: brew install --cask supercollider) oppure usa "
             "--renderer numpy."
         ))
+        self._check_render_succeeded(cmd, result, output_path)
+
+    @staticmethod
+    def _rt_memory_kb(max_nodes: int) -> int:
+        """Dimensione del real-time memory pool (-m) per quel tetto di nodi."""
+        return max(DEFAULT_RT_MEMORY_KB, max_nodes * RT_MEMORY_KB_PER_NODE)
+
+    @staticmethod
+    def _check_render_succeeded(cmd, result, output_path: str) -> None:
+        """scsynth esce 0 anche quando non ha reso niente: qui si verifica.
+
+        Tre guasti reali finiscono con returncode 0 e la CLI che annuncia
+        `Rendering completato`:
+
+        - output non apribile (directory assente, permessi): scsynth stampa
+          `Couldn't open non real time output file` e il file non esiste;
+        - `/b_allocReadChannel` su un sample mancante: buffer vuoto, render
+          che prosegue, audio di puro silenzio;
+        - `/s_new` fallito (nodi o memoria esauriti): i grani spariscono uno
+          a uno, senza codice d'errore.
+
+        Csound in questi casi esce non-zero e NumPy solleva; senza questo
+        controllo il backend nuovo sarebbe l'unico a restituire silenzio
+        annunciandolo come suono.
+        """
+        from pge.shared.exceptions import SuperColliderRenderError
+
+        output = f"{result.stdout or ''}\n{result.stderr or ''}"
+        failures = [
+            line for line in output.splitlines()
+            if any(marker in line for marker in _FAILURE_MARKERS)
+        ]
+        if failures:
+            raise SuperColliderRenderError(
+                returncode=result.returncode,
+                command=list(cmd),
+                stderr=result.stderr or "",
+                stdout="\n".join(failures),
+                stage='scsynth',
+            )
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise SuperColliderRenderError(
+                returncode=result.returncode,
+                command=list(cmd),
+                stderr=(f"scsynth e' uscito senza errori ma {output_path} "
+                        f"non esiste o e' vuoto: nessun audio e' stato reso."),
+                stdout=result.stdout or "",
+                stage='scsynth',
+            )
 
     def _sample_format(self) -> str:
         """subtype libsndfile -> sample format di scsynth.
@@ -284,30 +375,99 @@ class SuperColliderRenderer(AudioRenderer):
         # su un server e' la condizione normale, non un caso limite. E' un
         # default, non un'imposizione: chi ha un display e lo vuole usare lo
         # dichiara nel proprio ambiente e vince.
+        #
+        # NON su macOS: il bundle SuperCollider.app spedisce il solo plugin
+        # `cocoa`, e chiedere `offscreen` fa abortire sclang esattamente come
+        # il display mancante lo fa abortire su Linux (`Available platform
+        # plugins are: cocoa.`, SIGABRT). Il rimedio a un guasto sarebbe lo
+        # stesso guasto sull'altra piattaforma.
         env = {**os.environ, 'PGE_SYNTHDEF_DIR': target_dir}
-        env.setdefault('QT_QPA_PLATFORM', 'offscreen')
-        self._run(
+        if sys.platform != 'darwin':
+            env.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        self._compile_synthdef(
             [self.sc_config.get('sclang_bin', 'sclang'), source],
-            stage='sclang',
-            hint=("Compila la SynthDef una volta con `make sc-synthdef`. "
-                  "Serve sclang, che arriva nello stesso pacchetto di "
-                  "scsynth; in alternativa compilala altrove e indica la "
-                  "directory con --sc-synthdef-dir."),
-            env=env,
-        )
-
-        if not os.path.exists(compiled):
-            from pge.shared.exceptions import SuperColliderRenderError
-            raise SuperColliderRenderError(
-                returncode=0,
-                command=[self.sc_config.get('sclang_bin', 'sclang'), source],
-                stderr=(f"sclang e' uscito senza errori ma {compiled} non "
-                        f"esiste: lo script non ha scritto la SynthDef."),
-                stage='sclang',
-            )
+            compiled=compiled, env=env)
 
         with open(compiled, 'rb') as f:
             return f.read()
+
+    def _compile_synthdef(self, cmd: List[str], *, compiled: str, env) -> None:
+        """Lancia sclang e aspetta il .scsyndef, non l'uscita del processo.
+
+        Su macOS `0.exit` non termina sclang: lo script scrive la SynthDef in
+        un secondo e poi il processo resta dentro l'event loop di Cocoa
+        (`-[NSApplication run]`), vivo e inerte. Aspettare il codice d'uscita
+        significherebbe aspettare il timeout a ogni compilazione, per un
+        lavoro gia' finito -- un blocco travestito da attesa.
+
+        Il risultato di questo passo e' il file. Quello si attende; il
+        processo viene chiuso dopo, con una grazia perche' esca da solo
+        (che e' anche il tempo in cui finisce di scrivere). Su Linux sclang
+        esce per conto suo e il ramo normale resta quello di sempre.
+        """
+        from pge.shared.exceptions import (
+            SuperColliderNotFoundError, SuperColliderRenderError,
+        )
+
+        hint = ("Compila la SynthDef una volta con `make sc-synthdef`. "
+                "Serve sclang, che arriva nello stesso pacchetto di "
+                "scsynth; in alternativa compilala altrove e indica la "
+                "directory con --sc-synthdef-dir.")
+        timeout = self.sc_config.get(
+            'compile_timeout', DEFAULT_COMPILE_TIMEOUT_SEC)
+
+        # Il .scsyndef vecchio se ne va prima: cosi' "il file c'e'" basta
+        # come condizione, senza confronti di mtime su un filesystem che
+        # potrebbe non distinguere due scritture nello stesso secondo. Se
+        # c'era, era comunque quello che stiamo ricompilando.
+        if os.path.exists(compiled):
+            os.unlink(compiled)
+
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL, env=env, text=True)
+        except FileNotFoundError:
+            raise SuperColliderNotFoundError(
+                what=f"binario '{cmd[0]}'", hint=hint) from None
+
+        deadline = time.monotonic() + timeout
+        scritto = False
+        while True:
+            if os.path.exists(compiled):
+                scritto = True
+                break
+            if proc.poll() is not None:
+                break                       # uscito senza scrivere niente
+            if time.monotonic() > deadline:
+                proc.kill()
+                proc.communicate()
+                raise SuperColliderRenderError(
+                    returncode=-1, command=cmd,
+                    stderr=(f"sclang non ha scritto {compiled} entro "
+                            f"{timeout}s ed e' stato interrotto."),
+                    stage='sclang')
+            time.sleep(0.05)
+
+        if proc.poll() is None:
+            # Ha scritto ma non e' uscito: la grazia gli lascia il tempo di
+            # chiudere da solo e di finire di scrivere il file.
+            try:
+                proc.wait(timeout=COMPILE_EXIT_GRACE_SEC)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=COMPILE_EXIT_GRACE_SEC)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+        stdout, stderr = proc.communicate()
+
+        if not scritto:
+            raise SuperColliderRenderError(
+                returncode=proc.returncode, command=cmd,
+                stderr=stderr or (f"sclang e' uscito senza scrivere "
+                                  f"{compiled}."),
+                stdout=stdout or "", stage='sclang')
 
     @staticmethod
     def _needs_compile(source: str, compiled: str) -> bool:
@@ -328,33 +488,48 @@ class SuperColliderRenderer(AudioRenderer):
     # INTERNAL - subprocess
     # =========================================================================
 
-    @staticmethod
-    def _run(cmd: List[str], *, stage: str, hint: str, env=None) -> None:
-        """Esegue un binario SuperCollider e traduce i suoi due modi di
-        fallire in due eccezioni distinte, perche' hanno rimedi distinti."""
+    def _run(self, cmd: List[str], *, stage: str, hint: str, env=None):
+        """Esegue un binario SuperCollider e traduce i suoi modi di fallire
+        in eccezioni distinte, perche' hanno rimedi distinti."""
         from pge.shared.exceptions import (
             SuperColliderNotFoundError, SuperColliderRenderError,
         )
 
+        timeout = self.sc_config.get('timeout', DEFAULT_TIMEOUT_SEC)
         try:
             # stdin chiuso: sclang senza terminale resta in attesa sullo
             # stdin invece di uscire, e un render che non finisce e' peggio
             # di uno che fallisce.
             result = subprocess.run(cmd, capture_output=True, text=True,
-                                    env=env, stdin=subprocess.DEVNULL)
+                                    env=env, stdin=subprocess.DEVNULL,
+                                    timeout=timeout)
         except FileNotFoundError:
             raise SuperColliderNotFoundError(
                 what=f"binario '{cmd[0]}'",
                 hint=hint,
             ) from None
+        except subprocess.TimeoutExpired:
+            raise SuperColliderRenderError(
+                returncode=-1,
+                command=cmd,
+                stderr=(f"{stage} non ha terminato entro {timeout}s ed e' "
+                        f"stato interrotto."),
+                stage=stage,
+            ) from None
 
         if result.returncode != 0:
+            # Anche lo stdout: e' li' che sclang posta i propri errori, e
+            # senza di esso un refuso nella SynthDef arriva con la sola riga
+            # dell'exit code e un hint che consiglia il comando appena
+            # fallito.
             raise SuperColliderRenderError(
                 returncode=result.returncode,
                 command=cmd,
                 stderr=result.stderr or "",
+                stdout=result.stdout or "",
                 stage=stage,
             )
+        return result
 
     # =========================================================================
     # INTERNAL - cache (stessa semantica di CsoundRenderer/NumpyAudioRenderer)

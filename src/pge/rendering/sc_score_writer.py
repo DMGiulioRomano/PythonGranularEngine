@@ -146,7 +146,7 @@ class SuperColliderScoreWriter:
         events: Dict[float, List[bytes]] = {}
         node_id = NODE_ID_START
         for stream, grain in self._ordered_grains(streams, per_stream):
-            onset = grain.onset - (stream.onset if per_stream else 0.0)
+            onset = self._score_time(grain.onset, stream, per_stream)
             if onset < 0:
                 raise ValueError(
                     f"Stream '{getattr(stream, 'stream_id', '?')}': grano con "
@@ -203,6 +203,16 @@ class SuperColliderScoreWriter:
         e' una divergenza che precede questo backend, non una che introduce.
         """
         path = os.path.abspath(os.path.join(self.samples_dir, filename))
+        # Il ramo numpy verifica i sample caricandoli col SampleRegistry, e
+        # csound esce non-zero su una GEN01 che non trova il file. Qui il
+        # path finirebbe nello score senza mai toccare il filesystem, e
+        # scsynth su /b_allocReadChannel fallito stampa e prosegue: un nome
+        # sbagliato darebbe un file di puro silenzio, exit 0. Non serve
+        # caricare i campioni per verificarli.
+        if not os.path.exists(path):
+            from pge.shared.exceptions import SampleNotFoundError
+            raise SampleNotFoundError(filename=filename,
+                                      search_path=self.samples_dir)
         return osc.message('/b_allocReadChannel', bufnum, path, 0, 0, 0)
 
     def _window_messages(self, bufnum: int, values: Sequence[float]) -> List[bytes]:
@@ -220,6 +230,18 @@ class SuperColliderScoreWriter:
     # =========================================================================
 
     @staticmethod
+    def _score_time(t: float, stream, per_stream: bool) -> float:
+        """Istante assoluto -> istante dello score.
+
+        L'unica regola di offset del writer: in STEMS lo stream parte da zero
+        nel proprio file, in MIX i tempi restano assoluti. Era scritta in tre
+        punti (ordinamento, bundle dei grani, fine dello score) e in due
+        grafie diverse; la prossima modalita' di onset -- per-voice, gia'
+        prevista in architecture.md -- si corregge qui.
+        """
+        return t - (stream.onset if per_stream else 0.0)
+
+    @staticmethod
     def _ordered_grains(streams: Sequence, per_stream: bool):
         """Coppie (stream, grain) in ordine di onset di score.
 
@@ -235,8 +257,10 @@ class SuperColliderScoreWriter:
             for voice in stream.voices
             for grain in voice
         ]
-        offset = (lambda s: s.onset) if per_stream else (lambda s: 0.0)
-        return sorted(pairs, key=lambda pair: pair[1].onset - offset(pair[0]))
+        return sorted(
+            pairs,
+            key=lambda pair: SuperColliderScoreWriter._score_time(
+                pair[1].onset, pair[0], per_stream))
 
     def _grain_message(self, grain, node_id: int) -> bytes:
         """Un /s_new per grano.
@@ -284,11 +308,11 @@ class SuperColliderScoreWriter:
         dell'ultimo grano. Il renderer non ha opinioni sui bounds, si adatta
         al contenuto.
         """
-        offset = (lambda s: s.onset) if per_stream else (lambda s: 0.0)
-        ends = [stream.onset + stream.duration - offset(stream)
+        ends = [self._score_time(stream.onset + stream.duration,
+                                 stream, per_stream)
                 for stream in streams]
         ends.extend(
-            grain.onset + grain.duration - offset(stream)
+            self._score_time(grain.onset + grain.duration, stream, per_stream)
             for stream in streams
             for voice in stream.voices
             for grain in voice
