@@ -85,11 +85,12 @@ DSP. È il prezzo della rappresentazione intermedia esplicita: la lista di
 `Grain` esiste come oggetto ispezionabile prima di diventare campioni, ed è
 quello che rende possibili la `map`, gli export e il debugging.
 
-In memoria quella lista costa poco: **~225 byte per grano** (`Grain` ha
-`__slots__` e 8 campi), cioè 8,5 MB per 38 000 grani. Il picco del processo è
-dominato da NumPy e dal buffer audio, non dai grani. Se ne teneva una seconda
-copia — la vista flat, ~8 MB per milione di grani — finché la issue #201 non
-l'ha resa derivata.
+In memoria quella lista costa **~225 byte per grano** (`Grain` ha `__slots__`
+e 8 campi): 50 MB per i 221 082 grani di `PGE_ff2_rassegna.yml`, 224 MB per i
+994 555 di `PGE_cim.yml`. Non è trascurabile nel regime denso, ma il picco del
+processo resta dominato da NumPy e dal buffer audio, non dai grani. Se ne
+teneva una seconda copia — la vista flat, ~8 MB per milione di grani — finché
+la issue #201 non l'ha resa derivata.
 
 ## Trade-off
 
