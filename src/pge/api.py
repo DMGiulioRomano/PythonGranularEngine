@@ -42,12 +42,38 @@ class CsoundOptions:
     sco_dir: Optional[str] = None      # None -> .sco temporanei (--keep-sco off)
 
 
+@dataclass(frozen=True)
+class SuperColliderOptions:
+    """Opzioni renderer SuperCollider (issue #228).
+
+    `synthdef_source` e' il sorgente .scd della SynthDef del grano --
+    l'omologo di `orc_path` per Csound -- e `synthdef_dir` la directory dove
+    sta (o viene scritto) il .scsyndef compilato, che e' un artefatto di
+    build: sclang gira solo quando manca o quando il sorgente e' piu'
+    recente, il rendering vero invoca solo scsynth.
+
+    Tutti i default sono `None` = "il default del renderer", e i valori veri
+    vivono in un posto solo (le costanti DEFAULT_* di
+    supercollider_renderer). Ricopiarli qui e nella CLI faceva quattro valori
+    in cinque posti, e tre default della stessa cosa che divergono sono tre
+    comportamenti diversi a seconda di come si entra.
+    """
+    synthdef_source: Optional[str] = None   # -> DEFAULT_SYNTHDEF_SOURCE
+    synthdef_dir: Optional[str] = None      # -> DEFAULT_SYNTHDEF_DIR (fuori da GENDIR)
+    scsynth_bin: Optional[str] = None       # -> 'scsynth' dal PATH
+    sclang_bin: Optional[str] = None        # -> 'sclang' dal PATH
+    block_size: Optional[int] = None        # -> DEFAULT_BLOCK_SIZE (1, come ksmps=1)
+    max_nodes: Optional[int] = None         # -> DEFAULT_MAX_NODES
+    timeout: Optional[float] = None         # -> DEFAULT_TIMEOUT_SEC
+    osc_dir: Optional[str] = None           # None -> .osc temporanei (--keep-osc off)
+
+
 @dataclass
 class RenderResult:
     """Esito di un render: tutto cio' che serve alla CLI per i suoi print."""
     audio_paths: List[str]             # 1 file in MIX, N in STEMS
     elapsed_seconds: float             # durata della sola engine.render
-    renderer_type: str                 # 'numpy' | 'csound'
+    renderer_type: str                 # 'numpy' | 'csound' | 'supercollider'
     per_stream: bool
     jobs: Optional[int] = None         # jobs risolti (renderer.jobs); None per csound
     cache_manifest_path: Optional[str] = None
@@ -93,6 +119,17 @@ def parameter_bounds(
     }
 
 
+def renderer_types() -> List[str]:
+    """Tipi di renderer accettati da build_renderer, ordinati.
+
+    Passa da RendererFactory invece di tenerne una copia: e' cosi' che un
+    backend nuovo diventa visibile a tutti i chiamanti -- CLI, editor,
+    language server -- senza che ognuno aggiorni il proprio elenco.
+    """
+    from pge.rendering.renderer_factory import RendererFactory
+    return list(RendererFactory.available_types())
+
+
 def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
     """Generator(yaml) + load_yaml() + create_elements().
 
@@ -128,22 +165,26 @@ def _with_trailing_sep(samples_dir):
 
 
 def _make_cache_manager(cache_manifest_path: Optional[str],
-                        samples_dir: Optional[str] = None):
+                        samples_dir: Optional[str] = None,
+                        renderer_type: Optional[str] = None):
     """StreamCacheManager sul manifest esplicito; None = cache disattiva.
 
     `samples_dir` serve al fingerprint degli stream senza `duration` (#205),
     che risolve la durata dal file audio: senza, la risoluzione userebbe
-    PATHSAMPLES anche quando i sample stanno altrove.
+    PATHSAMPLES anche quando i sample stanno altrove. `renderer_type` ci
+    entra per lo stesso motivo (#228): lo stem dipende dal backend che lo
+    rende, e il testo YAML non lo dice.
     """
     if cache_manifest_path is None:
         return None
     from pge.rendering.stream_cache_manager import StreamCacheManager
     return StreamCacheManager(cache_path=cache_manifest_path,
-                              samples_dir=samples_dir)
+                              samples_dir=samples_dir,
+                              renderer_type=renderer_type)
 
 
 def build_renderer(
-    renderer_type: str,                          # 'numpy' | 'csound'
+    renderer_type: str,                          # 'numpy' | 'csound' | 'supercollider'
     generator,
     *,
     output_sr: int = DEFAULT_OUTPUT_SR,
@@ -152,6 +193,7 @@ def build_renderer(
     samples_dir: Optional[str] = None,           # -> SampleRegistry(base_path=...)/SSDIR
     cache_manifest_path: Optional[str] = None,   # None = cache disattiva
     csound: Optional[CsoundOptions] = None,      # None -> CsoundOptions() se serve
+    supercollider: Optional[SuperColliderOptions] = None,  # idem
 ):
     """Compone l'AudioRenderer per il generator dato.
 
@@ -185,7 +227,8 @@ def build_renderer(
             window_registry=window_reg,
             table_map=table_map,
             output_sr=output_sr,
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
+                                              renderer_type),
             stream_data_map=generator.stream_data_map,
             audio_format=audio_format,
             jobs=jobs,
@@ -216,15 +259,49 @@ def build_renderer(
             'csound',
             score_writer=generator.score_writer,
             csound_config=csound_config,
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir),
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
+                                              renderer_type),
             stream_data_map=generator.stream_data_map,
             sco_dir=opts.sco_dir,
+        )
+
+    if renderer_type == 'supercollider':
+        opts = supercollider if supercollider is not None else SuperColliderOptions()
+        from pge.rendering.numpy_window_registry import NumpyWindowRegistry
+
+        # Nessun SampleRegistry: i sample li apre scsynth. Caricarli anche
+        # qui sarebbe il doppio della RAM per un dato che non usiamo -- la
+        # asimmetria col ramo numpy e' voluta.
+        return RendererFactory.create(
+            'supercollider',
+            table_map=generator.ftable_manager.get_all_tables(),
+            window_registry=NumpyWindowRegistry(),
+            samples_dir=_with_trailing_sep(samples_dir) or './refs/',
+            output_sr=output_sr,
+            audio_format=audio_format,
+            # Le chiavi None non entrano: il default e' quello del
+            # renderer, che e' l'unico posto dove i valori sono scritti.
+            sc_config={
+                k: v for k, v in {
+                    'synthdef_source': opts.synthdef_source,
+                    'synthdef_dir': opts.synthdef_dir,
+                    'scsynth_bin': opts.scsynth_bin,
+                    'sclang_bin': opts.sclang_bin,
+                    'block_size': opts.block_size,
+                    'max_nodes': opts.max_nodes,
+                    'timeout': opts.timeout,
+                }.items() if v is not None
+            },
+            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
+                                              renderer_type),
+            stream_data_map=generator.stream_data_map,
+            osc_dir=opts.osc_dir,
         )
 
     from pge.shared.exceptions import InvalidRendererError
     raise InvalidRendererError(
         renderer_type=renderer_type,
-        available=["csound", "numpy"],
+        available=renderer_types(),
     )
 
 
@@ -275,6 +352,7 @@ def render(
     samples_dir: Optional[str] = None,
     cache_manifest_path: Optional[str] = None,
     csound: Optional[CsoundOptions] = None,
+    supercollider: Optional[SuperColliderOptions] = None,
 ) -> RenderResult:
     """Renderizza gli stream del generator in output_path, cronometrato.
 
@@ -294,6 +372,7 @@ def render(
             samples_dir=samples_dir,
             cache_manifest_path=cache_manifest_path,
             csound=csound,
+            supercollider=supercollider,
         )
     else:
         renderer_obj = renderer
@@ -350,6 +429,7 @@ def render_file(
     samples_dir: Optional[str] = None,
     cache_manifest_path: Optional[str] = None,
     csound: Optional[CsoundOptions] = None,
+    supercollider: Optional[SuperColliderOptions] = None,
 ) -> RenderResult:
     """One-shot YAML -> audio: load_generator + render.
 
@@ -380,6 +460,7 @@ def render_file(
         samples_dir=samples_dir,
         cache_manifest_path=cache_manifest_path,
         csound=csound,
+        supercollider=supercollider,
     )
 
 

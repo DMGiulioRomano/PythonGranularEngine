@@ -656,6 +656,19 @@ class TestRendererFlag:
         assert build_mock.call_args.kwargs['cache_manifest_path'] == expected
         assert f"[CACHE] Manifest: {expected}\n" in capsys.readouterr().out
 
+    def test_cache_manifest_uno_per_progetto(self, mocks):
+        """Il backend NON entra nel nome del manifest: separa gli stem dal
+        fingerprint (vedi TestFingerprintRenderer). Un manifest solo tiene il
+        GC che li vede tutti e il path che PGE-ui gia' conosce."""
+        visti = set()
+        for renderer in ('numpy', 'csound', 'supercollider'):
+            build_mock, _, _ = self._run_delegated(
+                mocks,
+                ['main.py', 'configs/PGE_test.yml', 'out.aif',
+                 '--renderer', renderer, '--cache'])
+            visti.add(build_mock.call_args.kwargs['cache_manifest_path'])
+        assert len(visti) == 1, visti
+
     def test_csound_none_for_numpy(self, mocks):
         build_mock, _, _ = self._run_delegated(
             mocks, ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy'])
@@ -823,6 +836,135 @@ class TestCsoundArgs:
             ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy',
              '--orc-path', 'should/be/ignored.orc'])
         assert opts is None
+
+
+class TestSuperColliderArgs:
+    """
+    Parsing dei CLI args del renderer SuperCollider (issue #228) e loro
+    mappa su api.SuperColliderOptions. La composizione profonda di
+    sc_config e' coperta da tests/test_api.py.
+    """
+
+    def _get_sc_options(self, mocks, argv):
+        api_mod = mocks['main'].api
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='supercollider', per_stream=False)
+        with patch.object(api_mod, 'build_renderer') as build_mock, \
+             patch.object(api_mod, 'render', return_value=result):
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
+        return build_mock.call_args.kwargs['supercollider']
+
+    def _sc_argv(self, *extra):
+        return ['main.py', 'test.yml', 'out.aif',
+                '--renderer', 'supercollider', *extra]
+
+    def test_default_options(self, mocks):
+        """Senza flag la CLI non si pronuncia: tutto None, e a decidere e' il
+        renderer -- unica sede dei valori (review PR #240)."""
+        opts = self._get_sc_options(mocks, self._sc_argv())
+        api_mod = mocks['main'].api
+        assert opts == api_mod.SuperColliderOptions()
+
+    def test_synthdef_source(self, mocks):
+        opts = self._get_sc_options(
+            mocks, self._sc_argv('--sc-synthdef-source', '/custom/grain.scd'))
+        assert opts.synthdef_source == '/custom/grain.scd'
+
+    def test_synthdef_dir(self, mocks):
+        opts = self._get_sc_options(
+            mocks, self._sc_argv('--sc-synthdef-dir', '/custom/defs'))
+        assert opts.synthdef_dir == '/custom/defs'
+
+    def test_block_size(self, mocks):
+        opts = self._get_sc_options(
+            mocks, self._sc_argv('--sc-block-size', '64'))
+        assert opts.block_size == 64
+
+    def test_max_nodes(self, mocks):
+        """Il limite oltre il quale il render muore a meta' dev'essere
+        raggiungibile dalla CLI (review PR #240, punto 4)."""
+        opts = self._get_sc_options(
+            mocks, self._sc_argv('--sc-max-nodes', '4096'))
+        assert opts.max_nodes == 4096
+
+    def test_max_nodes_non_valido_esce_con_uno(self, mocks):
+        with patch.object(sys, 'argv', self._sc_argv('--sc-max-nodes', '0')):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
+
+    def test_block_size_non_valido_esce_con_uno(self, mocks):
+        with patch.object(sys, 'argv',
+                          self._sc_argv('--sc-block-size', 'molti')):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
+
+    def test_block_size_zero_esce_con_uno(self, mocks):
+        with patch.object(sys, 'argv', self._sc_argv('--sc-block-size', '0')):
+            with pytest.raises(SystemExit) as exc:
+                mocks['main'].main()
+        assert exc.value.code == 1
+
+    def test_keep_osc_spento_di_default(self, mocks):
+        opts = self._get_sc_options(mocks, self._sc_argv())
+        assert opts.osc_dir is None
+
+    def test_keep_osc_scrive_in_generated(self, mocks):
+        """Come --keep-sco per Csound: lo score intermedio resta su disco."""
+        opts = self._get_sc_options(mocks, self._sc_argv('--keep-osc'))
+        assert opts.osc_dir == 'generated'
+
+    def test_keep_osc_con_osc_dir(self, mocks):
+        opts = self._get_sc_options(
+            mocks, self._sc_argv('--keep-osc', '--osc-dir', '/tmp/osc'))
+        assert opts.osc_dir == '/tmp/osc'
+
+    def test_args_ignorati_per_gli_altri_renderer(self, mocks):
+        opts = self._get_sc_options(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--renderer', 'numpy',
+                    '--sc-synthdef-dir', 'da/ignorare'])
+        assert opts is None
+
+    def test_manifest_cache_uno_per_progetto(self, mocks, capsys):
+        """Un manifest per progetto anche col terzo backend: la separazione
+        fra backend sta nel fingerprint, non nel nome del file."""
+        api_mod = mocks['main'].api
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='supercollider', per_stream=True)
+        with patch.object(api_mod, 'build_renderer'), \
+             patch.object(api_mod, 'render', return_value=result), \
+             patch.object(api_mod, 'collect_cache_orphans', return_value=[]):
+            with patch.object(sys, 'argv', self._sc_argv(
+                    '--per-stream', '--cache')):
+                mocks['main'].main()
+        out = capsys.readouterr().out
+        assert '[CACHE] Manifest: cache/test.json' in out
+
+    def test_manifest_cache_annunciato(self, mocks, capsys):
+        """Il print [CACHE] Manifest esisteva solo per numpy e csound: un
+        terzo backend con la cache deve annunciarlo come gli altri due."""
+        api_mod = mocks['main'].api
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='supercollider', per_stream=True)
+        with patch.object(api_mod, 'build_renderer'), \
+             patch.object(api_mod, 'render', return_value=result), \
+             patch.object(api_mod, 'collect_cache_orphans', return_value=[]):
+            with patch.object(sys, 'argv', self._sc_argv(
+                    '--per-stream', '--cache')):
+                mocks['main'].main()
+        assert '[CACHE] Manifest:' in capsys.readouterr().out
+
+    def test_usage_elenca_i_tre_renderer(self, mocks, capsys):
+        with patch.object(sys, 'argv', ['main.py']):
+            with pytest.raises(SystemExit):
+                mocks['main'].main()
+        usage = capsys.readouterr().out
+        assert '--renderer csound|numpy|supercollider' in usage
 
 
 # =============================================================================

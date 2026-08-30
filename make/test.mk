@@ -77,8 +77,17 @@ tests: venv-setup
 	@echo "🧪 [TEST] Running pytest..."
 	$(PYTEST_VENV) $(TEST_FILE)
 
+# Sample di prova per gli e2e. I .wav sono gitignorati, quindi su un checkout
+# fresco refs/ e' vuoto e gli e2e che citano pino.wav nel proprio YAML
+# falliscono dentro un `make`, con un errore che non nomina la causa. Lo
+# script non tocca i file gia' presenti: chi ha in refs/ il proprio materiale
+# non se lo vede sovrascritto.
+.PHONY: test-samples
+test-samples: venv-setup
+	@$(PYTHON_VENV) utils/make_test_samples.py
+
 # Test end-to-end: invocano make e richiedono csound installato
-e2e-tests: venv-setup
+e2e-tests: venv-setup test-samples
 	@echo "🔗 [E2E] Running end-to-end tests (richiede csound)..."
 	$(PYTEST_VENV) tests/e2e/ -m e2e -v
 

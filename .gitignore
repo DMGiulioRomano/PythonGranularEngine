@@ -734,3 +734,7 @@ $RECYCLE.BIN/
 cache
 generated 
 output
+
+# Artefatto di build della SynthDef SuperCollider (issue #228): si
+# rigenera da supercollider/pge_grain.scd con `make sc-synthdef`.
+*.scsyndef

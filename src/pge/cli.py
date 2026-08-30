@@ -38,7 +38,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     (i print sono policy CLI, l'API non stampa).
 
     Args:
-        renderer_type: 'csound' o 'numpy'
+        renderer_type: 'csound', 'numpy' o 'supercollider'
         generator: istanza di Generator con streams gia' creati
         **kwargs: argomenti specifici per ogni renderer
 
@@ -51,12 +51,19 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     from pge.rendering.audio_format import DEFAULT_FORMAT
 
     # Il print del manifest avveniva dentro i rami numpy/csound: per un tipo
-    # ignoto l'errore arrivava senza print. Parita' preservata col guard.
+    # ignoto l'errore arrivava senza print. Parita' preservata col guard, che
+    # ora chiede l'elenco all'API invece di tenerne una copia -- e' cosi' che
+    # un backend nuovo eredita l'annuncio del manifest.
     cache_manifest_path = None
-    if renderer_type in ('numpy', 'csound') and kwargs.get('use_cache'):
+    if renderer_type in api.renderer_types() and kwargs.get('use_cache'):
         import os as _os
         yaml_basename = kwargs['yaml_basename']
         cache_dir = kwargs.get('cache_dir', 'cache')
+        # Un manifest per progetto, come sempre: la separazione fra backend
+        # sta nel fingerprint (StreamCacheManager.compute_fingerprint), che
+        # e' il livello a cui vive il problema -- il manifest resta uno, il
+        # GC continua a vederli tutti e il path non cambia per chi lo legge
+        # da fuori (PGE-ui).
         cache_manifest_path = _os.path.join(cache_dir, f"{yaml_basename}.json")
         print(f"[CACHE] Manifest: {cache_manifest_path}")
 
@@ -74,6 +81,18 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
             sco_dir=kwargs.get('sco_dir'),
         )
 
+    sc_options = None
+    if renderer_type == 'supercollider':
+        # Nessun default ricopiato: cio' che la CLI non ha visto resta None,
+        # e a decidere e' il renderer (unica sede dei valori).
+        sc_options = api.SuperColliderOptions(
+            synthdef_source=kwargs.get('sc_synthdef_source'),
+            synthdef_dir=kwargs.get('sc_synthdef_dir'),
+            block_size=kwargs.get('sc_block_size'),
+            max_nodes=kwargs.get('sc_max_nodes'),
+            osc_dir=kwargs.get('osc_dir'),
+        )
+
     return api.build_renderer(
         renderer_type,
         generator,
@@ -83,6 +102,7 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         samples_dir=kwargs.get('samples_dir'),
         cache_manifest_path=cache_manifest_path,
         csound=csound_options,
+        supercollider=sc_options,
     )
 
 
@@ -193,13 +213,16 @@ def main():
             "[--page-duration SECONDI] "
             "[--grain-height duration|read-span] "
             "[--per-stream] "
-            "[--renderer csound|numpy] "
+            "[--renderer csound|numpy|supercollider] "
             "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
             "[--samples-dir DIR] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--log-dir DIR] [--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
+            "[--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] "
+            "[--sc-block-size N] [--sc-max-nodes N] "
+            "[--keep-osc] [--osc-dir DIR] "
             "[--cache] [--cache-dir DIR] "
             "[--reaper] [--reaper-path FILE] "
             "[--grain-json] "
@@ -404,6 +427,63 @@ def main():
             if idx + 1 < len(sys.argv):
                 sco_dir = sys.argv[idx + 1]
 
+    # --- SuperCollider config args ---
+
+    # None = non specificato: il default sta nel renderer.
+    sc_synthdef_source = None
+    if '--sc-synthdef-source' in sys.argv:
+        idx = sys.argv.index('--sc-synthdef-source')
+        if idx + 1 < len(sys.argv):
+            sc_synthdef_source = sys.argv[idx + 1]
+
+    sc_synthdef_dir = None
+    if '--sc-synthdef-dir' in sys.argv:
+        idx = sys.argv.index('--sc-synthdef-dir')
+        if idx + 1 < len(sys.argv):
+            sc_synthdef_dir = sys.argv[idx + 1]
+
+    # --sc-block-size N: 1 (default) = onset campione-accurati, come ksmps=1
+    # di csound/main.orc. Alzarlo accorcia il render e quantizza gli onset.
+    sc_block_size = None
+    if '--sc-block-size' in sys.argv:
+        idx = sys.argv.index('--sc-block-size')
+        if idx + 1 < len(sys.argv):
+            raw = sys.argv[idx + 1]
+            try:
+                sc_block_size = int(raw)
+            except ValueError:
+                print(f"--sc-block-size non valido: '{raw}'. Deve essere un intero >= 1.")
+                sys.exit(1)
+            if sc_block_size < 1:
+                print(f"--sc-block-size deve essere >= 1, ricevuto: {sc_block_size}")
+                sys.exit(1)
+
+    # --sc-max-nodes N: nodi simultanei di scsynth, cioe' quanti grani possono
+    # suonare insieme. Il default di scsynth e' 1024: una densita' alta con
+    # grani lunghi lo supera e il render muore a meta'.
+    sc_max_nodes = None
+    if '--sc-max-nodes' in sys.argv:
+        idx = sys.argv.index('--sc-max-nodes')
+        if idx + 1 < len(sys.argv):
+            raw = sys.argv[idx + 1]
+            try:
+                sc_max_nodes = int(raw)
+            except ValueError:
+                print(f"--sc-max-nodes non valido: '{raw}'. Deve essere un intero >= 1.")
+                sys.exit(1)
+            if sc_max_nodes < 1:
+                print(f"--sc-max-nodes deve essere >= 1, ricevuto: {sc_max_nodes}")
+                sys.exit(1)
+
+    # --keep-osc: conserva gli score .osc intermedi (omologo di --keep-sco)
+    osc_dir = None
+    if '--keep-osc' in sys.argv:
+        osc_dir = 'generated'
+        if '--osc-dir' in sys.argv:
+            idx = sys.argv.index('--osc-dir')
+            if idx + 1 < len(sys.argv):
+                osc_dir = sys.argv[idx + 1]
+
     # --format aiff|wav|flac (default: aiff)
     from pge.rendering.audio_format import FORMATS, DEFAULT_FORMAT
     audio_format = DEFAULT_FORMAT
@@ -456,6 +536,11 @@ def main():
             sco_dir=sco_dir,
             audio_format=audio_format,
             samples_dir=samples_dir,
+            sc_synthdef_source=sc_synthdef_source,
+            sc_synthdef_dir=sc_synthdef_dir,
+            sc_block_size=sc_block_size,
+            sc_max_nodes=sc_max_nodes,
+            osc_dir=osc_dir,
         )
 
         # Garbage collection: rimuove stream orfani (rimossi/rinominati nel YAML)

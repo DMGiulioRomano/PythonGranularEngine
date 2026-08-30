@@ -140,9 +140,19 @@ def _make_build(tmp_path):
     return result, output
 
 
-def _load_manifest(tmp_path) -> dict:
+def _manifest_path(tmp_path, renderer: str = "csound"):
+    """Path del manifest: uno per progetto, non per backend.
+
+    A separare i backend e' il fingerprint, che include il `renderer` (#228).
+    Il parametro resta nella firma perche' i chiamanti dicono con quale
+    backend hanno reso, ma il path non ne dipende.
+    """
+    return tmp_path / "cache" / "e2e_test.json"
+
+
+def _load_manifest(tmp_path, renderer: str = "csound") -> dict:
     """Carica il manifest JSON dalla cache temporanea."""
-    manifest_path = tmp_path / "cache" / "e2e_test.json"
+    manifest_path = _manifest_path(tmp_path, renderer)
     if not manifest_path.exists():
         return {}
     return json.loads(manifest_path.read_text())
@@ -177,6 +187,20 @@ class TestFirstBuild:
         manifest = _load_manifest(tmp_path)
         assert "s1" in manifest, "s1 mancante nel manifest"
         assert "s2" in manifest, "s2 mancante nel manifest"
+
+    def test_un_solo_manifest_per_progetto(self, tmp_path):
+        """Il nome del file sul disco, non solo quello che la CLI annuncia.
+
+        La separazione fra backend (#228) sta nel fingerprint, non nel nome:
+        il manifest resta uno, cosi' il GC continua a vedere tutti gli stem.
+        """
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        result, output = _make_build(tmp_path)
+        assert result.returncode == 0, f"make fallito:\n{output}"
+
+        assert (tmp_path / "cache" / "e2e_test.json").exists()
+        assert list((tmp_path / "cache").glob("e2e_test*.json")) == [
+            tmp_path / "cache" / "e2e_test.json"]
 
     def test_both_streams_reported_dirty(self, tmp_path):
         """Stdout riporta entrambi gli stream come DIRTY alla prima build."""

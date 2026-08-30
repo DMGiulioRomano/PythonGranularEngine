@@ -10,6 +10,147 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Terzo backend audio: SuperCollider in non-realtime** (issue #228).
+  `--renderer supercollider` (o `RENDERER=supercollider` da Make) rende via
+  `scsynth -N`:
+
+  ```
+  Stream -> SuperColliderScoreWriter -> .osc -> scsynth -N -> .aif
+  ```
+
+  Uno score NRT e' una sequenza di bundle OSC ordinati per tempo, cioe' la
+  stessa struttura del `.sco` Csound -- prima le tabelle, poi un evento per
+  grano -- in forma binaria. Lo genera Python (`rendering/osc.py` per
+  l'encoder, `rendering/sc_score_writer.py` per la partitura): il percorso di
+  rendering non fa girare nessun linguaggio intermedio.
+
+  **Il punto non era far suonare SuperCollider, era non aggiungere un terzo
+  comportamento.** Un backend che reimplementa le finestre, la conversione dei
+  dB o la soglia dei grani corti aggiunge un dialetto invece di un controllo.
+  Tre decisioni stanno percio' nello score e non nella SynthDef:
+
+  - le finestre sono tabelle riempite dalla **stessa** `NumpyWindowRegistry`
+    che usa il renderer NumPy. Non c'e' un catalogo SuperCollider: due
+    cataloghi possono divergere, uno solo no. La tabella si percorre da 0 a
+    N-1 nell'arco del grano, che e' esattamente la parametrizzazione dei
+    `linspace` con cui la registry genera ogni finestra;
+  - sotto `WINDOW_MIN_SHAPE_SAMPLES` la finestra non si applica (#225): NumPy
+    lo decide dentro `get()` perche' genera la finestra alla lunghezza del
+    grano, qui la tabella e' fissa e la decisione tocca allo score, che punta
+    il grano al buffer piatto. Csound quel difetto ce l'ha ancora;
+  - dB -> ampiezza lineare e gradi -> radianti si convertono in Python, dove
+    ci sono gia'.
+
+  La SynthDef del grano (`supercollider/pge_grain.scd`) e' l'unico DSP scritto
+  a mano, l'omologo di `csound/main.orc`, e sta nel repo come sorgente
+  leggibile. Il `.scsyndef` e' un artefatto di build: `make sc-synthdef` lo
+  compila, il renderer lo rigenera da solo quando manca o quando il sorgente
+  e' piu' recente, e i suoi byte viaggiano dentro lo score via `/d_recv`.
+  **La issue proponeva di emettere il binario da Python per non dipendere da
+  sclang: e' stata scartata.** sclang arriva nello stesso pacchetto di scsynth
+  e serve una volta per checkout, non a ogni render; un grafo di UGen
+  serializzato a mano invece nessuno lo rilegge come DSP e nessun test lo
+  valida senza un server.
+
+  Due trappole trovate facendo girare l'e2e davvero, che sono la ragione per
+  cui il job CI installa supercollider invece di lasciar skippare il test:
+  l'offset di lettura del grano va sommato FUORI dal `Phasor` e non passato
+  come `resetPos` (senza trigger il Phasor parte da `start`, cioe' da zero:
+  ogni grano leggeva dall'inizio del file, con il suono che c'era comunque e
+  solo il materiale sbagliato); e sclang, linkato a Qt, senza display aborta
+  prima di eseguire una riga.
+
+  Il `.scsyndef` compilato sta accanto al `.scd` (`supercollider/`,
+  gitignorato) e **non** in `generated/`: quella la svuota `make clean`, e con
+  `CACHE=false` il clean e' un prerequisito di `all`. Un artefatto persistente
+  li' dentro farebbe ripartire sclang a ogni build, riportandolo da dipendenza
+  di build a dipendenza di runtime.
+
+  Nota operativa: sclang e' linkato a Qt e su una macchina Linux senza
+  display aborta prima di eseguire una riga dello script. Il renderer e
+  `make sc-synthdef` impostano percio' `QT_QPA_PLATFORM=offscreen` per la
+  sola compilazione, come default sovrascrivibile -- ma **non su macOS**,
+  dove il bundle `SuperCollider.app` spedisce il solo plugin `cocoa` e
+  chiedere `offscreen` fa abortire sclang con lo stesso SIGABRT che il
+  default vuole evitare altrove. scsynth non ne ha bisogno: e' headless per
+  costruzione.
+
+  Block size 1 per default (`--sc-block-size` per cambiarlo): e' la stessa
+  scelta di `main.orc`, che gira a `ksmps=1`. Col default di scsynth gli onset
+  si quantizzerebbero a 1.33 ms a 48 kHz, e nella sintesi granulare la
+  posizione del grano e' il materiale.
+
+  Divergenze dichiarate rispetto a NumPy, nessuna delle quali e' un difetto da
+  chiudere: DC blocker e clamp restano post-processing del solo NumPy (Csound
+  non li ha); su file multicanale SuperCollider legge il primo canale come
+  Csound, mentre NumPy media (divergenza che precede questo backend);
+  interpolazione della tabella di finestra, coda della rampa e troncamento
+  della durata in campioni stanno sotto il campione. Elenco completo e misure
+  in `docs/explanation/supercollider-backend.md`.
+
+  Flag nuove: `--renderer supercollider`, `--sc-synthdef-source`,
+  `--sc-synthdef-dir`, `--sc-block-size`, `--sc-max-nodes`, `--keep-osc`,
+  `--osc-dir`. Variabili Make: `SC_SYNTHDEF_SOURCE`, `SC_SYNTHDEF_DIR`,
+  `SC_BLOCK_SIZE`, `SC_MAX_NODES`, `KEEP_OSC`,
+  piu' il target `make sc-synthdef`. Errori nuovi:
+  `SuperColliderRenderError` (che distingue `scsynth` da `sclang` nel campo
+  `stage`) e `SuperColliderNotFoundError` -- che **non** eredita da
+  `FileNotFoundError` di proposito: la CLI intercetta quel tipo per annunciare
+  «file YAML non trovato», e un binario mancante che passasse di li' verrebbe
+  riportato come una configurazione inesistente.
+
+  La cache incrementale per stem funziona come per gli altri due backend, e
+  il fingerprint ora include il **backend** (vedi sotto).
+
+  Correzioni raccolte nella review della PR:
+
+  - **scsynth esce 0 anche quando non ha reso niente.** Output non apribile,
+    `/b_allocReadChannel` su un sample mancante, `/s_new` fallito per nodi o
+    memoria esauriti: tre guasti reali che lasciavano la CLI annunciare
+    «Rendering completato» su un file inesistente o di puro silenzio. Il
+    renderer verifica ora che l'output esista e non sia vuoto, e promuove a
+    errore i marcatori (`FAILURE IN SERVER`, `could not be opened`,
+    `alloc failed`) con cui scsynth riporta a parole cio' che non riporta col
+    codice d'uscita.
+  - **Sample mancante = `SampleNotFoundError`, non un file di silenzio.** Il
+    ramo numpy verificava i sample caricandoli col `SampleRegistry`, che
+    questo backend non istanzia (li apre scsynth). Non serve caricarli per
+    verificarli: lo score writer controlla il path mentre lo scrive.
+  - **Lo stdout dei subprocess entra nel messaggio d'errore.** sclang e
+    scsynth scrivono li' i propri errori (`ERROR: Parse error`,
+    `FAILURE IN SERVER`); veniva catturato e scartato, e un refuso nella
+    SynthDef arrivava all'utente con la sola riga dell'exit code.
+  - **Timeout sui subprocess** (default un'ora per scsynth, due minuti per
+    la compilazione, configurabili via API). Chiudere lo stdin copre sclang
+    che aspetta comandi, non un blocco che non arriva a `0.exit`.
+  - **La compilazione della SynthDef aspetta il file, non il codice
+    d'uscita.** Su macOS `0.exit` non termina sclang: lo script scrive il
+    `.scsyndef` in un secondo e poi il processo resta dentro l'event loop di
+    Cocoa (`-[NSApplication run]`), vivo e inerte. Aspettarne l'uscita
+    significava aspettare il timeout a ogni compilazione — un blocco
+    travestito da attesa, che rendeva l'e2e su macOS di fatto infinito. Il
+    risultato di quel passo e' l'artefatto: quello si attende, e il processo
+    si chiude dopo. Su Linux sclang esce da solo e il ramo normale non
+    cambia.
+  - **`-m` cresce insieme a `-n`.** Alzare i nodi non basta: il `Graph` di
+    ogni `/s_new` esce dal real-time memory pool, fermo a 8192 KB, che si
+    esaurisce a qualche migliaio di grani simultanei con `alloc failed`, nodo
+    non creato ed exit 0 -- cioe' i grani spariscono in silenzio proprio alla
+    densita' per cui il flag era stato alzato.
+  - `check-system-deps` chiede anche **sclang** quando il `.scsyndef` non e'
+    ancora compilato, invece di dichiarare le dipendenze soddisfatte e
+    fallire molto piu' avanti.
+  - I default SuperCollider vivono **solo** nelle costanti del renderer: API
+    e CLI passano `None` quando l'utente non si e' pronunciato, invece di
+    ricopiare quattro valori in cinque posti.
+
+- **`RendererFactory.available_types()` e `api.renderer_types()`** (issue
+  #228). L'elenco dei backend esisteva in tre copie -- il set del factory, la
+  lista scritta a mano nel messaggio d'errore di `api.build_renderer`, e il
+  guard del print `[CACHE] Manifest:` in `cli.py`. Quest'ultimo e' il motivo
+  per cui un terzo backend con la cache attiva sarebbe rimasto senza annuncio.
+  Ora la copia e' una.
+
 - **`--samples-dir DIR`: la directory dei sample smette di essere il cwd**
   (issue #235). `Generator(yaml, samples_dir=...)` e `api.build_renderer(...,
   samples_dir=...)` accettavano una directory arbitraria da sempre, ma nessuno
@@ -23,7 +164,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Il flag raggiunge i **tre** posti da cui un run CLI legge i file audio
   sorgente: il `Generator` (durata dello stream, via `Stream` ->
   `get_sample_duration`), il renderer (`SampleRegistry` con numpy, SSDIR con
-  csound) e il visualizer (waveform in partitura). Assente, ogni default resta
+  csound, path dei buffer con supercollider) e il visualizer (waveform in partitura). Assente, ogni default resta
   quello di prima.
 
   **`--ssdir` non copriva il caso csound**, benche' lo sembri. SSDIR dice a
@@ -147,6 +288,50 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   convertito, quindi `ScoreVisualizer` e i renderer non toccano mai il valore
   grezzo. `PointerController` resta l'unico lettore di `loop_unit`, come
   `Stream._pre_normalize_grain_params` è l'unico di `duration_unit`.
+
+### Cambiato
+
+- **Il backend entra nel fingerprint della cache degli stem** (issue #228).
+  `compute_fingerprint` guardava il solo dict YAML dello stream: rendere con
+  `RENDERER=numpy` e rilanciare con `RENDERER=supercollider` lasciava ogni
+  stream `clean`, senza re-render e con in `output/` l'audio del primo
+  annunciato come del secondo -- cioe' proprio il confronto A/B fra backend.
+  Il `renderer` sta ora nel payload accanto a `VARIATION_SEMANTICS_VERSION`,
+  che esiste per la stessa classe di dipendenza: qualcosa da cui lo stem
+  dipende e che il testo YAML non dice. Il manifest resta
+  `cache/{yaml_basename}.json`, uno per progetto.
+
+  **Conseguenza al merge: le cache esistenti si invalidano una volta**, per
+  tutti e tre i backend. Il costo e' pero' condiviso: #222 alza
+  `VARIATION_SEMANTICS_VERSION` a 3 nello stesso ciclo di rilascio, quindi le
+  cache si rifanno comunque.
+
+  Resta scoperto un caso della stessa famiglia, dichiarato e non chiuso qui:
+  il **DSP non entra nel fingerprint**, quindi modificare `pge_grain.scd` o
+  `main.orc` lascia tutti gli stem `clean`.
+
+- **`CsoundRenderError` e `SuperColliderRenderError` condividono una base**
+  (`_SubprocessRenderError`): erano la stessa classe scritta due volte, e una
+  correzione al formato del messaggio andava applicata due volte o a meta'.
+  La riga del messaggio utente si chiama ora `Output:` invece di `Stderr:`,
+  perche' pesca anche dallo stdout.
+
+- **Il ramo del Makefile chiede «se non csound» invece di «se numpy»**. La
+  struttura interna di `make/build.mk` era `ifeq ($(RENDERER), numpy)` con
+  `else` su csound: qualunque renderer nuovo sarebbe finito nel ramo con
+  `CSOUND_FLAGS`. Csound e' l'unico che ha bisogno di flag propri, quindi e'
+  lui il caso speciale. Nessun cambiamento di comportamento per
+  `RENDERER=csound` e `RENDERER=numpy`.
+
+- **La usage string della CLI e il golden che la difende** si muovono per fare
+  posto ai flag `--sc-*`. Il golden (`tests/test_cli_contract.py`) esiste per
+  impedire che la CLI cambi durante un refactor: si aggiorna solo quando la
+  superficie cresce di proposito, come qui.
+
+- **Il job e2e di CI installa `supercollider`.** L'e2e del nuovo backend e'
+  l'unico posto in cui il grafo della SynthDef viene davvero eseguito: tutto
+  il resto della suite copre cio' che sta prima del subprocess. Un e2e che si
+  skippa non verifica niente.
 
 ### Corretto
 

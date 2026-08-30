@@ -255,32 +255,62 @@ class EngineRuntimeError(EngineError):
         return lines
 
 
-class CsoundRenderError(EngineRuntimeError, RuntimeError):
-    """Subprocess csound fallito (issue #38, PR4).
+class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
+    """Base dei render delegati a un binario esterno (csound, scsynth, sclang).
 
-    Eredita RuntimeError per backward-compat.
+    Csound e SuperCollider erano la stessa classe scritta due volte: stessi
+    attributi, stesso `user_message`, stessa doppia eredita' (RuntimeError e'
+    li' per i catch generici che precedono la gerarchia EngineError). Con una
+    base sola, una correzione al formato del messaggio si applica una volta.
+
+    Le sottoclassi dichiarano `stage` (che compare nel messaggio) e da quale
+    capo dei flussi pescare la riga di diagnostica: csound scrive l'errore
+    per primo, sclang e scsynth lo scrivono dopo il proprio preambolo.
     """
 
-    def __init__(self, returncode: int, command: list[str], stderr: str):
+    stage = "subprocess"
+    # Indice della riga diagnostica fra quelle non vuote: 0 = la prima.
+    diagnostic_index = 0
+
+    def __init__(self, returncode: int, command: list[str], stderr: str,
+                 stdout: str = ""):
         self.returncode = returncode
         self.command = list(command)
         self.stderr = stderr
+        # Lo stdout non e' decorativo: sclang posta li' `ERROR: Parse error` e
+        # il backtrace dell'interprete, scsynth li' scrive `FAILURE IN SERVER`.
+        # Senza, un refuso nella SynthDef arriva all'utente senza diagnostica.
+        self.stdout = stdout
         super().__init__(
-            f"Csound ha fallito con codice {returncode}.\n"
+            f"{self.stage} ha fallito con codice {returncode}.\n"
             f"Comando: {' '.join(command)}\n"
             f"Stderr: {stderr}"
         )
 
+    def diagnostic_line(self) -> str | None:
+        """Riga piu' informativa fra stderr e stdout, o None se tacciono."""
+        for stream in (self.stderr, self.stdout):
+            lines = [ln for ln in stream.splitlines() if ln.strip()]
+            if lines:
+                return lines[self.diagnostic_index].strip()
+        return None
+
     def user_message(self) -> str:
         lines = [
-            f"[ERRORE] Csound rendering fallito (exit code {self.returncode})",
+            f"[ERRORE] {self.stage} fallito (exit code {self.returncode})",
             f"  Comando:      {' '.join(self.command)}",
         ]
-        if self.stderr.strip():
-            stderr_first = self.stderr.strip().splitlines()[0]
-            lines.append(f"  Stderr:       {stderr_first}")
+        diagnostic = self.diagnostic_line()
+        if diagnostic:
+            lines.append(f"  Output:       {diagnostic}")
         lines.extend(self._context_lines())
         return "\n".join(lines)
+
+
+class CsoundRenderError(_SubprocessRenderError):
+    """Subprocess csound fallito (issue #38, PR4)."""
+
+    stage = "Csound rendering"
 
 
 class FtableError(ConfigError):
@@ -352,6 +382,48 @@ class ParameterBoundError(ConfigError):
             ]
             if ha_bounds:
                 lines.append(f"  Bounds:       {bounds}")
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
+class SuperColliderRenderError(_SubprocessRenderError):
+    """Subprocess SuperCollider fallito -- scsynth o sclang (issue #228).
+
+    Lo `stage` e' per istanza e non di classe: 'scsynth' (rendering) e
+    'sclang' (compilazione della SynthDef) sono due guasti con due rimedi
+    diversi, e il messaggio deve dire quale.
+
+    `diagnostic_index = -1`: sclang apre sempre con `compiling class
+    library...` e `Found N LADSPA plugins`, quindi la prima riga non e' mai
+    l'errore.
+    """
+
+    stage = "scsynth"
+    diagnostic_index = -1
+
+    def __init__(self, returncode: int, command: list[str], stderr: str,
+                 stage: str = "scsynth", stdout: str = ""):
+        self.stage = stage
+        super().__init__(returncode, command, stderr, stdout=stdout)
+
+
+class SuperColliderNotFoundError(EngineRuntimeError):
+    """Binario SuperCollider o sorgente della SynthDef non trovati (issue #228).
+
+    NON eredita FileNotFoundError di proposito: la CLI intercetta quel tipo
+    per annunciare 'file YAML non trovato', e un binario mancante che
+    passasse di li' verrebbe riportato come una configurazione inesistente.
+    """
+
+    def __init__(self, what: str, hint: str | None = None):
+        self.what = what
+        self.hint = hint
+        super().__init__(f"SuperCollider: {what} non trovato")
+
+    def user_message(self) -> str:
+        lines = [f"[ERRORE] SuperCollider: {self.what} non trovato"]
         if self.hint:
             lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
