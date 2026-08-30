@@ -6,6 +6,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v9.0.2] — 2026-08-30
+
+### Fixed
+
+- `pyproject.toml` dichiarava ancora `version = "7.2.0"`: il pacchetto
+  installato riportava una versione ferma a tre release prima, e con essa
+  `pge.__version__`. Ora allineata al tag.
+
+---
+
 ## [v9.0.1] — 2026-08-30
 
 Release amministrativa, nessuna modifica al codice rispetto a v9.0.0.
