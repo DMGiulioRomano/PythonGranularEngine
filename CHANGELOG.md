@@ -6,6 +6,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [v9.0.1] — 2026-08-30
+
+Release amministrativa, nessuna modifica al codice rispetto a v9.0.0.
+Serve solo a far scattare l'archiviazione automatica su Zenodo, attivata
+dopo il tag v9.0.0.
+
 ## [v9.0.0] — "Third Backend" — 2026-08-30
 
 ### Aggiunto
