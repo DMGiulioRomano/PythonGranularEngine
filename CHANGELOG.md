@@ -335,6 +335,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`make bench` non girava su un clone pulito** (issue #243).
+  `utils/bench_cost.py` genera un seno sintetico quando manca `refs/voice.wav`
+  — i `.wav` non sono versionati — ma non lo diceva a nessuno dei due
+  consumatori: `_load()` costruiva il `Generator` senza `samples_dir` e
+  `_render()` passava la directory come `ssdir`, che `_build_renderer` inoltra
+  solo dentro `CsoundOptions`. Entrambi i percorsi ricadevano sul globale
+  `./refs/` e lo script moriva in `SampleNotFoundError` nel primo sweep, prima
+  di misurare qualsiasi cosa. Ora passa `samples_dir` a entrambi (l'API ne
+  deriva anche l'`ssdir` per Csound) e riusa `utils/make_test_samples.py` per
+  scrivere il seno, invece di tenerne una terza grafia propria.
+
 - **`Stream.grains` poteva ammutolire uno stream senza dire niente** (issue
   #201). `generate_grains()` teneva gli stessi eventi in due campi — `_voices`,
   annidato per voce, e `_grains`, flat e ordinato per onset — allineati solo

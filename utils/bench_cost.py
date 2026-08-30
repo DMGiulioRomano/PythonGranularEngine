@@ -50,12 +50,14 @@ import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 
 import numpy as np  # noqa: E402
-import soundfile as sf  # noqa: E402
 
 from pge.engine.generator import Generator  # noqa: E402
 from pge.rendering.render_mode import MixRenderMode  # noqa: E402
 from pge.rendering.rendering_engine import RenderingEngine  # noqa: E402
 from pge.cli import _build_renderer  # noqa: E402
+
+sys.path.insert(0, os.path.join(REPO, "utils"))
+import make_test_samples  # noqa: E402
 
 REPS = 3
 OUT = tempfile.mkdtemp(prefix="pge_bench_")
@@ -88,8 +90,7 @@ def ensure_sample():
         return "voice.wav", refs
     path = os.path.join(OUT, "bench_sample.wav")
     if not os.path.exists(path):
-        t = np.arange(int(3 * SR)) / SR
-        sf.write(path, 0.5 * np.sin(2 * np.pi * 220 * t), SR)
+        make_test_samples.genera(path, freq=220.0, dur=3.0, sr=SR)
         print(f"refs/voice.wav assente: uso un seno sintetico ({path})")
     return "bench_sample.wav", OUT
 
@@ -100,7 +101,8 @@ SAMPLE, SSDIR = ensure_sample()
 def _render(generator):
     """Renderizza e ritorna il tempo del solo overlap-add + scrittura."""
     renderer = _build_renderer(
-        "numpy", generator, output_sr=SR, ssdir=SSDIR, sfdir=OUT, use_cache=False, jobs=1
+        "numpy", generator, output_sr=SR, samples_dir=SSDIR, sfdir=OUT,
+        use_cache=False, jobs=1
     )
     t0 = time.perf_counter()
     RenderingEngine(renderer).render(
@@ -112,7 +114,7 @@ def _render(generator):
 
 
 def _load(path):
-    generator = Generator(path)
+    generator = Generator(path, samples_dir=SSDIR)
     generator.load_yaml()
     generator.create_elements()
     return generator
