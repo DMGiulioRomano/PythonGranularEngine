@@ -6,7 +6,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
-## [Non rilasciato]
+## [v9.0.0] — "Third Backend" — 2026-08-30
 
 ### Aggiunto
 
