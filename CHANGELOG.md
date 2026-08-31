@@ -344,7 +344,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `./refs/` e lo script moriva in `SampleNotFoundError` nel primo sweep, prima
   di misurare qualsiasi cosa. Ora passa `samples_dir` a entrambi (l'API ne
   deriva anche l'`ssdir` per Csound) e riusa `utils/make_test_samples.py` per
-  scrivere il seno, invece di tenerne una terza grafia propria.
+  scrivere il seno, invece di tenerne una terza grafia propria. Le due
+  directory in gioco restano separate: gli sweep leggono il seno sintetico, il
+  *caso di riferimento* (`make bench YAML=...`) legge da `refs/`, perche' uno
+  YAML reale cita il proprio sample e nella tmpdir del seno non lo troverebbe
+  — stato non ipotetico, `make test-samples` scrive `refs/pino.wav` e non
+  `voice.wav`. Il globale si chiama ora `SAMPLES_DIR`: era `SSDIR`, il nome
+  che aveva suggerito il kwarg sbagliato.
 
 - **`Stream.grains` poteva ammutolire uno stream senza dire niente** (issue
   #201). `generate_grains()` teneva gli stessi eventi in due campi — `_voices`,

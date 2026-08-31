@@ -7,6 +7,7 @@ sources:
   - src/pge/rendering/numpy_audio_renderer.py
   - src/pge/core/stream.py
   - utils/bench_cost.py
+  - utils/make_test_samples.py
 last_synced_commit: f138d06
 ---
 
@@ -127,7 +128,10 @@ circa 0,3 s a invocazione, che su un rendering breve non è trascurabile.
   `refs/voice.wav` genera un seno sintetico in una directory temporanea
   riusando `utils/make_test_samples.py`, e passa quella directory come
   `samples_dir` sia al `Generator` sia al renderer — non come `ssdir`, che
-  vale solo per Csound (issue #243).
+  vale solo per Csound (issue #243). Il seno vale per i tre sweep, che di
+  materiale audio non guardano niente; il *caso di riferimento*
+  (`make bench YAML=...`) legge invece da `refs/`, perche' uno YAML reale cita
+  il proprio sample.
 
 Un cambiamento che tocchi la costruzione del `Grain` o l'overlap-add si vede
 sul coefficiente `a`; uno che tocchi la scrittura del file si vede su `b`.

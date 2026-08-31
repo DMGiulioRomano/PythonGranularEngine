@@ -31,7 +31,8 @@ Uso:
 
 Il sample degli sweep e' `refs/voice.wav`; se manca (i .wav non sono
 versionati) lo script ne genera uno sintetico in un file temporaneo, cosi' gira
-su un clone pulito.
+su un clone pulito. Il caso di riferimento non lo eredita: uno YAML reale cita
+il proprio sample, e lo cerca in `refs/` (issue #243).
 """
 from __future__ import annotations
 
@@ -56,11 +57,12 @@ from pge.rendering.render_mode import MixRenderMode  # noqa: E402
 from pge.rendering.rendering_engine import RenderingEngine  # noqa: E402
 from pge.cli import _build_renderer  # noqa: E402
 
-sys.path.insert(0, os.path.join(REPO, "utils"))
+sys.path.insert(1, os.path.join(REPO, "utils"))
 import make_test_samples  # noqa: E402
 
 REPS = 3
 OUT = tempfile.mkdtemp(prefix="pge_bench_")
+REFS = os.path.join(REPO, "refs")
 SR = 48000
 
 YAML_TEMPLATE = """composition:
@@ -79,15 +81,16 @@ seed: 2026
 
 
 def ensure_sample():
-    """Nome del sample per gli sweep, dentro la ssdir che passiamo al renderer.
+    """Nome del sample per gli sweep, dentro la samples_dir che passiamo.
 
-    Ritorna (basename, ssdir). Con `refs/voice.wav` presente si usa quello; se
-    manca, un seno di 3 s in un file temporaneo — agli sweep serve materiale
-    qualsiasi, non un materiale particolare.
+    Ritorna (basename, samples_dir) — `samples_dir`, non `ssdir`: quello vale
+    solo per Csound, ed e' il nome sbagliato che ha causato la issue #243. Con
+    `refs/voice.wav` presente si usa quello; se manca, un seno di 3 s in un
+    file temporaneo — agli sweep serve materiale qualsiasi, non un materiale
+    particolare.
     """
-    refs = os.path.join(REPO, "refs")
-    if os.path.exists(os.path.join(refs, "voice.wav")):
-        return "voice.wav", refs
+    if os.path.exists(os.path.join(REFS, "voice.wav")):
+        return "voice.wav", REFS
     path = os.path.join(OUT, "bench_sample.wav")
     if not os.path.exists(path):
         make_test_samples.genera(path, freq=220.0, dur=3.0, sr=SR)
@@ -95,14 +98,23 @@ def ensure_sample():
     return "bench_sample.wav", OUT
 
 
-SAMPLE, SSDIR = ensure_sample()
+# Il sample degli sweep: `refs/` o la tmpdir del fallback. NON e' la directory
+# del caso di riferimento, che legge il proprio sample da `refs/` (once_yaml).
+SAMPLE, SAMPLES_DIR = ensure_sample()
 
 
-def _render(generator):
-    """Renderizza e ritorna il tempo del solo overlap-add + scrittura."""
+def _render(generator, samples_dir=None):
+    """Renderizza e ritorna il tempo del solo overlap-add + scrittura.
+
+    `samples_dir` (None -> quella degli sweep) e' la directory in cui la
+    registry cerca il sample. Va passata come `samples_dir` e non come `ssdir`:
+    `_build_renderer` inoltra `ssdir` solo dentro `CsoundOptions`, e pesca i
+    kwargs con `.get()` — un nome sbagliato qui e' un no-op silenzioso (#243).
+    """
     renderer = _build_renderer(
-        "numpy", generator, output_sr=SR, samples_dir=SSDIR, sfdir=OUT,
-        use_cache=False, jobs=1
+        "numpy", generator, output_sr=SR,
+        samples_dir=SAMPLES_DIR if samples_dir is None else samples_dir,
+        sfdir=OUT, use_cache=False, jobs=1
     )
     t0 = time.perf_counter()
     RenderingEngine(renderer).render(
@@ -113,8 +125,11 @@ def _render(generator):
     return time.perf_counter() - t0
 
 
-def _load(path):
-    generator = Generator(path, samples_dir=SSDIR)
+def _load(path, samples_dir=None):
+    """Parsa lo YAML e costruisce gli oggetti. `samples_dir`: v. `_render`."""
+    generator = Generator(
+        path, samples_dir=SAMPLES_DIR if samples_dir is None else samples_dir
+    )
     generator.load_yaml()
     generator.create_elements()
     return generator
@@ -137,8 +152,13 @@ def run(dur, den):
     return dict(dur=dur, den=den, n=n, t=min(times), t_med=statistics.median(times))
 
 
-def once_yaml(path):
+def once_yaml(path, samples_dir=REFS):
     """Come once(), su uno YAML reale, separando le tre fasi.
+
+    Legge da `refs/`, non dalla directory degli sweep: quando `refs/voice.wav`
+    manca, quella e' una tmpdir che contiene *solo* il seno sintetico, e lo
+    YAML reale cita il proprio sample (issue #243). Il caso si presenta con
+    `refs/` popolata: `make test-samples` scrive `pino.wav` e non `voice.wav`.
 
     I grani sono lazy: `Stream.voices` li materializza al primo accesso, e senza
     forzarlo quel costo finisce dentro il tempo di render. Toccarli qui non
@@ -152,14 +172,14 @@ def once_yaml(path):
     che costruzione non sono.
     """
     t0 = time.perf_counter()
-    generator = _load(path)
+    generator = _load(path, samples_dir=samples_dir)
     t_setup = time.perf_counter() - t0
 
     t0 = time.perf_counter()
     n = sum(len(v) for s in generator.streams for v in s.voices)
     t_build = time.perf_counter() - t0
 
-    t_mix = _render(generator)
+    t_mix = _render(generator, samples_dir=samples_dir)
     dur = max(s.onset + s.duration for s in generator.streams)
     return t_setup + t_build + t_mix, n, dur, t_setup, t_build, t_mix
 
