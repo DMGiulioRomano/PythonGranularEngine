@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/grain_visuals.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: 9764017
+last_synced_commit: c2e1ad3
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -57,6 +57,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--show-static` | `-s` | off | `SHOWSTATIC` | include i parametri statici nella partitura |
 | `--show-voice-offsets` | — | off | `SHOWVOICEOFFSETS` | disegna gli offset per-voce nella partitura: una curva per voce per `voice_pitch_offset` e `voice_pointer_offset`, piu' la curva singola di `voice_pointer_range` (vedi [[yaml]] blocco `voices`) |
 | `--magnify` | — | off | `MAGNIFY` | lente di ingrandimento automatica nella partitura: proietta un cerchio zoomato sul cluster di grani piu' denso di ogni pagina (vedi `--magnify-at` per il targeting esplicito) |
+| `--bw` | — | off | `BW` | preset della partitura leggibile in stampa bianco e nero: mappa del pitch acromatica (`pitch_div_bw`), envelope neri distinti dal tratteggio invece che dalla tinta, alpha dei grani fissata. Vedi [[print-score-bw]] |
 | `--per-stream` | `-p` | off | `STEMS` | un file audio per stream (stems) invece del mix singolo |
 | `--cache` | — | off | `CACHE` | build incrementale per stream (richiede `--per-stream`, vedi [[caching]]) |
 | `--reaper` | — | off | `REAPER` | esporta progetto Reaper `.rpp` (vedi [[reaper]]) |
@@ -185,6 +186,19 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   `markersize`/`labels` per lo stile). Niente da proiettare, niente
   disegnato: stream senza curve dinamiche, o istante fuori dall'estensione
   dello stream.
+- **`--bw`** ha effetto solo insieme a `--visualize`. E' un interruttore,
+  quindi non ha valore da validare: scritto senza `--visualize` non fa nulla e
+  non e' un errore. Non e' un modo a parte ma un insieme di **default**
+  diversi, tutti sovrascrivibili chiave per chiave dalla config del visualizer
+  (`ScoreVisualizer(config=...)`, `api.export_score_pdf(config=...)`); i
+  dizionari-dato (`envelope_colors`, `envelope_styles`) si fondono sul preset,
+  non sui default cromatici. Si combina con gli altri flag della partitura:
+  e' una tavolozza, non un modo di lettura. Un effetto va dichiarato perche'
+  non e' gratuito: l'alpha dei grani viene **fissata**, quindi in `--bw` il
+  volume non si legge piu' nel riempimento del grano — sul fondo bianco alpha
+  e luminanza del grigio sono lo stesso canale, e lasciarla libera
+  cancellerebbe il segno del detune che il preset esiste per salvare. Dettagli
+  e come riaprirla: [[print-score-bw]].
 - **`--grain-height`** ha effetto solo insieme a `--visualize`; la
   validazione del valore avviene comunque (valore ignoto → exit 1 anche
   senza `--visualize`), come per `--plot-envelopes`. Il valore è un modo di
@@ -253,6 +267,12 @@ python src/main.py configs/brano.yml --visualize --grain-height read-span
 
 # Equivalente via Make
 make all FILE=brano AUTOVISUAL=true GRAIN_HEIGHT=read-span
+
+# Partitura leggibile in stampa bianco e nero (figure di un paper)
+python src/main.py configs/brano.yml --visualize --bw
+
+# Equivalente via Make
+make all FILE=brano AUTOVISUAL=true BW=true
 
 # Partitura con lente automatica sul cluster piu' denso di ogni pagina
 python src/main.py configs/brano.yml --visualize --magnify
