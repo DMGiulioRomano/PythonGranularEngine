@@ -76,6 +76,101 @@ ENVELOPE_COLORS = {
 PLOT_ENVELOPE_KEYS = frozenset(ENVELOPE_COLORS)
 
 
+# =============================================================================
+# STILI DI LINEA — l'altro canale delle stesse chiavi (issue #248)
+# =============================================================================
+# Stampata in bianco e nero la tabella qui sopra collassa: volume, pan e
+# grain_duration si distinguono solo per tinta, e in grigio diventano tre
+# linee identiche. ENVELOPE_STYLES e' la mappa PARALLELA a ENVELOPE_COLORS —
+# stesse chiavi, l'altro canale — che il preset `bw` accende al posto della
+# tinta.
+#
+# Vive qui e non in score_visualizer per la stessa ragione dei colori: e' una
+# tabella di dati, non di oggetti matplotlib. I pattern sono nella forma
+# (offset, (on, off, ...)) che matplotlib accetta come linestyle, ma restano
+# tuple di numeri: nessun import da questo modulo.
+#
+# Il valore e' la coppia (linestyle, linewidth), e la coppia e' l'IDENTITA'
+# della curva sulla carta: nessuna chiave la ripete (test_bw_preset). Due
+# livelli di lettura, come nei colori:
+#   - il PATTERN dice il parametro (la tinta);
+#   - lo SPESSORE dice la variante (il chiaro/scuro): _prob piu' sottile della
+#     base, _range piu' spesso.
+# I cinque parametri che si incontrano piu' spesso nella stessa corsia —
+# volume, pitch, grain_duration, pan, density — prendono i cinque pattern piu'
+# distanti fra loro; gli altri riusano un pattern con uno spessore diverso.
+# Con una ventina di parametri e forse otto o nove tratteggi davvero
+# distinguibili in stampa, l'alternativa sarebbe fingere che venti pattern
+# diversi si leggano: la legenda per-corsia (issue #91) resta la chiave.
+
+_SOLID = '-'
+_DASH = (0, (5, 2.5))
+_DOT = (0, (1, 1.8))
+_DASHDOT = (0, (5, 1.6, 1, 1.6))
+_SHORTDASH = (0, (2.5, 1.4))
+_DASHDOTDOT = (0, (5, 1.4, 1, 1.4, 1, 1.4))
+_LONGDASH = (0, (10, 2))
+_SPARSEDOT = (0, (1, 4))
+_DASHDASH = (0, (5, 1.4, 2, 1.4))
+_TRIPLEDOT = (0, (1, 1.4, 1, 1.4, 1, 4))
+
+# Stile di chi non ha una entry: il disegno storico. E' anche cio' che rende
+# il preset spento un no-op — con `envelope_styles` vuoto ogni curva risolve
+# qui, cioe' a com'e' sempre stata disegnata.
+ENVELOPE_STYLE_DEFAULT = (_SOLID, 1.1)
+
+# Colore unico degli envelope col preset B&W acceso: la tinta non porta piu'
+# informazione, quindi non c'e' ragione di spenderla.
+BW_ENVELOPE_COLOR = '#000000'
+
+ENVELOPE_STYLES = {
+    # === OUTPUT ===
+    'volume': (_SOLID, 1.1),
+    'volume_prob': (_SOLID, 0.6),
+    'volume_range': (_SOLID, 1.7),
+    'pan': (_DASHDOT, 1.1),
+    'pan_prob': (_DASHDOT, 0.6),
+    'pan_range': (_DASHDOT, 1.7),
+
+    # === GRAIN ===
+    'grain_duration': (_DOT, 1.2),
+    'grain_duration_prob': (_DOT, 0.7),
+    'grain_duration_range': (_DOT, 1.8),
+    'reverse': (_DASHDOTDOT, 1.1),
+    'reverse_prob': (_DASHDOTDOT, 0.6),
+    # L'altra chiave del verso: pattern proprio, non lo spessore di 'reverse'.
+    # Le due sono un gruppo esclusivo, ma quando compaiono insieme e' perche'
+    # l'autore ha sbagliato — ed e' proprio allora che devono distinguersi.
+    'read_direction': (_TRIPLEDOT, 1.1),
+    'read_direction_prob': (_TRIPLEDOT, 0.6),
+
+    # === POINTER ===
+    'pointer_start': (_SHORTDASH, 1.1),
+    'pointer_speed': (_SHORTDASH, 1.7),
+    'pointer_deviation': (_DASHDASH, 1.1),
+    'pointer_deviation_prob': (_DASHDASH, 0.6),
+    'loop_dur': (_SPARSEDOT, 1.3),
+
+    # === PITCH ===
+    'pitch': (_DASH, 1.3),
+
+    # === DENSITY ===
+    'density': (_LONGDASH, 1.1),
+    'fill_factor': (_LONGDASH, 1.7),
+    # Derivata dalla densita': stesso pattern, tratto piu' leggero.
+    'effective_density': (_LONGDASH, 0.7),
+    'distribution': (_DASHDASH, 1.7),
+
+    # === VOICES ===
+    'num_voices': (_DASH, 1.8),
+    'scatter': (_DASHDOTDOT, 1.7),
+    # Gli offset per-voce riusano il pattern del parametro che spostano.
+    'voice_pitch_offset': (_DASH, 0.7),
+    'voice_pointer_offset': (_SHORTDASH, 0.7),
+    'voice_pointer_range': (_TRIPLEDOT, 1.7),
+}
+
+
 def base_param_name(key):
     """Nome base di una chiave envelope: strippa il suffisso per-voce '__vN'
     (issue #90). 'voice_pitch_offset__v2' -> 'voice_pitch_offset'; chiavi senza
