@@ -485,6 +485,7 @@ def export_score_pdf(
         'magnify_auto': False,
         'magnify_targets': [],
         'grain_height': 'duration',
+        'bw': False,
     }
     if config:
         merged.update(config)

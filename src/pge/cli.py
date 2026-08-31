@@ -212,6 +212,7 @@ def main():
             "[--magnify] [--magnify-at SPEC] "
             "[--page-duration SECONDI] "
             "[--grain-height duration|read-span] "
+            "[--bw] "
             "[--per-stream] "
             "[--renderer csound|numpy|supercollider] "
             "[--jobs N|auto] "
@@ -292,6 +293,14 @@ def main():
                       f"Valori: {', '.join(_GRAIN_HEIGHT_CLI_MODES)}")
                 sys.exit(1)
             grain_height = _GRAIN_HEIGHT_CLI_MODES[raw]
+
+    # --bw: preset della partitura leggibile in stampa bianco e nero
+    # (issue #248). Mappa del pitch acromatica (la divergente a colori ha i due
+    # bracci alla stessa chiarezza, quindi in grigio il segno del detune
+    # sparisce) ed envelope neri distinti dal tratteggio invece che dalla
+    # tinta. Effetto solo con --visualize, come --show-static. E' un
+    # interruttore: non ha valore da validare.
+    bw = '--bw' in sys.argv
 
     # --magnify: lente automatica sul cluster piu' denso (una per pagina).
     # Effetto solo con --visualize, come --show-static. Token esatto: '--magnify'
@@ -609,6 +618,7 @@ def main():
                 'magnify_auto': magnify_auto,
                 'magnify_targets': magnify_targets,
                 'grain_height': grain_height,
+                'bw': bw,
             }, samples_dir=samples_dir)
 
         print(f"Log: {get_clip_log_path()}")

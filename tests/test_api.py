@@ -846,6 +846,7 @@ class TestExportScorePdf:
         'magnify_auto': False,
         'magnify_targets': [],
         'grain_height': 'duration',
+        'bw': False,
     }
 
     def test_default_config_matches_cli(self, api_mocks):
