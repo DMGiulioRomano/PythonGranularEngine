@@ -81,13 +81,22 @@ class MagnifyProjection:
     sono le due cose che cambiano davvero da una partitura all'altra.
     """
     enabled: bool = True
-    # Tratteggio e non tinta unita: la partitura deve restare leggibile anche
-    # stampata in scala di grigi, dove il rosso della lente e' un grigio come
-    # gli altri.
+    # Tratteggio e non tinta unita: la verticale deve restare distinguibile
+    # dalle curve anche stampata in scala di grigi. Col preset B&W le curve
+    # sono tratteggiate a loro volta, e li' a separarle e' l'orientamento —
+    # una verticale in mezzo a curve che descrivono il tempo.
     linestyle: str = '--'
     linewidth: float = 0.6
     alpha: float = 0.8
     markersize: float = 5.0
+    # Anello del marker. None = l'accento della lente, che e' il default
+    # storico. Esiste come chiave propria perche' l'anello vive su un altro
+    # fondo rispetto al resto della lente: gli altri artisti della lente
+    # stanno sui grani, questo sta SULLA CURVA, e col preset B&W curva e
+    # accento sono due neri. Li' l'anello si spegne, e il marker diventa
+    # indistinguibile da un breakpoint qualunque.
+    marker_edge: Optional[str] = None
+    markeredgewidth: float = 0.8
     labels: bool = True                  # etichette col valore reale
 
 
@@ -235,6 +244,12 @@ class VisualizerConfig:
 
     # --- STILE ---------------------------------------------------------------
     stream_gap_ratio: float = 0.05        # gap fra stream (5% dell'altezza)
+    # Colore della label dello stream nel subplot dei grani. E' una chiave e
+    # non un letterale nel disegno perche' `bw` deve restare un selettore di
+    # default: se il codice di disegno lo rilegge, una config costruita a mano
+    # con `bw=True` non e' inerte ma incoerente — pagina a colori con un solo
+    # elemento grigio.
+    stream_label_color: str = 'darkblue'
     label_fontsize: float = 8
     title_fontsize: float = 12
     breakpoint_fontsize: float = 6
@@ -311,7 +326,15 @@ class VisualizerConfig:
             # leggono come una svista.
             'waveform_color': '#666666',
             'loop_mask_color': '#4d4d4d',
+            # L'accento della lente resta scuro perche' e' scelto contro i
+            # GRANI, ed e' piu' scuro del piu' scuro di essi. A cambiare e'
+            # solo l'anello del marker di proiezione, che e' l'unico pezzo
+            # della lente che atterra sulle curve.
             'magnify_color': '#1a1a1a',
+            'magnify_projection': replace(
+                MagnifyProjection(), marker_edge='#ffffff',
+                markeredgewidth=1.4),
+            'stream_label_color': '#1a1a1a',
         }
 
     @classmethod

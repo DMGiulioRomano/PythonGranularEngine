@@ -42,8 +42,15 @@ PITCH_DIVERGING = LinearSegmentedColormap.from_list(
 #
 # Compressa a circa 0.15-0.85 invece che a tutto il dominio: col braccio alto
 # sul bianco i grani acuti sparirebbero sulla pagina, col basso sul nero si
-# confonderebbero con assi e griglia. Il centro resta il grigio medio, come il
+# confonderebbero con assi e griglia. Il centro e' il grigio medio, come il
 # #777777 della mappa a colori: nessun detune = nessuno scarto dal mezzo.
+#
+# Quelli sono i valori della MAPPA. Sulla pagina il grano e' composito su
+# fondo bianco all'alpha del preset (`a*g + (1-a)`, alpha 0.9), quindi la
+# banda diventa 0.23-0.87 e lo zero cade a 0.55: piu' chiara di mezzo tono,
+# non centrata. E' la barra a doversi adeguare al grano, non viceversa —
+# _add_pitch_colorbar le passa la stessa alpha, cosi' la chiave di lettura
+# mostra il grigio che il lettore ha davanti invece del colore nudo.
 #
 # La rampa e' lineare nel valore sRGB, non in L*: l'obiettivo e' stare dentro
 # i due estremi utili in stampa, non l'uniformita' percettiva.
@@ -293,9 +300,20 @@ class ScoreVisualizer:
             label = 'pitch (ratio)'
 
         cax = fig.add_subplot(cax_spec)
-        cbar = fig.colorbar(
-            ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
-        )
+        mappable = ScalarMappable(norm=norm, cmap=self.cmap)
+        # La barra e' la CHIAVE di lettura dei grani, quindi deve mostrare il
+        # grigio che i grani hanno davvero: composito su fondo bianco, non il
+        # colore nudo della mappa. Con l'alpha guidata dal volume non c'e' un
+        # valore solo da mostrare e la barra resta opaca, come e' sempre stata;
+        # quando l'alpha e' FISSATA (preset B&W) la corrispondenza e'
+        # esprimibile esattamente, e allora tacerla sarebbe un bias
+        # sistematico: ogni grano si leggerebbe piu' acuto di quanto e'.
+        # L'alpha si passa alla colorbar e non si cuoce dentro la mappa: cosi'
+        # barra e grani compongono sullo stesso fondo, qualunque esso sia,
+        # invece di dare per scontato il bianco.
+        alpha_lo, alpha_hi = self.config['grain_alpha_range']
+        alpha = float(alpha_lo) if alpha_lo == alpha_hi else None
+        cbar = fig.colorbar(mappable, cax=cax, alpha=alpha)
         # Scarta i tick troppo vicini agli estremi del range: con colorbar
         # impilate (una per stream, hspace=0) il tick di fondo della colorbar
         # sopra e quello di testa della colorbar sotto cadono sullo stesso bordo
@@ -336,6 +354,19 @@ class ScoreVisualizer:
         styles = self.config.get('envelope_styles') or {}
         return tuple(styles.get(self._base_param_name(param_name),
                                 ENVELOPE_STYLE_DEFAULT))
+
+    def _projection_marker_edge(self):
+        """(colore, spessore) dell'anello del marker di proiezione.
+
+        Il colore ricade sull'accento della lente quando la config non ne
+        dichiara uno proprio: e' il comportamento storico. La chiave esiste
+        perche' l'anello e' l'unico pezzo della lente che atterra SULLA CURVA
+        invece che sui grani, e col preset B&W curva e accento sono due neri —
+        li' l'anello si spegne e il marker diventa un breakpoint qualunque.
+        """
+        cfg = self.config['magnify_projection']
+        return (cfg['marker_edge'] or self.config['magnify_color'],
+                cfg['markeredgewidth'])
 
     def _volume_to_alpha(self, volume_db):
         """Mappa volume (dB) → alpha/opacità."""
@@ -805,10 +836,12 @@ class ScoreVisualizer:
             return
 
         # Stesso accento della lente (anello sorgente e connettori): la
-        # proiezione e' un pezzo della lente, non un elemento a se'. Il
-        # tratteggio la tiene distinguibile dalle curve anche in stampa B&W,
-        # dove il rosso e' un grigio come gli altri.
+        # proiezione e' un pezzo della lente, non un elemento a se'. La
+        # verticale e' tratteggiata perche' resti distinguibile dalle curve
+        # anche in stampa; col preset B&W anche le curve sono tratteggiate, e
+        # li' a separarla e' l'orientamento — nessun envelope corre verticale.
         accent = self.config['magnify_color']
+        marker_edge, marker_edge_width = self._projection_marker_edge()
         tc = float(resolved.t)
         line = ax_env.axvline(x=tc, color=accent, linestyle=cfg['linestyle'],
                               linewidth=cfg['linewidth'], alpha=cfg['alpha'],
@@ -824,12 +857,16 @@ class ScoreVisualizer:
         for order, point in enumerate(sorted(points, key=lambda p: p.y)):
             color = colors.get(self._base_param_name(point.param), '#333333')
             # Faccia del colore della curva (dice a quale valore appartiene),
-            # bordo dell'accento della lente (dice da dove viene il marker):
-            # in scala di grigi resta un pallino cerchiato sulla verticale.
+            # anello della lente (dice da dove viene il marker): quel che
+            # separa questo marker dai pallini dei breakpoint e' l'anello,
+            # quindi deve staccare dalla faccia. Vedi _projection_marker_edge:
+            # col preset B&W la faccia e' nera come ogni curva e l'anello
+            # diventa chiaro, invece di essere il nero quasi uguale
+            # dell'accento.
             marker, = ax_env.plot(
                 [tc], [point.y], 'o', color=color,
-                markersize=cfg['markersize'], markeredgecolor=accent,
-                markeredgewidth=0.8, zorder=4)
+                markersize=cfg['markersize'], markeredgecolor=marker_edge,
+                markeredgewidth=marker_edge_width, zorder=4)
             marker.set_gid('poc-projection-marker')
 
             if not cfg['labels']:
@@ -1011,10 +1048,7 @@ class ScoreVisualizer:
             fontsize=self._fs(self.config['label_fontsize'] - 1),
             verticalalignment='top',
             horizontalalignment='left',
-            # L'unico accento cromatico che non passa dalla config: col preset
-            # B&W diventa grigio scuro, altrimenti sarebbe la sola parola
-            # colorata di una pagina monocroma (issue #248).
-            color='#1a1a1a' if self.config.get('bw') else 'darkblue',
+            color=self.config['stream_label_color'],
             alpha=0.8,
             bbox=dict(boxstyle='round,pad=0.2', facecolor='white', 
                     alpha=0.7, edgecolor='none')

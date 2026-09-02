@@ -24,8 +24,9 @@ FISSA — vedi TestFixedAlpha per il perche' e per cosa costa.
 import matplotlib
 matplotlib.use('Agg')  # backend non-interattivo obbligatorio nei test
 import matplotlib.pyplot as plt
+import numpy as np
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from pge.rendering.envelope_extractor import (
     ENVELOPE_COLORS, ENVELOPE_STYLES, ENVELOPE_STYLE_DEFAULT, BW_ENVELOPE_COLOR)
@@ -425,3 +426,218 @@ class TestStyleReachesTheLegend:
         dashed = self._legend_line(bw_config(), 'density').get_xdata()
         solid = self._legend_line(bw_config(), 'volume').get_xdata()
         assert list(solid) == list(dashed)
+
+
+# =============================================================================
+# LA CHIAVE DI LETTURA: LA COLORBAR (review #249, punto 1)
+# =============================================================================
+
+def luminance(color):
+    """Luminanza relativa di un colore, come la vede una stampa in grigio."""
+    r, g, b, _ = matplotlib.colors.to_rgba(color)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def composited(grey, alpha):
+    """Il grigio che finisce sulla carta: fondo bianco, `a*g + (1-a)`."""
+    return alpha * grey + (1.0 - alpha)
+
+
+class TestColorbarMatchesTheGrains:
+    """La colorbar del pitch e' la chiave di lettura della mappa acromatica:
+    se il suo grigio non e' quello dei grani, chi accosta un grano alla barra
+    sbaglia sistematicamente il verso.
+
+    Coi grani a opacita' variabile la barra non poteva che essere indicativa —
+    non c'e' un'alpha sola da mostrare. Col preset l'alpha e' fissata, quindi
+    la corrispondenza e' esprimibile ed e' un dovere.
+    """
+
+    def _colorbar_greys(self, config):
+        """I grigi effettivamente dipinti nella colonna della colorbar."""
+        viz = ScoreVisualizer(MagicMock(streams=[MagicMock()]), config=config)
+        fig = plt.figure(figsize=(2, 4), facecolor='white')
+        gs = fig.add_gridspec(1, 1)
+        viz._add_pitch_colorbar(fig, gs[0, 0], (-300.0, 300.0), True)
+        fig.canvas.draw()
+        cax = fig.axes[-1]
+        box = cax.get_window_extent()
+        buf = np.asarray(fig.canvas.buffer_rgba(), dtype=float) / 255.0
+        h = buf.shape[0]
+        # Colonna centrale della barra, dal basso (grave) all'alto (acuto).
+        col = int((box.x0 + box.x1) / 2)
+        y0, y1 = int(box.y0) + 3, int(box.y1) - 3
+        strip = buf[h - y1:h - y0, col, :3]
+        return strip[::-1]   # dal grave all'acuto
+
+    def test_the_bar_carries_the_grain_alpha(self):
+        """Il grigio in cima e in fondo alla barra e' quello di un grano allo
+        stesso pitch, non quello della mappa a opacita' piena."""
+        config = bw_config()
+        alpha = config['grain_alpha_range'][0]
+        cmap = plt.get_cmap(config['grain_colormap'])
+        strip = self._colorbar_greys(config)
+        for x, sample in ((0.0, strip[0]), (1.0, strip[-1])):
+            atteso = composited(cmap(x)[0], alpha)
+            assert sample[0] == pytest.approx(atteso, abs=0.02)
+
+    def test_the_bar_is_still_achromatic(self):
+        strip = self._colorbar_greys(bw_config())
+        assert np.allclose(strip[:, 0], strip[:, 1], atol=0.01)
+        assert np.allclose(strip[:, 1], strip[:, 2], atol=0.01)
+
+    def test_a_variable_alpha_leaves_the_bar_opaque(self):
+        """Senza preset l'alpha varia col volume: non c'e' un valore solo da
+        mostrare, e la barra resta quella storica a opacita' piena."""
+        config = plain_config()
+        cmap = plt.get_cmap(config['grain_colormap'])
+        strip = self._colorbar_greys(config)
+        assert strip[0][0] == pytest.approx(cmap(0.0)[0], abs=0.02)
+
+
+class TestTheDocstringNumbersAreThePageNumbers:
+    """I due estremi e il centro, come finiscono sulla carta."""
+
+    def test_the_page_greys_stay_off_black_and_white(self):
+        cmap = plt.get_cmap('pitch_div_bw')
+        alpha = bw_config()['grain_alpha_range'][0]
+        assert 0.20 <= composited(cmap(0.0)[0], alpha) <= 0.28
+        assert 0.82 <= composited(cmap(1.0)[0], alpha) <= 0.90
+
+    def test_the_sign_of_the_detune_survives_on_the_page(self):
+        """Il numero che conta davvero: il salto fra due detune simmetrici,
+        sulla pagina e non sulla mappa."""
+        cmap = plt.get_cmap('pitch_div_bw')
+        alpha = bw_config()['grain_alpha_range'][0]
+        for span in (0.5, 0.25):   # +/-300 e +/-150 cent su un range di 300
+            lo = composited(cmap(0.5 - span)[0], alpha)
+            hi = composited(cmap(0.5 + span)[0], alpha)
+            assert (hi - lo) > 0.25
+
+
+# =============================================================================
+# LA LENTE (review #249, punto 2)
+# =============================================================================
+
+FAKE_SR = 44100
+FAKE_AUDIO = np.sin(
+    2 * np.pi * 440 * np.linspace(0, 4.0, int(44100 * 4.0))
+).astype(np.float32)
+
+
+def lens_scene():
+    """Uno stream con due curve e una lente puntata a meta' corsa."""
+    from pge.envelopes.envelope import Envelope
+    s = MagicMock()
+    s.stream_id = 's1'
+    s.onset = 0.0
+    s.duration = 20.0
+    s.sample = 'piano.wav'
+    s.voices = [[_lens_grain(i * 2.5) for i in range(8)]]
+    for name in ('volume', 'pan', 'pointer_start', 'num_voices',
+                 'scatter', 'pointer_speed'):
+        delattr(s, name)
+    s.density = Envelope([[0, 10.0], [20, 30.0]])
+    return [s]
+
+
+def _lens_grain(onset):
+    g = MagicMock()
+    g.onset = onset
+    g.duration = 0.05
+    g.pointer_pos = 0.5
+    g.pitch_ratio = 1.0
+    g.volume = -6.0
+    return g
+
+
+def render_with_lens(config):
+    cfg = {'page_duration': 30.0, 'magnify_targets': [{'t': 6.0, 'y': 1.0}]}
+    cfg.update(config)
+    viz = ScoreVisualizer(MagicMock(streams=lens_scene()), config=cfg)
+    with patch('soundfile.read', return_value=(FAKE_AUDIO, FAKE_SR)):
+        viz.analyze()
+        fig = viz.render_page(0)
+    fig.canvas.draw()
+    return fig
+
+
+def projection_markers(fig):
+    return [a for ax in fig.axes for a in ax.lines
+            if a.get_gid() == 'poc-projection-marker']
+
+
+class TestLensMarkerStaysCircled:
+    """Il marker della proiezione e' un pallino CERCHIATO: la faccia dice a
+    quale curva appartiene, l'anello che viene dalla lente.
+
+    Col preset la faccia e' nera come ogni envelope e l'accento della lente e'
+    quasi nero: l'anello sparirebbe, e il marker diventerebbe indistinguibile
+    da un breakpoint qualunque — cioe' il preset toglierebbe una lettura
+    mentre dichiara di darne.
+    """
+
+    def test_the_ring_contrasts_with_the_face(self):
+        markers = projection_markers(render_with_lens({'bw': True}))
+        assert markers
+        for m in markers:
+            gap = abs(luminance(m.get_markerfacecolor())
+                      - luminance(m.get_markeredgecolor()))
+            assert gap > 0.5, gap
+
+    def test_the_ring_is_wide_enough_to_read(self):
+        markers = projection_markers(render_with_lens({'bw': True}))
+        for m in markers:
+            assert m.get_markeredgewidth() >= 1.2
+
+    def test_without_the_preset_the_marker_is_unchanged(self):
+        """A flag spento l'anello resta l'accento della lente, spesso 0.8."""
+        markers = projection_markers(render_with_lens({}))
+        assert markers
+        accento = plain_config()['magnify_color']
+        for m in markers:
+            assert matplotlib.colors.to_hex(m.get_markeredgecolor()) == accento
+            assert m.get_markeredgewidth() == pytest.approx(0.8)
+
+    def test_the_edge_defaults_to_the_lens_accent(self):
+        viz = ScoreVisualizer.__new__(ScoreVisualizer)
+        viz.config = plain_config()
+        edge, width = viz._projection_marker_edge()
+        assert edge == plain_config()['magnify_color']
+        assert width == pytest.approx(0.8)
+
+    def test_the_preset_overrides_only_the_marker_edge(self):
+        """L'accento della lente NON cambia: e' scelto bene contro i grani
+        (piu' scuro del grano piu' scuro). Quello che cambia e' l'anello, che
+        e' dove incontra il nero delle curve."""
+        config = bw_config()
+        assert config['magnify_color'] == '#1a1a1a'
+        edge, _ = _viz_with(config)._projection_marker_edge()
+        assert luminance(edge) > 0.9
+
+
+def _viz_with(config):
+    viz = ScoreVisualizer.__new__(ScoreVisualizer)
+    viz.config = config
+    return viz
+
+
+# =============================================================================
+# IL PRESET NON DEVE POTER DIVENTARE INERTE (review #249, punti 3 e 4)
+# =============================================================================
+
+class TestThePresetCannotBeShadowed:
+
+    def test_bw_is_not_read_by_the_drawing_code(self):
+        """`bw` seleziona default e basta. Finche' il disegno lo rilegge,
+        costruire `VisualizerConfig(bw=True)` a mano non e' inerte ma
+        INCOERENTE: partitura a colori con un elemento grigio scuro."""
+        import inspect
+        from pge.rendering import score_visualizer
+        sorgente = inspect.getsource(score_visualizer)
+        assert "config.get('bw')" not in sorgente
+        assert "config['bw']" not in sorgente
+
+    def test_the_stream_label_colour_is_a_config_key(self):
+        assert plain_config()['stream_label_color'] == 'darkblue'
+        assert luminance(bw_config()['stream_label_color']) < 0.2
