@@ -79,9 +79,10 @@ def _build_renderer(
     kwargs accettati e' finito e noto, quindi il controllo lo fa Python.
 
     **`ssdir` e `sfdir` sono opzioni Csound**, come `orc_path`, `incdir`,
-    `message_level` e `sco_dir`: su un build `numpy` o `supercollider`
-    vengono accettate e ignorate. Non e' un refuso da correggere in silenzio
-    -- il nome esiste -- ma un fraintendimento: la directory dei sample per
+    `log_dir`, `message_level` e `sco_dir`: su un build `numpy` o
+    `supercollider` vengono accettate e ignorate. Non e' un refuso da
+    correggere in silenzio -- il nome esiste -- ma un fraintendimento:
+    la directory dei sample per
     tutti i backend e' `samples_dir`, e su Csound e' anche il fallback di
     `ssdir` (la precedenza la risolve l'API).
 
@@ -575,7 +576,9 @@ def main():
                 osc_dir = sys.argv[idx + 1]
 
     # --format aiff|wav|flac (default: aiff)
-    from pge.rendering.audio_format import FORMATS, DEFAULT_FORMAT
+    # DEFAULT_FORMAT e' gia' a livello di modulo: e' il default della
+    # firma di _build_renderer, valutato all'import.
+    from pge.rendering.audio_format import FORMATS
     audio_format = DEFAULT_FORMAT
     if '--format' in sys.argv:
         idx = sys.argv.index('--format')
