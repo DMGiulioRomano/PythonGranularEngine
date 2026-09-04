@@ -85,9 +85,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   firma: keyword-only, con i default storici invariati. Il controllo lo fa
   Python. Due dettagli che la firma non dice da sola:
 
-  - `ssdir`/`sfdir` (come `orc_path`, `incdir`, `message_level`, `sco_dir`)
-    restano accettati su qualsiasi backend e ignorati fuori da Csound: la
-    CLI li passa sempre, quindi rifiutarli romperebbe ogni render NumPy.
+  - `ssdir`/`sfdir` (come `orc_path`, `incdir`, `log_dir`, `message_level`,
+    `sco_dir`) restano accettati su qualsiasi backend e ignorati fuori da
+    Csound: la CLI li passa sempre, quindi rifiutarli romperebbe ogni
+    render NumPy.
     Il docstring lo dice ad alta voce — non e' un refuso da correggere in
     silenzio, e' un fraintendimento: la directory dei sample valida per
     tutti i backend e' `samples_dir`, e su Csound e' anche il fallback di

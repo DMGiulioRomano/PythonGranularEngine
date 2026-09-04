@@ -93,11 +93,13 @@ default al posto del valore che credeva di aver passato — è così che è nata
 senza che niente nominasse la causa). L'elenco dei kwargs accettati è finito e
 noto, quindi lo verifica Python.
 
-`ssdir`, `sfdir`, `orc_path`, `incdir`, `message_level` e `sco_dir` restano
-accettati su qualsiasi backend e ignorati fuori da Csound — la CLI li passa
-sempre, quindi rifiutarli romperebbe ogni render NumPy. La directory dei sample
-valida per tutti i backend è `samples_dir`; su Csound è anche il fallback di
-`ssdir`.
+`ssdir`, `sfdir`, `orc_path`, `incdir`, `log_dir`, `message_level` e `sco_dir`
+restano accettati su qualsiasi backend e ignorati fuori da Csound — la CLI li
+passa sempre, quindi rifiutarli romperebbe ogni render NumPy
+(`tests/test_cli_build_renderer_signature.py` lo esercita su entrambi i backend
+non-Csound, e rilegge il sito di chiamata per il *perché*: è lì che quei nomi
+sono passati incondizionatamente). La directory dei sample valida per tutti i
+backend è `samples_dir`; su Csound è anche il fallback di `ssdir`.
 
 Caching incrementale è componente separato, vedi [[caching]].
 
