@@ -85,7 +85,8 @@ config={'bw': True, 'envelope_colors': {'volume': '#c1121f'}}
 | `grain_alpha_range` | `(0.9, 0.9)` | fissata: vedi sotto |
 | `envelope_colors` | tutte `#000000` | la tinta non distingue piu' niente |
 | `envelope_styles` | `ENVELOPE_STYLES` | il tratteggio prende il posto della tinta: un pattern per parametro, lo spessore per la variante |
-| `waveform_color`, `loop_mask_color`, `magnify_color` | grigi | un preset monocromo lo e' anche a schermo |
+| `magnify_projection.marker_edge` | `#ffffff`, 1.4 pt | l'anello del marker della lente e' l'unico pezzo della lente che atterra *sulla curva*: col nero degli envelope si spegnerebbe, e il marker diventerebbe un breakpoint qualunque |
+| `waveform_color`, `loop_mask_color`, `magnify_color`, `stream_label_color` | grigi | un preset monocromo lo e' anche a schermo |
 
 ### L'alpha, e cosa costa
 
@@ -103,6 +104,19 @@ riempimento del grano**. E' il prezzo, ed e' esplicito; si riapre passando
 Non 1.0 perche' a opacita' piena un cluster denso diventa una lastra unica e la
 densita' smette di leggersi.
 
+Fissarla ha un effetto collaterale utile: la **colorbar del pitch** puo' dire
+il vero. E' la chiave di lettura dei grani, ma dipingeva il colore nudo della
+mappa mentre i grani sono compositi sul fondo bianco — chi accostava un grano
+alla barra lo leggeva sistematicamente piu' acuto di quanto fosse. Con l'alpha
+guidata dal volume non c'e' un valore solo da mostrare e la barra resta opaca,
+cioe' storica; con l'alpha fissata la corrispondenza e' esatta e la barra la
+segue.
+
+La condizione e' **l'alpha fissata, non `bw`**: una config a colori che passa
+un `grain_alpha_range` degenere (`(0.6, 0.6)`) ottiene la stessa correzione,
+perche' ha lo stesso problema. E' l'unico punto in cui questo lavoro si vede a
+preset spento — per il resto la pagina a colori e' identica pixel per pixel.
+
 ### Il tratteggio degli envelope
 
 `ENVELOPE_STYLES` (in `rendering/envelope_extractor.py`, il modulo
@@ -113,6 +127,13 @@ unica per chiave. Due livelli di lettura, come nei colori:
 - il **pattern** dice il parametro, come faceva la tinta;
 - lo **spessore** dice la variante, come faceva il chiaro/scuro: `_prob` piu'
   sottile della base, `_range` piu' spesso.
+
+Il valore e' spacchettato in due, e una stringa ne e' una coppia plausibile
+(`tuple('--')` vale `('-', '-')`), quindi `_envelope_style` ne verifica la
+forma e nomina la chiave: senza, l'errore arriverebbe da dentro matplotlib
+(`could not convert string to float: '-'`) e non direbbe quale parametro
+guardare. E' l'eccezione dichiarata alla regola dello schema, che verifica i
+nomi delle chiavi e non i tipi dei valori.
 
 I cinque parametri che si incontrano piu' spesso nella stessa corsia — volume,
 pitch, grain_duration, pan, density — prendono i cinque pattern piu' distanti
@@ -133,9 +154,11 @@ Per aggiungere un parametro al preset, o cambiarne la resa:
   qui**: senza, in B&W torna una linea come tutte le altre;
 - `src/pge/rendering/visualizer_config.py` — `VisualizerConfig._bw_defaults`,
   cioe' quali default il preset sposta, e `BW_GRAIN_ALPHA`;
-- `src/pge/rendering/score_visualizer.py` — `PITCH_DIVERGING_BW` e
+- `src/pge/rendering/score_visualizer.py` — `PITCH_DIVERGING_BW`,
   `_envelope_style`, che risolve lo stile di una curva (le curve per-voce
-  `__vN` prendono quello della base);
+  `__vN` prendono quello della base) e ne verifica la forma, e
+  `_add_pitch_colorbar`, che compone la barra sull'alpha dei grani quando ce
+  n'e' una sola;
 - `src/pge/cli.py`, `make/build.mk`, `Makefile` — il flag e la variabile make.
 
 ## Test da aggiornare

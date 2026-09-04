@@ -305,9 +305,17 @@ class ScoreVisualizer:
         # grigio che i grani hanno davvero: composito su fondo bianco, non il
         # colore nudo della mappa. Con l'alpha guidata dal volume non c'e' un
         # valore solo da mostrare e la barra resta opaca, come e' sempre stata;
-        # quando l'alpha e' FISSATA (preset B&W) la corrispondenza e'
-        # esprimibile esattamente, e allora tacerla sarebbe un bias
-        # sistematico: ogni grano si leggerebbe piu' acuto di quanto e'.
+        # quando l'alpha e' FISSATA la corrispondenza e' esprimibile
+        # esattamente, e allora tacerla sarebbe un bias sistematico: ogni
+        # grano si leggerebbe piu' acuto di quanto e'.
+        #
+        # La condizione e' l'alpha fissata, NON il preset: `bw` non compare
+        # qui. Il preset e' solo il modo piu' comune di arrivarci, e una
+        # config che fissa `grain_alpha_range` per conto suo — a colori,
+        # senza `bw` — ha esattamente lo stesso bisogno. E' anche l'unico
+        # punto in cui questa PR si vede a preset spento, e si vede solo li'
+        # (issue #248).
+        #
         # L'alpha si passa alla colorbar e non si cuoce dentro la mappa: cosi'
         # barra e grani compongono sullo stesso fondo, qualunque esso sia,
         # invece di dare per scontato il bianco.
@@ -350,10 +358,29 @@ class ScoreVisualizer:
         Con `envelope_styles` vuota — cioe' senza preset B&W — ogni chiave
         risolve a ENVELOPE_STYLE_DEFAULT, che e' il disegno storico: la
         partitura a colori non cambia di un punto.
+
+        La FORMA del valore si verifica qui, ed e' l'unico posto dove ha
+        senso. Lo schema (rendering.visualizer_config) verifica i nomi delle
+        chiavi e non i tipi, per scelta dichiarata: un tipo sbagliato "si vede
+        al primo giro". Questo valore no — `tuple('--')` e' `('-', '-')`,
+        cioe' una coppia perfettamente plausibile con uno spessore che non e'
+        un numero, e l'errore che ne segue arriva da dentro matplotlib
+        (`could not convert string to float: '-'`) senza nominare ne' la
+        chiave di config ne' il parametro. Tre righe nel lettore invece di un
+        validatore.
         """
+        key = self._base_param_name(param_name)
         styles = self.config.get('envelope_styles') or {}
-        return tuple(styles.get(self._base_param_name(param_name),
-                                ENVELOPE_STYLE_DEFAULT))
+        style = styles.get(key, ENVELOPE_STYLE_DEFAULT)
+        try:
+            linestyle, linewidth = style
+            linewidth = float(linewidth)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"envelope_styles[{key!r}] deve essere la coppia "
+                f"(linestyle, linewidth) con lo spessore numerico; "
+                f"ricevuto {style!r}") from None
+        return (linestyle, linewidth)
 
     def _projection_marker_edge(self):
         """(colore, spessore) dell'anello del marker di proiezione.

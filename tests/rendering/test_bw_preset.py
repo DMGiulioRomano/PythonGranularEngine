@@ -380,6 +380,45 @@ class TestStyleReachesTheCurve:
         assert viz._envelope_style('banana') == ENVELOPE_STYLE_DEFAULT
 
 
+class TestAMalformedStyleNamesItself:
+    """`envelope_styles` e' l'unico dizionario-dato il cui VALORE viene
+    spacchettato in due, e una stringa ne e' una coppia plausibile:
+    `tuple('--')` vale `('-', '-')`. Senza guardia l'errore arriva da dentro
+    matplotlib — `could not convert string to float: '-'` — e non nomina ne'
+    la chiave di config ne' il parametro.
+
+    Lo schema verifica i nomi e non i tipi per scelta dichiarata (vedi il
+    docstring di rendering.visualizer_config): questo e' il caso che quella
+    scelta lascia scoperto, e si chiude nel lettore.
+    """
+
+    @pytest.mark.parametrize('bad', [
+        '--',              # coppia plausibile: ('-', '-')
+        5,                 # non spacchettabile
+        ('-', 'spesso'),   # spessore non numerico
+        ('-', 1.1, 0),     # tre valori
+    ])
+    def test_the_error_names_the_key_and_the_value(self, bad):
+        viz = make_env_viz(plain_config(envelope_styles={'density': bad}))
+        with pytest.raises(ValueError) as exc:
+            viz._envelope_style('density')
+        messaggio = str(exc.value)
+        assert 'envelope_styles' in messaggio
+        assert 'density' in messaggio
+        assert repr(bad) in messaggio
+
+    def test_a_well_formed_pair_passes(self):
+        """Anche scritta come lista: e' la forma in cui arriva da YAML o JSON."""
+        viz = make_env_viz(plain_config(envelope_styles={'density': [':', 2]}))
+        assert viz._envelope_style('density') == (':', 2.0)
+
+    def test_the_table_of_the_preset_passes_whole(self):
+        """Il preset stesso non deve poter cadere in questa guardia."""
+        viz = make_env_viz(bw_config())
+        for key in ENVELOPE_STYLES:
+            assert viz._envelope_style(key) == ENVELOPE_STYLES[key]
+
+
 class TestStyleReachesTheLegend:
     """La legenda e' la chiave di lettura: se il suo tratto non mostra il
     pattern, il pattern sulla curva non e' attribuibile a niente."""
@@ -493,6 +532,23 @@ class TestColorbarMatchesTheGrains:
         cmap = plt.get_cmap(config['grain_colormap'])
         strip = self._colorbar_greys(config)
         assert strip[0][0] == pytest.approx(cmap(0.0)[0], abs=0.02)
+
+    def test_a_fixed_alpha_reaches_the_bar_even_without_the_preset(self):
+        """La condizione e' l'alpha FISSATA, non `bw`.
+
+        Una config a colori che fissa `grain_alpha_range` da se' ha esattamente
+        lo stesso bisogno del preset, e la barra la segue. E' anche l'unico
+        punto in cui l'issue #248 si vede a preset spento: legarlo a un test
+        invece che a un commento e' il modo di non far passare per no-op una
+        cosa che no-op non e'.
+        """
+        config = plain_config(grain_alpha_range=(0.6, 0.6))
+        cmap = plt.get_cmap(config['grain_colormap'])
+        strip = self._colorbar_greys(config)
+        assert strip[0][0] == pytest.approx(composited(cmap(0.0)[0], 0.6),
+                                            abs=0.02)
+        # E non e' il colore nudo della mappa, che e' cio' che dipingeva prima.
+        assert abs(strip[0][0] - cmap(0.0)[0]) > 0.05
 
 
 class TestTheDocstringNumbersAreThePageNumbers:
