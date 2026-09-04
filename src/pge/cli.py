@@ -386,6 +386,19 @@ def main():
             sys.exit(1)
         samples_dir = sys.argv[idx + 1]
 
+    # --log-dir DIR: la directory dei log di TUTTO il run, non solo di csound
+    # (issue #251). Ci finiscono il logfile di csound (via CsoundOptions), il
+    # log degli errori engine e quello dei clip: e' la stessa cartella che il
+    # Makefile crea in `setup` e svuota in `clean` come LOGDIR. Sta qui e non
+    # fra i flag csound perche' con `--renderer numpy` deve valere lo stesso;
+    # finche' era li' dentro, i due logger sotto avevano './logs' scritto a
+    # mano e il flag si limitava a spostare i log del renderer.
+    log_dir = 'logs'
+    if '--log-dir' in sys.argv:
+        idx = sys.argv.index('--log-dir')
+        if idx + 1 < len(sys.argv):
+            log_dir = sys.argv[idx + 1]
+
     # --- Csound config args ---
 
     orc_path = 'csound/main.orc'
@@ -414,12 +427,6 @@ def main():
         idx = sys.argv.index('--sfdir')
         if idx + 1 < len(sys.argv):
             sfdir = sys.argv[idx + 1]
-
-    log_dir = 'logs'
-    if '--log-dir' in sys.argv:
-        idx = sys.argv.index('--log-dir')
-        if idx + 1 < len(sys.argv):
-            log_dir = sys.argv[idx + 1]
 
     message_level = 134
     if '--message-level' in sys.argv:
@@ -513,11 +520,11 @@ def main():
     configure_clip_logger(
         console_enabled=False,
         file_enabled=True,
-        log_dir='./logs',
+        log_dir=log_dir,
         yaml_name=yaml_basename,
         log_transformations=False
     )
-    configure_engine_logger(yaml_name=yaml_basename, log_dir='./logs')
+    configure_engine_logger(yaml_name=yaml_basename, log_dir=log_dir)
 
     try:
         generator = Generator(yaml_file, samples_dir=samples_dir)
