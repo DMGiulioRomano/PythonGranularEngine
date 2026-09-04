@@ -10,6 +10,37 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Il log dice di nuovo quanti grani ha generato ogni stream** (issue #250).
+  Dopo `Rendering completato in ...` la CLI stampa una riga per stream:
+
+  ```
+    → stream2: 48213 grani (3 voci)
+    → stream3: grani non generati (cache)
+  ```
+
+  Il conteggio non e' mai stato una riga sua: usciva dal `__repr__` di
+  `Stream`, stampato a costruzione da `Generator._create_streams`. Con la
+  generazione lazy (#117) a quel punto i grani non esistono ancora, e il repr
+  dice `grains=lazy` — non un difetto, il prezzo corretto di #117. Il numero
+  torna quindi **a valle**, dove i grani ci sono davvero.
+
+  La lettura e' passiva e non rimette in circolo il lavoro che #117 aveva
+  tolto: `api.collect_grain_counts` legge `voices` solo sugli stream con
+  `generated` True (stesso schema di `export_grain_json`), quindi costa
+  O(voci) e non O(grani), e su chi e' stato saltato dalla cache non tocca
+  `.voices` — leggerla li' rigenererebbe in fase di stampa esattamente i
+  grani risparmiati. Per la stessa ragione non c'e' nessun contatore
+  mantenuto durante `generate_grains()`: sarebbe stato uno stato duplicato
+  rispetto a `voices`, che per design e' l'unica fonte di verita' (#201).
+
+  Il dato non nasce nella CLI ma in `RenderResult.grain_counts`
+  (`stream_id -> StreamGrainCount(grains, voices)`, `None` per gli stream non
+  materializzati): l'API resta senza print e il conteggio e' disponibile
+  anche ai consumer non-CLI. Ogni stream compare nella mappa, cosi' chi
+  stampa non deve tornare a interrogare `generator.streams` per sapere chi
+  manca; `None` significa "saltato dalla cache", non "zero grani", e la CLI
+  lo dice a parole invece di inventare un numero.
+
 - **`--bw`: un preset della partitura leggibile in stampa bianco e nero**
   (issue #248). La MAP e' pensata per lo schermo, e le figure del paper CIM
   2026 hanno un vincolo di leggibilita' in B&W. Il flag (o `BW=true` da Make,
