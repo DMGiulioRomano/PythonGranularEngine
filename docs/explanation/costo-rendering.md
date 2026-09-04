@@ -8,7 +8,7 @@ sources:
   - src/pge/core/stream.py
   - utils/bench_cost.py
   - utils/make_test_samples.py
-last_synced_commit: e540483
+last_synced_commit: a4dc678
 ---
 
 # Costo del rendering — PythonGranularEngine
