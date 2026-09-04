@@ -1343,6 +1343,90 @@ class TestGrainJsonOnlyGeneratedStreams:
 
 
 # =============================================================================
+# TEST LOG: quanti grani ha generato ogni stream (issue #250)
+# =============================================================================
+
+class TestGrainCountLog:
+    """
+    Il conteggio dei grani era una parola dentro il `__repr__` di Stream,
+    stampato a costruzione; con la generazione lazy (#117) il repr dice
+    `grains=lazy` perche' i grani a quel punto non esistono, ed e' giusto
+    cosi'. La riga torna a valle del render, dove i grani sono gia'
+    materializzati: la CLI non la calcola, la legge da
+    `RenderResult.grain_counts`.
+    """
+
+    class _Stream:
+        """Stream finto con la laziness vera: `.voices` esplode se lo stream
+        non e' materializzato, cosi' una lettura di troppo e' un test rosso e
+        non una lentezza silenziosa in produzione."""
+
+        def __init__(self, stream_id, voices=None):
+            self.stream_id = stream_id
+            self.generated = voices is not None
+            self._voices = voices
+
+        @property
+        def voices(self):
+            if not self.generated:
+                raise AssertionError(
+                    f"accesso a .voices su {self.stream_id}: innescherebbe "
+                    "la generazione lazy (#117)")
+            return self._voices
+
+    def _stream(self, stream_id, voices=None):
+        return self._Stream(stream_id, voices)
+
+    def _grains(self, n):
+        return [MagicMock(name=f'g{i}') for i in range(n)]
+
+    def _run(self, mocks, streams, argv=None):
+        mocks['generator_instance'].streams = streams
+        run_main(mocks, argv or ['main.py', 'in.yml', '/out/test.aif'])
+
+    def test_riga_con_grani_e_voci(self, mocks, capsys):
+        self._run(mocks, [self._stream(
+            'stream2', [self._grains(3), self._grains(2)])])
+        assert '  → stream2: 5 grani (2 voci)' in capsys.readouterr().out
+
+    def test_singolare(self, mocks, capsys):
+        """Prosa italiana: un grano solo non e' '1 grani'."""
+        self._run(mocks, [self._stream('s1', [self._grains(1)])])
+        assert '  → s1: 1 grano (1 voce)' in capsys.readouterr().out
+
+    def test_stream_cache_clean_senza_numero(self, mocks, capsys):
+        """Saltato dalla cache: nessun numero inventato, e soprattutto
+        nessuna lettura di .voices che lo rigenererebbe (#117)."""
+        self._run(mocks, [self._stream('s_clean')])
+        out = capsys.readouterr().out
+        assert '  → s_clean: grani non generati (cache)' in out
+
+    def test_ogni_stream_ha_la_sua_riga(self, mocks, capsys):
+        self._run(mocks, [
+            self._stream('s1', [self._grains(4)]),
+            self._stream('s2'),
+            self._stream('s3', [self._grains(1), self._grains(1)]),
+        ])
+        out = capsys.readouterr().out
+        assert '  → s1: 4 grani (1 voce)' in out
+        assert '  → s2: grani non generati (cache)' in out
+        assert '  → s3: 2 grani (2 voci)' in out
+
+    def test_dopo_rendering_completato_e_prima_dei_file(self, mocks, capsys):
+        """Le righe appartengono al render, non alla lista dei file."""
+        self._run(mocks, [self._stream('s1', [self._grains(2)])])
+        out = capsys.readouterr().out
+        assert (out.index('Rendering completato')
+                < out.index('  → s1: 2 grani')
+                < out.index('Generazione completata'))
+
+    def test_nessuna_riga_senza_stream(self, mocks, capsys):
+        self._run(mocks, [])
+        out = capsys.readouterr().out
+        assert 'grani' not in out
+
+
+# =============================================================================
 # TEST FLAG --magnify / --magnify-at (lente di ingrandimento della partitura)
 # =============================================================================
 
