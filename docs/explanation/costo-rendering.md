@@ -8,7 +8,7 @@ sources:
   - src/pge/core/stream.py
   - utils/bench_cost.py
   - utils/make_test_samples.py
-last_synced_commit: a4dc678
+last_synced_commit: be716c9
 ---
 
 # Costo del rendering — PythonGranularEngine
@@ -107,7 +107,12 @@ default.
 due regimi coincidono entro il rumore — serve a non pagare la generazione quando
 uno `Stream` viene istanziato ma non renderizzato. È il motivo per cui
 `Stream.__repr__` conta da `_voices` invece che dalla property: stampare gli
-stream appena creati, altrimenti, li genererebbe tutti.
+stream appena creati, altrimenti, li genererebbe tutti. Quel `grains=lazy` non
+è però una rinuncia al numero: il conteggio vero torna **a valle del render**,
+dove i grani ci sono già, in `RenderResult.grain_counts` — la mappa che
+`api.collect_grain_counts` riempie leggendo `voices` solo sugli stream con
+`generated` True (issue #250). È la stessa regola vista dall'altro capo: prima
+del render leggere costa una generazione, dopo costa O(voci).
 
 **Cosa non è misurato qui.** L'export della `map` (matplotlib) e gli altri export
 non entrano in questi numeri: sono consumatori della stessa lista di grani, con
@@ -151,6 +156,8 @@ Rilanciare `make bench` prima e dopo è il modo più diretto per accorgersene.
 - [[caching]] — come si evita di ripagare `a` su stream già renderizzati
 - [[cli]] — `--jobs`
 - [[multi-voice]] — ogni voce moltiplica i grani, quindi moltiplica `a`
+- [[use-as-library]] — `RenderResult.grain_counts`, il conteggio letto a valle
+  senza ripagare la generazione
 
 ## Riproduzione
 
