@@ -25,8 +25,24 @@ from pge import api
 from pge.cli import _build_renderer
 
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CLI_PATH = os.path.join(REPO_ROOT, 'src', 'pge', 'cli.py')
+# Il sorgente del modulo *importato*, non un path ricostruito a mano: la
+# guardia confronta la firma con il sito di chiamata, e i due devono venire
+# per costruzione dallo stesso file.
+CLI_PATH = inspect.getsourcefile(_build_renderer)
+
+
+def _chiamate_a_build_renderer():
+    """I nodi `ast.Call` di `_build_renderer` dentro `cli.py`."""
+    with open(CLI_PATH, encoding='utf-8') as fh:
+        tree = ast.parse(fh.read(), filename=CLI_PATH)
+    chiamate = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == '_build_renderer'
+    ]
+    assert chiamate, "nessuna chiamata a _build_renderer in cli.py"
+    return chiamate
 
 
 @pytest.fixture
@@ -85,20 +101,19 @@ class TestFirmaEsplicita:
         `_build_renderer` era invisibile: nessun errore, nessun test rosso.
         Qui i due elenchi vengono confrontati direttamente.
         """
-        with open(CLI_PATH, encoding='utf-8') as fh:
-            tree = ast.parse(fh.read(), filename=CLI_PATH)
-
-        chiamate = [
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == '_build_renderer'
-        ]
-        assert chiamate, "nessuna chiamata a _build_renderer in cli.py"
+        chiamate = _chiamate_a_build_renderer()
 
         firma = set(inspect.signature(_build_renderer).parameters)
         for chiamata in chiamate:
-            passati = {kw.arg for kw in chiamata.keywords if kw.arg}
+            # `**opts` si presenta come una keyword con `arg is None`: i nomi
+            # non sono piu' nel sorgente, quindi la guardia non ha piu' niente
+            # da confrontare e tacerebbe — lo stesso silenzio che i **kwargs
+            # nella firma producevano dall'altro lato. A runtime resterebbe il
+            # TypeError, ma solo il giorno in cui quel ramo viene eseguito.
+            assert all(kw.arg for kw in chiamata.keywords), (
+                "il sito di chiamata usa **unpacking: i nomi passati non sono "
+                "piu' leggibili dal sorgente e questa guardia diventa inerte")
+            passati = {kw.arg for kw in chiamata.keywords}
             assert passati <= firma, (
                 "main() passa a _build_renderer nomi che la firma non "
                 f"dichiara: {sorted(passati - firma)}")
@@ -153,6 +168,47 @@ class TestDefaultInvariati:
         atteso = os.path.join('cache', 'brano.json')
         assert costruito.call_args.kwargs['cache_manifest_path'] == atteso
         assert f"[CACHE] Manifest: {atteso}" in capsys.readouterr().out
+
+
+class TestOpzioniCsoundFuoriDaCsound:
+    """I nomi Csound restano accettati su ogni backend, e ignorati.
+
+    E' la decisione piu' caricata del fix, e finora viveva solo nel
+    docstring: la CLI passa `ssdir`, `sfdir`, `orc_path`, `incdir`,
+    `log_dir`, `message_level` e `sco_dir` a *ogni* render, quindi
+    restringere la firma al solo ramo Csound — "correggere il refuso" —
+    romperebbe ogni render NumPy con un TypeError. La firma esplicita rende
+    quella pulizia scrivibile in una riga; finche' resta prosa, niente la
+    ferma.
+    """
+
+    CSOUND_ONLY = dict(orc_path='/o.orc', incdir='/inc', ssdir='/s',
+                       sfdir='/f', log_dir='/log', message_level=7,
+                       sco_dir='/sco')
+
+    @pytest.mark.parametrize('tipo', ['numpy', 'supercollider'])
+    def test_sono_accettate(self, tipo, gen, costruito):
+        _build_renderer(tipo, gen, **self.CSOUND_ONLY)
+
+    @pytest.mark.parametrize('tipo', ['numpy', 'supercollider'])
+    def test_ma_non_arrivano_allapi(self, tipo, gen, costruito):
+        """Accettate non vuol dire inoltrate: fuori da Csound `csound` resta
+        None, e con esso ogni valore che ci sarebbe finito dentro."""
+        _build_renderer(tipo, gen, **self.CSOUND_ONLY)
+        assert costruito.call_args.kwargs['csound'] is None
+
+    def test_percio_la_cli_le_passa_a_ogni_render(self):
+        """Il perche' della regola, letto dal sorgente: il sito di chiamata
+        e' uno solo e non e' condizionato al backend."""
+        chiamate = _chiamate_a_build_renderer()
+        assert len(chiamate) == 1, (
+            "piu' di un sito di chiamata: la regola qui sotto vale per quello "
+            "unico e incondizionato")
+        passati = {kw.arg for kw in chiamate[0].keywords}
+        assert set(self.CSOUND_ONLY) <= passati, (
+            "la CLI non passa piu' "
+            f"{sorted(set(self.CSOUND_ONLY) - passati)}: se nessun backend "
+            "le riceve, il posto giusto non e' piu' la firma comune")
 
 
 class TestCacheSenzaBasename:
