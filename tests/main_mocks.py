@@ -123,6 +123,7 @@ def build_mock_modules():
         'ScoreVisualizer': viz_cls,
         'visualizer_instance': viz_inst,
         'configure_clip_logger': log_mod.configure_clip_logger,
+        'configure_engine_logger': log_mod.configure_engine_logger,
         'get_clip_log_path': log_mod.get_clip_log_path,
         'RenderingEngine': engine_cls,
         'engine_instance': engine_instance,

@@ -217,9 +217,9 @@ def main():
             "[--renderer csound|numpy|supercollider] "
             "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
-            "[--samples-dir DIR] "
+            "[--samples-dir DIR] [--log-dir DIR] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
-            "[--log-dir DIR] [--message-level N] "
+            "[--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
             "[--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] "
             "[--sc-block-size N] [--sc-max-nodes N] "
@@ -386,6 +386,31 @@ def main():
             sys.exit(1)
         samples_dir = sys.argv[idx + 1]
 
+    # --log-dir DIR: la directory dei log di TUTTO il run, non solo di csound
+    # (issue #251). Ci finiscono il logfile di csound (via CsoundOptions), il
+    # log degli errori engine e quello dei clip: e' la stessa cartella che il
+    # Makefile crea in `setup` e svuota in `clean` come LOGDIR. Sta qui e non
+    # fra i flag csound perche' con `--renderer numpy` deve valere lo stesso;
+    # finche' era li' dentro, i due logger sotto avevano './logs' scritto a
+    # mano e il flag si limitava a spostare i log del renderer.
+    #
+    # Secondo flag del file che rifiuta il valore mancante invece di
+    # ignorarlo, per l'identico motivo del vicino `--samples-dir`: chi scrive
+    # `--log-dir` senza directory si sente rispondere `logs`, cioe' il posto
+    # da cui il flag serviva ad andarsene. Finche' spostava solo il logfile di
+    # csound il silenzio costava poco; adesso che governa anche il log degli
+    # errori engine manda a cercare quel log dove non e' -- la riga
+    # `Dettagli:` di un errore nomina la directory di default, non quella
+    # chiesta.
+    log_dir = 'logs'
+    if '--log-dir' in sys.argv:
+        idx = sys.argv.index('--log-dir')
+        if idx + 1 >= len(sys.argv):
+            print("--log-dir richiede una directory. "
+                  "Esempio: --log-dir /percorso/ai/log")
+            sys.exit(1)
+        log_dir = sys.argv[idx + 1]
+
     # --- Csound config args ---
 
     orc_path = 'csound/main.orc'
@@ -414,12 +439,6 @@ def main():
         idx = sys.argv.index('--sfdir')
         if idx + 1 < len(sys.argv):
             sfdir = sys.argv[idx + 1]
-
-    log_dir = 'logs'
-    if '--log-dir' in sys.argv:
-        idx = sys.argv.index('--log-dir')
-        if idx + 1 < len(sys.argv):
-            log_dir = sys.argv[idx + 1]
 
     message_level = 134
     if '--message-level' in sys.argv:
@@ -513,11 +532,11 @@ def main():
     configure_clip_logger(
         console_enabled=False,
         file_enabled=True,
-        log_dir='./logs',
+        log_dir=log_dir,
         yaml_name=yaml_basename,
         log_transformations=False
     )
-    configure_engine_logger(yaml_name=yaml_basename, log_dir='./logs')
+    configure_engine_logger(yaml_name=yaml_basename, log_dir=log_dir)
 
     try:
         generator = Generator(yaml_file, samples_dir=samples_dir)

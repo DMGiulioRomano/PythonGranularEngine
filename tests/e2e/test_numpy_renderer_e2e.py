@@ -546,3 +546,59 @@ class TestNumpyStemsStreamParallel:
             f"seconda run: nessuno stream doveva essere DIRTY\n{out2}"
         assert _count_cache_status(out2, "clean") == 3, \
             f"seconda run: attesi 3 clean\n{out2}"
+
+
+# =============================================================================
+# 7. LOGDIR: la variabile Make raggiunge i log anche senza csound
+#
+# `--log-dir` e' la directory dei log dell'INTERO run (issue #251), ma il
+# Makefile lo passava solo nel ramo `RENDERER=csound`: con numpy -- che e' il
+# default -- LOGDIR non spostava un solo file, e i log di caricamento
+# restavano nella `logs/` del cwd, cioe' la root del repo, dove `make clean`
+# con un LOGDIR diverso non li vedeva. Questi e2e passano gia' LOGDIR a make:
+# fino al fix lo passavano invano.
+#
+# Il file engine nasce a `configure_engine_logger` (FileHandler senza delay),
+# non al primo errore: dopo una build riuscita esiste, vuoto. Il clip log
+# invece e' lazy -- lo crea il primo warning -- quindi non si asserisce.
+# =============================================================================
+
+_ENGINE_LOG = "e2e_numpy_test_engine.log"
+
+
+def _repo_engine_log_stamp():
+    """(esistenza, mtime) del log engine nella `logs/` della root del repo.
+
+    Confrontato prima e dopo la build: e' il sintomo della issue -- non basta
+    che il log compaia in LOGDIR, non deve piu' comparire anche qui.
+    """
+    path = os.path.join(PROJECT_ROOT, "logs", _ENGINE_LOG)
+    return (os.path.exists(path),
+            os.stat(path).st_mtime_ns if os.path.exists(path) else None)
+
+
+@pytest.mark.e2e
+class TestNumpyLogDir:
+    """`make ... LOGDIR=<dir> RENDERER=numpy` scrive i log in <dir>."""
+
+    def test_stems_engine_log_lands_in_logdir(self, tmp_path):
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        before = _repo_engine_log_stamp()
+        result, output = _make_build_stems(tmp_path)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert (tmp_path / "logs" / _ENGINE_LOG).exists(), \
+            f"log engine non in LOGDIR:\n{output}"
+        assert _repo_engine_log_stamp() == before, \
+            "la build ha scritto nella logs/ della root del repo"
+
+    def test_mix_engine_log_lands_in_logdir(self, tmp_path):
+        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
+        before = _repo_engine_log_stamp()
+        result, output = _make_build_mix(tmp_path)
+
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        assert (tmp_path / "logs" / _ENGINE_LOG).exists(), \
+            f"log engine non in LOGDIR:\n{output}"
+        assert _repo_engine_log_stamp() == before, \
+            "la build ha scritto nella logs/ della root del repo"

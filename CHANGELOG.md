@@ -63,6 +63,40 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
+  parsato correttamente e finiva al renderer, ma i due logger configurati
+  prima del render — clip ed errori engine — avevano `'./logs'` scritto a
+  mano. Chi lo passava si ritrovava i log divisi in due posti: quelli del
+  renderer dove aveva chiesto, quelli di caricamento sempre nella `logs/`
+  relativa al cwd, dove la riga `Dettagli:` di un errore continuava a
+  mandarlo. Con `--renderer numpy` il flag non aveva alcun effetto:
+  `CsoundOptions` — il suo unico consumatore — si costruisce solo per
+  csound.
+
+  Adesso i tre consumatori ricevono la stessa directory, che e' quella che
+  `make setup` crea e `make clean` svuota come `LOGDIR`: con `LOGDIR`
+  diverso dal default, i log di caricamento restavano fuori anche dal
+  `clean`. Il default `logs` nel cwd non cambia; cambia solo il prefisso
+  stampato di quei due path, da `./logs/...` a `logs/...` — stessa cartella.
+  La parsatura di `--log-dir` esce dal blocco dei flag csound, dove non
+  apparteneva.
+
+  Lo teneva fra i propri flag csound anche il Makefile, e li' costava
+  l'intero fix: con il renderer di default (`numpy`) `make ... LOGDIR=<dir>`
+  non passava affatto `--log-dir`, quindi nessun log si spostava e `make
+  clean` restava cieco esattamente come prima. `--log-dir $(LOGDIR)` e' ora
+  fra i `PYFLAGS` comuni — lo ereditano tutti i renderer, backend futuri
+  compresi — e gli e2e numpy, che una `LOGDIR` temporanea la passavano gia',
+  ora verificano che il log engine ci finisca davvero.
+
+  `--log-dir` senza directory adesso stampa un messaggio ed esce con 1,
+  invece di ricadere in silenzio su `logs`: e' la stessa deroga di
+  `--samples-dir` — secondo e ultimo flag del file a farlo — presa dallo
+  stesso argomento, che da questa issue in poi vale parola per parola anche
+  qui. Il fallimento silenzioso rispondeva con la directory da cui il flag
+  serviva ad andarsene, e ora che il flag governa il log degli errori engine
+  mandava a cercarlo dove non era.
+
 - **La colorbar del pitch dipingeva un grigio che nessun grano ha.** E' la
   chiave di lettura della mappa, ma disegnava il colore *nudo* della colormap
   mentre i grani sono compositi sul fondo della pagina all'alpha del volume:
