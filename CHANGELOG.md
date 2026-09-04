@@ -81,6 +81,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   La parsatura di `--log-dir` esce dal blocco dei flag csound, dove non
   apparteneva.
 
+  Lo teneva fra i propri flag csound anche il Makefile, e li' costava
+  l'intero fix: con il renderer di default (`numpy`) `make ... LOGDIR=<dir>`
+  non passava affatto `--log-dir`, quindi nessun log si spostava e `make
+  clean` restava cieco esattamente come prima. `--log-dir $(LOGDIR)` e' ora
+  fra i `PYFLAGS` comuni — lo ereditano tutti i renderer, backend futuri
+  compresi — e gli e2e numpy, che una `LOGDIR` temporanea la passavano gia',
+  ora verificano che il log engine ci finisca davvero.
+
 - **La colorbar del pitch dipingeva un grigio che nessun grano ha.** E' la
   chiave di lettura della mappa, ma disegnava il colore *nudo* della colormap
   mentre i grani sono compositi sul fondo della pagina all'alpha del volume:

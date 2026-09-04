@@ -6,6 +6,7 @@ tags: [cli, flags, make, rendering, export]
 sources:
   - src/main.py
   - src/pge/cli.py
+  - src/pge/shared/logger.py
   - src/pge/rendering/grain_visuals.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
@@ -74,11 +75,11 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
 | `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
+| `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log di **tutto** il run, con qualunque renderer: logfile di Csound, log degli errori engine (`<basename>_engine.log`, quello che la riga `Dettagli:` indica) e log dei clip. È la cartella che `make setup` crea e `make clean` svuota come `LOGDIR` |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
 | `--incdir DIR` | `src` | — | include dir per Csound |
 | `--ssdir DIR` | `--samples-dir`, altrimenti `refs` | — | sample search dir di Csound (variabile d'ambiente SSDIR). Vince su `--samples-dir` quando è esplicito; **non basta da solo** (vedi Bounds) |
 | `--sfdir DIR` | `output` | `SFDIR` | sound file dir di Csound |
-| `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log di **tutto** il run, con qualunque renderer: logfile di Csound, log degli errori engine (`<basename>_engine.log`, quello che la riga `Dettagli:` indica) e log dei clip. È la cartella che `make setup` crea e `make clean` svuota come `LOGDIR` |
 | `--message-level N` | `134` | — | message level di Csound |
 | `--sco-dir DIR` | `generated` | — | destinazione `.sco` (attivo solo con `--keep-sco`) |
 | `--sc-synthdef-source PATH` | `supercollider/pge_grain.scd` | `SC_SYNTHDEF_SOURCE` | sorgente della SynthDef del grano (omologo di `--orc-path`) |
@@ -114,14 +115,18 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
   (gli altri renderer non producono `.sco`).
-- **`--log-dir` non è un flag csound**, benché stia in mezzo a loro nella
-  tabella: vale con qualunque renderer, perché i due log che scrive la fase
-  di caricamento (errori engine e clip) esistono prima che si scelga un
+- **`--log-dir` non è un flag csound**, benché sia stato a lungo scritto in
+  mezzo a loro: vale con qualunque renderer, perché i due log che scrive la
+  fase di caricamento (errori engine e clip) esistono prima che si scelga un
   backend. Fino alla issue #251 i due logger avevano `./logs` scritto a
   mano: chi passava il flag si ritrovava i log divisi in due posti — quelli
   del renderer dove aveva chiesto, quelli di caricamento sempre nella
   `logs/` del cwd, dove `make clean` con `LOGDIR` diverso non li vedeva
-  nemmeno.
+  nemmeno. Anche il lato Make lo teneva fra i `CSOUND_FLAGS`: con il
+  renderer di default (`numpy`) `make ... LOGDIR=<dir>` non passava proprio
+  il flag, quindi la colonna «Variabile Make» qui sopra valeva solo per
+  csound. Ora `--log-dir $(LOGDIR)` sta fra i `PYFLAGS` comuni: vale per
+  tutti i renderer, backend nuovi compresi.
 - **`--keep-osc` / `--osc-dir` / `--sc-*`** hanno effetto solo con
   `--renderer supercollider`. Il backend richiede `scsynth` nel PATH e,
   la prima volta, `sclang` per compilare la SynthDef: binario assente →
