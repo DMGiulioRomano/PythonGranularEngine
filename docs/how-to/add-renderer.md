@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/supercollider_renderer.py
   - src/pge/api.py
   - src/pge/cli.py
-last_synced_commit: 7387d73
+last_synced_commit: 8e21c03
 entry_for: [add-renderer]
 ---
 

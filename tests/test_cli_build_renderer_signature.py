@@ -31,12 +31,27 @@ from pge.cli import _build_renderer
 CLI_PATH = inspect.getsourcefile(_build_renderer)
 
 
-def _chiamate_a_build_renderer():
-    """I nodi `ast.Call` di `_build_renderer` dentro `cli.py`."""
+def _albero_di_cli():
+    """L'AST di `cli.py`.
+
+    Un albero solo per test, e passato per argomento: i nodi `ast` si
+    confrontano per identita', quindi due parse dello stesso file non hanno
+    un nodo in comune e ogni confronto fra le due non e' falso — e' vuoto.
+    """
     with open(CLI_PATH, encoding='utf-8') as fh:
-        tree = ast.parse(fh.read(), filename=CLI_PATH)
+        return ast.parse(fh.read(), filename=CLI_PATH)
+
+
+def _main_di_cli(albero):
+    """Il nodo `main()` di `cli.py`."""
+    return next(n for n in albero.body
+                if isinstance(n, ast.FunctionDef) and n.name == 'main')
+
+
+def _chiamate_a_build_renderer(albero):
+    """I nodi `ast.Call` di `_build_renderer` dentro `cli.py`."""
     chiamate = [
-        node for node in ast.walk(tree)
+        node for node in ast.walk(albero)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == '_build_renderer'
@@ -101,7 +116,7 @@ class TestFirmaEsplicita:
         `_build_renderer` era invisibile: nessun errore, nessun test rosso.
         Qui i due elenchi vengono confrontati direttamente.
         """
-        chiamate = _chiamate_a_build_renderer()
+        chiamate = _chiamate_a_build_renderer(_albero_di_cli())
 
         firma = set(inspect.signature(_build_renderer).parameters)
         for chiamata in chiamate:
@@ -199,11 +214,27 @@ class TestOpzioniCsoundFuoriDaCsound:
 
     def test_percio_la_cli_le_passa_a_ogni_render(self):
         """Il perche' della regola, letto dal sorgente: il sito di chiamata
-        e' uno solo e non e' condizionato al backend."""
-        chiamate = _chiamate_a_build_renderer()
+        e' uno solo, non e' dentro un ramo per backend, e li passa tutti.
+
+        Le tre cose insieme, perche' separate non dicono niente: un unico
+        sito che passasse i sette nomi da dentro `if renderer_type ==
+        'csound'` renderebbe la firma comune inutile senza far fallire
+        nessuna delle altre due asserzioni.
+        """
+        albero = _albero_di_cli()
+        chiamate = _chiamate_a_build_renderer(albero)
         assert len(chiamate) == 1, (
             "piu' di un sito di chiamata: la regola qui sotto vale per quello "
             "unico e incondizionato")
+
+        rami = [n for n in ast.walk(_main_di_cli(albero))
+                if isinstance(n, ast.If)]
+        dentro = [n for n in rami if chiamate[0] in set(ast.walk(n))]
+        assert not dentro, (
+            "il sito di chiamata e' dentro un ramo condizionale: se i nomi "
+            "Csound non partono piu' a ogni render, la firma comune non e' "
+            "piu' il posto dove devono stare")
+
         passati = {kw.arg for kw in chiamate[0].keywords}
         assert set(self.CSOUND_ONLY) <= passati, (
             "la CLI non passa piu' "
