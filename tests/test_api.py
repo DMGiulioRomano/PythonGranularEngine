@@ -19,7 +19,9 @@ import types
 import pytest
 from unittest.mock import MagicMock, patch
 
-from tests.main_mocks import build_mock_modules
+from tests.main_mocks import (
+    build_mock_modules, LazyStreamDouble, fake_grains,
+)
 
 
 @pytest.fixture
@@ -627,26 +629,10 @@ class TestCollectGrainCounts:
     fatto risparmiare.
     """
 
-    class _Stream:
-        """Stream finto con la laziness vera: `.voices` esplode se lo stream
-        non e' materializzato, cosi' un accesso di troppo e' un test rosso e
-        non una lentezza silenziosa."""
-
-        def __init__(self, stream_id, voices=None):
-            self.stream_id = stream_id
-            self.generated = voices is not None
-            self._voices = voices
-
-        @property
-        def voices(self):
-            if not self.generated:
-                raise AssertionError(
-                    f"accesso a .voices su {self.stream_id}: innescherebbe "
-                    "la generazione lazy (#117)")
-            return self._voices
+    _Stream = LazyStreamDouble
 
     def _grains(self, n):
-        return [MagicMock(name=f'grain{i}') for i in range(n)]
+        return fake_grains(n)
 
     def test_stream_materializzato_conta_grani_e_voci(self, api_mocks):
         gen = api_mocks['generator_instance']
@@ -713,6 +699,36 @@ class TestCollectGrainCounts:
         assert result.grain_counts['s1'].grains == 8
         assert result.grain_counts['s1'].voices == 2
         assert result.grain_counts['s2'] is None
+
+    def test_render_conta_dopo_engine_render_non_prima(self, api_mocks):
+        """Il MOMENTO della lettura e' il vincolo di #250, non un dettaglio.
+
+        Qui gli stream nascono non materializzati ed e' `engine.render` a
+        materializzarne uno: se `collect_grain_counts` risalisse sopra la
+        chiamata al render, la mappa direbbe `None` per tutti -- e in
+        produzione quel `None` sarebbe il caso buono, perche' sugli stream
+        veri leggere `.voices` prima del render li genererebbe in fase di
+        stampa, che e' esattamente il lavoro che #117 aveva tolto. Gli altri
+        test della classe usano stream gia' materializzati alla costruzione,
+        quindi non distinguono il prima dal dopo.
+        """
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = {}
+        dirty = self._Stream('s_dirty')
+        clean = self._Stream('s_clean')   # saltato dalla cache: nessuno lo tocca
+        gen.streams = [dirty, clean]
+
+        def _render_materializza(*args, **kwargs):
+            dirty.materialize([self._grains(3), self._grains(2)])
+            return ['/out/test.aif']
+
+        api_mocks['engine_instance'].render.side_effect = _render_materializza
+
+        result = api_mocks['api'].render(gen, 'out.aif', renderer='numpy')
+
+        assert result.grain_counts['s_dirty'].grains == 5
+        assert result.grain_counts['s_dirty'].voices == 2
+        assert result.grain_counts['s_clean'] is None
 
     def test_render_result_default_e_mappa_vuota(self, api_mocks):
         """Chi costruisce un RenderResult a mano (CLI test, consumer) non

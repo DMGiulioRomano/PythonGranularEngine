@@ -28,7 +28,9 @@ from unittest.mock import MagicMock, patch, call
 # library/CLI). Ogni test ottiene mock freschi per isolamento completo.
 # =============================================================================
 
-from tests.main_mocks import mocks, run_main  # noqa: F401  (fixture pytest)
+from tests.main_mocks import (  # noqa: F401  (`mocks` e' una fixture pytest)
+    mocks, run_main, LazyStreamDouble, fake_grains,
+)
 
 
 # =============================================================================
@@ -1356,29 +1358,11 @@ class TestGrainCountLog:
     `RenderResult.grain_counts`.
     """
 
-    class _Stream:
-        """Stream finto con la laziness vera: `.voices` esplode se lo stream
-        non e' materializzato, cosi' una lettura di troppo e' un test rosso e
-        non una lentezza silenziosa in produzione."""
-
-        def __init__(self, stream_id, voices=None):
-            self.stream_id = stream_id
-            self.generated = voices is not None
-            self._voices = voices
-
-        @property
-        def voices(self):
-            if not self.generated:
-                raise AssertionError(
-                    f"accesso a .voices su {self.stream_id}: innescherebbe "
-                    "la generazione lazy (#117)")
-            return self._voices
-
     def _stream(self, stream_id, voices=None):
-        return self._Stream(stream_id, voices)
+        return LazyStreamDouble(stream_id, voices)
 
     def _grains(self, n):
-        return [MagicMock(name=f'g{i}') for i in range(n)]
+        return fake_grains(n)
 
     def _run(self, mocks, streams, argv=None):
         mocks['generator_instance'].streams = streams
