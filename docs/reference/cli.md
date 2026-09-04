@@ -10,7 +10,7 @@ sources:
   - src/pge/rendering/grain_visuals.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: 68654ba
+last_synced_commit: 5b24556
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -114,7 +114,12 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   fingerprint: modificare `pge_grain.scd` o `main.orc` non invalida nulla. La
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`
-  (gli altri renderer non producono `.sco`).
+  (gli altri renderer non producono `.sco`). Il backend richiede `csound` nel
+  PATH: binario assente → `CsoundNotFoundError`, che nomina il rimedio
+  (installare csound, oppure `--renderer numpy`; vedi [[errors]]). Fino alla
+  issue #241 lo stesso caso usciva come «file YAML non trovato», perché la
+  CLI intercettava il `FileNotFoundError` del subprocess con l'handler tenuto
+  per il file di configurazione.
 - **`--log-dir` non è un flag csound**, benché sia stato a lungo scritto in
   mezzo a loro: vale con qualunque renderer, perché i due log che scrive la
   fase di caricamento (errori engine e clip) esistono prima che si scelga un

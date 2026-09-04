@@ -6,7 +6,7 @@ tags: [architecture, rendering, ocp]
 sources:
   - src/pge/rendering/
   - src/main.py
-last_synced_commit: 1aba65c
+last_synced_commit: 5b24556
 ---
 
 # Architettura Renderer
@@ -167,7 +167,9 @@ Sequenza e invarianti:
 - Aggiungere una mode (es. per-voice): nuova `RenderMode` subclass + uso in main; ABC invariata
 - Caching: vedi [[caching]]
 - Errori specifici renderer: `CsoundRenderError`, `SuperColliderRenderError`,
-  `SuperColliderNotFoundError`, `InvalidRendererError` (vedi [[errors]])
+  `CsoundNotFoundError`, `SuperColliderNotFoundError`, `InvalidRendererError`
+  (vedi [[errors]]): i due "non trovato" dicono che manca il binario del
+  backend, e nessuno dei due eredita da `FileNotFoundError`
 - L'elenco dei tipi validi vive in `RendererFactory.available_types()`, ed è
   quello che i messaggi d'errore e la CLI interrogano: un backend nuovo non
   richiede di aggiornare nessuna lista scritta a mano

@@ -94,6 +94,41 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **Csound non installato veniva annunciato come «file YAML non trovato»**
+  (issue #241). `CsoundRenderer._run_csound` lasciava salire il
+  `FileNotFoundError` che `subprocess.run` alza quando il binario non e' nel
+  PATH, e in `cli.main()` quel tipo aveva il **primo** handler della catena,
+  tenuto per il file di configurazione. Su una macchina senza csound
+  (Fedora/RHEL, dove il README gia' suggerisce `RENDERER=numpy`) il render
+  moriva dicendo che il file YAML non esisteva — mentre era stato letto e
+  parsato pochi istanti prima, e il difetto stava a valle.
+
+  Il guasto ha ora un tipo suo, `CsoundNotFoundError`, con il rimedio dentro
+  il messaggio:
+
+  ```
+  [ERRORE] Csound: binario 'csound' non trovato
+    Hint:         Installa csound (`make install-system-deps`), oppure usa
+                  `--renderer numpy`, che non richiede binari esterni.
+  ```
+
+  Non eredita da `FileNotFoundError`, per la stessa ragione per cui non lo fa
+  `SuperColliderNotFoundError` (#228): il tipo di un errore serve a chi lo
+  cattura, non a descriverne la causa. Le due classi erano identiche a meno
+  del nome del tool, quindi ora condividono la base `_BinaryNotFoundError`,
+  come i due errori di exit code condividono `_SubprocessRenderError`.
+
+  Il tipo giusto non basta se chi cattura e' troppo largo: l'handler
+  `FileNotFoundError` della CLI si e' stretto attorno a `Generator()` +
+  `load_yaml()`, l'unico punto che puo' sollevarlo per il motivo che
+  annuncia. Un `FileNotFoundError` che nessuno ha ancora tradotto finisce nel
+  ramo generico — messaggio e traceback — invece che in un messaggio falso.
+
+  Nota per chi usa la libreria: la docstring di `render_single_stream`
+  prometteva `FileNotFoundError` per csound assente. La promessa **era** il
+  difetto e cambia con il codice; chi la catturava per nome deve passare a
+  `CsoundNotFoundError` (o a `EngineError`, che le copre tutte).
+
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati
   prima del render — clip ed errori engine — avevano `'./logs'` scritto a
