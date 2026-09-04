@@ -62,6 +62,12 @@ ifneq ($(strip $(GRAIN_HEIGHT)),)
 PYFLAGS += --grain-height $(GRAIN_HEIGHT)
 endif
 
+# 2c-ter. Se BW e' true, aggiungi --bw (issue #248): preset della partitura
+# leggibile in stampa bianco e nero (pitch acromatico, envelope a tratteggio).
+ifeq ($(BW), true)
+PYFLAGS += --bw
+endif
+
 # 2d. Se MAGNIFY e' true, aggiungi --magnify (lente automatica sul cluster denso)
 ifeq ($(MAGNIFY), true)
 PYFLAGS += --magnify

@@ -846,7 +846,20 @@ class TestExportScorePdf:
         'magnify_auto': False,
         'magnify_targets': [],
         'grain_height': 'duration',
+        'bw': False,
     }
+
+    def test_defaults_never_shadow_the_bw_preset(self, api_mocks):
+        """I default dell'API stanno SOPRA il preset `bw`, che e' un default a
+        sua volta: `from_overrides` non puo' distinguere un default dell'API
+        da una scelta dell'utente. Il giorno in cui questo dict acquistasse una
+        chiave che il preset sposta, `--bw` diventerebbe inerte in silenzio.
+        Le due chiavi devono restare disgiunte (issue #248)."""
+        from pge.rendering.visualizer_config import VisualizerConfig
+
+        collisione = (set(self.CLI_DEFAULT_CONFIG)
+                      & set(VisualizerConfig._bw_defaults()))
+        assert not collisione, sorted(collisione)
 
     def test_default_config_matches_cli(self, api_mocks):
         gen = api_mocks['generator_instance']

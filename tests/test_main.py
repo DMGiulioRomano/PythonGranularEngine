@@ -385,6 +385,46 @@ class TestGrainHeightFlag:
 
 
 # =============================================================================
+# TEST FLAG --bw
+# =============================================================================
+
+class TestBwFlag:
+    """
+    --bw sceglie il preset della partitura leggibile in stampa bianco e nero
+    (issue #248): mappa del pitch acromatica, envelope neri distinti dal
+    tratteggio. Arriva alla config di ScoreVisualizer come `bw`; e' un
+    interruttore, quindi non ha valore da validare.
+    """
+
+    def _get_viz_config(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        _, kwargs = mocks['ScoreVisualizer'].call_args
+        return kwargs['config']
+
+    def test_default_is_off(self, mocks):
+        """Senza flag la partitura resta a colori: nessuna figura gia'
+        generata cambia aspetto da sola."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize'])
+        assert config.get('bw') is False
+
+    def test_flag_reaches_the_config(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize', '--bw'])
+        assert config.get('bw') is True
+
+    def test_combines_with_the_other_score_flags(self, mocks):
+        """Il preset non esclude il resto: e' una tavolozza, non un modo."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize', '--bw',
+                    '--grain-height', 'read-span', '--show-static'])
+        assert config.get('bw') is True
+        assert config.get('grain_height') == 'read_span'
+        assert config.get('show_static_params') is True
+
+
+# =============================================================================
 # TEST FLAG --page-duration
 # =============================================================================
 

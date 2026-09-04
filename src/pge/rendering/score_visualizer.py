@@ -34,21 +34,55 @@ PITCH_DIVERGING = LinearSegmentedColormap.from_list(
     'pitch_div', ['#3b1f8b', '#3a8fd6', '#777777', '#f08c00', '#f2d024']
 )
 
-# Registrazione con guardia: idempotente anche su re-import del modulo.
-try:
-    plt.get_cmap('pitch_div')
-except (ValueError, KeyError):
+# La stessa mappa per la carta in bianco e nero (issue #248), scelta dal preset
+# `bw`. I due bracci di PITCH_DIVERGING hanno la STESSA chiarezza: convertita
+# in grigio, un grano a +300 cent e uno a -300 cent diventano lo stesso grigio
+# e il segno del detune sparisce. Il grigio ha un solo asse percettivo, la
+# luminanza: qui e' speso tutto sul detune, monotono dal grave all'acuto.
+#
+# Compressa a circa 0.15-0.85 invece che a tutto il dominio: col braccio alto
+# sul bianco i grani acuti sparirebbero sulla pagina, col basso sul nero si
+# confonderebbero con assi e griglia. Il centro e' il grigio medio, come il
+# #777777 della mappa a colori: nessun detune = nessuno scarto dal mezzo.
+#
+# Quelli sono i valori della MAPPA. Sulla pagina il grano e' composito su
+# fondo bianco all'alpha del preset (`a*g + (1-a)`, alpha 0.9), quindi la
+# banda diventa 0.23-0.87 e lo zero cade a 0.55: piu' chiara di mezzo tono,
+# non centrata. E' la barra a doversi adeguare al grano, non viceversa —
+# _add_pitch_colorbar le passa la stessa alpha, cosi' la chiave di lettura
+# mostra il grigio che il lettore ha davanti invece del colore nudo.
+#
+# La rampa e' lineare nel valore sRGB, non in L*: l'obiettivo e' stare dentro
+# i due estremi utili in stampa, non l'uniformita' percettiva.
+PITCH_DIVERGING_BW = LinearSegmentedColormap.from_list(
+    'pitch_div_bw', ['#262626', '#535353', '#808080', '#acacac', '#d9d9d9']
+)
+
+
+def _register_colormap(cmap):
+    """Registra una colormap col suo nome, una volta sola.
+
+    Con guardia: idempotente anche su re-import del modulo.
+    """
     try:
-        import matplotlib as mpl
-        mpl.colormaps.register(PITCH_DIVERGING)
-    except (AttributeError, ImportError):
-        plt.register_cmap(cmap=PITCH_DIVERGING)
+        plt.get_cmap(cmap.name)
+    except (ValueError, KeyError):
+        try:
+            import matplotlib as mpl
+            mpl.colormaps.register(cmap)
+        except (AttributeError, ImportError):
+            plt.register_cmap(cmap=cmap)
+
+
+_register_colormap(PITCH_DIVERGING)
+_register_colormap(PITCH_DIVERGING_BW)
 
 # Colori di default e universo dei nomi plottabili. Definiti nel modulo
 # matplotlib-free rendering.envelope_extractor (issue #150) e ri-esportati qui
 # per retro-compatibilita': main.py importa PLOT_ENVELOPE_KEYS da qui, i test
 # importano ENVELOPE_COLORS da qui.
-from pge.rendering.envelope_extractor import ENVELOPE_COLORS, PLOT_ENVELOPE_KEYS  # noqa: F401,E402
+from pge.rendering.envelope_extractor import (  # noqa: F401,E402
+    ENVELOPE_COLORS, ENVELOPE_STYLE_DEFAULT, PLOT_ENVELOPE_KEYS)
 from pge.rendering import envelope_display  # noqa: E402
 from pge.rendering import grain_visuals  # noqa: E402
 from pge.rendering import magnifier_projection  # noqa: E402
@@ -266,9 +300,28 @@ class ScoreVisualizer:
             label = 'pitch (ratio)'
 
         cax = fig.add_subplot(cax_spec)
-        cbar = fig.colorbar(
-            ScalarMappable(norm=norm, cmap=self.cmap), cax=cax
-        )
+        mappable = ScalarMappable(norm=norm, cmap=self.cmap)
+        # La barra e' la CHIAVE di lettura dei grani, quindi deve mostrare il
+        # grigio che i grani hanno davvero: composito su fondo bianco, non il
+        # colore nudo della mappa. Con l'alpha guidata dal volume non c'e' un
+        # valore solo da mostrare e la barra resta opaca, come e' sempre stata;
+        # quando l'alpha e' FISSATA la corrispondenza e' esprimibile
+        # esattamente, e allora tacerla sarebbe un bias sistematico: ogni
+        # grano si leggerebbe piu' acuto di quanto e'.
+        #
+        # La condizione e' l'alpha fissata, NON il preset: `bw` non compare
+        # qui. Il preset e' solo il modo piu' comune di arrivarci, e una
+        # config che fissa `grain_alpha_range` per conto suo — a colori,
+        # senza `bw` — ha esattamente lo stesso bisogno. E' anche l'unico
+        # punto in cui questa PR si vede a preset spento, e si vede solo li'
+        # (issue #248).
+        #
+        # L'alpha si passa alla colorbar e non si cuoce dentro la mappa: cosi'
+        # barra e grani compongono sullo stesso fondo, qualunque esso sia,
+        # invece di dare per scontato il bianco.
+        alpha_lo, alpha_hi = self.config['grain_alpha_range']
+        alpha = float(alpha_lo) if alpha_lo == alpha_hi else None
+        cbar = fig.colorbar(mappable, cax=cax, alpha=alpha)
         # Scarta i tick troppo vicini agli estremi del range: con colorbar
         # impilate (una per stream, hspace=0) il tick di fondo della colorbar
         # sopra e quello di testa della colorbar sotto cadono sullo stesso bordo
@@ -295,6 +348,53 @@ class ScoreVisualizer:
         return self.cmap(grain_visuals.pitch_position(
             pitch_ratio, cents_range, pitch_range=self.config['pitch_range']))
     
+    def _envelope_style(self, param_name):
+        """(linestyle, linewidth) di una curva envelope.
+
+        L'altro canale del colore, e con la stessa regola di chi lo risolve:
+        le curve per-voce '__vN' prendono lo stile della base (issue #90), o
+        una voce sarebbe l'unica linea piena della corsia.
+
+        Con `envelope_styles` vuota — cioe' senza preset B&W — ogni chiave
+        risolve a ENVELOPE_STYLE_DEFAULT, che e' il disegno storico: la
+        partitura a colori non cambia di un punto.
+
+        La FORMA del valore si verifica qui, ed e' l'unico posto dove ha
+        senso. Lo schema (rendering.visualizer_config) verifica i nomi delle
+        chiavi e non i tipi, per scelta dichiarata: un tipo sbagliato "si vede
+        al primo giro". Questo valore no — `tuple('--')` e' `('-', '-')`,
+        cioe' una coppia perfettamente plausibile con uno spessore che non e'
+        un numero, e l'errore che ne segue arriva da dentro matplotlib
+        (`could not convert string to float: '-'`) senza nominare ne' la
+        chiave di config ne' il parametro. Tre righe nel lettore invece di un
+        validatore.
+        """
+        key = self._base_param_name(param_name)
+        styles = self.config.get('envelope_styles') or {}
+        style = styles.get(key, ENVELOPE_STYLE_DEFAULT)
+        try:
+            linestyle, linewidth = style
+            linewidth = float(linewidth)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"envelope_styles[{key!r}] deve essere la coppia "
+                f"(linestyle, linewidth) con lo spessore numerico; "
+                f"ricevuto {style!r}") from None
+        return (linestyle, linewidth)
+
+    def _projection_marker_edge(self):
+        """(colore, spessore) dell'anello del marker di proiezione.
+
+        Il colore ricade sull'accento della lente quando la config non ne
+        dichiara uno proprio: e' il comportamento storico. La chiave esiste
+        perche' l'anello e' l'unico pezzo della lente che atterra SULLA CURVA
+        invece che sui grani, e col preset B&W curva e accento sono due neri —
+        li' l'anello si spegne e il marker diventa un breakpoint qualunque.
+        """
+        cfg = self.config['magnify_projection']
+        return (cfg['marker_edge'] or self.config['magnify_color'],
+                cfg['markeredgewidth'])
+
     def _volume_to_alpha(self, volume_db):
         """Mappa volume (dB) → alpha/opacità."""
         return grain_visuals.volume_alpha(
@@ -763,10 +863,12 @@ class ScoreVisualizer:
             return
 
         # Stesso accento della lente (anello sorgente e connettori): la
-        # proiezione e' un pezzo della lente, non un elemento a se'. Il
-        # tratteggio la tiene distinguibile dalle curve anche in stampa B&W,
-        # dove il rosso e' un grigio come gli altri.
+        # proiezione e' un pezzo della lente, non un elemento a se'. La
+        # verticale e' tratteggiata perche' resti distinguibile dalle curve
+        # anche in stampa; col preset B&W anche le curve sono tratteggiate, e
+        # li' a separarla e' l'orientamento — nessun envelope corre verticale.
         accent = self.config['magnify_color']
+        marker_edge, marker_edge_width = self._projection_marker_edge()
         tc = float(resolved.t)
         line = ax_env.axvline(x=tc, color=accent, linestyle=cfg['linestyle'],
                               linewidth=cfg['linewidth'], alpha=cfg['alpha'],
@@ -782,12 +884,16 @@ class ScoreVisualizer:
         for order, point in enumerate(sorted(points, key=lambda p: p.y)):
             color = colors.get(self._base_param_name(point.param), '#333333')
             # Faccia del colore della curva (dice a quale valore appartiene),
-            # bordo dell'accento della lente (dice da dove viene il marker):
-            # in scala di grigi resta un pallino cerchiato sulla verticale.
+            # anello della lente (dice da dove viene il marker): quel che
+            # separa questo marker dai pallini dei breakpoint e' l'anello,
+            # quindi deve staccare dalla faccia. Vedi _projection_marker_edge:
+            # col preset B&W la faccia e' nera come ogni curva e l'anello
+            # diventa chiaro, invece di essere il nero quasi uguale
+            # dell'accento.
             marker, = ax_env.plot(
                 [tc], [point.y], 'o', color=color,
-                markersize=cfg['markersize'], markeredgecolor=accent,
-                markeredgewidth=0.8, zorder=4)
+                markersize=cfg['markersize'], markeredgecolor=marker_edge,
+                markeredgewidth=marker_edge_width, zorder=4)
             marker.set_gid('poc-projection-marker')
 
             if not cfg['labels']:
@@ -969,7 +1075,7 @@ class ScoreVisualizer:
             fontsize=self._fs(self.config['label_fontsize'] - 1),
             verticalalignment='top',
             horizontalalignment='left',
-            color='darkblue',
+            color=self.config['stream_label_color'],
             alpha=0.8,
             bbox=dict(boxstyle='round,pad=0.2', facecolor='white', 
                     alpha=0.7, edgecolor='none')
@@ -1218,12 +1324,15 @@ class ScoreVisualizer:
         for param_name, envelope in envelopes.items():
             # Colore (curve per-voce '__vN' usano il colore del base, #90)
             color = colors.get(self._base_param_name(param_name), '#333333')
+            # Tratto: senza preset B&W e' ('-', 1.1), cioe' il disegno storico.
+            linestyle, linewidth = self._envelope_style(param_name)
 
             # Envelope per-segmento eterogeneo (issue #68): rendering per-segmento
             if self._is_per_segment_heterogeneous(envelope):
                 self._draw_envelope_per_segment(
                     ax, envelope, param_name, color,
                     stream_start, y_base, y_height, t_start, t_end,
+                    style=(linestyle, linewidth),
                 )
                 self._annotate_breakpoints(ax, envelope, param_name, color,
                                            stream_start, y_base, y_height,
@@ -1287,7 +1396,8 @@ class ScoreVisualizer:
                 
                 # Disegna con drawstyle='steps-post' per gradini
                 if len(times) > 0:
-                    ax.plot(times, values, color=color, linewidth=1.1, 
+                    ax.plot(times, values, color=color, linewidth=linewidth,
+                        linestyle=linestyle,
                         alpha=0.8, label=param_name, drawstyle='steps-post')
             
             else:
@@ -1311,8 +1421,8 @@ class ScoreVisualizer:
                 y_values = y_base + values * y_height
                 
                 # Disegna curva
-                ax.plot(times, y_values, color=color, linewidth=1.1, 
-                    alpha=0.8, label=param_name)
+                ax.plot(times, y_values, color=color, linewidth=linewidth,
+                    linestyle=linestyle, alpha=0.8, label=param_name)
             
             # === ANNOTAZIONE BREAKPOINT ===
             self._annotate_breakpoints(ax, envelope, param_name, color,
@@ -1332,6 +1442,7 @@ class ScoreVisualizer:
     def _draw_envelope_per_segment(
         self, ax, envelope, param_name, color,
         stream_start, y_base, y_height, t_start, t_end,
+        style=None,
     ):
         """
         Disegna envelope eterogeneo segmento per segmento (issue #68).
@@ -1340,7 +1451,12 @@ class ScoreVisualizer:
         - step: drawstyle='steps-post' (gradini netti)
         - linear: linea retta tra estremi
         - cubic: campionamento denso del segmento
+
+        style: la coppia (linestyle, linewidth) della curva (issue #248).
+        None = la risolve da se', cosi' chi chiama questo metodo direttamente
+        non deve conoscerla.
         """
+        linestyle, linewidth = style or self._envelope_style(param_name)
         for seg in envelope.segments:
             seg_t0 = stream_start + seg.start_time
             seg_t1 = stream_start + seg.end_time
@@ -1358,10 +1474,12 @@ class ScoreVisualizer:
                 v_right = seg.breakpoints[-1][1]
                 y_left = y_base + self._normalize_envelope_value(param_name, v_left) * y_height
                 y_right = y_base + self._normalize_envelope_value(param_name, v_right) * y_height
-                ax.plot([a, b], [y_left, y_left], color=color, linewidth=1.1, alpha=0.8)
+                ax.plot([a, b], [y_left, y_left], color=color,
+                        linewidth=linewidth, linestyle=linestyle, alpha=0.8)
                 # Salto verticale a fine segmento (se b == seg_t1)
                 if b >= seg_t1:
-                    ax.plot([b, b], [y_left, y_right], color=color, linewidth=1.1, alpha=0.8)
+                    ax.plot([b, b], [y_left, y_right], color=color,
+                            linewidth=linewidth, linestyle=linestyle, alpha=0.8)
 
             elif strategy_name == 'linear':
                 # Usa seg.evaluate() per evitare bug precisione float al boundary
@@ -1371,7 +1489,8 @@ class ScoreVisualizer:
                 v_b = seg.evaluate(b - stream_start)
                 y_a = y_base + self._normalize_envelope_value(param_name, v_a) * y_height
                 y_b = y_base + self._normalize_envelope_value(param_name, v_b) * y_height
-                ax.plot([a, b], [y_a, y_b], color=color, linewidth=1.1, alpha=0.8)
+                ax.plot([a, b], [y_a, y_b], color=color,
+                        linewidth=linewidth, linestyle=linestyle, alpha=0.8)
 
             else:  # cubic
                 import numpy as np
@@ -1381,7 +1500,8 @@ class ScoreVisualizer:
                 for t in ts:
                     v = seg.evaluate(t - stream_start)
                     ys.append(y_base + self._normalize_envelope_value(param_name, v) * y_height)
-                ax.plot(ts, ys, color=color, linewidth=1.1, alpha=0.8)
+                ax.plot(ts, ys, color=color,
+                        linewidth=linewidth, linestyle=linestyle, alpha=0.8)
 
     def _annotate_breakpoints(self, ax, envelope, param_name, color,
                                stream_start, y_base, y_height,
@@ -1503,9 +1623,31 @@ class ScoreVisualizer:
         ax.axis('off')
         colors = self.config['envelope_colors']
 
+        # Con gli stili in gioco il tratto della chiave e' un CAMPIONE della
+        # curva, non un simbolo: stesso pattern e stesso spessore, su tutta la
+        # larghezza utile della colonna (il testo comincia a 0.4). Le due cose
+        # sono necessarie entrambe. Il tratto storico e' il 5% della colonna,
+        # cioe' qualche punto: meno di un ciclo di tratteggio, che ci si
+        # leggerebbe pieno. E matplotlib scala il pattern per lo spessore,
+        # quindi un tratto ingrossato per farsi vedere allungherebbe anche il
+        # ciclo, riportando la chiave a leggersi piena. Lo spessore, poi, e'
+        # meta' dell'informazione: e' li' che una probabilita' si distingue
+        # dalla sua base.
+        #
+        # La misura e' la stessa per tutte le voci, comprese quelle a tratto
+        # pieno: una colonna con due lunghezze di chiave fa leggere lo stub
+        # corto come un altro tratteggio.
+        styled = bool(self.config.get('envelope_styles'))
+
         for param_name, y, stream_id in legend_entries:
             color = colors.get(self._base_param_name(param_name), '#333333')
-            ax.plot([0.1, 0.15], [y, y], color=color, linewidth=2)
+            linestyle, linewidth = self._envelope_style(param_name)
+            if styled:
+                x0, x1, key_width = 0.02, 0.38, linewidth
+            else:
+                x0, x1, key_width = 0.1, 0.15, 2
+            ax.plot([x0, x1], [y, y], color=color,
+                    linestyle=linestyle, linewidth=key_width)
             # clip_on=True: anche un nome inatteso non sfora mai nel plot,
             # viene tagliato al bordo della colonna legenda (issue #96).
             ax.text(0.4, y, self._legend_display_name(param_name),

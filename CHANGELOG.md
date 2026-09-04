@@ -8,7 +8,89 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Aggiunto
+
+- **`--bw`: un preset della partitura leggibile in stampa bianco e nero**
+  (issue #248). La MAP e' pensata per lo schermo, e le figure del paper CIM
+  2026 hanno un vincolo di leggibilita' in B&W. Il flag (o `BW=true` da Make,
+  o `config={'bw': True}` da libreria) sposta i default del visualizer; a
+  flag spento non cambia un pixel — con una sola eccezione, dichiarata sotto
+  fra le correzioni, che riguarda chi fissava gia' `grain_alpha_range`.
+
+  In grigio collassavano due cose, e in modo peggiore di quanto sembri:
+
+  - **il segno del detune.** I due bracci di `pitch_div` non hanno solo la
+    stessa chiarezza: convertita in luminanza la mappa non e' nemmeno
+    monotona. A +/-150 cent su un range di +/-300 i due grani stanno a 0.510
+    e 0.595, a +/-50 cent a 0.481 e 0.509 — cioe' un grano calante e uno
+    crescente diventano lo stesso grigio. `pitch_div_bw` spende sulla
+    luminanza tutta l'escursione, in modo strettamente monotono, compressa a
+    circa 0.15-0.85: col braccio alto sul bianco i grani acuti sparirebbero
+    sulla carta, col basso sul nero si confonderebbero con assi e griglia;
+  - **l'identita' delle curve.** `ENVELOPE_STYLES`, mappa **parallela** a
+    `ENVELOPE_COLORS` nello stesso modulo matplotlib-free, sostituisce la
+    tinta con `(linestyle, linewidth)`: il pattern dice il parametro, lo
+    spessore dice la variante (`_prob` piu' sottile della base, `_range` piu'
+    spesso), come faceva il chiaro/scuro della stessa tinta. La coppia e'
+    unica per chiave.
+
+  **L'alpha dei grani viene fissata, e costa qualcosa.** Sul fondo bianco il
+  composito e' `a*g + (1-a)`: l'alpha e la luminanza del grigio sono lo
+  **stesso canale**, e con l'alpha libera un grano grave suonato piano
+  schiarisce fino a leggersi come acuto — il canale che il preset esiste per
+  salvare mangiato da quello che prova a conservare. Fissandola a 0.9 il
+  grigio torna funzione del solo pitch (un grano grave e pianissimo resta piu'
+  scuro di uno acuto e forte), ma **il volume smette di dirsi nel riempimento
+  del grano**. Il prezzo e' esplicito e si riapre passando
+  `grain_alpha_range`. Non 1.0: a opacita' piena un cluster denso diventa una
+  lastra e la densita' smette di leggersi.
+
+  Il preset e' un insieme di **default**, non un modo a parte: ogni chiave
+  passata insieme a `bw` vince, e i dizionari-dato si fondono sul preset
+  invece che sui default cromatici — ritoccare un colore non riporta a colori
+  tutti gli altri. Con gli stili in gioco la legenda per-corsia diventa un
+  **campione** della curva (stesso pattern, stesso spessore, su tutta la
+  larghezza utile della colonna) invece del simbolo corto storico, che di un
+  tratteggio non mostrerebbe nemmeno un ciclo: matplotlib scala il pattern per
+  lo spessore, quindi ingrossare la chiave per farla vedere l'avrebbe
+  riportata a leggersi piena.
+
+  Monocromo anche a schermo: waveform, maschera del loop, lente e label degli
+  stream passano a grigi. Verificato a pixel su `PGE_test.yml` — saturazione
+  massima 0 su tutta la pagina.
+
+  Nuova doc: [`docs/how-to/print-score-bw.md`](docs/how-to/print-score-bw.md).
+
 ### Corretto
+
+- **La colorbar del pitch dipingeva un grigio che nessun grano ha.** E' la
+  chiave di lettura della mappa, ma disegnava il colore *nudo* della colormap
+  mentre i grani sono compositi sul fondo della pagina all'alpha del volume:
+  chi accostava un grano alla barra lo leggeva sistematicamente piu' acuto di
+  quanto fosse. Col preset B&W il bias era misurabile — 0.149 sulla barra
+  contro 0.234 sulla pagina all'estremo grave, 0.503 contro 0.553 al centro.
+
+  Finche' l'alpha varia col volume non c'e' un valore solo da mostrare, e la
+  barra resta opaca come e' sempre stata. Quando l'alpha e' **fissata** la
+  corrispondenza e' esprimibile esattamente, e la barra la segue: adesso
+  dipinge 0.235 / 0.859 contro i 0.234 / 0.866 dei grani (il resto e'
+  antialiasing). L'alpha si passa alla colorbar invece di cuocerla nella
+  mappa, cosi' barra e grani compongono sullo stesso fondo qualunque esso sia.
+
+  La condizione e' l'alpha fissata, **non** il preset: una config a colori che
+  passa un `grain_alpha_range` degenere (`(0.6, 0.6)`) ha lo stesso problema e
+  riceve la stessa correzione. E' l'unico punto in cui `--bw` si vede a flag
+  spento.
+
+- **Una coppia malformata in `envelope_styles` non si nominava.** E' l'unico
+  dizionario-dato della config il cui valore viene spacchettato in due, e una
+  stringa ne e' una coppia plausibile: `tuple('--')` vale `('-', '-')`, cioe'
+  uno spessore che non e' un numero. L'errore arrivava da dentro matplotlib
+  (`could not convert string to float: '-'`) senza nominare ne' la chiave ne'
+  il parametro. Ora `_envelope_style` verifica la forma e lo dice. Resta
+  l'unica eccezione alla regola dello schema, che verifica i nomi delle chiavi
+  e non i tipi dei valori — perche' qui il tipo sbagliato *non* si vede al
+  primo giro.
 
 - **`make bench` non girava su un clone pulito** (issue #243).
   `utils/bench_cost.py` genera un seno sintetico quando manca `refs/voice.wav`
