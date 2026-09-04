@@ -94,7 +94,12 @@ def work(tmp_path, monkeypatch):
 
 
 def _run(argv):
-    """Invoca la CLI reale: il run muore sul sample mancante, exit 1."""
+    """Invoca la CLI reale e pretende exit 1.
+
+    Nei test del percorso normale il run muore sul sample mancante, dopo la
+    configurazione dei logger; in `TestMissingValueIsNotSilent` muore prima,
+    durante il parsing degli argomenti. Il codice di uscita e' lo stesso.
+    """
     from pge.cli import main
     with patch.object(sys, 'argv', argv):
         with pytest.raises(SystemExit) as exc:
@@ -153,3 +158,33 @@ class TestDefaultUnchanged:
     def test_logs_stay_in_the_cwd(self, work):
         _run(['main.py', 'prova.yml', 'out.aif', '--renderer', 'numpy'])
         assert (work / "logs" / "prova_engine.log").exists()
+
+
+class TestMissingValueIsNotSilent:
+    """`--log-dir` in coda, senza directory: messaggio + exit 1.
+
+    Stessa eccezione di `--samples-dir`, presa dallo stesso argomento: chi
+    scrive `--log-dir` e non gli da' un valore si sente rispondere `logs`,
+    cioe' esattamente la directory da cui il flag serviva ad andarsene, e il
+    fallimento somiglia troppo al successo. Prima della issue #251 il flag
+    spostava solo il logfile di csound e il silenzio costava poco; ora
+    governa anche il log degli errori engine -- il file che la riga
+    `Dettagli:` indica -- quindi manda a cercare quel log dove non e'.
+    """
+
+    def test_exits_1_with_a_message(self, work, capsys):
+        _run(['main.py', 'prova.yml', 'out.aif',
+              '--renderer', 'numpy', '--log-dir'])
+        out = capsys.readouterr().out
+        assert '--log-dir' in out
+        # Il messaggio parla del flag, non del sample: il run non e' mai
+        # arrivato al caricamento dello YAML.
+        assert 'Sample non trovato' not in out
+
+    def test_it_does_not_reach_the_loggers(self, work):
+        """Esce durante il parsing degli argomenti: nessuna directory di log,
+        neanche quella di default -- che `configure_engine_logger` creerebbe
+        con `os.makedirs` prima di qualunque render."""
+        _run(['main.py', 'prova.yml', 'out.aif',
+              '--renderer', 'numpy', '--log-dir'])
+        assert not (work / "logs").exists()

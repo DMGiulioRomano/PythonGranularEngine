@@ -89,6 +89,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   compresi — e gli e2e numpy, che una `LOGDIR` temporanea la passavano gia',
   ora verificano che il log engine ci finisca davvero.
 
+  `--log-dir` senza directory adesso stampa un messaggio ed esce con 1,
+  invece di ricadere in silenzio su `logs`: e' la stessa deroga di
+  `--samples-dir` — secondo e ultimo flag del file a farlo — presa dallo
+  stesso argomento, che da questa issue in poi vale parola per parola anche
+  qui. Il fallimento silenzioso rispondeva con la directory da cui il flag
+  serviva ad andarsene, e ora che il flag governa il log degli errori engine
+  mandava a cercarlo dove non era.
+
 - **La colorbar del pitch dipingeva un grigio che nessun grano ha.** E' la
   chiave di lettura della mappa, ma disegnava il colore *nudo* della colormap
   mentre i grani sono compositi sul fondo della pagina all'alpha del volume:

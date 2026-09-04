@@ -393,11 +393,23 @@ def main():
     # fra i flag csound perche' con `--renderer numpy` deve valere lo stesso;
     # finche' era li' dentro, i due logger sotto avevano './logs' scritto a
     # mano e il flag si limitava a spostare i log del renderer.
+    #
+    # Secondo flag del file che rifiuta il valore mancante invece di
+    # ignorarlo, per l'identico motivo del vicino `--samples-dir`: chi scrive
+    # `--log-dir` senza directory si sente rispondere `logs`, cioe' il posto
+    # da cui il flag serviva ad andarsene. Finche' spostava solo il logfile di
+    # csound il silenzio costava poco; adesso che governa anche il log degli
+    # errori engine manda a cercare quel log dove non e' -- la riga
+    # `Dettagli:` di un errore nomina la directory di default, non quella
+    # chiesta.
     log_dir = 'logs'
     if '--log-dir' in sys.argv:
         idx = sys.argv.index('--log-dir')
-        if idx + 1 < len(sys.argv):
-            log_dir = sys.argv[idx + 1]
+        if idx + 1 >= len(sys.argv):
+            print("--log-dir richiede una directory. "
+                  "Esempio: --log-dir /percorso/ai/log")
+            sys.exit(1)
+        log_dir = sys.argv[idx + 1]
 
     # --- Csound config args ---
 

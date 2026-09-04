@@ -116,7 +116,15 @@ endif
 # default (numpy) non spostava un solo log -- il flag non veniva proprio
 # passato -- e `make clean`, che svuota $(LOGDIR), non li trovava. Qui lo
 # eredita anche un backend nuovo, come CSOUND_FLAGS non farebbe.
+#
+# Guardato sul vuoto come JOBS e PAGE_DURATION: `make ... LOGDIR=` passerebbe
+# un `--log-dir` nudo, e ora che la CLI il valore mancante lo rifiuta (issue
+# #251) sarebbe un exit 1 -- o peggio, se il flag non e' l'ultimo, si
+# mangerebbe il token successivo. LOGDIR vuota vuol dire "non ne ho una":
+# ricade sul default della CLI, che e' la stessa `logs` di $(LOGDIR).
+ifneq ($(strip $(LOGDIR)),)
 PYFLAGS += --log-dir $(LOGDIR)
+endif
 
 # 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
 ifeq ($(REAPER), true)

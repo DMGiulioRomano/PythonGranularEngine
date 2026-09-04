@@ -75,7 +75,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--format aiff\|wav\|flac` | `aiff` | `FORMAT` | formato audio; valore non valido: messaggio + exit 1 |
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
 | `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
-| `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log di **tutto** il run, con qualunque renderer: logfile di Csound, log degli errori engine (`<basename>_engine.log`, quello che la riga `Dettagli:` indica) e log dei clip. È la cartella che `make setup` crea e `make clean` svuota come `LOGDIR` |
+| `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log di **tutto** il run, con qualunque renderer: logfile di Csound, log degli errori engine (`<basename>_engine.log`, quello che la riga `Dettagli:` indica) e log dei clip. È la cartella che `make setup` crea e `make clean` svuota come `LOGDIR`. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
 | `--incdir DIR` | `src` | — | include dir per Csound |
 | `--ssdir DIR` | `--samples-dir`, altrimenti `refs` | — | sample search dir di Csound (variabile d'ambiente SSDIR). Vince su `--samples-dir` quando è esplicito; **non basta da solo** (vedi Bounds) |
@@ -227,11 +227,16 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   wrappa (`read_indices % n_source`), quindi lì la figura tace su una
   porzione che l'audio contiene (vedi issue #223, punto 2).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
-  la flag viene ignorata senza errore. **Unica eccezione: `--samples-dir`**,
-  che con il valore mancante stampa un messaggio ed esce con 1. Il silenzio
-  costa poco sugli altri flag, mentre qui ricadrebbe su `./refs/` — cioè
-  proprio la directory da cui il flag serve ad andarsene — e il fallimento
-  somiglierebbe al successo.
+  la flag viene ignorata senza errore. **Due eccezioni: `--samples-dir` e
+  `--log-dir`**, che con il valore mancante stampano un messaggio ed escono
+  con 1. Il silenzio costa poco sugli altri flag, mentre qui ricadrebbe
+  rispettivamente su `./refs/` e su `logs` — cioè proprio le directory da
+  cui i due flag servono ad andarsene — e il fallimento somiglierebbe al
+  successo. Per `--log-dir` la deroga è arrivata con la issue #251: finché
+  spostava solo il logfile di Csound il silenzio era innocuo, da quando
+  governa anche il log degli errori engine manda a cercare quel log dove
+  non è (la riga `Dettagli:` nomina la directory di default, non quella
+  chiesta).
 
 ## Esempi
 
