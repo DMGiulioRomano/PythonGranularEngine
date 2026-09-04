@@ -5,8 +5,9 @@ status: stable
 tags: [architecture, rendering, ocp]
 sources:
   - src/pge/rendering/
+  - src/pge/cli.py
   - src/main.py
-last_synced_commit: 1aba65c
+last_synced_commit: 8e21c03
 ---
 
 # Architettura Renderer
@@ -73,11 +74,32 @@ class MixRenderMode(RenderMode):
 **main.py** è agnostico — un solo punto di factory:
 
 ```python
-renderer = _build_renderer(renderer_type, generator, **kwargs)
+renderer = _build_renderer(renderer_type, generator,
+                           output_sr=..., jobs=..., samples_dir=...,
+                           use_cache=..., cache_dir=..., yaml_basename=...,
+                           orc_path=..., ssdir=..., sfdir=...,   # Csound
+                           sc_synthdef_source=..., osc_dir=...)  # SuperCollider
 engine = RenderingEngine(renderer)
 mode = StemsRenderMode() if per_stream else MixRenderMode()
 generated = engine.render(streams=generator.streams, output_path=output_file, mode=mode)
 ```
+
+`_build_renderer` è un adapter CLI → API, e la sua firma è **esplicita e
+keyword-only** (issue #252). Con `**kwargs` + `.get()` un nome fuori elenco non
+era né un errore né un warning: era un no-op, e chi lo aveva scritto otteneva il
+default al posto del valore che credeva di aver passato — è così che è nata la
+#243 (`ssdir=` su un build `numpy`, letto solo nel ramo Csound: il
+`SampleRegistry` ricadeva su `./refs/` e il run moriva in `SampleNotFoundError`
+senza che niente nominasse la causa). L'elenco dei kwargs accettati è finito e
+noto, quindi lo verifica Python.
+
+`ssdir`, `sfdir`, `orc_path`, `incdir`, `log_dir`, `message_level` e `sco_dir`
+restano accettati su qualsiasi backend e ignorati fuori da Csound — la CLI li
+passa sempre, quindi rifiutarli romperebbe ogni render NumPy
+(`tests/test_cli_build_renderer_signature.py` lo esercita su entrambi i backend
+non-Csound, e rilegge il sito di chiamata per il *perché*: è lì che quei nomi
+sono passati incondizionatamente). La directory dei sample valida per tutti i
+backend è `samples_dir`; su Csound è anche il fallback di `ssdir`.
 
 Caching incrementale è componente separato, vedi [[caching]].
 
@@ -171,6 +193,10 @@ Sequenza e invarianti:
 - L'elenco dei tipi validi vive in `RendererFactory.available_types()`, ed è
   quello che i messaggi d'errore e la CLI interrogano: un backend nuovo non
   richiede di aggiornare nessuna lista scritta a mano
+- I flag CLI di un backend nuovo vanno **dichiarati nella firma** di
+  `cli._build_renderer`, non solo letti: un nome non dichiarato è un `TypeError`
+  al primo render, non un silenzio (`tests/test_cli_build_renderer_signature.py`
+  confronta la firma col sito di chiamata dentro `main()`)
 
 ### Copertura test
 
