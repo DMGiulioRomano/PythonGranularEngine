@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/envelope_extractor.py
   - src/pge/cli.py
   - make/build.mk
-last_synced_commit: c2e1ad3
+last_synced_commit: b97ce5e
 entry_for: [stampare-la-partitura-in-bianco-e-nero]
 ---
 

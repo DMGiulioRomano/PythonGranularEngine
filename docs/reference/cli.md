@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/grain_visuals.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: c2e1ad3
+last_synced_commit: c1bbb04
 entry_for: [cli-flags, build-flags]
 ---
 
