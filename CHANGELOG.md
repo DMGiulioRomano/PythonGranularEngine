@@ -6,6 +6,68 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Non rilasciato]
+
+### Corretto
+
+- **`make bench` non girava su un clone pulito** (issue #243).
+  `utils/bench_cost.py` genera un seno sintetico quando manca `refs/voice.wav`
+  — i `.wav` non sono versionati — ma non lo diceva a nessuno dei due
+  consumatori: `_load()` costruiva il `Generator` senza `samples_dir` e
+  `_render()` passava la directory come `ssdir`, che vale solo per Csound.
+  Entrambi i percorsi ricadevano sul globale `./refs/` e lo script moriva in
+  `SampleNotFoundError` nel primo sweep, prima di misurare qualsiasi cosa. Ora
+  la directory arriva come `samples_dir` a entrambi (l'API ne deriva anche
+  l'`ssdir` per Csound), e le due directory in gioco restano separate: gli
+  sweep leggono il seno sintetico, il *caso di riferimento*
+  (`make bench YAML=...`) legge da `refs/`, perche' uno YAML reale cita il
+  proprio sample e nella tmpdir del seno non lo troverebbe — stato non
+  ipotetico, `make test-samples` scrive `refs/pino.wav` e non `voice.wav`.
+
+- **Il caso di riferimento non si porta piu' via gli sweep.**
+  `configs/PGE_cim.yml`, il caso documentato, cita proprio `voice.wav`: su un
+  clone pulito moriva *dopo* i tre sweep e prima del `json.dump`, cioe' un
+  minuto e mezzo di misure buttate. Ora il suo sample si risolve prima degli
+  sweep, e se il caso di riferimento fallisce lo stesso il JSON degli sweep
+  viene scritto comunque. La directory dei suoi sample e' passabile come
+  secondo argomento (`python utils/bench_cost.py <yaml> <dir>`) e attraversa
+  `run_yaml`/`once_yaml`: `None` significa `refs/` per il caso di riferimento
+  e "la directory degli sweep" per `_load`/`_render`, e la sentinella si
+  risolve nel corpo di ciascuno invece di essere inoltrata tal quale.
+
+### Modificato
+
+- **`bench_cost.py` parla con l'API pubblica** — `api.load_generator` e
+  `api.build_renderer` invece di `cli._build_renderer`. E' la classe di bug
+  della #243 chiusa dal chiamante: `_build_renderer(tipo, gen, **kwargs)`
+  pesca i kwargs con `.get()`, quindi `ssdir=` su un build numpy era un no-op
+  che nessuno poteva vedere, mentre sulla firma keyword-only dell'API lo
+  stesso errore e' un `TypeError`. Sparisce con esso `sfdir=OUT`, ugualmente
+  inerte, e l'ultimo consumatore di un simbolo privato di `pge.cli` fuori da
+  `main.py`.
+
+- **Importare `bench_cost` non tocca piu' il filesystem.** La tmpdir e il seno
+  sintetico erano effetti collaterali dell'import: ogni `make tests` lasciava
+  una `/tmp/pge_bench_*` orfana e, dove `voice.wav` manca, ci scriveva dentro
+  ~288 KB di wav. Ora `out_dir()` e `sweep_sample()` sono pigri, e l'import di
+  `make_test_samples` — con la riga in `sys.path` che lo rende possibile —
+  sta nel ramo che lo usa.
+
+- **Una sola grafia del seno sintetico.** `utils/make_sine.py` ne teneva una
+  copia propria (ampiezza, dissolvenza ai bordi, campioni in float) e la #243
+  ne aveva prodotta una terza dentro `bench_cost.py`. Ora passano tutte da
+  `make_test_samples.genera`, che ha guadagnato `amp`, `fade_sec` e `subtype`;
+  i default restano quelli dei sample di prova, quindi i file scritti in
+  `refs/` sono identici byte a byte.
+
+- **Il JSON del benchmark registra il sample** che ha prodotto i numeri. Da
+  quando il ramo di fallback misura davvero, gli sweep girano sia su
+  `voice.wav` sia su un seno di 3 s, e la lunghezza del buffer entra nel
+  comportamento di cache, quindi nel coefficiente `a`: due run non
+  confrontabili erano indistinguibili a posteriori.
+
+---
+
 ## [v9.0.2] — 2026-08-30
 
 ### Fixed
@@ -350,23 +412,6 @@ dopo il tag v9.0.0.
   skippa non verifica niente.
 
 ### Corretto
-
-- **`make bench` non girava su un clone pulito** (issue #243).
-  `utils/bench_cost.py` genera un seno sintetico quando manca `refs/voice.wav`
-  — i `.wav` non sono versionati — ma non lo diceva a nessuno dei due
-  consumatori: `_load()` costruiva il `Generator` senza `samples_dir` e
-  `_render()` passava la directory come `ssdir`, che `_build_renderer` inoltra
-  solo dentro `CsoundOptions`. Entrambi i percorsi ricadevano sul globale
-  `./refs/` e lo script moriva in `SampleNotFoundError` nel primo sweep, prima
-  di misurare qualsiasi cosa. Ora passa `samples_dir` a entrambi (l'API ne
-  deriva anche l'`ssdir` per Csound) e riusa `utils/make_test_samples.py` per
-  scrivere il seno, invece di tenerne una terza grafia propria. Le due
-  directory in gioco restano separate: gli sweep leggono il seno sintetico, il
-  *caso di riferimento* (`make bench YAML=...`) legge da `refs/`, perche' uno
-  YAML reale cita il proprio sample e nella tmpdir del seno non lo troverebbe
-  — stato non ipotetico, `make test-samples` scrive `refs/pino.wav` e non
-  `voice.wav`. Il globale si chiama ora `SAMPLES_DIR`: era `SSDIR`, il nome
-  che aveva suggerito il kwarg sbagliato.
 
 - **`Stream.grains` poteva ammutolire uno stream senza dire niente** (issue
   #201). `generate_grains()` teneva gli stessi eventi in due campi — `_voices`,
