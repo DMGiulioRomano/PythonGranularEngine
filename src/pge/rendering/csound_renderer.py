@@ -74,8 +74,8 @@ class CsoundRenderer(AudioRenderer):
             Il percorso del file .aif prodotto
 
         Raises:
-            RuntimeError: se csound esce con errore
-            FileNotFoundError: se csound non e' installato
+            CsoundRenderError: se csound esce con errore (anche RuntimeError)
+            CsoundNotFoundError: se csound non e' installato
         """
         # Cache check: skip se stream e' clean
         if self.cache_manager:
@@ -168,8 +168,8 @@ class CsoundRenderer(AudioRenderer):
         Costruisce il comando con env vars e flags dalla configurazione.
 
         Raises:
-            RuntimeError: se csound ritorna un codice di errore
-            FileNotFoundError: se csound non e' installato
+            CsoundRenderError: se csound ritorna un codice di errore
+            CsoundNotFoundError: se csound non e' installato
         """
         cmd = ['csound']
 
@@ -197,7 +197,19 @@ class CsoundRenderer(AudioRenderer):
             cmd.append(f'--logfile={log_dir}/{basename}.log')
 
         # Esegui
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError:
+            # csound non e' nel PATH. Il FileNotFoundError grezzo finiva
+            # nell'handler che la CLI tiene per il file YAML, e l'utente si
+            # sentiva dire che la sua configurazione non esiste (issue #241).
+            from pge.shared.exceptions import CsoundNotFoundError
+            raise CsoundNotFoundError(
+                what=f"binario '{cmd[0]}'",
+                hint=("Installa csound (`make install-system-deps`), oppure "
+                      "usa `--renderer numpy`, che non richiede binari "
+                      "esterni."),
+            ) from None
 
         if result.returncode != 0:
             from pge.shared.exceptions import CsoundRenderError

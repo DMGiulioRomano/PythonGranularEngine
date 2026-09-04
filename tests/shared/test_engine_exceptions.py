@@ -537,6 +537,48 @@ def test_csound_render_error_context_lines():
 
 
 # =============================================================================
+# Issue #241 — csound assente: un errore azionabile, non un FileNotFoundError
+# =============================================================================
+
+def test_csound_not_found_error_inheritance_and_message():
+    from pge.shared.exceptions import (
+        CsoundNotFoundError, EngineError, EngineRuntimeError,
+    )
+    err = CsoundNotFoundError(
+        what="binario 'csound'",
+        hint="Installa csound, oppure usa --renderer numpy.",
+    )
+    assert isinstance(err, EngineRuntimeError)
+    assert isinstance(err, EngineError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "Csound" in msg
+    assert "binario 'csound'" in msg
+    assert "--renderer numpy" in msg
+
+
+def test_csound_not_found_error_non_e_un_FileNotFoundError():
+    """La CLI intercetta FileNotFoundError per annunciare «file YAML non
+    trovato»: un binario mancante che passasse di li' verrebbe riportato
+    come una configurazione inesistente (stessa regola di
+    SuperColliderNotFoundError)."""
+    from pge.shared.exceptions import CsoundNotFoundError
+    err = CsoundNotFoundError(what="binario 'csound'")
+    assert not isinstance(err, FileNotFoundError)
+    assert not isinstance(err, OSError)
+
+
+def test_csound_not_found_error_context_lines():
+    from pge.shared.exceptions import CsoundNotFoundError
+    err = CsoundNotFoundError(what="binario 'csound'")
+    err.stream_id = "drone_a"
+    err.config_file = "configs/x.yml"
+    msg = err.user_message()
+    assert "drone_a" in msg
+    assert "configs/x.yml" in msg
+
+
+# =============================================================================
 # Issue #46 — PR1: controllers raises -> EngineError
 # =============================================================================
 

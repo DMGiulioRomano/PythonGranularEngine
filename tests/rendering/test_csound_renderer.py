@@ -206,12 +206,39 @@ class TestCsoundRendererErrors:
             renderer.render_single_stream(mock_stream, '/output/test.aif')
 
     @patch('pge.rendering.csound_renderer.subprocess.run')
-    def test_csound_not_found_raises(self, mock_run, renderer, mock_stream):
-        """Csound non installato solleva FileNotFoundError."""
+    def test_csound_assente_e_un_errore_azionabile(self, mock_run, renderer, mock_stream):
+        """Csound non installato: il messaggio nomina il binario e il rimedio
+        (issue #241). Prima era il FileNotFoundError grezzo del subprocess."""
+        from pge.shared.exceptions import CsoundNotFoundError
         mock_run.side_effect = FileNotFoundError("csound not found")
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(CsoundNotFoundError) as exc:
             renderer.render_single_stream(mock_stream, '/output/test.aif')
+
+        msg = exc.value.user_message()
+        assert 'csound' in msg
+        assert '--renderer numpy' in msg
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_csound_assente_non_e_un_FileNotFoundError(self, mock_run, renderer, mock_stream):
+        """Specchio di test_scsynth_assente_non_e_un_FileNotFoundError
+        (issue #241): la CLI intercetta FileNotFoundError per annunciare
+        «file YAML non trovato», e il file YAML qui esiste ed e' gia' stato
+        letto."""
+        mock_run.side_effect = FileNotFoundError()
+
+        with pytest.raises(Exception) as exc:
+            renderer.render_single_stream(mock_stream, '/output/test.aif')
+        assert not isinstance(exc.value, FileNotFoundError)
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_csound_assente_anche_in_mix(self, mock_run, renderer, mock_stream):
+        """Il MIX passa dallo stesso _run_csound: stesso errore."""
+        from pge.shared.exceptions import CsoundNotFoundError
+        mock_run.side_effect = FileNotFoundError()
+
+        with pytest.raises(CsoundNotFoundError):
+            renderer.render_merged_streams([mock_stream], '/output/mix.aif')
 
 
 # =============================================================================

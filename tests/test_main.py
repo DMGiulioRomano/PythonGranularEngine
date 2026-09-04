@@ -589,6 +589,27 @@ class TestErrorHandling:
                 mocks['main'].main()
         assert exc_info.value.code == 1
 
+    def test_file_not_found_dal_render_non_incolpa_lo_yaml(self, mocks, capsys):
+        """Issue #241: un FileNotFoundError che risale dal rendering non e'
+        il file YAML, che a quel punto e' stato letto e parsato. L'handler
+        della CLI resta attaccato al solo punto che puo' sollevarlo per il
+        motivo che annuncia."""
+        mocks['engine_instance'].render.side_effect = FileNotFoundError()
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "non trovato" not in out
+
+    def test_file_not_found_dal_render_non_e_scambiato_per_engine_error(self, mocks, capsys):
+        """Il ramo generico resta quello di prima: messaggio + traceback."""
+        mocks['engine_instance'].render.side_effect = FileNotFoundError("csound")
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
+            with pytest.raises(SystemExit):
+                mocks['main'].main()
+        assert "Errore" in capsys.readouterr().out
+
     def test_visualizer_exception_exits_with_1(self, mocks):
         mocks['visualizer_instance'].export_pdf.side_effect = Exception("pdf error")
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--visualize']):
