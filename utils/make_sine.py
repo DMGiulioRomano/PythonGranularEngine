@@ -8,13 +8,20 @@ Default: 440 Hz, 16 s, refs/sine440.wav (48 kHz mono).
 La sinusoide e' stazionaria: la posizione di lettura (pointer) non ne cambia
 l'altezza, solo la fase. Le altezze percepite nascono dai ratio di pitch delle
 voci. Una piccola dissolvenza ai bordi evita il click iniziale/finale.
+
+La sinusoide la scrive `make_test_samples.genera`: qui restano solo i
+parametri che distinguono questo materiale da quello dei test (ampiezza,
+dissolvenza, campioni in float). Tenerne una copia propria significava avere
+due definizioni della stessa cosa che possono divergere.
 """
 from __future__ import annotations
 
+import os
 import sys
 
-import numpy as np
-import soundfile as sf
+sys.path.insert(1, os.path.dirname(os.path.abspath(__file__)))
+
+from make_test_samples import genera  # noqa: E402
 
 
 def main() -> None:
@@ -23,18 +30,8 @@ def main() -> None:
     out_path = sys.argv[3] if len(sys.argv) > 3 else "refs/sine440.wav"
 
     sr = 48000
-    amplitude = 0.6
-    t = np.arange(int(round(duration * sr)), dtype=np.float64) / sr
-    signal = amplitude * np.sin(2.0 * np.pi * freq * t)
-
-    # Dissolvenza di 5 ms ai bordi: evita il transiente di apertura/chiusura.
-    fade = int(0.005 * sr)
-    if fade > 0 and signal.size > 2 * fade:
-        ramp = np.linspace(0.0, 1.0, fade)
-        signal[:fade] *= ramp
-        signal[-fade:] *= ramp[::-1]
-
-    sf.write(out_path, signal.astype(np.float32), sr, subtype="FLOAT")
+    genera(out_path, freq=freq, dur=duration, sr=sr,
+           amp=0.6, fade_sec=0.005, subtype="FLOAT")
     print(f"Scritto {out_path}: {freq} Hz, {duration} s, {sr} Hz mono")
 
 

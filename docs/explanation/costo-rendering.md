@@ -7,7 +7,8 @@ sources:
   - src/pge/rendering/numpy_audio_renderer.py
   - src/pge/core/stream.py
   - utils/bench_cost.py
-last_synced_commit: f138d06
+  - utils/make_test_samples.py
+last_synced_commit: a4dc678
 ---
 
 # Costo del rendering — PythonGranularEngine
@@ -123,12 +124,21 @@ circa 0,3 s a invocazione, che su un rendering breve non è trascurabile.
   `voices`, deprecata dalla issue #201: non partecipa al costo se non la si
   legge, e il benchmark non la legge.)
 - `utils/bench_cost.py` — produce tutte le misure di questa pagina. Non ha
-  dipendenze oltre a quelle del motore e genera un sample sintetico se `refs/`
-  è vuota, ma **su un clone pulito non gira lo stesso**: `_load()` costruisce
-  il `Generator` senza `samples_dir` e `_render()` passa il sample sintetico
-  come `ssdir`, che vale solo per Csound — entrambi i percorsi ricadono sul
-  globale `./refs/` e lo script muore in `SampleNotFoundError` prima di
-  misurare. Difetto noto, tracciato a parte.
+  dipendenze oltre a quelle del motore e gira su un clone pulito: se manca
+  `refs/voice.wav` genera un seno sintetico in una directory temporanea
+  riusando `utils/make_test_samples.py`, e passa quella directory come
+  `samples_dir` sia al `Generator` sia al renderer — non come `ssdir`, che
+  vale solo per Csound (issue #243). Il seno vale per i tre sweep, ai quali
+  serve materiale audio qualsiasi e non un materiale particolare: il buffer
+  viene letto per ogni grano — quella lettura *è* l'overlap-add, cioè il
+  termine `a` — ma quale file sia non cambia la forma del modello. Il *caso di
+  riferimento* (`make bench YAML=...`) legge invece da `refs/` (o dalla
+  directory passata come secondo argomento), perché uno YAML reale cita il
+  proprio sample; se quel sample manca lo script lo dice **prima** degli
+  sweep, invece di buttare un minuto e mezzo di misure. Il JSON registra quale
+  sample ha prodotto i numeri: la lunghezza del buffer entra nel comportamento
+  di cache, quindi nel coefficiente `a`, e due run su materiale diverso non
+  sono confrontabili.
 
 Un cambiamento che tocchi la costruzione del `Grain` o l'overlap-add si vede
 sul coefficiente `a`; uno che tocchi la scrittura del file si vede su `b`.
@@ -148,6 +158,11 @@ Rilanciare `make bench` prima e dopo è il modo più diretto per accorgersene.
 make bench                            # i tre sweep + il fit
 make bench YAML=configs/PGE_cim.yml   # + un caso di riferimento reale
 ```
+
+Il caso di riferimento vuole il proprio sample in `refs/`: `PGE_cim.yml` cita
+`voice.wav`, che non è versionato. Se manca, lo script lo dice subito — prima
+degli sweep — e si può passare una directory di sample diversa come secondo
+argomento (`python utils/bench_cost.py configs/PGE_cim.yml /altri/refs`).
 
 Lo script stampa i tre sweep, la ripartizione delle fasi sul caso di riferimento
 e i coefficienti del fit, e scrive un JSON con tutti i punti in una directory
