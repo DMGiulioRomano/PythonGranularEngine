@@ -167,3 +167,45 @@ def run_main(mocks, argv_list):
     }):
         with patch.object(sys, 'argv', argv_list):
             mocks['main'].main()
+
+
+class LazyStreamDouble:
+    """Stream finto con la laziness vera (#117): `.voices` esplode se lo
+    stream non e' materializzato.
+
+    Estratto da test_api.py/test_main.py, dove ne esistevano due copie
+    identiche, per la ragione per cui esiste questo modulo: la fixture dei
+    confini sta in un posto solo. Serve ai test di `collect_grain_counts`
+    (#250) e a chiunque debba distinguere uno stream materializzato da uno
+    saltato dalla cache -- un accesso di troppo e' un test rosso, non una
+    lentezza silenziosa in produzione.
+
+    `materialize()` e' il pezzo che permette di misurare il MOMENTO della
+    lettura e non solo il suo esito: uno stream che nasce non materializzato
+    e viene materializzato dal render finto distingue un conteggio fatto
+    dopo `engine.render` da uno fatto prima.
+    """
+
+    def __init__(self, stream_id, voices=None):
+        self.stream_id = stream_id
+        self.generated = voices is not None
+        self._voices = voices
+
+    def materialize(self, voices):
+        """Come fa il renderer: legge i grani e da quel momento `generated`
+        e' True."""
+        self._voices = voices
+        self.generated = True
+
+    @property
+    def voices(self):
+        if not self.generated:
+            raise AssertionError(
+                f"accesso a .voices su {self.stream_id}: innescherebbe "
+                "la generazione lazy (#117)")
+        return self._voices
+
+
+def fake_grains(n):
+    """n grani finti: `collect_grain_counts` ne guarda solo il numero."""
+    return [MagicMock(name=f'grain{i}') for i in range(n)]

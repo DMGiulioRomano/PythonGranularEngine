@@ -19,7 +19,9 @@ import types
 import pytest
 from unittest.mock import MagicMock, patch
 
-from tests.main_mocks import build_mock_modules
+from tests.main_mocks import (
+    build_mock_modules, LazyStreamDouble, fake_grains,
+)
 
 
 @pytest.fixture
@@ -611,6 +613,130 @@ class TestRender:
         gen = self._gen(api_mocks)
         api_mocks['api'].render(gen, 'out.aif', renderer='numpy')
         assert capsys.readouterr().out == ''
+
+
+# =============================================================================
+# collect_grain_counts / RenderResult.grain_counts
+# =============================================================================
+
+class TestCollectGrainCounts:
+    """collect_grain_counts: lettura PASSIVA a valle del render (issue #250).
+
+    Il conteggio esce da `voices` -- unica fonte di verita' (#201) -- e solo
+    sugli stream gia' materializzati: leggere `.voices` su uno stream con
+    `generated` falso innescherebbe la generazione lazy (#117), cioe'
+    rigenererebbe in fase di stampa proprio i grani che la cache ha appena
+    fatto risparmiare.
+    """
+
+    _Stream = LazyStreamDouble
+
+    def _grains(self, n):
+        return fake_grains(n)
+
+    def test_stream_materializzato_conta_grani_e_voci(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.streams = [self._Stream(
+            's1', [self._grains(10), self._grains(7), self._grains(3)])]
+
+        counts = api_mocks['api'].collect_grain_counts(gen)
+
+        assert counts['s1'].grains == 20
+        assert counts['s1'].voices == 3
+
+    def test_stream_non_materializzato_vale_none(self, api_mocks):
+        """Cache-clean: nessun numero inventato, e nessuna lettura di
+        .voices (la _Stream finta solleverebbe)."""
+        gen = api_mocks['generator_instance']
+        gen.streams = [self._Stream('s_clean')]
+
+        counts = api_mocks['api'].collect_grain_counts(gen)
+
+        assert counts == {'s_clean': None}
+
+    def test_ogni_stream_ha_una_voce_nella_mappa(self, api_mocks):
+        """Anche i cache-clean compaiono: la CLI stampa da questa mappa e non
+        deve tornare a iterare generator.streams per sapere chi manca."""
+        gen = api_mocks['generator_instance']
+        gen.streams = [
+            self._Stream('s1', [self._grains(2)]),
+            self._Stream('s2'),
+            self._Stream('s3', [self._grains(1), self._grains(1)]),
+        ]
+
+        counts = api_mocks['api'].collect_grain_counts(gen)
+
+        assert list(counts) == ['s1', 's2', 's3']   # ordine di generator.streams
+        assert counts['s1'].grains == 2
+        assert counts['s2'] is None
+        assert counts['s3'].voices == 2
+
+    def test_stream_senza_attributo_generated_vale_none(self, api_mocks):
+        """Stream duck-typed di un consumer esterno: si assume non
+        materializzato (direzione sicura, nessun accesso a .voices)."""
+        class Foreign:
+            stream_id = 'esterno'
+
+            @property
+            def voices(self):
+                raise AssertionError('non deve essere letto')
+
+        gen = api_mocks['generator_instance']
+        gen.streams = [Foreign()]
+
+        assert api_mocks['api'].collect_grain_counts(gen) == {'esterno': None}
+
+    def test_render_popola_grain_counts(self, api_mocks):
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = {}
+        gen.streams = [
+            self._Stream('s1', [self._grains(4), self._grains(4)]),
+            self._Stream('s2'),
+        ]
+
+        result = api_mocks['api'].render(gen, 'out.aif', renderer='numpy')
+
+        assert result.grain_counts['s1'].grains == 8
+        assert result.grain_counts['s1'].voices == 2
+        assert result.grain_counts['s2'] is None
+
+    def test_render_conta_dopo_engine_render_non_prima(self, api_mocks):
+        """Il MOMENTO della lettura e' il vincolo di #250, non un dettaglio.
+
+        Qui gli stream nascono non materializzati ed e' `engine.render` a
+        materializzarne uno: se `collect_grain_counts` risalisse sopra la
+        chiamata al render, la mappa direbbe `None` per tutti -- e in
+        produzione quel `None` sarebbe il caso buono, perche' sugli stream
+        veri leggere `.voices` prima del render li genererebbe in fase di
+        stampa, che e' esattamente il lavoro che #117 aveva tolto. Gli altri
+        test della classe usano stream gia' materializzati alla costruzione,
+        quindi non distinguono il prima dal dopo.
+        """
+        gen = api_mocks['generator_instance']
+        gen.ftable_manager.get_all_tables.return_value = {}
+        dirty = self._Stream('s_dirty')
+        clean = self._Stream('s_clean')   # saltato dalla cache: nessuno lo tocca
+        gen.streams = [dirty, clean]
+
+        def _render_materializza(*args, **kwargs):
+            dirty.materialize([self._grains(3), self._grains(2)])
+            return ['/out/test.aif']
+
+        api_mocks['engine_instance'].render.side_effect = _render_materializza
+
+        result = api_mocks['api'].render(gen, 'out.aif', renderer='numpy')
+
+        assert result.grain_counts['s_dirty'].grains == 5
+        assert result.grain_counts['s_dirty'].voices == 2
+        assert result.grain_counts['s_clean'] is None
+
+    def test_render_result_default_e_mappa_vuota(self, api_mocks):
+        """Chi costruisce un RenderResult a mano (CLI test, consumer) non
+        deve passare il campo."""
+        result = api_mocks['api'].RenderResult(
+            audio_paths=[], elapsed_seconds=0.0,
+            renderer_type='numpy', per_stream=False)
+        assert result.grain_counts == {}
 
 
 # =============================================================================
