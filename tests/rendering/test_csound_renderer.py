@@ -257,24 +257,43 @@ class TestCsoundRendererErrors:
         from pge.shared.exceptions import CsoundNotFoundError
         mock_run.side_effect = FileNotFoundError()
 
-        scritti = []
-        vero_write_score = renderer._write_score
-
-        def spia(*args, **kwargs):
-            path = vero_write_score(*args, **kwargs)
-            scritti.append(path)
-            return path
-
-        renderer._write_score = spia
-
         with pytest.raises(CsoundNotFoundError):
             if mode == 'stems':
                 renderer.render_single_stream(mock_stream, '/output/test.aif')
             else:
                 renderer.render_merged_streams([mock_stream], '/output/mix.aif')
 
-        assert scritti, "nessun .sco scritto: il test non sta misurando nulla"
-        assert not os.path.exists(scritti[0])
+        # Il path arriva dalla chiamata a write_score, non da una spia su un
+        # metodo interno: e' il .sco che il renderer ha davvero creato, e
+        # l'asserzione non si rompe se quel metodo cambia nome.
+        assert renderer.score_writer.write_score.call_args, \
+            "nessun .sco scritto: il test non sta misurando nulla"
+        sco_path = renderer.score_writer.write_score.call_args.kwargs['filepath']
+        assert not os.path.exists(sco_path)
+
+    @pytest.mark.parametrize('mode', ['stems', 'mix'])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_il_sco_temporaneo_non_sopravvive_a_uno_score_che_fallisce(
+            self, mock_run, renderer, mock_stream, mode):
+        """Il file temporaneo lo crea `mkstemp`, prima che ScoreWriter ci
+        scriva: anche un render che muore *scrivendo* lo score ne lascia uno
+        in /tmp. Non e' un caso di scuola -- i grani sono lazy (issue #117) e
+        si materializzano qui, quindi ogni modo di essere invalidi che il
+        parse non ha visto passa da questa riga. Il `finally` deve coprire
+        anche la scrittura, come in SuperColliderRenderer._render."""
+        from pge.shared.exceptions import FtableError
+        mock_run.return_value = MagicMock(returncode=0)
+        renderer.score_writer.write_score.side_effect = FtableError(
+            key='win_hann', reason='tabella non registrata')
+
+        with pytest.raises(FtableError):
+            if mode == 'stems':
+                renderer.render_single_stream(mock_stream, '/output/test.aif')
+            else:
+                renderer.render_merged_streams([mock_stream], '/output/mix.aif')
+
+        sco_path = renderer.score_writer.write_score.call_args.kwargs['filepath']
+        assert not os.path.exists(sco_path)
 
 
 # =============================================================================
@@ -566,6 +585,44 @@ class TestCsoundRendererKeepSco:
         sco_path = call_kwargs['filepath']
         assert sco_path.startswith(sco_dir)
         assert sco_path.endswith('composition.sco')
+
+    @pytest.mark.parametrize('mode,base', [('stems', 'test'), ('mix', 'mix')])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_keep_sco_conserva_lo_score_di_un_render_fallito(
+        self, mock_run, mock_score_writer, csound_config, mock_stream,
+        tmp_path, mode, base
+    ):
+        """--keep-sco serve a ispezionare lo score, e lo score che si vuole
+        ispezionare e' quello del render fallito.
+
+        La cancellazione ora sta in un `finally`, cioe' passa anche di li':
+        prima il ramo dei fallimenti non la eseguiva affatto e la condizione
+        `not self.sco_dir` non aveva modo di sbagliare. Se qualcuno la
+        perdesse, questo flag cancellerebbe il file che promette di tenere --
+        e senza questo test la suite resterebbe verde."""
+        from pge.shared.exceptions import CsoundNotFoundError
+        mock_run.side_effect = FileNotFoundError()
+        sco_dir = str(tmp_path / 'sco')
+
+        # Il ScoreWriter e' un mock e da solo non scrive niente: senza questo
+        # il file non esisterebbe comunque e l'asserzione sarebbe vuota.
+        def scrive_davvero(filepath, **kwargs):
+            open(filepath, 'w').close()
+
+        mock_score_writer.write_score.side_effect = scrive_davvero
+        renderer = CsoundRenderer(
+            score_writer=mock_score_writer,
+            csound_config=csound_config,
+            sco_dir=sco_dir,
+        )
+
+        with pytest.raises(CsoundNotFoundError):
+            if mode == 'stems':
+                renderer.render_single_stream(mock_stream, f'/out/{base}.aif')
+            else:
+                renderer.render_merged_streams([mock_stream], f'/out/{base}.aif')
+
+        assert os.path.exists(os.path.join(sco_dir, f'{base}.sco'))
 
 
 # =============================================================================

@@ -87,18 +87,7 @@ class CsoundRenderer(AudioRenderer):
                 if not dirty:
                     return output_path
 
-        sco_path = self._write_score(streams=[stream], output_path=output_path, per_stream=True)
-        try:
-            self._run_csound(sco_path, output_path)
-        finally:
-            # Cleanup file temporaneo se non in modalita' keep-sco. Sta nel
-            # `finally` perche' anche i modi di fallire lo lasciano sul disco:
-            # con csound assente (issue #241) era un .sco abbandonato in /tmp
-            # a ogni singolo tentativo, con un nome casuale che l'utente non
-            # ha modo di ritrovare. Chi vuole il .sco di un render fallito ha
-            # --keep-sco, che questo ramo rispetta.
-            if not self.sco_dir and os.path.exists(sco_path):
-                os.unlink(sco_path)
+        self._render([stream], output_path, per_stream=True)
 
         # Aggiorna cache dopo build riuscita
         if self.cache_manager:
@@ -125,17 +114,7 @@ class CsoundRenderer(AudioRenderer):
             CsoundRenderError: se csound esce con errore
             CsoundNotFoundError: se csound non e' installato
         """
-        sco_path = self._write_score(
-            streams=streams,
-            output_path=output_path,
-        )
-        try:
-            self._run_csound(sco_path, output_path)
-        finally:
-            # Cleanup file temporaneo se non in modalita' keep-sco: vedi
-            # render_single_stream, il MIX passa dallo stesso _run_csound.
-            if not self.sco_dir and os.path.exists(sco_path):
-                os.unlink(sco_path)
+        self._render(streams, output_path, per_stream=False)
 
         return output_path
 
@@ -143,34 +122,55 @@ class CsoundRenderer(AudioRenderer):
     # INTERNAL
     # =========================================================================
 
-    def _write_score(self, streams, output_path: str, per_stream: bool = False) -> str:
-        """
-        Scrive il file .sco via ScoreWriter.
+    def _render(self, streams, output_path: str, per_stream: bool) -> None:
+        """Score + csound, con lo score temporaneo che se ne va comunque.
 
-        Se sco_dir e' configurato (--keep-sco), salva in path deterministico
-        basato su output_path. Altrimenti usa un file temporaneo.
+        STEMS e MIX passano di qui, quindi la regola di cancellazione ha una
+        scrittura sola. Il `try` copre anche `write_score`, non la sola
+        chiamata a csound: il file temporaneo lo crea `_score_path`
+        (`mkstemp`) *prima* che ScoreWriter ci scriva, e i grani sono lazy
+        (issue #117) -- si materializzano proprio qui, con tutti i modi di
+        essere invalidi che il parse non ha visto. Uno score che muore
+        scrivendo lasciava un .sco in /tmp esattamente come il csound assente
+        della issue #241, con lo stesso nome casuale che l'utente non ha modo
+        di ritrovare. E' la forma che `SuperColliderRenderer._render` ha da
+        sempre; era questa meta' a non averla.
+
+        Chi il .sco di un render fallito lo vuole ha `--keep-sco`, ed e' la
+        modalita' in cui il file non e' temporaneo: la condizione lo rispetta.
+        """
+        sco_path = self._score_path(output_path)
+        try:
+            self.score_writer.write_score(
+                filepath=sco_path,
+                streams=streams,
+                per_stream=per_stream,
+            )
+            self._run_csound(sco_path, output_path)
+        finally:
+            if not self.sco_dir and os.path.exists(sco_path):
+                os.unlink(sco_path)
+
+    def _score_path(self, output_path: str) -> str:
+        """Path del file .sco.
+
+        Se sco_dir e' configurato (--keep-sco), path deterministico basato su
+        output_path. Altrimenti un file temporaneo, che `mkstemp` crea gia'
+        vuoto sul disco: da quel momento e' compito di `_render` toglierlo.
 
         Args:
-            streams: lista di Stream da includere
             output_path: percorso del file .aif di output (usato per naming)
 
         Returns:
-            Path del file .sco scritto
+            Path del file .sco
         """
         if self.sco_dir:
             base = os.path.splitext(os.path.basename(output_path))[0]
-            sco_path = os.path.join(self.sco_dir, f"{base}.sco")
             os.makedirs(self.sco_dir, exist_ok=True)
-        else:
-            fd, sco_path = tempfile.mkstemp(suffix='.sco')
-            os.close(fd)
+            return os.path.join(self.sco_dir, f"{base}.sco")
 
-        self.score_writer.write_score(
-            filepath=sco_path,
-            streams=streams,
-            per_stream=per_stream,
-        )
-
+        fd, sco_path = tempfile.mkstemp(suffix='.sco')
+        os.close(fd)
         return sco_path
 
     def _run_csound(self, sco_path: str, output_path: str):

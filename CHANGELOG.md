@@ -180,10 +180,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   fallire — exit code diverso da zero, e da questa release anche il binario
   assente — saltava le due righe e lasciava il file in `/tmp`, con un nome
   casuale che l'utente non ha modo di ritrovare. Su una macchina senza csound
-  non era un caso raro ma la norma: uno per tentativo. Ora la chiamata sta in
-  un `try/finally` in entrambi i chiamanti (STEMS e MIX passano dallo stesso
-  `_run_csound`); `--keep-sco` continua a valere, perche' la condizione e'
-  rimasta la stessa.
+  non era un caso raro ma la norma: uno per tentativo.
+
+  Il `try/finally` copre l'intero passo, **scrittura dello score inclusa**, e
+  non la sola chiamata a csound: il file temporaneo lo crea `mkstemp` prima
+  che ScoreWriter ci scriva, e i grani sono lazy (issue #117) — si
+  materializzano proprio li', con tutti i modi di essere invalidi che il
+  parse non ha visto. Uno score che muore scrivendo lasciava un `.sco` in
+  `/tmp` esattamente come il binario assente. STEMS e MIX passano ora dallo
+  stesso `_render`, cosi' la regola di cancellazione ha una scrittura sola:
+  e' la forma che `SuperColliderRenderer._render` ha da sempre, ed era il
+  ramo csound a non averla.
+
+  `--keep-sco` continua a valere, perche' la condizione e' rimasta la stessa
+  — ma ora e' anche testata sul ramo dei fallimenti, che prima la
+  cancellazione non la eseguiva affatto: e' il render fallito quello che si
+  vuole ispezionare, e un `finally` che perdesse quella condizione
+  cancellerebbe proprio il file che il flag promette di tenere.
 
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati
