@@ -11,7 +11,7 @@ sources:
   - src/pge/rendering/csound_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: 845f47f
+last_synced_commit: 1d80252
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -124,7 +124,9 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   temporaneo e **viene cancellato anche quando il render fallisce** — csound
   assente, exit code diverso da zero, o un errore mentre lo score si scrive:
   il `.sco` di un render fallito si ispeziona con `--keep-sco`, che è la
-  modalità in cui quel file non è temporaneo.
+  modalità in cui quel file non è temporaneo. È anche quello che dice il
+  messaggio d'errore, che altrimenti offrirebbe un `Comando:` da rieseguire
+  nominando uno score che non c'è più (vedi [[errors]]).
 - **`--log-dir` non è un flag csound**, benché sia stato a lungo scritto in
   mezzo a loro: vale con qualunque renderer, perché i due log che scrive la
   fase di caricamento (errori engine e clip) esistono prima che si scelga un

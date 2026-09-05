@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: 845f47f
+last_synced_commit: 1d80252
 ---
 
 # Architettura Renderer
@@ -191,8 +191,9 @@ Sequenza e invarianti:
 - Errori specifici renderer: `CsoundRenderError`, `SuperColliderRenderError`,
   `CsoundNotFoundError`, `SuperColliderNotFoundError`, `InvalidRendererError`
   (vedi [[errors]]): i due "non trovato" dicono che manca ciò che serve a far
-  partire il backend — il binario, e per SuperCollider anche il sorgente della
-  SynthDef da cui il binario si compila — e nessuno dei due eredita da
+  partire il backend — il binario, e per SuperCollider anche il sorgente `.scd`
+  che `sclang` compila nel `.scsyndef` caricato dallo score (non è il binario a
+  compilarsi da lì: quello si installa) — e nessuno dei due eredita da
   `FileNotFoundError`
 - L'elenco dei tipi validi vive in `RendererFactory.available_types()`, ed è
   quello che i messaggi d'errore e la CLI interrogano: un backend nuovo non

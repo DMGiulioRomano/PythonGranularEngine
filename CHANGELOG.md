@@ -197,7 +197,21 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   — ma ora e' anche testata sul ramo dei fallimenti, che prima la
   cancellazione non la eseguiva affatto: e' il render fallito quello che si
   vuole ispezionare, e un `finally` che perdesse quella condizione
-  cancellerebbe proprio il file che il flag promette di tenere.
+  cancellerebbe proprio il file che il flag promette di tenere. Testata anche
+  sul ramo che finisce bene, che e' il piu' battuto e non ne aveva nessuna: un
+  render che smettesse di ripulire lascerebbe un `.sco` per stem e la suite
+  resterebbe verde.
+
+  Chiudere quella perdita porta pero' via anche il `.sco` dell'exit code
+  diverso da zero, che prima sopravviveva per via dello stesso difetto — ed e'
+  il caso in cui quello score serve. Il messaggio di `CsoundRenderError` offre
+  una riga `Comando:` da rieseguire, e quel comando nomina lo score appena
+  cancellato: senza dirlo, la prima azione che il messaggio suggerisce e' un
+  no-op, cioe' lo stesso metro con cui questa release ha riscritto l'hint di
+  csound assente. `_SubprocessRenderError` ha ora un `hint` opzionale — stessa
+  riga di `_BinaryNotFoundError` — e il ramo csound lo valorizza nominando
+  `--keep-sco` quando lo score era temporaneo. Con il flag gia' attivo l'hint
+  non compare: il rimedio non esiste piu'.
 
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati

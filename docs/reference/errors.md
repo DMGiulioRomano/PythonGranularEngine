@@ -6,7 +6,7 @@ tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
   - src/pge/cli.py
-last_synced_commit: 6084479
+last_synced_commit: 1d80252
 entry_for: [error-handling]
 ---
 
@@ -114,6 +114,14 @@ EngineError                                  (Exception)
   configurazione mancante. Quelli che nessuno ha ancora tradotto finiscono
   ora nel ramo generico — messaggio e traceback — invece che in un messaggio
   falso.
+- **La riga `Comando:` di `_SubprocessRenderError` invita a rieseguire, quindi
+  deve restare rieseguibile.** Lo score che vi compare è temporaneo e il
+  renderer lo cancella in un `finally` — anche quando il binario esce con un
+  codice d'errore, che è il caso in cui quello score serve. Perciò la base ha
+  un `hint` opzionale e il ramo csound lo valorizza con `--keep-sco` quando lo
+  score era temporaneo: senza, la prima azione che il messaggio suggerisce è
+  un no-op. Stessa forma dell'hint di `_BinaryNotFoundError`, e stessa regola —
+  un rimedio si scrive solo quando c'è.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
   (es. errori I/O di rendering) si appendono qui.
 - Ogni sotto-classe override `user_message()` con formato strutturato.
@@ -281,12 +289,17 @@ streams:
 ### Csound subprocess fallito
 ```
 [ERRORE] Csound rendering fallito (exit code 2)
-  Comando:      csound -o out.aif score.csd
+  Comando:      csound -o out.aif /tmp/tmpx3k9.sco
   Output:       error: undefined opcode
+  Hint:         Lo score .sco era temporaneo ed e' stato rimosso: rilancia con `--keep-sco` per conservarlo e rieseguire il comando qui sopra.
   Stream:       drone_low
   Config:       configs/PGE_test.yml
   Dettagli:     /tmp/engine.log
 ```
+
+La riga `Hint:` compare solo senza `--keep-sco`: con il flag lo score è già
+sul disco e suggerirlo manderebbe l'utente a cercare un'opzione che ha già
+passato.
 
 ### SuperCollider subprocess fallito
 Il campo `stage` distingue i due binari, perché hanno rimedi diversi:
