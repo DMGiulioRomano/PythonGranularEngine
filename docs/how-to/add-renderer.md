@@ -9,7 +9,7 @@ sources:
   - src/pge/rendering/supercollider_renderer.py
   - src/pge/api.py
   - src/pge/cli.py
-last_synced_commit: 8e21c03
+last_synced_commit: 845f47f
 entry_for: [add-renderer]
 ---
 
@@ -33,6 +33,22 @@ L'ultimo backend aggiunto è SuperCollider (issue #228): è l'esempio lavorato d
 1. Crea il modulo in `src/pge/rendering/<nome>_renderer.py` ed eredita `AudioRenderer`
 2. Dichiara `renderer_type = '<nome>'` (finisce in `RenderResult.renderer_type`)
 3. Implementa `render_single_stream(stream, output_path)` (onset **relativi**, STEMS) e `render_merged_streams(streams, output_path)` (onset **assoluti**, MIX). `render_streams()` è concreto nell'ABC: fai override solo se hai un modo migliore del loop
+
+   Se il backend delega a un binario esterno, due regole che questo progetto
+   ha già dovuto imparare due volte (#228, #241):
+
+   - **binario assente = sottoclasse d'errore dedicata, mai `FileNotFoundError`**.
+     La CLI intercetta quel tipo per annunciare «file YAML non trovato»: un
+     binario che manca e passa di lì viene riportato all'utente come una
+     configurazione inesistente. C'è una base comune per questi errori, vedi
+     [[errors]]
+   - **lo score temporaneo si cancella in un `finally` che copre anche la sua
+     scrittura**, non solo la chiamata al binario: il file temporaneo esiste
+     dal momento in cui se ne prende il path, e i grani sono lazy (#117) —
+     si materializzano proprio mentre lo score si scrive. Un `try` stretto
+     sul solo subprocess lascia uno score orfano a ogni render che muore
+     prima
+
 4. Registra in `src/pge/rendering/renderer_factory.py`: aggiungi il nome a `_VALID_TYPES` e il ramo di costruzione in `create()`. `available_types()` è l'unico elenco dei tipi validi — messaggi d'errore e CLI lo chiedono lì
 5. Aggiungi il ramo in `api.build_renderer()`, e una dataclass di opzioni accanto a `CsoundOptions` / `SuperColliderOptions` se il backend ha configurazione propria
 6. Mappa i flag CLI in `cli._build_renderer`: i nomi vanno **dichiarati nella firma** (keyword-only, issue #252), non solo letti nel corpo — uno non dichiarato è un `TypeError` al primo render invece di un no-op silenzioso, e `tests/test_cli_build_renderer_signature.py` confronta la firma col sito di chiamata dentro `main()`. Aggiorna anche la usage string (il golden `tests/test_cli_contract.py` la difende: va aggiornato di proposito)

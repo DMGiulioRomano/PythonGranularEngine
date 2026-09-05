@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: 6084479
+last_synced_commit: 845f47f
 ---
 
 # Architettura Renderer
@@ -190,8 +190,10 @@ Sequenza e invarianti:
 - Caching: vedi [[caching]]
 - Errori specifici renderer: `CsoundRenderError`, `SuperColliderRenderError`,
   `CsoundNotFoundError`, `SuperColliderNotFoundError`, `InvalidRendererError`
-  (vedi [[errors]]): i due "non trovato" dicono che manca il binario del
-  backend, e nessuno dei due eredita da `FileNotFoundError`
+  (vedi [[errors]]): i due "non trovato" dicono che manca ciò che serve a far
+  partire il backend — il binario, e per SuperCollider anche il sorgente della
+  SynthDef da cui il binario si compila — e nessuno dei due eredita da
+  `FileNotFoundError`
 - L'elenco dei tipi validi vive in `RendererFactory.available_types()`, ed è
   quello che i messaggi d'errore e la CLI interrogano: un backend nuovo non
   richiede di aggiornare nessuna lista scritta a mano

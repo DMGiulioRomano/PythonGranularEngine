@@ -147,11 +147,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   ```
   [ERRORE] Csound: binario 'csound' non trovato
-    Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL
-                  non e' nei repo e va compilato dai sorgenti, vedi README),
-                  oppure usa `--renderer numpy`, che non richiede binari
-                  esterni.
+    Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL non e' nei repo e va compilato dai sorgenti, vedi README), oppure usa `--renderer numpy`, che non richiede binari esterni.
   ```
+
+  Il blocco è l'output reale: `user_message()` non manda a capo l'hint, e
+  mostrarlo qui rincolonnato descriveva una riga che il programma non stampa
+  (`docs/reference/errors.md` lo riporta com'è).
 
   Il rimedio nomina la compilazione dai sorgenti perche' `make
   install-system-deps` csound su Fedora/RHEL non lo installa — non c'e' nei
