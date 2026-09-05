@@ -223,6 +223,40 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- **La sintassi Csound si scrive in un posto solo** (issue #203). Tre moduli
+  la producevano, e due stavano sotto il livello che deve restare
+  indipendente dal target: `Grain.to_score_line` in `core/` (nome dello
+  strumento, ordine dei p-field, precisione decimale di ciascuno),
+  `FtableManager.write_to_file` — l'allocatore degli ID di tabella era anche
+  il code generator che li emette — e
+  `WindowRegistry.generate_ftable_statement`, il catalogo delle finestre che
+  materializza il proprio f-statement.
+
+  I tre metodi non ci sono piu': al loro posto c'e' `CsoundEmitter`
+  (`src/pge/rendering/csound_emitter.py`) con `grain_statement`,
+  `sample_ftable`, `window_ftable` e `write_ftables`. `ScoreWriter` lo riceve
+  dal costruttore (`emitter=`, default `CsoundEmitter()`) e continua a
+  decidere l'ordine delle sezioni, non la sintassi.
+
+  Cosa torna a fare una cosa sola: `Grain` e' il dato; `FtableManager` alloca
+  i numeri di tabella ed espone la symbol table condivisa fra i back-end (il
+  renderer NumPy riceve la stessa `table_map`, lo score SuperCollider ne fa
+  numeri di buffer); `WindowRegistry` e' il catalogo dei nomi che lo YAML puo'
+  scrivere. Il misuratore del difetto era che gli 8 decimali di p2/p3 —
+  necessari perche' a 96 kHz un grano puo' durare un campione, cioe' una
+  decisione sul formato di uscita di Csound — vivevano in `core/grain.py`.
+
+  **Il `.sco` non cambia di un byte**, ed e' il criterio di accettazione:
+  `tests/rendering/test_csound_score_bytes.py` confronta il file per intero
+  con `==` sui due valori di `per_stream`, ed e' stato scritto *prima* dello
+  spostamento. Finora l'output era verificato solo con asserzioni `in` su
+  frammenti, che non vedono una riga in piu' o un separatore perso.
+
+  Superficie Python interna: niente YAML, CLI, gerarchia errori o formati
+  osservabili, quindi nessun impatto su PGE-ls e PGE-ui. Chi importava i tre
+  metodi da fuori — non e' il caso di nessun modulo del repo — passa
+  all'emitter.
+
 - **`bench_cost.py` parla con l'API pubblica** — `api.load_generator` e
   `api.build_renderer` invece di `cli._build_renderer`. E' la classe di bug
   della #243 chiusa dal chiamante: `_build_renderer(tipo, gen, **kwargs)`

@@ -1,6 +1,10 @@
 """
-EnvelopeRegistry: definizioni dichiarative degli envelope Csound.
-Single source of truth per mapping nome -> GEN routine.
+WindowRegistry: il catalogo delle finestre grano.
+
+Single source of truth su quali nomi lo YAML puo' scrivere e qual e' il
+canonico di ciascuno. Descrive ogni finestra nei termini della GEN routine
+che la genera, ma non la materializza: gli adapter sono `CsoundEmitter`
+(statement `f`) e `NumpyWindowRegistry` (array), issue #203.
 """
 from __future__ import annotations
 
@@ -187,26 +191,3 @@ class WindowRegistry:
         return [spec for spec in cls.WINDOWS.values() 
                 if spec.family == family]
     
-    @classmethod
-    def generate_ftable_statement(cls, table_num: int, name: str, size: int = 1024) -> str:
-        """
-        Genera la stringa f-statement per Csound.
-        
-        Args:
-            table_num: numero tabella Csound
-            name: nome window
-            size: dimensione tabella
-            
-        Returns:
-            str: f-statement completo (e.g., "f 1 0 1024 20 2 1")
-        """
-        spec = cls.get(name)
-        if not spec:
-            from pge.shared.exceptions import InvalidWindowError
-            raise InvalidWindowError(
-                name=name,
-                available=cls.all_names(),
-            )
-        
-        params_str = ' '.join(str(p) for p in spec.gen_params)
-        return f"f {table_num} 0 {size} {spec.gen_routine} {params_str}"

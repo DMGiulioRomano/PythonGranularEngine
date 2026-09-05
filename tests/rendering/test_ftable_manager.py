@@ -13,17 +13,19 @@ Sezioni:
 5.  Test get_window_table_num() - lookup window registrate
 6.  Test get_all_tables() - ritorno copia tabelle
 7.  Test __repr__() - rappresentazione per debugging
-8.  Test write_to_file() - scrittura f-statements Csound
-9.  Test numerazione progressiva - coerenza allocazione tabelle
-10. Test integrazione - workflow completi multi-tipo
-11. Test edge cases e boundary conditions
-12. Test parametrizzati per copertura sistematica
+8.  Test numerazione progressiva - coerenza allocazione tabelle
+9.  Test integrazione - workflow completi multi-tipo
+10. Test edge cases e boundary conditions
+11. Test parametrizzati per copertura sistematica
 
 Strategia di mocking:
 - WindowRegistry viene mockato per isolare FtableManager dalla
   dipendenza esterna. Si usa patch('ftable_manager.WindowRegistry')
   per iniettare comportamenti controllati.
-- Per write_to_file() si usa io.StringIO come file object fake.
+
+Il manager alloca numeri di tabella e basta: la sintassi Csound che li
+materializza sta in CsoundEmitter (issue #203), e i suoi test in
+tests/rendering/test_csound_emitter.py.
 """
 
 import pytest
@@ -484,232 +486,7 @@ class TestRepr:
 
 
 # =============================================================================
-# 8. TEST write_to_file() - SCRITTURA F-STATEMENTS CSOUND
-# =============================================================================
-
-class TestWriteToFile:
-    """
-    Test per write_to_file().
-    
-    Nota su Csound: I sample usano GEN01 con formato:
-        f NUM 0 0 1 "path" 0 0 1
-    dove size=0 significa "dimensione automatica dal file".
-    Le window usano il formato generato da WindowRegistry.generate_ftable_statement().
-    """
-
-    def test_write_empty_manager(self, fm):
-        """Manager vuoto scrive solo header."""
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert "FUNCTION TABLES" in content
-        assert "f " not in content.split("FUNCTION TABLES")[1].strip().replace(
-            "; " + "="*77, "")  # Nessun f-statement dopo header
-
-    def test_write_header_present(self, fm):
-        """Header con separatori e' sempre presente."""
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert "; FUNCTION TABLES" in content
-        assert "=" * 77 in content
-
-    def test_write_single_sample(self, fm):
-        """Scrittura singolo sample con GEN01."""
-        fm.register_sample("/audio/voice.wav")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Commento con path sample
-        assert "; Sample: /audio/voice.wav" in content
-        # f-statement GEN01: f NUM 0 0 1 "path" 0 0 1
-        assert 'f 1 0 0 1 "/audio/voice.wav" 0 0 1' in content
-
-    def test_write_single_window(self, fm):
-        """Scrittura singola window con generate_ftable_statement."""
-        fm.register_window("hanning")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Commento con nome e descrizione
-        assert "; Window: hanning" in content
-        assert "Hanning" in content
-        # f-statement GEN20 per hanning
-        assert "f 1 0 1024 20 2 1" in content
-
-    def test_write_mixed_sample_and_window(self, fm):
-        """Scrittura mista sample + window."""
-        fm.register_sample("/audio/voice.wav")
-        fm.register_window("expodec")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert "; Sample: /audio/voice.wav" in content
-        assert "; Window: expodec" in content
-
-    def test_write_tables_sorted_by_number(self, fm):
-        """Tabelle scritte in ordine di numero tabella."""
-        # Registra in ordine non sequenziale (ma l'allocazione e' sequenziale)
-        fm.register_window("expodec")    # num=1
-        fm.register_sample("/z.wav")     # num=2
-        fm.register_window("hanning")    # num=3
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Verifica ordine: expodec (1), sample (2), hanning (3)
-        pos_expodec = content.find("f 1 ")
-        pos_sample = content.find("f 2 ")
-        pos_hanning = content.find("f 3 ")
-
-        assert pos_expodec < pos_sample < pos_hanning
-
-    def test_write_sample_gen01_format(self, fm):
-        """Verifica formato GEN01 per sample Csound.
-        
-        In Csound, GEN01 legge un file audio nella function table:
-        f NUM TIME SIZE GEN "filename" SKIPTIME FORMAT CHANNEL
-        Con SIZE=0 Csound alloca automaticamente la dimensione dal file.
-        """
-        fm.register_sample("/sounds/grain_source.aif")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Formato: f NUM 0 0 1 "path" 0 0 1
-        expected = 'f 1 0 0 1 "/sounds/grain_source.aif" 0 0 1'
-        assert expected in content
-
-    def test_write_window_gen20_format(self, fm):
-        """Verifica formato GEN20 per window Csound.
-        
-        GEN20 genera function tables con forma di window standard.
-        Usate come inviluppo del grano nella sintesi granulare.
-        """
-        fm.register_window("hamming")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Hamming = GEN20 opt 1
-        assert "f 1 0 1024 20 1 1" in content
-
-    def test_write_window_gen16_format(self, fm):
-        """Verifica formato GEN16 per curve asimmetriche."""
-        fm.register_window("expodec")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # expodec = GEN16: 1 1024 4 0
-        assert "f 1 0 1024 16 1 1024 4 0" in content
-
-    def test_write_window_gen09_format(self, fm):
-        """Verifica formato GEN09 per composite waveforms."""
-        fm.register_window("half_sine")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # half_sine = GEN09: 0.5 1 0
-        assert "f 1 0 1024 9 0.5 1 0" in content
-
-    def test_write_multiple_samples(self, fm):
-        """Scrittura multipli sample."""
-        fm.register_sample("/audio/a.wav")
-        fm.register_sample("/audio/b.wav")
-        fm.register_sample("/audio/c.wav")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert content.count("Sample:") == 3
-        assert 'f 1 0 0 1 "/audio/a.wav"' in content
-        assert 'f 2 0 0 1 "/audio/b.wav"' in content
-        assert 'f 3 0 0 1 "/audio/c.wav"' in content
-
-    def test_write_multiple_windows(self, fm):
-        """Scrittura multiple window."""
-        fm.register_window("hanning")
-        fm.register_window("hamming")
-        fm.register_window("gaussian")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert content.count("Window:") == 3
-
-    def test_write_window_with_corrupted_registry_raises(self, fm):
-        """
-        Se il WindowRegistry restituisce None durante write_to_file
-        (situazione anomala), viene sollevato ValueError.
-        
-        Questo copre il branch difensivo in write_to_file dove
-        spec risulta None nonostante la validazione in register_window.
-        """
-        # Registra normalmente
-        fm.register_window("hanning")
-
-        # Ora patcha WindowRegistry.get per ritornare None
-        with patch('pge.rendering.ftable_manager.WindowRegistry') as mock_wr:
-            mock_wr.get.return_value = None
-
-            buf = io.StringIO()
-            with pytest.raises(ValueError, match="non trovata nel WindowRegistry"):
-                fm.write_to_file(buf)
-
-    def test_write_to_real_file_object(self, fm, tmp_path):
-        """Scrittura su file reale via tmp_path."""
-        fm.register_sample("/audio/test.wav")
-        fm.register_window("hanning")
-
-        filepath = tmp_path / "test_score.sco"
-        with open(filepath, 'w') as f:
-            fm.write_to_file(f)
-
-        content = filepath.read_text()
-        assert "FUNCTION TABLES" in content
-        assert "Sample:" in content
-        assert "Window:" in content
-
-    def test_write_sample_path_with_quotes(self, fm):
-        """Sample path appare tra virgolette nel f-statement."""
-        fm.register_sample("path/to/file.wav")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert '"path/to/file.wav"' in content
-
-    def test_write_description_in_window_comment(self, fm):
-        """Descrizione della window appare nel commento."""
-        fm.register_window("gaussian")
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        assert "Gaussian" in content
-
-
-# =============================================================================
-# 9. TEST NUMERAZIONE PROGRESSIVA
+# 8. TEST NUMERAZIONE PROGRESSIVA
 # =============================================================================
 
 class TestTableNumbering:
@@ -763,7 +540,7 @@ class TestTableNumbering:
 
 
 # =============================================================================
-# 10. TEST INTEGRAZIONE - WORKFLOW COMPLETI
+# 9. TEST INTEGRAZIONE - WORKFLOW COMPLETI
 # =============================================================================
 
 class TestIntegrationWorkflows:
@@ -775,7 +552,6 @@ class TestIntegrationWorkflows:
         1. Registra sample sorgente
         2. Registra window per inviluppo grano
         3. Verifica tabelle
-        4. Scrivi su file
         """
         sample_num = fm.register_sample("/sounds/texture.wav")
         window_num = fm.register_window("hanning")
@@ -789,13 +565,8 @@ class TestIntegrationWorkflows:
         assert len(tables) == 2
         assert tables[sample_num][0] == 'sample'
         assert tables[window_num][0] == 'window'
-
-        # Scrivi su file
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-        assert "texture.wav" in content
-        assert "hanning" in content
+        assert tables[sample_num][1] == "/sounds/texture.wav"
+        assert tables[window_num][1] == "hanning"
 
     def test_multi_stream_shared_sample(self, fm):
         """
@@ -834,30 +605,29 @@ class TestIntegrationWorkflows:
         assert w1 == w2 == w3
         assert len(fm.tables) == 4  # 3 sample + 1 window
 
-    def test_lookup_after_registration_and_write(self, fm):
-        """Lookup funziona anche dopo write_to_file."""
+    def test_lookup_after_registration_and_snapshot(self, fm):
+        """Lookup funziona anche dopo aver esposto la symbol table."""
         num = fm.register_sample("/test.wav")
 
-        buf = io.StringIO()
-        fm.write_to_file(buf)
+        fm.get_all_tables()
 
         # Lookup ancora valido
         assert fm.get_sample_table_num("/test.wav") == num
 
-    def test_register_all_window_types_and_write(self, fm):
-        """Registra almeno una window per ogni famiglia GEN e scrivi."""
-        fm.register_window("hanning")       # GEN20
-        fm.register_window("expodec")       # GEN16
-        fm.register_window("half_sine")     # GEN09
+    def test_register_all_window_types(self, fm):
+        """Una window per ogni famiglia GEN prende il suo numero."""
+        nums = [
+            fm.register_window("hanning"),      # GEN20
+            fm.register_window("expodec"),      # GEN16
+            fm.register_window("half_sine"),    # GEN09
+        ]
 
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Verifica che ci siano 3 f-statement diversi
-        assert "20 2 1" in content      # GEN20 hanning
-        assert "16 1 1024 4 0" in content  # GEN16 expodec
-        assert "9 0.5 1 0" in content   # GEN09 half_sine
+        assert nums == [1, 2, 3]
+        assert fm.get_all_tables() == {
+            1: ('window', 'hanning'),
+            2: ('window', 'expodec'),
+            3: ('window', 'half_sine'),
+        }
 
     def test_repr_reflects_state_throughout_workflow(self, fm):
         """repr riflette lo stato in ogni fase del workflow."""
@@ -876,7 +646,7 @@ class TestIntegrationWorkflows:
 
 
 # =============================================================================
-# 11. TEST EDGE CASES E BOUNDARY CONDITIONS
+# 10. TEST EDGE CASES E BOUNDARY CONDITIONS
 # =============================================================================
 
 class TestEdgeCases:
@@ -940,8 +710,15 @@ class TestEdgeCases:
         assert copy1 == copy2
         assert copy1 is not copy2
 
-    def test_write_to_file_does_not_modify_state(self, fm):
-        """write_to_file non modifica lo stato del manager."""
+    def test_materializing_the_tables_does_not_modify_state(self, fm):
+        """Chi scrive gli f-statement legge la symbol table e non la tocca.
+
+        E' l'invariante che permette a due back-end di leggere la stessa
+        `table_map`: se l'emitter Csound la consumasse, il renderer NumPy
+        troverebbe un manager diverso a seconda di chi ha scritto prima.
+        """
+        from pge.rendering.csound_emitter import CsoundEmitter
+
         fm.register_sample("/test.wav")
         fm.register_window("hanning")
 
@@ -949,14 +726,14 @@ class TestEdgeCases:
         next_before = fm.next_num
 
         buf = io.StringIO()
-        fm.write_to_file(buf)
+        CsoundEmitter().write_ftables(buf, fm.get_all_tables())
 
         assert fm.get_all_tables() == tables_before
         assert fm.next_num == next_before
 
 
 # =============================================================================
-# 12. TEST PARAMETRIZZATI
+# 11. TEST PARAMETRIZZATI
 # =============================================================================
 
 class TestParametrized:
@@ -989,28 +766,6 @@ class TestParametrized:
         """Tipo e' sempre 'sample' per register_sample."""
         num = fm.register_sample(sample_path)
         assert fm.tables[num][0] == expected_type
-
-    @pytest.mark.parametrize("window_name,expected_gen", [
-        ('hanning', 20),
-        ('hamming', 20),
-        ('expodec', 16),
-        ('half_sine', 9),
-    ])
-    def test_write_window_correct_gen_routine(self, fm, window_name, expected_gen):
-        """Ogni window produce il GEN corretto nel file."""
-        fm.register_window(window_name)
-
-        buf = io.StringIO()
-        fm.write_to_file(buf)
-        content = buf.getvalue()
-
-        # Trova l'f-statement e verifica che contenga il GEN corretto
-        for line in content.splitlines():
-            if line.startswith("f "):
-                parts = line.split()
-                # parts[4] e' il GEN routine number
-                gen_num = int(parts[4])
-                assert gen_num == expected_gen
 
     @pytest.mark.parametrize("invalid_name", [
         "nonexistent",

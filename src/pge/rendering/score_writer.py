@@ -5,8 +5,10 @@ Separato dalla logica di orchestrazione.
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
+
 from pge.core.stream import Stream
+from pge.rendering.csound_emitter import CsoundEmitter
 from pge.rendering.ftable_manager import FtableManager
 from pge.envelopes.envelope import Envelope
 from pge.parameters.parameter import Parameter
@@ -18,17 +20,27 @@ class ScoreWriter:
 
     Responsabilita:
     - Formattare header e metadati
-    - Delegare scrittura ftables a FtableManager
+    - Disporre le sezioni del file
     - Scrivere eventi grani (Stream)
     - Gestire commenti e statistiche
+
+    Gli statement veri e propri -- i-statement dei grani, f-statement delle
+    tabelle -- li costruisce `CsoundEmitter` (issue #203): qui si decide
+    l'ordine delle sezioni, non la sintassi.
     """
 
-    def __init__(self, ftable_manager: FtableManager):
+    def __init__(
+        self,
+        ftable_manager: FtableManager,
+        emitter: Optional[CsoundEmitter] = None,
+    ):
         """
         Args:
             ftable_manager: manager delle function tables
+            emitter: generatore di sintassi Csound (default: `CsoundEmitter()`)
         """
         self.ftable_manager = ftable_manager
+        self.emitter = emitter or CsoundEmitter()
 
     def write_score(
         self,
@@ -48,7 +60,7 @@ class ScoreWriter:
         """
         with open(filepath, 'w') as f:
             self._write_header(f, yaml_source)
-            self.ftable_manager.write_to_file(f)
+            self.emitter.write_ftables(f, self.ftable_manager.get_all_tables())
             self._write_events(f, streams, per_stream=per_stream)
             self._write_footer(f)
 
@@ -114,7 +126,8 @@ class ScoreWriter:
                 f.write(f';   Voice {voice_index} ({len(voice_grains)} grains)\n')
 
                 for grain in voice_grains:
-                    f.write(grain.to_score_line(onset_offset=onset_offset))
+                    f.write(self.emitter.grain_statement(
+                        grain, onset_offset=onset_offset))
 
                 f.write('\n')  # Separatore tra voices
 

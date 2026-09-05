@@ -1,6 +1,10 @@
 """
-FtableManager: gestione centralizzata delle function tables Csound.
-Separato dalla logica di orchestrazione.
+FtableManager: allocatore dei numeri di function table.
+
+E' la symbol table condivisa fra i back-end -- il renderer NumPy riceve la
+stessa `table_map` nel costruttore, e lo score SuperCollider ne fa numeri di
+buffer -- quindi alloca e deduplica, ma non scrive: la sintassi Csound delle
+tabelle sta in `CsoundEmitter` (issue #203).
 """
 from __future__ import annotations
 
@@ -10,6 +14,9 @@ from pge.controllers.window_registry import WindowRegistry
 class FtableManager:
     """
     Gestisce allocazione e deduplicazione function tables.
+
+    Non conosce nessun target: chi materializza le tabelle legge
+    `get_all_tables()`.
     """
     
     def __init__(self, start_num: int = 1):
@@ -101,36 +108,3 @@ class FtableManager:
                 f"samples={n_samples}, windows={n_windows}, "
                 f"next_num={self.next_num})")
     
-    # =========================================================================
-    # SCRITTURA FILE SCORE
-    # =========================================================================
-    
-    def write_to_file(self, f) -> None:
-        """Scrive tutte le ftables nel file score Csound."""
-        f.write("; " + "="*77 + "\n")
-        f.write("; FUNCTION TABLES\n")
-        f.write("; " + "="*77 + "\n\n")
-        
-        for num, (ftype, key) in sorted(self.tables.items()):
-            if ftype == 'sample':
-                f.write(f'; Sample: {key}\n')
-                f.write(f'f {num} 0 0 1 "{key}" 0 0 1\n\n')
-            
-            elif ftype == 'window':
-                spec = WindowRegistry.get(key)
-                
-                # ERROR HANDLING AGGIUNTO
-                if spec is None:
-                    from pge.shared.exceptions import FtableError
-                    raise FtableError(
-                        key=key,
-                        reason=(
-                            f"Window '{key}' non trovata nel WindowRegistry. "
-                            f"Stato incoerente: register_window() avrebbe dovuto "
-                            f"validarla."
-                        ),
-                    )
-                
-                f.write(f'; Window: {key} - {spec.description}\n')
-                statement = WindowRegistry.generate_ftable_statement(num, key)
-                f.write(f'{statement}\n\n')

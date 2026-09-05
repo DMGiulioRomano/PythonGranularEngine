@@ -5,7 +5,12 @@
 Issue #38, PR4 — FtableManager errors.
 
 - register_window con nome sconosciuto → InvalidWindowError
-- write_to_file invariant violation → FtableError
+- symbol table incoerente → FtableError
+
+La seconda si e' spostata su CsoundEmitter con la issue #203: e' l'emitter a
+materializzare le tabelle, quindi e' li' che l'incoerenza si vede. Resta un
+errore sul contenuto della symbol table del manager, che e' chi avrebbe
+dovuto impedirla.
 """
 import io
 import pytest
@@ -27,7 +32,8 @@ def test_register_window_unknown_raises_invalid_window_error():
     assert "bogus_window" in msg
 
 
-def test_write_to_file_corrupt_window_raises_ftable_error():
+def test_emitting_a_corrupt_window_raises_ftable_error():
+    from pge.rendering.csound_emitter import CsoundEmitter
     from pge.rendering.ftable_manager import FtableManager
     from pge.shared.exceptions import ConfigError, FtableError
 
@@ -37,7 +43,7 @@ def test_write_to_file_corrupt_window_raises_ftable_error():
 
     buf = io.StringIO()
     with pytest.raises(FtableError) as exc_info:
-        mgr.write_to_file(buf)
+        CsoundEmitter().write_ftables(buf, mgr.get_all_tables())
 
     err = exc_info.value
     assert isinstance(err, ConfigError)

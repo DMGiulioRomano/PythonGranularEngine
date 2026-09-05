@@ -15,11 +15,12 @@ Struttura:
     6.  TestWindowRegistryGetCaseSensitivity - case sensitivity di get()
     7.  TestWindowRegistryAllNames      - all_names(): contenuto e tipo
     8.  TestWindowRegistryGetByFamily   - get_by_family(): filtro famiglie
-    9.  TestWindowRegistryGenerate      - generate_ftable_statement(): formato e valori
-    10. TestWindowRegistryGenerateErrors - generate_ftable_statement(): errori
-    11. TestWindowRegistryDataIntegrity - invarianti strutturali di WINDOWS e ALIASES
-    12. TestWindowRegistryParametrized  - test parametrizzati su ogni window
-    13. TestWindowRegistryIntegration   - workflow end-to-end
+    9. TestWindowRegistryDataIntegrity - invarianti strutturali di WINDOWS e ALIASES
+    10. TestWindowRegistryParametrized  - test parametrizzati su ogni window
+    11. TestWindowRegistryIntegration   - workflow end-to-end
+
+L'f-statement Csound non e' piu' materia del catalogo (issue #203): i test
+sulla sua forma stanno in tests/rendering/test_csound_emitter.py.
 """
 
 import pytest
@@ -354,124 +355,7 @@ class TestWindowRegistryGetByFamily:
 
 
 # ===========================================================================
-# 9. TestWindowRegistryGenerate
-# ===========================================================================
-
-class TestWindowRegistryGenerate:
-
-    def test_returns_string(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        assert isinstance(result, str)
-
-    def test_format_starts_with_f(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        assert result.startswith('f ')
-
-    def test_table_num_in_output(self):
-        result = WindowRegistry.generate_ftable_statement(5, 'hanning')
-        assert result.startswith('f 5 ')
-
-    def test_default_size_is_1024(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        parts = result.split()
-        # formato: f <num> 0 <size> <gen> <params...>
-        assert parts[3] == '1024'
-
-    def test_custom_size(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning', size=512)
-        parts = result.split()
-        assert parts[3] == '512'
-
-    def test_time_is_zero(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        parts = result.split()
-        assert parts[2] == '0'
-
-    def test_hanning_gen_routine_in_output(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        parts = result.split()
-        assert parts[4] == '20'
-
-    def test_hanning_params_in_output(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        # f 1 0 1024 20 2 1
-        assert result == 'f 1 0 1024 20 2 1'
-
-    def test_hamming_full_statement(self):
-        result = WindowRegistry.generate_ftable_statement(2, 'hamming')
-        assert result == 'f 2 0 1024 20 1 1'
-
-    def test_expodec_full_statement(self):
-        result = WindowRegistry.generate_ftable_statement(3, 'expodec')
-        assert result == 'f 3 0 1024 16 1 1024 4 0'
-
-    def test_half_sine_full_statement(self):
-        result = WindowRegistry.generate_ftable_statement(4, 'half_sine')
-        assert result == 'f 4 0 1024 9 0.5 1 0'
-
-    def test_alias_generates_correct_statement(self):
-        via_alias = WindowRegistry.generate_ftable_statement(1, 'triangle')
-        direct = WindowRegistry.generate_ftable_statement(1, 'bartlett')
-        assert via_alias == direct
-
-    def test_gaussian_three_params(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'gaussian')
-        # f 1 0 1024 20 6 1 3
-        assert result == 'f 1 0 1024 20 6 1 3'
-
-    def test_kaiser_three_params(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'kaiser')
-        assert result == 'f 1 0 1024 20 7 1 6'
-
-    def test_exporise_negative_param(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'exporise')
-        assert '-4' in result
-
-    def test_exporise_strong_negative_param(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'exporise_strong')
-        assert '-10' in result
-
-    def test_large_table_num(self):
-        result = WindowRegistry.generate_ftable_statement(999, 'hanning')
-        assert result.startswith('f 999 ')
-
-    def test_table_num_1(self):
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        assert result.startswith('f 1 ')
-
-
-# ===========================================================================
-# 10. TestWindowRegistryGenerateErrors
-# ===========================================================================
-
-class TestWindowRegistryGenerateErrors:
-
-    def test_unknown_name_raises_value_error(self):
-        with pytest.raises(ValueError):
-            WindowRegistry.generate_ftable_statement(1, 'nonexistent')
-
-    def test_empty_name_raises_value_error(self):
-        with pytest.raises(ValueError):
-            WindowRegistry.generate_ftable_statement(1, '')
-
-    def test_uppercase_name_raises_value_error(self):
-        with pytest.raises(ValueError):
-            WindowRegistry.generate_ftable_statement(1, 'HANNING')
-
-    def test_error_message_contains_window_name(self):
-        with pytest.raises(ValueError, match='MISSING_WINDOW'):
-            WindowRegistry.generate_ftable_statement(1, 'MISSING_WINDOW')
-
-    def test_state_not_modified_on_error(self):
-        # WINDOWS non deve cambiare dopo un'eccezione
-        count_before = len(WindowRegistry.WINDOWS)
-        with pytest.raises(ValueError):
-            WindowRegistry.generate_ftable_statement(1, 'bad_name')
-        assert len(WindowRegistry.WINDOWS) == count_before
-
-
-# ===========================================================================
-# 11. TestWindowRegistryDataIntegrity
+# 9. TestWindowRegistryDataIntegrity
 # ===========================================================================
 
 class TestWindowRegistryDataIntegrity:
@@ -575,7 +459,7 @@ class TestWindowRegistryDataIntegrity:
 
 
 # ===========================================================================
-# 12. TestWindowRegistryParametrized - ogni window individualmente
+# 10. TestWindowRegistryParametrized - ogni window individualmente
 # ===========================================================================
 
 class TestWindowRegistryParametrized:
@@ -614,56 +498,16 @@ class TestWindowRegistryParametrized:
         spec = WindowRegistry.get(name)
         assert spec.family == 'custom'
 
-    @pytest.mark.parametrize("name,expected_gen,expected_params", [
-        (name, gen, params)
-        for name, (gen, params) in EXPECTED_SPECS.items()
-    ])
-    def test_generate_contains_gen_routine(self, name, expected_gen, expected_params):
-        result = WindowRegistry.generate_ftable_statement(1, name)
-        parts = result.split()
-        assert parts[4] == str(expected_gen)
-
-    @pytest.mark.parametrize("name", sorted(ALL_WINDOW_NAMES))
-    def test_generate_parseable_as_ftable(self, name):
-        result = WindowRegistry.generate_ftable_statement(1, name)
-        parts = result.split()
-        # formato minimo: f <num> 0 <size> <gen> <p1...>
-        assert parts[0] == 'f'
-        assert int(parts[1]) >= 1
-        assert parts[2] == '0'
-        assert int(parts[3]) > 0
-        assert int(parts[4]) in VALID_GEN_ROUTINES
-        assert len(parts) >= 6
-
-
 # ===========================================================================
-# 13. TestWindowRegistryIntegration
+# 11. TestWindowRegistryIntegration
 # ===========================================================================
 
 class TestWindowRegistryIntegration:
-
-    def test_get_then_generate_consistent(self):
-        spec = WindowRegistry.get('hanning')
-        result = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        assert str(spec.gen_routine) in result
-        for p in spec.gen_params:
-            assert str(p) in result
-
-    def test_get_by_family_then_generate_all(self):
-        for spec in WindowRegistry.get_by_family('asymmetric'):
-            result = WindowRegistry.generate_ftable_statement(1, spec.name)
-            assert result.startswith('f 1 0 1024 16')
 
     def test_all_names_all_resolvable(self):
         for name in WindowRegistry.all_names():
             spec = WindowRegistry.get(name)
             assert spec is not None, f"all_names() contiene '{name}' ma get() restituisce None"
-
-    def test_all_names_all_generatable(self):
-        for name in WindowRegistry.all_names():
-            result = WindowRegistry.generate_ftable_statement(10, name)
-            assert isinstance(result, str)
-            assert result.startswith('f 10')
 
     def test_families_cover_all_windows(self):
         all_via_family = set()
@@ -671,29 +515,3 @@ class TestWindowRegistryIntegration:
             for spec in WindowRegistry.get_by_family(family):
                 all_via_family.add(spec.name)
         assert all_via_family == ALL_WINDOW_NAMES
-
-    def test_alias_triangle_generates_bartlett_params(self):
-        via_alias = WindowRegistry.generate_ftable_statement(1, 'triangle')
-        direct = WindowRegistry.generate_ftable_statement(1, 'bartlett')
-        assert via_alias == direct
-
-    def test_generate_with_non_default_size(self):
-        for size in [256, 512, 2048, 4096, 8192]:
-            result = WindowRegistry.generate_ftable_statement(1, 'hanning', size=size)
-            parts = result.split()
-            assert parts[3] == str(size)
-
-    def test_sequential_table_numbers_unique_output(self):
-        results = [
-            WindowRegistry.generate_ftable_statement(i, 'hanning')
-            for i in range(1, 5)
-        ]
-        assert len(set(results)) == 4
-
-    def test_different_windows_different_output(self):
-        hanning = WindowRegistry.generate_ftable_statement(1, 'hanning')
-        hamming = WindowRegistry.generate_ftable_statement(1, 'hamming')
-        expodec = WindowRegistry.generate_ftable_statement(1, 'expodec')
-        assert hanning != hamming
-        assert hanning != expodec
-        assert hamming != expodec
