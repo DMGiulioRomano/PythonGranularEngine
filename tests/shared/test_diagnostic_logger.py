@@ -24,8 +24,6 @@ Da qui i due vincoli che questa suite fissa:
 import logging
 import os
 
-import pytest
-
 from pge.shared.logger import (
     DIAGNOSTIC_LOGGER_NAME,
     get_diagnostic_logger,
@@ -82,20 +80,78 @@ def test_diagnostic_logger_non_scrive_niente_senza_configurazione(capsys):
     assert captured.err == ""
 
 
-def test_diagnostic_logger_non_ricade_su_lastresort(capsys):
+class _SpiaLastResort(logging.Handler):
+    """Handler che si limita a contare: sta al posto di `logging.lastResort`."""
+
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+def _isola(logger, monkeypatch):
+    """Isola `logger` dagli handler che *l'ambiente* mette sul root.
+
+    Serve perche' l'asserzione qui sotto sia una misura e non una tautologia.
+    `Logger.callHandlers` conta gli handler di **tutta la catena** e ricade su
+    `lastResort` solo se non ne trova nessuno; sotto pytest il root ne porta
+    sempre quattro (`_LiveLoggingNullHandler`, il `_FileHandler` su /dev/null
+    e i due `LogCaptureHandler`), quindi `found` non e' mai zero e la porta che
+    il NullHandler chiude resta chiusa da sola: un test che guardasse solo
+    stderr passerebbe identico dopo aver cancellato la riga che dice di
+    difendere.
+
+    L'isolamento si fa spegnendo `propagate` sul logger in esame, non
+    svuotando `root.handlers`: la lista del root e' condivisa con il plugin di
+    logging di pytest, che alla fine della fase fa `removeHandler` sulla lista
+    che trova: sostituirgliela sotto significa lasciargli l'handler attaccato
+    per il resto della sessione. Cosi' invece l'unico handler in gioco resta
+    quello del logger, che e' esattamente cio' che si vuole misurare.
+
+    Restituisce la spia che prende il posto di `lastResort`.
+    """
+    spia = _SpiaLastResort()
+    monkeypatch.setattr(logging, 'lastResort', spia)
+    monkeypatch.setattr(logger, 'propagate', False)
+    return spia
+
+
+def test_diagnostic_logger_non_ricade_su_lastresort(monkeypatch, capsys):
     """Il NullHandler copre anche i livelli che `logging` stampa da solo.
 
     Un logger senza handler manda i record da WARNING in su a
     `logging.lastResort`, che scrive su stderr: la diagnostica sarebbe muta
-    solo finche' resta a DEBUG. Il NullHandler chiude anche quella porta.
+    solo finche' resta a DEBUG. Il NullHandler chiude anche quella porta —
+    ed e' l'unico a farlo, una volta isolato il logger dall'ambiente.
     """
     logger = get_diagnostic_logger()
+    spia = _isola(logger, monkeypatch)
 
     logger.warning("questa non deve comparire da nessuna parte")
 
+    assert spia.records == [], "record finito su lastResort: manca il NullHandler"
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
+
+
+def test_la_misura_del_lastresort_e_sensibile(monkeypatch):
+    """Controprova: senza NullHandler, con lo stesso setup, la spia scatta.
+
+    Senza questa meta' il test precedente non dimostra niente — potrebbe
+    essere verde perche' `lastResort` non viene mai raggiunto in nessun caso.
+    Qui l'unica differenza e' un logger nudo, e il verdetto si ribalta.
+    """
+    nudo = logging.getLogger('probe_nuda_senza_handler')
+    assert not nudo.handlers, "la probe deve essere nuda per misurare qualcosa"
+    spia = _isola(nudo, monkeypatch)
+
+    nudo.warning("questa invece deve arrivare a lastResort")
+
+    assert len(spia.records) == 1, \
+        "lastResort non raggiunto nemmeno da un logger nudo: la misura non misura"
 
 
 def test_diagnostic_logger_non_crea_la_cartella_dei_log(tmp_path, monkeypatch):
@@ -142,12 +198,12 @@ def test_log_strategy_registration_formatta_pigramente():
     """
     registrati = []
 
-    class _Spia(logging.Handler):
+    class _SpiaDeiRecord(logging.Handler):
         def emit(self, record):
             registrati.append(record)
 
     logger = get_diagnostic_logger()
-    spia = _Spia()
+    spia = _SpiaDeiRecord()
     logger.addHandler(spia)
     livello = logger.level
     logger.setLevel(logging.DEBUG)

@@ -268,6 +268,7 @@ def log_strategy_registration(domain: str, name: str, strategy_class: type) -> N
         domain, name, strategy_class.__name__,
     )
 
+
 def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value, 
                      min_val, max_val, is_envelope=False):
     """

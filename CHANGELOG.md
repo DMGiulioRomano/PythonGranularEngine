@@ -102,12 +102,29 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
   forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
   protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
-  tutti e tre i renderer (per csound e supercollider e' l'unico presidio che
-  quella riga abbia) e che in `src/pge/strategies/` non ricompaia nessun
-  `print()`.
+  tutti e quattro i moduli che la emettono — i tre renderer sul percorso
+  diretto e `StreamCacheManager.get_dirty_stream_dicts`, che e' dove la riga
+  esce sulla pipeline in due stadi (`Generator.write_sco_files`) — e che in
+  `src/pge/strategies/` non ricompaia nessun `print()`. Il criterio e' la
+  forma della riga, non il prefisso: le chiamate sono ricomposte in un
+  template (`[CACHE] {}: `), perche' `[CACHE]` da solo lascia passare il
+  riepilogo `[CACHE] <n>/<m> stream da ricompilare` che nessuno parsa.
+
+- **Test di comportamento sulla riga `[CACHE]` del cache manager**
+  (`tests/rendering/test_stream_cache_manager.py`). Era l'unico emettitore
+  della riga di protocollo senza nessuna asserzione, ne' di comportamento ne'
+  statica.
 
 - **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
   interfaccia CLI: chi legge cosa, e su quale canale.
+
+- **Controprova sulla misura del `NullHandler`**
+  (`tests/shared/test_diagnostic_logger.py`). Il test che verifica il mancato
+  ricorso a `logging.lastResort` neutralizza gli handler che pytest mette sul
+  root e sostituisce `lastResort` con una spia: senza quella neutralizzazione
+  `callHandlers` non arrivava mai a `lastResort` e il test restava verde anche
+  cancellando la riga che dice di difendere. Un secondo test misura la misura,
+  ribaltandone il verdetto su un logger nudo.
 
 
 ### Cambiato
