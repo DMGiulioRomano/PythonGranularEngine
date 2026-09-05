@@ -16,6 +16,8 @@ Coverage:
 6. TestRendererFactoryValidation         - validazione input
 """
 
+import os
+
 import pytest
 from unittest.mock import MagicMock, patch, call
 
@@ -206,12 +208,182 @@ class TestCsoundRendererErrors:
             renderer.render_single_stream(mock_stream, '/output/test.aif')
 
     @patch('pge.rendering.csound_renderer.subprocess.run')
-    def test_csound_not_found_raises(self, mock_run, renderer, mock_stream):
-        """Csound non installato solleva FileNotFoundError."""
+    def test_csound_assente_e_un_errore_azionabile(self, mock_run, renderer, mock_stream):
+        """Csound non installato: il messaggio nomina il binario e il rimedio
+        (issue #241). Prima era il FileNotFoundError grezzo del subprocess."""
+        from pge.shared.exceptions import CsoundNotFoundError
         mock_run.side_effect = FileNotFoundError("csound not found")
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(CsoundNotFoundError) as exc:
             renderer.render_single_stream(mock_stream, '/output/test.aif')
+
+        msg = exc.value.user_message()
+        # Il binario, non la parola: 'csound' da sola vive gia' nell'hint,
+        # quindi un `what=` svuotato lascerebbe verde l'asserzione che la
+        # docstring dice di fare.
+        assert "binario 'csound'" in msg
+        assert '--renderer numpy' in msg
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_csound_assente_non_e_un_FileNotFoundError(self, mock_run, renderer, mock_stream):
+        """Specchio di test_scsynth_assente_non_e_un_FileNotFoundError
+        (issue #241): la CLI intercetta FileNotFoundError per annunciare
+        «file YAML non trovato», e il file YAML qui esiste ed e' gia' stato
+        letto."""
+        mock_run.side_effect = FileNotFoundError()
+
+        with pytest.raises(Exception) as exc:
+            renderer.render_single_stream(mock_stream, '/output/test.aif')
+        assert not isinstance(exc.value, FileNotFoundError)
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_csound_assente_anche_in_mix(self, mock_run, renderer, mock_stream):
+        """Il MIX passa dallo stesso _run_csound: stesso errore."""
+        from pge.shared.exceptions import CsoundNotFoundError
+        mock_run.side_effect = FileNotFoundError()
+
+        with pytest.raises(CsoundNotFoundError):
+            renderer.render_merged_streams([mock_stream], '/output/mix.aif')
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_csound_fallito_dice_come_riavere_lo_sco(self, mock_run, renderer, mock_stream):
+        """Il messaggio di CsoundRenderError offre un `Comando:` da rieseguire,
+        ma quel comando nomina il `.sco` che il `finally` ha appena cancellato:
+        senza il flag, la prima azione che il messaggio suggerisce e' un
+        no-op. E' lo stesso metro con cui questa PR ha riscritto l'hint di
+        csound assente. Il rimedio (`--keep-sco`) lo conosce gia'
+        `docs/reference/cli.md`; qui deve stare dentro il messaggio, che e'
+        l'unica cosa che l'utente legge."""
+        from pge.shared.exceptions import CsoundRenderError
+        mock_run.return_value = MagicMock(
+            returncode=2, stderr='error: undefined opcode', stdout='')
+
+        with pytest.raises(CsoundRenderError) as exc:
+            renderer.render_single_stream(mock_stream, '/output/test.aif')
+
+        msg = exc.value.user_message()
+        sco_path = renderer.score_writer.write_score.call_args.kwargs['filepath']
+        assert not os.path.exists(sco_path), \
+            "premessa del test: il finally lo ha cancellato"
+        assert '--keep-sco' in msg
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_con_keep_sco_il_messaggio_non_promette_un_rimedio_gia_attivo(
+        self, mock_run, mock_score_writer, csound_config, mock_stream, tmp_path
+    ):
+        """Con `--keep-sco` lo score e' li': suggerirlo sarebbe un rimedio per
+        un guasto che non c'e', e manderebbe l'utente a cercare un flag che ha
+        gia' passato."""
+        from pge.shared.exceptions import CsoundRenderError
+        mock_run.return_value = MagicMock(
+            returncode=2, stderr='error: undefined opcode', stdout='')
+        renderer = CsoundRenderer(
+            score_writer=mock_score_writer,
+            csound_config=csound_config,
+            sco_dir=str(tmp_path / 'sco'),
+        )
+
+        with pytest.raises(CsoundRenderError) as exc:
+            renderer.render_single_stream(mock_stream, '/out/test.aif')
+
+        assert '--keep-sco' not in exc.value.user_message()
+
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_l_hint_non_promette_di_rieseguire_il_comando_del_temporaneo(
+        self, mock_run, mock_score_writer, csound_config, mock_stream, tmp_path
+    ):
+        """`--keep-sco` non ricrea lo score cancellato: lo scrive altrove.
+
+        Il `Comando:` del messaggio nomina il file temporaneo, che il
+        `finally` ha appena rimosso e che nessun rilancio riporta a quel
+        path: con `sco_dir` lo score va in una directory stabile
+        (`generated/` per default, o `--sco-dir`), e senza, `mkstemp` pesca
+        ogni volta un nome nuovo. Un hint che dica «rilancia con
+        `--keep-sco` [...] e riesegui il comando qui sopra» manda quindi a
+        una riga che non tornera' valida mai -- ed e' lo stesso metro con
+        cui questa PR ha riscritto l'hint di csound assente, applicato
+        all'hint che quella riscrittura ha introdotto.
+
+        Il rimedio resta `--keep-sco`; a cambiare e' cosa il messaggio
+        promette del comando che sta mostrando.
+        """
+        from pge.shared.exceptions import CsoundRenderError
+        mock_run.return_value = MagicMock(
+            returncode=2, stderr='error: undefined opcode', stdout='')
+
+        temporaneo = CsoundRenderer(
+            score_writer=mock_score_writer, csound_config=csound_config)
+        with pytest.raises(CsoundRenderError) as exc:
+            temporaneo.render_single_stream(mock_stream, '/out/test.aif')
+        msg = exc.value.user_message()
+        sco_temp = mock_score_writer.write_score.call_args.kwargs['filepath']
+
+        # Premessa, misurata e non dichiarata: il path che il `Comando:`
+        # mostra e' sparito, e il flag che il messaggio suggerisce ne
+        # produce un altro.
+        assert sco_temp in msg
+        assert not os.path.exists(sco_temp)
+        con_flag = CsoundRenderer(
+            score_writer=mock_score_writer, csound_config=csound_config,
+            sco_dir=str(tmp_path / 'sco'))
+        with pytest.raises(CsoundRenderError):
+            con_flag.render_single_stream(mock_stream, '/out/test.aif')
+        assert mock_score_writer.write_score.call_args.kwargs['filepath'] != sco_temp
+
+        # Quindi il messaggio deve dire che quella riga non si riesegue, non
+        # invitare a rieseguirla.
+        assert '--keep-sco' in msg
+        assert "non e' piu' rieseguibile" in msg
+
+    @pytest.mark.parametrize('mode', ['stems', 'mix'])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_il_sco_temporaneo_non_sopravvive_a_un_render_fallito(
+            self, mock_run, renderer, mock_stream, mode):
+        """Senza --keep-sco il .sco e' un file temporaneo, e la sua
+        cancellazione stava dopo la chiamata a csound: ogni modo di fallire
+        ne abbandonava uno in /tmp, con un nome che l'utente non puo'
+        ritrovare. Con csound assente (issue #241) era ogni singolo
+        tentativo."""
+        from pge.shared.exceptions import CsoundNotFoundError
+        mock_run.side_effect = FileNotFoundError()
+
+        with pytest.raises(CsoundNotFoundError):
+            if mode == 'stems':
+                renderer.render_single_stream(mock_stream, '/output/test.aif')
+            else:
+                renderer.render_merged_streams([mock_stream], '/output/mix.aif')
+
+        # Il path arriva dalla chiamata a write_score, non da una spia su un
+        # metodo interno: e' il .sco che il renderer ha davvero creato, e
+        # l'asserzione non si rompe se quel metodo cambia nome.
+        assert renderer.score_writer.write_score.call_args, \
+            "nessun .sco scritto: il test non sta misurando nulla"
+        sco_path = renderer.score_writer.write_score.call_args.kwargs['filepath']
+        assert not os.path.exists(sco_path)
+
+    @pytest.mark.parametrize('mode', ['stems', 'mix'])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_il_sco_temporaneo_non_sopravvive_a_uno_score_che_fallisce(
+            self, mock_run, renderer, mock_stream, mode):
+        """Il file temporaneo lo crea `mkstemp`, prima che ScoreWriter ci
+        scriva: anche un render che muore *scrivendo* lo score ne lascia uno
+        in /tmp. Non e' un caso di scuola -- i grani sono lazy (issue #117) e
+        si materializzano qui, quindi ogni modo di essere invalidi che il
+        parse non ha visto passa da questa riga. Il `finally` deve coprire
+        anche la scrittura, come in SuperColliderRenderer._render."""
+        from pge.shared.exceptions import FtableError
+        mock_run.return_value = MagicMock(returncode=0)
+        renderer.score_writer.write_score.side_effect = FtableError(
+            key='win_hann', reason='tabella non registrata')
+
+        with pytest.raises(FtableError):
+            if mode == 'stems':
+                renderer.render_single_stream(mock_stream, '/output/test.aif')
+            else:
+                renderer.render_merged_streams([mock_stream], '/output/mix.aif')
+
+        sco_path = renderer.score_writer.write_score.call_args.kwargs['filepath']
+        assert not os.path.exists(sco_path)
 
 
 # =============================================================================
@@ -464,6 +636,39 @@ class TestCsoundRendererKeepSco:
         # Deve essere in tempdir, non in 'generated'
         assert 'generated' not in sco_path
 
+    @pytest.mark.parametrize('mode', ['stems', 'mix'])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_lo_sco_temporaneo_e_rimosso_anche_dopo_un_render_riuscito(
+        self, mock_run, mock_score_writer, csound_config, mock_stream, mode
+    ):
+        """La regola di cancellazione ha ora una scrittura sola, e il suo ramo
+        piu' battuto e' quello che finisce bene: senza rete, un render che
+        smettesse di ripulire lascerebbe un `.sco` in /tmp a ogni stem, e la
+        suite resterebbe verde. E' il test che
+        `SuperColliderRenderer` ha da sempre (`test_score_scritto_e_poi_rimosso`),
+        e che al ramo csound mancava."""
+        visto = {}
+
+        def spia(cmd, **kwargs):
+            path = mock_score_writer.write_score.call_args.kwargs['filepath']
+            visto['path'] = path
+            visto['esisteva'] = os.path.exists(path)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = spia
+        renderer = CsoundRenderer(
+            score_writer=mock_score_writer,
+            csound_config=csound_config,
+        )
+
+        if mode == 'stems':
+            renderer.render_single_stream(mock_stream, '/out/test.aif')
+        else:
+            renderer.render_merged_streams([mock_stream], '/out/mix.aif')
+
+        assert visto['esisteva'], "lo score deve esistere quando csound parte"
+        assert not os.path.exists(visto['path']), "temporaneo non ripulito"
+
     @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_sco_dir_saves_sco_with_deterministic_path(
         self, mock_run, mock_score_writer, csound_config, mock_stream, tmp_path
@@ -503,6 +708,44 @@ class TestCsoundRendererKeepSco:
         sco_path = call_kwargs['filepath']
         assert sco_path.startswith(sco_dir)
         assert sco_path.endswith('composition.sco')
+
+    @pytest.mark.parametrize('mode,base', [('stems', 'test'), ('mix', 'mix')])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_keep_sco_conserva_lo_score_di_un_render_fallito(
+        self, mock_run, mock_score_writer, csound_config, mock_stream,
+        tmp_path, mode, base
+    ):
+        """--keep-sco serve a ispezionare lo score, e lo score che si vuole
+        ispezionare e' quello del render fallito.
+
+        La cancellazione ora sta in un `finally`, cioe' passa anche di li':
+        prima il ramo dei fallimenti non la eseguiva affatto e la condizione
+        `not self.sco_dir` non aveva modo di sbagliare. Se qualcuno la
+        perdesse, questo flag cancellerebbe il file che promette di tenere --
+        e senza questo test la suite resterebbe verde."""
+        from pge.shared.exceptions import CsoundNotFoundError
+        mock_run.side_effect = FileNotFoundError()
+        sco_dir = str(tmp_path / 'sco')
+
+        # Il ScoreWriter e' un mock e da solo non scrive niente: senza questo
+        # il file non esisterebbe comunque e l'asserzione sarebbe vuota.
+        def scrive_davvero(filepath, **kwargs):
+            open(filepath, 'w').close()
+
+        mock_score_writer.write_score.side_effect = scrive_davvero
+        renderer = CsoundRenderer(
+            score_writer=mock_score_writer,
+            csound_config=csound_config,
+            sco_dir=sco_dir,
+        )
+
+        with pytest.raises(CsoundNotFoundError):
+            if mode == 'stems':
+                renderer.render_single_stream(mock_stream, f'/out/{base}.aif')
+            else:
+                renderer.render_merged_streams([mock_stream], f'/out/{base}.aif')
+
+        assert os.path.exists(os.path.join(sco_dir, f'{base}.sco'))
 
 
 # =============================================================================
