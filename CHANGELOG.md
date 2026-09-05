@@ -6,6 +6,38 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
+## [Unreleased]
+
+### Cambiato
+
+- **Le registrazioni dinamiche di strategy non stampano piu' su stdout**
+  (issue #187, primo scaglione della #178). `register_density_strategy`,
+  `register_variation_strategy` e `register_voice_pan_strategy` passano dal
+  `print()` con la spunta verde al nuovo logger `pge.diagnostics`, via
+  `log_strategy_registration`. Stdout non e' un canale libero: e' il
+  protocollo che `render_pipeline.py` di PGE-ui parsa riga per riga per
+  ricavarne gli eventi NDJSON dell'editor; una conferma che nessuno parsa non
+  ha titolo per attraversarlo. La conferma non e' persa — e' muta finche'
+  l'applicazione ospite non alza il livello di log, e allora esce su stderr.
+
+### Aggiunto
+
+- **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
+  in `pge.shared.logger`). Logger `pge.diagnostics` a livello DEBUG, con il
+  solo `NullHandler`: nessun handler proprio, nessun file, nessuna `./logs`
+  creata di soppiatto — a differenza di `get_engine_logger()`, che si
+  auto-configura. Una libreria non configura il logging del suo ospite.
+- **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
+  forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
+  protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
+  tutti e tre i renderer (per csound e supercollider e' l'unico presidio che
+  quella riga abbia) e che in `src/pge/strategies/` non ricompaia nessun
+  `print()`.
+- **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
+  interfaccia CLI: chi legge cosa, e su quale canale.
+
+---
+
 ## [v9.0.2] — 2026-08-30
 
 ### Fixed
