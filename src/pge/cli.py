@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import traceback
+from typing import Optional, Union
 
 from pge.shared.logger import (
     configure_clip_logger, get_clip_log_path,
@@ -12,6 +13,10 @@ from pge.shared.logger import (
 )
 from pge.shared.exceptions import EngineError
 from pge.shared.constants import DEFAULT_OUTPUT_SR
+# Import non lazy: e' il default di _build_renderer, valutato all'import.
+# Modulo senza dipendenze (una dataclass e un dict), e api.py lo importa
+# gia' a livello di modulo -- non aggiunge niente al costo di `import pge.cli`.
+from pge.rendering.audio_format import DEFAULT_FORMAT
 from pge.engine.generator import Generator
 from pge.rendering.score_visualizer import ScoreVisualizer, PLOT_ENVELOPE_KEYS
 
@@ -28,7 +33,34 @@ def _handle_engine_error(err: EngineError) -> None:
     logger.error("%s\n%s", err, traceback.format_exc())
 
 
-def _build_renderer(renderer_type: str, generator, **kwargs):
+def _build_renderer(
+    renderer_type: str,
+    generator,
+    *,
+    # Comuni a tutti i backend
+    output_sr: int = DEFAULT_OUTPUT_SR,
+    jobs: Union[int, str] = 'auto',
+    audio_format=DEFAULT_FORMAT,
+    samples_dir: Optional[str] = None,
+    # Cache incrementale (policy CLI: un manifest per progetto)
+    use_cache: bool = False,
+    cache_dir: str = 'cache',
+    yaml_basename: Optional[str] = None,
+    # Csound
+    orc_path: str = 'csound/main.orc',
+    incdir: str = 'src',
+    ssdir: Optional[str] = None,
+    sfdir: str = 'output',
+    log_dir: str = 'logs',
+    message_level: int = 134,
+    sco_dir: Optional[str] = None,
+    # SuperCollider
+    sc_synthdef_source: Optional[str] = None,
+    sc_synthdef_dir: Optional[str] = None,
+    sc_block_size: Optional[int] = None,
+    sc_max_nodes: Optional[int] = None,
+    osc_dir: Optional[str] = None,
+):
     """
     Crea il renderer appropriato in base al tipo, delegando ad api.build_renderer.
 
@@ -37,28 +69,59 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     firma keyword-only dell'API e conserva qui il print `[CACHE] Manifest:`
     (i print sono policy CLI, l'API non stampa).
 
+    La firma e' esplicita e keyword-only (issue #252). Con `**kwargs` +
+    `.get()` un nome fuori elenco non era ne' un errore ne' un warning: era
+    un no-op, e chi lo aveva scritto otteneva il default al posto del valore
+    che credeva di aver passato. E' cosi' che e' nata la #243
+    (`ssdir=<tmpdir>` su un build `numpy`, letto solo nel ramo Csound: il
+    `SampleRegistry` ricadeva su `./refs/` e lo script moriva in
+    `SampleNotFoundError` senza che niente nominasse la causa). L'elenco dei
+    kwargs accettati e' finito e noto, quindi il controllo lo fa Python.
+
+    **`ssdir` e `sfdir` sono opzioni Csound**, come `orc_path`, `incdir`,
+    `log_dir`, `message_level` e `sco_dir`: su un build `numpy` o
+    `supercollider` vengono accettate e ignorate. Non e' un refuso da
+    correggere in silenzio -- il nome esiste -- ma un fraintendimento:
+    la directory dei sample per
+    tutti i backend e' `samples_dir`, e su Csound e' anche il fallback di
+    `ssdir` (la precedenza la risolve l'API).
+
     Args:
         renderer_type: 'csound', 'numpy' o 'supercollider'
         generator: istanza di Generator con streams gia' creati
-        **kwargs: argomenti specifici per ogni renderer
+        output_sr: sample rate di render
+        jobs: worker del renderer NumPy ('auto' = policy CLI); ignorato altrove
+        audio_format: AudioFormat di output
+        samples_dir: directory dei sample; None -> default storico ('refs')
+        use_cache: attiva la cache incrementale per stream
+        cache_dir: directory del manifest ({cache_dir}/{yaml_basename}.json)
+        yaml_basename: basename del progetto; obbligatorio con use_cache
+        orc_path, incdir, ssdir, sfdir, log_dir, message_level, sco_dir:
+            opzioni Csound
+        sc_synthdef_source, sc_synthdef_dir, sc_block_size, sc_max_nodes,
+            osc_dir: opzioni SuperCollider
 
     Returns:
         Istanza di AudioRenderer configurata
 
     Raises:
+        TypeError: se viene passato un kwarg che non e' in questo elenco
+        ValueError: se use_cache e' attivo senza yaml_basename
         InvalidRendererError: se renderer_type non e' supportato
     """
-    from pge.rendering.audio_format import DEFAULT_FORMAT
-
     # Il print del manifest avveniva dentro i rami numpy/csound: per un tipo
     # ignoto l'errore arrivava senza print. Parita' preservata col guard, che
     # ora chiede l'elenco all'API invece di tenerne una copia -- e' cosi' che
     # un backend nuovo eredita l'annuncio del manifest.
     cache_manifest_path = None
-    if renderer_type in api.renderer_types() and kwargs.get('use_cache'):
+    if renderer_type in api.renderer_types() and use_cache:
         import os as _os
-        yaml_basename = kwargs['yaml_basename']
-        cache_dir = kwargs.get('cache_dir', 'cache')
+        if yaml_basename is None:
+            # Prima era `kwargs['yaml_basename']`, cioe' un KeyError nudo che
+            # non diceva a chi chiamava che cosa mancava.
+            raise ValueError(
+                "use_cache richiede yaml_basename: il manifest e' "
+                f"{cache_dir}/<yaml_basename>.json")
         # Un manifest per progetto, come sempre: la separazione fra backend
         # sta nel fingerprint (StreamCacheManager.compute_fingerprint), che
         # e' il livello a cui vive il problema -- il manifest resta uno, il
@@ -70,15 +133,15 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
     csound_options = None
     if renderer_type == 'csound':
         csound_options = api.CsoundOptions(
-            orc_path=kwargs.get('orc_path', 'csound/main.orc'),
-            incdir=kwargs.get('incdir', 'src'),
+            orc_path=orc_path,
+            incdir=incdir,
             # None (nessun --ssdir): la precedenza la risolve l'API,
             # che ricade su samples_dir e poi sul default storico 'refs'.
-            ssdir=kwargs.get('ssdir'),
-            sfdir=kwargs.get('sfdir', 'output'),
-            log_dir=kwargs.get('log_dir', 'logs'),
-            message_level=kwargs.get('message_level', 134),
-            sco_dir=kwargs.get('sco_dir'),
+            ssdir=ssdir,
+            sfdir=sfdir,
+            log_dir=log_dir,
+            message_level=message_level,
+            sco_dir=sco_dir,
         )
 
     sc_options = None
@@ -86,20 +149,20 @@ def _build_renderer(renderer_type: str, generator, **kwargs):
         # Nessun default ricopiato: cio' che la CLI non ha visto resta None,
         # e a decidere e' il renderer (unica sede dei valori).
         sc_options = api.SuperColliderOptions(
-            synthdef_source=kwargs.get('sc_synthdef_source'),
-            synthdef_dir=kwargs.get('sc_synthdef_dir'),
-            block_size=kwargs.get('sc_block_size'),
-            max_nodes=kwargs.get('sc_max_nodes'),
-            osc_dir=kwargs.get('osc_dir'),
+            synthdef_source=sc_synthdef_source,
+            synthdef_dir=sc_synthdef_dir,
+            block_size=sc_block_size,
+            max_nodes=sc_max_nodes,
+            osc_dir=osc_dir,
         )
 
     return api.build_renderer(
         renderer_type,
         generator,
-        output_sr=kwargs.get('output_sr', DEFAULT_OUTPUT_SR),
-        jobs=kwargs.get('jobs', 'auto'),
-        audio_format=kwargs.get('audio_format', DEFAULT_FORMAT),
-        samples_dir=kwargs.get('samples_dir'),
+        output_sr=output_sr,
+        jobs=jobs,
+        audio_format=audio_format,
+        samples_dir=samples_dir,
         cache_manifest_path=cache_manifest_path,
         csound=csound_options,
         supercollider=sc_options,
@@ -513,7 +576,9 @@ def main():
                 osc_dir = sys.argv[idx + 1]
 
     # --format aiff|wav|flac (default: aiff)
-    from pge.rendering.audio_format import FORMATS, DEFAULT_FORMAT
+    # DEFAULT_FORMAT e' gia' a livello di modulo: e' il default della
+    # firma di _build_renderer, valutato all'import.
+    from pge.rendering.audio_format import FORMATS
     audio_format = DEFAULT_FORMAT
     if '--format' in sys.argv:
         idx = sys.argv.index('--format')

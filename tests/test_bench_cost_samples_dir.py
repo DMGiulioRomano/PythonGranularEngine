@@ -3,10 +3,12 @@
 `utils/bench_cost.py` sceglie una directory di sample e la passa a due
 consumatori: il `Generator` (che risolve il sample in generazione) e il
 renderer (che lo legge in overlap-add). La classe di bug che la #243 ha
-prodotto e' invisibile a review e CI: `cli._build_renderer(tipo, gen, **kwargs)`
-pesca i kwargs con `.get()`, quindi un nome sbagliato — `ssdir=`, che vale solo
-per Csound — non e' un TypeError ma un no-op silenzioso, e la directory
-ricadeva sul default storico `./refs/`.
+prodotto era invisibile a review e CI: `cli._build_renderer(tipo, gen, **kwargs)`
+pescava i kwargs con `.get()`, quindi un nome sbagliato — `ssdir=`, che vale
+solo per Csound — non era un TypeError ma un no-op silenzioso, e la directory
+ricadeva sul default storico `./refs/`. La #252 ha chiuso anche quella porta
+(firma esplicita); qui resta il comportamento osservabile, che non dipende da
+quale delle due la difende.
 
 Qui si asserisce il comportamento osservabile: il sample viene risolto nella
 directory giusta, sia negli sweep (che non passano nessun argomento: e' il
@@ -208,7 +210,8 @@ def test_lapi_rifiuta_il_kwarg_sbagliato(bench):
 
     `cli._build_renderer` lo avrebbe ingoiato con `.get()` senza dire niente —
     e' cosi' che la #243 e' potuta nascere. Passando da `api.build_renderer` la
-    stessa svista non e' piu' scrivibile in silenzio.
+    stessa svista non e' piu' scrivibile in silenzio; dalla #252 non lo e' piu'
+    nemmeno dall'altra parte, ma il chiamante giusto resta questo.
     """
     with pytest.raises(TypeError):
         bench.api.build_renderer("numpy", object(), ssdir="/x")

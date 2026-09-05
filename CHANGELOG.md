@@ -94,6 +94,45 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`cli._build_renderer` ingoiava in silenzio ogni kwarg sconosciuto**
+  (issue #252). La funzione raccoglieva tutto in `**kwargs` e poi pescava
+  una chiave per volta con `.get()`: non c'era nessun punto in cui un nome
+  fuori elenco venisse notato. Non un `TypeError`, non un warning — un
+  no-op, con il default al posto del valore che il chiamante credeva di
+  aver passato.
+
+  Non e' teorico: e' cosi' che e' nata la #243. `utils/bench_cost.py`
+  passava `ssdir=<tmpdir>` (e `sfdir=<tmpdir>`) a un build `numpy`, dove
+  entrambi vengono letti solo dentro il ramo Csound. Il `SampleRegistry`
+  ricadeva sul default storico `./refs/` e lo script moriva in
+  `SampleNotFoundError` senza che niente nominasse la causa. Nessuno dei
+  due era visibile alla review, e nessuno dei due poteva rompere un test —
+  perche' non succedeva niente. La PR #247 aveva chiuso il caso concreto
+  dal lato del chiamante (`bench_cost.py` passa da `api.build_renderer`,
+  keyword-only), lasciando il difetto per `main.py` e per ogni chiamante
+  futuro.
+
+  L'elenco dei kwargs accettati e' finito e noto, quindi ora sta nella
+  firma: keyword-only, con i default storici invariati. Il controllo lo fa
+  Python. Due dettagli che la firma non dice da sola:
+
+  - `ssdir`/`sfdir` (come `orc_path`, `incdir`, `log_dir`, `message_level`,
+    `sco_dir`) restano accettati su qualsiasi backend e ignorati fuori da
+    Csound: la CLI li passa sempre, quindi rifiutarli romperebbe ogni
+    render NumPy.
+    Il docstring lo dice ad alta voce — non e' un refuso da correggere in
+    silenzio, e' un fraintendimento: la directory dei sample valida per
+    tutti i backend e' `samples_dir`, e su Csound e' anche il fallback di
+    `ssdir`;
+  - `use_cache` senza `yaml_basename` era `kwargs['yaml_basename']`, cioe'
+    un `KeyError` nudo. Ora e' un `ValueError` che nomina la chiave mancante
+    e il path del manifest che serviva a comporre.
+
+  Nessun cambiamento alla superficie pubblica: flag, YAML, errori utente e
+  formati restano quelli. `_build_renderer` e' un adapter interno, e
+  `api.build_renderer` — l'API che PGE-ui e i consumer programmatici usano —
+  aveva gia' la firma esplicita.
+
 - **Csound non installato veniva annunciato come «file YAML non trovato»**
   (issue #241). `CsoundRenderer._run_csound` lasciava salire il
   `FileNotFoundError` che `subprocess.run` alza quando il binario non e' nel

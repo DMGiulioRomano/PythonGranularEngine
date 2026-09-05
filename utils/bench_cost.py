@@ -162,9 +162,10 @@ def _render(generator, samples_dir=None):
     `samples_dir` (None -> quella degli sweep) e' la directory in cui la
     registry cerca il sample. Si passa a `api.build_renderer`, che e' l'API
     pubblica e ha una firma keyword-only: `ssdir=` — che vale solo per Csound —
-    li' e' un TypeError, mentre `cli._build_renderer` pesca i kwargs con
-    `.get()` e lo ingoiava in silenzio. E' la classe di bug della #243, chiusa
-    dal chiamante.
+    li' e' un TypeError. Su `cli._build_renderer`, che pescava i kwargs con
+    `.get()`, era invece un no-op silenzioso: e' la classe di bug della #243,
+    chiusa prima da questo lato (#247) e poi alla radice, con la firma
+    esplicita di `_build_renderer` (#252).
     """
     renderer = api.build_renderer(
         "numpy", generator, output_sr=SR,
