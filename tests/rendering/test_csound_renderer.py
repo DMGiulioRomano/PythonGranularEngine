@@ -288,6 +288,53 @@ class TestCsoundRendererErrors:
 
         assert '--keep-sco' not in exc.value.user_message()
 
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_l_hint_non_promette_di_rieseguire_il_comando_del_temporaneo(
+        self, mock_run, mock_score_writer, csound_config, mock_stream, tmp_path
+    ):
+        """`--keep-sco` non ricrea lo score cancellato: lo scrive altrove.
+
+        Il `Comando:` del messaggio nomina il file temporaneo, che il
+        `finally` ha appena rimosso e che nessun rilancio riporta a quel
+        path: con `sco_dir` lo score va in una directory stabile
+        (`generated/` per default, o `--sco-dir`), e senza, `mkstemp` pesca
+        ogni volta un nome nuovo. Un hint che dica «rilancia con
+        `--keep-sco` [...] e riesegui il comando qui sopra» manda quindi a
+        una riga che non tornera' valida mai -- ed e' lo stesso metro con
+        cui questa PR ha riscritto l'hint di csound assente, applicato
+        all'hint che quella riscrittura ha introdotto.
+
+        Il rimedio resta `--keep-sco`; a cambiare e' cosa il messaggio
+        promette del comando che sta mostrando.
+        """
+        from pge.shared.exceptions import CsoundRenderError
+        mock_run.return_value = MagicMock(
+            returncode=2, stderr='error: undefined opcode', stdout='')
+
+        temporaneo = CsoundRenderer(
+            score_writer=mock_score_writer, csound_config=csound_config)
+        with pytest.raises(CsoundRenderError) as exc:
+            temporaneo.render_single_stream(mock_stream, '/out/test.aif')
+        msg = exc.value.user_message()
+        sco_temp = mock_score_writer.write_score.call_args.kwargs['filepath']
+
+        # Premessa, misurata e non dichiarata: il path che il `Comando:`
+        # mostra e' sparito, e il flag che il messaggio suggerisce ne
+        # produce un altro.
+        assert sco_temp in msg
+        assert not os.path.exists(sco_temp)
+        con_flag = CsoundRenderer(
+            score_writer=mock_score_writer, csound_config=csound_config,
+            sco_dir=str(tmp_path / 'sco'))
+        with pytest.raises(CsoundRenderError):
+            con_flag.render_single_stream(mock_stream, '/out/test.aif')
+        assert mock_score_writer.write_score.call_args.kwargs['filepath'] != sco_temp
+
+        # Quindi il messaggio deve dire che quella riga non si riesegue, non
+        # invitare a rieseguirla.
+        assert '--keep-sco' in msg
+        assert "non e' piu' rieseguibile" in msg
+
     @pytest.mark.parametrize('mode', ['stems', 'mix'])
     @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_il_sco_temporaneo_non_sopravvive_a_un_render_fallito(

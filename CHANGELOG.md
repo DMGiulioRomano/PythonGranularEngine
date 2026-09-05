@@ -213,6 +213,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `--keep-sco` quando lo score era temporaneo. Con il flag gia' attivo l'hint
   non compare: il rimedio non esiste piu'.
 
+  Quel flag non riporta pero' lo score al path che il `Comando:` mostra: con
+  `--sco-dir` lo scrive in una directory stabile, e senza, `mkstemp` pesca
+  ogni volta un nome nuovo. L'hint dice quindi che la riga mostrata non e'
+  piu' rieseguibile e rimanda a quella del messaggio successivo — invitare a
+  rieseguire *quella* avrebbe spostato di un livello lo stesso
+  rimedio-che-non-fa-nulla, invece di toglierlo.
+
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati
   prima del render — clip ed errori engine — avevano `'./logs'` scritto a

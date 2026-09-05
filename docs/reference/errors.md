@@ -120,7 +120,10 @@ EngineError                                  (Exception)
   codice d'errore, che è il caso in cui quello score serve. Perciò la base ha
   un `hint` opzionale e il ramo csound lo valorizza con `--keep-sco` quando lo
   score era temporaneo: senza, la prima azione che il messaggio suggerisce è
-  un no-op. Stessa forma dell'hint di `_BinaryNotFoundError`, e stessa regola —
+  un no-op. Il flag però non ricrea *quel* file, quindi l'hint dice che la
+  riga mostrata non si riesegue e rimanda a quella del messaggio successivo —
+  altrimenti il rimedio-che-non-fa-nulla si sposta di un livello invece di
+  sparire. Stessa forma dell'hint di `_BinaryNotFoundError`, e stessa regola —
   un rimedio si scrive solo quando c'è.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
   (es. errori I/O di rendering) si appendono qui.
@@ -291,7 +294,7 @@ streams:
 [ERRORE] Csound rendering fallito (exit code 2)
   Comando:      csound -o out.aif /tmp/tmpx3k9.sco
   Output:       error: undefined opcode
-  Hint:         Lo score .sco era temporaneo ed e' stato rimosso: rilancia con `--keep-sco` per conservarlo e rieseguire il comando qui sopra.
+  Hint:         Lo score .sco era temporaneo ed e' stato rimosso, quindi il comando qui sopra non e' piu' rieseguibile: rilancia con `--keep-sco`, che lo score lo conserva su disco, e riesegui il `Comando:` del messaggio che ne esce.
   Stream:       drone_low
   Config:       configs/PGE_test.yml
   Dettagli:     /tmp/engine.log
@@ -299,7 +302,10 @@ streams:
 
 La riga `Hint:` compare solo senza `--keep-sco`: con il flag lo score è già
 sul disco e suggerirlo manderebbe l'utente a cercare un'opzione che ha già
-passato.
+passato. E manda a rieseguire il `Comando:` del messaggio *successivo*, non
+quello mostrato qui: `--keep-sco` non riporta lo score al path temporaneo che
+questa riga nomina — lo scrive in una directory stabile, e senza il flag
+`mkstemp` pesca ogni volta un nome nuovo.
 
 ### SuperCollider subprocess fallito
 Il campo `stage` distingue i due binari, perché hanno rimedi diversi:

@@ -238,10 +238,18 @@ class CsoundRenderer(AudioRenderer):
             # messaggio non lo dice, la prima azione che suggerisce e' un
             # no-op. Con `--keep-sco` gia' attivo il rimedio non esiste piu',
             # e l'hint tace.
+            #
+            # Quel flag pero' non riporta lo score al path che il `Comando:`
+            # mostra: `_score_path` con `sco_dir` scrive in una directory
+            # stabile, e senza pesca ogni volta un nome nuovo da `mkstemp`.
+            # Promettere di «rieseguire il comando qui sopra» era lo stesso
+            # rimedio-che-non-fa-nulla riscritto un livello piu' in la': la
+            # riga rieseguibile e' quella del messaggio *successivo*.
             hint = None if self.sco_dir else (
-                "Lo score .sco era temporaneo ed e' stato rimosso: rilancia "
-                "con `--keep-sco` per conservarlo e rieseguire il comando "
-                "qui sopra."
+                "Lo score .sco era temporaneo ed e' stato rimosso, quindi il "
+                "comando qui sopra non e' piu' rieseguibile: rilancia con "
+                "`--keep-sco`, che lo score lo conserva su disco, e riesegui "
+                "il `Comando:` del messaggio che ne esce."
             )
             raise CsoundRenderError(
                 returncode=result.returncode,
