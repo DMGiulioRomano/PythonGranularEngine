@@ -8,9 +8,10 @@ sources:
   - src/pge/cli.py
   - src/pge/shared/logger.py
   - src/pge/rendering/grain_visuals.py
+  - src/pge/rendering/csound_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: 5b24556
+last_synced_commit: 6084479
 entry_for: [cli-flags, build-flags]
 ---
 

@@ -147,9 +147,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   ```
   [ERRORE] Csound: binario 'csound' non trovato
-    Hint:         Installa csound (`make install-system-deps`), oppure usa
-                  `--renderer numpy`, che non richiede binari esterni.
+    Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL
+                  non e' nei repo e va compilato dai sorgenti, vedi README),
+                  oppure usa `--renderer numpy`, che non richiede binari
+                  esterni.
   ```
+
+  Il rimedio nomina la compilazione dai sorgenti perche' `make
+  install-system-deps` csound su Fedora/RHEL non lo installa — non c'e' nei
+  repo ne' in RPM Fusion, e il target lo dice invece di provarci. Un
+  messaggio azionabile la cui prima azione e' un no-op proprio sulla
+  piattaforma da cui viene la issue vale quanto quello che ha sostituito.
 
   Non eredita da `FileNotFoundError`, per la stessa ragione per cui non lo fa
   `SuperColliderNotFoundError` (#228): il tipo di un errore serve a chi lo
@@ -163,10 +171,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   annuncia. Un `FileNotFoundError` che nessuno ha ancora tradotto finisce nel
   ramo generico — messaggio e traceback — invece che in un messaggio falso.
 
-  Nota per chi usa la libreria: la docstring di `render_single_stream`
-  prometteva `FileNotFoundError` per csound assente. La promessa **era** il
-  difetto e cambia con il codice; chi la catturava per nome deve passare a
-  `CsoundNotFoundError` (o a `EngineError`, che le copre tutte).
+  La conseguenza per chi usa la libreria e' un cambio di superficie, ed e'
+  scritta fra le modifiche qui sotto invece che sepolta qui.
+
+- **Il `.sco` temporaneo sopravviveva a ogni render csound fallito**
+  (review della PR #256). Senza `--keep-sco` lo score e' un file temporaneo,
+  e la sua cancellazione stava *dopo* la chiamata a csound: qualunque modo di
+  fallire — exit code diverso da zero, e da questa release anche il binario
+  assente — saltava le due righe e lasciava il file in `/tmp`, con un nome
+  casuale che l'utente non ha modo di ritrovare. Su una macchina senza csound
+  non era un caso raro ma la norma: uno per tentativo. Ora la chiamata sta in
+  un `try/finally` in entrambi i chiamanti (STEMS e MIX passano dallo stesso
+  `_run_csound`); `--keep-sco` continua a valere, perche' la condizione e'
+  rimasta la stessa.
 
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati
@@ -286,6 +303,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `voice.wav` sia su un seno di 3 s, e la lunghezza del buffer entra nel
   comportamento di cache, quindi nel coefficiente `a`: due run non
   confrontabili erano indistinguibili a posteriori.
+
+- **BREAKING — `render_single_stream` e `render_merged_streams` del renderer
+  csound non sollevano piu' `FileNotFoundError`** quando csound non e' nel
+  PATH (issue #241, vedi la correzione qui sopra). Il tipo era promesso dalla
+  docstring, ma la promessa *era* il difetto: quel tipo la CLI lo intercetta
+  per annunciare un file YAML mancante. Ora e' `CsoundNotFoundError`. Chi lo
+  catturava per nome deve passare a quello, o a `EngineError`, che copre
+  tutti gli errori del motore. Un `except FileNotFoundError` attorno a un
+  render csound smette di catturare in silenzio: l'eccezione risale.
 
 ---
 

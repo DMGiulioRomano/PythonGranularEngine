@@ -5,7 +5,8 @@ status: stable
 tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
-last_synced_commit: 5b24556
+  - src/pge/cli.py
+last_synced_commit: 6084479
 entry_for: [error-handling]
 ---
 
@@ -307,7 +308,7 @@ Il campo `stage` distingue i due binari, perché hanno rimedi diversi:
 ### Csound non installato
 ```
 [ERRORE] Csound: binario 'csound' non trovato
-  Hint:         Installa csound (`make install-system-deps`), oppure usa `--renderer numpy`, che non richiede binari esterni.
+  Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL non e' nei repo e va compilato dai sorgenti, vedi README), oppure usa `--renderer numpy`, che non richiede binari esterni.
   Dettagli:     /tmp/engine.log
 ```
 
