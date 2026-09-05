@@ -217,7 +217,7 @@ class SuperColliderRenderer(AudioRenderer):
 
     def _score_path(self, output_path: str) -> str:
         """Path dello score .osc: deterministico con --keep-osc, temporaneo
-        altrimenti. Stessa logica di CsoundRenderer._write_score."""
+        altrimenti. Stessa logica di CsoundRenderer._score_path."""
         if self.osc_dir:
             base = os.path.splitext(os.path.basename(output_path))[0]
             os.makedirs(self.osc_dir, exist_ok=True)

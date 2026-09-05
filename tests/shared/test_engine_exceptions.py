@@ -526,6 +526,34 @@ def test_csound_render_error_inheritance_and_message():
     assert "orch error" in msg
 
 
+def test_subprocess_render_error_hint_e_opzionale():
+    """L'hint del render fallito e' condizionale, non decorativo: dice come
+    riavere lo score temporaneo, e con `--keep-sco` quello score c'e' gia'.
+    Una riga `Hint:` stampata sempre sarebbe un rimedio per un guasto assente
+    -- e' la stessa regola di `_BinaryNotFoundError`, da cui questa base copia
+    il formato della riga."""
+    from pge.shared.exceptions import CsoundRenderError
+    senza = CsoundRenderError(
+        returncode=2, command=["csound", "/tmp/x.sco"], stderr="err")
+    assert "Hint:" not in senza.user_message()
+
+    con = CsoundRenderError(
+        returncode=2, command=["csound", "/tmp/x.sco"], stderr="err",
+        hint="Rilancia con --keep-sco.")
+    con.stream_id = "drone_a"
+    con.config_file = "configs/x.yml"
+    msg = con.user_message()
+    assert "  Hint:         Rilancia con --keep-sco." in msg
+    # Dopo la diagnostica e prima delle righe di contesto: l'hint e' il
+    # seguito dell'errore, non un'intestazione -- ed e' la posizione che
+    # `docs/reference/errors.md` mostra nell'esempio del render fallito.
+    # Serve la coppia: `Output: < Hint:` da sola resta vera anche con
+    # l'hint spinto in fondo, sotto Stream e Config, cioe' proprio sul
+    # difetto che il commento dichiara di coprire. Le righe di contesto
+    # vanno quindi materializzate, altrimenti non c'e' un "dopo".
+    assert msg.index("Output:") < msg.index("Hint:") < msg.index("Stream:")
+
+
 def test_csound_render_error_context_lines():
     from pge.shared.exceptions import CsoundRenderError
     err = CsoundRenderError(returncode=2, command=["csound"], stderr="x")
@@ -534,6 +562,53 @@ def test_csound_render_error_context_lines():
     msg = err.user_message()
     assert "drone_a" in msg
     assert "configs/x.yml" in msg
+
+
+# =============================================================================
+# Issue #241 — csound assente: un errore azionabile, non un FileNotFoundError
+# =============================================================================
+
+def test_csound_not_found_error_inheritance_and_message():
+    from pge.shared.exceptions import (
+        CsoundNotFoundError, EngineError, EngineRuntimeError,
+    )
+    err = CsoundNotFoundError(
+        what="binario 'csound'",
+        hint="Installa csound, oppure usa --renderer numpy.",
+    )
+    assert isinstance(err, EngineRuntimeError)
+    assert isinstance(err, EngineError)
+    msg = err.user_message()
+    assert "[ERRORE]" in msg
+    assert "Csound" in msg
+    assert "binario 'csound'" in msg
+    assert "--renderer numpy" in msg
+
+
+def test_csound_not_found_error_non_e_un_FileNotFoundError():
+    """La CLI intercetta FileNotFoundError per annunciare «file YAML non
+    trovato»: un binario mancante che passasse di li' verrebbe riportato
+    come una configurazione inesistente (stessa regola di
+    SuperColliderNotFoundError)."""
+    from pge.shared.exceptions import CsoundNotFoundError
+    err = CsoundNotFoundError(what="binario 'csound'")
+    assert not isinstance(err, FileNotFoundError)
+    assert not isinstance(err, OSError)
+
+
+def test_csound_not_found_error_context_lines():
+    from pge.shared.exceptions import CsoundNotFoundError
+    err = CsoundNotFoundError(what="binario 'csound'", hint="Usa --renderer numpy.")
+    err.stream_id = "drone_a"
+    err.config_file = "configs/x.yml"
+    msg = err.user_message()
+    assert "drone_a" in msg
+    assert "configs/x.yml" in msg
+    # Stessa regola di posizione di `_SubprocessRenderError`, e stesso modo
+    # di sbagliarla: il rimedio precede il contesto, come nell'esempio di
+    # `docs/reference/errors.md`. Senza questa riga, spostare l'hint in
+    # fondo lasciava verdi tutte e due le meta' della gerarchia.
+    assert msg.index("Hint:") < msg.index("Stream:")
 
 
 # =============================================================================
