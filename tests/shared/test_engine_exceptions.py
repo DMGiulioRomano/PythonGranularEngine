@@ -540,11 +540,18 @@ def test_subprocess_render_error_hint_e_opzionale():
     con = CsoundRenderError(
         returncode=2, command=["csound", "/tmp/x.sco"], stderr="err",
         hint="Rilancia con --keep-sco.")
+    con.stream_id = "drone_a"
+    con.config_file = "configs/x.yml"
     msg = con.user_message()
     assert "  Hint:         Rilancia con --keep-sco." in msg
     # Dopo la diagnostica e prima delle righe di contesto: l'hint e' il
-    # seguito dell'errore, non un'intestazione.
-    assert msg.index("Output:") < msg.index("Hint:")
+    # seguito dell'errore, non un'intestazione -- ed e' la posizione che
+    # `docs/reference/errors.md` mostra nell'esempio del render fallito.
+    # Serve la coppia: `Output: < Hint:` da sola resta vera anche con
+    # l'hint spinto in fondo, sotto Stream e Config, cioe' proprio sul
+    # difetto che il commento dichiara di coprire. Le righe di contesto
+    # vanno quindi materializzate, altrimenti non c'e' un "dopo".
+    assert msg.index("Output:") < msg.index("Hint:") < msg.index("Stream:")
 
 
 def test_csound_render_error_context_lines():
@@ -591,12 +598,17 @@ def test_csound_not_found_error_non_e_un_FileNotFoundError():
 
 def test_csound_not_found_error_context_lines():
     from pge.shared.exceptions import CsoundNotFoundError
-    err = CsoundNotFoundError(what="binario 'csound'")
+    err = CsoundNotFoundError(what="binario 'csound'", hint="Usa --renderer numpy.")
     err.stream_id = "drone_a"
     err.config_file = "configs/x.yml"
     msg = err.user_message()
     assert "drone_a" in msg
     assert "configs/x.yml" in msg
+    # Stessa regola di posizione di `_SubprocessRenderError`, e stesso modo
+    # di sbagliarla: il rimedio precede il contesto, come nell'esempio di
+    # `docs/reference/errors.md`. Senza questa riga, spostare l'hint in
+    # fondo lasciava verdi tutte e due le meta' della gerarchia.
+    assert msg.index("Hint:") < msg.index("Stream:")
 
 
 # =============================================================================
