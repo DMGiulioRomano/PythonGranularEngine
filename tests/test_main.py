@@ -8,7 +8,7 @@ Copre:
 - main(): flusso normale completo
 - main(): generazione visualizzazione PDF (--visualize, -v)
 - main(): flag --show-static / -s
-- main(): FileNotFoundError -> sys.exit(1)
+- main(): ConfigFileNotFoundError -> sys.exit(1) (issue #257)
 - main(): eccezione generica -> sys.exit(1)
 - main(): argomenti insufficienti -> sys.exit(1)
 - main(): output_file di default 'output.sco'
@@ -552,14 +552,27 @@ class TestErrorHandling:
     """
 
     def test_file_not_found_exits_with_1(self, mocks):
+        """Un builtin nudo esce comunque con 1, ma dal ramo generico (#257)."""
         mocks['generator_instance'].load_yaml.side_effect = FileNotFoundError("not found")
         with patch.object(sys, 'argv', ['main.py', 'missing.yml', 'out.aif']):
             with pytest.raises(SystemExit) as exc_info:
                 mocks['main'].main()
         assert exc_info.value.code == 1
 
-    def test_file_not_found_prints_error_message(self, mocks, capsys):
-        mocks['generator_instance'].load_yaml.side_effect = FileNotFoundError()
+    def test_config_file_not_found_exits_with_1(self, mocks):
+        """Lo YAML mancante, col suo tipo di dominio (#257)."""
+        from pge.shared.exceptions import ConfigFileNotFoundError
+        mocks['generator_instance'].load_yaml.side_effect = (
+            ConfigFileNotFoundError('missing.yml'))
+        with patch.object(sys, 'argv', ['main.py', 'missing.yml', 'out.aif']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
+    def test_config_file_not_found_prints_error_message(self, mocks, capsys):
+        from pge.shared.exceptions import ConfigFileNotFoundError
+        mocks['generator_instance'].load_yaml.side_effect = (
+            ConfigFileNotFoundError('missing.yml'))
         with patch.object(sys, 'argv', ['main.py', 'missing.yml', 'out.aif']):
             with pytest.raises(SystemExit):
                 mocks['main'].main()

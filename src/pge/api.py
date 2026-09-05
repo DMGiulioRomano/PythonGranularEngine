@@ -4,8 +4,10 @@
 # Contratto del modulo
 # (docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md, sez. B.1):
 # - nessun print, nessun sys.exit, nessuna lettura di sys.argv;
-# - errori -> eccezioni (EngineError e sottoclassi, FileNotFoundError,
-#   ValueError per argomenti API invalidi);
+# - errori -> eccezioni (EngineError e sottoclassi; ValueError per argomenti
+#   API invalidi). Dalla #257 anche il file YAML che manca o non si parsa e'
+#   un EngineError (ConfigFileNotFoundError, ConfigParseError), che pero'
+#   eredita il builtin di prima per non rompere chi lo cattura;
 # - import lazy dei moduli pesanti dentro le funzioni (stesso stile di
 #   main.py): mantiene mockabile via sys.modules e non paga matplotlib
 #   all'import;
@@ -155,9 +157,14 @@ def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
             precedenti (submodule non ancora aggiornati).
 
     Raises:
-        FileNotFoundError, yaml.YAMLError, EngineError (SampleNotFoundError,
-        ConfigError, ...). Nessun print proprio (quelli interni di Generator
-        restano).
+        EngineError e sottoclassi -- fra cui ConfigFileNotFoundError (YAML
+        inesistente) e ConfigParseError (YAML illeggibile), che dalla #257
+        sostituiscono i builtin nudi che questa docstring dichiarava.
+        Entrambe ereditano il tipo che sostituiscono (FileNotFoundError,
+        yaml.YAMLError): un `except FileNotFoundError` scritto contro le
+        versioni precedenti continua a funzionare. Restano anche
+        SampleNotFoundError, ConfigError, ... Nessun print proprio (quelli
+        interni di Generator restano).
     """
     from pge.engine.generator import Generator
 

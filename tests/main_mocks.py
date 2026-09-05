@@ -11,6 +11,8 @@ dentro main()/api trovano i mock a runtime.
 
 import sys
 import types
+
+import yaml
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -52,6 +54,24 @@ def make_mock_logger_module():
     mod.configure_engine_logger = MagicMock()
     mod.get_engine_logger = MagicMock(return_value=MagicMock())
     mod.get_engine_log_path = MagicMock(return_value='/tmp/engine.log')
+    return mod
+
+
+def _make_mock_yaml_module():
+    """Stub di `yaml` che porta pero' `YAMLError`, quello vero.
+
+    Dalla #257 `pge.shared.exceptions.ConfigParseError` eredita da
+    `yaml.YAMLError`, e una classe base serve nel momento in cui la classe si
+    crea -- non quando la si usa. Uno stub nudo qui non farebbe fallire un
+    assert: farebbe fallire l'import di `pge.shared.exceptions`, cioe' di
+    mezzo motore, con un `AttributeError` che non nomina la causa.
+
+    La classe e' quella vera di proposito: cosi' `isinstance` e
+    `pytest.raises(yaml.YAMLError)` dicono la stessa cosa dentro e fuori dai
+    mock. Lo stub resta uno stub per tutto il resto (parser, dumper).
+    """
+    mod = types.ModuleType('yaml')
+    mod.YAMLError = yaml.YAMLError
     return mod
 
 
@@ -113,7 +133,7 @@ def build_mock_modules():
         'pge.rendering.sample_registry': sample_reg_mod,
         'pge.rendering.numpy_window_registry': window_reg_mod,
         # dipendenze transitive
-        'yaml': types.ModuleType('yaml'),
+        'yaml': _make_mock_yaml_module(),
         'soundfile': types.ModuleType('soundfile'),
     }
 

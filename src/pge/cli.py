@@ -721,9 +721,13 @@ def main():
 
         print(f"Log: {get_clip_log_path()}")
 
-    except FileNotFoundError:
-        print(f" Errore: file '{yaml_file}' non trovato")
-        sys.exit(1)
+    # Nessun handler su un tipo builtin (issue #257). Lo YAML che manca e
+    # quello malformato hanno ora un tipo di dominio (ConfigFileNotFoundError,
+    # ConfigParseError) e passano di qui sotto come ogni altro errore di
+    # configurazione. Un FileNotFoundError nudo che risalga da altrove --
+    # un sample, una pre-scansione, un domani in cui questo blocco chiami
+    # api.load_generator -- finisce nel ramo generico invece di annunciare
+    # una configurazione inesistente.
     except EngineError as e:
         _handle_engine_error(e)
         sys.exit(1)

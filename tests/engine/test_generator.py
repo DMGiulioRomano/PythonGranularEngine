@@ -221,18 +221,78 @@ class TestLoadYaml:
         assert gen.seed == 0
 
     def test_load_yaml_file_not_found(self, gen):
-        """load_yaml solleva FileNotFoundError se file non esiste."""
+        """load_yaml solleva FileNotFoundError se file non esiste.
+
+        Resta vero dopo la #257: `ConfigFileNotFoundError` eredita anche il
+        builtin, e questo test e' la meta' che lo dimostra dal lato chiamante.
+        """
         with patch('builtins.open', side_effect=FileNotFoundError("not found")):
             with pytest.raises(FileNotFoundError):
                 gen.load_yaml()
 
     def test_load_yaml_malformed_yaml(self, gen):
-        """load_yaml solleva yaml.YAMLError con YAML malformato."""
+        """load_yaml solleva yaml.YAMLError con YAML malformato.
+
+        Come sopra: `ConfigParseError` eredita anche `yaml.YAMLError`.
+        """
         m = mock_open(read_data="{{invalid: yaml: ]]]")
 
         with patch('builtins.open', m):
             with pytest.raises(yaml.YAMLError):
                 gen.load_yaml()
+
+    def test_load_yaml_file_not_found_e_un_errore_di_dominio(self, gen):
+        """...ma il tipo sollevato e' `ConfigFileNotFoundError` (issue #257).
+
+        Il builtin nudo costringeva `cli.main()` a catturare `FileNotFoundError`,
+        e quel messaggio era vero solo finche' nessun'altra riga dentro lo
+        stesso `try` apriva un secondo file.
+        """
+        from pge.shared.exceptions import ConfigFileNotFoundError
+
+        with patch('builtins.open', side_effect=FileNotFoundError("not found")):
+            with pytest.raises(ConfigFileNotFoundError) as exc:
+                gen.load_yaml()
+
+        assert exc.value.path == gen.yaml_path
+        assert exc.value.config_file == gen.yaml_path
+        assert gen.yaml_path in exc.value.user_message()
+
+    def test_load_yaml_malformato_e_un_errore_di_dominio(self, gen):
+        """...e lo YAML illeggibile e' `ConfigParseError` (issue #257).
+
+        Il file c'e' ma non si legge: stesso difetto un gradino piu' in la',
+        e prima finiva nel ramo generico della CLI come traceback.
+        """
+        from pge.shared.exceptions import ConfigParseError
+
+        m = mock_open(read_data="{{invalid: yaml: ]]]")
+
+        with patch('builtins.open', m):
+            with pytest.raises(ConfigParseError) as exc:
+                gen.load_yaml()
+
+        assert exc.value.path == gen.yaml_path
+        assert isinstance(exc.value.cause, yaml.YAMLError)
+        assert gen.yaml_path in exc.value.user_message()
+
+    def test_load_yaml_non_impacchetta_i_FileNotFoundError_altrui(self, gen):
+        """Solo l'`open()` dello YAML diventa `ConfigFileNotFoundError`.
+
+        Se domani `load_yaml` acquistasse un passo che apre un secondo file,
+        il suo `FileNotFoundError` non deve uscire travestito da configurazione
+        mancante: e' esattamente il modo in cui la #257 si riapre.
+        """
+        from pge.shared.exceptions import ConfigFileNotFoundError
+
+        m = mock_open(read_data=yaml.dump({'streams': []}))
+        with patch('builtins.open', m), \
+                patch.object(gen, '_eval_math_expressions',
+                             side_effect=FileNotFoundError('un altro file')):
+            with pytest.raises(FileNotFoundError) as exc:
+                gen.load_yaml()
+
+        assert not isinstance(exc.value, ConfigFileNotFoundError)
 
     def test_load_yaml_preserves_non_math_strings(self, gen):
         """load_yaml preserva stringhe senza espressioni matematiche."""

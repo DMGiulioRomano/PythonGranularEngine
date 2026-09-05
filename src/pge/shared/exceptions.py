@@ -8,6 +8,15 @@ __str__ per i log.
 """
 from __future__ import annotations
 
+import os
+
+# Import non lazy: `ConfigParseError` eredita `yaml.YAMLError`, e una classe
+# base deve esistere al momento in cui la classe si crea. PyYAML e' una
+# dipendenza dura del pacchetto (pyproject) e `pge.engine.generator` lo importa
+# gia' a livello di modulo -- questo import non aggiunge una dipendenza, la
+# dichiara dove serve.
+import yaml
+
 
 class EngineError(Exception):
     """Base per errori dell'pge.engine. Sottoclassi forniscono user_message()."""
@@ -56,6 +65,80 @@ class ConfigError(EngineError, ValueError):
         if self.config_file:
             lines.append(f"  Config:       {self.config_file}")
         return lines
+
+
+class ConfigFileNotFoundError(ConfigError, FileNotFoundError):
+    """File di configurazione YAML inesistente (issue #257).
+
+    Eredita ANCHE `FileNotFoundError`, al contrario di
+    `SuperColliderNotFoundError` e `CsoundNotFoundError` (#228, #241).
+    L'asimmetria e' voluta e sta nel valore di verita' del builtin: per un
+    binario assente era una bugia -- il file mancante non era quello che il
+    tipo lasciava intendere -- mentre qui e' semplicemente vero, il file che
+    non c'e' e' proprio quello. La doppia ereditarieta' tiene in piedi la
+    promessa che `Generator.load_yaml` e `api.load_generator` dichiarano da
+    sempre nei `Raises`, con lo stesso precedente della base
+    `ConfigError(EngineError, ValueError)`.
+
+    Il costo, dichiarato: il tipo non isola. Un `FileNotFoundError` di altra
+    origine, impacchettato qui per errore, tornerebbe a confondersi con la
+    configurazione mancante -- ed e' per questo che `load_yaml` avvolge il
+    solo `open()` dello YAML e niente altro.
+
+    Chi cattura non ne ha piu' bisogno per distinguere: `cli.main()` prende
+    ora solo `EngineError`, e lo fa per tipo -- non per estensione fisica del
+    blocco `try`, che era la garanzia fragile chiusa da questa issue.
+    """
+
+    def __init__(self, path: str):
+        super().__init__(f"File di configurazione non trovato: '{path}'")
+        self.path = path
+        self.config_file = path
+        # Risolto al momento del guasto: e' la cwd di quell'`open()` a contare,
+        # non quella di chi stampa il messaggio piu' tardi.
+        self.resolved_path = os.path.abspath(path)
+
+    def user_message(self) -> str:
+        # Nessuna riga `Config:` da `_context_lines()`: il file e' il soggetto
+        # del head, ripeterlo sotto non aggiunge niente. Il path assoluto si',
+        # ma solo quando dice qualcosa in piu': e' l'informazione che il
+        # messaggio precedente non dava -- «hai lanciato dalla directory
+        # sbagliata» -- e su un path gia' assoluto sarebbe la stessa riga due
+        # volte.
+        lines = [f"[ERRORE] File di configurazione non trovato: '{self.path}'"]
+        if self.resolved_path != self.path:
+            lines.append(f"  Path cercato: {self.resolved_path}")
+        return "\n".join(lines)
+
+
+class ConfigParseError(ConfigError, yaml.YAMLError):
+    """File di configurazione YAML illeggibile (issue #257).
+
+    Il gradino successivo a `ConfigFileNotFoundError`: il file c'e' ma non si
+    parsa. Prima nessuno traduceva `yaml.YAMLError` e l'utente riceveva
+    messaggio piu' traceback dal ramo generico della CLI.
+
+    Eredita anche `yaml.YAMLError` per la stessa ragione dell'altra classe: e'
+    il tipo che `load_yaml` e `api.load_generator` promettono nei `Raises`.
+    """
+
+    def __init__(self, path: str, cause: Exception):
+        super().__init__(f"File di configurazione malformato: '{path}'")
+        self.path = path
+        self.cause = cause
+        self.config_file = path
+
+    def user_message(self) -> str:
+        lines = [f"[ERRORE] File di configurazione malformato: '{self.path}'"]
+        # `problem_mark` c'e' solo sui MarkedYAMLError, ed e' 0-based: renderlo
+        # cosi' com'e' manderebbe l'utente una riga sopra a quella che il suo
+        # editor gli mostra.
+        mark = getattr(self.cause, 'problem_mark', None)
+        if mark is not None:
+            lines.append(f"  Riga/colonna: {mark.line + 1}:{mark.column + 1}")
+        dettaglio = getattr(self.cause, 'problem', None) or str(self.cause)
+        lines.append(f"  Dettaglio:    {dettaglio}")
+        return "\n".join(lines)
 
 
 class MissingFieldError(ConfigError):
@@ -412,9 +495,14 @@ class SuperColliderRenderError(_SubprocessRenderError):
 class SuperColliderNotFoundError(EngineRuntimeError):
     """Binario SuperCollider o sorgente della SynthDef non trovati (issue #228).
 
-    NON eredita FileNotFoundError di proposito: la CLI intercetta quel tipo
-    per annunciare 'file YAML non trovato', e un binario mancante che
-    passasse di li' verrebbe riportato come una configurazione inesistente.
+    NON eredita FileNotFoundError di proposito. La ragione scritta qui prima --
+    «la CLI intercetta quel tipo per annunciare 'file YAML non trovato'» -- non
+    vale piu' dalla #257: `cli.main()` non cattura piu' nessun builtin. Quella
+    che regge e' l'altra: per un binario assente il builtin e' *falso*, perche'
+    il file che manca non e' quello che il tipo lascia intendere. Dove invece
+    dice il vero il tipo di dominio se lo tiene accanto -- vedi
+    `ConfigFileNotFoundError`, che eredita FileNotFoundError proprio perche'
+    li' il file mancante e' davvero quello.
     """
 
     def __init__(self, what: str, hint: str | None = None):
