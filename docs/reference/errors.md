@@ -6,7 +6,8 @@ tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
   - src/pge/cli.py
-last_synced_commit: 1d80252
+  - src/pge/rendering/csound_renderer.py
+last_synced_commit: 0110399
 entry_for: [error-handling]
 ---
 
