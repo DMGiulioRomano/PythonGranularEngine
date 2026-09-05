@@ -756,7 +756,9 @@ class TestRendererFlag:
 
     def test_cache_manifest_composed_from_cache_dir_and_yaml(self, mocks, capsys):
         """--cache: la CLI compone cache_dir/{yaml_basename}.json e stampa
-        [CACHE] Manifest: (policy CLI, l'API non stampa)."""
+        [CACHE] Manifest: (policy CLI: quella riga api.build_renderer non la
+        emette -- cio' che l'API stampa via i suoi componenti e' censito in
+        api.py e verificato da tests/test_api_stdout.py)."""
         import os
         build_mock, _, _ = self._run_delegated(
             mocks,

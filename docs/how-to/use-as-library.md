@@ -48,9 +48,30 @@ passare dalla CLI né monkey-patchare i globali.
    api.export_score_pdf(gen, 'out/scena.pdf', samples_dir='refs/')
    ```
 
-3. Logging: i singleton restano; configurarli PRIMA di `load_generator`
+3. Stdout: **la libreria non è silenziosa.** `pge.api` non stampa di suo,
+   ma i componenti che orchestra sì, e chi incorpora se li ritrova sul
+   proprio stdout: `Generator` annuncia il seed di sessione (`[SEED] ...`),
+   quanti stream costruisce e uno per riga; i renderer scrivono `[CACHE]
+   <id>: DIRTY|clean` quando c'è un `cache_manifest_path`;
+   `export_score_pdf` fa parlare `ScoreVisualizer`. Il censimento completo,
+   riga per riga e con chi la emette, sta nell'intestazione di
+   `src/pge/api.py`. Fanno parte del contratto stdout della CLI (la riga
+   `[CACHE]` la parsa PGE-ui per l'avanzamento per stream), quindi non
+   spariranno da sole: servendo silenzio, la via è
+   `contextlib.redirect_stdout`.
+
+   ```python
+   import contextlib, io
+
+   silenzio = io.StringIO()
+   with contextlib.redirect_stdout(silenzio):
+       result = api.render_file('scena.yml', 'out/scena.aif',
+                                renderer='numpy', samples_dir='refs/')
+   ```
+
+4. Logging: i singleton restano; configurarli PRIMA di `load_generator`
    (altrimenti il primo Stream inizializza il clip logger coi default di
-   modulo, file in `./logs` + print):
+   modulo, file in `./logs` + la riga `📝 Clip log file: ...` su stdout):
 
    ```python
    from pge import configure_clip_logger, configure_engine_logger
@@ -59,15 +80,15 @@ passare dalla CLI né monkey-patchare i globali.
    configure_engine_logger(yaml_name='mio_progetto', log_dir='out/logs')
    ```
 
-4. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
+5. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
    argomenti API invalidi sollevano `ValueError` (es. `audio_format`
    stringa ignota), file YAML mancante `FileNotFoundError`.
 
-5. Csound: `renderer='csound'` con knob raggruppati in
+6. Csound: `renderer='csound'` con knob raggruppati in
    `api.CsoundOptions(orc_path=..., ssdir=..., sco_dir=...)`;
    `ssdir=None` eredita `samples_dir`.
 
-6. Quanti grani ha prodotto ogni stream: `result.grain_counts`, una voce per
+7. Quanti grani ha prodotto ogni stream: `result.grain_counts`, una voce per
    stream nell'ordine di `generator.streams`.
 
    ```python
@@ -92,7 +113,9 @@ codice di integrazione (es. `engine_bridge.py` in granulation-studies).
 ## Test da aggiornare
 
 Nel progetto ospite: i test del proprio wrapper. In PGE l'API è coperta da
-`tests/test_api.py` e il layout da `tests/test_package_layout.py`.
+`tests/test_api.py` (superficie e kwargs, componenti mockati),
+`tests/test_api_stdout.py` (cosa arriva davvero su stdout, componenti veri)
+e il layout da `tests/test_package_layout.py`.
 
 ## Verifica
 
