@@ -88,11 +88,17 @@ class CsoundRenderer(AudioRenderer):
                     return output_path
 
         sco_path = self._write_score(streams=[stream], output_path=output_path, per_stream=True)
-        self._run_csound(sco_path, output_path)
-
-        # Cleanup file temporaneo se non in modalita' keep-sco
-        if not self.sco_dir and os.path.exists(sco_path):
-            os.unlink(sco_path)
+        try:
+            self._run_csound(sco_path, output_path)
+        finally:
+            # Cleanup file temporaneo se non in modalita' keep-sco. Sta nel
+            # `finally` perche' anche i modi di fallire lo lasciano sul disco:
+            # con csound assente (issue #241) era un .sco abbandonato in /tmp
+            # a ogni singolo tentativo, con un nome casuale che l'utente non
+            # ha modo di ritrovare. Chi vuole il .sco di un render fallito ha
+            # --keep-sco, che questo ramo rispetta.
+            if not self.sco_dir and os.path.exists(sco_path):
+                os.unlink(sco_path)
 
         # Aggiorna cache dopo build riuscita
         if self.cache_manager:
@@ -114,16 +120,22 @@ class CsoundRenderer(AudioRenderer):
 
         Returns:
             Il percorso del file .aif prodotto
+
+        Raises:
+            CsoundRenderError: se csound esce con errore
+            CsoundNotFoundError: se csound non e' installato
         """
         sco_path = self._write_score(
             streams=streams,
             output_path=output_path,
         )
-        self._run_csound(sco_path, output_path)
-
-        # Cleanup file temporaneo se non in modalita' keep-sco
-        if not self.sco_dir and os.path.exists(sco_path):
-            os.unlink(sco_path)
+        try:
+            self._run_csound(sco_path, output_path)
+        finally:
+            # Cleanup file temporaneo se non in modalita' keep-sco: vedi
+            # render_single_stream, il MIX passa dallo stesso _run_csound.
+            if not self.sco_dir and os.path.exists(sco_path):
+                os.unlink(sco_path)
 
         return output_path
 
@@ -206,9 +218,14 @@ class CsoundRenderer(AudioRenderer):
             from pge.shared.exceptions import CsoundNotFoundError
             raise CsoundNotFoundError(
                 what=f"binario '{cmd[0]}'",
-                hint=("Installa csound (`make install-system-deps`), oppure "
-                      "usa `--renderer numpy`, che non richiede binari "
-                      "esterni."),
+                # `make install-system-deps` NON installa csound su
+                # Fedora/RHEL -- non e' nei repo, ne' in RPM Fusion -- ed e'
+                # proprio la macchina da cui viene la issue: un rimedio che
+                # li' e' un no-op vale quanto il messaggio che ha sostituito.
+                hint=("Installa csound (`make install-system-deps`; su "
+                      "Fedora/RHEL non e' nei repo e va compilato dai "
+                      "sorgenti, vedi README), oppure usa `--renderer "
+                      "numpy`, che non richiede binari esterni."),
             ) from None
 
         if result.returncode != 0:

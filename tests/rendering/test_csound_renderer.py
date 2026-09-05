@@ -16,6 +16,8 @@ Coverage:
 6. TestRendererFactoryValidation         - validazione input
 """
 
+import os
+
 import pytest
 from unittest.mock import MagicMock, patch, call
 
@@ -216,7 +218,10 @@ class TestCsoundRendererErrors:
             renderer.render_single_stream(mock_stream, '/output/test.aif')
 
         msg = exc.value.user_message()
-        assert 'csound' in msg
+        # Il binario, non la parola: 'csound' da sola vive gia' nell'hint,
+        # quindi un `what=` svuotato lascerebbe verde l'asserzione che la
+        # docstring dice di fare.
+        assert "binario 'csound'" in msg
         assert '--renderer numpy' in msg
 
     @patch('pge.rendering.csound_renderer.subprocess.run')
@@ -239,6 +244,37 @@ class TestCsoundRendererErrors:
 
         with pytest.raises(CsoundNotFoundError):
             renderer.render_merged_streams([mock_stream], '/output/mix.aif')
+
+    @pytest.mark.parametrize('mode', ['stems', 'mix'])
+    @patch('pge.rendering.csound_renderer.subprocess.run')
+    def test_il_sco_temporaneo_non_sopravvive_a_un_render_fallito(
+            self, mock_run, renderer, mock_stream, mode):
+        """Senza --keep-sco il .sco e' un file temporaneo, e la sua
+        cancellazione stava dopo la chiamata a csound: ogni modo di fallire
+        ne abbandonava uno in /tmp, con un nome che l'utente non puo'
+        ritrovare. Con csound assente (issue #241) era ogni singolo
+        tentativo."""
+        from pge.shared.exceptions import CsoundNotFoundError
+        mock_run.side_effect = FileNotFoundError()
+
+        scritti = []
+        vero_write_score = renderer._write_score
+
+        def spia(*args, **kwargs):
+            path = vero_write_score(*args, **kwargs)
+            scritti.append(path)
+            return path
+
+        renderer._write_score = spia
+
+        with pytest.raises(CsoundNotFoundError):
+            if mode == 'stems':
+                renderer.render_single_stream(mock_stream, '/output/test.aif')
+            else:
+                renderer.render_merged_streams([mock_stream], '/output/mix.aif')
+
+        assert scritti, "nessun .sco scritto: il test non sta misurando nulla"
+        assert not os.path.exists(scritti[0])
 
 
 # =============================================================================

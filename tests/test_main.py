@@ -603,12 +603,21 @@ class TestErrorHandling:
         assert "non trovato" not in out
 
     def test_file_not_found_dal_render_non_e_scambiato_per_engine_error(self, mocks, capsys):
-        """Il ramo generico resta quello di prima: messaggio + traceback."""
+        """Il ramo generico resta quello di prima: messaggio + traceback.
+
+        L'asserzione e' sul messaggio *dell'eccezione*, non sulla parola
+        «Errore»: quella la stampava anche il ramo sbagliato («Errore: file
+        'test.yml' non trovato»), quindi cercarla avrebbe lasciato verde
+        proprio il difetto che il test dice di fissare."""
         mocks['engine_instance'].render.side_effect = FileNotFoundError("csound")
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
             with pytest.raises(SystemExit):
                 mocks['main'].main()
-        assert "Errore" in capsys.readouterr().out
+        cattura = capsys.readouterr()
+        assert "Errore: csound" in cattura.out
+        assert "file 'test.yml' non trovato" not in cattura.out
+        # Il traceback e' l'altra meta' del ramo generico, e va su stderr.
+        assert "FileNotFoundError" in cattura.err
 
     def test_visualizer_exception_exits_with_1(self, mocks):
         mocks['visualizer_instance'].export_pdf.side_effect = Exception("pdf error")
