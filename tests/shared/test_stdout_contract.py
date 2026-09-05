@@ -19,9 +19,28 @@ Questa suite esiste perche' la classificazione era prosa, e la prosa non si
 accorge di essere stata contraddetta. Le due meta' falliscono in direzioni
 opposte e vanno guardate entrambe: portare al logger una riga di protocollo
 rompe l'interfaccia utente di un altro repository *senza toccare un test di
-PGE* (per csound e supercollider la riga `[CACHE]` non ha oggi nessuna
+PGE* (per csound e supercollider la riga `[CACHE]` non ha nessun'altra
 asserzione di comportamento — solo questa); rimettere un `print()` in
 `strategies/` riapre in silenzio la porta che la #187 ha chiuso.
+
+**Chi emette la riga non e' solo un renderer.** I tre renderer la stampano
+sul percorso diretto (uno stream alla volta), ma la pipeline in due stadi
+passa da `Generator.write_sco_files`, che delega a
+`StreamCacheManager.get_dirty_stream_dicts`: e' li' che la riga esce, per
+tutti gli stream in blocco, prima che un renderer veda alcunche'. E' anche
+l'emettitore piu' esposto: il suo modulo contiene *altri* `print()` che la
+#178 non ha ancora classificato, quindi e' il prossimo su cui passera' un
+giro di conversione al logger, e chi lo fara' avra' sotto gli occhi righe
+`[CACHE]` di due nature diverse. Percio' sta nella lista come gli altri.
+
+**Il criterio e' la forma, non il prefisso.** `[CACHE]` da solo non
+discrimina: lo stesso modulo stampa anche `[CACHE] <n>/<m> stream da
+ricompilare`, che PGE-ui non parsa (la sua regex vuole `<token-senza-spazi>:`
+subito dopo il prefisso). Cercare la sottostringa avrebbe lasciato passare la
+scomparsa della riga vera. Le chiamate sono quindi ricomposte in un
+*template* — ogni `{...}` di una f-string diventa `{}` — e cio' che la
+guardia pretende e' `[CACHE] {}: `, la forma esatta che quella regex
+riconosce.
 """
 import ast
 import os
@@ -31,12 +50,20 @@ import pytest
 SRC_PGE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..', 'src', 'pge'))
 
-# I tre renderer che dichiarano lo stato della cache all'editor.
-RENDERER_CON_PROTOCOLLO_CACHE = [
+# I moduli che dichiarano all'editor lo stato della cache, stream per stream.
+# I tre renderer sul percorso diretto; il cache manager sul percorso in due
+# stadi (`Generator.write_sco_files` -> `get_dirty_stream_dicts`), dove la riga
+# esce prima che un renderer esista.
+MODULI_CON_PROTOCOLLO_CACHE = [
     os.path.join('rendering', 'numpy_audio_renderer.py'),
     os.path.join('rendering', 'csound_renderer.py'),
     os.path.join('rendering', 'supercollider_renderer.py'),
+    os.path.join('rendering', 'stream_cache_manager.py'),
 ]
+
+# La forma che `_RE_CACHE_LINE` di PGE-ui riconosce: prefisso, un token senza
+# spazi, i due punti. Il resto della riga non e' vincolato.
+PREFISSO_PROTOCOLLO_CACHE = '[CACHE] {}: '
 
 
 def _sorgente(relpath):
@@ -54,25 +81,45 @@ def _print_calls(tree):
     ]
 
 
-def _testo_letterale(node):
-    """Le parti costanti di un argomento, f-string comprese.
+def _template(node):
+    """Il testo di un argomento con ogni interpolazione ridotta a `{}`.
 
     La riga di protocollo e' una f-string: il prefisso `[CACHE] ` e' un
     `Constant` dentro una `JoinedStr`, e cercarlo come stringa intera non lo
-    troverebbe.
+    troverebbe. Ma raccogliere le costanti con `ast.walk` non basta: l'ordine
+    di visita non e' quello della riga, e le costanti annidate dentro
+    un'interpolazione (`{'DIRTY' if dirty else 'clean'}`, in supercollider)
+    finirebbero nel testo come se fossero letterali. Qui si cammina invece
+    `JoinedStr.values` in ordine, e ogni `FormattedValue` diventa `{}` senza
+    che se ne guardi dentro: quel che resta e' la *forma* della riga, ed e'
+    esattamente cio' su cui la regex di PGE-ui decide.
     """
-    pezzi = []
-    for sotto in ast.walk(node):
-        if isinstance(sotto, ast.Constant) and isinstance(sotto.value, str):
-            pezzi.append(sotto.value)
-    return ''.join(pezzi)
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else ''
+    if isinstance(node, ast.JoinedStr):
+        return ''.join(
+            pezzo.value if isinstance(pezzo, ast.Constant)
+            and isinstance(pezzo.value, str)
+            else '{}'
+            for pezzo in node.values
+        )
+    return ''
+
+
+def _print_di_protocollo(tree):
+    """Le `print()` la cui forma e' quella che PGE-ui parsa come stream."""
+    return [
+        c for c in _print_calls(tree)
+        if any(_template(a).startswith(PREFISSO_PROTOCOLLO_CACHE)
+               for a in c.args)
+    ]
 
 
 # =============================================================================
 # 1. PROTOCOLLO — resta su stdout
 # =============================================================================
 
-@pytest.mark.parametrize('relpath', RENDERER_CON_PROTOCOLLO_CACHE)
+@pytest.mark.parametrize('relpath', MODULI_CON_PROTOCOLLO_CACHE)
 def test_la_riga_cache_resta_su_stdout(relpath):
     """`[CACHE] <id>: <status>` e' protocollo: `print()`, non logger.
 
@@ -82,16 +129,14 @@ def test_la_riga_cache_resta_su_stdout(relpath):
     """
     tree = ast.parse(_sorgente(relpath))
 
-    con_cache = [c for c in _print_calls(tree)
-                 if any('[CACHE]' in _testo_letterale(a) for a in c.args)]
-
-    assert con_cache, (
-        f"{relpath}: la riga di protocollo [CACHE] non e' piu' un print(). "
-        "PGE-ui la parsa da stdout: vedi issue #178."
+    assert _print_di_protocollo(tree), (
+        f"{relpath}: la riga di protocollo `{PREFISSO_PROTOCOLLO_CACHE}...` "
+        "non e' piu' un print() con quella forma. PGE-ui la parsa da stdout "
+        "per ricavarne stream-start/stream-done: vedi issue #178."
     )
 
 
-@pytest.mark.parametrize('relpath', RENDERER_CON_PROTOCOLLO_CACHE)
+@pytest.mark.parametrize('relpath', MODULI_CON_PROTOCOLLO_CACHE)
 def test_la_riga_cache_e_flushata(relpath):
     """`flush=True`: l'editor la legge mentre il rendering e' in corso.
 
@@ -100,12 +145,48 @@ def test_la_riga_cache_e_flushata(relpath):
     """
     tree = ast.parse(_sorgente(relpath))
 
-    for chiamata in _print_calls(tree):
-        if not any('[CACHE]' in _testo_letterale(a) for a in chiamata.args):
-            continue
+    for chiamata in _print_di_protocollo(tree):
         flush = [k for k in chiamata.keywords if k.arg == 'flush']
         assert flush and getattr(flush[0].value, 'value', False) is True, \
             f"{relpath}: la riga [CACHE] non e' piu' flushata"
+
+
+# =============================================================================
+# 1b. IL CRITERIO DISCRIMINA — altrimenti la guardia e' verde a vuoto
+# =============================================================================
+# Una guardia che cerca la sottostringa `[CACHE]` non si accorge della
+# sparizione della riga vera finche' nel modulo resta una qualunque altra riga
+# che comincia per `[CACHE]` — e in `stream_cache_manager.py` ce n'e' una
+# (`[CACHE] <n>/<m> stream da ricompilare`, che PGE-ui non parsa). Questi due
+# test misurano il criterio sui casi reali, cosi' che a indebolirlo qualcosa
+# suoni.
+
+def test_il_criterio_riconosce_la_riga_per_stream():
+    """La forma per stream, in tutte le grafie che i moduli usano davvero."""
+    sorgente = (
+        'print(f"[CACHE] {stream.stream_id}: {status}", flush=True)\n'
+        'print(f"[CACHE] {sid}: {\'DIRTY\' if dirty else \'clean\'}",'
+        ' flush=True)\n'
+    )
+
+    assert len(_print_di_protocollo(ast.parse(sorgente))) == 2
+
+
+def test_il_criterio_scarta_le_righe_cache_che_nessuno_parsa():
+    """`[CACHE]` come prefisso non basta: serve `<token-senza-spazi>:`.
+
+    Sono le righe che la regex di PGE-ui lascia cadere. Contarle come
+    protocollo renderebbe la guardia verde anche dopo aver spostato al logger
+    l'unica riga che l'editor legge davvero.
+    """
+    sorgente = (
+        'print(f"[CACHE] {len(dirty)}/{len(tutti)} stream da ricompilare",'
+        ' flush=True)\n'
+        'print(f"[CACHE] Stream da scrivere: {ids}", flush=True)\n'
+        'print("[CACHE] qualcosa di generico", flush=True)\n'
+    )
+
+    assert _print_di_protocollo(ast.parse(sorgente)) == []
 
 
 # =============================================================================

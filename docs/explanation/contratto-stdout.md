@@ -9,6 +9,9 @@ sources:
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/voice_pan_strategy.py
   - src/pge/rendering/numpy_audio_renderer.py
+  - src/pge/rendering/csound_renderer.py
+  - src/pge/rendering/supercollider_renderer.py
+  - src/pge/rendering/stream_cache_manager.py
   - tests/shared/test_stdout_contract.py
 last_synced_commit: db08c65
 ---
@@ -51,10 +54,26 @@ Tre categorie, per destinatario e non per contenuto:
 | **Diagnostica** | uno sviluppatore che sta estendendo il motore | logger `pge.diagnostics` |
 | **Interfaccia CLI** | l'utente, a schermo | stdout, ma non e' protocollo |
 
-Il **protocollo** oggi sono le righe `[CACHE] <id>: DIRTY|clean` dei tre
-renderer — da cui l'editor deriva `stream-start` e `stream-done` — e i path del
-blocco riassuntivo. Restano `print(..., flush=True)`: senza flush arriverebbero
-a rendering finito, quando non hanno piu' niente da annunciare.
+Il **protocollo** oggi sono le righe `[CACHE] <id>: DIRTY|clean` — da cui
+l'editor deriva `stream-start` e `stream-done` — e i path del blocco
+riassuntivo. Restano `print(..., flush=True)`: senza flush arriverebbero a
+rendering finito, quando non hanno piu' niente da annunciare.
+
+**A emettere quella riga sono quattro moduli, non tre.** I tre renderer la
+stampano sul percorso diretto, uno stream alla volta; la pipeline in due stadi
+non passa di li' — `Generator.write_sco_files` delega a
+`StreamCacheManager.get_dirty_stream_dicts`, ed e' quel metodo a stampare la
+riga per tutti gli stream in blocco, prima che un renderer esista. E' una
+distinzione che conta perche' `stream_cache_manager.py` compare anche fra i
+moduli con `print()` non ancora classificati (sotto): la sua riga per stream e'
+gia' classificata, ed e' protocollo.
+
+Il prefisso `[CACHE]` da solo non identifica il protocollo. Lo stesso metodo
+stampa `[CACHE] <n>/<m> stream da ricompilare` e `Generator` stampa
+`[CACHE] Stream da scrivere: [...]`: nessuna delle due e' parsata, perche' la
+regex di PGE-ui vuole un token *senza spazi* seguito dai due punti. Quel che
+identifica il protocollo e' la forma `[CACHE] <id>: <resto>`, ed e' su quella
+che si regola la guardia.
 
 La **diagnostica** oggi sono le registrazioni dinamiche di strategy
 (`register_density_strategy`, `register_variation_strategy`,
@@ -89,11 +108,21 @@ rendering*, cioe' un prodotto del programma; questa avrebbe configurato il
 logging di chi importa `pge`, che non e' affare di `pge`.
 
 **La classificazione e' un test, non una prosa.** `tests/shared/test_stdout_contract.py`
-legge i sorgenti con `ast` e chiede due cose: che la riga `[CACHE]` sia ancora
-un `print()` flushato nei tre renderer, e che in `src/pge/strategies/` non ci
-sia nessun `print()`. Il primo e' l'unico presidio di comportamento che csound e
-supercollider abbiano su quella riga (il renderer NumPy ha anche un test vero);
-il secondo e' cio' che impedisce alla porta di riaprirsi in silenzio.
+legge i sorgenti con `ast` e chiede due cose: che la riga `[CACHE] <id>: ...`
+sia ancora un `print()` flushato in tutti e quattro i moduli che la emettono, e
+che in `src/pge/strategies/` non ci sia nessun `print()`. Il primo e' l'unico
+presidio che csound e supercollider abbiano su quella riga (numpy e il cache
+manager hanno anche un test di comportamento); il secondo e' cio' che impedisce
+alla porta di riaprirsi in silenzio.
+
+**La guardia riconosce la forma, non il prefisso.** Le chiamate sono
+ricomposte in un *template* — ogni interpolazione di una f-string diventa `{}`,
+senza guardarci dentro — e cio' che si pretende e' `[CACHE] {}: `. Cercare la
+sottostringa `[CACHE]` sarebbe bastato per i renderer e non per il cache
+manager, dove sopravvive comunque un `[CACHE] <n>/<m> stream da ricompilare`
+che nessuno parsa: la guardia sarebbe rimasta verde dopo aver spostato al
+logger l'unica riga che l'editor legge davvero. Due test misurano proprio il
+discrimine, cosi' che a indebolirlo qualcosa suoni.
 
 ## Implicazioni codice
 
@@ -101,17 +130,23 @@ il secondo e' cio' che impedisce alla porta di riaprirsi in silenzio.
   formattazione `%s` pigra. Mai `print()`.
 - **Aggiungi un renderer** → se dichiara lo stato della cache, la riga
   `[CACHE] <id>: <status>` va su stdout con `flush=True`, e il modulo va
-  aggiunto a `RENDERER_CON_PROTOCOLLO_CACHE` nella guardia. Vedi [[add-renderer]].
+  aggiunto a `MODULI_CON_PROTOCOLLO_CACHE` nella guardia. Vedi [[add-renderer]].
 - **Cambi il formato di una riga di protocollo** → e' un cambio di superficie
   pubblica: serve l'analisi d'impatto su PGE-ui e PGE-ls prima, non dopo.
 - **Il resto dei `print()`** (`engine/generator.py`,
   `rendering/score_visualizer.py`, `rendering/stream_cache_manager.py`,
   `rendering/score_writer.py`, `cli.py`) non e' ancora classificato: sono gli
-  scaglioni successivi. `cli.py` ne concentra la maggioranza ed e' quasi tutto
-  *interfaccia CLI*, cioe' la terza categoria — quella che resta su stdout pur
-  non essendo protocollo. E' anche l'unica dove la scelta non e' meccanica: la
-  riga per stream dei conteggi di grani (#250) la legge un compositore a
-  schermo, non un parser, ma sta sullo stesso canale che un parser attraversa.
+  scaglioni successivi. Attenzione a due di quei moduli: non sono omogenei.
+  `stream_cache_manager.py` e `generator.py` contengono *anche* righe gia'
+  classificate — la riga per stream del primo e' protocollo e ha la sua
+  guardia; quel che resta da classificare li' e' il riepilogo
+  `[CACHE] <n>/<m> stream da ricompilare` e `[CACHE] Stream da scrivere: [...]`,
+  che nessun parser legge. `cli.py` concentra la maggioranza del resto ed e'
+  quasi tutto *interfaccia CLI*, cioe' la terza categoria — quella che resta su
+  stdout pur non essendo protocollo. E' anche l'unica dove la scelta non e'
+  meccanica: la riga per stream dei conteggi di grani (#250) la legge un
+  compositore a schermo, non un parser, ma sta sullo stesso canale che un
+  parser attraversa.
 
 ## Vedi anche
 

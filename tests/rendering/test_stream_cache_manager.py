@@ -576,6 +576,34 @@ class TestDirtyStreamFiltering:
         result = manager.get_dirty_stream_dicts([d], aif_dir=str(tmp_path))
         assert result == []
 
+    def test_stampa_la_riga_di_protocollo_per_ogni_stream(
+        self, manager, two_stream_dicts, tmp_path, capsys
+    ):
+        """`[CACHE] <id>: DIRTY|clean` su stdout, uno per stream (issue #187).
+
+        Non e' una riga di servizio: e' quella da cui `parse_render_line` di
+        PGE-ui ricava `stream-start` e `stream-done`. Qui esce prima che un
+        renderer esista — la pipeline in due stadi passa da
+        `Generator.write_sco_files`, che delega a questo metodo. E' anche
+        l'emettitore piu' esposto: gli altri `print()` di questo modulo la
+        #178 non li ha ancora classificati, quindi qualcuno ci ripassera'.
+        Senza questa asserzione una conversione al logger non farebbe fallire
+        niente, e la barra di avanzamento dell'editor resterebbe ferma a zero
+        per tutto il rendering. Vedi `docs/explanation/contratto-stdout.md` e
+        la guardia statica in `tests/shared/test_stdout_contract.py`.
+        """
+        s1, s2 = two_stream_dicts
+
+        # s1 clean: fingerprint nel manifest + .aif presente. s2 dirty.
+        manager.save({'s1': manager.compute_fingerprint(s1)})
+        open(str(tmp_path / 's1.aif'), 'w').close()
+
+        manager.get_dirty_stream_dicts(two_stream_dicts, aif_dir=str(tmp_path))
+
+        righe = capsys.readouterr().out.splitlines()
+        assert '[CACHE] s1: clean' in righe
+        assert '[CACHE] s2: DIRTY' in righe
+
 
 # =============================================================================
 # 5. CACHE UPDATE
