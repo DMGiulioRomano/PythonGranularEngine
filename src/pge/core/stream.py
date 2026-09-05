@@ -1035,6 +1035,8 @@ class Stream:
         # ogni stream; leggere la property .grains rigenererebbe tutto.
         # Il conteggio viene da _voices: leggerlo dal vecchio campo _grains
         # faceva mentire il repr su ogni stream con le voci iniettate (#201).
+        # Il 'lazy' qui non e' una mancanza: il numero vero lo dice il log a
+        # valle del render, da RenderResult.grain_counts (#250).
         grain_count = (sum(len(v) for v in self._voices)
                        if self.generated else 'lazy')
         return (f"Stream(id={self.stream_id}, onset={self.onset}, "

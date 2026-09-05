@@ -32,7 +32,8 @@ from dataclasses import (
 from typing import Optional
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
-from pge.rendering.envelope_extractor import ENVELOPE_COLORS
+from pge.rendering.envelope_extractor import (
+    BW_ENVELOPE_COLOR, ENVELOPE_COLORS, ENVELOPE_STYLES)
 
 
 # =============================================================================
@@ -80,13 +81,22 @@ class MagnifyProjection:
     sono le due cose che cambiano davvero da una partitura all'altra.
     """
     enabled: bool = True
-    # Tratteggio e non tinta unita: la partitura deve restare leggibile anche
-    # stampata in scala di grigi, dove il rosso della lente e' un grigio come
-    # gli altri.
+    # Tratteggio e non tinta unita: la verticale deve restare distinguibile
+    # dalle curve anche stampata in scala di grigi. Col preset B&W le curve
+    # sono tratteggiate a loro volta, e li' a separarle e' l'orientamento —
+    # una verticale in mezzo a curve che descrivono il tempo.
     linestyle: str = '--'
     linewidth: float = 0.6
     alpha: float = 0.8
     markersize: float = 5.0
+    # Anello del marker. None = l'accento della lente, che e' il default
+    # storico. Esiste come chiave propria perche' l'anello vive su un altro
+    # fondo rispetto al resto della lente: gli altri artisti della lente
+    # stanno sui grani, questo sta SULLA CURVA, e col preset B&W curva e
+    # accento sono due neri. Li' l'anello si spegne, e il marker diventa
+    # indistinguibile da un breakpoint qualunque.
+    marker_edge: Optional[str] = None
+    markeredgewidth: float = 0.8
     labels: bool = True                  # etichette col valore reale
 
 
@@ -132,6 +142,10 @@ ENVELOPE_RANGES = {
 }
 
 
+# Alpha unica dei grani col preset B&W (vedi VisualizerConfig._bw_defaults).
+BW_GRAIN_ALPHA = 0.9
+
+
 # =============================================================================
 # LO SCHEMA
 # =============================================================================
@@ -143,6 +157,13 @@ class VisualizerConfig:
     I campi sono raggruppati per natura: cosa mostrare, dove metterlo, che
     aspetto dargli. Nel dizionario stavano tutti mescolati.
     """
+
+    # --- PRESET --------------------------------------------------------------
+    # Partitura leggibile in stampa bianco e nero (issue #248). Non e' un modo
+    # a parte: sposta i DEFAULT di alcuni campi (vedi _bw_defaults), che
+    # restano tutti sovrascrivibili uno per uno. Spento, la pagina e' identica
+    # a prima.
+    bw: bool = False
 
     # --- COSA MOSTRARE -------------------------------------------------------
     # Directory dei sample per waveform e durate; None -> fallback su PATHSAMPLES.
@@ -223,6 +244,12 @@ class VisualizerConfig:
 
     # --- STILE ---------------------------------------------------------------
     stream_gap_ratio: float = 0.05        # gap fra stream (5% dell'altezza)
+    # Colore della label dello stream nel subplot dei grani. E' una chiave e
+    # non un letterale nel disegno perche' `bw` deve restare un selettore di
+    # default: se il codice di disegno lo rilegge, una config costruita a mano
+    # con `bw=True` non e' inerte ma incoerente — pagina a colori con un solo
+    # elemento grigio.
+    stream_label_color: str = 'darkblue'
     label_fontsize: float = 8
     title_fontsize: float = 12
     breakpoint_fontsize: float = 6
@@ -237,6 +264,13 @@ class VisualizerConfig:
         default_factory=lambda: deepcopy(ENVELOPE_RANGES))
     envelope_colors: dict = field(
         default_factory=lambda: dict(ENVELOPE_COLORS))
+    # Stile di linea per chiave: {nome: (linestyle, linewidth)}. Vuoto = ogni
+    # curva col disegno storico (ENVELOPE_STYLE_DEFAULT), distinta solo dalla
+    # tinta. Lo riempie il preset `bw`, dove la tinta non porta piu'
+    # informazione e il tratteggio prende il suo posto (issue #248); resta
+    # riempibile a mano, che e' il modo di dare a una curva un tratto proprio
+    # anche a colori.
+    envelope_styles: dict = field(default_factory=dict)
     # Frazione della banda di OGNI stream riservata alla sua riga envelope
     # (issue #113: un subplot envelope per stream, sotto i suoi grani).
     envelope_panel_ratio: float = 0.3
@@ -255,6 +289,53 @@ class VisualizerConfig:
     magnify_projection: MagnifyProjection = MagnifyProjection()
 
     # =========================================================================
+
+    @classmethod
+    def _bw_defaults(cls):
+        """I default che `bw: True` sostituisce, prima degli scarti utente.
+
+        Sono DEFAULT, non valori imposti: chi passa `grain_colormap` insieme a
+        `bw` ottiene la propria mappa, e chi ritocca un colore non si vede
+        tornare a colori tutti gli altri (il merge dei dizionari-dato parte da
+        qui, non dalla tabella cromatica).
+
+        Il preset lo applica `from_overrides`, che e' la porta da cui passa la
+        config del visualizer. Costruire `VisualizerConfig(bw=True)` a mano
+        NON lo applica: il dataclass non sa quali campi il chiamante ha
+        dichiarato, quindi non saprebbe quali sostituire senza cancellare le
+        scelte esplicite.
+        """
+        return {
+            # Un solo asse percettivo, speso sul detune (score_visualizer
+            # .PITCH_DIVERGING_BW).
+            'grain_colormap': 'pitch_div_bw',
+            # Sul fondo bianco il composito e' `a*g + (1-a)`: l'alpha e la
+            # luminanza del grigio sono LO STESSO canale, e con l'alpha libera
+            # un grano grave suonato piano schiarisce fino a leggersi acuto.
+            # Fissandola, il grigio del grano resta funzione del solo pitch.
+            # Il volume smette di dirsi nel riempimento: e' il prezzo, e si
+            # riapre passando `grain_alpha_range`. Non 1.0 perche' a opacita'
+            # piena un cluster denso diventa una lastra unica.
+            'grain_alpha_range': (BW_GRAIN_ALPHA, BW_GRAIN_ALPHA),
+            # La tinta non distingue piu' niente: la sostituisce il tratteggio.
+            'envelope_colors': {key: BW_ENVELOPE_COLOR for key in ENVELOPE_COLORS},
+            'envelope_styles': dict(ENVELOPE_STYLES),
+            # Gli accenti cromatici restanti. Convertiti in grigio sarebbero
+            # leggibili comunque, ma un preset monocromo lo e' anche a schermo:
+            # tre macchie di colore in una pagina per il resto grigia si
+            # leggono come una svista.
+            'waveform_color': '#666666',
+            'loop_mask_color': '#4d4d4d',
+            # L'accento della lente resta scuro perche' e' scelto contro i
+            # GRANI, ed e' piu' scuro del piu' scuro di essi. A cambiare e'
+            # solo l'anello del marker di proiezione, che e' l'unico pezzo
+            # della lente che atterra sulle curve.
+            'magnify_color': '#1a1a1a',
+            'magnify_projection': replace(
+                MagnifyProjection(), marker_edge='#ffffff',
+                markeredgewidth=1.4),
+            'stream_label_color': '#1a1a1a',
+        }
 
     @classmethod
     def _default_of(cls, spec):
@@ -303,9 +384,14 @@ class VisualizerConfig:
                 "chiavi di configurazione sconosciute per ScoreVisualizer: "
                 + ", ".join(unknown))
 
-        values = {}
+        # Col preset acceso i default di alcuni campi cambiano PRIMA del
+        # merge: gli scarti dell'utente si applicano sopra il preset, non
+        # sopra i default a colori.
+        base = cls._bw_defaults() if (overrides or {}).get('bw') else {}
+
+        values = dict(base)
         for name, value in (overrides or {}).items():
-            default = cls._default_of(by_name[name])
+            default = base.get(name, cls._default_of(by_name[name]))
             # Mapping e non dict, come per l'argomento intero: il primo livello
             # accetta qualunque mapping, e se qui si guardasse il tipo concreto
             # la stessa configurazione sarebbe fusa o sostituita a seconda di

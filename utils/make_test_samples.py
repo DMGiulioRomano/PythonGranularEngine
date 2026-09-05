@@ -31,13 +31,30 @@ SAMPLES = {
 }
 
 
-def genera(path, *, freq, dur, sr):
+def genera(path, *, freq, dur, sr, amp=0.5, fade_sec=0.0, subtype='PCM_16'):
+    """Scrive una sinusoide di `dur` secondi a `freq` Hz in `path`.
+
+    I tre parametri opzionali esistono per `utils/make_sine.py`, che scriveva
+    la stessa sinusoide con un'ampiezza diversa, una dissolvenza ai bordi e in
+    float: era una seconda grafia dello stesso oggetto, e la issue #243 ne
+    aveva prodotta una terza dentro `utils/bench_cost.py`. I default sono
+    quelli dei sample di prova, cosi' i file in `refs/` non si muovono.
+
+    numpy e soundfile si importano qui e non a livello di modulo: chi importa
+    questo file per riusare `genera` non deve pagarli, e la CI li ha solo
+    dentro il venv.
+    """
     import numpy as np
     import soundfile as sf
 
-    t = np.arange(int(dur * sr)) / sr
-    audio = 0.5 * np.sin(2 * np.pi * freq * t)
-    sf.write(path, audio.astype('float32'), sr, subtype='PCM_16')
+    t = np.arange(int(round(dur * sr))) / sr
+    audio = amp * np.sin(2 * np.pi * freq * t)
+    fade = int(fade_sec * sr)
+    if fade > 0 and audio.size > 2 * fade:
+        rampa = np.linspace(0.0, 1.0, fade)
+        audio[:fade] *= rampa
+        audio[-fade:] *= rampa[::-1]
+    sf.write(path, audio.astype('float32'), sr, subtype=subtype)
 
 
 def main(argv=None):

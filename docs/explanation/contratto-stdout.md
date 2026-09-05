@@ -10,7 +10,7 @@ sources:
   - src/pge/strategies/voice_pan_strategy.py
   - src/pge/rendering/numpy_audio_renderer.py
   - tests/shared/test_stdout_contract.py
-last_synced_commit: e57ccec
+last_synced_commit: db08c65
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -104,12 +104,14 @@ il secondo e' cio' che impedisce alla porta di riaprirsi in silenzio.
   aggiunto a `RENDERER_CON_PROTOCOLLO_CACHE` nella guardia. Vedi [[add-renderer]].
 - **Cambi il formato di una riga di protocollo** → e' un cambio di superficie
   pubblica: serve l'analisi d'impatto su PGE-ui e PGE-ls prima, non dopo.
-- **Il resto dei `print()`** (`engine/generator.py`, `rendering/score_visualizer.py`,
-  `rendering/stream_cache_manager.py`, `rendering/score_writer.py`,
-  `envelopes/time_distribution.py`, `cli.py`) non e' ancora classificato: sono
-  gli scaglioni successivi. `cli.py` in particolare e' quasi tutto *interfaccia
-  CLI*, cioe' la terza categoria — quella che resta su stdout pur non essendo
-  protocollo.
+- **Il resto dei `print()`** (`engine/generator.py`,
+  `rendering/score_visualizer.py`, `rendering/stream_cache_manager.py`,
+  `rendering/score_writer.py`, `cli.py`) non e' ancora classificato: sono gli
+  scaglioni successivi. `cli.py` ne concentra la maggioranza ed e' quasi tutto
+  *interfaccia CLI*, cioe' la terza categoria — quella che resta su stdout pur
+  non essendo protocollo. E' anche l'unica dove la scelta non e' meccanica: la
+  riga per stream dei conteggi di grani (#250) la legge un compositore a
+  schermo, non un parser, ma sta sullo stesso canale che un parser attraversa.
 
 ## Vedi anche
 

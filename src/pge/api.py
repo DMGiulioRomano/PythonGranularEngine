@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.rendering.audio_format import DEFAULT_FORMAT, FORMATS
@@ -68,6 +68,18 @@ class SuperColliderOptions:
     osc_dir: Optional[str] = None           # None -> .osc temporanei (--keep-osc off)
 
 
+@dataclass(frozen=True)
+class StreamGrainCount:
+    """Quanti grani ha materializzato uno stream, e su quante voci (#250).
+
+    Non e' uno stato mantenuto da nessuno: e' il risultato di una lettura di
+    `voices` fatta a render finito. `voices` resta l'unica fonte di verita'
+    (#201) e questo Value Object solo la fotografa.
+    """
+    grains: int
+    voices: int
+
+
 @dataclass
 class RenderResult:
     """Esito di un render: tutto cio' che serve alla CLI per i suoi print."""
@@ -78,6 +90,9 @@ class RenderResult:
     jobs: Optional[int] = None         # jobs risolti (renderer.jobs); None per csound
     cache_manifest_path: Optional[str] = None
     gc_removed: List[str] = field(default_factory=list)  # stream orfani rimossi dal GC
+    # Una voce per stream, nell'ordine di generator.streams; None = stream non
+    # materializzato (saltato dalla cache), non "zero grani" (issue #250).
+    grain_counts: Dict[str, Optional[StreamGrainCount]] = field(default_factory=dict)
 
 
 def parameter_bounds(
@@ -338,6 +353,41 @@ def collect_cache_orphans(
     )
 
 
+def collect_grain_counts(
+    generator,
+) -> Dict[str, Optional[StreamGrainCount]]:
+    """Quanti grani ha generato ogni stream: lettura PASSIVA, a valle
+    (issue #250).
+
+    Va chiamata DOPO il rendering, ed e' quello che la rende gratis: legge
+    `voices` solo sugli stream che il render ha gia' materializzato
+    (`generated` True), quindi costa O(voci) e non O(grani). Sugli altri non
+    tocca `.voices`, che e' lazy (#117): leggerla li' rigenererebbe in fase di
+    stampa esattamente i grani che la cache aveva fatto risparmiare -- ed e'
+    il motivo per cui il conteggio non puo' tornare nel `__repr__` di Stream,
+    che `Generator._create_streams` stampa a costruzione.
+
+    Stesso schema di export_grain_json, stesso punto della pipeline. Ogni
+    stream compare nella mappa: `None` per chi non e' materializzato, cosi'
+    chi stampa non deve tornare a interrogare `generator.streams` per sapere
+    chi manca.
+    """
+    counts: Dict[str, Optional[StreamGrainCount]] = {}
+    for stream in generator.streams:
+        # getattr: uno stream duck-typed di un consumer esterno che non
+        # dichiara `generated` va assunto non materializzato -- la direzione
+        # sicura, quella che non innesca niente.
+        if not getattr(stream, 'generated', False):
+            counts[stream.stream_id] = None
+            continue
+        voices = stream.voices
+        counts[stream.stream_id] = StreamGrainCount(
+            grains=sum(len(v) for v in voices),
+            voices=len(voices),
+        )
+    return counts
+
+
 def render(
     generator,
     output_path: str,
@@ -413,6 +463,10 @@ def render(
         jobs=getattr(renderer_obj, 'jobs', None),
         cache_manifest_path=cache_manifest_path,
         gc_removed=gc_removed,
+        # Dopo engine.render: a quel punto i grani degli stream dirty sono
+        # materializzati nel processo padre (anche con jobs > 1: i task del
+        # pool si costruiscono qui), quindi la lettura non genera nulla.
+        grain_counts=collect_grain_counts(generator),
     )
 
 
@@ -485,6 +539,7 @@ def export_score_pdf(
         'magnify_auto': False,
         'magnify_targets': [],
         'grain_height': 'duration',
+        'bw': False,
     }
     if config:
         merged.update(config)

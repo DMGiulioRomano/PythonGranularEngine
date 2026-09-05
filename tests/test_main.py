@@ -28,7 +28,9 @@ from unittest.mock import MagicMock, patch, call
 # library/CLI). Ogni test ottiene mock freschi per isolamento completo.
 # =============================================================================
 
-from tests.main_mocks import mocks, run_main  # noqa: F401  (fixture pytest)
+from tests.main_mocks import (  # noqa: F401  (`mocks` e' una fixture pytest)
+    mocks, run_main, LazyStreamDouble, fake_grains,
+)
 
 
 # =============================================================================
@@ -165,6 +167,74 @@ class TestLoggerConfiguration:
         calls = mocks['configure_clip_logger'].call_args_list
         second_call_kwargs = calls[-1][1]
         assert second_call_kwargs.get('yaml_name') == 'solo'
+
+
+# =============================================================================
+# TEST FLAG --log-dir (issue #251)
+# =============================================================================
+
+class TestLogDirFlag:
+    """
+    `--log-dir DIR` e' la directory dei log di un run, non solo di csound.
+
+    Prima della issue #251 i due logger configurati da main() avevano
+    './logs' scritto a mano: chi passava il flag si trovava i log del
+    renderer dove aveva chiesto e quelli di caricamento/errore nel cwd. Qui
+    si verifica la mappa argv -> chiamate; che sul disco finiscano davvero
+    li' lo verifica tests/test_cli_log_dir.py.
+    """
+
+    def _logger_kwargs(self, mocks, argv):
+        """Esegue main con argv dato e ritorna (kwargs_clip, kwargs_engine)."""
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        return (
+            mocks['configure_clip_logger'].call_args_list[-1][1],
+            mocks['configure_engine_logger'].call_args_list[-1][1],
+        )
+
+    def test_clip_logger_gets_the_requested_dir(self, mocks):
+        clip, _ = self._logger_kwargs(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--log-dir', '/custom/logs'])
+        assert clip.get('log_dir') == '/custom/logs'
+
+    def test_engine_logger_gets_the_requested_dir(self, mocks):
+        _, engine = self._logger_kwargs(
+            mocks,
+            ['main.py', 'test.yml', 'out.aif', '--log-dir', '/custom/logs'])
+        assert engine.get('log_dir') == '/custom/logs'
+
+    def test_default_is_the_documented_logs(self, mocks):
+        """Senza il flag resta il default storico, la cartella `logs` del cwd."""
+        clip, engine = self._logger_kwargs(
+            mocks, ['main.py', 'test.yml', 'out.aif'])
+        assert clip.get('log_dir') == 'logs'
+        assert engine.get('log_dir') == 'logs'
+
+    def test_one_spelling_for_the_three_consumers(self, mocks):
+        """I due logger e il renderer csound ricevono LA STESSA directory.
+
+        E' l'invariante che rende il flag una sola cosa: tre consumatori,
+        un valore. Con la directory divisa in due posti il flag mentiva
+        gia' nel proprio nome.
+        """
+        api_mod = mocks['main'].api
+        result = api_mod.RenderResult(
+            audio_paths=['/out/test.aif'], elapsed_seconds=0.0,
+            renderer_type='csound', per_stream=False)
+        argv = ['main.py', 'test.yml', 'out.aif',
+                '--renderer', 'csound', '--log-dir', '/custom/logs']
+        with patch.object(api_mod, 'build_renderer') as build_mock, \
+             patch.object(api_mod, 'render', return_value=result):
+            with patch.object(sys, 'argv', argv):
+                mocks['main'].main()
+
+        csound_log_dir = build_mock.call_args.kwargs['csound'].log_dir
+        clip = mocks['configure_clip_logger'].call_args_list[-1][1]
+        engine = mocks['configure_engine_logger'].call_args_list[-1][1]
+        assert clip.get('log_dir') == csound_log_dir
+        assert engine.get('log_dir') == csound_log_dir
 
 
 # =============================================================================
@@ -382,6 +452,46 @@ class TestGrainHeightFlag:
             with pytest.raises(SystemExit) as exc_info:
                 mocks['main'].main()
         assert exc_info.value.code == 1
+
+
+# =============================================================================
+# TEST FLAG --bw
+# =============================================================================
+
+class TestBwFlag:
+    """
+    --bw sceglie il preset della partitura leggibile in stampa bianco e nero
+    (issue #248): mappa del pitch acromatica, envelope neri distinti dal
+    tratteggio. Arriva alla config di ScoreVisualizer come `bw`; e' un
+    interruttore, quindi non ha valore da validare.
+    """
+
+    def _get_viz_config(self, mocks, argv):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+        _, kwargs = mocks['ScoreVisualizer'].call_args
+        return kwargs['config']
+
+    def test_default_is_off(self, mocks):
+        """Senza flag la partitura resta a colori: nessuna figura gia'
+        generata cambia aspetto da sola."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize'])
+        assert config.get('bw') is False
+
+    def test_flag_reaches_the_config(self, mocks):
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize', '--bw'])
+        assert config.get('bw') is True
+
+    def test_combines_with_the_other_score_flags(self, mocks):
+        """Il preset non esclude il resto: e' una tavolozza, non un modo."""
+        config = self._get_viz_config(
+            mocks, ['main.py', 'test.yml', 'out.aif', '--visualize', '--bw',
+                    '--grain-height', 'read-span', '--show-static'])
+        assert config.get('bw') is True
+        assert config.get('grain_height') == 'read_span'
+        assert config.get('show_static_params') is True
 
 
 # =============================================================================
@@ -1300,6 +1410,72 @@ class TestGrainJsonOnlyGeneratedStreams:
         written_streams = [c.args[0] for c in writer_instance.write.call_args_list]
         assert s1 in written_streams
         assert s2 in written_streams
+
+
+# =============================================================================
+# TEST LOG: quanti grani ha generato ogni stream (issue #250)
+# =============================================================================
+
+class TestGrainCountLog:
+    """
+    Il conteggio dei grani era una parola dentro il `__repr__` di Stream,
+    stampato a costruzione; con la generazione lazy (#117) il repr dice
+    `grains=lazy` perche' i grani a quel punto non esistono, ed e' giusto
+    cosi'. La riga torna a valle del render, dove i grani sono gia'
+    materializzati: la CLI non la calcola, la legge da
+    `RenderResult.grain_counts`.
+    """
+
+    def _stream(self, stream_id, voices=None):
+        return LazyStreamDouble(stream_id, voices)
+
+    def _grains(self, n):
+        return fake_grains(n)
+
+    def _run(self, mocks, streams, argv=None):
+        mocks['generator_instance'].streams = streams
+        run_main(mocks, argv or ['main.py', 'in.yml', '/out/test.aif'])
+
+    def test_riga_con_grani_e_voci(self, mocks, capsys):
+        self._run(mocks, [self._stream(
+            'stream2', [self._grains(3), self._grains(2)])])
+        assert '  → stream2: 5 grani (2 voci)' in capsys.readouterr().out
+
+    def test_singolare(self, mocks, capsys):
+        """Prosa italiana: un grano solo non e' '1 grani'."""
+        self._run(mocks, [self._stream('s1', [self._grains(1)])])
+        assert '  → s1: 1 grano (1 voce)' in capsys.readouterr().out
+
+    def test_stream_cache_clean_senza_numero(self, mocks, capsys):
+        """Saltato dalla cache: nessun numero inventato, e soprattutto
+        nessuna lettura di .voices che lo rigenererebbe (#117)."""
+        self._run(mocks, [self._stream('s_clean')])
+        out = capsys.readouterr().out
+        assert '  → s_clean: grani non generati (cache)' in out
+
+    def test_ogni_stream_ha_la_sua_riga(self, mocks, capsys):
+        self._run(mocks, [
+            self._stream('s1', [self._grains(4)]),
+            self._stream('s2'),
+            self._stream('s3', [self._grains(1), self._grains(1)]),
+        ])
+        out = capsys.readouterr().out
+        assert '  → s1: 4 grani (1 voce)' in out
+        assert '  → s2: grani non generati (cache)' in out
+        assert '  → s3: 2 grani (2 voci)' in out
+
+    def test_dopo_rendering_completato_e_prima_dei_file(self, mocks, capsys):
+        """Le righe appartengono al render, non alla lista dei file."""
+        self._run(mocks, [self._stream('s1', [self._grains(2)])])
+        out = capsys.readouterr().out
+        assert (out.index('Rendering completato')
+                < out.index('  → s1: 2 grani')
+                < out.index('Generazione completata'))
+
+    def test_nessuna_riga_senza_stream(self, mocks, capsys):
+        self._run(mocks, [])
+        out = capsys.readouterr().out
+        assert 'grani' not in out
 
 
 # =============================================================================

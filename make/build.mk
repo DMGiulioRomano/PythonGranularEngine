@@ -62,6 +62,12 @@ ifneq ($(strip $(GRAIN_HEIGHT)),)
 PYFLAGS += --grain-height $(GRAIN_HEIGHT)
 endif
 
+# 2c-ter. Se BW e' true, aggiungi --bw (issue #248): preset della partitura
+# leggibile in stampa bianco e nero (pitch acromatico, envelope a tratteggio).
+ifeq ($(BW), true)
+PYFLAGS += --bw
+endif
+
 # 2d. Se MAGNIFY e' true, aggiungi --magnify (lente automatica sul cluster denso)
 ifeq ($(MAGNIFY), true)
 PYFLAGS += --magnify
@@ -100,6 +106,24 @@ endif
 # main.py lo ignora con --renderer csound). Vuoto = default 'auto' di main.py.
 ifneq ($(strip $(JOBS)),)
 PYFLAGS += --jobs $(JOBS)
+endif
+
+# 2g. --log-dir: la directory dei log dell'INTERO run (issue #251), non solo
+# di csound. Sta fra i flag comuni e non in CSOUND_FLAGS per lo stesso motivo
+# per cui la sua parsatura in cli.py non sta fra i flag csound: i due logger
+# della fase di caricamento (errori engine e clip) scrivono con qualunque
+# renderer. Finche' era li' dentro, `make ... LOGDIR=altrove` col renderer di
+# default (numpy) non spostava un solo log -- il flag non veniva proprio
+# passato -- e `make clean`, che svuota $(LOGDIR), non li trovava. Qui lo
+# eredita anche un backend nuovo, come CSOUND_FLAGS non farebbe.
+#
+# Guardato sul vuoto come JOBS e PAGE_DURATION: `make ... LOGDIR=` passerebbe
+# un `--log-dir` nudo, e ora che la CLI il valore mancante lo rifiuta (issue
+# #251) sarebbe un exit 1 -- o peggio, se il flag non e' l'ultimo, si
+# mangerebbe il token successivo. LOGDIR vuota vuol dire "non ne ho una":
+# ricade sul default della CLI, che e' la stessa `logs` di $(LOGDIR).
+ifneq ($(strip $(LOGDIR)),)
+PYFLAGS += --log-dir $(LOGDIR)
 endif
 
 # 3. Se REAPER e' true, aggiungi --reaper (esporta .rpp Reaper)
@@ -222,7 +246,7 @@ endif
 all: $(ALL_PRE) stems-build
 
 .PHONY: stems-build
-stems-build: venv-setup $(SFDIR) $(CACHEDIR)
+stems-build: venv-setup $(SFDIR) $(LOGDIR) $(CACHEDIR)
 	@echo "[$(RENDERER)][STEMS] Rendering diretto YAML → AIF (nessun .sco, nessun csound)..."
 	$(PYTHON_VENV) $(INCDIR)/main.py $(YMLDIR)/$(FILE).yml $(SFDIR)/$(FILE)$(FORMAT_EXT) --renderer $(RENDERER) $(PYFLAGS)
 	$(autopen_stems)
@@ -236,8 +260,7 @@ CSOUND_FLAGS := \
 	--orc-path $(CSDIR)/main.orc \
 	--incdir $(PWD_DIR)/$(INCDIR) \
 	--ssdir $(PWD_DIR)/$(SSDIR) \
-	--sfdir $(abspath $(SFDIR)) \
-	--log-dir $(LOGDIR)
+	--sfdir $(abspath $(SFDIR))
 
 ifeq ($(CACHE), true)
 PYFLAGS += --cache --cache-dir $(CACHEDIR)
@@ -291,8 +314,7 @@ CSOUND_FLAGS := \
 	--orc-path $(CSDIR)/main.orc \
 	--incdir $(PWD_DIR)/$(INCDIR) \
 	--ssdir $(PWD_DIR)/$(SSDIR) \
-	--sfdir $(abspath $(SFDIR)) \
-	--log-dir $(LOGDIR)
+	--sfdir $(abspath $(SFDIR))
 
 .PHONY: all
 ifeq ($(TEST), true)

@@ -35,6 +35,7 @@
 | [add-voice-strategy](how-to/add-voice-strategy.md) | stable | voices, strategy, extension |
 | [add-window-function](how-to/add-window-function.md) | stable | window, grain, extension |
 | [make-parameter-envelope-aware](how-to/make-parameter-envelope-aware.md) | stable | parameters, envelopes, extension |
+| [print-score-bw](how-to/print-score-bw.md) | stable | visualizer, score, print, bw, cli, paper |
 | [reaper](how-to/reaper.md) | stable | reaper, daw, workflow, output |
 | [sonic-visualiser](how-to/sonic-visualiser.md) | stable | sonic-visualiser, export, envelope, output, workflow |
 | [use-as-library](how-to/use-as-library.md) | stable | api, library, install, render |
@@ -59,6 +60,7 @@
 | make-parameter-envelope-aware | make-parameter-envelope-aware |
 | reaper-workflow | reaper |
 | renderizzare da Python | use-as-library |
+| stampare-la-partitura-in-bianco-e-nero | print-score-bw |
 | usare PGE come libreria | library-vs-cli |
 | yaml-syntax | yaml |
 

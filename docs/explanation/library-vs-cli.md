@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [api, cli, architecture, refactor]
 sources: [src/pge/api.py, src/pge/cli.py, src/main.py]
-last_synced_commit: 05e2508
+last_synced_commit: be716c9
 entry_for: [usare PGE come libreria, capire la divisione API/CLI]
 ---
 
@@ -23,8 +23,9 @@ replicavano l'orchestrazione a mano monkey-patchando i globali.
 Dal refactor library/CLI (plans/2026-07-08-001) il sistema ha due strati:
 
 - **`pge.api`** — API programmatica: `load_generator`, `build_renderer`,
-  `collect_cache_orphans`, `render`, `render_file`, `export_*`, con le
-  dataclass `CsoundOptions` (input) e `RenderResult` (output). Contratto:
+  `collect_cache_orphans`, `collect_grain_counts`, `render`, `render_file`,
+  `export_*`, con le dataclass `CsoundOptions` (input), `RenderResult`
+  (output) e `StreamGrainCount` (dentro `RenderResult`). Contratto:
   nessun `print`, nessun `sys.exit`, nessuna lettura di `sys.argv`; errori
   come eccezioni (`EngineError` e sottoclassi, `ValueError`); ogni default
   filesystem è un parametro esplicito (`samples_dir`,
@@ -65,6 +66,12 @@ Divisione delle policy (chi decide cosa):
 - Il GC della cache è una funzione separata (`collect_cache_orphans`)
   perché la CLI deve stamparne l'esito PRIMA del render (ordine stdout);
   `render_file` lo esegue da sé col default `run_cache_gc=True`.
+- Il conteggio dei grani (`collect_grain_counts`, issue #250) è la funzione
+  speculare: separata per lo stesso motivo di ordine, ma sull'altro lato del
+  render, e chiamata da `render` invece che dalla CLI perché il momento non è
+  una policy — leggere `voices` prima del render genererebbe i grani in fase
+  di stampa (generazione lazy, #117). `RenderResult` porta il risultato, alla
+  CLI resta la prosa.
 - `import pge` è economico: i simboli pesanti (ScoreVisualizer →
   matplotlib) sono lazy via `__getattr__` di modulo (PEP 562).
 

@@ -8,7 +8,8 @@ sources:
   - src/pge/rendering/audio_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - src/pge/api.py
-last_synced_commit: 8c896d8
+  - src/pge/cli.py
+last_synced_commit: 8e21c03
 entry_for: [add-renderer]
 ---
 
@@ -34,7 +35,7 @@ L'ultimo backend aggiunto è SuperCollider (issue #228): è l'esempio lavorato d
 3. Implementa `render_single_stream(stream, output_path)` (onset **relativi**, STEMS) e `render_merged_streams(streams, output_path)` (onset **assoluti**, MIX). `render_streams()` è concreto nell'ABC: fai override solo se hai un modo migliore del loop
 4. Registra in `src/pge/rendering/renderer_factory.py`: aggiungi il nome a `_VALID_TYPES` e il ramo di costruzione in `create()`. `available_types()` è l'unico elenco dei tipi validi — messaggi d'errore e CLI lo chiedono lì
 5. Aggiungi il ramo in `api.build_renderer()`, e una dataclass di opzioni accanto a `CsoundOptions` / `SuperColliderOptions` se il backend ha configurazione propria
-6. Mappa i flag CLI in `cli._build_renderer` e aggiorna la usage string (il golden `tests/test_cli_contract.py` la difende: va aggiornato di proposito)
+6. Mappa i flag CLI in `cli._build_renderer`: i nomi vanno **dichiarati nella firma** (keyword-only, issue #252), non solo letti nel corpo — uno non dichiarato è un `TypeError` al primo render invece di un no-op silenzioso, e `tests/test_cli_build_renderer_signature.py` confronta la firma col sito di chiamata dentro `main()`. Aggiorna anche la usage string (il golden `tests/test_cli_contract.py` la difende: va aggiornato di proposito)
 7. `make/build.mk` non va toccato se il backend non ha bisogno di flag propri: il ramo generico è `ifneq ($(RENDERER), csound)`
 8. Aggiungi test unit + integrazione + e2e per il nuovo renderer
 
@@ -45,7 +46,7 @@ L'ultimo backend aggiunto è SuperCollider (issue #228): è l'esempio lavorato d
 | `src/pge/rendering/<nome>_renderer.py` | nuovo file |
 | `src/pge/rendering/renderer_factory.py` | `_VALID_TYPES` + ramo in `create()` |
 | `src/pge/api.py` | ramo in `build_renderer` + dataclass opzioni |
-| `src/pge/cli.py` | parsing flag + usage string |
+| `src/pge/cli.py` | parsing flag + firma di `_build_renderer` + usage string |
 | `docs/reference/cli.md` · `docs/reference/errors.md` | flag e nuovi errori |
 | `tests/rendering/test_<nome>_renderer.py` | nuovi test |
 | `tests/test_cli_contract.py` | golden della usage string |

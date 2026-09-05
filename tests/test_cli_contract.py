@@ -13,7 +13,7 @@ Usa la stessa fixture a sys.modules di test_main.py (tests/main_mocks.py).
 
 Il golden si muove solo quando la CLI acquista superficie di proposito --
 non durante un refactor, che e' il vincolo che questo file difende. Ultimo
-movimento: issue #228, il terzo backend audio e i suoi flag.
+movimento: issue #248, il flag --bw del preset B&W della partitura.
 """
 
 import sys
@@ -30,13 +30,14 @@ USAGE = (
     "[--magnify] [--magnify-at SPEC] "
     "[--page-duration SECONDI] "
     "[--grain-height duration|read-span] "
+    "[--bw] "
     "[--per-stream] "
     "[--renderer csound|numpy|supercollider] "
     "[--jobs N|auto] "
     "[--format aiff|wav|flac] "
-    "[--samples-dir DIR] "
+    "[--samples-dir DIR] [--log-dir DIR] "
     "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
-    "[--log-dir DIR] [--message-level N] "
+    "[--message-level N] "
     "[--keep-sco] [--sco-dir DIR] "
     "[--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] "
     "[--sc-block-size N] [--sc-max-nodes N] "

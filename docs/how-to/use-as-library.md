@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [api, library, install, render]
 sources: [src/pge/api.py, pyproject.toml]
-last_synced_commit: 05e2508
+last_synced_commit: be716c9
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 
@@ -66,6 +66,23 @@ passare dalla CLI né monkey-patchare i globali.
 5. Csound: `renderer='csound'` con knob raggruppati in
    `api.CsoundOptions(orc_path=..., ssdir=..., sco_dir=...)`;
    `ssdir=None` eredita `samples_dir`.
+
+6. Quanti grani ha prodotto ogni stream: `result.grain_counts`, una voce per
+   stream nell'ordine di `generator.streams`.
+
+   ```python
+   for stream_id, count in result.grain_counts.items():
+       if count is None:
+           ...            # stream saltato dalla cache: non e' "zero grani"
+       else:
+           print(stream_id, count.grains, count.voices)
+   ```
+
+   È una lettura fatta a render finito su chi era già materializzato, e va
+   letta da lì: chiedere il conteggio a `stream.voices` prima del render
+   innescherebbe la generazione lazy (#117), cioè genererebbe i grani che la
+   cache stava per far risparmiare. Per lo stesso motivo `Stream.__repr__`
+   dice `grains=lazy`.
 
 ## File toccati
 

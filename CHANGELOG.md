@@ -6,7 +6,109 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ---
 
-## [Unreleased]
+## [Non rilasciato]
+
+### Aggiunto
+
+- **Il log dice di nuovo quanti grani ha generato ogni stream** (issue #250).
+  Dopo `Rendering completato in ...` la CLI stampa una riga per stream:
+
+  ```
+    → stream2: 48213 grani (3 voci)
+    → stream3: grani non generati (cache)
+  ```
+
+  Il conteggio non e' mai stato una riga sua: usciva dal `__repr__` di
+  `Stream`, stampato a costruzione da `Generator._create_streams`. Con la
+  generazione lazy (#117) a quel punto i grani non esistono ancora, e il repr
+  dice `grains=lazy` — non un difetto, il prezzo corretto di #117. Il numero
+  torna quindi **a valle**, dove i grani ci sono davvero.
+
+  La lettura e' passiva e non rimette in circolo il lavoro che #117 aveva
+  tolto: `api.collect_grain_counts` legge `voices` solo sugli stream con
+  `generated` True (stesso schema di `export_grain_json`), quindi costa
+  O(voci) e non O(grani), e su chi e' stato saltato dalla cache non tocca
+  `.voices` — leggerla li' rigenererebbe in fase di stampa esattamente i
+  grani risparmiati. Per la stessa ragione non c'e' nessun contatore
+  mantenuto durante `generate_grains()`: sarebbe stato uno stato duplicato
+  rispetto a `voices`, che per design e' l'unica fonte di verita' (#201).
+
+  Il dato non nasce nella CLI ma in `RenderResult.grain_counts`
+  (`stream_id -> StreamGrainCount(grains, voices)`, `None` per gli stream non
+  materializzati): l'API resta senza print e il conteggio e' disponibile
+  anche ai consumer non-CLI. Ogni stream compare nella mappa, cosi' chi
+  stampa non deve tornare a interrogare `generator.streams` per sapere chi
+  manca; `None` significa "saltato dalla cache", non "zero grani", e la CLI
+  lo dice a parole invece di inventare un numero.
+
+- **`--bw`: un preset della partitura leggibile in stampa bianco e nero**
+  (issue #248). La MAP e' pensata per lo schermo, e le figure del paper CIM
+  2026 hanno un vincolo di leggibilita' in B&W. Il flag (o `BW=true` da Make,
+  o `config={'bw': True}` da libreria) sposta i default del visualizer; a
+  flag spento non cambia un pixel — con una sola eccezione, dichiarata sotto
+  fra le correzioni, che riguarda chi fissava gia' `grain_alpha_range`.
+
+  In grigio collassavano due cose, e in modo peggiore di quanto sembri:
+
+  - **il segno del detune.** I due bracci di `pitch_div` non hanno solo la
+    stessa chiarezza: convertita in luminanza la mappa non e' nemmeno
+    monotona. A +/-150 cent su un range di +/-300 i due grani stanno a 0.510
+    e 0.595, a +/-50 cent a 0.481 e 0.509 — cioe' un grano calante e uno
+    crescente diventano lo stesso grigio. `pitch_div_bw` spende sulla
+    luminanza tutta l'escursione, in modo strettamente monotono, compressa a
+    circa 0.15-0.85: col braccio alto sul bianco i grani acuti sparirebbero
+    sulla carta, col basso sul nero si confonderebbero con assi e griglia;
+  - **l'identita' delle curve.** `ENVELOPE_STYLES`, mappa **parallela** a
+    `ENVELOPE_COLORS` nello stesso modulo matplotlib-free, sostituisce la
+    tinta con `(linestyle, linewidth)`: il pattern dice il parametro, lo
+    spessore dice la variante (`_prob` piu' sottile della base, `_range` piu'
+    spesso), come faceva il chiaro/scuro della stessa tinta. La coppia e'
+    unica per chiave.
+
+  **L'alpha dei grani viene fissata, e costa qualcosa.** Sul fondo bianco il
+  composito e' `a*g + (1-a)`: l'alpha e la luminanza del grigio sono lo
+  **stesso canale**, e con l'alpha libera un grano grave suonato piano
+  schiarisce fino a leggersi come acuto — il canale che il preset esiste per
+  salvare mangiato da quello che prova a conservare. Fissandola a 0.9 il
+  grigio torna funzione del solo pitch (un grano grave e pianissimo resta piu'
+  scuro di uno acuto e forte), ma **il volume smette di dirsi nel riempimento
+  del grano**. Il prezzo e' esplicito e si riapre passando
+  `grain_alpha_range`. Non 1.0: a opacita' piena un cluster denso diventa una
+  lastra e la densita' smette di leggersi.
+
+  Il preset e' un insieme di **default**, non un modo a parte: ogni chiave
+  passata insieme a `bw` vince, e i dizionari-dato si fondono sul preset
+  invece che sui default cromatici — ritoccare un colore non riporta a colori
+  tutti gli altri. Con gli stili in gioco la legenda per-corsia diventa un
+  **campione** della curva (stesso pattern, stesso spessore, su tutta la
+  larghezza utile della colonna) invece del simbolo corto storico, che di un
+  tratteggio non mostrerebbe nemmeno un ciclo: matplotlib scala il pattern per
+  lo spessore, quindi ingrossare la chiave per farla vedere l'avrebbe
+  riportata a leggersi piena.
+
+  Monocromo anche a schermo: waveform, maschera del loop, lente e label degli
+  stream passano a grigi. Verificato a pixel su `PGE_test.yml` — saturazione
+  massima 0 su tutta la pagina.
+
+  Nuova doc: [`docs/how-to/print-score-bw.md`](docs/how-to/print-score-bw.md).
+
+- **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
+  in `pge.shared.logger`, issue #187). Logger `pge.diagnostics` a livello
+  DEBUG, con il solo `NullHandler`: nessun handler proprio, nessun file,
+  nessuna `./logs` creata di soppiatto — a differenza di
+  `get_engine_logger()`, che si auto-configura. Una libreria non configura il
+  logging del suo ospite.
+
+- **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
+  forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
+  protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
+  tutti e tre i renderer (per csound e supercollider e' l'unico presidio che
+  quella riga abbia) e che in `src/pge/strategies/` non ricompaia nessun
+  `print()`.
+
+- **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
+  interfaccia CLI: chi legge cosa, e su quale canale.
+
 
 ### Cambiato
 
@@ -20,21 +122,166 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ha titolo per attraversarlo. La conferma non e' persa — e' muta finche'
   l'applicazione ospite non alza il livello di log, e allora esce su stderr.
 
-### Aggiunto
 
-- **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
-  in `pge.shared.logger`). Logger `pge.diagnostics` a livello DEBUG, con il
-  solo `NullHandler`: nessun handler proprio, nessun file, nessuna `./logs`
-  creata di soppiatto — a differenza di `get_engine_logger()`, che si
-  auto-configura. Una libreria non configura il logging del suo ospite.
-- **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
-  forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
-  protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
-  tutti e tre i renderer (per csound e supercollider e' l'unico presidio che
-  quella riga abbia) e che in `src/pge/strategies/` non ricompaia nessun
-  `print()`.
-- **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
-  interfaccia CLI: chi legge cosa, e su quale canale.
+### Corretto
+
+- **`cli._build_renderer` ingoiava in silenzio ogni kwarg sconosciuto**
+  (issue #252). La funzione raccoglieva tutto in `**kwargs` e poi pescava
+  una chiave per volta con `.get()`: non c'era nessun punto in cui un nome
+  fuori elenco venisse notato. Non un `TypeError`, non un warning — un
+  no-op, con il default al posto del valore che il chiamante credeva di
+  aver passato.
+
+  Non e' teorico: e' cosi' che e' nata la #243. `utils/bench_cost.py`
+  passava `ssdir=<tmpdir>` (e `sfdir=<tmpdir>`) a un build `numpy`, dove
+  entrambi vengono letti solo dentro il ramo Csound. Il `SampleRegistry`
+  ricadeva sul default storico `./refs/` e lo script moriva in
+  `SampleNotFoundError` senza che niente nominasse la causa. Nessuno dei
+  due era visibile alla review, e nessuno dei due poteva rompere un test —
+  perche' non succedeva niente. La PR #247 aveva chiuso il caso concreto
+  dal lato del chiamante (`bench_cost.py` passa da `api.build_renderer`,
+  keyword-only), lasciando il difetto per `main.py` e per ogni chiamante
+  futuro.
+
+  L'elenco dei kwargs accettati e' finito e noto, quindi ora sta nella
+  firma: keyword-only, con i default storici invariati. Il controllo lo fa
+  Python. Due dettagli che la firma non dice da sola:
+
+  - `ssdir`/`sfdir` (come `orc_path`, `incdir`, `log_dir`, `message_level`,
+    `sco_dir`) restano accettati su qualsiasi backend e ignorati fuori da
+    Csound: la CLI li passa sempre, quindi rifiutarli romperebbe ogni
+    render NumPy.
+    Il docstring lo dice ad alta voce — non e' un refuso da correggere in
+    silenzio, e' un fraintendimento: la directory dei sample valida per
+    tutti i backend e' `samples_dir`, e su Csound e' anche il fallback di
+    `ssdir`;
+  - `use_cache` senza `yaml_basename` era `kwargs['yaml_basename']`, cioe'
+    un `KeyError` nudo. Ora e' un `ValueError` che nomina la chiave mancante
+    e il path del manifest che serviva a comporre.
+
+  Nessun cambiamento alla superficie pubblica: flag, YAML, errori utente e
+  formati restano quelli. `_build_renderer` e' un adapter interno, e
+  `api.build_renderer` — l'API che PGE-ui e i consumer programmatici usano —
+  aveva gia' la firma esplicita.
+
+- **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
+  parsato correttamente e finiva al renderer, ma i due logger configurati
+  prima del render — clip ed errori engine — avevano `'./logs'` scritto a
+  mano. Chi lo passava si ritrovava i log divisi in due posti: quelli del
+  renderer dove aveva chiesto, quelli di caricamento sempre nella `logs/`
+  relativa al cwd, dove la riga `Dettagli:` di un errore continuava a
+  mandarlo. Con `--renderer numpy` il flag non aveva alcun effetto:
+  `CsoundOptions` — il suo unico consumatore — si costruisce solo per
+  csound.
+
+  Adesso i tre consumatori ricevono la stessa directory, che e' quella che
+  `make setup` crea e `make clean` svuota come `LOGDIR`: con `LOGDIR`
+  diverso dal default, i log di caricamento restavano fuori anche dal
+  `clean`. Il default `logs` nel cwd non cambia; cambia solo il prefisso
+  stampato di quei due path, da `./logs/...` a `logs/...` — stessa cartella.
+  La parsatura di `--log-dir` esce dal blocco dei flag csound, dove non
+  apparteneva.
+
+  Lo teneva fra i propri flag csound anche il Makefile, e li' costava
+  l'intero fix: con il renderer di default (`numpy`) `make ... LOGDIR=<dir>`
+  non passava affatto `--log-dir`, quindi nessun log si spostava e `make
+  clean` restava cieco esattamente come prima. `--log-dir $(LOGDIR)` e' ora
+  fra i `PYFLAGS` comuni — lo ereditano tutti i renderer, backend futuri
+  compresi — e gli e2e numpy, che una `LOGDIR` temporanea la passavano gia',
+  ora verificano che il log engine ci finisca davvero.
+
+  `--log-dir` senza directory adesso stampa un messaggio ed esce con 1,
+  invece di ricadere in silenzio su `logs`: e' la stessa deroga di
+  `--samples-dir` — secondo e ultimo flag del file a farlo — presa dallo
+  stesso argomento, che da questa issue in poi vale parola per parola anche
+  qui. Il fallimento silenzioso rispondeva con la directory da cui il flag
+  serviva ad andarsene, e ora che il flag governa il log degli errori engine
+  mandava a cercarlo dove non era.
+
+- **La colorbar del pitch dipingeva un grigio che nessun grano ha.** E' la
+  chiave di lettura della mappa, ma disegnava il colore *nudo* della colormap
+  mentre i grani sono compositi sul fondo della pagina all'alpha del volume:
+  chi accostava un grano alla barra lo leggeva sistematicamente piu' acuto di
+  quanto fosse. Col preset B&W il bias era misurabile — 0.149 sulla barra
+  contro 0.234 sulla pagina all'estremo grave, 0.503 contro 0.553 al centro.
+
+  Finche' l'alpha varia col volume non c'e' un valore solo da mostrare, e la
+  barra resta opaca come e' sempre stata. Quando l'alpha e' **fissata** la
+  corrispondenza e' esprimibile esattamente, e la barra la segue: adesso
+  dipinge 0.235 / 0.859 contro i 0.234 / 0.866 dei grani (il resto e'
+  antialiasing). L'alpha si passa alla colorbar invece di cuocerla nella
+  mappa, cosi' barra e grani compongono sullo stesso fondo qualunque esso sia.
+
+  La condizione e' l'alpha fissata, **non** il preset: una config a colori che
+  passa un `grain_alpha_range` degenere (`(0.6, 0.6)`) ha lo stesso problema e
+  riceve la stessa correzione. E' l'unico punto in cui `--bw` si vede a flag
+  spento.
+
+- **Una coppia malformata in `envelope_styles` non si nominava.** E' l'unico
+  dizionario-dato della config il cui valore viene spacchettato in due, e una
+  stringa ne e' una coppia plausibile: `tuple('--')` vale `('-', '-')`, cioe'
+  uno spessore che non e' un numero. L'errore arrivava da dentro matplotlib
+  (`could not convert string to float: '-'`) senza nominare ne' la chiave ne'
+  il parametro. Ora `_envelope_style` verifica la forma e lo dice. Resta
+  l'unica eccezione alla regola dello schema, che verifica i nomi delle chiavi
+  e non i tipi dei valori — perche' qui il tipo sbagliato *non* si vede al
+  primo giro.
+
+- **`make bench` non girava su un clone pulito** (issue #243).
+  `utils/bench_cost.py` genera un seno sintetico quando manca `refs/voice.wav`
+  — i `.wav` non sono versionati — ma non lo diceva a nessuno dei due
+  consumatori: `_load()` costruiva il `Generator` senza `samples_dir` e
+  `_render()` passava la directory come `ssdir`, che vale solo per Csound.
+  Entrambi i percorsi ricadevano sul globale `./refs/` e lo script moriva in
+  `SampleNotFoundError` nel primo sweep, prima di misurare qualsiasi cosa. Ora
+  la directory arriva come `samples_dir` a entrambi (l'API ne deriva anche
+  l'`ssdir` per Csound), e le due directory in gioco restano separate: gli
+  sweep leggono il seno sintetico, il *caso di riferimento*
+  (`make bench YAML=...`) legge da `refs/`, perche' uno YAML reale cita il
+  proprio sample e nella tmpdir del seno non lo troverebbe — stato non
+  ipotetico, `make test-samples` scrive `refs/pino.wav` e non `voice.wav`.
+
+- **Il caso di riferimento non si porta piu' via gli sweep.**
+  `configs/PGE_cim.yml`, il caso documentato, cita proprio `voice.wav`: su un
+  clone pulito moriva *dopo* i tre sweep e prima del `json.dump`, cioe' un
+  minuto e mezzo di misure buttate. Ora il suo sample si risolve prima degli
+  sweep, e se il caso di riferimento fallisce lo stesso il JSON degli sweep
+  viene scritto comunque. La directory dei suoi sample e' passabile come
+  secondo argomento (`python utils/bench_cost.py <yaml> <dir>`) e attraversa
+  `run_yaml`/`once_yaml`: `None` significa `refs/` per il caso di riferimento
+  e "la directory degli sweep" per `_load`/`_render`, e la sentinella si
+  risolve nel corpo di ciascuno invece di essere inoltrata tal quale.
+
+### Modificato
+
+- **`bench_cost.py` parla con l'API pubblica** — `api.load_generator` e
+  `api.build_renderer` invece di `cli._build_renderer`. E' la classe di bug
+  della #243 chiusa dal chiamante: `_build_renderer(tipo, gen, **kwargs)`
+  pesca i kwargs con `.get()`, quindi `ssdir=` su un build numpy era un no-op
+  che nessuno poteva vedere, mentre sulla firma keyword-only dell'API lo
+  stesso errore e' un `TypeError`. Sparisce con esso `sfdir=OUT`, ugualmente
+  inerte, e l'ultimo consumatore di un simbolo privato di `pge.cli` fuori da
+  `main.py`.
+
+- **Importare `bench_cost` non tocca piu' il filesystem.** La tmpdir e il seno
+  sintetico erano effetti collaterali dell'import: ogni `make tests` lasciava
+  una `/tmp/pge_bench_*` orfana e, dove `voice.wav` manca, ci scriveva dentro
+  ~288 KB di wav. Ora `out_dir()` e `sweep_sample()` sono pigri, e l'import di
+  `make_test_samples` — con la riga in `sys.path` che lo rende possibile —
+  sta nel ramo che lo usa.
+
+- **Una sola grafia del seno sintetico.** `utils/make_sine.py` ne teneva una
+  copia propria (ampiezza, dissolvenza ai bordi, campioni in float) e la #243
+  ne aveva prodotta una terza dentro `bench_cost.py`. Ora passano tutte da
+  `make_test_samples.genera`, che ha guadagnato `amp`, `fade_sec` e `subtype`;
+  i default restano quelli dei sample di prova, quindi i file scritti in
+  `refs/` sono identici byte a byte.
+
+- **Il JSON del benchmark registra il sample** che ha prodotto i numeri. Da
+  quando il ramo di fallback misura davvero, gli sweep girano sia su
+  `voice.wav` sia su un seno di 3 s, e la lunghezza del buffer entra nel
+  comportamento di cache, quindi nel coefficiente `a`: due run non
+  confrontabili erano indistinguibili a posteriori.
 
 ---
 
