@@ -223,6 +223,61 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- **Il file YAML che manca, e quello che non si parsa, hanno un tipo loro**
+  (issue #257). `Generator.load_yaml` sollevava due builtin nudi —
+  `FileNotFoundError` e `yaml.YAMLError` — e `cli.main()` catturava il primo
+  per stampare « Errore: file 'x.yml' non trovato». Che quel messaggio fosse
+  vero dipendeva da un fatto fragile: dentro quel blocco `try` nessun'altra
+  riga apriva un secondo file. Era una garanzia data dall'**estensione fisica**
+  del blocco, non dal **tipo** dell'eccezione, e niente la faceva fallire il
+  giorno in cui smetteva di valere — una pre-scansione dei sample, una
+  validazione di `--samples-dir`, o il passaggio della CLI ad
+  `api.load_generator`, che impacchetta anche `create_elements`, dove i sample
+  si aprono davvero.
+
+  Ora sono `ConfigFileNotFoundError` e `ConfigParseError`, sotto `ConfigError`:
+  un file di configurazione che non esiste, o che non si legge, e' un errore di
+  configurazione. `cli.main()` non cattura piu' nessun tipo builtin sul
+  percorso di caricamento — restano `EngineError` e il ramo generico, in
+  quest'ordine — e un `FileNotFoundError` che risalga da altrove finisce nel
+  ramo generico invece che in un messaggio falso.
+
+  I messaggi migliorano invece di regredire:
+
+  ```
+  [ERRORE] File di configurazione non trovato: 'configs/assente.yml'
+    Path cercato: /home/utente/progetto/configs/assente.yml
+    Dettagli:     logs/assente_engine.log
+  ```
+
+  ```
+  [ERRORE] File di configurazione malformato: 'configs/rotto.yml'
+    Riga/colonna: 4:4
+    Dettaglio:    expected <block end>, but found '<block mapping start>'
+    Dettagli:     logs/rotto_engine.log
+  ```
+
+  Il path assoluto e' l'informazione che il messaggio precedente non dava («sei
+  nella directory sbagliata»), e compare solo quando dice qualcosa in piu' di
+  quello che l'utente ha scritto. Lo YAML malformato prima non lo traduceva
+  nessuno: usciva dal ramo generico come messaggio piu' traceback.
+
+  **Nessun breaking per chi usa la libreria.** Le due classi ereditano ANCHE il
+  tipo che sostituiscono (`FileNotFoundError`, `yaml.YAMLError`), che
+  `Generator.load_yaml` e `api.load_generator` dichiarano nei `Raises` da
+  sempre: un `except FileNotFoundError` scritto contro le versioni precedenti
+  continua a catturare. E' lo stesso precedente della base
+  `ConfigError(EngineError, ValueError)`. L'asimmetria rispetto a
+  `SuperColliderNotFoundError` e `CsoundNotFoundError` (#228, #241), che il
+  builtin non lo ereditano, e' voluta e sta nel valore di verita': per un
+  binario assente `FileNotFoundError` e' una bugia — il file mancante non e'
+  quello che il tipo lascia intendere — mentre per lo YAML e' vero, il file che
+  non c'e' e' proprio quello.
+
+  Cambia invece il **testo** del messaggio della CLI per lo YAML mancante, che
+  passa al formato di casa `[ERRORE] ...`: chi lo parsasse a valle (nessuno,
+  verificato in `PGE-ui` e `PGE-ls`) deve aggiornarsi.
+
 - **`bench_cost.py` parla con l'API pubblica** — `api.load_generator` e
   `api.build_renderer` invece di `cli._build_renderer`. E' la classe di bug
   della #243 chiusa dal chiamante: `_build_renderer(tipo, gen, **kwargs)`

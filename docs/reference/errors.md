@@ -5,7 +5,9 @@ status: stable
 tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
-last_synced_commit: ae61d22
+  - src/pge/cli.py
+  - src/pge/engine/generator.py
+last_synced_commit: 72bbf16
 entry_for: [error-handling]
 ---
 
@@ -62,6 +64,10 @@ EngineError                                  (Exception)
 ├── SampleNotFoundError                      issue #33
 │
 ├── ConfigError                              (anche ValueError, backward-compat)
+│   ├── ConfigFileNotFoundError              #257 — file YAML inesistente
+│   │                                        (anche FileNotFoundError)
+│   ├── ConfigParseError                     #257 — file YAML illeggibile
+│   │                                        (anche yaml.YAMLError)
 │   ├── MissingFieldError                    PR1 — campo YAML mancante/null
 │   ├── InvalidFieldValueError               PR1 — campo presente, valore invalido
 │   ├── InvalidParameterError                PR2 — formato/tipo parametro non supportato
@@ -92,11 +98,32 @@ EngineError                                  (Exception)
   con il proprio preambolo — e considera **anche lo stdout**, che è dove
   entrambi i binari SuperCollider scrivono i loro errori.
 - **`SuperColliderNotFoundError` NON eredita da `FileNotFoundError`**, anche
-  se descrive un file che non c'è. La CLI intercetta `FileNotFoundError`
-  *prima* di `EngineError`, per annunciare «file YAML non trovato»: un
-  binario mancante che passasse di lì verrebbe riportato all'utente come una
-  configurazione inesistente. Il tipo di un errore serve a chi lo cattura,
-  non a descriverne la causa.
+  se descrive un file che non c'è, mentre **`ConfigFileNotFoundError` sì**.
+  L'asimmetria è voluta e non sta nella
+  compatibilità: sta nel valore di verità del builtin. Per un binario assente
+  `FileNotFoundError` è una bugia — il file mancante non è quello che il tipo
+  lascia intendere, e infatti prima della #241 csound assente si annunciava
+  come «file YAML non trovato». Per lo YAML è semplicemente vero: il file che
+  non c'è è proprio quello. Dove il builtin mente, il tipo di dominio lo
+  sostituisce; dove dice il vero, gli si affianca e la promessa di libreria
+  resta in piedi.
+
+  La ragione storica scritta qui prima — «la CLI intercetta `FileNotFoundError`
+  *prima* di `EngineError`» — non vale più: dalla #257 `cli.main()` non cattura
+  nessun tipo builtin sul percorso di caricamento. Restano `EngineError` e il
+  ramo generico, in quest'ordine, e la garanzia è **sul tipo** e non
+  sull'estensione fisica del blocco `try`. Un `FileNotFoundError` nudo che
+  risalga da altrove finisce nel ramo generico (messaggio + traceback), non in
+  un messaggio falso.
+
+- **`ConfigFileNotFoundError` e `ConfigParseError` ereditano anche il tipo che
+  sostituiscono** (`FileNotFoundError`, `yaml.YAMLError`), con lo stesso
+  precedente di `ConfigError`/`ValueError`: `Generator.load_yaml` e
+  `api.load_generator` dichiarano quei due nei `Raises` da sempre, e chi li
+  cattura per nome continua a catturarli. Il costo dichiarato è che il tipo
+  non isola: un `FileNotFoundError` di altra origine impacchettato lì per
+  errore tornerebbe a confondersi — ed è per questo che `load_yaml` avvolge il
+  solo `open()` dello YAML e niente altro.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
   (es. errori I/O di rendering) si appendono qui.
 - Ogni sotto-classe override `user_message()` con formato strutturato.
