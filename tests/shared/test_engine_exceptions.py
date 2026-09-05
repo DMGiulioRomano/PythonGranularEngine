@@ -526,6 +526,27 @@ def test_csound_render_error_inheritance_and_message():
     assert "orch error" in msg
 
 
+def test_subprocess_render_error_hint_e_opzionale():
+    """L'hint del render fallito e' condizionale, non decorativo: dice come
+    riavere lo score temporaneo, e con `--keep-sco` quello score c'e' gia'.
+    Una riga `Hint:` stampata sempre sarebbe un rimedio per un guasto assente
+    -- e' la stessa regola di `_BinaryNotFoundError`, da cui questa base copia
+    il formato della riga."""
+    from pge.shared.exceptions import CsoundRenderError
+    senza = CsoundRenderError(
+        returncode=2, command=["csound", "/tmp/x.sco"], stderr="err")
+    assert "Hint:" not in senza.user_message()
+
+    con = CsoundRenderError(
+        returncode=2, command=["csound", "/tmp/x.sco"], stderr="err",
+        hint="Rilancia con --keep-sco.")
+    msg = con.user_message()
+    assert "  Hint:         Rilancia con --keep-sco." in msg
+    # Dopo la diagnostica e prima delle righe di contesto: l'hint e' il
+    # seguito dell'errore, non un'intestazione.
+    assert msg.index("Output:") < msg.index("Hint:")
+
+
 def test_csound_render_error_context_lines():
     from pge.shared.exceptions import CsoundRenderError
     err = CsoundRenderError(returncode=2, command=["csound"], stderr="x")

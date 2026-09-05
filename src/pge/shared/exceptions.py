@@ -273,7 +273,7 @@ class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
     diagnostic_index = 0
 
     def __init__(self, returncode: int, command: list[str], stderr: str,
-                 stdout: str = ""):
+                 stdout: str = "", hint: str | None = None):
         self.returncode = returncode
         self.command = list(command)
         self.stderr = stderr
@@ -281,6 +281,13 @@ class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
         # il backtrace dell'interprete, scsynth li' scrive `FAILURE IN SERVER`.
         # Senza, un refuso nella SynthDef arriva all'utente senza diagnostica.
         self.stdout = stdout
+        # Il rimedio, quando ce n'e' uno che il messaggio da solo non offre.
+        # La riga `Comando:` invita a rieseguire, ma lo score che vi compare
+        # e' temporaneo e il renderer lo cancella prima che il messaggio si
+        # stampi: chi lo vuole ha un flag, e il flag va detto qui. Opzionale
+        # perche' con quel flag gia' attivo il rimedio non esiste piu' --
+        # stessa regola dell'hint di `_BinaryNotFoundError`.
+        self.hint = hint
         super().__init__(
             f"{self.stage} ha fallito con codice {returncode}.\n"
             f"Comando: {' '.join(command)}\n"
@@ -303,6 +310,8 @@ class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
         diagnostic = self.diagnostic_line()
         if diagnostic:
             lines.append(f"  Output:       {diagnostic}")
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
         return "\n".join(lines)
 

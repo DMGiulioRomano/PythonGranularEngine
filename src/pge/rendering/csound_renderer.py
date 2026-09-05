@@ -234,4 +234,15 @@ class CsoundRenderer(AudioRenderer):
                 returncode=result.returncode,
                 command=cmd,
                 stderr=result.stderr or "",
+                # La riga `Comando:` del messaggio invita a rieseguire, ma
+                # nomina uno score che a quel punto non c'e' piu': da quando
+                # la cancellazione sta in un `finally` (PR #256) anche l'exit
+                # diverso da zero ci passa, e prima invece saltava le due
+                # righe lasciando il file in /tmp. Il rimedio esiste ed e' un
+                # flag: se il messaggio non lo dice, la prima azione che
+                # suggerisce e' un no-op.
+                hint=("Lo score .sco era temporaneo ed e' stato rimosso: "
+                      "rilancia con `--keep-sco` per conservarlo e "
+                      "rieseguire il comando qui sopra.")
+                     if not self.sco_dir else None,
             )
