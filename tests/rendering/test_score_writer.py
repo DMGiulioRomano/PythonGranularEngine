@@ -14,7 +14,9 @@ Testa la classe ScoreWriter e tutti i suoi metodi:
 
 Strategia di mocking:
 - FtableManager: mock completo (dependency injection)
+- CsoundEmitter: reale, avvolto in Mock(wraps=...) per ispezionare le chiamate
 - Stream: mock con attributi necessari
+- Grain: reale (dalla #203 non e' piu' lui a serializzarsi)
 - Parameter/Envelope: mock per test _format_param
 - File I/O: StringIO per catturare output
 """
@@ -122,18 +124,22 @@ def make_real_envelope(breakpoints=None):
     return RealEnv(bp)
 
 
-def make_mock_grain(onset=0.0, duration=0.05, score_line=None):
-    """Crea un mock Grain con to_score_line()."""
-    grain = Mock()
-    grain.onset = onset
-    grain.duration = duration
-    if score_line is None:
-        score_line = (
-            f'i "Grain" {onset:.6f} {duration:.6f} '
-            f'1.000000 1.000000 -6.00 0.500 1 2\n'
-        )
-    grain.to_score_line.return_value = score_line
-    return grain
+def make_grain(onset=0.0, duration=0.05, **overrides):
+    """Crea un Grain reale.
+
+    Dalla issue #203 il grano non sa piu' serializzarsi: la riga la scrive
+    `CsoundEmitter`, quindi un Mock con `to_score_line` non intercetta piu'
+    niente -- l'emitter leggerebbe i suoi attributi e proverebbe a
+    formattarli. Un `Grain` vero costa quanto un Mock e dice la verita'.
+    """
+    from pge.core.grain import Grain
+
+    params = dict(
+        onset=onset, duration=duration, pointer_pos=1.0, pitch_ratio=1.0,
+        volume=-6.0, pan=0.5, sample_table=1, envelope_table=2,
+    )
+    params.update(overrides)
+    return Grain(**params)
 
 
 def make_mock_stream(
@@ -163,8 +169,8 @@ def make_mock_stream(
     stream.num_voices = num_voices
 
     if voices is None:
-        voice_0 = [make_mock_grain(i * 0.1, 0.05) for i in range(3)]
-        voice_1 = [make_mock_grain(i * 0.1 + 0.02, 0.05) for i in range(3)]
+        voice_0 = [make_grain(i * 0.1, 0.05) for i in range(3)]
+        voice_1 = [make_grain(i * 0.1 + 0.02, 0.05) for i in range(3)]
         voices = [voice_0, voice_1]
 
     stream.voices = voices
@@ -176,7 +182,6 @@ def make_mock_ftable_manager(num_tables=3):
     ftm = Mock()
     tables = {i: ('sample', f'sample_{i}.wav') for i in range(1, num_tables + 1)}
     ftm.get_all_tables.return_value = tables
-    ftm.write_to_file = Mock()
     return ftm
 
 
@@ -199,10 +204,22 @@ def ftable_manager():
 
 
 @pytest.fixture
-def writer(ftable_manager):
-    """ScoreWriter con FtableManager mock."""
+def emitter_spy():
+    """CsoundEmitter reale, avvolto in un Mock.
+
+    Il comportamento resta quello vero (gli statement finiscono davvero nel
+    file), ma le chiamate sono ispezionabili: e' cosi' che si verifica il
+    passaggio di `onset_offset`, che prima si leggeva sul mock del grano.
+    """
+    from pge.rendering.csound_emitter import CsoundEmitter
+    return Mock(wraps=CsoundEmitter())
+
+
+@pytest.fixture
+def writer(ftable_manager, emitter_spy):
+    """ScoreWriter con FtableManager mock ed emitter ispezionabile."""
     ScoreWriter = _get_score_writer_class()
-    return ScoreWriter(ftable_manager)
+    return ScoreWriter(ftable_manager, emitter=emitter_spy)
 
 
 @pytest.fixture
@@ -229,6 +246,47 @@ class TestScoreWriterInit:
         SW = _get_score_writer_class()
         sw = SW(ftable_manager)
         assert sw.ftable_manager is ftable_manager
+
+    def test_init_creates_a_default_emitter(self, ftable_manager):
+        """Senza emitter esplicito ne nasce uno: il costruttore resta a un
+        argomento per tutti i chiamanti che c'erano prima della #203."""
+        from pge.rendering.csound_emitter import CsoundEmitter
+
+        SW = _get_score_writer_class()
+        sw = SW(ftable_manager)
+
+        assert isinstance(sw.emitter, CsoundEmitter)
+
+    def test_init_accepts_an_injected_emitter(self, ftable_manager):
+        """L'emitter e' iniettabile: e' il seme di un secondo back-end
+        testuale, che non avrebbe altro modo di entrare qui."""
+        SW = _get_score_writer_class()
+        emitter = Mock()
+
+        sw = SW(ftable_manager, emitter=emitter)
+
+        assert sw.emitter is emitter
+
+    def test_init_keeps_a_falsy_emitter(self, ftable_manager):
+        """Un emitter falsy non e' un emitter assente.
+
+        Il default si sceglie su `is None`: con `or`, un emitter che
+        definisce `__len__` -- e ne vale 0 finche' non ha emesso niente --
+        veniva scartato in silenzio e lo score usciva in Csound, cioe' il
+        contrario di cio' per cui il parametro esiste. `Mock()` e' vero,
+        quindi il test accanto non vedeva la differenza.
+        """
+        class EmptyEmitter(Mock):
+            def __len__(self):
+                return 0
+
+        SW = _get_score_writer_class()
+        emitter = EmptyEmitter()
+        assert not emitter
+
+        sw = SW(ftable_manager, emitter=emitter)
+
+        assert sw.emitter is emitter
 
     def test_init_with_different_ftable_managers(self):
         """Verifica che accetti qualunque FtableManager."""
@@ -414,7 +472,7 @@ class TestWriteStreamSection:
         """Una voice senza grani viene saltata."""
         stream = make_mock_stream(
             voices=[
-                [make_mock_grain()],  # voice 0: 1 grano
+                [make_grain()],  # voice 0: 1 grano
                 [],                    # voice 1: vuota
             ]
         )
@@ -426,26 +484,35 @@ class TestWriteStreamSection:
 
     def test_grain_score_lines_written(self, writer, string_file):
         """Le score line dei grani vengono effettivamente scritte."""
-        grain = make_mock_grain(
-            score_line='i "Grain" 0.100000 0.050000 1.0 1.0 -6.00 0.500 1 2\n'
-        )
+        grain = make_grain(onset=0.1)
         stream = make_mock_stream(voices=[[grain]])
         writer._write_stream_section(string_file, stream)
         content = string_file.getvalue()
 
         assert 'i "Grain"' in content
-        grain.to_score_line.assert_called_once()
+        writer.emitter.grain_statement.assert_called_once_with(
+            grain, onset_offset=0.0)
 
     def test_all_grains_written(self, writer, string_file):
-        """Tutti i grani di tutte le voice vengono scritti."""
-        grains_v0 = [make_mock_grain(i * 0.1) for i in range(5)]
-        grains_v1 = [make_mock_grain(i * 0.1) for i in range(3)]
+        """Tutti i grani di tutte le voice vengono scritti.
+
+        Gli onset delle due voice sono disgiunti di proposito: `Grain` e' una
+        frozen dataclass, quindi con onset sovrapposti due grani di voice
+        diverse sono lo *stesso valore* e l'asserzione smetterebbe di dire
+        quale voice li ha prodotti.
+        """
+        grains_v0 = [make_grain(i * 0.1) for i in range(5)]
+        grains_v1 = [make_grain(10.0 + i * 0.1) for i in range(3)]
         stream = make_mock_stream(voices=[grains_v0, grains_v1])
 
         writer._write_stream_section(string_file, stream)
 
-        for g in grains_v0 + grains_v1:
-            g.to_score_line.assert_called_once()
+        emitted = [
+            call.args[0] for call in writer.emitter.grain_statement.call_args_list
+        ]
+        assert emitted == grains_v0 + grains_v1
+        # identita', non solo uguaglianza: sono gli oggetti dello stream.
+        assert all(a is b for a, b in zip(emitted, grains_v0 + grains_v1))
 
 
 # =============================================================================
@@ -492,8 +559,8 @@ class TestWriteStreamMetadata:
 
     def test_total_grains_count_correct(self, writer, string_file):
         """Il conteggio totale grani e' la somma di tutte le voice."""
-        grains_v0 = [make_mock_grain() for _ in range(5)]
-        grains_v1 = [make_mock_grain() for _ in range(7)]
+        grains_v0 = [make_grain() for _ in range(5)]
+        grains_v1 = [make_grain() for _ in range(7)]
         stream = make_mock_stream(voices=[grains_v0, grains_v1])
 
         writer._write_stream_metadata(string_file, stream)
@@ -685,7 +752,7 @@ class TestPrintGenerationSummary:
 
     def test_summary_prints_grain_total(self, writer, capsys):
         """Il riepilogo stampa il totale grani."""
-        grains = [make_mock_grain() for _ in range(10)]
+        grains = [make_grain() for _ in range(10)]
         stream = make_mock_stream(voices=[grains])
 
         writer._print_generation_summary('out.sco', [stream])
@@ -703,8 +770,8 @@ class TestPrintGenerationSummary:
 
     def test_summary_multiple_streams_grain_total(self, writer, capsys):
         """Il totale grani somma correttamente su piu' streams."""
-        s1 = make_mock_stream(voices=[[make_mock_grain() for _ in range(5)]])
-        s2 = make_mock_stream(voices=[[make_mock_grain() for _ in range(8)]])
+        s1 = make_mock_stream(voices=[[make_grain() for _ in range(5)]])
+        s2 = make_mock_stream(voices=[[make_grain() for _ in range(8)]])
 
         writer._print_generation_summary('out.sco', [s1, s2])
         captured = capsys.readouterr()
@@ -748,19 +815,23 @@ class TestWriteScore:
             content = f.read()
 
         header_pos = content.index("CSOUND SCORE")
-        writer.ftable_manager.write_to_file.assert_called_once()
+        writer.emitter.write_ftables.assert_called_once()
         gran_pos = content.index("GRANULAR STREAMS")
         footer_pos = content.index("End of score")
 
         assert header_pos < gran_pos < footer_pos
 
-    def test_write_score_calls_ftable_write(self, writer, tmp_path, sample_stream):
-        """write_score delega la scrittura ftables a FtableManager."""
+    def test_write_score_delegates_ftables_to_the_emitter(
+        self, writer, tmp_path, sample_stream
+    ):
+        """La sezione ftables la scrive l'emitter, letta la symbol table."""
         filepath = str(tmp_path / 'test_output.sco')
 
         writer.write_score(filepath, [sample_stream])
 
-        writer.ftable_manager.write_to_file.assert_called_once()
+        writer.emitter.write_ftables.assert_called_once()
+        _, tables = writer.emitter.write_ftables.call_args.args
+        assert tables == writer.ftable_manager.get_all_tables()
 
     def test_write_score_calls_print_summary(self, writer, tmp_path, sample_stream, capsys):
         """write_score stampa il riepilogo generazione."""
@@ -827,11 +898,11 @@ class TestScoreIntegration:
     def test_full_score_with_multiple_streams(self, writer, tmp_path):
         """Score completo con piu' stream."""
         s1 = make_mock_stream(stream_id='cloud_01', voices=[
-            [make_mock_grain(i * 0.05) for i in range(10)],
-            [make_mock_grain(i * 0.05 + 0.01) for i in range(8)],
+            [make_grain(i * 0.05) for i in range(10)],
+            [make_grain(i * 0.05 + 0.01) for i in range(8)],
         ])
         s2 = make_mock_stream(stream_id='cloud_02', voices=[
-            [make_mock_grain(i * 0.1) for i in range(5)],
+            [make_grain(i * 0.1) for i in range(5)],
         ])
 
         filepath = str(tmp_path / 'full_score.sco')
@@ -849,11 +920,7 @@ class TestScoreIntegration:
 
     def test_score_grain_lines_are_valid_csound(self, writer, tmp_path):
         """Verifica che le linee grano abbiano il formato Csound valido."""
-        grain = make_mock_grain(
-            onset=1.5,
-            duration=0.05,
-            score_line='i "Grain" 1.500000 0.050000 2.300000 1.000000 -6.00 0.500 1 2\n'
-        )
+        grain = make_grain(onset=1.5, duration=0.05, pointer_pos=2.3)
         stream = make_mock_stream(voices=[[grain]])
         filepath = str(tmp_path / 'valid.sco')
 
@@ -887,18 +954,18 @@ class TestEdgeCases:
 
     def test_stream_with_single_grain(self, writer, string_file):
         """Stream con un singolo grano."""
-        grain = make_mock_grain(0.0, 0.05)
+        grain = make_grain(0.0, 0.05)
         stream = make_mock_stream(voices=[[grain]])
 
         writer._write_stream_section(string_file, stream)
         content = string_file.getvalue()
 
         assert "1 grains" in content
-        grain.to_score_line.assert_called_once()
+        writer.emitter.grain_statement.assert_called_once()
 
     def test_stream_with_many_voices(self, writer, string_file):
         """Stream con molte voice (simula max_voices alto)."""
-        voices = [[make_mock_grain()] for _ in range(20)]
+        voices = [[make_grain()] for _ in range(20)]
         stream = make_mock_stream(num_voices=20, voices=voices)
 
         writer._write_stream_section(string_file, stream)
@@ -986,38 +1053,41 @@ class TestFormatParamParametrized:
 class TestWriteStreamSectionOnsetOffset:
     """Test per _write_stream_section(onset_offset=...) - onset relativo STEMS."""
 
-    def test_default_onset_offset_zero_calls_grain_without_offset(
-        self, writer, string_file
-    ):
-        """onset_offset=0.0 (default): grain.to_score_line chiamato con onset_offset=0.0."""
-        grain = make_mock_grain(onset=5.0)
+    def test_default_onset_offset_is_zero(self, writer, string_file):
+        """onset_offset=0.0 (default): l'emitter lo riceve esplicito."""
+        grain = make_grain(onset=5.0)
         stream = make_mock_stream(voices=[[grain]])
 
         writer._write_stream_section(string_file, stream)
 
-        grain.to_score_line.assert_called_once_with(onset_offset=0.0)
+        writer.emitter.grain_statement.assert_called_once_with(
+            grain, onset_offset=0.0)
 
-    def test_onset_offset_passed_to_grain_to_score_line(self, writer, string_file):
-        """onset_offset=5.0 viene passato a ogni grain.to_score_line."""
-        grain_a = make_mock_grain(onset=5.0)
-        grain_b = make_mock_grain(onset=5.1)
+    def test_onset_offset_reaches_every_grain(self, writer, string_file):
+        """onset_offset=5.0 viene passato a ogni statement."""
+        grain_a = make_grain(onset=5.0)
+        grain_b = make_grain(onset=5.1)
         stream = make_mock_stream(voices=[[grain_a, grain_b]])
 
         writer._write_stream_section(string_file, stream, onset_offset=5.0)
 
-        grain_a.to_score_line.assert_called_once_with(onset_offset=5.0)
-        grain_b.to_score_line.assert_called_once_with(onset_offset=5.0)
+        assert writer.emitter.grain_statement.call_args_list == [
+            call(grain_a, onset_offset=5.0),
+            call(grain_b, onset_offset=5.0),
+        ]
 
     def test_onset_offset_applied_to_all_voices(self, writer, string_file):
         """onset_offset viene passato ai grani di tutte le voices."""
-        grain_v0 = make_mock_grain(onset=3.0)
-        grain_v1 = make_mock_grain(onset=3.05)
+        grain_v0 = make_grain(onset=3.0)
+        grain_v1 = make_grain(onset=3.05)
         stream = make_mock_stream(voices=[[grain_v0], [grain_v1]])
 
         writer._write_stream_section(string_file, stream, onset_offset=3.0)
 
-        grain_v0.to_score_line.assert_called_once_with(onset_offset=3.0)
-        grain_v1.to_score_line.assert_called_once_with(onset_offset=3.0)
+        assert writer.emitter.grain_statement.call_args_list == [
+            call(grain_v0, onset_offset=3.0),
+            call(grain_v1, onset_offset=3.0),
+        ]
 
 
 # =============================================================================
@@ -1029,7 +1099,7 @@ class TestWriteScorePerStream:
 
     def test_write_score_per_stream_false_by_default(self, writer, tmp_path):
         """per_stream=False e' il default: onset_offset=0.0 per ogni stream."""
-        stream = make_mock_stream(voices=[[make_mock_grain(onset=0.0)]])
+        stream = make_mock_stream(voices=[[make_grain(onset=0.0)]])
         stream.onset = 0.0
 
         filepath = str(tmp_path / 'test.sco')
@@ -1042,21 +1112,22 @@ class TestWriteScorePerStream:
         self, writer, tmp_path
     ):
         """per_stream=True: _write_stream_section riceve onset_offset=stream.onset."""
-        grain = make_mock_grain(onset=5.0)
+        grain = make_grain(onset=5.0)
         stream = make_mock_stream(voices=[[grain]])
         stream.onset = 5.0
 
         filepath = str(tmp_path / 'test_per_stream.sco')
         writer.write_score(filepath, [stream], per_stream=True)
 
-        grain.to_score_line.assert_called_once_with(onset_offset=5.0)
+        writer.emitter.grain_statement.assert_called_once_with(
+            grain, onset_offset=5.0)
 
     def test_write_score_per_stream_true_multiple_streams_each_uses_own_onset(
         self, writer, tmp_path
     ):
         """Con piu' stream e per_stream=True, ogni stream usa il proprio onset."""
-        grain_a = make_mock_grain(onset=3.0)
-        grain_b = make_mock_grain(onset=7.0)
+        grain_a = make_grain(onset=3.0)
+        grain_b = make_grain(onset=7.0)
         stream_a = make_mock_stream(stream_id='s1', voices=[[grain_a]])
         stream_a.onset = 3.0
         stream_b = make_mock_stream(stream_id='s2', voices=[[grain_b]])
@@ -1065,16 +1136,19 @@ class TestWriteScorePerStream:
         filepath = str(tmp_path / 'multi.sco')
         writer.write_score(filepath, [stream_a, stream_b], per_stream=True)
 
-        grain_a.to_score_line.assert_called_once_with(onset_offset=3.0)
-        grain_b.to_score_line.assert_called_once_with(onset_offset=7.0)
+        assert writer.emitter.grain_statement.call_args_list == [
+            call(grain_a, onset_offset=3.0),
+            call(grain_b, onset_offset=7.0),
+        ]
 
     def test_write_score_per_stream_false_uses_zero_offset(self, writer, tmp_path):
         """per_stream=False: onset_offset=0.0 (onset assoluto, comportamento pre-fix)."""
-        grain = make_mock_grain(onset=5.0)
+        grain = make_grain(onset=5.0)
         stream = make_mock_stream(voices=[[grain]])
         stream.onset = 5.0
 
         filepath = str(tmp_path / 'abs.sco')
         writer.write_score(filepath, [stream], per_stream=False)
 
-        grain.to_score_line.assert_called_once_with(onset_offset=0.0)
+        writer.emitter.grain_statement.assert_called_once_with(
+            grain, onset_offset=0.0)

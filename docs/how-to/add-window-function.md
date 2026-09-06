@@ -5,8 +5,9 @@ status: stable
 tags: [window, grain, extension]
 sources:
   - src/pge/controllers/window_registry.py
+  - src/pge/rendering/csound_emitter.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 5b3ab25
+last_synced_commit: 9435ea0
 entry_for: [add-window-function]
 ---
 
@@ -34,7 +35,7 @@ ciascuno. Chi materializza la finestra è un adapter del catalogo:
 
 | Adapter | Cosa produce | Dove |
 |---------|--------------|------|
-| Csound | statement `f` (GEN16/GEN20) | `WindowRegistry.generate_ftable_statement` |
+| Csound | statement `f` (GEN16/GEN20) | `CsoundEmitter.window_ftable` |
 | NumPy | array `np.ndarray` di lunghezza N | `NumpyWindowRegistry._generate` |
 
 Aggiungere una finestra al solo catalogo la rende **accettata dalla

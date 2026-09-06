@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: 0110399
+last_synced_commit: 9435ea0
 ---
 
 # Architettura Renderer
@@ -101,6 +101,54 @@ non-Csound, e rilegge il sito di chiamata per il *perché*: è lì che quei nomi
 sono passati incondizionatamente). La directory dei sample valida per tutti i
 backend è `samples_dir`; su Csound è anche il fallback di `ssdir`.
 
+### La sintassi di un target sta in un solo posto
+
+L'ABC regge al livello del *renderer*, ma per un back-end testuale c'è un
+secondo confine, un livello più in basso: **chi scrive la sintassi**. Fino
+alla issue #203 la generazione del `.sco` era sparsa in tre moduli, due dei
+quali sotto il livello che deve restare indipendente dal target — `Grain`
+(in `core/`) sapeva emettere la propria i-statement, `FtableManager` gli
+f-statement delle tabelle, `WindowRegistry` quello delle finestre.
+
+Il costo non era estetico: la precisione a 8 decimali di p2/p3 è una
+decisione sul formato di uscita di Csound (a 96 kHz un grano può durare un
+campione) e viveva in `core/grain.py`; un secondo back-end testuale non
+avrebbe avuto altro posto dove mettere il proprio metodo che accanto a quello.
+
+Oggi la sintassi Csound sta tutta in `rendering/csound_emitter.py`:
+
+```
+CsoundEmitter
+  ├── grain_statement(grain, onset_offset)   →  i "Grain" ...
+  ├── sample_ftable(num, path)               →  f N 0 0 1 "..." 0 0 1
+  ├── window_ftable(num, name, size)         →  f N 0 1024 20 2 1
+  ├── end_statement()                        →  e
+  ├── comment(text) / rule()                 →  ; ...   ·   ; =====
+  └── write_ftables(f, table_map)            →  la sezione FUNCTION TABLES
+```
+
+Il confine è sulla **sintassi**, non sugli statement: il `;` di un commento
+e la `e` di fine score non hanno p-field, ma sono Csound quanto un
+f-statement. Lasciati in `ScoreWriter` — dov'erano — un secondo back-end
+testuale avrebbe dovuto forkarne header e footer per riscrivere due
+caratteri, cioè proprio l'accoppiamento che la issue toglie di mezzo. La
+guardia sorveglia perciò anche `score_writer.py`, e col criterio allargato:
+nessun letterale di quei moduli apre una riga di score.
+
+e i tre moduli tornano a fare una cosa sola:
+
+| Modulo | Cos'è ora |
+|--------|-----------|
+| `core/grain.py` | il dato, e basta |
+| `rendering/ftable_manager.py` | allocatore di numeri di tabella e symbol table condivisa fra i back-end (il renderer NumPy riceve la stessa `table_map`, lo score SuperCollider ne fa numeri di buffer) |
+| `controllers/window_registry.py` | il catalogo: quali nomi lo YAML può scrivere e qual è il canonico di ciascuno |
+
+`ScoreWriter` dispone le sezioni del file e riceve l'emitter dal costruttore
+(default: `CsoundEmitter()` — scelto su `is None`, non sulla verità
+dell'argomento: un emitter falsy è pur sempre l'emitter che il chiamante ha
+iniettato). `SuperColliderScoreWriter` è l'omologo per
+l'altro back-end testuale, vedi [[supercollider-backend]].
+
 Caching incrementale è componente separato, vedi [[caching]].
 
 ### Rendering NumPy multi-processo (`--jobs`)
@@ -182,10 +230,15 @@ Sequenza e invarianti:
 | RenderMode esterno al renderer | Flag `per_stream` nel renderer | Switch ortogonale: ogni renderer × ogni modo combinabile gratis |
 | NamingStrategy esterno al renderer | Naming dentro al renderer | Riuso tra renderer; test isolati |
 | Facade `RenderingEngine` | main.py orchestrazione diretta | Single entry point, test integrabili facilmente |
+| Emitter separato dal writer | Sintassi dentro `Grain`/`FtableManager` | Il livello che dice *cosa* suonare non conosce *come* un target lo scrive: è ciò che rende additivo un back-end (issue #203) |
 
 ## Implicazioni codice
 
 - Aggiungere un renderer: vedi [[add-renderer]] (3 step, zero modifiche a main.py)
+- Scrivere sintassi di un target: solo in `rendering/`, mai in `core/` o
+  `controllers/`. Per Csound il posto è `CsoundEmitter`; il test
+  `tests/rendering/test_csound_emitter.py` legge i tre moduli della #203 come
+  AST e fallisce se un loro letterale torna ad aprire una riga di score
 - Aggiungere una mode (es. per-voice): nuova `RenderMode` subclass + uso in main; ABC invariata
 - Caching: vedi [[caching]]
 - Errori specifici renderer: `CsoundRenderError`, `SuperColliderRenderError`,

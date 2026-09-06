@@ -54,17 +54,3 @@ class Grain:
             self.onset, self.duration, self.pointer_pos, self.pitch_ratio,
             self.volume, self.pan, self.sample_table, self.envelope_table,
         ))
-
-    def to_score_line(self, onset_offset: float = 0.0) -> str:
-        """Genera la linea di score Csound.
-
-        Args:
-            onset_offset: sottratto dall'onset (usato in STEMS mode per onset relativi).
-        """
-        # p2/p3 a 8 decimali: con grain.duration_unit samples un grano puo'
-        # durare 1 campione (~2e-5 s); 6 decimali introducevano fino al 4%
-        # di errore di quantizzazione a 96 kHz.
-        return (f'i "Grain" {self.onset - onset_offset:.8f} {self.duration:.8f} '
-                f'{self.pointer_pos:.6f} {self.pitch_ratio:.6f} '
-                f'{self.volume:.2f} {self.pan:.3f} '
-                f'{self.sample_table} {self.envelope_table}\n')

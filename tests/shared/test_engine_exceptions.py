@@ -689,13 +689,13 @@ def test_window_strategy_factory_unknown_name_is_strategy_not_found():
     assert "bogus_strategy_name_xyz" in msg
 
 
-def test_window_registry_generate_unknown_is_invalid_window():
-    """generate_ftable_statement con nome ignoto -> InvalidWindowError."""
+def test_csound_emitter_unknown_window_is_invalid_window():
+    """window_ftable con nome ignoto -> InvalidWindowError (issue #203)."""
     from pge.shared.exceptions import ConfigError, InvalidWindowError
-    from pge.controllers.window_registry import WindowRegistry
+    from pge.rendering.csound_emitter import CsoundEmitter
 
     with pytest.raises(InvalidWindowError) as excinfo:
-        WindowRegistry.generate_ftable_statement(1, 'totally_fake_window_xyz')
+        CsoundEmitter().window_ftable(1, 'totally_fake_window_xyz')
     err = excinfo.value
     assert isinstance(err, ConfigError)
     assert isinstance(err, ValueError)

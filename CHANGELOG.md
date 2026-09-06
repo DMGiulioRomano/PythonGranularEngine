@@ -456,6 +456,71 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- **La sintassi Csound si scrive in un posto solo** (issue #203). Tre moduli
+  la producevano, e due stavano sotto il livello che deve restare
+  indipendente dal target: `Grain.to_score_line` in `core/` (nome dello
+  strumento, ordine dei p-field, precisione decimale di ciascuno),
+  `FtableManager.write_to_file` — l'allocatore degli ID di tabella era anche
+  il code generator che li emette — e
+  `WindowRegistry.generate_ftable_statement`, il catalogo delle finestre che
+  materializza il proprio f-statement.
+
+  I tre metodi non ci sono piu': al loro posto c'e' `CsoundEmitter`
+  (`src/pge/rendering/csound_emitter.py`) con `grain_statement`,
+  `sample_ftable`, `window_ftable` e `write_ftables`. `ScoreWriter` lo riceve
+  dal costruttore (`emitter=`, default `CsoundEmitter()`) e continua a
+  decidere l'ordine delle sezioni, non la sintassi.
+
+  Il confine e' sulla **sintassi**, non sugli statement, e la prima stesura si
+  fermava agli statement: `ScoreWriter` scriveva ancora da se' la `e` di fine
+  score, il `;` di ogni commento e i separatori `; ===` — quattro volte come
+  `"="*77`, mentre l'emitter aveva gia' la larghezza in una costante. Quei
+  caratteri non hanno p-field ma sono Csound quanto un f-statement, e lasciati
+  li' obbligavano un secondo back-end testuale a forkare header e footer, cioe'
+  esattamente l'accoppiamento che la issue toglie di mezzo. L'emitter ha ora
+  anche `end_statement()`, `comment(text)` e `rule()`; la guardia AST sorveglia
+  pure `score_writer.py` e col criterio allargato a `;` e `e`, verificata
+  sabotando entrambi i casi.
+
+  Cosa torna a fare una cosa sola: `Grain` e' il dato; `FtableManager` alloca
+  i numeri di tabella ed espone la symbol table condivisa fra i back-end (il
+  renderer NumPy riceve la stessa `table_map`, lo score SuperCollider ne fa
+  numeri di buffer); `WindowRegistry` e' il catalogo dei nomi che lo YAML puo'
+  scrivere. Il misuratore del difetto era che gli 8 decimali di p2/p3 —
+  necessari perche' a 96 kHz un grano puo' durare un campione, cioe' una
+  decisione sul formato di uscita di Csound — vivevano in `core/grain.py`.
+
+  **Il `.sco` non cambia di un byte**, ed e' il criterio di accettazione:
+  `tests/rendering/test_csound_score_bytes.py` confronta il file per intero
+  con `==` sui due valori di `per_stream`, ed e' stato scritto *prima* dello
+  spostamento. Finora l'output era verificato solo con asserzioni `in` su
+  frammenti, che non vedono una riga in piu' o un separatore perso.
+
+  Superficie Python interna: niente YAML, CLI, gerarchia errori o formati
+  osservabili, quindi nessun impatto su PGE-ls e PGE-ui. Chi importava i tre
+  metodi da fuori — non e' il caso di nessun modulo del repo — passa
+  all'emitter.
+
+  Tre difetti trovati in revisione sul codice nuovo, tutti invisibili al
+  `.sco`:
+
+  - `ScoreWriter` sceglieva il default con `emitter or CsoundEmitter()`, cioe'
+    sulla verita' dell'argomento: un emitter falsy — ne basta uno con
+    `__len__`, che vale 0 finche' non ha emesso niente — veniva scartato in
+    silenzio e lo score usciva in Csound, il contrario di cio' per cui il
+    parametro esiste. Ora `is None`; `Mock()` e' vero, quindi il test che
+    c'era non poteva vedere la differenza.
+  - `default_window_table_size` era un attributo di classe che nessuno
+    leggeva: il default di `window_ftable` legava la costante di modulo,
+    quindi una sottoclasse che lo spostava non otteneva niente — mentre
+    `instrument_name`, dichiarato sulla riga sopra, funziona. Ora si legge via
+    `self`.
+  - La durata del segmento **GEN16** restava il `1024` scritto nel catalogo
+    qualunque fosse `size`: una dimensione diversa dal default emetteva una
+    tabella da N punti con dentro un segmento da 1024. Il catalogo dichiara la
+    forma della curva, la dimensione la decide chi materializza. Al default i
+    due numeri coincidono, quindi nessuno score reale cambia.
+
 - **`bench_cost.py` parla con l'API pubblica** — `api.load_generator` e
   `api.build_renderer` invece di `cli._build_renderer`. E' la classe di bug
   della #243 chiusa dal chiamante: `_build_renderer(tipo, gen, **kwargs)`
