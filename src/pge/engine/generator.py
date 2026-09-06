@@ -20,7 +20,10 @@ from pge.core.stream import Stream
 from pge.rendering.ftable_manager import FtableManager
 from pge.rendering.score_writer import ScoreWriter
 from pge.controllers.window_controller import WindowController
-from pge.shared.exceptions import ConfigError, SampleNotFoundError
+from pge.shared.exceptions import (
+    ConfigError, ConfigFileNotFoundError, ConfigParseError,
+    SampleNotFoundError,
+)
 from pge.shared.seeding import session_seed
 
 class Generator:
@@ -84,11 +87,34 @@ class Generator:
             dict: dati YAML preprocessati
             
         Raises:
-            FileNotFoundError: se il file YAML non esiste
-            yaml.YAMLError: se il file YAML è malformato
+            ConfigFileNotFoundError: se il file YAML non esiste. Eredita
+                anche FileNotFoundError (issue #257), quindi chi catturava
+                il builtin continua a catturarlo.
+            ConfigParseError: se il file YAML è malformato o non
+                decodificabile nell'encoding di sistema. Eredita anche
+                yaml.YAMLError, per la stessa ragione.
         """
-        with open(self.yaml_path, 'r') as f:
-            raw_data = yaml.safe_load(f)
+        # Il try avvolge il solo caricamento dello YAML, e questo e' un
+        # vincolo, non una comodita': ogni altro `open()` che finisse qui
+        # dentro uscirebbe travestito da configurazione mancante. E' la forma
+        # esatta del difetto che la #257 chiude un livello piu' su, dove
+        # `cli.main()` catturava il builtin per estensione del blocco.
+        try:
+            with open(self.yaml_path, 'r') as f:
+                raw_data = yaml.safe_load(f)
+        except FileNotFoundError as err:
+            raise ConfigFileNotFoundError(self.yaml_path) from err
+        except yaml.YAMLError as err:
+            raise ConfigParseError(self.yaml_path, err) from err
+        except UnicodeDecodeError as err:
+            # Il terzo modo in cui un file di config non si legge. `open()` e'
+            # in modalita' testo, quindi la decodifica la fa Python e un file
+            # salvato in latin-1 esce di qui prima che PyYAML veda un byte;
+            # aperto in binario sarebbe stato PyYAML a rifiutarlo, con un
+            # `yaml.reader.ReaderError` -- cioe' un `yaml.YAMLError`. Stesso
+            # guasto, stesso tipo: era l'unico dei tre a uscire come traceback
+            # dal ramo generico della CLI.
+            raise ConfigParseError(self.yaml_path, err) from err
 
         self.data = self._eval_math_expressions(raw_data)
         # Seed top-level opzionale (issue #81): None se assente (il session

@@ -6,8 +6,9 @@ tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
   - src/pge/cli.py
+  - src/pge/engine/generator.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: 0110399
+last_synced_commit: 6de58b4
 entry_for: [error-handling]
 ---
 
@@ -64,6 +65,10 @@ EngineError                                  (Exception)
 ├── SampleNotFoundError                      issue #33
 │
 ├── ConfigError                              (anche ValueError, backward-compat)
+│   ├── ConfigFileNotFoundError              #257 — file YAML inesistente
+│   │                                        (anche FileNotFoundError)
+│   ├── ConfigParseError                     #257 — file YAML illeggibile
+│   │                                        (anche yaml.YAMLError)
 │   ├── MissingFieldError                    PR1 — campo YAML mancante/null
 │   ├── InvalidFieldValueError               PR1 — campo presente, valore invalido
 │   ├── InvalidParameterError                PR2 — formato/tipo parametro non supportato
@@ -96,25 +101,53 @@ EngineError                                  (Exception)
   con il proprio preambolo — e considera **anche lo stdout**, che è dove
   entrambi i binari SuperCollider scrivono i loro errori.
 - **`_BinaryNotFoundError` NON eredita da `FileNotFoundError`**, anche se
-  descrive un file che non c'è — e nemmeno le sue due sottoclassi. La CLI
-  intercetta `FileNotFoundError` per annunciare «file YAML non trovato»: un
-  binario mancante che passasse di lì verrebbe riportato all'utente come una
-  configurazione inesistente. Il tipo di un errore serve a chi lo cattura,
-  non a descriverne la causa. `SuperColliderNotFoundError` (#228) nasce già
-  così; `CsoundNotFoundError` (#241) è la stessa regola applicata al ramo
-  csound, che quel difetto lo aveva davvero: `_run_csound` lasciava salire il
-  `FileNotFoundError` del subprocess, e su una macchina senza csound l'utente
-  si sentiva dire che il suo YAML non esisteva — letto e parsato pochi
-  istanti prima. Le due classi differiscono per il solo nome del tool, quindi
-  il messaggio vive nella base comune, come per `_SubprocessRenderError`.
-- **L'handler `FileNotFoundError` della CLI è stretto attorno a
-  `Generator()` + `load_yaml()`** (#241), non in fondo al `try` di
-  `cli.main()`. Il tipo giusto per chi lo solleva non basta se chi lo cattura
-  è troppo largo: l'ordine dei due handler (`FileNotFoundError` prima di
-  `EngineError`) rendeva l'errore di *qualunque* fase un file di
-  configurazione mancante. Quelli che nessuno ha ancora tradotto finiscono
-  ora nel ramo generico — messaggio e traceback — invece che in un messaggio
-  falso.
+  descrive un file che non c'è — e nemmeno le sue due sottoclassi — mentre
+  **`ConfigFileNotFoundError` sì**. L'asimmetria è voluta e non sta nella
+  compatibilità: sta nel valore di verità del builtin. Per un binario assente
+  `FileNotFoundError` è una bugia — il file mancante non è quello che il tipo
+  lascia intendere, e infatti prima della #241 csound assente si annunciava
+  come «file YAML non trovato»: `_run_csound` lasciava salire il
+  `FileNotFoundError` del subprocess, e l'utente si sentiva dire che il suo
+  YAML non esisteva, letto e parsato pochi istanti prima. Per lo YAML il
+  builtin è semplicemente vero: il file che non c'è è proprio quello. Dove
+  mente, il tipo di dominio lo sostituisce; dove dice il vero, gli si affianca
+  e la promessa di libreria resta in piedi. `SuperColliderNotFoundError` (#228)
+  nasce già così, `CsoundNotFoundError` (#241) è la stessa regola sul ramo
+  csound: le due differiscono per il solo nome del tool, quindi il messaggio
+  vive nella base comune, come per `_SubprocessRenderError`.
+
+  La ragione storica scritta qui prima — «la CLI intercetta `FileNotFoundError`
+  *prima* di `EngineError`» — non vale più, e con essa è caduto il rimedio che
+  la #241 le aveva dato (stringere l'handler attorno a `Generator()` +
+  `load_yaml()`): dalla #257 `cli.main()` non cattura **nessun** tipo builtin
+  sul percorso di caricamento. Restano `EngineError` e il ramo generico, in
+  quest'ordine, e la garanzia è **sul tipo** e non sull'estensione fisica del
+  blocco `try` — che era la forma fragile, spesa da qualunque riga aggiunta
+  dentro il blocco. Un `FileNotFoundError` nudo che risalga da altrove finisce
+  nel ramo generico (messaggio + traceback), non in un messaggio falso.
+
+- **`ConfigFileNotFoundError` e `ConfigParseError` ereditano anche il tipo che
+  sostituiscono** (`FileNotFoundError`, `yaml.YAMLError`), con lo stesso
+  precedente di `ConfigError`/`ValueError`: `Generator.load_yaml` e
+  `api.load_generator` dichiarano quei due nei `Raises` da sempre, e chi li
+  cattura per nome continua a catturarli. Il costo dichiarato è che il tipo
+  non isola: un `FileNotFoundError` di altra origine impacchettato lì per
+  errore tornerebbe a confondersi — ed è per questo che `load_yaml` avvolge il
+  solo `open()` dello YAML e niente altro.
+- **Ereditare il builtin non basta: chi lo cattura ne legge lo stato.** Quel
+  codice non si ferma alla cattura — legge `e.filename`, confronta `e.errno`
+  con `errno.ENOENT`, interroga `e.problem_mark`, che è *l'*idioma con cui si
+  legge un errore PyYAML. Un wrapper che porta solo il tipo li lascia a `None`
+  o assenti: la promessa regge per `isinstance` e cade per tutto il resto,
+  senza che niente fallisca. Perciò `ConfigFileNotFoundError` valorizza i tre
+  campi che `open()` avrebbe riempito, e `ConfigParseError` riporta dalla
+  causa gli attributi di `MarkedYAMLError` quando ci sono — mai fabbricandoli:
+  su un `yaml.YAMLError` nudo restano assenti, come sull'originale. I tre
+  campi `OSError` hanno un prezzo che va pagato esplicitamente:
+  con `filename` valorizzato `OSError.__str__` smette di stampare `args[0]` e
+  scrive `[Errno 2] No such file or directory: '...'`, cioè butta via la prosa
+  proprio nella riga che finisce nel log engine — `ConfigFileNotFoundError`
+  override `__str__` per tenersela.
 - **La riga `Comando:` di `_SubprocessRenderError` invita a rieseguire, quindi
   deve restare rieseguibile.** Lo score che vi compare è temporaneo e il
   renderer lo cancella in un `finally` — anche quando il binario esce con un
@@ -216,6 +249,46 @@ ramo dedicato per sotto-classe.
 ---
 
 ## 4. Esempi YAML invalidi → output
+
+### File di configurazione inesistente
+CLI: `pge configs/assente.yml out.wav`
+```
+[ERRORE] File di configurazione non trovato: 'configs/assente.yml'
+  Path cercato: /home/utente/progetto/configs/assente.yml
+  Dettagli:     logs/assente_engine.log
+```
+
+`Path cercato:` compare solo quando dice qualcosa in più di ciò che l'utente
+ha scritto — su un path già assoluto sarebbe la stessa riga due volte. È
+l'informazione che il messaggio pre-#257 (`Errore: file 'x.yml' non trovato`)
+non dava: «hai lanciato dalla directory sbagliata».
+
+### File di configurazione malformato
+```yaml
+streams:
+  s1:
+    density: 10
+   duration: 4
+```
+```
+[ERRORE] File di configurazione malformato: 'configs/rotto.yml'
+  Riga/colonna: 4:4
+  Dettaglio:    expected <block end>, but found '<block mapping start>'
+  Dettagli:     logs/rotto_engine.log
+```
+
+`problem_mark` di PyYAML è 0-based e qui è reso 1-based, altrimenti la riga
+stampata sarebbe una sopra a quella che l'editor mostra. Senza marker (non
+tutti gli `yaml.YAMLError` ne portano uno) il messaggio degrada alle due
+righe `[ERRORE]` + `Dettaglio:`. Stesso tipo e stesso formato per un file
+che non si decodifica — un `.yml` salvato in latin-1 — che `open()` in
+modalità testo rifiuta prima che PyYAML veda un byte:
+
+```
+[ERRORE] File di configurazione malformato: 'configs/latin1.yml'
+  Dettaglio:    'utf-8' codec can't decode byte 0xe8 in position 7: invalid continuation byte
+  Dettagli:     logs/latin1_engine.log
+```
 
 ### Renderer sconosciuto
 CLI: `--renderer foo`

@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [api, library, install, render]
 sources: [src/pge/api.py, pyproject.toml]
-last_synced_commit: 5285c17
+last_synced_commit: 030ac48
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 
@@ -95,7 +95,11 @@ passare dalla CLI né monkey-patchare i globali.
 
 6. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
    argomenti API invalidi sollevano `ValueError` (es. `audio_format`
-   stringa ignota), file YAML mancante `FileNotFoundError`.
+   stringa ignota). Il file YAML mancante è `ConfigFileNotFoundError` e quello
+   malformato `ConfigParseError` (#257): entrambi sono `EngineError`, quindi un
+   solo `except` li copre insieme a tutto il resto, ed entrambi ereditano
+   anche il builtin che sostituiscono (`FileNotFoundError`, `yaml.YAMLError`) —
+   chi li catturava per nome non deve cambiare niente.
 
 7. Csound: `renderer='csound'` con knob raggruppati in
    `api.CsoundOptions(orc_path=..., ssdir=..., sco_dir=...)`;

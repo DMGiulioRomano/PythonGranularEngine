@@ -781,6 +781,34 @@ class TestLoadGenerator:
         with pytest.raises(FileNotFoundError):
             api_mocks['api'].load_generator('missing.yml')
 
+    def test_config_file_not_found_resta_catturabile_come_builtin(
+            self, api_mocks):
+        """La docstring promette `FileNotFoundError` fra i `Raises` (#257).
+
+        `load_yaml` solleva ora `ConfigFileNotFoundError`, che eredita il
+        builtin proprio perche' questa promessa non si rompa per chi usa
+        `pge.api` come libreria.
+        """
+        from pge.shared.exceptions import ConfigFileNotFoundError
+
+        api_mocks['generator_instance'].load_yaml.side_effect = (
+            ConfigFileNotFoundError('missing.yml'))
+
+        with pytest.raises(FileNotFoundError):
+            api_mocks['api'].load_generator('missing.yml')
+
+    def test_config_parse_error_resta_catturabile_come_yaml_error(
+            self, api_mocks):
+        """Specchio del precedente per lo YAML malformato (#257)."""
+        import yaml
+        from pge.shared.exceptions import ConfigParseError
+
+        api_mocks['generator_instance'].load_yaml.side_effect = (
+            ConfigParseError('broken.yml', yaml.YAMLError('boom')))
+
+        with pytest.raises(yaml.YAMLError):
+            api_mocks['api'].load_generator('broken.yml')
+
     def test_no_own_print(self, api_mocks, capsys):
         api_mocks['api'].load_generator('test.yml')
         assert capsys.readouterr().out == ''
