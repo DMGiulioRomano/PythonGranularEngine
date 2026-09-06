@@ -149,13 +149,43 @@ e
 '''
 
 # per_stream=True: cambia solo p2, che diventa relativo a stream.onset.
-GOLDEN_PER_STREAM = GOLDEN_ABSOLUTE.replace(
-    'i "Grain" 2.50000000 0.05000000', 'i "Grain" 0.00000000 0.05000000',
-).replace(
-    'i "Grain" 2.50002083 0.00002083', 'i "Grain" 0.00002083 0.00002083',
-).replace(
-    'i "Grain" 3.00000000 0.10000000', 'i "Grain" 0.50000000 0.10000000',
-)
+#
+# La sostituzione e' su **righe intere**, non sul prefisso `i "Grain" p2 p3`:
+# due grani di stream diversi possono condividere onset e durata, e un
+# prefisso li riscriverebbe entrambi -- il golden atteso conterrebbe allora
+# un onset che il writer non produce mai, e il test fallirebbe per una
+# ragione che non ha niente a che vedere col codice sotto esame.
+_PER_STREAM_ONSETS = {
+    'i "Grain" 2.50000000 0.05000000 0.250000 1.000000 -6.00 0.500 1 2':
+        'i "Grain" 0.00000000 0.05000000 0.250000 1.000000 -6.00 0.500 1 2',
+    'i "Grain" 2.50002083 0.00002083 0.500000 1.059463 -12.00 -1.000 1 3':
+        'i "Grain" 0.00002083 0.00002083 0.500000 1.059463 -12.00 -1.000 1 3',
+    'i "Grain" 3.00000000 0.10000000 1.250000 0.500000 0.00 1.000 1 4':
+        'i "Grain" 0.50000000 0.10000000 1.250000 0.500000 0.00 1.000 1 4',
+}
+
+
+def _to_per_stream(golden: str) -> str:
+    """Riscrive gli onset riga per riga, e pretende di averle trovate tutte.
+
+    Senza il conteggio, un ritocco alla fixture che cambia una di quelle
+    righe lascerebbe la mappa muta invece che rossa: il golden per_stream
+    tornerebbe identico a quello assoluto e il test verificherebbe l'altro
+    caso due volte.
+    """
+    lines = golden.split('\n')
+    rewritten = [_PER_STREAM_ONSETS.get(line, line) for line in lines]
+
+    matched = sum(1 for line in lines if line in _PER_STREAM_ONSETS)
+    assert matched == len(_PER_STREAM_ONSETS), (
+        f"{matched} righe su {len(_PER_STREAM_ONSETS)} trovate nel golden "
+        f"assoluto: la fixture e la mappa degli onset si sono disallineate."
+    )
+
+    return '\n'.join(rewritten)
+
+
+GOLDEN_PER_STREAM = _to_per_stream(GOLDEN_ABSOLUTE)
 
 
 def _write(ftable_manager, streams, tmp_path, per_stream):

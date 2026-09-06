@@ -267,6 +267,27 @@ class TestScoreWriterInit:
 
         assert sw.emitter is emitter
 
+    def test_init_keeps_a_falsy_emitter(self, ftable_manager):
+        """Un emitter falsy non e' un emitter assente.
+
+        Il default si sceglie su `is None`: con `or`, un emitter che
+        definisce `__len__` -- e ne vale 0 finche' non ha emesso niente --
+        veniva scartato in silenzio e lo score usciva in Csound, cioe' il
+        contrario di cio' per cui il parametro esiste. `Mock()` e' vero,
+        quindi il test accanto non vedeva la differenza.
+        """
+        class EmptyEmitter(Mock):
+            def __len__(self):
+                return 0
+
+        SW = _get_score_writer_class()
+        emitter = EmptyEmitter()
+        assert not emitter
+
+        sw = SW(ftable_manager, emitter=emitter)
+
+        assert sw.emitter is emitter
+
     def test_init_with_different_ftable_managers(self):
         """Verifica che accetti qualunque FtableManager."""
         SW = _get_score_writer_class()
@@ -473,9 +494,15 @@ class TestWriteStreamSection:
             grain, onset_offset=0.0)
 
     def test_all_grains_written(self, writer, string_file):
-        """Tutti i grani di tutte le voice vengono scritti."""
+        """Tutti i grani di tutte le voice vengono scritti.
+
+        Gli onset delle due voice sono disgiunti di proposito: `Grain` e' una
+        frozen dataclass, quindi con onset sovrapposti due grani di voice
+        diverse sono lo *stesso valore* e l'asserzione smetterebbe di dire
+        quale voice li ha prodotti.
+        """
         grains_v0 = [make_grain(i * 0.1) for i in range(5)]
-        grains_v1 = [make_grain(i * 0.1) for i in range(3)]
+        grains_v1 = [make_grain(10.0 + i * 0.1) for i in range(3)]
         stream = make_mock_stream(voices=[grains_v0, grains_v1])
 
         writer._write_stream_section(string_file, stream)
@@ -484,6 +511,8 @@ class TestWriteStreamSection:
             call.args[0] for call in writer.emitter.grain_statement.call_args_list
         ]
         assert emitted == grains_v0 + grains_v1
+        # identita', non solo uguaglianza: sono gli oggetti dello stream.
+        assert all(a is b for a, b in zip(emitted, grains_v0 + grains_v1))
 
 
 # =============================================================================

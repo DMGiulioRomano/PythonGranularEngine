@@ -34,10 +34,10 @@ per milioni di grani -- non paga una concatenazione in piu' per riga.
 """
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from pge.controllers.window_registry import WindowRegistry
-from pge.shared.exceptions import FtableError
+from pge.shared.exceptions import FtableError, InvalidWindowError
 
 # Nome dello strumento definito in `csound/main.orc`. Lo score lo cita per
 # nome in ogni i-statement: se cambia li', cambia qui.
@@ -48,6 +48,10 @@ DEFAULT_WINDOW_TABLE_SIZE = 1024
 
 # Larghezza dei separatori di sezione, in caratteri.
 _RULE_WIDTH = 77
+
+# GEN16 e la posizione, nei suoi p-field, della durata del segmento.
+_GEN16 = 16
+_GEN16_DUR_INDEX = 1
 
 
 class CsoundEmitter:
@@ -88,28 +92,79 @@ class CsoundEmitter:
         self,
         table_num: int,
         name: str,
-        size: int = DEFAULT_WINDOW_TABLE_SIZE,
+        size: Optional[int] = None,
     ) -> str:
         """f-statement di una finestra del catalogo (GEN09/GEN16/GEN20).
 
         Args:
             table_num: numero di tabella Csound.
             name: nome della finestra, alias inclusi.
-            size: dimensione della tabella in punti.
+            size: dimensione della tabella in punti. `None` = il default
+                dell'emitter, cosi' che una sottoclasse possa spostarlo
+                dichiarando `default_window_table_size`, come fa per
+                `instrument_name`.
 
         Raises:
             InvalidWindowError: il catalogo non conosce `name`.
         """
         spec = WindowRegistry.get(name)
         if spec is None:
-            from pge.shared.exceptions import InvalidWindowError
             raise InvalidWindowError(
                 name=name,
                 available=WindowRegistry.all_names(),
             )
 
-        params = ' '.join(str(p) for p in spec.gen_params)
-        return f'f {table_num} 0 {size} {spec.gen_routine} {params}\n'
+        return self._ftable_from_spec(table_num, spec, size)
+
+    def _ftable_from_spec(self, table_num: int, spec, size: Optional[int]) -> str:
+        """f-statement di una `WindowSpec` gia' risolta.
+
+        Esiste perche' `write_ftables` la spec ce l'ha gia' in mano -- le
+        serve `spec.description` per il commento -- e ricercarla una seconda
+        volta significherebbe anche due `if spec is None` scritti separati,
+        liberi di divergere.
+        """
+        if size is None:
+            size = self.default_window_table_size
+
+        params = list(spec.gen_params)
+
+        # GEN16 descrive un segmento alla volta -- `val1 dur1 type1 val2`,
+        # con dur1 in *punti* -- e le finestre asimmetriche del catalogo ne
+        # hanno uno solo: la sua lunghezza e' la tabella intera. Il catalogo
+        # dichiara la forma della curva, la dimensione la decide chi
+        # materializza, altrimenti una `size` diversa dal default emette una
+        # tabella da N punti con dentro un segmento da 1024.
+        if spec.gen_routine == _GEN16 and len(params) > _GEN16_DUR_INDEX:
+            params[_GEN16_DUR_INDEX] = size
+
+        rendered = ' '.join(str(p) for p in params)
+        return f'f {table_num} 0 {size} {spec.gen_routine} {rendered}\n'
+
+    def end_statement(self) -> str:
+        """Statement di fine score.
+
+        E' uno statement come gli altri, e stava fuori: finche' `ScoreWriter`
+        scriveva la `e` da se', l'affermazione della #203 -- la sintassi del
+        target sta in un posto solo -- era falsa di una riga.
+        """
+        return 'e\n'
+
+    # =========================================================================
+    # COMMENTI E STRUTTURA
+    # =========================================================================
+
+    def comment(self, text: str) -> str:
+        """Riga di commento.
+
+        Il `;` e' sintassi Csound quanto un f-statement: chi dispone le
+        sezioni sceglie *cosa* dire, non come si apre un commento.
+        """
+        return f'; {text}\n'
+
+    def rule(self) -> str:
+        """Separatore di sezione: un commento di soli `=`."""
+        return self.comment('=' * _RULE_WIDTH)
 
     # =========================================================================
     # SEZIONE FUNCTION TABLES
@@ -129,14 +184,13 @@ class CsoundEmitter:
             FtableError: `tables` cita una finestra che il catalogo non
                 conosce -- stato incoerente, non un nome sbagliato in YAML.
         """
-        rule = "; " + "=" * _RULE_WIDTH + "\n"
-        f.write(rule)
-        f.write("; FUNCTION TABLES\n")
-        f.write(rule + "\n")
+        f.write(self.rule())
+        f.write(self.comment("FUNCTION TABLES"))
+        f.write(self.rule() + "\n")
 
         for num, (ftype, key) in sorted(tables.items()):
             if ftype == 'sample':
-                f.write(f'; Sample: {key}\n')
+                f.write(self.comment(f'Sample: {key}'))
                 f.write(self.sample_ftable(num, key))
                 f.write('\n')
 
@@ -152,6 +206,6 @@ class CsoundEmitter:
                         ),
                     )
 
-                f.write(f'; Window: {key} - {spec.description}\n')
-                f.write(self.window_ftable(num, key))
+                f.write(self.comment(f'Window: {key} - {spec.description}'))
+                f.write(self._ftable_from_spec(num, spec, None))
                 f.write('\n')

@@ -217,6 +217,52 @@ class TestWindowFtable:
         assert emitter.window_ftable(1, 'hanning') == \
             emitter.window_ftable(1, 'hanning', size=1024)
 
+    @pytest.mark.parametrize("size", [128, 512, 2048, 8192])
+    def test_gen16_segment_follows_the_table_size(self, emitter, size):
+        """Il segmento GEN16 e' lungo quanto la tabella.
+
+        `gen_params` del catalogo scrive 1024 come durata del segmento --
+        il default -- ma quel numero e' in *punti*: lasciato fisso, una
+        `size` diversa emetteva una tabella da N punti con dentro un
+        segmento da 1024. Il catalogo dichiara la forma della curva, la
+        dimensione la decide chi materializza.
+        """
+        assert emitter.window_ftable(3, 'expodec', size=size) == \
+            f'f 3 0 {size} 16 1 {size} 4 0\n'
+
+    def test_gen16_at_default_size_is_unchanged(self, emitter):
+        """La derivazione non muove il caso reale: al default i due numeri
+        coincidono, ed e' il byte che finisce in ogni `.sco`."""
+        assert emitter.window_ftable(3, 'expodec') == 'f 3 0 1024 16 1 1024 4 0\n'
+
+    @pytest.mark.parametrize("size", [256, 4096])
+    def test_every_asymmetric_window_follows_the_size(self, emitter, size):
+        """Vale per tutta la famiglia, non solo per `expodec`."""
+        from pge.controllers.window_registry import WindowRegistry
+
+        for spec in WindowRegistry.get_by_family('asymmetric'):
+            fields = emitter.window_ftable(1, spec.name, size=size).split()
+            assert fields[3] == str(size), spec.name       # SIZE della tabella
+            assert fields[6] == str(size), spec.name       # dur1 del segmento
+
+    def test_default_size_comes_from_the_emitter(self, emitter):
+        """`default_window_table_size` e' letto via `self`, come
+        `instrument_name`: era un attributo di classe che nessuno leggeva,
+        quindi una sottoclasse che lo spostava non otteneva niente."""
+        class WideEmitter(CsoundEmitter):
+            default_window_table_size = 4096
+
+        assert WideEmitter().window_ftable(1, 'hanning') == 'f 1 0 4096 20 2 1\n'
+        assert emitter.window_ftable(1, 'hanning') == 'f 1 0 1024 20 2 1\n'
+
+    def test_instrument_name_comes_from_the_emitter(self, emitter):
+        """L'altra meta' della stessa superficie: le due dichiarazioni di
+        classe si leggono in coppia, e devono funzionare in coppia."""
+        class NamedEmitter(CsoundEmitter):
+            instrument_name = 'Zap'
+
+        assert NamedEmitter().grain_statement(_grain()).startswith('i "Zap" ')
+
     def test_alias_resolves_to_canonical(self, emitter):
         assert emitter.window_ftable(1, 'triangle') == \
             emitter.window_ftable(1, 'bartlett')
@@ -379,6 +425,17 @@ class TestWriteFtables:
         assert '[ERRORE]' in msg
         assert 'nonexistent_window_xyz' in msg
 
+    def test_window_size_follows_the_emitter_default(self, emitter):
+        """La sezione non passa una `size`, quindi eredita quella
+        dell'emitter -- il lookup della spec e' unico ma la dimensione
+        resta la stessa che darebbe `window_ftable`."""
+        class WideEmitter(CsoundEmitter):
+            default_window_table_size = 2048
+
+        content = self._write(WideEmitter(), {1: ('window', 'expodec')})
+
+        assert 'f 1 0 2048 16 1 2048 4 0' in content
+
     def test_unknown_entry_type_is_ignored(self, emitter):
         """Un tipo che l'emitter non conosce non fa saltare la sezione:
         era il comportamento di `write_to_file` (nessun `else`)."""
@@ -417,9 +474,15 @@ def _code_string_constants(path: Path):
             yield node.value
 
 
-# Un letterale che apre uno statement di score Csound: `i` (evento) o `f`
-# (function table), seguiti da uno spazio o dalla virgoletta del nome.
-_SCORE_STATEMENT = re.compile(r'^[if][ "{]')
+# Un letterale che apre una riga di score Csound: `i` (evento) o `f`
+# (function table) seguiti da uno spazio o dalla virgoletta del nome, la `e`
+# di fine score, il `;` di un commento.
+#
+# Il criterio non e' "statement": e' *sintassi del target*. Il `;` e la `e`
+# non hanno un p-field, ma sono altrettanto Csound -- un secondo back-end
+# testuale che li trovasse gia' scritti in `ScoreWriter` dovrebbe forkarne
+# header e footer, cioe' l'accoppiamento che la #203 toglie di mezzo.
+_SCORE_STATEMENT = re.compile(r'^([if][ "{]|e\n$|; )')
 
 
 def _module_path(module_name: str) -> Path:
@@ -431,12 +494,15 @@ TARGET_FREE_MODULES = [
     'pge.core.grain',
     'pge.rendering.ftable_manager',
     'pge.controllers.window_registry',
+    # Non ha ceduto un metodo come gli altri tre, ma e' il modulo che la
+    # sintassi la aveva sotto mano: dispone le sezioni, e le scriveva.
+    'pge.rendering.score_writer',
 ]
 
 
 @pytest.mark.parametrize("module_name", TARGET_FREE_MODULES)
 def test_module_emits_no_csound_statement(module_name):
-    """I tre moduli della #203 non costruiscono piu' statement Csound.
+    """I moduli della #203 non costruiscono piu' sintassi Csound.
 
     Il criterio non e' un elenco di nomi di metodi: e' che nessun letterale
     di quei moduli apra una riga di score. Un metodo rinominato o un
@@ -464,6 +530,8 @@ def test_the_guard_can_actually_see_a_statement():
 
     assert any(v.startswith('i ') for v in found)
     assert any(v.startswith('f ') for v in found)
+    assert any(v.startswith('; ') for v in found)
+    assert 'e\n' in found
 
 
 @pytest.mark.parametrize("owner,method", [
