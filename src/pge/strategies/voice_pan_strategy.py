@@ -37,6 +37,7 @@ from pge.shared.exceptions import (
     InvalidStrategyConfigError,
     StrategyNotFoundError,
 )
+from pge.shared.logger import log_strategy_registration
 from pge.shared.seeding import voice_rng
 
 
@@ -263,10 +264,7 @@ def register_voice_pan_strategy(
         register_voice_pan_strategy('stereo_spread', MyStereoSpread)
     """
     VOICE_PAN_STRATEGIES[name] = strategy_class
-    print(
-        f"Registrata nuova strategia pan voce: "
-        f"'{name}' -> {strategy_class.__name__}"
-    )
+    log_strategy_registration('pan voce', name, strategy_class)
 
 
 # =============================================================================

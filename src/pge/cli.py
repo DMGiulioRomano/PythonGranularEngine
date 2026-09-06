@@ -67,7 +67,10 @@ def _build_renderer(
     Adapter CLI -> API (Fase 1 refactor library/CLI): mappa i kwargs storici
     della CLI (use_cache/cache_dir/yaml_basename, orc_path/incdir/...) sulla
     firma keyword-only dell'API e conserva qui il print `[CACHE] Manifest:`
-    (i print sono policy CLI, l'API non stampa).
+    (quella riga e' policy CLI: api.build_renderer non la emette). Il che
+    non vuol dire che chiamare l'API sia silenzioso -- i componenti che
+    orchestra stampano, e il censimento sta nell'intestazione di api.py
+    (issue #189).
 
     La firma e' esplicita e keyword-only (issue #252). Con `**kwargs` +
     `.get()` un nome fuori elenco non era ne' un errore ne' un warning: era
@@ -721,13 +724,15 @@ def main():
 
         print(f"Log: {get_clip_log_path()}")
 
-    # Nessun handler su un tipo builtin (issue #257). Lo YAML che manca e
-    # quello malformato hanno ora un tipo di dominio (ConfigFileNotFoundError,
-    # ConfigParseError) e passano di qui sotto come ogni altro errore di
-    # configurazione. Un FileNotFoundError nudo che risalga da altrove --
-    # un sample, una pre-scansione, un domani in cui questo blocco chiami
-    # api.load_generator -- finisce nel ramo generico invece di annunciare
-    # una configurazione inesistente.
+    # Nessun handler su un tipo builtin (issue #257). La #241 aveva stretto
+    # il `try` attorno alle due righe del caricamento -- la garanzia era la
+    # sua *estensione*, e ogni riga aggiunta la spendeva. Ora lo YAML che
+    # manca e quello malformato hanno un tipo di dominio
+    # (ConfigFileNotFoundError, ConfigParseError) e passano di qui sotto come
+    # ogni altro errore di configurazione, per tipo. Un FileNotFoundError nudo
+    # che risalga da altrove -- un sample, una pre-scansione, un domani in cui
+    # questo blocco chiami api.load_generator -- finisce nel ramo generico
+    # invece di annunciare una configurazione inesistente.
     except EngineError as e:
         _handle_engine_error(e)
         sys.exit(1)

@@ -196,6 +196,91 @@ def get_engine_log_path() -> str | None:
     """Path del file di log engine corrente."""
     return _engine_log_path
 
+
+# =============================================================================
+# DIAGNOSTIC LOGGER (issue #187) — diagnostica di sviluppo, mai su stdout
+# =============================================================================
+# Terzo logger, e con un compito diverso dagli altri due. Clip ed engine
+# raccontano cosa e' successo a un rendering; questo raccoglie le righe che la
+# classificazione della #178 ha marcato come *diagnostica*: nessuno le parsa,
+# nessuno le legge come interfaccia. Oggi sono le registrazioni dinamiche di
+# strategy, un'operazione da sviluppatore che non compare in una pipeline di
+# rendering normale.
+#
+# Il motivo per cui non possono restare `print()` non e' l'ordine: stdout e' un
+# canale di *protocollo*. `render_pipeline.py` di PGE-ui legge le righe di
+# `main.py` una per una e ne ricava gli eventi NDJSON dell'editor — le righe
+# `[CACHE] <id>: DIRTY|clean` dei renderer e i path del blocco riassuntivo. Chi
+# scrive li' scrive dentro l'interfaccia di un altro repository.
+#
+# Due scelte, ed entrambe sono abstention:
+#
+# 1. **Nessun handler proprio oltre al NullHandler.** Una libreria non
+#    configura il logging del suo ospite. Qui l'astensione ha anche un effetto
+#    concreto: `get_engine_logger()` si auto-configura, e configurarsi vuol
+#    dire `os.makedirs('./logs')` — una cartella materializzata sul disco di
+#    chi passava di li' solo per dire che una strategy e' stata registrata.
+#    Il NullHandler serve al resto: senza handler, `logging` manda i record da
+#    WARNING in su a `lastResort`, che scrive su stderr.
+#
+# 2. **Il record e' DEBUG, il logger resta NOTSET.** Il livello sta sulla
+#    chiamata (`.debug(...)`), non sul logger: `get_diagnostic_logger()` non
+#    chiama `setLevel`, quindi il livello effettivo lo eredita dal root e a
+#    deciderlo e' l'host. Sotto il default del root (WARNING) il record non
+#    viene nemmeno costruito, quindi la diagnostica muta non costa. Chi la
+#    vuole fa `logging.basicConfig(level=logging.DEBUG)`, e la console di
+#    `logging` e' stderr: nemmeno accendendola si rientra in stdout.
+#
+#    Il NOTSET e' la meta' portante, non un dettaglio omesso. Un
+#    `logger.setLevel(logging.DEBUG)` qui non renderebbe la diagnostica
+#    "accendibile": la renderebbe *accesa*. `Logger.callHandlers` confronta il
+#    record col livello dell'**handler**, non ricontrolla quello del logger, e
+#    un `logging.basicConfig()` senza argomenti lascia il suo StreamHandler a
+#    NOTSET: ogni host che lo chiama si troverebbe la diagnostica su stderr
+#    senza averla chiesta. Il livello del logger e' dell'host, e va lasciato
+#    dov'e'. Lo fissa `test_diagnostic_logger_non_impone_un_livello`.
+DIAGNOSTIC_LOGGER_NAME = 'pge.diagnostics'
+
+_diagnostic_logger: logging.Logger | None = None
+
+
+def get_diagnostic_logger() -> logging.Logger:
+    """Logger della diagnostica di sviluppo; muto finche' l'host non lo ascolta.
+
+    Returns:
+        logging.Logger — mai None, a differenza di `get_clip_logger()`: qui non
+        c'e' niente da disabilitare, perche' senza ascoltatori non emette.
+    """
+    global _diagnostic_logger
+
+    if _diagnostic_logger is None:
+        logger = logging.getLogger(DIAGNOSTIC_LOGGER_NAME)
+        # Un solo NullHandler, e solo alla prima chiamata: gli altri handler
+        # sono dell'applicazione ospite e non vanno ne' toccati ne' azzerati,
+        # quindi `handlers = []` (come fa il clip logger, che li possiede
+        # tutti) qui sarebbe un sopruso.
+        logger.addHandler(logging.NullHandler())
+        _diagnostic_logger = logger
+
+    return _diagnostic_logger
+
+
+def log_strategy_registration(domain: str, name: str, strategy_class: type) -> None:
+    """Registrazione dinamica di una strategy: diagnostica, non protocollo.
+
+    Args:
+        domain: dominio del registry ('density', 'variation', 'pan voce')
+        name: chiave con cui la strategy e' stata registrata
+        strategy_class: la classe registrata (se ne logga il `__name__`)
+    """
+    # Formattazione pigra: gli argomenti restano tali finche' un handler non
+    # chiede il messaggio, e con la diagnostica spenta quel momento non arriva.
+    get_diagnostic_logger().debug(
+        "Registrata nuova strategia %s: %s -> %s",
+        domain, name, strategy_class.__name__,
+    )
+
+
 def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value, 
                      min_val, max_val, is_envelope=False):
     """

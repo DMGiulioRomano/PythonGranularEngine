@@ -602,6 +602,36 @@ class TestErrorHandling:
                 mocks['main'].main()
         assert exc_info.value.code == 1
 
+    def test_file_not_found_dal_render_non_incolpa_lo_yaml(self, mocks, capsys):
+        """Issue #241: un FileNotFoundError che risale dal rendering non e'
+        il file YAML, che a quel punto e' stato letto e parsato. L'handler
+        della CLI resta attaccato al solo punto che puo' sollevarlo per il
+        motivo che annuncia."""
+        mocks['engine_instance'].render.side_effect = FileNotFoundError()
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "non trovato" not in out
+
+    def test_file_not_found_dal_render_non_e_scambiato_per_engine_error(self, mocks, capsys):
+        """Il ramo generico resta quello di prima: messaggio + traceback.
+
+        L'asserzione e' sul messaggio *dell'eccezione*, non sulla parola
+        «Errore»: quella la stampava anche il ramo sbagliato («Errore: file
+        'test.yml' non trovato»), quindi cercarla avrebbe lasciato verde
+        proprio il difetto che il test dice di fissare."""
+        mocks['engine_instance'].render.side_effect = FileNotFoundError("csound")
+        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
+            with pytest.raises(SystemExit):
+                mocks['main'].main()
+        cattura = capsys.readouterr()
+        assert "Errore: csound" in cattura.out
+        assert "file 'test.yml' non trovato" not in cattura.out
+        # Il traceback e' l'altra meta' del ramo generico, e va su stderr.
+        assert "FileNotFoundError" in cattura.err
+
     def test_visualizer_exception_exits_with_1(self, mocks):
         mocks['visualizer_instance'].export_pdf.side_effect = Exception("pdf error")
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif', '--visualize']):
@@ -769,7 +799,9 @@ class TestRendererFlag:
 
     def test_cache_manifest_composed_from_cache_dir_and_yaml(self, mocks, capsys):
         """--cache: la CLI compone cache_dir/{yaml_basename}.json e stampa
-        [CACHE] Manifest: (policy CLI, l'API non stampa)."""
+        [CACHE] Manifest: (policy CLI: quella riga api.build_renderer non la
+        emette -- cio' che l'API stampa via i suoi componenti e' censito in
+        api.py e verificato da tests/test_api_stdout.py)."""
         import os
         build_mock, _, _ = self._run_delegated(
             mocks,

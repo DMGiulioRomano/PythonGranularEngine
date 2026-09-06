@@ -3,7 +3,7 @@
 #
 # Contratto del modulo
 # (docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md, sez. B.1):
-# - nessun print, nessun sys.exit, nessuna lettura di sys.argv;
+# - nessun sys.exit, nessuna lettura di sys.argv;
 # - errori -> eccezioni (EngineError e sottoclassi; ValueError per argomenti
 #   API invalidi). Dalla #257 anche il file YAML che manca o non si parsa e'
 #   un EngineError (ConfigFileNotFoundError, ConfigParseError), che pero'
@@ -12,6 +12,77 @@
 #   main.py): mantiene mockabile via sys.modules e non paga matplotlib
 #   all'import;
 # - ogni default filesystem e' un parametro esplicito overridabile.
+#
+# Stdout: questo modulo non stampa -- nessuna funzione qui sotto contiene un
+# print() -- ma la libreria NON e' silenziosa, e la differenza conta per chi
+# la incorpora. Le funzioni orchestrano Generator, i renderer e
+# ScoreVisualizer, e sono quei componenti a scrivere su stdout mentre
+# lavorano. Il piano diceva "non stampa (nel proprio modulo)"; la parentesi
+# si era persa strada facendo, e senza di essa la dichiarazione prometteva un
+# silenzio che non c'e' mai stato (issue #189).
+#
+# --- righe su stdout (censimento verificato da tests/test_api_stdout.py) ---
+#
+#   da load_generator(), tutte da Generator:
+#     `[SEED]`              create_elements, quando lo YAML non ha `seed:`
+#     `🔇`                  _filter_solo_mute, quanti stream sono muted
+#     `⚡ SOLO MODE`        _filter_solo_mute, in modalita' solo
+#     `Creazione di`        _create_streams, quanti stream sta costruendo
+#     `  → Stream`          _create_streams, una riga per stream
+#     `⚠️  Warning: impossibile valutare`  espressione matematica nello YAML
+#
+#   da render(), solo con `cache_manifest_path` (senza manifest non c'e'
+#   nessuna riga di cache):
+#     `[CACHE]`             il renderer, DIRTY/clean per stream
+#
+#   da render(renderer='csound'), da ScoreWriter mentre scrive il .sco:
+#     `✓ Score generato`    il path del .sco
+#     `  - `                tre righe di riepilogo (tables, stream, grani)
+#
+#   da export_score_pdf(), da ScoreVisualizer:
+#     `Analisi completata`  pagine e durata totale
+#     `  Rendering pagina`  una riga per pagina
+#     `Esportazione PDF`    inizio esportazione
+#     `✓ PDF esportato`     fine esportazione
+#     `⚠️  Impossibile caricare waveform`  sample illeggibile per la partitura
+#
+#   alla prima inizializzazione del clip logger, da qualunque percorso che
+#   costruisca envelope (load_generator, render, export_score_pdf):
+#     `📝 Clip log file`    il path del log, che il logger crea in ./logs
+#
+# --- fine censimento ---
+#
+# Perche' restano: fanno parte del contratto stdout della CLI, e almeno una
+# e' interfaccia vera. `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
+# (render_pipeline.py, _RE_CACHE_LINE) per costruirne gli eventi NDJSON
+# `stream-start`/`stream-done`: spostarla al logger rompe l'avanzamento per
+# stream nell'editor dell'altro repo. Le altre nessuno le parsa, per quanto
+# se ne sa -- ma "per quanto se ne sa" e' esattamente cio' che la issue #178
+# deve accertare (protocollo / diagnostica / interfaccia CLI) prima che le
+# #187/#188 le portino al logger. Quando succedera', il censimento qui sopra
+# va aggiornato: il test lo verifica in entrambe le direzioni (nessuna riga
+# fuori elenco, nessuna voce in elenco che nessuno emette piu').
+#
+# --- e stderr, che il censimento qui sopra non copre ---
+#
+# L'elenco e' di stdout, e dirlo per intero fa parte del punto: letto come
+# inventario completo rifarebbe l'errore della #189 un piano sotto. Sullo
+# stderr scrivono gli avvisi del clip logger, da qualunque percorso che
+# costruisca envelope:
+#     `⚠️  CLIP: ...`   l'handler console del clip logger (attivo di default)
+#     `CLIP: ...`       log_loop_unit_migration_warning, che stampa proprio
+#                       quando la console del clip logger e' spenta (#222):
+#                       spegnerla non zittisce quell'avviso, lo sposta
+#
+# Chi incorpora e ha bisogno di silenzio: contextlib.redirect_stdout NON
+# basta -- copre l'elenco qui sopra e nient'altro. Servono anche
+# redirect_stderr (da entrare PRIMA che il clip logger si costruisca:
+# logging.StreamHandler() cattura sys.stderr alla costruzione, non alla
+# scrittura) oppure configure_clip_logger(console_enabled=False), tenendo
+# conto che l'avviso #222 resta. E configure_clip_logger /
+# configure_engine_logger vanno chiamate PRIMA di load_generator --
+# altrimenti il primo Stream inizializza il clip logger coi default di
+# modulo, che scrivono in ./logs (docs/how-to/use-as-library.md).
 #
 # Divisione delle policy: l'API sceglie default deterministici e senza
 # dipendenze esterne (jobs=1, renderer='numpy', path manifest esplicito);

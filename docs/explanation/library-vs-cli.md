@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [api, cli, architecture, refactor]
 sources: [src/pge/api.py, src/pge/cli.py, src/main.py]
-last_synced_commit: be716c9
+last_synced_commit: 5285c17
 entry_for: [usare PGE come libreria, capire la divisione API/CLI]
 ---
 
@@ -26,10 +26,10 @@ Dal refactor library/CLI (plans/2026-07-08-001) il sistema ha due strati:
   `collect_cache_orphans`, `collect_grain_counts`, `render`, `render_file`,
   `export_*`, con le dataclass `CsoundOptions` (input), `RenderResult`
   (output) e `StreamGrainCount` (dentro `RenderResult`). Contratto:
-  nessun `print`, nessun `sys.exit`, nessuna lettura di `sys.argv`; errori
-  come eccezioni (`EngineError` e sottoclassi, `ValueError`); ogni default
-  filesystem è un parametro esplicito (`samples_dir`,
-  `cache_manifest_path`, ...).
+  nessun `print` **nel proprio modulo**, nessun `sys.exit`, nessuna lettura
+  di `sys.argv`; errori come eccezioni (`EngineError` e sottoclassi,
+  `ValueError`); ogni default filesystem è un parametro esplicito
+  (`samples_dir`, `cache_manifest_path`, ...).
 - **`pge.cli`** — shell sottile: parsing argv a mano (byte-identico allo
   storico), print, exit code, derivazione dei nomi file. Delega tutta
   l'orchestrazione all'API. `src/main.py` è lo shim permanente; il console
@@ -60,9 +60,32 @@ Divisione delle policy (chi decide cosa):
 
 ## Implicazioni codice
 
-- I print interni preesistenti (`Generator._create_streams`, `[SEED]`,
-  `[CACHE]` nei renderer) fanno parte del contratto stdout della CLI e
-  restano; migrarli a logging è un follow-up dichiarato.
+- **`pge.api` non stampa, la libreria sì**, ed è una distinzione che conta
+  per chi la incorpora (issue #189). Nessuna funzione di `api.py` contiene
+  un `print()`; i componenti che orchestra ne contengono, e scrivono su
+  stdout mentre lavorano: `Generator` (`[SEED]`, `Creazione di N
+  stream...`, `  → Stream '<id>'`, `🔇 N stream muted`), i renderer
+  (`[CACHE] <id>: DIRTY|clean`, solo con `cache_manifest_path`),
+  `ScoreWriter` sul ramo Csound (`✓ Score generato`), `ScoreVisualizer` da
+  `export_score_pdf` (`Analisi completata`, `Esportazione PDF`, ...) e il
+  clip logger alla prima inizializzazione (`📝 Clip log file`). Il
+  censimento completo, con chi emette cosa, sta nell'intestazione di
+  `api.py`; `tests/test_api_stdout.py` lo verifica su output vero, in
+  entrambe le direzioni.
+- **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
+  logger passano di là (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
+  dall'avviso di migrazione `loop_unit` della #222, che parla proprio quando
+  quella console è spenta), quindi `redirect_stdout` da solo non è silenzio:
+  per chi incorpora servono entrambe le redirezioni. Dirlo fa parte del
+  punto — un censimento di stdout letto come inventario completo rifà
+  l'errore della #189 un piano sotto.
+- Quelle righe restano perché fanno parte del contratto stdout della CLI, e
+  una almeno è interfaccia vera: `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
+  (`render_pipeline.py`) per gli eventi NDJSON `stream-start`/`stream-done`,
+  cioè per l'avanzamento per stream che l'editor mostra durante un render.
+  Delle altre non risulta nessun consumatore — accertarlo è la issue #178,
+  portarle al logger le #187/#188. Quando succederà, il censimento in
+  `api.py` va aggiornato insieme al codice, ed è il test a chiederlo.
 - Il GC della cache è una funzione separata (`collect_cache_orphans`)
   perché la CLI deve stamparne l'esito PRIMA del render (ordine stdout);
   `render_file` lo esegue da sé col default `run_cache_gc=True`.

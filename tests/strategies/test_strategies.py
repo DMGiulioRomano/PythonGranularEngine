@@ -23,9 +23,12 @@ Copre:
 """
 
 import pytest
+import logging
 import math
 import sys
 import types
+
+from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
 from unittest.mock import Mock, MagicMock, patch, PropertyMock
 from dataclasses import dataclass
 from typing import Tuple
@@ -818,6 +821,39 @@ class TestRegisterDensityStrategy:
 
         # Cleanup
         del DENSITY_STRATEGIES['weighted_density']
+
+    def test_register_density_logs_instead_of_printing(self, caplog, capsys):
+        """La conferma va al logger diagnostico, non su stdout (issue #187).
+
+        Stdout e' il canale che `render_pipeline.py` di PGE-ui parsa riga per
+        riga; registrare dinamicamente una strategy e' un'operazione da
+        sviluppatore che nessuno parsa, quindi non ha titolo per starci.
+        """
+        class LoggedDensity(DensityStrategy):
+            def __init__(self, param, dist_param):
+                self._param = param
+            def calculate_density(self, elapsed_time, **context):
+                return 1.0
+            @property
+            def name(self):
+                return "logged"
+
+        try:
+            with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+                register_density_strategy('logged_density', LoggedDensity)
+
+            messaggi = [r.getMessage() for r in caplog.records
+                        if r.name == DIAGNOSTIC_LOGGER_NAME]
+            assert len(messaggi) == 1
+            assert 'density' in messaggi[0]
+            assert 'logged_density' in messaggi[0]
+            assert 'LoggedDensity' in messaggi[0]
+
+            captured = capsys.readouterr()
+            assert captured.out == ''
+            assert captured.err == ''
+        finally:
+            DENSITY_STRATEGIES.pop('logged_density', None)
 
 
 # =============================================================================

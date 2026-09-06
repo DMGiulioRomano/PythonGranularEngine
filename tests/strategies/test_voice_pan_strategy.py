@@ -36,7 +36,11 @@ Organizzazione:
   13. StochasticPanStrategy — seed riproducibile (issue #81)
 """
 
+import logging
+
 import pytest
+
+from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
 
 
 # =============================================================================
@@ -506,6 +510,40 @@ class TestRegisterFunction:
     def test_register_function_has_docstring(self):
         _, _, _, _, _, register_voice_pan_strategy, _ = _get_module()
         assert register_voice_pan_strategy.__doc__ is not None
+
+    def test_register_logs_instead_of_printing(self, caplog, capsys):
+        """La conferma va al logger diagnostico, non su stdout (issue #187).
+
+        Stdout e' il canale di protocollo che `render_pipeline.py` di PGE-ui
+        parsa riga per riga; una registrazione dinamica di strategy e'
+        diagnostica da sviluppatore, e nessuno la parsa.
+        """
+        VoicePanStrategy, _, _, _, registry, register_voice_pan_strategy, _ = _get_module()
+
+        class LoggedPan(VoicePanStrategy):
+            def get_pan_offset(self, voice_index, num_voices, time):
+                return 0.0
+
+            @property
+            def name(self):
+                return 'logged'
+
+        try:
+            with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+                register_voice_pan_strategy('logged_pan', LoggedPan)
+
+            messaggi = [r.getMessage() for r in caplog.records
+                        if r.name == DIAGNOSTIC_LOGGER_NAME]
+            assert len(messaggi) == 1
+            assert 'pan' in messaggi[0]
+            assert 'logged_pan' in messaggi[0]
+            assert 'LoggedPan' in messaggi[0]
+
+            captured = capsys.readouterr()
+            assert captured.out == ''
+            assert captured.err == ''
+        finally:
+            registry.pop('logged_pan', None)
 
 
 # =============================================================================

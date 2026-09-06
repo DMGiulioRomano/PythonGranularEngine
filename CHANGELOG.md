@@ -92,7 +92,153 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   Nuova doc: [`docs/how-to/print-score-bw.md`](docs/how-to/print-score-bw.md).
 
+- **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
+  in `pge.shared.logger`, issue #187). Logger `pge.diagnostics` col solo
+  `NullHandler`: nessun handler proprio, nessun file, nessuna `./logs` creata
+  di soppiatto — a differenza di `get_engine_logger()`, che si auto-configura.
+  Una libreria non configura il logging del suo ospite. Il DEBUG e' il livello
+  del **record**, non del logger: `get_diagnostic_logger()` non chiama
+  `setLevel` e il livello effettivo resta quello che decide l'host. Non e'
+  un'omissione: `callHandlers` confronta il record col livello dell'*handler*
+  e non ricontrolla quello del logger, quindi un `setLevel(DEBUG)` qui non
+  renderebbe la diagnostica accendibile ma **accesa** su stderr per chiunque
+  chiami `logging.basicConfig()`. Lo fissa
+  `test_diagnostic_logger_non_impone_un_livello`.
+
+- **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
+  forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
+  protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
+  tutti e quattro i moduli che la emettono — i tre renderer sul percorso
+  diretto e `StreamCacheManager.get_dirty_stream_dicts`, che e' dove la riga
+  esce sulla pipeline in due stadi (`Generator.write_sco_files`) — e che in
+  `src/pge/strategies/` non ricompaia nessun `print()`. Il criterio e' la
+  forma della riga, non il prefisso: le chiamate sono ricomposte in un
+  template (`[CACHE] {}: `), perche' `[CACHE]` da solo lascia passare il
+  riepilogo `[CACHE] <n>/<m> stream da ricompilare` che nessuno parsa. Quel
+  template e' piu' stretto della regex a valle, di proposito: la guardia
+  difende la riga per stream, non definisce cosa il parser legge.
+
+- **La lista degli emettitori della riga `[CACHE]` e' confrontata con i
+  sorgenti** (`test_la_lista_degli_emettitori_e_completa`). Una lista scritta a
+  mano copre chi c'era quando e' stata scritta: un backend nuovo che dichiara
+  lo stato della cache emette la stessa riga e non ci entra da solo, e la
+  guardia sarebbe rimasta verde sopra un emettitore che nessuno sorveglia —
+  sul canale dove csound e supercollider non hanno altro presidio. Il passo
+  corrispondente e' ora nella checklist di
+  [`docs/how-to/add-renderer.md`](docs/how-to/add-renderer.md), che prima non
+  lo portava benche' `contratto-stdout.md` la indicasse.
+
+- **Test di comportamento sulla riga `[CACHE]` del cache manager**
+  (`tests/rendering/test_stream_cache_manager.py`). Era l'unico emettitore
+  della riga di protocollo senza nessuna asserzione, ne' di comportamento ne'
+  statica.
+
+- **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
+  interfaccia CLI: chi legge cosa, e su quale canale. Compresa la regola che
+  la tabella da sola non lascia dedurre: la regex di PGE-ui e'
+  `^\[CACHE\]\s+(\S+):\s+(.+)$`, e un token *letterale* la soddisfa quanto
+  un id interpolato — `cli.py` stampa gia' `[CACHE] Manifest: <path>` e
+  `[CACHE] GC: ...`, che l'editor matcha e scarta con l'insieme degli id
+  dichiarati dalla richiesta, un filtro inerte quando la richiesta non li
+  dichiara. Ogni riga in quella forma e' quindi protocollo per il solo fatto
+  della forma, e le due di `cli.py` non sono libere di andarsene al logger
+  come fossero diagnostica: la doc lo dichiara invece di lasciarlo intendere.
+
+- **La guardia della diagnostica non e' piu' scoped per cartella**
+  (`test_la_registrazione_dinamica_non_stampa`,
+  `test_la_lista_dei_punti_di_registrazione_e_completa`). I punti di
+  registrazione dinamica sono sette, non tre, e non stanno tutti in
+  `strategies/`: `register_window_strategy` vive in
+  `controllers/window_selection_strategy.py`, dove vive il registry delle
+  finestre. Una guardia che sorveglia una cartella ne copriva sei, e sul
+  settimo rimettere esattamente la `print()` che la #187 ha tolto lasciava
+  verde la suite intera. Ora il criterio e' la **funzione**
+  `register_*_strategy` ovunque viva, e la lista dei moduli e' confrontata coi
+  sorgenti come quella degli emettitori della riga `[CACHE]`.
+
+- **Controprova sulla misura del `NullHandler`**
+  (`tests/shared/test_diagnostic_logger.py`). Il test che verifica il mancato
+  ricorso a `logging.lastResort` neutralizza gli handler che pytest mette sul
+  root e sostituisce `lastResort` con una spia: senza quella neutralizzazione
+  `callHandlers` non arrivava mai a `lastResort` e il test restava verde anche
+  cancellando la riga che dice di difendere. Un secondo test misura la misura,
+  ribaltandone il verdetto su un logger nudo.
+
+
+### Cambiato
+
+- **Le registrazioni dinamiche di strategy non stampano piu' su stdout**
+  (issue #187, primo scaglione della #178). `register_density_strategy`,
+  `register_variation_strategy` e `register_voice_pan_strategy` passano dal
+  `print()` con la spunta verde al nuovo logger `pge.diagnostics`, via
+  `log_strategy_registration`. Stdout non e' un canale libero: e' il
+  protocollo che `render_pipeline.py` di PGE-ui parsa riga per riga per
+  ricavarne gli eventi NDJSON dell'editor; una conferma che nessuno parsa non
+  ha titolo per attraversarlo. La conferma non e' persa — e' muta finche'
+  l'applicazione ospite non alza il livello di log, e allora esce su stderr.
+
+
 ### Corretto
+
+- **`api.py` prometteva un silenzio che non ha mai avuto** (issue #189).
+  L'intestazione dichiarava «nessun print» come primo punto del contratto
+  del modulo, e la dichiarazione era falsa: nessuna funzione di `api.py`
+  contiene un `print()`, ma le funzioni orchestrano `Generator`, i renderer
+  e `ScoreVisualizer`, che stampano. Chiamare `load_generator` scrive su
+  stdout `[SEED] ...`, `🔇 N stream muted`, `Creazione di N stream...` e una
+  riga per stream; `render` con un `cache_manifest_path` scrive `[CACHE]
+  <id>: DIRTY|clean`; `export_score_pdf` fa parlare il visualizer. Per una
+  libreria che qualcun altro incorpora non è cosmesi: è output non richiesto
+  sullo stdout del processo ospite.
+
+  Il piano da cui il contratto viene diceva «non stampa (nel proprio
+  modulo)» — la parentesi si era persa nella trascrizione, e con lei tutta
+  la differenza.
+
+  I test che sembravano difendere la dichiarazione non potevano
+  contraddirla: gli undici `test_no_print` di `tests/test_api.py` girano con
+  `Generator`, `RenderingEngine` e `ScoreVisualizer` montati come MagicMock,
+  quindi il `capsys` vuoto misurava il silenzio dei mock. Restano validi su
+  ciò che dicono davvero (api.py non stampa di suo) e il loro docstring ora
+  lo dice.
+
+  La dichiarazione è riscritta come **censimento**: quali righe si vedono
+  chiamando quale funzione, chi le emette, e perché restano (sono il
+  contratto stdout della CLI: `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
+  per l'avanzamento per stream dell'editor, delle altre non risulta nessun
+  consumatore — accertarlo è la #178, portarle al logger le #187/#188). Il
+  nuovo
+  `tests/test_api_stdout.py` lo verifica **su output vero, senza mock**, e
+  chiude il censimento in due direzioni: nessuna riga su stdout fuori
+  elenco, nessuna voce in elenco che in `src/pge/` non abbia più un
+  `print()` **su stdout** che la emetta. Quando #187/#188 sposteranno una di
+  quelle righe il test diventerà rosso — non è un falso allarme, è la
+  dichiarazione che va aggiornata insieme al comportamento.
+
+  Quel «su stdout» è la condizione, non un rafforzativo: la prova che una
+  voce è ancora viva deve stare sullo stesso canale che la voce dichiara.
+  Senza guardare il `file=` bastava aggiungere `file=sys.stderr` a una riga
+  censita per toglierla da stdout lasciando verdi entrambe le direzioni —
+  lo stesso buco del `  - ` e del `[CACHE]`, spostato dal prefisso al
+  canale, e peggiore lì dove la direzione statica è l'unica guardia che
+  c'è: `✓ Score generato` e `  - ` stanno sul ramo Csound, che nessun test
+  esercita a runtime.
+
+  Il censimento è di **stdout**, e lo dice: letto come inventario completo
+  rifarebbe lo stesso errore un piano sotto. Gli avvisi del clip logger
+  passano da stderr (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
+  dall'avviso di migrazione `loop_unit` della #222, che stampa proprio
+  quando quella console è spenta), quindi `contextlib.redirect_stdout` da
+  solo non è silenzio: servono entrambe le redirezioni, e la
+  `redirect_stderr` va entrata prima che il clip logger si costruisca
+  (`logging.StreamHandler()` cattura `sys.stderr` alla costruzione).
+
+  Chi incorpora e ha bisogno di silenzio: `contextlib.redirect_stdout` +
+  `contextlib.redirect_stderr`, e
+  `configure_clip_logger`/`configure_engine_logger` prima di
+  `load_generator`. Documentato in
+  [`docs/how-to/use-as-library.md`](docs/how-to/use-as-library.md) e
+  [`docs/explanation/library-vs-cli.md`](docs/explanation/library-vs-cli.md).
 
 - **`cli._build_renderer` ingoiava in silenzio ogni kwarg sconosciuto**
   (issue #252). La funzione raccoglieva tutto in `**kwargs` e poi pescava
@@ -132,6 +278,93 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   formati restano quelli. `_build_renderer` e' un adapter interno, e
   `api.build_renderer` — l'API che PGE-ui e i consumer programmatici usano —
   aveva gia' la firma esplicita.
+
+- **Csound non installato veniva annunciato come «file YAML non trovato»**
+  (issue #241). `CsoundRenderer._run_csound` lasciava salire il
+  `FileNotFoundError` che `subprocess.run` alza quando il binario non e' nel
+  PATH, e in `cli.main()` quel tipo aveva il **primo** handler della catena,
+  tenuto per il file di configurazione. Su una macchina senza csound
+  (Fedora/RHEL, dove il README gia' suggerisce `RENDERER=numpy`) il render
+  moriva dicendo che il file YAML non esisteva — mentre era stato letto e
+  parsato pochi istanti prima, e il difetto stava a valle.
+
+  Il guasto ha ora un tipo suo, `CsoundNotFoundError`, con il rimedio dentro
+  il messaggio:
+
+  ```
+  [ERRORE] Csound: binario 'csound' non trovato
+    Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL non e' nei repo e va compilato dai sorgenti, vedi README), oppure usa `--renderer numpy`, che non richiede binari esterni.
+  ```
+
+  Il blocco è l'output reale: `user_message()` non manda a capo l'hint, e
+  mostrarlo qui rincolonnato descriveva una riga che il programma non stampa
+  (`docs/reference/errors.md` lo riporta com'è).
+
+  Il rimedio nomina la compilazione dai sorgenti perche' `make
+  install-system-deps` csound su Fedora/RHEL non lo installa — non c'e' nei
+  repo ne' in RPM Fusion, e il target lo dice invece di provarci. Un
+  messaggio azionabile la cui prima azione e' un no-op proprio sulla
+  piattaforma da cui viene la issue vale quanto quello che ha sostituito.
+
+  Non eredita da `FileNotFoundError`, per la stessa ragione per cui non lo fa
+  `SuperColliderNotFoundError` (#228): il tipo di un errore serve a chi lo
+  cattura, non a descriverne la causa. Le due classi erano identiche a meno
+  del nome del tool, quindi ora condividono la base `_BinaryNotFoundError`,
+  come i due errori di exit code condividono `_SubprocessRenderError`.
+
+  Il tipo giusto non basta se chi cattura e' troppo largo: l'handler
+  `FileNotFoundError` della CLI si e' stretto attorno a `Generator()` +
+  `load_yaml()`, l'unico punto che puo' sollevarlo per il motivo che
+  annuncia. Un `FileNotFoundError` che nessuno ha ancora tradotto finisce nel
+  ramo generico — messaggio e traceback — invece che in un messaggio falso.
+
+  La conseguenza per chi usa la libreria e' un cambio di superficie, ed e'
+  scritta fra le modifiche qui sotto invece che sepolta qui.
+
+- **Il `.sco` temporaneo sopravviveva a ogni render csound fallito**
+  (review della PR #256). Senza `--keep-sco` lo score e' un file temporaneo,
+  e la sua cancellazione stava *dopo* la chiamata a csound: qualunque modo di
+  fallire — exit code diverso da zero, e da questa release anche il binario
+  assente — saltava le due righe e lasciava il file in `/tmp`, con un nome
+  casuale che l'utente non ha modo di ritrovare. Su una macchina senza csound
+  non era un caso raro ma la norma: uno per tentativo.
+
+  Il `try/finally` copre l'intero passo, **scrittura dello score inclusa**, e
+  non la sola chiamata a csound: il file temporaneo lo crea `mkstemp` prima
+  che ScoreWriter ci scriva, e i grani sono lazy (issue #117) — si
+  materializzano proprio li', con tutti i modi di essere invalidi che il
+  parse non ha visto. Uno score che muore scrivendo lasciava un `.sco` in
+  `/tmp` esattamente come il binario assente. STEMS e MIX passano ora dallo
+  stesso `_render`, cosi' la regola di cancellazione ha una scrittura sola:
+  e' la forma che `SuperColliderRenderer._render` ha da sempre, ed era il
+  ramo csound a non averla.
+
+  `--keep-sco` continua a valere, perche' la condizione e' rimasta la stessa
+  — ma ora e' anche testata sul ramo dei fallimenti, che prima la
+  cancellazione non la eseguiva affatto: e' il render fallito quello che si
+  vuole ispezionare, e un `finally` che perdesse quella condizione
+  cancellerebbe proprio il file che il flag promette di tenere. Testata anche
+  sul ramo che finisce bene, che e' il piu' battuto e non ne aveva nessuna: un
+  render che smettesse di ripulire lascerebbe un `.sco` per stem e la suite
+  resterebbe verde.
+
+  Chiudere quella perdita porta pero' via anche il `.sco` dell'exit code
+  diverso da zero, che prima sopravviveva per via dello stesso difetto — ed e'
+  il caso in cui quello score serve. Il messaggio di `CsoundRenderError` offre
+  una riga `Comando:` da rieseguire, e quel comando nomina lo score appena
+  cancellato: senza dirlo, la prima azione che il messaggio suggerisce e' un
+  no-op, cioe' lo stesso metro con cui questa release ha riscritto l'hint di
+  csound assente. `_SubprocessRenderError` ha ora un `hint` opzionale — stessa
+  riga di `_BinaryNotFoundError` — e il ramo csound lo valorizza nominando
+  `--keep-sco` quando lo score era temporaneo. Con il flag gia' attivo l'hint
+  non compare: il rimedio non esiste piu'.
+
+  Quel flag non riporta pero' lo score al path che il `Comando:` mostra: con
+  `--sco-dir` lo scrive in una directory stabile, e senza, `mkstemp` pesca
+  ogni volta un nome nuovo. L'hint dice quindi che la riga mostrata non e'
+  piu' rieseguibile e rimanda a quella del messaggio successivo — invitare a
+  rieseguire *quella* avrebbe spostato di un livello lo stesso
+  rimedio-che-non-fa-nulla, invece di toglierlo.
 
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati
@@ -306,6 +539,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `voice.wav` sia su un seno di 3 s, e la lunghezza del buffer entra nel
   comportamento di cache, quindi nel coefficiente `a`: due run non
   confrontabili erano indistinguibili a posteriori.
+
+- **BREAKING — `render_single_stream` e `render_merged_streams` del renderer
+  csound non sollevano piu' `FileNotFoundError`** quando csound non e' nel
+  PATH (issue #241, vedi la correzione qui sopra). Il tipo era promesso dalla
+  docstring, ma la promessa *era* il difetto: quel tipo la CLI lo intercetta
+  per annunciare un file YAML mancante. Ora e' `CsoundNotFoundError`. Chi lo
+  catturava per nome deve passare a quello, o a `EngineError`, che copre
+  tutti gli errori del motore. Un `except FileNotFoundError` attorno a un
+  render csound smette di catturare in silenzio: l'eccezione risale.
 
 ---
 

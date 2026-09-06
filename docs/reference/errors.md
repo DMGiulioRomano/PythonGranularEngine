@@ -7,6 +7,7 @@ sources:
   - src/pge/shared/exceptions.py
   - src/pge/cli.py
   - src/pge/engine/generator.py
+  - src/pge/rendering/csound_renderer.py
 last_synced_commit: 72bbf16
 entry_for: [error-handling]
 ---
@@ -82,7 +83,9 @@ EngineError                                  (Exception)
     ├── _SubprocessRenderError               base dei render delegati a un binario
     │   ├── CsoundRenderError                (anche RuntimeError, backward-compat)
     │   └── SuperColliderRenderError         #228 — scsynth/sclang exit != 0
-    └── SuperColliderNotFoundError           #228 — binario o sorgente assente
+    └── _BinaryNotFoundError                 base dei binari esterni assenti
+        ├── CsoundNotFoundError              #241 — csound non nel PATH
+        └── SuperColliderNotFoundError       #228 — binario o sorgente assente
 ```
 
 **Regole di design:**
@@ -97,24 +100,31 @@ EngineError                                  (Exception)
   la prima riga per csound, l'ultima per sclang/scsynth, che aprono sempre
   con il proprio preambolo — e considera **anche lo stdout**, che è dove
   entrambi i binari SuperCollider scrivono i loro errori.
-- **`SuperColliderNotFoundError` NON eredita da `FileNotFoundError`**, anche
-  se descrive un file che non c'è, mentre **`ConfigFileNotFoundError` sì**.
-  L'asimmetria è voluta e non sta nella
+- **`_BinaryNotFoundError` NON eredita da `FileNotFoundError`**, anche se
+  descrive un file che non c'è — e nemmeno le sue due sottoclassi — mentre
+  **`ConfigFileNotFoundError` sì**. L'asimmetria è voluta e non sta nella
   compatibilità: sta nel valore di verità del builtin. Per un binario assente
   `FileNotFoundError` è una bugia — il file mancante non è quello che il tipo
   lascia intendere, e infatti prima della #241 csound assente si annunciava
-  come «file YAML non trovato». Per lo YAML è semplicemente vero: il file che
-  non c'è è proprio quello. Dove il builtin mente, il tipo di dominio lo
-  sostituisce; dove dice il vero, gli si affianca e la promessa di libreria
-  resta in piedi.
+  come «file YAML non trovato»: `_run_csound` lasciava salire il
+  `FileNotFoundError` del subprocess, e l'utente si sentiva dire che il suo
+  YAML non esisteva, letto e parsato pochi istanti prima. Per lo YAML il
+  builtin è semplicemente vero: il file che non c'è è proprio quello. Dove
+  mente, il tipo di dominio lo sostituisce; dove dice il vero, gli si affianca
+  e la promessa di libreria resta in piedi. `SuperColliderNotFoundError` (#228)
+  nasce già così, `CsoundNotFoundError` (#241) è la stessa regola sul ramo
+  csound: le due differiscono per il solo nome del tool, quindi il messaggio
+  vive nella base comune, come per `_SubprocessRenderError`.
 
   La ragione storica scritta qui prima — «la CLI intercetta `FileNotFoundError`
-  *prima* di `EngineError`» — non vale più: dalla #257 `cli.main()` non cattura
-  nessun tipo builtin sul percorso di caricamento. Restano `EngineError` e il
-  ramo generico, in quest'ordine, e la garanzia è **sul tipo** e non
-  sull'estensione fisica del blocco `try`. Un `FileNotFoundError` nudo che
-  risalga da altrove finisce nel ramo generico (messaggio + traceback), non in
-  un messaggio falso.
+  *prima* di `EngineError`» — non vale più, e con essa è caduto il rimedio che
+  la #241 le aveva dato (stringere l'handler attorno a `Generator()` +
+  `load_yaml()`): dalla #257 `cli.main()` non cattura **nessun** tipo builtin
+  sul percorso di caricamento. Restano `EngineError` e il ramo generico, in
+  quest'ordine, e la garanzia è **sul tipo** e non sull'estensione fisica del
+  blocco `try` — che era la forma fragile, spesa da qualunque riga aggiunta
+  dentro il blocco. Un `FileNotFoundError` nudo che risalga da altrove finisce
+  nel ramo generico (messaggio + traceback), non in un messaggio falso.
 
 - **`ConfigFileNotFoundError` e `ConfigParseError` ereditano anche il tipo che
   sostituiscono** (`FileNotFoundError`, `yaml.YAMLError`), con lo stesso
@@ -124,6 +134,17 @@ EngineError                                  (Exception)
   non isola: un `FileNotFoundError` di altra origine impacchettato lì per
   errore tornerebbe a confondersi — ed è per questo che `load_yaml` avvolge il
   solo `open()` dello YAML e niente altro.
+- **La riga `Comando:` di `_SubprocessRenderError` invita a rieseguire, quindi
+  deve restare rieseguibile.** Lo score che vi compare è temporaneo e il
+  renderer lo cancella in un `finally` — anche quando il binario esce con un
+  codice d'errore, che è il caso in cui quello score serve. Perciò la base ha
+  un `hint` opzionale e il ramo csound lo valorizza con `--keep-sco` quando lo
+  score era temporaneo: senza, la prima azione che il messaggio suggerisce è
+  un no-op. Il flag però non ricrea *quel* file, quindi l'hint dice che la
+  riga mostrata non si riesegue e rimanda a quella del messaggio successivo —
+  altrimenti il rimedio-che-non-fa-nulla si sposta di un livello invece di
+  sparire. Stessa forma dell'hint di `_BinaryNotFoundError`, e stessa regola —
+  un rimedio si scrive solo quando c'è.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
   (es. errori I/O di rendering) si appendono qui.
 - Ogni sotto-classe override `user_message()` con formato strutturato.
@@ -291,12 +312,20 @@ streams:
 ### Csound subprocess fallito
 ```
 [ERRORE] Csound rendering fallito (exit code 2)
-  Comando:      csound -o out.aif score.csd
+  Comando:      csound -o out.aif /tmp/tmpx3k9.sco
   Output:       error: undefined opcode
+  Hint:         Lo score .sco era temporaneo ed e' stato rimosso, quindi il comando qui sopra non e' piu' rieseguibile: rilancia con `--keep-sco`, che lo score lo conserva su disco, e riesegui il `Comando:` del messaggio che ne esce.
   Stream:       drone_low
   Config:       configs/PGE_test.yml
   Dettagli:     /tmp/engine.log
 ```
+
+La riga `Hint:` compare solo senza `--keep-sco`: con il flag lo score è già
+sul disco e suggerirlo manderebbe l'utente a cercare un'opzione che ha già
+passato. E manda a rieseguire il `Comando:` del messaggio *successivo*, non
+quello mostrato qui: `--keep-sco` non riporta lo score al path temporaneo che
+questa riga nomina — lo scrive in una directory stabile, e senza il flag
+`mkstemp` pesca ogni volta un nome nuovo.
 
 ### SuperCollider subprocess fallito
 Il campo `stage` distingue i due binari, perché hanno rimedi diversi:
@@ -314,6 +343,16 @@ Il campo `stage` distingue i due binari, perché hanno rimedi diversi:
   Hint:         Installa SuperCollider (Debian/Ubuntu: apt install supercollider; macOS: brew install --cask supercollider) oppure usa --renderer numpy.
   Dettagli:     /tmp/engine.log
 ```
+
+### Csound non installato
+```
+[ERRORE] Csound: binario 'csound' non trovato
+  Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL non e' nei repo e va compilato dai sorgenti, vedi README), oppure usa `--renderer numpy`, che non richiede binari esterni.
+  Dettagli:     /tmp/engine.log
+```
+
+Fino alla issue #241 lo stesso guasto usciva come `Errore: file
+'configs/x.yml' non trovato`, con exit 1 e nessuna menzione di csound.
 
 ---
 
