@@ -74,8 +74,8 @@ class CsoundRenderer(AudioRenderer):
             Il percorso del file .aif prodotto
 
         Raises:
-            RuntimeError: se csound esce con errore
-            FileNotFoundError: se csound non e' installato
+            CsoundRenderError: se csound esce con errore (anche RuntimeError)
+            CsoundNotFoundError: se csound non e' installato
         """
         # Cache check: skip se stream e' clean
         if self.cache_manager:
@@ -87,12 +87,7 @@ class CsoundRenderer(AudioRenderer):
                 if not dirty:
                     return output_path
 
-        sco_path = self._write_score(streams=[stream], output_path=output_path, per_stream=True)
-        self._run_csound(sco_path, output_path)
-
-        # Cleanup file temporaneo se non in modalita' keep-sco
-        if not self.sco_dir and os.path.exists(sco_path):
-            os.unlink(sco_path)
+        self._render([stream], output_path, per_stream=True)
 
         # Aggiorna cache dopo build riuscita
         if self.cache_manager:
@@ -114,16 +109,12 @@ class CsoundRenderer(AudioRenderer):
 
         Returns:
             Il percorso del file .aif prodotto
-        """
-        sco_path = self._write_score(
-            streams=streams,
-            output_path=output_path,
-        )
-        self._run_csound(sco_path, output_path)
 
-        # Cleanup file temporaneo se non in modalita' keep-sco
-        if not self.sco_dir and os.path.exists(sco_path):
-            os.unlink(sco_path)
+        Raises:
+            CsoundRenderError: se csound esce con errore
+            CsoundNotFoundError: se csound non e' installato
+        """
+        self._render(streams, output_path, per_stream=False)
 
         return output_path
 
@@ -131,34 +122,55 @@ class CsoundRenderer(AudioRenderer):
     # INTERNAL
     # =========================================================================
 
-    def _write_score(self, streams, output_path: str, per_stream: bool = False) -> str:
-        """
-        Scrive il file .sco via ScoreWriter.
+    def _render(self, streams, output_path: str, per_stream: bool) -> None:
+        """Score + csound, con lo score temporaneo che se ne va comunque.
 
-        Se sco_dir e' configurato (--keep-sco), salva in path deterministico
-        basato su output_path. Altrimenti usa un file temporaneo.
+        STEMS e MIX passano di qui, quindi la regola di cancellazione ha una
+        scrittura sola. Il `try` copre anche `write_score`, non la sola
+        chiamata a csound: il file temporaneo lo crea `_score_path`
+        (`mkstemp`) *prima* che ScoreWriter ci scriva, e i grani sono lazy
+        (issue #117) -- si materializzano proprio qui, con tutti i modi di
+        essere invalidi che il parse non ha visto. Uno score che muore
+        scrivendo lasciava un .sco in /tmp esattamente come il csound assente
+        della issue #241, con lo stesso nome casuale che l'utente non ha modo
+        di ritrovare. E' la forma che `SuperColliderRenderer._render` ha da
+        sempre; era questa meta' a non averla.
+
+        Chi il .sco di un render fallito lo vuole ha `--keep-sco`, ed e' la
+        modalita' in cui il file non e' temporaneo: la condizione lo rispetta.
+        """
+        sco_path = self._score_path(output_path)
+        try:
+            self.score_writer.write_score(
+                filepath=sco_path,
+                streams=streams,
+                per_stream=per_stream,
+            )
+            self._run_csound(sco_path, output_path)
+        finally:
+            if not self.sco_dir and os.path.exists(sco_path):
+                os.unlink(sco_path)
+
+    def _score_path(self, output_path: str) -> str:
+        """Path del file .sco.
+
+        Se sco_dir e' configurato (--keep-sco), path deterministico basato su
+        output_path. Altrimenti un file temporaneo, che `mkstemp` crea gia'
+        vuoto sul disco: da quel momento e' compito di `_render` toglierlo.
 
         Args:
-            streams: lista di Stream da includere
             output_path: percorso del file .aif di output (usato per naming)
 
         Returns:
-            Path del file .sco scritto
+            Path del file .sco
         """
         if self.sco_dir:
             base = os.path.splitext(os.path.basename(output_path))[0]
-            sco_path = os.path.join(self.sco_dir, f"{base}.sco")
             os.makedirs(self.sco_dir, exist_ok=True)
-        else:
-            fd, sco_path = tempfile.mkstemp(suffix='.sco')
-            os.close(fd)
+            return os.path.join(self.sco_dir, f"{base}.sco")
 
-        self.score_writer.write_score(
-            filepath=sco_path,
-            streams=streams,
-            per_stream=per_stream,
-        )
-
+        fd, sco_path = tempfile.mkstemp(suffix='.sco')
+        os.close(fd)
         return sco_path
 
     def _run_csound(self, sco_path: str, output_path: str):
@@ -168,8 +180,8 @@ class CsoundRenderer(AudioRenderer):
         Costruisce il comando con env vars e flags dalla configurazione.
 
         Raises:
-            RuntimeError: se csound ritorna un codice di errore
-            FileNotFoundError: se csound non e' installato
+            CsoundRenderError: se csound ritorna un codice di errore
+            CsoundNotFoundError: se csound non e' installato
         """
         cmd = ['csound']
 
@@ -197,12 +209,51 @@ class CsoundRenderer(AudioRenderer):
             cmd.append(f'--logfile={log_dir}/{basename}.log')
 
         # Esegui
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError:
+            # csound non e' nel PATH. Il FileNotFoundError grezzo finiva
+            # nell'handler che la CLI tiene per il file YAML, e l'utente si
+            # sentiva dire che la sua configurazione non esiste (issue #241).
+            from pge.shared.exceptions import CsoundNotFoundError
+            raise CsoundNotFoundError(
+                what=f"binario '{cmd[0]}'",
+                # `make install-system-deps` NON installa csound su
+                # Fedora/RHEL -- non e' nei repo, ne' in RPM Fusion -- ed e'
+                # proprio la macchina da cui viene la issue: un rimedio che
+                # li' e' un no-op vale quanto il messaggio che ha sostituito.
+                hint=("Installa csound (`make install-system-deps`; su "
+                      "Fedora/RHEL non e' nei repo e va compilato dai "
+                      "sorgenti, vedi README), oppure usa `--renderer "
+                      "numpy`, che non richiede binari esterni."),
+            ) from None
 
         if result.returncode != 0:
             from pge.shared.exceptions import CsoundRenderError
+            # La riga `Comando:` del messaggio invita a rieseguire, ma nomina
+            # uno score che a quel punto non c'e' piu': da quando la
+            # cancellazione sta in un `finally` (PR #256) anche l'exit diverso
+            # da zero ci passa, e prima invece saltava le due righe lasciando
+            # il file in /tmp. Il rimedio esiste ed e' un flag: se il
+            # messaggio non lo dice, la prima azione che suggerisce e' un
+            # no-op. Con `--keep-sco` gia' attivo il rimedio non esiste piu',
+            # e l'hint tace.
+            #
+            # Quel flag pero' non riporta lo score al path che il `Comando:`
+            # mostra: `_score_path` con `sco_dir` scrive in una directory
+            # stabile, e senza pesca ogni volta un nome nuovo da `mkstemp`.
+            # Promettere di «rieseguire il comando qui sopra» era lo stesso
+            # rimedio-che-non-fa-nulla riscritto un livello piu' in la': la
+            # riga rieseguibile e' quella del messaggio *successivo*.
+            hint = None if self.sco_dir else (
+                "Lo score .sco era temporaneo ed e' stato rimosso, quindi il "
+                "comando qui sopra non e' piu' rieseguibile: rilancia con "
+                "`--keep-sco`, che lo score lo conserva su disco, e riesegui "
+                "il `Comando:` del messaggio che ne esce."
+            )
             raise CsoundRenderError(
                 returncode=result.returncode,
                 command=cmd,
                 stderr=result.stderr or "",
+                hint=hint,
             )

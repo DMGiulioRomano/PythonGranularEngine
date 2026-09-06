@@ -181,6 +181,93 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `api.build_renderer` — l'API che PGE-ui e i consumer programmatici usano —
   aveva gia' la firma esplicita.
 
+- **Csound non installato veniva annunciato come «file YAML non trovato»**
+  (issue #241). `CsoundRenderer._run_csound` lasciava salire il
+  `FileNotFoundError` che `subprocess.run` alza quando il binario non e' nel
+  PATH, e in `cli.main()` quel tipo aveva il **primo** handler della catena,
+  tenuto per il file di configurazione. Su una macchina senza csound
+  (Fedora/RHEL, dove il README gia' suggerisce `RENDERER=numpy`) il render
+  moriva dicendo che il file YAML non esisteva — mentre era stato letto e
+  parsato pochi istanti prima, e il difetto stava a valle.
+
+  Il guasto ha ora un tipo suo, `CsoundNotFoundError`, con il rimedio dentro
+  il messaggio:
+
+  ```
+  [ERRORE] Csound: binario 'csound' non trovato
+    Hint:         Installa csound (`make install-system-deps`; su Fedora/RHEL non e' nei repo e va compilato dai sorgenti, vedi README), oppure usa `--renderer numpy`, che non richiede binari esterni.
+  ```
+
+  Il blocco è l'output reale: `user_message()` non manda a capo l'hint, e
+  mostrarlo qui rincolonnato descriveva una riga che il programma non stampa
+  (`docs/reference/errors.md` lo riporta com'è).
+
+  Il rimedio nomina la compilazione dai sorgenti perche' `make
+  install-system-deps` csound su Fedora/RHEL non lo installa — non c'e' nei
+  repo ne' in RPM Fusion, e il target lo dice invece di provarci. Un
+  messaggio azionabile la cui prima azione e' un no-op proprio sulla
+  piattaforma da cui viene la issue vale quanto quello che ha sostituito.
+
+  Non eredita da `FileNotFoundError`, per la stessa ragione per cui non lo fa
+  `SuperColliderNotFoundError` (#228): il tipo di un errore serve a chi lo
+  cattura, non a descriverne la causa. Le due classi erano identiche a meno
+  del nome del tool, quindi ora condividono la base `_BinaryNotFoundError`,
+  come i due errori di exit code condividono `_SubprocessRenderError`.
+
+  Il tipo giusto non basta se chi cattura e' troppo largo: l'handler
+  `FileNotFoundError` della CLI si e' stretto attorno a `Generator()` +
+  `load_yaml()`, l'unico punto che puo' sollevarlo per il motivo che
+  annuncia. Un `FileNotFoundError` che nessuno ha ancora tradotto finisce nel
+  ramo generico — messaggio e traceback — invece che in un messaggio falso.
+
+  La conseguenza per chi usa la libreria e' un cambio di superficie, ed e'
+  scritta fra le modifiche qui sotto invece che sepolta qui.
+
+- **Il `.sco` temporaneo sopravviveva a ogni render csound fallito**
+  (review della PR #256). Senza `--keep-sco` lo score e' un file temporaneo,
+  e la sua cancellazione stava *dopo* la chiamata a csound: qualunque modo di
+  fallire — exit code diverso da zero, e da questa release anche il binario
+  assente — saltava le due righe e lasciava il file in `/tmp`, con un nome
+  casuale che l'utente non ha modo di ritrovare. Su una macchina senza csound
+  non era un caso raro ma la norma: uno per tentativo.
+
+  Il `try/finally` copre l'intero passo, **scrittura dello score inclusa**, e
+  non la sola chiamata a csound: il file temporaneo lo crea `mkstemp` prima
+  che ScoreWriter ci scriva, e i grani sono lazy (issue #117) — si
+  materializzano proprio li', con tutti i modi di essere invalidi che il
+  parse non ha visto. Uno score che muore scrivendo lasciava un `.sco` in
+  `/tmp` esattamente come il binario assente. STEMS e MIX passano ora dallo
+  stesso `_render`, cosi' la regola di cancellazione ha una scrittura sola:
+  e' la forma che `SuperColliderRenderer._render` ha da sempre, ed era il
+  ramo csound a non averla.
+
+  `--keep-sco` continua a valere, perche' la condizione e' rimasta la stessa
+  — ma ora e' anche testata sul ramo dei fallimenti, che prima la
+  cancellazione non la eseguiva affatto: e' il render fallito quello che si
+  vuole ispezionare, e un `finally` che perdesse quella condizione
+  cancellerebbe proprio il file che il flag promette di tenere. Testata anche
+  sul ramo che finisce bene, che e' il piu' battuto e non ne aveva nessuna: un
+  render che smettesse di ripulire lascerebbe un `.sco` per stem e la suite
+  resterebbe verde.
+
+  Chiudere quella perdita porta pero' via anche il `.sco` dell'exit code
+  diverso da zero, che prima sopravviveva per via dello stesso difetto — ed e'
+  il caso in cui quello score serve. Il messaggio di `CsoundRenderError` offre
+  una riga `Comando:` da rieseguire, e quel comando nomina lo score appena
+  cancellato: senza dirlo, la prima azione che il messaggio suggerisce e' un
+  no-op, cioe' lo stesso metro con cui questa release ha riscritto l'hint di
+  csound assente. `_SubprocessRenderError` ha ora un `hint` opzionale — stessa
+  riga di `_BinaryNotFoundError` — e il ramo csound lo valorizza nominando
+  `--keep-sco` quando lo score era temporaneo. Con il flag gia' attivo l'hint
+  non compare: il rimedio non esiste piu'.
+
+  Quel flag non riporta pero' lo score al path che il `Comando:` mostra: con
+  `--sco-dir` lo scrive in una directory stabile, e senza, `mkstemp` pesca
+  ogni volta un nome nuovo. L'hint dice quindi che la riga mostrata non e'
+  piu' rieseguibile e rimanda a quella del messaggio successivo — invitare a
+  rieseguire *quella* avrebbe spostato di un livello lo stesso
+  rimedio-che-non-fa-nulla, invece di toglierlo.
+
 - **`--log-dir` spostava solo meta' dei log** (issue #251). Il flag era
   parsato correttamente e finiva al renderer, ma i due logger configurati
   prima del render — clip ed errori engine — avevano `'./logs'` scritto a
@@ -299,6 +386,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `voice.wav` sia su un seno di 3 s, e la lunghezza del buffer entra nel
   comportamento di cache, quindi nel coefficiente `a`: due run non
   confrontabili erano indistinguibili a posteriori.
+
+- **BREAKING — `render_single_stream` e `render_merged_streams` del renderer
+  csound non sollevano piu' `FileNotFoundError`** quando csound non e' nel
+  PATH (issue #241, vedi la correzione qui sopra). Il tipo era promesso dalla
+  docstring, ma la promessa *era* il difetto: quel tipo la CLI lo intercetta
+  per annunciare un file YAML mancante. Ora e' `CsoundNotFoundError`. Chi lo
+  catturava per nome deve passare a quello, o a `EngineError`, che copre
+  tutti gli errori del motore. Un `except FileNotFoundError` attorno a un
+  render csound smette di catturare in silenzio: l'eccezione risale.
 
 ---
 
