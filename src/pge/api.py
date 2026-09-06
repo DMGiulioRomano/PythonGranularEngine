@@ -61,8 +61,24 @@
 # va aggiornato: il test lo verifica in entrambe le direzioni (nessuna riga
 # fuori elenco, nessuna voce in elenco che nessuno emette piu').
 #
-# Chi incorpora e ha bisogno di silenzio: contextlib.redirect_stdout, e
-# configure_clip_logger/configure_engine_logger PRIMA di load_generator --
+# --- e stderr, che il censimento qui sopra non copre ---
+#
+# L'elenco e' di stdout, e dirlo per intero fa parte del punto: letto come
+# inventario completo rifarebbe l'errore della #189 un piano sotto. Sullo
+# stderr scrivono gli avvisi del clip logger, da qualunque percorso che
+# costruisca envelope:
+#     `⚠️  CLIP: ...`   l'handler console del clip logger (attivo di default)
+#     `CLIP: ...`       log_loop_unit_migration_warning, che stampa proprio
+#                       quando la console del clip logger e' spenta (#222):
+#                       spegnerla non zittisce quell'avviso, lo sposta
+#
+# Chi incorpora e ha bisogno di silenzio: contextlib.redirect_stdout NON
+# basta -- copre l'elenco qui sopra e nient'altro. Servono anche
+# redirect_stderr (da entrare PRIMA che il clip logger si costruisca:
+# logging.StreamHandler() cattura sys.stderr alla costruzione, non alla
+# scrittura) oppure configure_clip_logger(console_enabled=False), tenendo
+# conto che l'avviso #222 resta. E configure_clip_logger /
+# configure_engine_logger vanno chiamate PRIMA di load_generator --
 # altrimenti il primo Stream inizializza il clip logger coi default di
 # modulo, che scrivono in ./logs (docs/how-to/use-as-library.md).
 #

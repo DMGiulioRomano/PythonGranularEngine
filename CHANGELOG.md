@@ -129,7 +129,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   il test diventerà rosso — non è un falso allarme, è la dichiarazione che
   va aggiornata insieme al comportamento.
 
-  Chi incorpora e ha bisogno di silenzio: `contextlib.redirect_stdout`, e
+  Il censimento è di **stdout**, e lo dice: letto come inventario completo
+  rifarebbe lo stesso errore un piano sotto. Gli avvisi del clip logger
+  passano da stderr (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
+  dall'avviso di migrazione `loop_unit` della #222, che stampa proprio
+  quando quella console è spenta), quindi `contextlib.redirect_stdout` da
+  solo non è silenzio: servono entrambe le redirezioni, e la
+  `redirect_stderr` va entrata prima che il clip logger si costruisca
+  (`logging.StreamHandler()` cattura `sys.stderr` alla costruzione).
+
+  Chi incorpora e ha bisogno di silenzio: `contextlib.redirect_stdout` +
+  `contextlib.redirect_stderr`, e
   `configure_clip_logger`/`configure_engine_logger` prima di
   `load_generator`. Documentato in
   [`docs/how-to/use-as-library.md`](docs/how-to/use-as-library.md) e

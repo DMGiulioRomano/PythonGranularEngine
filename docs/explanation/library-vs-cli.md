@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [api, cli, architecture, refactor]
 sources: [src/pge/api.py, src/pge/cli.py, src/main.py]
-last_synced_commit: be716c9
+last_synced_commit: 638f9d6
 entry_for: [usare PGE come libreria, capire la divisione API/CLI]
 ---
 
@@ -72,6 +72,13 @@ Divisione delle policy (chi decide cosa):
   censimento completo, con chi emette cosa, sta nell'intestazione di
   `api.py`; `tests/test_api_stdout.py` lo verifica su output vero, in
   entrambe le direzioni.
+- **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
+  logger passano di là (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
+  dall'avviso di migrazione `loop_unit` della #222, che parla proprio quando
+  quella console è spenta), quindi `redirect_stdout` da solo non è silenzio:
+  per chi incorpora servono entrambe le redirezioni. Dirlo fa parte del
+  punto — un censimento di stdout letto come inventario completo rifà
+  l'errore della #189 un piano sotto.
 - Quelle righe restano perché fanno parte del contratto stdout della CLI, e
   una almeno è interfaccia vera: `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
   (`render_pipeline.py`) per gli eventi NDJSON `stream-start`/`stream-done`,

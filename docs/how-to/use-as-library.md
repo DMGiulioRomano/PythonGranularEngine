@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [api, library, install, render]
 sources: [src/pge/api.py, pyproject.toml]
-last_synced_commit: be716c9
+last_synced_commit: 638f9d6
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 
@@ -57,19 +57,32 @@ passare dalla CLI né monkey-patchare i globali.
    riga per riga e con chi la emette, sta nell'intestazione di
    `src/pge/api.py`. Fanno parte del contratto stdout della CLI (la riga
    `[CACHE]` la parsa PGE-ui per l'avanzamento per stream), quindi non
-   spariranno da sole: servendo silenzio, la via è
-   `contextlib.redirect_stdout`.
+   spariranno da sole.
+
+4. Stderr: **`redirect_stdout` da solo non è silenzio.** Il censimento in
+   `api.py` è di stdout; gli avvisi del clip logger passano da stderr, da
+   qualunque percorso che costruisca envelope — `⚠️  CLIP: ...`
+   dall'handler console (attivo di default) e `CLIP: ...` dall'avviso di
+   migrazione `loop_unit` (#222), che stampa proprio *quando* la console del
+   clip logger è spenta. Spegnere la console non zittisce quell'ultimo: lo
+   sposta.
+
+   Chiudere entrambi i canali vuole entrambe le redirezioni, e la
+   `redirect_stderr` va entrata **prima** che il clip logger si costruisca:
+   `logging.StreamHandler()` cattura `sys.stderr` alla costruzione, non alla
+   scrittura, quindi un handler già vivo continua a scrivere sullo stderr
+   vero.
 
    ```python
    import contextlib, io
 
-   silenzio = io.StringIO()
-   with contextlib.redirect_stdout(silenzio):
+   fuori, errori = io.StringIO(), io.StringIO()
+   with contextlib.redirect_stdout(fuori), contextlib.redirect_stderr(errori):
        result = api.render_file('scena.yml', 'out/scena.aif',
                                 renderer='numpy', samples_dir='refs/')
    ```
 
-4. Logging: i singleton restano; configurarli PRIMA di `load_generator`
+5. Logging: i singleton restano; configurarli PRIMA di `load_generator`
    (altrimenti il primo Stream inizializza il clip logger coi default di
    modulo, file in `./logs` + la riga `📝 Clip log file: ...` su stdout):
 
@@ -80,15 +93,15 @@ passare dalla CLI né monkey-patchare i globali.
    configure_engine_logger(yaml_name='mio_progetto', log_dir='out/logs')
    ```
 
-5. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
+6. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
    argomenti API invalidi sollevano `ValueError` (es. `audio_format`
    stringa ignota), file YAML mancante `FileNotFoundError`.
 
-6. Csound: `renderer='csound'` con knob raggruppati in
+7. Csound: `renderer='csound'` con knob raggruppati in
    `api.CsoundOptions(orc_path=..., ssdir=..., sco_dir=...)`;
    `ssdir=None` eredita `samples_dir`.
 
-7. Quanti grani ha prodotto ogni stream: `result.grain_counts`, una voce per
+8. Quanti grani ha prodotto ogni stream: `result.grain_counts`, una voce per
    stream nell'ordine di `generator.streams`.
 
    ```python

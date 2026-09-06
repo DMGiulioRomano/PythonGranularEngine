@@ -30,6 +30,12 @@ sorgente. La relazione dev'essere la stessa nelle due, o l'elenco significa
 due cose diverse a seconda di chi lo legge: con `token.strip() in
 ast.unparse(node)` due voci su quindici non discriminavano piu' niente (vedi
 il docstring di `_library_prints` e quello del test statico).
+
+E c'e' una terza classe, che il censimento non copre ed e' per questo che il
+censimento deve dichiarare il proprio perimetro: **stderr**. `TestStderr`
+tiene fermo che i clip warning passano di la' e che l'intestazione di
+`api.py` lo dica -- un elenco di stdout letto come inventario completo
+rifarebbe l'errore della #189 un piano sotto.
 """
 
 import ast
@@ -466,3 +472,46 @@ class TestStdoutReale:
         for nome, fn in casi:
             _r, lines = _capture(fn)
             assert lines == [], f"{nome} ha stampato: {lines}"
+
+
+# =============================================================================
+# Lo stderr e' un canale a parte, e redirect_stdout non lo tocca
+# =============================================================================
+
+class TestStderr:
+    """Il censimento e' di **stdout**, e dirlo per intero fa parte del punto.
+
+    La #189 nasce da una dichiarazione che prometteva piu' silenzio di
+    quanto ne consegnasse. Un censimento di stdout letto come inventario
+    completo rifa' lo stesso errore un piano sotto: chi incorpora la libreria
+    e mette `redirect_stdout` non ha silenziato niente di cio' che passa da
+    qui.
+    """
+
+    def test_i_clip_warning_vanno_su_stderr_non_su_stdout(self, tmp_path):
+        from pge.shared import logger as clip
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            clip.configure_clip_logger(log_dir=str(tmp_path / 'logs'))
+            clip.log_clip_warning('s1', 'volume', 0.0, 5.0, 1.0, 0.0, 1.0)
+
+        assert 'CLIP' in err.getvalue(), (
+            f"il clip warning non e' su stderr: out={out.getvalue()!r} "
+            f"err={err.getvalue()!r}")
+        assert 'CLIP' not in out.getvalue(), (
+            "il clip warning e' finito su stdout: se il canale e' cambiato, "
+            "il censimento di api.py va aggiornato")
+
+    def test_il_censimento_dichiara_di_essere_di_stdout(self):
+        """Non basta che sia vero: deve dirlo, o si rilegge come completo."""
+        header = []
+        for line in open(API_PATH, encoding='utf-8'):
+            if not line.startswith('#'):
+                break
+            header.append(line)
+        header = ''.join(header)
+        assert 'stderr' in header, (
+            "l'intestazione di api.py censisce stdout senza dire che stderr "
+            "esiste: redirect_stdout si legge allora come 'silenzio', e non "
+            "lo e' (issue #189)")
