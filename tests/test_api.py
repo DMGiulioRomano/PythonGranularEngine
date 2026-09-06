@@ -4,7 +4,8 @@ Test unit per src/api.py — l'API programmatica estratta da main.py
 (Fase 1 del refactor library/CLI).
 
 Contratto del modulo api (piano, sez. B.1):
-- nessun print, nessun sys.exit, nessuna lettura di sys.argv;
+- nessun print NEL PROPRIO MODULO, nessun sys.exit, nessuna lettura di
+  sys.argv;
 - errori -> eccezioni (EngineError e sottoclassi, ValueError);
 - lazy import dei moduli pesanti dentro le funzioni.
 
@@ -12,6 +13,15 @@ Stessa tecnica di mock ai confini di test_main.py (fixture condivisa in
 tests/main_mocks.py), ma senza argv e senza SystemExit: le asserzioni sono
 sui kwargs esatti verso RendererFactory/RenderingEngine/engine.render, sui
 campi di RenderResult, su capsys vuoto e sulle eccezioni propagate.
+
+Cosa misurano davvero i `test_no_print` di questo file (issue #189): qui
+Generator, RenderingEngine e ScoreVisualizer sono MagicMock, quindi un
+capsys vuoto dice che *api.py* non stampa di suo -- ed e' vero, ed e' la
+meta' del contratto che vale la pena blindare qui. Non dice niente su cosa
+vede chi chiama l'API con i componenti veri: quelli stampano, e per anni la
+dichiarazione in api.py ha promesso il contrario proprio perche' i mock non
+potevano contraddirla. L'altra meta' sta in tests/test_api_stdout.py, che
+lavora su output vero e senza mock in mezzo.
 """
 
 import sys

@@ -180,6 +180,66 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`api.py` prometteva un silenzio che non ha mai avuto** (issue #189).
+  L'intestazione dichiarava «nessun print» come primo punto del contratto
+  del modulo, e la dichiarazione era falsa: nessuna funzione di `api.py`
+  contiene un `print()`, ma le funzioni orchestrano `Generator`, i renderer
+  e `ScoreVisualizer`, che stampano. Chiamare `load_generator` scrive su
+  stdout `[SEED] ...`, `🔇 N stream muted`, `Creazione di N stream...` e una
+  riga per stream; `render` con un `cache_manifest_path` scrive `[CACHE]
+  <id>: DIRTY|clean`; `export_score_pdf` fa parlare il visualizer. Per una
+  libreria che qualcun altro incorpora non è cosmesi: è output non richiesto
+  sullo stdout del processo ospite.
+
+  Il piano da cui il contratto viene diceva «non stampa (nel proprio
+  modulo)» — la parentesi si era persa nella trascrizione, e con lei tutta
+  la differenza.
+
+  I test che sembravano difendere la dichiarazione non potevano
+  contraddirla: gli undici `test_no_print` di `tests/test_api.py` girano con
+  `Generator`, `RenderingEngine` e `ScoreVisualizer` montati come MagicMock,
+  quindi il `capsys` vuoto misurava il silenzio dei mock. Restano validi su
+  ciò che dicono davvero (api.py non stampa di suo) e il loro docstring ora
+  lo dice.
+
+  La dichiarazione è riscritta come **censimento**: quali righe si vedono
+  chiamando quale funzione, chi le emette, e perché restano (sono il
+  contratto stdout della CLI: `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
+  per l'avanzamento per stream dell'editor, delle altre non risulta nessun
+  consumatore — accertarlo è la #178, portarle al logger le #187/#188). Il
+  nuovo
+  `tests/test_api_stdout.py` lo verifica **su output vero, senza mock**, e
+  chiude il censimento in due direzioni: nessuna riga su stdout fuori
+  elenco, nessuna voce in elenco che in `src/pge/` non abbia più un
+  `print()` **su stdout** che la emetta. Quando #187/#188 sposteranno una di
+  quelle righe il test diventerà rosso — non è un falso allarme, è la
+  dichiarazione che va aggiornata insieme al comportamento.
+
+  Quel «su stdout» è la condizione, non un rafforzativo: la prova che una
+  voce è ancora viva deve stare sullo stesso canale che la voce dichiara.
+  Senza guardare il `file=` bastava aggiungere `file=sys.stderr` a una riga
+  censita per toglierla da stdout lasciando verdi entrambe le direzioni —
+  lo stesso buco del `  - ` e del `[CACHE]`, spostato dal prefisso al
+  canale, e peggiore lì dove la direzione statica è l'unica guardia che
+  c'è: `✓ Score generato` e `  - ` stanno sul ramo Csound, che nessun test
+  esercita a runtime.
+
+  Il censimento è di **stdout**, e lo dice: letto come inventario completo
+  rifarebbe lo stesso errore un piano sotto. Gli avvisi del clip logger
+  passano da stderr (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
+  dall'avviso di migrazione `loop_unit` della #222, che stampa proprio
+  quando quella console è spenta), quindi `contextlib.redirect_stdout` da
+  solo non è silenzio: servono entrambe le redirezioni, e la
+  `redirect_stderr` va entrata prima che il clip logger si costruisca
+  (`logging.StreamHandler()` cattura `sys.stderr` alla costruzione).
+
+  Chi incorpora e ha bisogno di silenzio: `contextlib.redirect_stdout` +
+  `contextlib.redirect_stderr`, e
+  `configure_clip_logger`/`configure_engine_logger` prima di
+  `load_generator`. Documentato in
+  [`docs/how-to/use-as-library.md`](docs/how-to/use-as-library.md) e
+  [`docs/explanation/library-vs-cli.md`](docs/explanation/library-vs-cli.md).
+
 - **`cli._build_renderer` ingoiava in silenzio ogni kwarg sconosciuto**
   (issue #252). La funzione raccoglieva tutto in `**kwargs` e poi pescava
   una chiave per volta con `.get()`: non c'era nessun punto in cui un nome
