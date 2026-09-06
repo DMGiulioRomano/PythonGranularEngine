@@ -23,6 +23,13 @@ Il censimento chiude in due direzioni, e servono entrambe:
 
 La prima direzione da sola lascerebbe crescere l'elenco all'infinito; la
 seconda da sola non vedrebbe mai una riga nuova.
+
+Entrambe le direzioni confrontano il token con l'inizio di una riga --
+`riga.startswith(token)` a runtime, `prefisso_emesso.startswith(token)` da
+sorgente. La relazione dev'essere la stessa nelle due, o l'elenco significa
+due cose diverse a seconda di chi lo legge: con `token.strip() in
+ast.unparse(node)` due voci su quindici non discriminavano piu' niente (vedi
+il docstring di `_library_prints` e quello del test statico).
 """
 
 import ast
@@ -46,6 +53,26 @@ _END = '--- fine censimento'
 # La CLI e' l'altro lato del contratto: i suoi print sono policy sua e non
 # c'entrano con cosa vede chi importa la libreria.
 _NOT_LIBRARY = {'cli.py'}
+
+# I print che `src/pge/` contiene ma che dall'API non si raggiungono. Non
+# possono valere come prova che una voce del censimento sia ancora viva:
+# senza questo elenco il token `[CACHE]` restava verde anche togliendo la
+# riga per stream da tutti e tre i renderer -- cioe' proprio nello scenario
+# #187/#188 che questo file dichiara di sorvegliare, sulla riga che PGE-ui
+# parsa. Sono nominati per (modulo, funzione) e non per prefisso, perche' il
+# prefisso e' identico a quello delle righe vive.
+#
+# L'elenco e' verificato, non trascritto: `test_le_esclusioni_sono_ancora_vere`
+# chiede che ognuna esista ancora e che ogni sua chiamata in `src/pge/` stia
+# dentro una funzione a sua volta esclusa -- il giorno che una diventa
+# raggiungibile l'esclusione e' sbagliata e il test lo dice.
+_UNREACHABLE = {
+    # Generator.generate_score_files_per_stream: nessun chiamante in src/pge/
+    ('generator.py', 'generate_score_files_per_stream'),
+    # StreamCacheManager.get_dirty_stream_dicts: chiamata solo dalla
+    # precedente, quindi irraggiungibile per la stessa ragione.
+    ('stream_cache_manager.py', 'get_dirty_stream_dicts'),
+}
 
 
 def _census_tokens():
@@ -76,23 +103,109 @@ def _census_tokens():
     return tokens
 
 
-def _library_print_sources():
-    """Il testo di ogni `print(...)` di `src/pge/`, CLI esclusa."""
+def _emitted_prefix(node):
+    """Il testo che il print emette PRIMA della prima interpolazione.
+
+    E' la sola meta' della riga che si puo' leggere staticamente, ed e'
+    quella che il censimento elenca: `[CACHE] {stream_id}: {status}` comincia
+    per `[CACHE] `. Ritorna None per un print il cui primo argomento non e'
+    una stringa (nessun prefisso da confrontare).
+    """
+    if not node.args:
+        return None
+    arg = node.args[0]
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        return arg.value
+    if isinstance(arg, ast.JoinedStr):
+        head = []
+        for part in arg.values:
+            if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                head.append(part.value)
+            else:
+                break
+        return ''.join(head) if head else ''
+    return None
+
+
+def _iter_prints(path):
+    """(funzione che lo contiene, nodo) per ogni `print(...)` del file."""
+    tree = ast.parse(open(path, encoding='utf-8').read())
+    trovati = []
+
+    def walk(node, func):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            func = node.name
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == 'print'):
+            trovati.append((func, node))
+        for child in ast.iter_child_nodes(node):
+            walk(child, func)
+
+    walk(tree, None)
+    return trovati
+
+
+def _library_prints(*, skip_unreachable=True):
+    """Ogni `print(...)` di `src/pge/`, CLI esclusa, come record.
+
+    Record: (modulo, funzione, prefisso emesso, sorgente). Il confronto col
+    censimento e' sul **prefisso emesso**, non sul testo della chiamata: con
+    `needle in ast.unparse(node)` il token `  - ` si riduceva a `-` dopo lo
+    strip e veniva soddisfatto dalle frecce `->` dei print di
+    `register_*_strategy`, cosi' che cancellare tutte e tre le righe di
+    riepilogo dello ScoreWriter lasciava il test verde.
+    """
     out = []
     for root, _dirs, files in os.walk(SRC_PGE):
         if '__pycache__' in root:
             continue
-        for name in files:
+        for name in sorted(files):
             if not name.endswith('.py') or name in _NOT_LIBRARY:
+                continue
+            for func, node in _iter_prints(os.path.join(root, name)):
+                if skip_unreachable and (name, func) in _UNREACHABLE:
+                    continue
+                out.append((name, func, _emitted_prefix(node),
+                            ast.unparse(node)))
+    return out
+
+
+def _library_call_sites():
+    """(modulo, funzione chiamante, nome chiamato) per ogni call di src/pge/.
+
+    Il chiamante serve quanto il chiamato: `get_dirty_stream_dicts` ha un
+    chiamante, ed e' `generate_score_files_per_stream` -- che a sua volta
+    non ne ha. Senza il chiamante non si distingue "raggiungibile" da
+    "raggiungibile solo da codice a sua volta irraggiungibile".
+    """
+    sites = []
+    for root, _dirs, files in os.walk(SRC_PGE):
+        if '__pycache__' in root:
+            continue
+        for name in sorted(files):
+            if not name.endswith('.py'):
                 continue
             path = os.path.join(root, name)
             tree = ast.parse(open(path, encoding='utf-8').read())
-            for node in ast.walk(tree):
-                if (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id == 'print'):
-                    out.append((path, ast.unparse(node)))
-    return out
+
+            def walk(node, func):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    func = node.name
+                if isinstance(node, ast.Call):
+                    fn = node.func
+                    called = None
+                    if isinstance(fn, ast.Name):
+                        called = fn.id
+                    elif isinstance(fn, ast.Attribute):
+                        called = fn.attr
+                    if called is not None:
+                        sites.append((name, func, called))
+                for child in ast.iter_child_nodes(node):
+                    walk(child, func)
+
+            walk(tree, None)
+    return sites
 
 
 def _write_sample(tmp_path, name='probe.wav', dur=1.0, sr=48000):
@@ -154,30 +267,78 @@ class TestCensimento:
             "libreria che dichiara cosa stampa deve dire cosa")
 
     def test_api_non_dichiara_piu_silenzio_assoluto(self):
-        """La riga che la #189 ha trovato falsa non deve tornare."""
+        """La riga che la #189 ha trovato falsa non deve tornare.
+
+        Falsa e' la forma **assoluta**: "nessun print". Qualificata --
+        "nessun print nel proprio modulo", che e' la parola del piano e
+        quella che `docs/explanation/library-vs-cli.md` e `tests/test_api.py`
+        usano -- e' vera, e questo test non deve punirla: vietare la
+        sottostringa e basta rendeva rosso il modo corretto di dirlo.
+        """
         header = []
         for line in open(API_PATH, encoding='utf-8'):
             if not line.startswith('#'):
                 break
             header.append(line)
         header = ''.join(header)
-        assert 'nessun print' not in header, (
-            "api.py torna a dichiarare 'nessun print': i componenti che "
-            "orchestra stampano ancora (vedi gli altri test di questo file)")
+        for match in re.finditer(r'nessun print', header):
+            coda = header[match.end():match.end() + 60]
+            coda = ' '.join(coda.replace('#', ' ').split())
+            assert coda.startswith('nel proprio modulo'), (
+                "api.py torna a dichiarare 'nessun print' senza qualificarlo "
+                "'nel proprio modulo': i componenti che orchestra stampano "
+                "ancora (vedi gli altri test di questo file)")
+
+    def test_le_esclusioni_sono_ancora_vere(self):
+        """`_UNREACHABLE` e' verificato, non trascritto.
+
+        Ogni esclusione deve (a) esistere ancora -- altrimenti descrive un
+        print che non c'e' piu' e resta li' a nascondere il prossimo -- e
+        (b) restare irraggiungibile, cioe' ogni sua chiamata in `src/pge/`
+        deve stare dentro una funzione a sua volta esclusa. Il giorno che una
+        diventa raggiungibile, l'esclusione e' sbagliata e va tolta.
+        """
+        vivi = {(mod, func)
+                for mod, func, _pref, _src in _library_prints(
+                    skip_unreachable=False)}
+        esclusi = {func for _mod, func in _UNREACHABLE}
+        siti = _library_call_sites()
+        for mod, func in sorted(_UNREACHABLE):
+            assert (mod, func) in vivi, (
+                f"_UNREACHABLE elenca {mod}:{func}(), ma li' non c'e' piu' "
+                f"nessun print(): togli la voce")
+            fuori = [(m, chiamante) for m, chiamante, chiamato in siti
+                     if chiamato == func and chiamante not in esclusi]
+            assert not fuori, (
+                f"_UNREACHABLE dichiara {mod}:{func}() irraggiungibile, ma "
+                f"in src/pge/ la chiamano da {fuori}: le sue righe finiscono "
+                f"su stdout e vanno censite, non escluse")
 
     def test_ogni_prefisso_elencato_esiste_ancora_come_print(self):
         """Direzione statica: l'elenco non sopravvive a chi lo svuota.
+
+        Il confronto e' `prefisso_emesso.startswith(token)` -- la stessa
+        relazione della direzione runtime (`riga.startswith(token)`), su cio'
+        che il print emette davvero. Con `token.strip() in ast.unparse(node)`
+        due voci su quindici non discriminavano nulla: `  - ` si riduceva a
+        `-` e lo soddisfacevano le frecce `->` dei `register_*_strategy`
+        (tolte tutte e tre le righe di riepilogo dello ScoreWriter, verde), e
+        `[CACHE]` restava soddisfatto dalle righe irraggiungibili di
+        `generator.py` / `stream_cache_manager.py` (tolta la riga per stream
+        da tutti e tre i renderer, verde -- cioe' cieco proprio allo
+        scenario qui sotto).
 
         Rosso previsto quando #187/#188 porteranno una di queste righe al
         logger. Non e' un falso allarme: e' la dichiarazione che va
         aggiornata insieme al comportamento.
         """
-        sources = _library_print_sources()
+        prints = _library_prints()
         for token in _census_tokens():
-            needle = token.strip()
-            assert any(needle in text for _path, text in sources), (
+            assert any(pref is not None and pref.startswith(token)
+                       for _mod, _func, pref, _src in prints), (
                 f"il censimento di api.py elenca {token!r}, ma in src/pge/ "
-                f"nessun print() lo emette piu': aggiorna l'elenco")
+                f"nessun print() emette una riga che cominci cosi': "
+                f"aggiorna l'elenco")
 
 
 # =============================================================================
@@ -257,7 +418,10 @@ class TestStdoutReale:
         # chdir: il clip logger scrive ./logs alla prima inizializzazione,
         # e un test non sporca la root del repo.
         monkeypatch.chdir(probe['dir'])
-        monkeypatch.setenv('MPLBACKEND', 'Agg')
+        # matplotlib.use() e non MPLBACKEND: la variabile d'ambiente la legge
+        # matplotlib all'import, che l'importorskip qui sopra ha gia' fatto.
+        import matplotlib
+        matplotlib.use('Agg')
         pdf = str(probe['dir'] / 'census.pdf')
         _p, lines = _capture(lambda: api.export_score_pdf(
             gen, pdf, samples_dir=probe['samples']))
@@ -268,10 +432,37 @@ class TestStdoutReale:
         assert not _undocumented(lines, _census_tokens()), (
             f"righe non censite: {_undocumented(lines, _census_tokens())}")
 
-    def test_le_funzioni_pure_restano_silenziose(self, probe):
-        """parameter_bounds/renderer_types e gli export non-partitura non
-        stampano: il censimento riguarda chi orchestra, non tutta l'API."""
+    def test_le_funzioni_pure_restano_silenziose(self):
+        """parameter_bounds/renderer_types non stampano: il censimento
+        riguarda chi orchestra, non tutta l'API."""
         from pge import api
         for fn in (api.parameter_bounds, api.renderer_types):
             _r, lines = _capture(fn)
             assert lines == [], f"{fn.__name__} ha stampato: {lines}"
+
+    def test_gli_export_non_partitura_restano_silenziosi(self, probe):
+        """L'altra meta' della frase qui sopra, che prima era solo scritta.
+
+        `export_score_pdf` fa parlare il visualizer; reaper, sv e grain json
+        no, ed e' una differenza che il censimento afferma (li' compare solo
+        il PDF). Un `print()` aggiunto a uno di questi tre passava sotto
+        silenzio: il docstring li nominava, il ciclo no.
+        """
+        from pge import api
+        gen, _ = _capture(
+            lambda: api.load_generator(probe['yml'],
+                                       samples_dir=probe['samples']))
+        audio = str(probe['dir'] / 'probe.wav')
+        casi = (
+            ('export_reaper',
+             lambda: api.export_reaper(gen, [audio],
+                                       str(probe['dir'] / 'p.rpp'))),
+            ('export_sv',
+             lambda: api.export_sv(gen, audio,
+                                   str(probe['dir'] / 'p.sv'))),
+            ('export_grain_json',
+             lambda: api.export_grain_json(gen, str(probe['dir']), 'p')),
+        )
+        for nome, fn in casi:
+            _r, lines = _capture(fn)
+            assert lines == [], f"{nome} ha stampato: {lines}"
