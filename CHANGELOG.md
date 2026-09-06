@@ -144,6 +144,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   della forma, e le due di `cli.py` non sono libere di andarsene al logger
   come fossero diagnostica: la doc lo dichiara invece di lasciarlo intendere.
 
+- **La guardia della diagnostica non e' piu' scoped per cartella**
+  (`test_la_registrazione_dinamica_non_stampa`,
+  `test_la_lista_dei_punti_di_registrazione_e_completa`). I punti di
+  registrazione dinamica sono sette, non tre, e non stanno tutti in
+  `strategies/`: `register_window_strategy` vive in
+  `controllers/window_selection_strategy.py`, dove vive il registry delle
+  finestre. Una guardia che sorveglia una cartella ne copriva sei, e sul
+  settimo rimettere esattamente la `print()` che la #187 ha tolto lasciava
+  verde la suite intera. Ora il criterio e' la **funzione**
+  `register_*_strategy` ovunque viva, e la lista dei moduli e' confrontata coi
+  sorgenti come quella degli emettitori della riga `[CACHE]`.
+
 - **Controprova sulla misura del `NullHandler`**
   (`tests/shared/test_diagnostic_logger.py`). Il test che verifica il mancato
   ricorso a `logging.lastResort` neutralizza gli handler che pytest mette sul

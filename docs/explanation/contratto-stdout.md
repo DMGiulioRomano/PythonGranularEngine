@@ -8,13 +8,14 @@ sources:
   - src/pge/strategies/strategy_registry.py
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/voice_pan_strategy.py
+  - src/pge/controllers/window_selection_strategy.py
   - src/pge/rendering/numpy_audio_renderer.py
   - src/pge/rendering/csound_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - src/pge/rendering/stream_cache_manager.py
   - tests/shared/test_stdout_contract.py
   - src/pge/cli.py
-last_synced_commit: 38bfee7
+last_synced_commit: 973cffd
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -115,6 +116,17 @@ scrive sul logger `pge.diagnostics`. Quel logger e' fatto di due astensioni:
    e la console di `logging` e' **stderr**: nemmeno accendendola si rientra nel
    canale che PGE-ui parsa.
 
+**Ma i punti di registrazione dinamica sono sette, non tre, e non stanno tutti
+in `strategies/`.** La #187 ne ha convertiti tre perche' erano i tre che
+stampavano; gli altri quattro (onset, pointer, pitch, window) erano gia' muti.
+Il settimo, `register_window_strategy`, vive in
+`controllers/window_selection_strategy.py`, dove vive il registry delle
+finestre: una guardia scoped sulla cartella `strategies/` ne copre sei e tace
+sul settimo, che e' la porta da cui la `print()` puo' rientrare senza che nulla
+suoni. Anche quella lista e' quindi dichiarata *e* derivata dai sorgenti, e il
+criterio del test e' la **funzione** `register_*_strategy`, non il modulo che
+la contiene.
+
 ## Trade-off
 
 **La conferma di registrazione diventa muta.** Prima, registrare una strategy
@@ -130,20 +142,26 @@ rendering*, cioe' un prodotto del programma; questa avrebbe configurato il
 logging di chi importa `pge`, che non e' affare di `pge`.
 
 **La classificazione e' un test, non una prosa.** `tests/shared/test_stdout_contract.py`
-legge i sorgenti con `ast` e chiede tre cose: che la riga `[CACHE] <id>: ...`
-sia ancora un `print()` flushato in tutti e quattro i moduli che la emettono;
-che quei quattro siano **tutti** quelli che la emettono; e che in
-`src/pge/strategies/` non ci sia nessun `print()`. Il primo e' l'unico presidio
+legge i sorgenti con `ast` e chiede quattro cose: che la riga
+`[CACHE] <id>: ...` sia ancora un `print()` flushato in tutti e quattro i
+moduli che la emettono; che quei quattro siano **tutti** quelli che la
+emettono; che in `src/pge/strategies/` non ci sia nessun `print()`; e che
+nessun `register_*_strategy` stampi, ovunque viva. Il primo e' l'unico presidio
 che csound e supercollider abbiano su quella riga (numpy e il cache manager
-hanno anche un test di comportamento); il terzo e' cio' che impedisce alla
-porta di riaprirsi in silenzio.
+hanno anche un test di comportamento); il terzo e il quarto sono cio' che
+impedisce alla porta di riaprirsi in silenzio, e sono due perche' uno solo non
+bastava: il terzo guarda una cartella, e il settimo entry point non ci sta
+dentro.
 
-Il secondo copre il buco che una lista scritta a mano ha per costruzione: un
+Il secondo e il quarto coprono il buco che una lista scritta a mano ha per
+costruzione: un
 backend nuovo che dichiara lo stato della cache emette la stessa riga e non
 entra nella lista da solo, e la guardia sarebbe rimasta verde sopra un
 emettitore che nessuno sorveglia — sul canale dove csound e supercollider non
-hanno altro. La lista e' quindi confrontata con cio' che i sorgenti fanno, e la
-checklist di [[add-renderer]] porta lo stesso passo.
+hanno altro; e un registry che sta in un'altra cartella non entra nella guardia
+della diagnostica, che infatti ne sorvegliava sei su sette. Entrambe le liste
+sono quindi confrontate con cio' che i sorgenti fanno, e la checklist di
+[[add-renderer]] porta lo stesso passo.
 
 **La guardia riconosce la forma, non il prefisso.** Le chiamate sono
 ricomposte in un *template* — ogni interpolazione di una f-string diventa `{}`,
@@ -168,10 +186,10 @@ discrimine, cosi' che a indebolirlo qualcosa suoni.
   scriverla, l'analisi d'impatto su PGE-ui.
 - **Il resto dei `print()`** (`engine/generator.py`,
   `rendering/score_visualizer.py`, `rendering/stream_cache_manager.py`,
-  `rendering/score_writer.py`, `cli.py`) non e' ancora classificato: sono gli
-  scaglioni successivi. Attenzione: quei moduli non sono omogenei.
-  `stream_cache_manager.py` e `generator.py` contengono *anche* righe gia'
-  classificate — la riga per stream del primo e' protocollo e ha la sua
+  `rendering/score_writer.py`, `shared/logger.py`, `cli.py`) non e' ancora
+  classificato: sono gli scaglioni successivi. Attenzione: quei moduli non sono
+  omogenei. `stream_cache_manager.py` e `generator.py` contengono *anche* righe
+  gia' classificate — la riga per stream del primo e' protocollo e ha la sua
   guardia; quel che resta da classificare li' e' il riepilogo
   `[CACHE] <n>/<m> stream da ricompilare` e `[CACHE] Stream da scrivere: [...]`,
   che nessun parser legge. `cli.py` concentra la maggioranza del resto ed e' in
@@ -179,11 +197,18 @@ discrimine, cosi' che a indebolirlo qualcosa suoni.
   stdout pur non essendo protocollo. **Con due eccezioni gia' note**, ed e' bene
   arrivarci sapendolo: `[CACHE] Manifest: <path>` e `[CACHE] GC: ...` hanno la
   forma che il parser matcha, quindi non sono libere di andarsene al logger
-  come fosse diagnostica — e la prima esce senza `flush=True`, il che le rende
-  un caso da guardare, non da spostare a occhio. E' anche la categoria dove la
-  scelta non e' meccanica: la riga per stream dei conteggi di grani (#250) la
-  legge un compositore a schermo, non un parser, ma sta sullo stesso canale che
-  un parser attraversa.
+  come fosse diagnostica — e nessuna delle due esce con `flush=True`, il che le
+  rende un caso da guardare, non da spostare a occhio. E' anche la categoria
+  dove la scelta non e' meccanica: la riga per stream dei conteggi di grani
+  (#250) la legge un compositore a schermo, non un parser, ma sta sullo stesso
+  canale che un parser attraversa.
+- **Il meno atteso della lista e' `shared/logger.py`**, che e' poi il modulo
+  dove abita il logger diagnostico: `configure_clip_logger` stampa una riga
+  `Clip log file: <path>` su **stdout**, e la CLI ci passa a ogni render
+  (`file_enabled=True`). Non e' quindi una riga da sviluppatore come le tre che
+  la #187 ha spostato: e' traffico di *ogni* rendering, sul canale che il
+  parser attraversa. L'altra `print()` del modulo scrive gia' su `sys.stderr`
+  e non pone il problema.
 
 ## Vedi anche
 
