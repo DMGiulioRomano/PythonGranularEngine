@@ -289,6 +289,38 @@ def probe(tmp_path):
     return {'yml': str(yml), 'samples': str(tmp_path), 'dir': tmp_path}
 
 
+@pytest.fixture
+def clip_logger_ripristinato():
+    """Rimette a posto lo stato globale del clip logger dopo il test.
+
+    `configure_clip_logger` + `log_clip_warning` scrivono su tre globali di
+    `pge.shared.logger`, e l'handler console che ne nasce cattura
+    `sys.stderr` **alla costruzione** -- qui dentro una `redirect_stderr`,
+    cioe' lo StringIO del test. Senza ripristino quel logger resta il
+    singleton del processo: ogni clip warning dei test successivi finisce in
+    un buffer morto invece che sullo stderr vero (verificato: la seconda
+    chiamata, fuori dalla redirezione, atterra ancora nello StringIO), e
+    `log_dir` continua a puntare a una `tmp_path` gia' rimossa.
+
+    E' la stessa `reset_logger_state` autouse di `tests/shared/test_logger.py`,
+    ristretta a chi quello stato lo tocca davvero: renderla autouse di modulo
+    riazzererebbe il logger prima di ogni test di questo file, e la riga
+    `📝 Clip log file` tornerebbe a nascere -- con la sua `./logs` -- nella
+    root del repo, che solo il test del PDF evita con la `chdir`.
+    """
+    from pge.shared import logger as clip
+    config = dict(clip.CLIP_LOG_CONFIG)
+    yield
+    if clip._clip_logger is not None:
+        for handler in clip._clip_logger.handlers[:]:
+            handler.close()
+            clip._clip_logger.removeHandler(handler)
+    clip._clip_logger = None
+    clip._clip_logger_initialized = False
+    clip.CLIP_LOG_CONFIG.clear()
+    clip.CLIP_LOG_CONFIG.update(config)
+
+
 def _capture(fn):
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -558,7 +590,8 @@ class TestStderr:
     qui.
     """
 
-    def test_i_clip_warning_vanno_su_stderr_non_su_stdout(self, tmp_path):
+    def test_i_clip_warning_vanno_su_stderr_non_su_stdout(
+            self, tmp_path, clip_logger_ripristinato):
         from pge.shared import logger as clip
 
         out, err = io.StringIO(), io.StringIO()
