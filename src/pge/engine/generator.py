@@ -90,7 +90,8 @@ class Generator:
             ConfigFileNotFoundError: se il file YAML non esiste. Eredita
                 anche FileNotFoundError (issue #257), quindi chi catturava
                 il builtin continua a catturarlo.
-            ConfigParseError: se il file YAML è malformato. Eredita anche
+            ConfigParseError: se il file YAML è malformato o non
+                decodificabile nell'encoding di sistema. Eredita anche
                 yaml.YAMLError, per la stessa ragione.
         """
         # Il try avvolge il solo caricamento dello YAML, e questo e' un
@@ -104,6 +105,15 @@ class Generator:
         except FileNotFoundError as err:
             raise ConfigFileNotFoundError(self.yaml_path) from err
         except yaml.YAMLError as err:
+            raise ConfigParseError(self.yaml_path, err) from err
+        except UnicodeDecodeError as err:
+            # Il terzo modo in cui un file di config non si legge. `open()` e'
+            # in modalita' testo, quindi la decodifica la fa Python e un file
+            # salvato in latin-1 esce di qui prima che PyYAML veda un byte;
+            # aperto in binario sarebbe stato PyYAML a rifiutarlo, con un
+            # `yaml.reader.ReaderError` -- cioe' un `yaml.YAMLError`. Stesso
+            # guasto, stesso tipo: era l'unico dei tre a uscire come traceback
+            # dal ramo generico della CLI.
             raise ConfigParseError(self.yaml_path, err) from err
 
         self.data = self._eval_math_expressions(raw_data)

@@ -989,3 +989,82 @@ def test_config_file_not_found_non_ripete_un_path_gia_assoluto():
     msg = err.user_message()
     assert msg == "[ERRORE] File di configurazione non trovato: '/tmp/assente.yml'"
     assert err.resolved_path == '/tmp/assente.yml'
+
+
+# -----------------------------------------------------------------------------
+# Ereditare il builtin non basta: chi lo cattura ne legge lo *stato*
+# -----------------------------------------------------------------------------
+#
+# La #257 fa ereditare alle due classi il tipo che sostituiscono perche' un
+# `except FileNotFoundError` / `except yaml.YAMLError` scritto contro le
+# versioni precedenti continui a funzionare. Ma quel codice non si limita a
+# catturare: legge `e.filename`, confronta `e.errno` con `errno.ENOENT`,
+# guarda `e.problem_mark` -- e' l'idioma con cui si legge un errore PyYAML.
+# Un wrapper che porta solo il tipo lascia tutti quegli attributi a None o
+# assenti, cioe' mantiene la promessa per `isinstance` e la rompe per tutto
+# il resto, in silenzio.
+
+
+def test_config_file_not_found_e_un_FileNotFoundError_completo():
+    """`errno`, `strerror` e `filename`, non solo il tipo."""
+    import errno as errno_mod
+    from pge.shared.exceptions import ConfigFileNotFoundError
+
+    err = ConfigFileNotFoundError('configs/missing.yml')
+
+    assert err.errno == errno_mod.ENOENT
+    assert err.filename == 'configs/missing.yml'
+    assert err.strerror
+
+
+def test_config_file_not_found_str_resta_il_messaggio_di_dominio():
+    """`OSError.__str__` riscriverebbe il messaggio in `[Errno 2] ...`.
+
+    E' quella la riga che finisce nel log engine (`logger.error("%s", err)`)
+    e nel ramo generico della CLI: popolare i campi del builtin non deve
+    costare la prosa. La coppia col test sopra e' il punto -- l'uno senza
+    l'altro e' una regressione.
+    """
+    from pge.shared.exceptions import ConfigFileNotFoundError
+
+    err = ConfigFileNotFoundError('configs/missing.yml')
+
+    assert str(err) == "File di configurazione non trovato: 'configs/missing.yml'"
+    assert '[Errno' not in str(err)
+
+
+def test_config_parse_error_riporta_gli_attributi_di_pyyaml():
+    """`e.problem_mark` e' *l'*idioma con cui si legge un errore PyYAML.
+
+    Prima della #257 il chiamante riceveva il `MarkedYAMLError` vero. Un
+    wrapper che eredita `yaml.YAMLError` e basta lo fa sparire, e chi lo
+    interrogava con `hasattr(e, 'problem_mark')` smette di trovarlo senza
+    che niente fallisca.
+    """
+    import yaml
+    from pge.shared.exceptions import ConfigParseError
+
+    cause = None
+    try:
+        yaml.safe_load("a: 1\nb: [2, 3\nc: 4\n")
+    except yaml.YAMLError as e:
+        cause = e
+    assert cause is not None
+
+    err = ConfigParseError('configs/broken.yml', cause)
+
+    assert err.problem_mark is cause.problem_mark
+    assert err.problem == cause.problem
+    assert err.context == cause.context
+    assert err.context_mark is cause.context_mark
+
+
+def test_config_parse_error_senza_marker_non_inventa_gli_attributi():
+    """Un `yaml.YAMLError` nudo non li ha: il wrapper non deve fabbricarli."""
+    import yaml
+    from pge.shared.exceptions import ConfigParseError
+
+    err = ConfigParseError('configs/broken.yml', yaml.YAMLError('boom'))
+
+    assert not hasattr(err, 'problem_mark')
+    assert not hasattr(err, 'problem')

@@ -294,6 +294,34 @@ class TestLoadYaml:
 
         assert not isinstance(exc.value, ConfigFileNotFoundError)
 
+    def test_load_yaml_config_non_decodificabile_e_un_errore_di_dominio(
+            self, tmp_path):
+        """Il terzo modo in cui un file di config non si legge (issue #257).
+
+        `load_yaml` apre in modalita' testo, quindi la decodifica la fa
+        Python e un file salvato in latin-1 esce come `UnicodeDecodeError`
+        prima che PyYAML veda un byte. Aperto in binario sarebbe stato PyYAML
+        a rifiutarlo, con un `yaml.reader.ReaderError` -- cioe' un
+        `yaml.YAMLError`: e' lo stesso guasto, e il tipo lo dice.
+
+        Restava fuori dalla passata che ha dato un tipo allo YAML mancante e a
+        quello malformato, ed era l'unico dei tre a uscire come traceback dal
+        ramo generico della CLI.
+        """
+        from pge.shared.exceptions import ConfigParseError
+
+        config = tmp_path / 'latin1.yml'
+        # Un commento accentato salvato in latin-1: il caso reale.
+        config.write_bytes('# perch\xe8 no\nstreams: []\n'.encode('latin-1'))
+
+        gen = _get_generator_class()(str(config))
+        with pytest.raises(ConfigParseError) as exc:
+            gen.load_yaml()
+
+        assert exc.value.path == str(config)
+        assert isinstance(exc.value.cause, UnicodeDecodeError)
+        assert 'latin1.yml' in exc.value.user_message()
+
     def test_load_yaml_preserves_non_math_strings(self, gen):
         """load_yaml preserva stringhe senza espressioni matematiche."""
         yaml_data = {'name': 'my_stream', 'sample': 'audio.wav'}

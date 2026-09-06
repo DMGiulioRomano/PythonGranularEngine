@@ -511,6 +511,26 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   passa al formato di casa `[ERRORE] ...`: chi lo parsasse a valle (nessuno,
   verificato in `PGE-ui` e `PGE-ls`) deve aggiornarsi.
 
+  Ereditare il tipo pero' non basta, perche' **chi cattura il builtin ne legge
+  lo stato**: `e.filename`, `e.errno == errno.ENOENT`, `e.problem_mark` --
+  quest'ultimo *e'* l'idioma con cui si legge un errore PyYAML, e prima della
+  #257 il chiamante riceveva il `MarkedYAMLError` vero. Un wrapper che porta
+  solo il tipo li lascia a `None` o assenti: la promessa regge per `isinstance`
+  e cade per tutto il resto, in silenzio. `ConfigFileNotFoundError` valorizza
+  quindi i tre campi che `open()` avrebbe riempito (e si tiene `__str__`, che
+  con `filename` valorizzato `OSError` riscriverebbe in «[Errno 2] No such
+  file or directory», buttando via la prosa proprio nella riga che finisce nel
+  log engine); `ConfigParseError` riporta dalla causa gli attributi di
+  `MarkedYAMLError` quando ci sono, senza mai fabbricarli.
+
+  Nella stessa passata il terzo modo in cui un file di configurazione non si
+  legge: **non decodificabile**. `open()` e' in modalita' testo, quindi un
+  `.yml` salvato in latin-1 esce come `UnicodeDecodeError` prima che PyYAML
+  veda un byte -- aperto in binario sarebbe stato PyYAML a rifiutarlo, con un
+  `yaml.reader.ReaderError`, cioe' un `yaml.YAMLError`. Stesso guasto, stesso
+  tipo: ora e' `ConfigParseError` e non l'unico dei tre a uscire come traceback
+  dal ramo generico.
+
 - **`bench_cost.py` parla con l'API pubblica** — `api.load_generator` e
   `api.build_renderer` invece di `cli._build_renderer`. E' la classe di bug
   della #243 chiusa dal chiamante: `_build_renderer(tipo, gen, **kwargs)`

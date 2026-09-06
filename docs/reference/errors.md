@@ -134,6 +134,20 @@ EngineError                                  (Exception)
   non isola: un `FileNotFoundError` di altra origine impacchettato lì per
   errore tornerebbe a confondersi — ed è per questo che `load_yaml` avvolge il
   solo `open()` dello YAML e niente altro.
+- **Ereditare il builtin non basta: chi lo cattura ne legge lo stato.** Quel
+  codice non si ferma alla cattura — legge `e.filename`, confronta `e.errno`
+  con `errno.ENOENT`, interroga `e.problem_mark`, che è *l'*idioma con cui si
+  legge un errore PyYAML. Un wrapper che porta solo il tipo li lascia a `None`
+  o assenti: la promessa regge per `isinstance` e cade per tutto il resto,
+  senza che niente fallisca. Perciò `ConfigFileNotFoundError` valorizza i tre
+  campi che `open()` avrebbe riempito, e `ConfigParseError` riporta dalla
+  causa gli attributi di `MarkedYAMLError` quando ci sono — mai fabbricandoli:
+  su un `yaml.YAMLError` nudo restano assenti, come sull'originale. I tre
+  campi `OSError` hanno un prezzo che va pagato esplicitamente:
+  con `filename` valorizzato `OSError.__str__` smette di stampare `args[0]` e
+  scrive `[Errno 2] No such file or directory: '...'`, cioè butta via la prosa
+  proprio nella riga che finisce nel log engine — `ConfigFileNotFoundError`
+  override `__str__` per tenersela.
 - **La riga `Comando:` di `_SubprocessRenderError` invita a rieseguire, quindi
   deve restare rieseguibile.** Lo score che vi compare è temporaneo e il
   renderer lo cancella in un `finally` — anche quando il binario esce con un
@@ -235,6 +249,46 @@ ramo dedicato per sotto-classe.
 ---
 
 ## 4. Esempi YAML invalidi → output
+
+### File di configurazione inesistente
+CLI: `pge configs/assente.yml out.wav`
+```
+[ERRORE] File di configurazione non trovato: 'configs/assente.yml'
+  Path cercato: /home/utente/progetto/configs/assente.yml
+  Dettagli:     logs/assente_engine.log
+```
+
+`Path cercato:` compare solo quando dice qualcosa in più di ciò che l'utente
+ha scritto — su un path già assoluto sarebbe la stessa riga due volte. È
+l'informazione che il messaggio pre-#257 (`Errore: file 'x.yml' non trovato`)
+non dava: «hai lanciato dalla directory sbagliata».
+
+### File di configurazione malformato
+```yaml
+streams:
+  s1:
+    density: 10
+   duration: 4
+```
+```
+[ERRORE] File di configurazione malformato: 'configs/rotto.yml'
+  Riga/colonna: 4:4
+  Dettaglio:    expected <block end>, but found '<block mapping start>'
+  Dettagli:     logs/rotto_engine.log
+```
+
+`problem_mark` di PyYAML è 0-based e qui è reso 1-based, altrimenti la riga
+stampata sarebbe una sopra a quella che l'editor mostra. Senza marker (non
+tutti gli `yaml.YAMLError` ne portano uno) il messaggio degrada alle due
+righe `[ERRORE]` + `Dettaglio:`. Stesso tipo e stesso formato per un file
+che non si decodifica — un `.yml` salvato in latin-1 — che `open()` in
+modalità testo rifiuta prima che PyYAML veda un byte:
+
+```
+[ERRORE] File di configurazione malformato: 'configs/latin1.yml'
+  Dettaglio:    'utf-8' codec can't decode byte 0xe8 in position 7: invalid continuation byte
+  Dettagli:     logs/latin1_engine.log
+```
 
 ### Renderer sconosciuto
 CLI: `--renderer foo`

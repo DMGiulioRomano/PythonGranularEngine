@@ -8,6 +8,7 @@ __str__ per i log.
 """
 from __future__ import annotations
 
+import errno
 import os
 
 # Import non lazy: `ConfigParseError` eredita `yaml.YAMLError`, e una classe
@@ -97,6 +98,24 @@ class ConfigFileNotFoundError(ConfigError, FileNotFoundError):
         # Risolto al momento del guasto: e' la cwd di quell'`open()` a contare,
         # non quella di chi stampa il messaggio piu' tardi.
         self.resolved_path = os.path.abspath(path)
+        # Ereditare il tipo non basta: chi cattura `FileNotFoundError` non si
+        # ferma alla cattura, legge `e.filename` e confronta `e.errno` con
+        # `errno.ENOENT`. Su un wrapper nudo sono `None`, cioe' la promessa
+        # regge per `isinstance` e cade per tutto il resto, in silenzio --
+        # che e' la forma di guasto che questa issue chiude un livello piu'
+        # su. `open()` li avrebbe riempiti: li riempiamo anche noi.
+        self.errno = errno.ENOENT
+        self.strerror = os.strerror(errno.ENOENT)
+        self.filename = path
+
+    def __str__(self) -> str:
+        # Il prezzo dei tre campi qui sopra: con `filename` valorizzato
+        # `OSError.__str__` smette di stampare `args[0]` e scrive
+        # «[Errno 2] No such file or directory: 'x.yml'», buttando via la
+        # prosa italiana. Ed e' proprio `str(err)` che finisce nel log engine
+        # (`logger.error("%s", err)`) e nel ramo generico della CLI. Il
+        # messaggio resta quello che la classe ha costruito.
+        return self.args[0]
 
     def user_message(self) -> str:
         # Nessuna riga `Config:` da `_context_lines()`: il file e' il soggetto
@@ -122,21 +141,36 @@ class ConfigParseError(ConfigError, yaml.YAMLError):
     il tipo che `load_yaml` e `api.load_generator` promettono nei `Raises`.
     """
 
+    #: Gli attributi che `yaml.MarkedYAMLError` espone e che il chiamante
+    #: legge. Riportati dalla causa quando ci sono, mai fabbricati: su un
+    #: `yaml.YAMLError` nudo restano assenti, come sull'originale.
+    _ATTRIBUTI_PYYAML = ('context', 'context_mark', 'problem', 'problem_mark',
+                         'note')
+
     def __init__(self, path: str, cause: Exception):
         super().__init__(f"File di configurazione malformato: '{path}'")
         self.path = path
         self.cause = cause
         self.config_file = path
+        # Stessa ragione dei campi OSError dell'altra classe: `e.problem_mark`
+        # *e'* l'idioma con cui si legge un errore PyYAML, e prima della #257
+        # il chiamante riceveva il MarkedYAMLError vero. Un wrapper che eredita
+        # `yaml.YAMLError` e basta lo fa sparire senza che niente fallisca.
+        for attributo in self._ATTRIBUTI_PYYAML:
+            if hasattr(cause, attributo):
+                setattr(self, attributo, getattr(cause, attributo))
 
     def user_message(self) -> str:
         lines = [f"[ERRORE] File di configurazione malformato: '{self.path}'"]
         # `problem_mark` c'e' solo sui MarkedYAMLError, ed e' 0-based: renderlo
         # cosi' com'e' manderebbe l'utente una riga sopra a quella che il suo
-        # editor gli mostra.
-        mark = getattr(self.cause, 'problem_mark', None)
+        # editor gli mostra. Letto da `self`: dopo il riporto qui sopra e' la
+        # stessa cosa, e cosi' il messaggio e chi interroga l'eccezione
+        # guardano un unico posto.
+        mark = getattr(self, 'problem_mark', None)
         if mark is not None:
             lines.append(f"  Riga/colonna: {mark.line + 1}:{mark.column + 1}")
-        dettaglio = getattr(self.cause, 'problem', None) or str(self.cause)
+        dettaglio = getattr(self, 'problem', None) or str(self.cause)
         lines.append(f"  Dettaglio:    {dettaglio}")
         return "\n".join(lines)
 
