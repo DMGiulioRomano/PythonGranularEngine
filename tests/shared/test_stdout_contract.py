@@ -33,6 +33,14 @@ l'emettitore piu' esposto: il suo modulo contiene *altri* `print()` che la
 giro di conversione al logger, e chi lo fara' avra' sotto gli occhi righe
 `[CACHE]` di due nature diverse. Percio' sta nella lista come gli altri.
 
+**E i punti di registrazione non stanno tutti in `strategies/`.** Sono sette,
+e il settimo — `register_window_strategy` — vive in
+`controllers/window_selection_strategy.py`, dove vive il registry delle
+finestre. Una guardia scoped per *cartella* ne copre sei e tace sul settimo:
+la `print()` che la #187 ha tolto poteva rientrare da li' lasciando verde la
+suite intera. Anche questa lista e' quindi dichiarata *e* derivata, come
+quella degli emettitori.
+
 **Il criterio e' la forma, non il prefisso.** `[CACHE]` da solo non
 discrimina: lo stesso modulo stampa anche `[CACHE] <n>/<m> stream da
 ricompilare`, che PGE-ui non parsa (la sua regex vuole `<token-senza-spazi>:`
@@ -265,3 +273,79 @@ def test_le_strategie_non_stampano(modulo):
         f"strategies/{modulo}: print() reintrodotto. La diagnostica va a "
         "`log_strategy_registration` (issue #187)."
     )
+
+
+# =============================================================================
+# 2a. LA DIAGNOSTICA NON VIVE SOLO IN `strategies/`
+# =============================================================================
+# Il test qui sopra e' scoped per *cartella*, e la cartella non e' il criterio:
+# il criterio e' essere un punto di registrazione dinamica. I due coincidono per
+# sei entry point su sette, e sul settimo il presidio mancava del tutto —
+# `register_window_strategy` sta in `controllers/`, perche' li' sta il registry
+# delle finestre. Misurato: rimettendo in quella funzione esattamente la
+# `print()` che la #187 ha tolto dalle altre tre, la suite intera resta verde.
+#
+# La lista e' dichiarata *e* derivata, come quella degli emettitori: la
+# dichiarazione dice cosa si sorveglia, il confronto coi sorgenti impedisce che
+# un entry point nuovo — o spostato di cartella — resti fuori in silenzio.
+
+MODULI_CON_REGISTRAZIONE_DINAMICA = [
+    os.path.join('controllers', 'window_selection_strategy.py'),
+    os.path.join('strategies', 'strategy_registry.py'),
+    os.path.join('strategies', 'variation_registry.py'),
+    os.path.join('strategies', 'voice_onset_strategy.py'),
+    os.path.join('strategies', 'voice_pan_strategy.py'),
+    os.path.join('strategies', 'voice_pitch_strategy.py'),
+    os.path.join('strategies', 'voice_pointer_strategy.py'),
+]
+
+
+def _funzioni_di_registrazione(tree):
+    """Le `def register_*_strategy(...)` di livello modulo."""
+    return [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith('register_')
+        and node.name.endswith('_strategy')
+    ]
+
+
+def test_la_lista_dei_punti_di_registrazione_e_completa():
+    """`MODULI_CON_REGISTRAZIONE_DINAMICA` e' confrontata coi sorgenti.
+
+    Un entry point nuovo, o spostato in un'altra cartella, non entra da solo in
+    una lista scritta a mano — ed e' esattamente cosi' che
+    `register_window_strategy` e' rimasto fuori dalla guardia per cartella.
+    """
+    trovati = {
+        rel for rel in _moduli_pge()
+        if _funzioni_di_registrazione(ast.parse(_sorgente(rel)))
+    }
+    dichiarati = set(MODULI_CON_REGISTRAZIONE_DINAMICA)
+
+    assert trovati == dichiarati, (
+        "la lista dei punti di registrazione dinamica non e' piu' allineata ai "
+        f"sorgenti.\n  solo nei sorgenti: {sorted(trovati - dichiarati)}"
+        f"\n  solo nella lista: {sorted(dichiarati - trovati)}\n"
+        "Un `register_*_strategy` nuovo va aggiunto a "
+        "MODULI_CON_REGISTRAZIONE_DINAMICA: la sua conferma e' diagnostica, e "
+        "vedi docs/explanation/contratto-stdout.md."
+    )
+
+
+@pytest.mark.parametrize('relpath', MODULI_CON_REGISTRAZIONE_DINAMICA)
+def test_la_registrazione_dinamica_non_stampa(relpath):
+    """Nessun `print()` dentro un `register_*_strategy`, ovunque viva.
+
+    La conferma di una registrazione dinamica e' diagnostica: va a
+    `log_strategy_registration` (issue #187). Qui il criterio e' la funzione,
+    non la cartella, cosi' che la porta non possa riaprirsi da un registry che
+    sta altrove.
+    """
+    tree = ast.parse(_sorgente(relpath))
+
+    for funzione in _funzioni_di_registrazione(tree):
+        assert not _print_calls(funzione), (
+            f"{relpath}: {funzione.name}() e' tornata a stampare. La conferma "
+            "va a `log_strategy_registration` (issue #187), non su stdout."
+        )
