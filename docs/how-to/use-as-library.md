@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [api, library, install, render]
 sources: [src/pge/api.py, pyproject.toml]
-last_synced_commit: 638f9d6
+last_synced_commit: 5285c17
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 

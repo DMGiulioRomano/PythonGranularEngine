@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [api, cli, architecture, refactor]
 sources: [src/pge/api.py, src/pge/cli.py, src/main.py]
-last_synced_commit: 638f9d6
+last_synced_commit: 5285c17
 entry_for: [usare PGE come libreria, capire la divisione API/CLI]
 ---
 
