@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: 38bfee7
+last_synced_commit: 9435ea0
 ---
 
 # Architettura Renderer
@@ -122,8 +122,18 @@ CsoundEmitter
   ├── grain_statement(grain, onset_offset)   →  i "Grain" ...
   ├── sample_ftable(num, path)               →  f N 0 0 1 "..." 0 0 1
   ├── window_ftable(num, name, size)         →  f N 0 1024 20 2 1
+  ├── end_statement()                        →  e
+  ├── comment(text) / rule()                 →  ; ...   ·   ; =====
   └── write_ftables(f, table_map)            →  la sezione FUNCTION TABLES
 ```
+
+Il confine è sulla **sintassi**, non sugli statement: il `;` di un commento
+e la `e` di fine score non hanno p-field, ma sono Csound quanto un
+f-statement. Lasciati in `ScoreWriter` — dov'erano — un secondo back-end
+testuale avrebbe dovuto forkarne header e footer per riscrivere due
+caratteri, cioè proprio l'accoppiamento che la issue toglie di mezzo. La
+guardia sorveglia perciò anche `score_writer.py`, e col criterio allargato:
+nessun letterale di quei moduli apre una riga di score.
 
 e i tre moduli tornano a fare una cosa sola:
 
@@ -134,7 +144,9 @@ e i tre moduli tornano a fare una cosa sola:
 | `controllers/window_registry.py` | il catalogo: quali nomi lo YAML può scrivere e qual è il canonico di ciascuno |
 
 `ScoreWriter` dispone le sezioni del file e riceve l'emitter dal costruttore
-(default: `CsoundEmitter()`). `SuperColliderScoreWriter` è l'omologo per
+(default: `CsoundEmitter()` — scelto su `is None`, non sulla verità
+dell'argomento: un emitter falsy è pur sempre l'emitter che il chiamante ha
+iniettato). `SuperColliderScoreWriter` è l'omologo per
 l'altro back-end testuale, vedi [[supercollider-backend]].
 
 Caching incrementale è componente separato, vedi [[caching]].

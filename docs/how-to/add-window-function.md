@@ -7,7 +7,7 @@ sources:
   - src/pge/controllers/window_registry.py
   - src/pge/rendering/csound_emitter.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: fc7fa8f
+last_synced_commit: 9435ea0
 entry_for: [add-window-function]
 ---
 
