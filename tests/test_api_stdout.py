@@ -133,8 +133,41 @@ def _emitted_prefix(node):
     return None
 
 
+def _va_su_stdout(node):
+    """True se la riga che questo `print()` emette finisce su stdout.
+
+    Il censimento e' **di stdout**, quindi un print che scrive altrove non
+    puo' valere come prova che una sua voce sia ancora viva. Senza guardare
+    il `file=` il buco era lo stesso gia' trovato due volte -- il `  - ` e il
+    `[CACHE]` -- spostato dal prefisso al canale: aggiungere `file=sys.stderr`
+    a una riga censita la toglieva da stdout lasciando verdi entrambe le
+    direzioni. Misurato per sabotaggio su `✓ Score generato`, che e' anche il
+    caso peggiore: quella voce e il `  - ` stanno sul ramo csound, che nessun
+    test esercita a runtime, quindi per loro la direzione statica e' l'unica
+    guardia che c'e'.
+
+    `file=` assente o `sys.stdout` sono stdout; ogni altra cosa -- stderr, un
+    file, un'espressione che non si sa leggere -- no. L'incertezza va nella
+    direzione sicura: la voce risulta non piu' emessa e il test lo dice,
+    invece di dare per stdout un canale che non e' stato letto.
+    """
+    for kw in node.keywords:
+        if kw.arg != 'file':
+            continue
+        target = kw.value
+        return (isinstance(target, ast.Attribute)
+                and target.attr == 'stdout'
+                and isinstance(target.value, ast.Name)
+                and target.value.id == 'sys')
+    return True
+
+
 def _iter_prints(path):
-    """(funzione che lo contiene, nodo) per ogni `print(...)` del file."""
+    """(funzione che lo contiene, nodo) per ogni `print(...)` su stdout.
+
+    Chi scrive altrove (`_va_su_stdout`) resta fuori: e' un print del file,
+    ma non una riga di stdout, e il censimento censisce quelle.
+    """
     tree = ast.parse(open(path, encoding='utf-8').read())
     trovati = []
 
@@ -143,7 +176,8 @@ def _iter_prints(path):
             func = node.name
         if (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
-                and node.func.id == 'print'):
+                and node.func.id == 'print'
+                and _va_su_stdout(node)):
             trovati.append((func, node))
         for child in ast.iter_child_nodes(node):
             walk(child, func)
@@ -153,14 +187,20 @@ def _iter_prints(path):
 
 
 def _library_prints(*, skip_unreachable=True):
-    """Ogni `print(...)` di `src/pge/`, CLI esclusa, come record.
+    """Ogni `print(...)` su stdout di `src/pge/`, CLI esclusa, come record.
 
     Record: (modulo, funzione, prefisso emesso, sorgente). Il confronto col
     censimento e' sul **prefisso emesso**, non sul testo della chiamata: con
     `needle in ast.unparse(node)` il token `  - ` si riduceva a `-` dopo lo
     strip e veniva soddisfatto dalle frecce `->` dei print di
     `register_*_strategy`, cosi' che cancellare tutte e tre le righe di
-    riepilogo dello ScoreWriter lasciava il test verde.
+    riepilogo dello ScoreWriter lasciava il test verde. (Quei print non
+    esistono piu': la #187 li ha portati al logger. Il sabotaggio non e'
+    piu' riproducibile cosi', ma la relazione giusta e' quella, ed e' cio'
+    che tiene il token `  - ` legato alle tre righe che lo emettono.)
+
+    "Su stdout" e' parte della definizione, non un dettaglio: vedi
+    `_va_su_stdout`.
     """
     out = []
     for root, _dirs, files in os.walk(SRC_PGE):
@@ -345,6 +385,36 @@ class TestCensimento:
                 f"il censimento di api.py elenca {token!r}, ma in src/pge/ "
                 f"nessun print() emette una riga che cominci cosi': "
                 f"aggiorna l'elenco")
+
+
+    def test_la_prova_di_una_voce_dev_essere_su_stdout(self):
+        """Chi scrive su stderr non tiene in vita una voce del censimento.
+
+        Il buco che questo chiude e' quello del `  - ` e del `[CACHE]`
+        spostato dal prefisso al canale: la direzione statica non guardava il
+        `file=`, quindi mettere `file=sys.stderr` su una riga censita la
+        toglieva da stdout lasciando verdi entrambe le direzioni (misurato su
+        `✓ Score generato`, che sta sul ramo csound e a runtime non e'
+        esercitato da nessuno: per lui la statica e' l'unica guardia).
+
+        Il caso vero e' misurato, non inventato: `log_loop_unit_migration_warning`
+        e' l'unico `print()` di `src/pge/` con un `file=`, scrive su stderr, ed
+        e' proprio uno dei due writer che l'intestazione di `api.py` nomina
+        **fuori** censimento -- deve stare fuori anche dal bacino delle prove.
+        L'altra meta' dell'asserzione tiene il filtro dall'essere troppo largo:
+        un predicato che scartasse tutto renderebbe questo test verde e la
+        direzione statica un no-op.
+        """
+        pool = _library_prints(skip_unreachable=False)
+        assert ('logger.py', 'log_loop_unit_migration_warning') not in {
+            (mod, func) for mod, func, _pref, _src in pool}, (
+            "un print con file=sys.stderr conta come prova che una voce del "
+            "censimento e' ancora su stdout: il censimento e' di stdout, "
+            "quella prova non lo e' (vedi _va_su_stdout)")
+        assert ('generator.py', 'create_elements') in {
+            (mod, func) for mod, func, _pref, _src in pool}, (
+            "il filtro su stdout ha scartato anche i print senza file=: "
+            "cosi' la direzione statica non prova piu' niente")
 
 
 # =============================================================================

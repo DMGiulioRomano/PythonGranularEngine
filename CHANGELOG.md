@@ -211,9 +211,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `tests/test_api_stdout.py` lo verifica **su output vero, senza mock**, e
   chiude il censimento in due direzioni: nessuna riga su stdout fuori
   elenco, nessuna voce in elenco che in `src/pge/` non abbia più un
-  `print()` che la emetta. Quando #187/#188 sposteranno una di quelle righe
-  il test diventerà rosso — non è un falso allarme, è la dichiarazione che
-  va aggiornata insieme al comportamento.
+  `print()` **su stdout** che la emetta. Quando #187/#188 sposteranno una di
+  quelle righe il test diventerà rosso — non è un falso allarme, è la
+  dichiarazione che va aggiornata insieme al comportamento.
+
+  Quel «su stdout» è la condizione, non un rafforzativo: la prova che una
+  voce è ancora viva deve stare sullo stesso canale che la voce dichiara.
+  Senza guardare il `file=` bastava aggiungere `file=sys.stderr` a una riga
+  censita per toglierla da stdout lasciando verdi entrambe le direzioni —
+  lo stesso buco del `  - ` e del `[CACHE]`, spostato dal prefisso al
+  canale, e peggiore lì dove la direzione statica è l'unica guardia che
+  c'è: `✓ Score generato` e `  - ` stanno sul ramo Csound, che nessun test
+  esercita a runtime.
 
   Il censimento è di **stdout**, e lo dice: letto come inventario completo
   rifarebbe lo stesso errore un piano sotto. Gli avvisi del clip logger
