@@ -14,7 +14,7 @@ Dipendenze:
 Organizzazione:
   1. VARIATION_STRATEGIES Registry - completezza, tipi, struttura
   2. Registry Integrity - invarianti strutturali del dizionario
-  3. register_variation_strategy() - registrazione dinamica, sovrascrittura, print
+  3. register_variation_strategy() - registrazione dinamica, sovrascrittura, log
   4. VariationFactory.create() - creazione valida per ogni modo
   5. VariationFactory.create() - gestione errori (ValueError)
   6. Factory Output Type Validation - isinstance checks sulle istanze
@@ -23,8 +23,12 @@ Organizzazione:
   9. Cleanup e Isolamento - ripristino stato registry tra test
 """
 
+import logging
+
 import pytest
 from typing import Dict, Type
+
+from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
 
 from pge.shared.distribution_strategy import DistributionStrategy
 from pge.strategies.variation_strategy import (
@@ -251,29 +255,38 @@ class TestRegisterVariationStrategy:
         assert VARIATION_STRATEGIES['additive'] is CustomAdditive
         assert VARIATION_STRATEGIES['additive'] is not original_class
 
-    def test_register_prints_confirmation(self, capsys):
-        """La registrazione stampa messaggio di conferma."""
+    def test_register_logs_confirmation(self, caplog):
+        """La conferma esiste ancora, ma come record di logging (issue #187)."""
         class TestVariation(VariationStrategy):
             def apply(self, base, mod_range, distribution):
                 return base
 
-        register_variation_strategy('test_mode', TestVariation)
-        captured = capsys.readouterr()
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            register_variation_strategy('test_mode', TestVariation)
 
-        assert 'test_mode' in captured.out
-        assert 'TestVariation' in captured.out
+        messaggi = [r.getMessage() for r in caplog.records
+                    if r.name == DIAGNOSTIC_LOGGER_NAME]
+        assert len(messaggi) == 1
+        assert 'variation' in messaggi[0]
+        assert 'test_mode' in messaggi[0]
+        assert 'TestVariation' in messaggi[0]
 
-    def test_register_print_contains_emoji(self, capsys):
-        """Il messaggio di conferma contiene l'emoji di check."""
+    def test_register_does_not_write_to_stdout(self, capsys):
+        """Registrare non sporca stdout, che e' il canale di protocollo.
+
+        `render_pipeline.py` di PGE-ui parsa le righe di stdout una per una:
+        la registrazione dinamica di una strategy e' diagnostica da
+        sviluppatore e non ha titolo per passare di li'.
+        """
         class DemoVariation(VariationStrategy):
             def apply(self, base, mod_range, distribution):
                 return base
 
         register_variation_strategy('demo', DemoVariation)
-        captured = capsys.readouterr()
 
-        # Il codice di produzione usa questo formato specifico
-        assert captured.out.startswith('\u2705')  # emoji check verde
+        captured = capsys.readouterr()
+        assert captured.out == ''
+        assert captured.err == ''
 
     def test_register_multiple_strategies(self):
         """Registrazione multipla aggiunge tutte le strategie."""

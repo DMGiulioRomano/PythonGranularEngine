@@ -15,6 +15,7 @@ from pge.strategies.variation_strategy import (
     ChoiceVariation
 )
 from pge.shared.exceptions import StrategyNotFoundError
+from pge.shared.logger import log_strategy_registration
 
 # =============================================================================
 # REGISTRY
@@ -43,7 +44,7 @@ def register_variation_strategy(mode_name: str, strategy_class: Type[VariationSt
     - 'biased_gaussian': BiasedGaussianVariation
     """
     VARIATION_STRATEGIES[mode_name] = strategy_class
-    print(f"✅ Registrata nuova strategia variation: {mode_name} -> {strategy_class.__name__}")
+    log_strategy_registration('variation', mode_name, strategy_class)
 
 
 # =============================================================================

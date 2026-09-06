@@ -11,6 +11,7 @@ from pge.shared.exceptions import (
     InvalidStrategyConfigError,
     StrategyNotFoundError,
 )
+from pge.shared.logger import log_strategy_registration
 
 # =============================================================================
 # REGISTRI
@@ -32,7 +33,7 @@ DENSITY_STRATEGIES: Dict[str, Type[DensityStrategy]] = {
 def register_density_strategy(param_name: str, strategy_class: Type[DensityStrategy]):
     """Registra una nuova strategia di density."""
     DENSITY_STRATEGIES[param_name] = strategy_class
-    print(f"✅ Registrata nuova strategia density: {param_name} -> {strategy_class.__name__}")
+    log_strategy_registration('density', param_name, strategy_class)
 
 
 # =============================================================================
