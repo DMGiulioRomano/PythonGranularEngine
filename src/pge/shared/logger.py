@@ -223,10 +223,22 @@ def get_engine_log_path() -> str | None:
 #    Il NullHandler serve al resto: senza handler, `logging` manda i record da
 #    WARNING in su a `lastResort`, che scrive su stderr.
 #
-# 2. **Livello DEBUG.** Sotto il livello di default del root (WARNING) il
-#    record non viene nemmeno costruito, quindi la diagnostica muta non costa.
-#    Chi la vuole fa `logging.basicConfig(level=logging.DEBUG)`, e la console
-#    di `logging` e' stderr: nemmeno accendendola si rientra in stdout.
+# 2. **Il record e' DEBUG, il logger resta NOTSET.** Il livello sta sulla
+#    chiamata (`.debug(...)`), non sul logger: `get_diagnostic_logger()` non
+#    chiama `setLevel`, quindi il livello effettivo lo eredita dal root e a
+#    deciderlo e' l'host. Sotto il default del root (WARNING) il record non
+#    viene nemmeno costruito, quindi la diagnostica muta non costa. Chi la
+#    vuole fa `logging.basicConfig(level=logging.DEBUG)`, e la console di
+#    `logging` e' stderr: nemmeno accendendola si rientra in stdout.
+#
+#    Il NOTSET e' la meta' portante, non un dettaglio omesso. Un
+#    `logger.setLevel(logging.DEBUG)` qui non renderebbe la diagnostica
+#    "accendibile": la renderebbe *accesa*. `Logger.callHandlers` confronta il
+#    record col livello dell'**handler**, non ricontrolla quello del logger, e
+#    un `logging.basicConfig()` senza argomenti lascia il suo StreamHandler a
+#    NOTSET: ogni host che lo chiama si troverebbe la diagnostica su stderr
+#    senza averla chiesta. Il livello del logger e' dell'host, e va lasciato
+#    dov'e'. Lo fissa `test_diagnostic_logger_non_impone_un_livello`.
 DIAGNOSTIC_LOGGER_NAME = 'pge.diagnostics'
 
 _diagnostic_logger: logging.Logger | None = None

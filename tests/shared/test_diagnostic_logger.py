@@ -48,6 +48,25 @@ def test_diagnostic_logger_ha_un_nome_dedicato():
     assert logger is logging.getLogger(DIAGNOSTIC_LOGGER_NAME)
 
 
+def test_diagnostic_logger_non_impone_un_livello():
+    """Il livello e' dell'host: qui resta NOTSET, e non e' un'omissione.
+
+    Il DEBUG sta sulla chiamata, non sul logger. Alzarlo qui non renderebbe la
+    diagnostica *accendibile* — la renderebbe accesa: `Logger.callHandlers`
+    confronta il record col livello dell'**handler** e non ricontrolla quello
+    del logger, e un `logging.basicConfig()` senza argomenti lascia il proprio
+    StreamHandler a NOTSET. Con un `setLevel(DEBUG)` qui, ogni host che chiama
+    `basicConfig()` si troverebbe la diagnostica su stderr senza averla
+    chiesta: esattamente l'astensione che questo logger esiste per praticare.
+    """
+    logger = get_diagnostic_logger()
+
+    assert logger.level == logging.NOTSET, (
+        "il diagnostic logger si e' dato un livello: cosi' non e' piu' l'host "
+        "a decidere se ascoltarlo"
+    )
+
+
 def test_diagnostic_logger_e_idempotente():
     """Chiamate ripetute non impilano handler.
 

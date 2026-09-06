@@ -93,11 +93,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Nuova doc: [`docs/how-to/print-score-bw.md`](docs/how-to/print-score-bw.md).
 
 - **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
-  in `pge.shared.logger`, issue #187). Logger `pge.diagnostics` a livello
-  DEBUG, con il solo `NullHandler`: nessun handler proprio, nessun file,
-  nessuna `./logs` creata di soppiatto — a differenza di
-  `get_engine_logger()`, che si auto-configura. Una libreria non configura il
-  logging del suo ospite.
+  in `pge.shared.logger`, issue #187). Logger `pge.diagnostics` col solo
+  `NullHandler`: nessun handler proprio, nessun file, nessuna `./logs` creata
+  di soppiatto — a differenza di `get_engine_logger()`, che si auto-configura.
+  Una libreria non configura il logging del suo ospite. Il DEBUG e' il livello
+  del **record**, non del logger: `get_diagnostic_logger()` non chiama
+  `setLevel` e il livello effettivo resta quello che decide l'host. Non e'
+  un'omissione: `callHandlers` confronta il record col livello dell'*handler*
+  e non ricontrolla quello del logger, quindi un `setLevel(DEBUG)` qui non
+  renderebbe la diagnostica accendibile ma **accesa** su stderr per chiunque
+  chiami `logging.basicConfig()`. Lo fissa
+  `test_diagnostic_logger_non_impone_un_livello`.
 
 - **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
   forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
@@ -108,7 +114,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `src/pge/strategies/` non ricompaia nessun `print()`. Il criterio e' la
   forma della riga, non il prefisso: le chiamate sono ricomposte in un
   template (`[CACHE] {}: `), perche' `[CACHE]` da solo lascia passare il
-  riepilogo `[CACHE] <n>/<m> stream da ricompilare` che nessuno parsa.
+  riepilogo `[CACHE] <n>/<m> stream da ricompilare` che nessuno parsa. Quel
+  template e' piu' stretto della regex a valle, di proposito: la guardia
+  difende la riga per stream, non definisce cosa il parser legge.
+
+- **La lista degli emettitori della riga `[CACHE]` e' confrontata con i
+  sorgenti** (`test_la_lista_degli_emettitori_e_completa`). Una lista scritta a
+  mano copre chi c'era quando e' stata scritta: un backend nuovo che dichiara
+  lo stato della cache emette la stessa riga e non ci entra da solo, e la
+  guardia sarebbe rimasta verde sopra un emettitore che nessuno sorveglia —
+  sul canale dove csound e supercollider non hanno altro presidio. Il passo
+  corrispondente e' ora nella checklist di
+  [`docs/how-to/add-renderer.md`](docs/how-to/add-renderer.md), che prima non
+  lo portava benche' `contratto-stdout.md` la indicasse.
 
 - **Test di comportamento sulla riga `[CACHE]` del cache manager**
   (`tests/rendering/test_stream_cache_manager.py`). Era l'unico emettitore
@@ -116,7 +134,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   statica.
 
 - **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
-  interfaccia CLI: chi legge cosa, e su quale canale.
+  interfaccia CLI: chi legge cosa, e su quale canale. Compresa la regola che
+  la tabella da sola non lascia dedurre: la regex di PGE-ui e'
+  `^\[CACHE\]\s+(\S+):\s+(.+)$`, e un token *letterale* la soddisfa quanto
+  un id interpolato — `cli.py` stampa gia' `[CACHE] Manifest: <path>` e
+  `[CACHE] GC: ...`, che l'editor matcha e scarta con l'insieme degli id
+  dichiarati dalla richiesta, un filtro inerte quando la richiesta non li
+  dichiara. Ogni riga in quella forma e' quindi protocollo per il solo fatto
+  della forma, e le due di `cli.py` non sono libere di andarsene al logger
+  come fossero diagnostica: la doc lo dichiara invece di lasciarlo intendere.
 
 - **Controprova sulla misura del `NullHandler`**
   (`tests/shared/test_diagnostic_logger.py`). Il test che verifica il mancato
