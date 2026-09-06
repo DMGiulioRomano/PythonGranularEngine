@@ -1,7 +1,7 @@
 # =============================================================================
 # tests/shared/test_stdout_contract.py
 # =============================================================================
-"""
+r"""
 Il contratto di stdout, in forma eseguibile (issue #178, scaglione #187).
 
 PGE ha due canali diagnostici, e la #178 li ha separati per *destinatario*:
@@ -39,8 +39,18 @@ ricompilare`, che PGE-ui non parsa (la sua regex vuole `<token-senza-spazi>:`
 subito dopo il prefisso). Cercare la sottostringa avrebbe lasciato passare la
 scomparsa della riga vera. Le chiamate sono quindi ricomposte in un
 *template* — ogni `{...}` di una f-string diventa `{}` — e cio' che la
-guardia pretende e' `[CACHE] {}: `, la forma esatta che quella regex
-riconosce.
+guardia pretende e' `[CACHE] {}: `.
+
+**Quel template e' piu' stretto della regex di PGE-ui, di proposito.**
+`_RE_CACHE_LINE` e' `^\[CACHE\]\s+(\S+):\s+(.+)$`, e un token *letterale*
+la soddisfa quanto un id interpolato: `cli.py` stampa `[CACHE] Manifest:
+<path>` e `[CACHE] GC: rimossi N stream orfani: [...]`, e l'editor le matcha
+entrambe — a scartarle e' l'insieme degli id che la richiesta dichiara, non la
+loro forma (`render_pipeline.py` lo dice in prima persona: "non tutte le righe
+`[CACHE]` sono stream, e la forma non le distingue"). Il `{}` obbligatorio in
+prima posizione e' quindi il criterio di *questa* guardia — che difende la riga
+per stream — e non la definizione di cosa il parser a valle legge. Vedi
+`docs/explanation/contratto-stdout.md`.
 """
 import ast
 import os
@@ -149,6 +159,49 @@ def test_la_riga_cache_e_flushata(relpath):
         flush = [k for k in chiamata.keywords if k.arg == 'flush']
         assert flush and getattr(flush[0].value, 'value', False) is True, \
             f"{relpath}: la riga [CACHE] non e' piu' flushata"
+
+
+# =============================================================================
+# 1a. LA LISTA E' COMPLETA — altrimenti la guardia non copre chi arriva dopo
+# =============================================================================
+
+def _moduli_pge():
+    """Tutti i moduli sotto `src/pge/`, path relativo a `SRC_PGE`."""
+    for radice, cartelle, files in os.walk(SRC_PGE):
+        cartelle[:] = [c for c in cartelle if c != '__pycache__']
+        for nome in files:
+            if nome.endswith('.py'):
+                yield os.path.relpath(os.path.join(radice, nome), SRC_PGE)
+
+
+def test_la_lista_degli_emettitori_e_completa():
+    """`MODULI_CON_PROTOCOLLO_CACHE` e' derivato, non solo dichiarato.
+
+    Una lista scritta a mano copre chi c'era quando e' stata scritta. Un
+    backend nuovo che dichiara lo stato della cache emette la stessa riga di
+    protocollo e non entra nella lista da solo: la guardia resterebbe verde
+    sopra un emettitore che nessuno sorveglia, e per csound e supercollider
+    quella guardia e' gia' oggi l'unico presidio che la riga abbia. La lista
+    va quindi confrontata con cio' che i sorgenti fanno davvero.
+
+    Non e' un doppione dei due test qui sotto: quelli chiedono che i moduli
+    *dichiarati* stampino ancora la riga, questo che non ci sia un modulo che
+    la stampa **senza** essere dichiarato. Falliscono in direzioni opposte.
+    """
+    trovati = {
+        rel for rel in _moduli_pge()
+        if _print_di_protocollo(ast.parse(_sorgente(rel)))
+    }
+    dichiarati = set(MODULI_CON_PROTOCOLLO_CACHE)
+
+    assert trovati == dichiarati, (
+        "la lista degli emettitori della riga di protocollo non e' piu' "
+        f"allineata ai sorgenti.\n  solo nei sorgenti: {sorted(trovati - dichiarati)}"
+        f"\n  solo nella lista: {sorted(dichiarati - trovati)}\n"
+        "Se hai aggiunto un renderer che dichiara lo stato della cache, "
+        "aggiungilo a MODULI_CON_PROTOCOLLO_CACHE: vedi "
+        "docs/how-to/add-renderer.md e docs/explanation/contratto-stdout.md."
+    )
 
 
 # =============================================================================
