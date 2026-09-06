@@ -273,7 +273,7 @@ class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
     diagnostic_index = 0
 
     def __init__(self, returncode: int, command: list[str], stderr: str,
-                 stdout: str = ""):
+                 stdout: str = "", hint: str | None = None):
         self.returncode = returncode
         self.command = list(command)
         self.stderr = stderr
@@ -281,6 +281,13 @@ class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
         # il backtrace dell'interprete, scsynth li' scrive `FAILURE IN SERVER`.
         # Senza, un refuso nella SynthDef arriva all'utente senza diagnostica.
         self.stdout = stdout
+        # Il rimedio, quando ce n'e' uno che il messaggio da solo non offre.
+        # La riga `Comando:` invita a rieseguire, ma lo score che vi compare
+        # e' temporaneo e il renderer lo cancella prima che il messaggio si
+        # stampi: chi lo vuole ha un flag, e il flag va detto qui. Opzionale
+        # perche' con quel flag gia' attivo il rimedio non esiste piu' --
+        # stessa regola dell'hint di `_BinaryNotFoundError`.
+        self.hint = hint
         super().__init__(
             f"{self.stage} ha fallito con codice {returncode}.\n"
             f"Comando: {' '.join(command)}\n"
@@ -303,6 +310,8 @@ class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
         diagnostic = self.diagnostic_line()
         if diagnostic:
             lines.append(f"  Output:       {diagnostic}")
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
         return "\n".join(lines)
 
@@ -409,22 +418,48 @@ class SuperColliderRenderError(_SubprocessRenderError):
         super().__init__(returncode, command, stderr, stdout=stdout)
 
 
-class SuperColliderNotFoundError(EngineRuntimeError):
-    """Binario SuperCollider o sorgente della SynthDef non trovati (issue #228).
+class _BinaryNotFoundError(EngineRuntimeError):
+    """Un binario esterno -- o un sorgente che serve a produrlo -- non c'e'
+    (issue #228 per SuperCollider, #241 per csound).
 
     NON eredita FileNotFoundError di proposito: la CLI intercetta quel tipo
     per annunciare 'file YAML non trovato', e un binario mancante che
     passasse di li' verrebbe riportato come una configurazione inesistente.
+    Il tipo di un errore serve a chi lo cattura, non a descriverne la causa.
+
+    Le sottoclassi dichiarano `tool`, il nome che apre il messaggio: e'
+    l'unica cosa che le distingue, come per `_SubprocessRenderError`.
     """
+
+    tool = "binario esterno"
 
     def __init__(self, what: str, hint: str | None = None):
         self.what = what
         self.hint = hint
-        super().__init__(f"SuperCollider: {what} non trovato")
+        super().__init__(f"{self.tool}: {what} non trovato")
 
     def user_message(self) -> str:
-        lines = [f"[ERRORE] SuperCollider: {self.what} non trovato"]
+        lines = [f"[ERRORE] {self.tool}: {self.what} non trovato"]
         if self.hint:
             lines.append(f"  Hint:         {self.hint}")
         lines.extend(self._context_lines())
         return "\n".join(lines)
+
+
+class SuperColliderNotFoundError(_BinaryNotFoundError):
+    """Binario SuperCollider o sorgente della SynthDef non trovati (issue #228)."""
+
+    tool = "SuperCollider"
+
+
+class CsoundNotFoundError(_BinaryNotFoundError):
+    """csound non e' nel PATH (issue #241).
+
+    Il subprocess alza FileNotFoundError, che era anche il tipo promesso
+    dalla docstring di `render_single_stream`: la CLI lo intercettava prima
+    di EngineError e diceva all'utente che mancava il suo file YAML -- letto
+    e parsato pochi istanti prima. Qui il guasto prende un tipo suo, con il
+    rimedio scritto dentro.
+    """
+
+    tool = "Csound"

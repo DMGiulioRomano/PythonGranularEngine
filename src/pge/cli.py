@@ -607,10 +607,21 @@ def main():
     configure_engine_logger(yaml_name=yaml_basename, log_dir=log_dir)
 
     try:
-        generator = Generator(yaml_file, samples_dir=samples_dir)
+        try:
+            generator = Generator(yaml_file, samples_dir=samples_dir)
 
-        print(f"Caricamento {yaml_file}...")
-        generator.load_yaml()
+            print(f"Caricamento {yaml_file}...")
+            generator.load_yaml()
+        except FileNotFoundError:
+            # L'handler sta qui, non in fondo al try (issue #241): questo e'
+            # l'unico punto che puo' sollevare FileNotFoundError per il
+            # motivo che il messaggio annuncia. In fondo intercettava anche
+            # quelli che risalgono dal rendering -- csound assente su una
+            # macchina senza csound -- e l'utente si sentiva dire che il suo
+            # file di configurazione non esiste, mentre era stato letto e
+            # parsato poche righe sopra.
+            print(f" Errore: file '{yaml_file}' non trovato")
+            sys.exit(1)
 
         print("Generazione streams...")
         generator.create_elements()
@@ -724,9 +735,6 @@ def main():
 
         print(f"Log: {get_clip_log_path()}")
 
-    except FileNotFoundError:
-        print(f" Errore: file '{yaml_file}' non trovato")
-        sys.exit(1)
     except EngineError as e:
         _handle_engine_error(e)
         sys.exit(1)
