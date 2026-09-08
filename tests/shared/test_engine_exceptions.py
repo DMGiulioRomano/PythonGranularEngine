@@ -586,10 +586,15 @@ def test_csound_not_found_error_inheritance_and_message():
 
 
 def test_csound_not_found_error_non_e_un_FileNotFoundError():
-    """La CLI intercetta FileNotFoundError per annunciare «file YAML non
+    """La CLI intercettava FileNotFoundError per annunciare «file YAML non
     trovato»: un binario mancante che passasse di li' verrebbe riportato
     come una configurazione inesistente (stessa regola di
-    SuperColliderNotFoundError)."""
+    SuperColliderNotFoundError). Dalla #257 quell'handler non c'e' piu', e a
+    separare i due guasti non e' piu' la posizione di un `except` ma il tipo:
+    dentro EngineError il builtin appartiene al solo `ConfigFileNotFoundError`,
+    quindi la regola vale per chiunque lo catturi, CLI o no. E' la stessa che
+    `test_solo_la_configurazione_e_un_FileNotFoundError` deriva dalla
+    gerarchia, piu' in giu' in questo file: qui se ne fissa il caso csound."""
     from pge.shared.exceptions import CsoundNotFoundError
     err = CsoundNotFoundError(what="binario 'csound'")
     assert not isinstance(err, FileNotFoundError)
