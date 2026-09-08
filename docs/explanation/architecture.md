@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: "0141021"
+last_synced_commit: e94eaf1
 ---
 
 # Architettura Renderer

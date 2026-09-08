@@ -11,7 +11,7 @@ sources:
   - src/pge/rendering/csound_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: "0141021"
+last_synced_commit: e94eaf1
 entry_for: [cli-flags, build-flags]
 ---
 
