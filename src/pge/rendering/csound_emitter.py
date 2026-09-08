@@ -37,6 +37,7 @@ from __future__ import annotations
 from typing import Dict, Optional, Tuple
 
 from pge.controllers.window_registry import WindowRegistry
+from pge.rendering.csound_window_emitter import CsoundWindowEmitter
 from pge.shared.exceptions import FtableError, InvalidWindowError
 
 # Nome dello strumento definito in `csound/main.orc`. Lo score lo cita per
@@ -49,16 +50,17 @@ DEFAULT_WINDOW_TABLE_SIZE = 1024
 # Larghezza dei separatori di sezione, in caratteri.
 _RULE_WIDTH = 77
 
-# GEN16 e la posizione, nei suoi p-field, della durata del segmento.
-_GEN16 = 16
-_GEN16_DUR_INDEX = 1
-
 
 class CsoundEmitter:
     """Traduce grani e symbol table in statement di score Csound."""
 
     instrument_name = INSTRUMENT_NAME
     default_window_table_size = DEFAULT_WINDOW_TABLE_SIZE
+
+    # Chi sa quale GEN routine produce una data forma di finestra. Qui si
+    # scrive lo statement, non si decide la routine: il catalogo descrive,
+    # `CsoundWindowEmitter` traduce, questo modulo formatta (issue #202).
+    window_emitter = CsoundWindowEmitter()
 
     # =========================================================================
     # STATEMENT
@@ -123,23 +125,31 @@ class CsoundEmitter:
         serve `spec.description` per il commento -- e ricercarla una seconda
         volta significherebbe anche due `if spec is None` scritti separati,
         liberi di divergere.
+
+        Raises:
+            InvalidWindowError: il target Csound non sa esprimere quella
+                forma. Non e' un nome sbagliato: e' una lacuna di copertura,
+                e `CsoundWindowEmitter.supports` la dichiara prima del render.
         """
         if size is None:
             size = self.default_window_table_size
 
-        params = list(spec.gen_params)
+        table = self.window_emitter.materialize(spec, size)
+        rendered = ' '.join(self._pfield(p) for p in table.params)
+        return f'f {table_num} 0 {size} {table.routine} {rendered}\n'
 
-        # GEN16 descrive un segmento alla volta -- `val1 dur1 type1 val2`,
-        # con dur1 in *punti* -- e le finestre asimmetriche del catalogo ne
-        # hanno uno solo: la sua lunghezza e' la tabella intera. Il catalogo
-        # dichiara la forma della curva, la dimensione la decide chi
-        # materializza, altrimenti una `size` diversa dal default emette una
-        # tabella da N punti con dentro un segmento da 1024.
-        if spec.gen_routine == _GEN16 and len(params) > _GEN16_DUR_INDEX:
-            params[_GEN16_DUR_INDEX] = size
+    @staticmethod
+    def _pfield(value) -> str:
+        """Un p-field come lo scrive uno score.
 
-        rendered = ' '.join(str(p) for p in params)
-        return f'f {table_num} 0 {size} {spec.gen_routine} {rendered}\n'
+        Un intero si scrive intero anche quando arriva come float: i
+        parametri della spec sono numeri (`start=1.0`), i p-field di uno
+        score sono testo, e `1.0` al posto di `1` cambierebbe ogni `.sco`
+        gia' scritto senza cambiare una nota.
+        """
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
 
     def end_statement(self) -> str:
         """Statement di fine score.
