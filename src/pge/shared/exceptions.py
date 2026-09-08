@@ -564,9 +564,17 @@ class _BinaryNotFoundError(EngineRuntimeError):
     """Un binario esterno -- o un sorgente che serve a produrlo -- non c'e'
     (issue #228 per SuperCollider, #241 per csound).
 
-    NON eredita FileNotFoundError di proposito: la CLI intercetta quel tipo
-    per annunciare 'file YAML non trovato', e un binario mancante che
-    passasse di li' verrebbe riportato come una configurazione inesistente.
+    NON eredita FileNotFoundError di proposito, ed e' meta' di una regola
+    che la #257 ha chiuso dall'altro lato: dentro EngineError quel builtin
+    significa una cosa sola -- il file di configurazione che l'utente ha
+    nominato non esiste (`ConfigFileNotFoundError`). Un binario mancante che
+    lo ereditasse si confonderebbe con quello. Fino alla #241 si confondeva
+    davvero: la CLI intercettava il builtin per annunciare 'file YAML non
+    trovato', e chi non aveva csound si sentiva dire che mancava il suo YAML.
+    Quell'handler non esiste piu' (#257) e il messaggio falso non puo' piu'
+    arrivare da li'; la regola resta perche' ora e' il *tipo* a collocare
+    l'errore, e un secondo erede la romperebbe di nuovo -- lo dice
+    `tests/shared/test_engine_exceptions.py::test_solo_la_configurazione_e_un_FileNotFoundError`.
     Il tipo di un errore serve a chi lo cattura, non a descriverne la causa.
 
     Le sottoclassi dichiarano `tool`, il nome che apre il messaggio: e'

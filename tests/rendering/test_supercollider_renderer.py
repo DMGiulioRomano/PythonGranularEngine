@@ -820,9 +820,12 @@ class TestErrors:
         assert 'scsynth' in exc.value.user_message()
 
     def test_scsynth_assente_non_e_un_FileNotFoundError(self, renderer, out_aif):
-        """La CLI intercetta FileNotFoundError per dire 'file YAML non
+        """La CLI intercettava FileNotFoundError per dire 'file YAML non
         trovato': un binario mancante che passasse di li' verrebbe
-        annunciato come un file di configurazione inesistente."""
+        annunciato come un file di configurazione inesistente. Dalla #257
+        quell'handler non c'e' piu' e a separare i due guasti e' il tipo:
+        dentro EngineError il builtin e' del solo `ConfigFileNotFoundError`,
+        quindi la regola vale per chiunque lo catturi, non solo per la CLI."""
         with patch('pge.rendering.supercollider_renderer.subprocess.run',
                    side_effect=FileNotFoundError()):
             with pytest.raises(Exception) as exc:

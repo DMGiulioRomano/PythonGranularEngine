@@ -213,8 +213,10 @@ class CsoundRenderer(AudioRenderer):
             result = subprocess.run(cmd, capture_output=True, text=True)
         except FileNotFoundError:
             # csound non e' nel PATH. Il FileNotFoundError grezzo finiva
-            # nell'handler che la CLI tiene per il file YAML, e l'utente si
+            # nell'handler che la CLI teneva per il file YAML, e l'utente si
             # sentiva dire che la sua configurazione non esiste (issue #241).
+            # Quell'handler non esiste piu' (#257): a tenere separati i due
+            # guasti adesso e' il tipo, non la posizione di un `except`.
             from pge.shared.exceptions import CsoundNotFoundError
             raise CsoundNotFoundError(
                 what=f"binario '{cmd[0]}'",
