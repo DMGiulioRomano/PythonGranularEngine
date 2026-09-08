@@ -10,6 +10,27 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **`docs/explanation/strategy-registry.md`** — la forma decisa del registry
+  generico di strategy (issue #177): decisione, non esecuzione (quella e'
+  #184 e #185). Lo schema duplicato sta in **otto** moduli, non sei — il
+  criterio e' la forma, non la cartella `strategies/` — e la forma scelta e'
+  una classe che *e'* la mappa (`StrategyRegistry(Dict[str, Type[S]])`), con
+  `strategy_kind` alla costruzione e `create(name, *args, **kwargs)` che non
+  guarda dentro gli argomenti: e' cio' che fa entrare dalla stessa porta la
+  density, che si costruisce con due posizionali.
+
+  A decidere non e' stato il gusto ma due vincoli esterni, entrambi scritti
+  nella doc: le mappe di modulo sono superficie che il test di parita' di
+  PGE-ls importa per nome (#246), e i test di qui le trattano gia' come
+  dizionari (`isinstance`, `clear()`/`update()`, `del`, `pop`) — con delle
+  closure il dizionario resterebbe comunque fuori, cioe' si riscriverebbe la
+  duplicazione spostata di due righe. Da cui anche il buco che il refactor
+  *apre* e che #184 deve chiudere: la guardia della #187 riconosce le `def
+  register_*_strategy` di livello modulo, e un `log_strategy_registration`
+  spostato dentro un metodo della classe generica le esce dal campo visivo —
+  la stessa lezione del settimo entry point in `contratto-stdout.md`, un giro
+  piu' in la'.
+
 - **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
   pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
   che *contengono* `load_yaml()`, ed era la lettura giusta per il difetto che
