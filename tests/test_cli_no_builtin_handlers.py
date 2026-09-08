@@ -19,12 +19,16 @@ messaggio falso, in silenzio.
 
 - **Strutturale**: nessun `try` che avvolge il caricamento dello YAML cattura un
   tipo builtin — restano `EngineError` e il ramo generico, in quest'ordine — e
-  nessun handler *annidato* dentro quel blocco ne cattura uno. La distinzione
+  nessun handler *annidato* dentro quel blocco ne cattura uno, dove «dentro»
+  comprende il corpo, l'`else:`, il `finally:` e il corpo dei due rami: solo
+  la loro clausola `except` resta fuori, ed e' fissata a parte. La distinzione
   non e' teorica: un `try/except` messo attorno al solo render vive dentro il
   blocco della pipeline senza contenere `load_yaml()`, quindi
-  `_try_del_caricamento` non lo vede, e un `except:` nudo li' dentro
+  `_try_del_caricamento` non lo vede, un `except:` nudo li' dentro
   intercetterebbe anche l'`EngineError` che i due rami di fuori esistono per
-  ricevere. Questa e' la garanzia *per tipo*.
+  ricevere, e la pulizia scritta dentro `except EngineError:` e' proprio il
+  posto dove un `except FileNotFoundError` compare da se'. Questa e' la
+  garanzia *per tipo*.
 - **Di raggio**: nessun handler di `cli.py` — pipeline o no — cattura un errore
   della famiglia `OSError`. E' la famiglia che risale da qualunque profondita'
   di I/O (csound assente, #241; un sample illeggibile; un disco pieno), cioe'
@@ -41,10 +45,11 @@ messaggio falso, in silenzio.
 
 `TestLaGuardiaMisurata` sabota dei sorgenti finti, non `cli.py`: e' l'unico
 modo di sapere che una guardia strutturale vede davvero cio' che dichiara di
-vedere, invece di essere verde perche' non guarda. Le tre forme che misura
-sono quelle su cui una lettura ingenua tacerebbe — l'`except:` nudo (non
-nomina nessun builtin), l'handler annidato in un `finally:`, e gli handler
-legittimi, che devono restare tali.
+vedere, invece di essere verde perche' non guarda. Le forme che misura sono
+quelle su cui una lettura ingenua tacerebbe — l'`except:` nudo (non nomina
+nessun builtin), l'handler annidato in un `finally:`, quello annidato nel
+corpo di un ramo del blocco, e gli handler legittimi, che devono restare
+tali.
 """
 
 import ast
@@ -120,15 +125,25 @@ def _colpevole(handler, famiglia=None):
 def _handler_annidati(blocco):
     """Gli `except` che vivono *dentro* il blocco, a qualunque profondita'.
 
-    `body` piu' `orelse` e `finalbody`: un handler messo in un `finally:` (o
-    in un `else:`) sta dentro il blocco quanto uno messo nel corpo. I
-    `handlers` del blocco stesso restano fuori ed e' l'unica esclusione: li'
-    i due rami sono `EngineError` e `Exception`, cioe' un builtin per
-    costruzione, e li fissa `test_handler_attesi_e_nel_loro_ordine`.
+    Quattro corpi, non tre: `body`, `orelse`, `finalbody` e il **corpo dei
+    rami del blocco stesso**. Un handler messo in un `finally:` o in un
+    `else:` sta dentro il blocco quanto uno messo nel corpo, e questo era
+    gia' detto; ma la pulizia scritta dentro `except EngineError:` ci sta
+    esattamente allo stesso modo, e da li' non si vedeva. La differenza non
+    e' teorica: e' il punto dove si scrive il codice di cleanup, cioe' dove
+    un `except FileNotFoundError` attorno a un `unlink()` compare da se'.
+
+    L'unica esclusione e' la **clausola** `except` dei rami del blocco --
+    non il loro corpo: li' i due tipi sono `EngineError` e `Exception`,
+    builtin per costruzione, e li fissa `test_handler_attesi_e_nel_loro_ordine`.
+    Escludere anche il corpo era piu' largo della ragione che lo escludeva,
+    e lasciava scoperto ogni builtin fuori dalla famiglia `OSError` (quella
+    la riprende la guardia di raggio, ma con un'altra diagnosi).
     """
+    corpi = (list(blocco.body) + list(blocco.orelse) + list(blocco.finalbody)
+             + [stmt for ramo in blocco.handlers for stmt in ramo.body])
     return [n
-            for corpo in list(blocco.body) + list(blocco.orelse)
-            + list(blocco.finalbody)
+            for corpo in corpi
             for n in ast.walk(corpo)
             if isinstance(n, ast.ExceptHandler)]
 
@@ -402,6 +417,19 @@ def main():
             pass
 """
 
+SABOTAGGIO_NEL_RAMO = """
+def main():
+    try:
+        generator.load_yaml()
+    except EngineError:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+    except Exception:
+        pass
+"""
+
 CODICE_SANO = """
 def main():
     try:
@@ -418,7 +446,7 @@ def main():
 
 
 class TestLaGuardiaMisurata:
-    """Le tre forme su cui una lettura ingenua tacerebbe."""
+    """Le forme su cui una lettura ingenua tacerebbe."""
 
     def test_vede_l_except_nudo_annidato(self):
         """Non nomina nessun builtin: una guardia sui soli nomi lo
@@ -437,6 +465,23 @@ class TestLaGuardiaMisurata:
         """«A nessuna profondita'» comprende `finally:` e `else:`: leggere il
         solo `body` lascerebbe la guardia piu' stretta di come e' scritta."""
         albero = _albero(SABOTAGGIO_NEL_FINALLY)
+        blocchi = _try_del_caricamento(albero)
+        assert blocchi, "il sorgente finto non e' piu' quello che descrive"
+        assert any(_colpevole(h) == 'FileNotFoundError'
+                   for b in blocchi for h in _handler_annidati(b))
+
+    def test_vede_l_handler_nel_corpo_di_un_ramo(self):
+        """Il `finally:` era coperto, il ramo accanto no.
+
+        La pulizia si scrive dentro `except EngineError:` almeno quanto
+        dentro `finally:`, ed e' li' che un `except FileNotFoundError`
+        attorno a un `unlink()` compare da se'. Escludere il corpo dei rami
+        insieme alla loro clausola era piu' largo della ragione che li
+        escludeva -- la clausola e' builtin per costruzione, il corpo no --
+        e lasciava passare in silenzio ogni builtin fuori dalla famiglia
+        `OSError`, che e' l'unica che la guardia di raggio riprende.
+        """
+        albero = _albero(SABOTAGGIO_NEL_RAMO)
         blocchi = _try_del_caricamento(albero)
         assert blocchi, "il sorgente finto non e' piu' quello che descrive"
         assert any(_colpevole(h) == 'FileNotFoundError'
