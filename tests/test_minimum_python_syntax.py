@@ -248,7 +248,7 @@ def _fstring_pep701(sorgente, minimo):
     la 3.12 quei token non esistono e questa tace, sopra la 3.12 il parser
     tace e parla questa.
     """
-    if FSTRING_START is None or minimo >= PEP701:
+    if FSTRING_START is None or minimo is None or minimo >= PEP701:
         return None
     try:
         token = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
@@ -306,6 +306,9 @@ def test_requires_python_e_leggibile():
 
 def test_nessuna_pep604_valutata_sotto_il_minimo_dichiarato():
     minimo = _minimo_dichiarato()
+    if minimo is None:
+        pytest.skip("soglia ignota: e' test_requires_python_e_leggibile a "
+                    "doverlo dire, e lo dice una volta sola")
     if minimo >= (3, 10):
         pytest.skip(f"requires-python e' {minimo[0]}.{minimo[1]}: PEP 604 "
                     "e' legale ovunque, la guardia non ha piu' oggetto")
@@ -391,6 +394,9 @@ def test_nessuna_grammatica_oltre_il_minimo_dichiarato():
     sulla versione su cui si sviluppa. Vedi `_fstring_pep701`.
     """
     minimo = _minimo_dichiarato()
+    if minimo is None:
+        pytest.skip("soglia ignota: e' test_requires_python_e_leggibile a "
+                    "doverlo dire, e lo dice una volta sola")
     colpevoli = []
     for percorso in sorted(_sorgenti()):
         with open(percorso, encoding='utf-8') as f:
@@ -456,6 +462,9 @@ def test_le_due_letture_insieme_coprono_le_fstring_di_pep701():
     import tempfile
 
     minimo = _minimo_dichiarato()
+    if minimo is None:
+        pytest.skip("soglia ignota: e' test_requires_python_e_leggibile a "
+                    "doverlo dire, e lo dice una volta sola")
     if minimo >= PEP701:
         pytest.skip(f"requires-python e' {minimo[0]}.{minimo[1]}: le f-string "
                     "di PEP 701 sono legali ovunque, la lettura non ha oggetto")
