@@ -53,16 +53,32 @@
 #
 # --- fine censimento ---
 #
-# Perche' restano: fanno parte del contratto stdout della CLI, e almeno una
-# e' interfaccia vera. `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
-# (render_pipeline.py, _RE_CACHE_LINE) per costruirne gli eventi NDJSON
-# `stream-start`/`stream-done`: spostarla al logger rompe l'avanzamento per
-# stream nell'editor dell'altro repo. Le altre nessuno le parsa, per quanto
-# se ne sa -- ma "per quanto se ne sa" e' esattamente cio' che la issue #178
-# deve accertare (protocollo / diagnostica / interfaccia CLI) prima che le
-# #187/#188 le portino al logger. Quando succedera', il censimento qui sopra
-# va aggiornato: il test lo verifica in entrambe le direzioni (nessuna riga
-# fuori elenco, nessuna voce in elenco che nessuno emette piu').
+# Perche' restano: fanno parte del contratto stdout della CLI, e la #178 ha
+# accertato quale sia il ruolo di ognuna (protocollo / diagnostica /
+# interfaccia CLI). La classificazione completa sta in
+# docs/explanation/contratto-stdout.md ed e' eseguibile in
+# tests/shared/test_stdout_contract.py; qui basta sapere cosa cambia per chi
+# incorpora:
+#
+# - `[CACHE] <id>: DIRTY|clean` e' **protocollo**: PGE-ui la parsa
+#   (render_pipeline.py, _RE_CACHE_LINE) per costruirne gli eventi NDJSON
+#   `stream-start`/`stream-done`. Spostarla al logger rompe l'avanzamento per
+#   stream nell'editor dell'altro repo;
+# - `  → Stream '<id>': <repr>` e' **diagnostica** -- l'unica di questo
+#   elenco;
+# - tutte le altre sono **interfaccia CLI**: nessuno le parsa, ma le legge a
+#   schermo chi ha lanciato il render, quindi spostarle e' una scelta di
+#   prodotto e non un refactoring.
+#
+# Attenzione a una cosa che non si vede da qui: PGE-ui unisce stderr a stdout
+# (`stderr=subprocess.STDOUT`), quindi anche le righe di stderr elencate piu'
+# sotto attraversano quel parser. A tenerle fuori dagli eventi e' la loro
+# forma, non il canale.
+#
+# Quando le issue di esecuzione porteranno qualcuna di queste righe al logger,
+# il censimento qui sopra va aggiornato: il test lo verifica in entrambe le
+# direzioni (nessuna riga fuori elenco, nessuna voce in elenco che nessuno
+# emette piu').
 #
 # --- e stderr, che il censimento qui sopra non copre ---
 #
