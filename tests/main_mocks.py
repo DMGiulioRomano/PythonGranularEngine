@@ -11,6 +11,9 @@ dentro main()/api trovano i mock a runtime.
 
 import sys
 import types
+
+import yaml
+import yaml.reader
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -53,6 +56,47 @@ def make_mock_logger_module():
     mod.get_engine_logger = MagicMock(return_value=MagicMock())
     mod.get_engine_log_path = MagicMock(return_value='/tmp/engine.log')
     return mod
+
+
+def _make_mock_yaml_module():
+    """Stub di `yaml` (e del suo `yaml.reader`) che porta pero' le classi
+    d'errore, quelle vere.
+
+    Dalla #257 `pge.shared.exceptions.ConfigParseError` eredita da
+    `yaml.YAMLError` e `ConfigMarkedParseError` da `yaml.MarkedYAMLError`, e
+    una classe base serve nel momento in cui la classe si crea -- non quando
+    la si usa. Uno stub nudo qui non farebbe fallire un assert: manderebbe
+    l'import di `pge.shared.exceptions` nel suo ramo di ripiego, quello
+    scritto per il checkout senza PyYAML, dove `ConfigParseError` non e' piu'
+    un `yaml.YAMLError` vero -- cioe' la promessa di libreria della #257
+    cadrebbe dentro i test che dovrebbero difenderla.
+
+    **Il modulo li chiede in due `from ... import` dentro lo stesso `try`, e
+    un `from` che non trova un nome alza `ImportError`**: e' tutto il gruppo a
+    mancare quando ne manca uno -- compreso il sottomodulo, che `from
+    yaml.reader import ...` risolve via `sys.modules['yaml.reader']` e non
+    leggendo un attributo dello stub. Perche' lo stub non resti indietro sul prossimo nome,
+    `test_lo_stub_yaml_dei_test_non_manda_exceptions_nel_ripiego`
+    (`tests/shared/test_engine_exceptions.py`) misura quell'import in un
+    interprete figlio, con questo stub installato: e' l'unico posto dove si
+    vede, perche' nel processo dei test `pge.shared.exceptions` e' gia'
+    importato col `yaml` vero molto prima che questa fixture entri in scena.
+
+    Le classi sono quelle vere di proposito: cosi' `isinstance` e
+    `pytest.raises(yaml.YAMLError)` dicono la stessa cosa dentro e fuori dai
+    mock. Lo stub resta uno stub per tutto il resto (parser, dumper).
+    """
+    mod = types.ModuleType('yaml')
+    mod.YAMLError = yaml.YAMLError
+    mod.MarkedYAMLError = yaml.MarkedYAMLError
+    # `ReaderError` sta in `yaml.reader`, non nel namespace `yaml`: e' un
+    # sottomodulo, e `from yaml.reader import ...` non guarda `mod.reader` --
+    # passa da `sys.modules['yaml.reader']`. Ecco perche' questa funzione ne
+    # restituisce due, ed entrambi vanno in `sys.modules`.
+    sub = types.ModuleType('yaml.reader')
+    sub.ReaderError = yaml.reader.ReaderError
+    mod.reader = sub
+    return mod, sub
 
 
 def build_mock_modules():
@@ -103,6 +147,7 @@ def build_mock_modules():
     window_reg_mod = types.ModuleType('pge.rendering.numpy_window_registry')
     window_reg_mod.NumpyWindowRegistry = MagicMock(name='NumpyWindowRegistry')
 
+    _yaml_mock, _yaml_reader_mock = _make_mock_yaml_module()
     mock_modules = {
         'pge.engine.generator': gen_mod,
         'pge.rendering.score_visualizer': viz_mod,
@@ -113,7 +158,8 @@ def build_mock_modules():
         'pge.rendering.sample_registry': sample_reg_mod,
         'pge.rendering.numpy_window_registry': window_reg_mod,
         # dipendenze transitive
-        'yaml': types.ModuleType('yaml'),
+        'yaml': _yaml_mock,
+        'yaml.reader': _yaml_reader_mock,
         'soundfile': types.ModuleType('soundfile'),
     }
 

@@ -4,8 +4,11 @@
 # Contratto del modulo
 # (docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md, sez. B.1):
 # - nessun sys.exit, nessuna lettura di sys.argv;
-# - errori -> eccezioni (EngineError e sottoclassi, FileNotFoundError,
-#   ValueError per argomenti API invalidi);
+# - errori -> eccezioni (EngineError e sottoclassi; ValueError per argomenti
+#   API invalidi). Dalla #257 anche il file YAML che manca o non si parsa e'
+#   un EngineError (ConfigFileNotFoundError, ConfigParseError,
+#   ConfigReadError), che pero' eredita il builtin di prima per non rompere
+#   chi lo cattura;
 # - import lazy dei moduli pesanti dentro le funzioni (stesso stile di
 #   main.py): mantiene mockabile via sys.modules e non paga matplotlib
 #   all'import;
@@ -226,8 +229,20 @@ def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
             precedenti (submodule non ancora aggiornati).
 
     Raises:
-        FileNotFoundError, yaml.YAMLError, EngineError (SampleNotFoundError,
-        ConfigError, ...). Nessun print proprio (quelli interni di Generator
+        EngineError e sottoclassi -- fra cui ConfigFileNotFoundError (YAML
+        inesistente), ConfigParseError (YAML malformato o non decodificabile)
+        e ConfigReadError (il file c'e' ma il sistema operativo non lo apre:
+        una directory al posto del file, permessi negati), che dalla #257
+        sostituiscono i builtin nudi che questa docstring dichiarava. Tutte e
+        tre ereditano il tipo che sostituiscono (FileNotFoundError,
+        yaml.YAMLError, OSError): un `except FileNotFoundError` scritto contro
+        le versioni precedenti continua a funzionare. E anche il tipo
+        *concreto* della causa, quando ne ha uno: una directory al posto del
+        file resta un IsADirectoryError, uno YAML con posizione resta un
+        yaml.MarkedYAMLError, un file non decodificabile resta un
+        UnicodeDecodeError -- e' cio' che saliva prima, e chi lo cattura per
+        nome non deve cambiare niente. Restano anche SampleNotFoundError,
+        ConfigError, ... Nessun print proprio (quelli interni di Generator
         restano).
     """
     from pge.engine.generator import Generator

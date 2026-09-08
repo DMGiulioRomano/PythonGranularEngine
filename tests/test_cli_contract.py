@@ -274,8 +274,38 @@ class TestEngineErrorPathGolden:
         assert "  Dettagli:     /tmp/engine.log\n" in out
 
     def test_file_not_found_message(self, mocks, capsys):
+        """Golden mosso dalla #257: il messaggio passa al formato di casa.
+
+        Prima era « Errore: file 'missing.yml' non trovato», stampato dal
+        ramo `except FileNotFoundError` che questa issue toglie. Ora lo YAML
+        mancante ha un tipo suo e passa dall'handler `EngineError` come ogni
+        altro errore di configurazione: `[ERRORE] <head>` piu' contesto, piu'
+        la riga «Dettagli:» col log. Il movimento e' di proposito e il
+        messaggio migliora (nomina il path assoluto cercato), che e' il
+        criterio che la issue pone.
+        """
+        import os
+        from pge.shared.exceptions import ConfigFileNotFoundError
+
+        mocks['generator_instance'].load_yaml.side_effect = (
+            ConfigFileNotFoundError('missing.yml'))
+
+        _run_expect_exit(mocks, ['main.py', 'missing.yml', 'out.aif'])
+        out = capsys.readouterr().out
+        assert ("[ERRORE] File di configurazione non trovato: 'missing.yml'\n"
+                in out)
+        assert f"  Path cercato: {os.path.abspath('missing.yml')}\n" in out
+        assert "  Dettagli:     /tmp/engine.log\n" in out
+
+    def test_file_not_found_builtin_non_e_piu_una_diagnosi(self, mocks, capsys):
+        """Il rovescio del golden precedente (issue #257).
+
+        Un `FileNotFoundError` nudo che risale dal caricamento non nomina piu'
+        lo YAML: cade nel ramo generico. E' cio' che rende la garanzia una
+        proprieta' del tipo e non dell'estensione del blocco `try`.
+        """
         mocks['generator_instance'].load_yaml.side_effect = FileNotFoundError()
 
         _run_expect_exit(mocks, ['main.py', 'missing.yml', 'out.aif'])
         out = capsys.readouterr().out
-        assert " Errore: file 'missing.yml' non trovato\n" in out
+        assert "missing.yml' non trovato" not in out

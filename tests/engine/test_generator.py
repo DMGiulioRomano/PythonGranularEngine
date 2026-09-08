@@ -166,7 +166,7 @@ class TestLoadYaml:
         with patch('builtins.open', m):
             gen.load_yaml()
 
-        m.assert_called_once_with('test_config.yml', 'r')
+        m.assert_called_once_with('test_config.yml', 'r', encoding='utf-8')
 
     def test_load_yaml_returns_dict(self, gen):
         """load_yaml ritorna un dizionario."""
@@ -221,18 +221,377 @@ class TestLoadYaml:
         assert gen.seed == 0
 
     def test_load_yaml_file_not_found(self, gen):
-        """load_yaml solleva FileNotFoundError se file non esiste."""
+        """load_yaml solleva FileNotFoundError se file non esiste.
+
+        Resta vero dopo la #257: `ConfigFileNotFoundError` eredita anche il
+        builtin, e questo test e' la meta' che lo dimostra dal lato chiamante.
+        """
         with patch('builtins.open', side_effect=FileNotFoundError("not found")):
             with pytest.raises(FileNotFoundError):
                 gen.load_yaml()
 
     def test_load_yaml_malformed_yaml(self, gen):
-        """load_yaml solleva yaml.YAMLError con YAML malformato."""
+        """load_yaml solleva yaml.YAMLError con YAML malformato.
+
+        Come sopra: `ConfigParseError` eredita anche `yaml.YAMLError`.
+        """
         m = mock_open(read_data="{{invalid: yaml: ]]]")
 
         with patch('builtins.open', m):
             with pytest.raises(yaml.YAMLError):
                 gen.load_yaml()
+
+    def test_load_yaml_file_not_found_e_un_errore_di_dominio(self, gen):
+        """...ma il tipo sollevato e' `ConfigFileNotFoundError` (issue #257).
+
+        Il builtin nudo costringeva `cli.main()` a catturare `FileNotFoundError`,
+        e quel messaggio era vero solo finche' nessun'altra riga dentro lo
+        stesso `try` apriva un secondo file.
+        """
+        from pge.shared.exceptions import ConfigFileNotFoundError
+
+        with patch('builtins.open', side_effect=FileNotFoundError("not found")):
+            with pytest.raises(ConfigFileNotFoundError) as exc:
+                gen.load_yaml()
+
+        assert exc.value.path == gen.yaml_path
+        assert exc.value.config_file == gen.yaml_path
+        assert gen.yaml_path in exc.value.user_message()
+
+    def test_load_yaml_malformato_e_un_errore_di_dominio(self, gen):
+        """...e lo YAML illeggibile e' `ConfigParseError` (issue #257).
+
+        Il file c'e' ma non si legge: stesso difetto un gradino piu' in la',
+        e prima finiva nel ramo generico della CLI come traceback.
+        """
+        from pge.shared.exceptions import ConfigParseError
+
+        m = mock_open(read_data="{{invalid: yaml: ]]]")
+
+        with patch('builtins.open', m):
+            with pytest.raises(ConfigParseError) as exc:
+                gen.load_yaml()
+
+        assert exc.value.path == gen.yaml_path
+        assert isinstance(exc.value.cause, yaml.YAMLError)
+        assert gen.yaml_path in exc.value.user_message()
+
+    def test_load_yaml_non_impacchetta_i_FileNotFoundError_altrui(self, gen):
+        """Solo l'`open()` dello YAML diventa `ConfigFileNotFoundError`.
+
+        Se domani `load_yaml` acquistasse un passo che apre un secondo file,
+        il suo `FileNotFoundError` non deve uscire travestito da configurazione
+        mancante: e' esattamente il modo in cui la #257 si riapre.
+        """
+        from pge.shared.exceptions import ConfigFileNotFoundError
+
+        m = mock_open(read_data=yaml.dump({'streams': []}))
+        with patch('builtins.open', m), \
+                patch.object(gen, '_eval_math_expressions',
+                             side_effect=FileNotFoundError('un altro file')):
+            with pytest.raises(FileNotFoundError) as exc:
+                gen.load_yaml()
+
+        assert not isinstance(exc.value, ConfigFileNotFoundError)
+
+    def test_load_yaml_config_non_decodificabile_e_un_errore_di_dominio(
+            self, tmp_path):
+        """Il terzo modo in cui un file di config non si legge (issue #257).
+
+        `load_yaml` apre in modalita' testo, quindi la decodifica la fa
+        Python e un file salvato in latin-1 esce come `UnicodeDecodeError`
+        prima che PyYAML veda un byte. Aperto in binario sarebbe stato PyYAML
+        a rifiutarlo, con un `yaml.reader.ReaderError` -- cioe' un
+        `yaml.YAMLError`: e' lo stesso guasto, e il tipo lo dice.
+
+        Restava fuori dalla passata che ha dato un tipo allo YAML mancante e a
+        quello malformato, ed era l'unico dei tre a uscire come traceback dal
+        ramo generico della CLI.
+        """
+        from pge.shared.exceptions import ConfigParseError
+
+        config = tmp_path / 'latin1.yml'
+        # Un commento accentato salvato in latin-1: il caso reale.
+        config.write_bytes('# perch\xe8 no\nstreams: []\n'.encode('latin-1'))
+
+        gen = _get_generator_class()(str(config))
+        with pytest.raises(ConfigParseError) as exc:
+            gen.load_yaml()
+
+        assert exc.value.path == str(config)
+        assert isinstance(exc.value.cause, UnicodeDecodeError)
+        assert 'latin1.yml' in exc.value.user_message()
+
+    def test_load_yaml_config_e_una_directory_e_un_errore_di_dominio(
+            self, tmp_path):
+        """Il quarto modo in cui un file di config non si apre (issue #257).
+
+        `pge configs/ out.wav` e' il typo che la tab-completion della shell
+        fabbrica da sola -- si ferma sulla directory -- e `open()` risponde
+        `IsADirectoryError`, che non e' un `FileNotFoundError` ne' un
+        `yaml.YAMLError`: usciva dal ramo generico della CLI come traceback.
+        Il guasto e' lo stesso degli altri tre (il file di configurazione non
+        si legge), quindi lo e' anche il tipo.
+        """
+        from pge.shared.exceptions import ConfigReadError
+
+        directory = tmp_path / 'configs'
+        directory.mkdir()
+
+        gen = _get_generator_class()(str(directory))
+        with pytest.raises(ConfigReadError) as exc:
+            gen.load_yaml()
+
+        assert exc.value.path == str(directory)
+        assert isinstance(exc.value.cause, IsADirectoryError)
+        assert 'configs' in exc.value.user_message()
+
+    def test_load_yaml_config_non_leggibile_e_un_errore_di_dominio(self, gen):
+        """E il quinto: i permessi. Stesso guasto, stesso tipo."""
+        from pge.shared.exceptions import ConfigReadError
+
+        negato = PermissionError(13, 'Permission denied', gen.yaml_path)
+        with patch('builtins.open', side_effect=negato):
+            with pytest.raises(ConfigReadError) as exc:
+                gen.load_yaml()
+
+        assert exc.value.cause is negato
+        assert 'Permission denied' in exc.value.user_message()
+
+    def test_load_yaml_non_impacchetta_gli_OSError_altrui(self, gen):
+        """Stessa guardia del gemello sul `FileNotFoundError`.
+
+        Solo l'`open()` dello YAML diventa `ConfigReadError`: un `OSError`
+        sollevato da una riga *successiva* dentro `load_yaml` non deve uscire
+        travestito da configurazione illeggibile.
+        """
+        from pge.shared.exceptions import ConfigReadError
+
+        m = mock_open(read_data=yaml.dump({'streams': []}))
+        with patch('builtins.open', m), \
+                patch.object(gen, '_eval_math_expressions',
+                             side_effect=OSError('un altro file')):
+            with pytest.raises(OSError) as exc:
+                gen.load_yaml()
+
+        assert not isinstance(exc.value, ConfigReadError)
+
+    def test_load_yaml_conserva_il_tipo_concreto_della_causa(self, tmp_path):
+        """Il builtin *esatto* resta catturabile, non solo la sua base (#257).
+
+        Prima della #257 `load_yaml` lasciava salire l'eccezione concreta,
+        quindi un `except IsADirectoryError` scritto a valle funzionava. Una
+        classe di dominio che eredita il solo `OSError` lo fa smettere di
+        funzionare in silenzio: la promessa che le altre due classi mantengono
+        verso `FileNotFoundError` e `yaml.YAMLError` sarebbe stata mantenuta a
+        meta'.
+        """
+        from pge.shared.exceptions import ConfigReadError
+
+        directory = tmp_path / 'configs'
+        directory.mkdir()
+
+        gen = _get_generator_class()(str(directory))
+        with pytest.raises(IsADirectoryError) as exc:
+            gen.load_yaml()
+
+        assert isinstance(exc.value, ConfigReadError)
+
+    def test_load_yaml_malformato_conserva_la_posizione_nel_tipo(self, gen):
+        """Idem per il parser: `isinstance(e, MarkedYAMLError)` *poi*
+        `e.problem_mark` e' l'idioma completo, e il tipo e' la prima meta'."""
+        from pge.shared.exceptions import ConfigParseError
+
+        m = mock_open(read_data="a: 1\nb: [2, 3\nc: 4\n")
+
+        with patch('builtins.open', m):
+            with pytest.raises(yaml.MarkedYAMLError) as exc:
+                gen.load_yaml()
+
+        assert isinstance(exc.value, ConfigParseError)
+        assert exc.value.problem_mark is not None
+
+    def test_load_yaml_non_decodificabile_conserva_il_tipo_concreto(
+            self, tmp_path):
+        """E il terzo: `except UnicodeDecodeError` reggeva, deve reggere."""
+        from pge.shared.exceptions import ConfigParseError
+
+        config = tmp_path / 'latin1.yml'
+        config.write_bytes('# perch\xe8 no\nstreams: []\n'.encode('latin-1'))
+
+        gen = _get_generator_class()(str(config))
+        with pytest.raises(UnicodeDecodeError) as exc:
+            gen.load_yaml()
+
+        assert isinstance(exc.value, ConfigParseError)
+
+    def test_load_yaml_non_decodificabile_conserva_lo_stato_del_builtin(
+            self, tmp_path):
+        """Il tipo concreto senza il suo stato e' meta' promessa (#257).
+
+        Chi cattura `UnicodeDecodeError` non si ferma alla cattura: legge
+        `e.reason` e taglia `e.object[e.start:e.end]` per dire *quale* byte
+        non si decodifica e dove -- e' l'idioma, come `e.errno` per `OSError`
+        e `e.problem_mark` per PyYAML. Su un wrapper che porta solo il tipo
+        quei campi sono vuoti, e `start`/`end` a zero non sono un «non lo so»
+        ma una posizione plausibile e falsa: la promessa regge per
+        `isinstance` e cade per tutto il resto, in silenzio.
+        """
+        config = tmp_path / 'latin1.yml'
+        config.write_bytes('# perch\xe8 no\nstreams: []\n'.encode('latin-1'))
+
+        gen = _get_generator_class()(str(config))
+        with pytest.raises(UnicodeDecodeError) as exc:
+            gen.load_yaml()
+
+        err = exc.value
+        assert err.encoding == 'utf-8'
+        assert err.object[err.start:err.end] == b'\xe8'
+        assert err.reason
+
+    def test_load_yaml_carattere_rifiutato_conserva_il_tipo_concreto(
+            self, tmp_path):
+        """Il quarto tipo concreto, per la regola degli altri tre (#257).
+
+        Un carattere di controllo dentro il file (un `\\x07` incollato da un
+        terminale, un `.yml` mezzo binario) e' rifiutato dal *reader* di PyYAML
+        prima che esista un token, quindi non e' un `MarkedYAMLError`: e'
+        l'unico `yaml.YAMLError` che il caricamento possa produrre senza
+        posizione riga/colonna, e prima della #257 saliva concreto. Con lui
+        salivano `e.position` ed `e.character`, che sono le sole cose a dire
+        *quale* carattere e dove.
+        """
+        import yaml.reader
+        from pge.shared.exceptions import ConfigParseError
+
+        config = tmp_path / 'ctrl.yml'
+        config.write_text('titolo: "a\x07b"\nstreams: []\n', encoding='utf-8')
+
+        gen = _get_generator_class()(str(config))
+        with pytest.raises(yaml.reader.ReaderError) as exc:
+            gen.load_yaml()
+
+        assert isinstance(exc.value, ConfigParseError)
+        assert exc.value.position == exc.value.cause.position
+        assert exc.value.character == exc.value.cause.character
+
+    def test_load_yaml_carattere_rifiutato_non_rompe_il_blocco_del_messaggio(
+            self, tmp_path):
+        """`ReaderError.__str__` e' due righe, `user_message()` e' un blocco di
+        righe `  <Campo>:      <valore>`: la seconda usciva senza nome di campo.
+
+        E' l'unica causa del percorso di caricamento a cadere sul ripiego
+        `str(self.cause)`, quindi l'unica a poterlo rompere.
+        """
+        import re
+
+        config = tmp_path / 'ctrl.yml'
+        config.write_text('titolo: "a\x07b"\nstreams: []\n', encoding='utf-8')
+
+        gen = _get_generator_class()(str(config))
+        with pytest.raises(Exception) as exc:
+            gen.load_yaml()
+
+        righe = exc.value.user_message().split('\n')
+        for riga in righe[1:]:
+            assert (re.match(r'^  \S[^:]*: +\S', riga)
+                    or riga.startswith(' ' * 16)), (
+                f"riga senza nome di campo e non incolonnata: {riga!r}")
+
+    def test_load_yaml_dichiara_l_encoding_dello_yaml(self):
+        """`open()` deve nominare utf-8: senza, a decidere e' il locale.
+
+        Lo YAML e' UTF-8 per specifica (YAML 1.1 §5.1, 1.2 §5.2), ma
+        `open(path, 'r')` decodifica nell'encoding preferito del processo.
+        Sono due cose diverse, e la differenza non e' teorica: tredici dei
+        `configs/*.yml` di questo repository portano byte non-ASCII.
+
+        La guardia e' strutturale perche' quella comportamentale non puo'
+        girare ovunque: su macOS CPython impone UTF-8 al locale C, quindi il
+        gemello qui sotto salta proprio sulla macchina di sviluppo. Questa
+        parla su ogni piattaforma.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from pge.engine import generator as modulo
+
+        albero = ast.parse(textwrap.dedent(
+            inspect.getsource(modulo.Generator.load_yaml)))
+        aperture = [n for n in ast.walk(albero)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Name) and n.func.id == 'open']
+
+        assert aperture, ("load_yaml non chiama piu' open(): la guardia sotto "
+                          "non misura piu' niente")
+        for chiamata in aperture:
+            argomenti = {k.arg: k.value for k in chiamata.keywords}
+            assert 'encoding' in argomenti, (
+                "l'open() dello YAML non dichiara encoding: a decidere resta "
+                "il locale del processo, e un config UTF-8 valido diventa "
+                "'File di configurazione malformato' su una macchina che "
+                "non e' in UTF-8")
+            dichiarato = ast.literal_eval(argomenti['encoding'])
+            assert dichiarato.lower().replace('-', '') in ('utf8', 'utf8sig'), (
+                f"encoding dichiarato: {dichiarato!r}, atteso utf-8")
+
+    def test_load_yaml_legge_utf8_a_prescindere_dal_locale(self, tmp_path):
+        """Il gemello comportamentale della guardia qui sopra.
+
+        Un config UTF-8 valido si carica anche sotto un locale che UTF-8 non
+        e'. Prima era `ConfigParseError`, cioe' la diagnosi peggiore delle
+        due possibili: non un traceback ma una frase autorevole e falsa —
+        «File di configurazione malformato» su un file che non ha niente che
+        non va. Su un locale che decodifica ogni byte (cp1252, il default di
+        Windows) non c'e' nemmeno l'errore: i valori stringa — nomi di
+        sample, id di stream — arrivano storpiati e in silenzio.
+
+        Il locale si impone al figlio, non a questo processo: `open()` legge
+        l'encoding preferito dal C, non dal modulo `locale`, quindi non c'e'
+        niente da monkey-patchare qui dentro.
+        """
+        import os
+        import subprocess
+        import sys
+
+        from pge.engine import generator as modulo
+
+        src_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(modulo.__file__))))
+
+        env = dict(os.environ)
+        env.update(LC_ALL='C', LANG='C',
+                   PYTHONUTF8='0', PYTHONCOERCECLOCALE='0',
+                   PYTHONPATH=src_dir)
+        env.pop('PYTHONIOENCODING', None)
+
+        sonda = subprocess.run(
+            [sys.executable, '-c',
+             'import locale; print(locale.getpreferredencoding(False))'],
+            env=env, capture_output=True, text=True)
+        if sonda.stdout.strip().lower().replace('-', '') == 'utf8':
+            pytest.skip("questo interprete impone UTF-8 al locale C "
+                        "(macOS, o un build con PEP 540 forzato): "
+                        "la guardia strutturale copre il caso")
+
+        config = tmp_path / 'accenti.yml'
+        config.write_text('# perche\u0301 no: commento accentato\n'
+                          'streams: {}\n', encoding='utf-8')
+
+        figlio = subprocess.run(
+            [sys.executable, '-c',
+             'import sys\n'
+             'from pge.engine.generator import Generator\n'
+             'Generator(sys.argv[1]).load_yaml()\n'
+             'print("ok")\n',
+             str(config)],
+            env=env, capture_output=True, text=True)
+
+        assert figlio.returncode == 0, (
+            "un config UTF-8 valido non si carica sotto locale "
+            f"{sonda.stdout.strip()}:\n{figlio.stdout}\n{figlio.stderr}")
+        assert 'ok' in figlio.stdout
 
     def test_load_yaml_preserves_non_math_strings(self, gen):
         """load_yaml preserva stringhe senza espressioni matematiche."""

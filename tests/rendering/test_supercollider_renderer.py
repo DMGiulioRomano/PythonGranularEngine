@@ -820,9 +820,14 @@ class TestErrors:
         assert 'scsynth' in exc.value.user_message()
 
     def test_scsynth_assente_non_e_un_FileNotFoundError(self, renderer, out_aif):
-        """La CLI intercetta FileNotFoundError per dire 'file YAML non
-        trovato': un binario mancante che passasse di li' verrebbe
-        annunciato come un file di configurazione inesistente."""
+        """Per un binario assente il builtin sarebbe falso: il file che
+        manca non e' quello che il tipo lascia intendere.
+
+        La ragione scritta qui prima -- «la CLI intercetta FileNotFoundError
+        per dire 'file YAML non trovato'» -- e' caduta con la #257, che
+        quell'handler lo toglie del tutto; la regola resta, sul valore di
+        verita' del tipo (vedi `ConfigFileNotFoundError`, che il builtin lo
+        eredita perche' li' dice il vero)."""
         with patch('pge.rendering.supercollider_renderer.subprocess.run',
                    side_effect=FileNotFoundError()):
             with pytest.raises(Exception) as exc:
