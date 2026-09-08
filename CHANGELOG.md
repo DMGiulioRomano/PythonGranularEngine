@@ -10,6 +10,36 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
+  pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
+  che *contengono* `load_yaml()`, ed era la lettura giusta per il difetto che
+  la issue chiude; ma un `try/except` messo attorno al solo render vive dentro
+  quel blocco senza contenere il caricamento, quindi da lì non si vedeva — e un
+  `except:` nudo in quel punto intercetterebbe anche l'`EngineError` che i due
+  rami di fuori esistono per ricevere, cioè rimetterebbe in circolo il
+  messaggio falso passando da una porta che nessun test sorvegliava.
+
+  Tre letture invece di una, in `tests/test_cli_no_builtin_handlers.py`:
+  gli handler annidati nel blocco a qualunque profondità (`body`, `else:`,
+  `finally:` e il corpo dei due rami — solo la loro clausola `except` resta
+  fuori, ed è fissata a parte: escludere anche il corpo era più largo della
+  ragione che lo escludeva, e lasciava scoperto proprio il punto dove il
+  cleanup si scrive), nessun handler della famiglia `OSError` in **tutto** il
+  file — è la famiglia che risale da ogni profondità di I/O, quindi l'unica che
+  il tipo da solo non basta a collocare — e i due rami dichiarati nel loro
+  ordine. Il nome del builtin non si legge da un elenco trascritto ma da
+  `builtins`, e un `except:` nudo è colpevole in entrambe le letture: non
+  nomina niente, quindi una guardia scritta sui soli nomi resterebbe verde
+  proprio sull'handler più largo che esista.
+
+  E le guardie sono **misurate**: `TestLaGuardiaMisurata` le fa girare su
+  sorgenti finti sabotati — l'`except:` nudo annidato, l'handler in un
+  `finally:`, quello nel corpo di un ramo del blocco, e il codice sano che
+  deve restare verde — perché sabotare `cli.py` non è un'opzione, è il file
+  che sorvegliano. È l'unico modo di distinguere una guardia verde perché il
+  codice è sano da una verde perché non guarda: la stessa distinzione, un
+  piano più su, che la #257 corregge nel codice.
+
 - **Il log dice di nuovo quanti grani ha generato ogni stream** (issue #250).
   Dopo `Rendering completato in ...` la CLI stampa una riga per stream:
 
@@ -179,6 +209,61 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 
 ### Corretto
+
+- **La guardia AST della CLI non esisteva sulla 3.9** (issue #257).
+  La guardia sugli `except` di `cli.py` dichiarava `-> str | None` senza
+  `from __future__ import annotations`: PEP 604 in una firma si valuta alla
+  `def`, e sulla 3.9 — il minimo di `requires-python`, e un job della matrice
+  CI — alza `TypeError`. Il file moriva in raccolta, cioè la guardia che tiene
+  in piedi la regola della issue non falliva: spariva, e con lei gli altri
+  test dello stesso modulo. In locale non si vedeva, perché nessuno sviluppa
+  sull'interprete più vecchio della matrice.
+
+  Il rimedio è il future import; a tenerlo è `tests/test_minimum_python_syntax.py`,
+  che legge la soglia da `requires-python` invece di trascriverla e distingue
+  le annotazioni che l'interprete valuta davvero — firme, modulo, classe — da
+  quelle locali, che non valuta e che sarebbe ingiusto accusare. La
+  distinzione passa per il corpo di ogni `class`, anche quando la `class` sta
+  dentro una funzione: lì «dentro una funzione» e «non valutata» smettono di
+  coincidere — il corpo si esegue quando si esegue la `class` — ed è l'unico
+  punto in cui la guardia poteva confondere le due regole che dichiara.
+
+  Quella metà però non copriva il sintomo, solo una delle sue due cause.
+  Un'annotazione PEP 604 muore alla `def`; una `match`, un `except*`, un
+  `type X = int` muoiono un momento prima, alla compilazione — e l'esito è
+  identico: il file non viene importato, i test che conteneva spariscono
+  invece di fallire, e il rosso arriva solo dal job più vecchio della matrice.
+  Cercare la sola PEP 604 lasciava fuori la classe più numerosa (tutta la
+  sintassi introdotta dalla 3.10 in poi) proprio mentre il file dichiarava di
+  sorvegliare il minimo. La seconda metà non è un elenco di costrutti da
+  tenere aggiornato: `ast.parse(..., feature_version=<minimo>)` pone la
+  domanda al parser di casa, che le versioni le conosce per mestiere. Quando
+  il minimo salirà, la metà su PEP 604 si spegnerà da sola e questa si
+  limiterà ad alzare l'asticella con lui.
+
+  E ne serve una terza, perché la seconda aveva lo stesso difetto un piano
+  più su: era cieca proprio sull'interprete su cui si sviluppa. Le f-string
+  di PEP 701 — `f"{d["k"]}"`, il backslash nel campo, un commento nel campo —
+  sulla 3.9 sono errori di sintassi come gli altri, ma `feature_version` le
+  vede **solo fino alla 3.11**: dalla 3.12 quella PEP ha riscritto il
+  tokenizer, la f-string non è più un unico token da ri-analizzare, e su quel
+  pezzo il parser non ha più presa. Il Makefile installa python3.12, quindi
+  la classe di guasto più facile da scrivere per distrazione era invisibile
+  esattamente dove il codice si scrive.
+
+  `_fstring_pep701` la chiude col tokenizer di casa, che confini dei campi e
+  delimitatore li dichiara da sé; l'unico elenco scritto a mano è quello dei
+  divieti che PEP 701 ha **tolto**, ed è chiuso perché quella PEP è conclusa.
+  Le due letture sono complementari per costruzione — sotto la 3.12 quei
+  token non esistono, sopra tace il parser — e la tabella dei verdetti è una
+  sola: i job vecchi della matrice la verificano col parser, i nuovi col
+  tokenizer, così nessuna delle due metà può diventare silenziosa senza
+  diventare rossa.
+
+  Prima conseguenza di leggere davvero tutti i sorgenti: `utils/check_envelope_grafie.py`
+  aveva `\#234` nella docstring, cioè una sequenza di escape non valida —
+  `DeprecationWarning` fino alla 3.11, `SyntaxWarning` dalla 3.12 — che da qui
+  in avanti sarebbe comparsa a ogni `make tests`. Corretta.
 
 - **`api.py` prometteva un silenzio che non ha mai avuto** (issue #189).
   L'intestazione dichiarava «nessun print» come primo punto del contratto

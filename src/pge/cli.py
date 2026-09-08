@@ -606,6 +606,20 @@ def main():
     )
     configure_engine_logger(yaml_name=yaml_basename, log_dir=log_dir)
 
+    # Nessun handler su un tipo builtin da qui in poi (issue #257). La #241
+    # aveva stretto un `except FileNotFoundError` attorno alle due righe che
+    # caricano lo YAML: funzionava, ma la garanzia era l'estensione fisica del
+    # blocco, non il tipo dell'eccezione -- una riga in piu' li' dentro, o il
+    # passaggio ad `api.load_generator` (che impacchetta anche
+    # `create_elements`), e il messaggio falso tornava in silenzio. Adesso i
+    # guasti del caricamento hanno un tipo di dominio
+    # (ConfigFileNotFoundError, ConfigParseError, ConfigReadError) e arrivano
+    # da `except EngineError` come ogni altro errore di configurazione;
+    # quello che nessuno ha ancora tradotto resta nel ramo generico, con il
+    # suo messaggio e il suo traceback, invece di travestirsi da
+    # configurazione mancante. La guardia -- strutturale sul blocco,
+    # sull'intero file per la famiglia OSError, e comportamentale -- e' in
+    # tests/test_cli_no_builtin_handlers.py.
     try:
         generator = Generator(yaml_file, samples_dir=samples_dir)
 

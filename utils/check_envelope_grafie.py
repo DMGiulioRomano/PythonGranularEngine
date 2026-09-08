@@ -10,8 +10,8 @@ IDENTICI, non simili.
         --grain-json --per-stream --renderer numpy
     python utils/check_envelope_grafie.py <dir-dei-json>
 
-Exit 0 se tutti i gruppi coincidono, 1 altrimenti. Sul codice precedente a
-\#234 cinque gruppi su sette non rendono affatto e due divergono in silenzio:
+Exit 0 se tutti i gruppi coincidono, 1 altrimenti. Sul codice precedente alla
+#234 cinque gruppi su sette non rendono affatto e due divergono in silenzio:
 sono quei due — il pattern del compatto e loop_unit: normalized — la ragione
 per cui questo confronto esiste invece di un'occhiata al visualizer.
 """

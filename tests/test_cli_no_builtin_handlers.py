@@ -15,18 +15,45 @@ passaggio della CLI ad `api.load_generator` (che impacchetta anche
 `create_elements`, dove i sample *si aprono davvero*) rimettevano in circolo il
 messaggio falso, in silenzio.
 
-## Le due guardie
+## Le tre guardie
 
 - **Strutturale**: nessun `try` che avvolge il caricamento dello YAML cattura un
-  tipo builtin — restano `EngineError` e il ramo generico, in quest'ordine.
-  Questa e' la garanzia *per tipo*.
+  tipo builtin — restano `EngineError` e il ramo generico, in quest'ordine — e
+  nessun handler *annidato* dentro quel blocco ne cattura uno, dove «dentro»
+  comprende il corpo, l'`else:`, il `finally:` e il corpo dei due rami: solo
+  la loro clausola `except` resta fuori, ed e' fissata a parte. La distinzione
+  non e' teorica: un `try/except` messo attorno al solo render vive dentro il
+  blocco della pipeline senza contenere `load_yaml()`, quindi
+  `_try_del_caricamento` non lo vede, un `except:` nudo li' dentro
+  intercetterebbe anche l'`EngineError` che i due rami di fuori esistono per
+  ricevere, e la pulizia scritta dentro `except EngineError:` e' proprio il
+  posto dove un `except FileNotFoundError` compare da se'. Questa e' la
+  garanzia *per tipo*.
+- **Di raggio**: nessun handler di `cli.py` — pipeline o no — cattura un errore
+  della famiglia `OSError`. E' la famiglia che risale da qualunque profondita'
+  di I/O (csound assente, #241; un sample illeggibile; un disco pieno), cioe'
+  l'unica che il tipo da solo non basta a collocare: una `except
+  FileNotFoundError` che tornasse in questo file avrebbe di nuovo bisogno di
+  stare *nel punto giusto* per non mentire. Gli `except ValueError` attorno a
+  `int()`/`float()` su `sys.argv` non sono di quella famiglia e restano leciti.
 - **Comportamentale**: un `FileNotFoundError` sollevato **dentro** quel blocco
   ma per un file che non e' lo YAML non fa dire all'utente che manca la sua
   configurazione. E' il test che sabota la premessa invece di riasserirla:
   prima della #257 sarebbe stato rosso, e nessuno se ne sarebbe accorto.
+
+## E le guardie sono misurate
+
+`TestLaGuardiaMisurata` sabota dei sorgenti finti, non `cli.py`: e' l'unico
+modo di sapere che una guardia strutturale vede davvero cio' che dichiara di
+vedere, invece di essere verde perche' non guarda. Le forme che misura sono
+quelle su cui una lettura ingenua tacerebbe — l'`except:` nudo (non nomina
+nessun builtin), l'handler annidato in un `finally:`, quello annidato nel
+corpo di un ramo del blocco, e gli handler legittimi, che devono restare
+tali.
 """
 
 import ast
+import builtins
 import inspect
 import sys
 
@@ -46,11 +73,79 @@ CLI_PATH = inspect.getsourcefile(_cli_module)
 HANDLER_ATTESI = ['EngineError', 'Exception']
 
 
-def _main_di_cli():
+def _albero(sorgente=None):
+    """L'AST di `cli.py`, o quello di un sorgente finto da misurare."""
+    if sorgente is not None:
+        return ast.parse(sorgente, filename='<sabotaggio>')
     with open(CLI_PATH, encoding='utf-8') as fh:
-        albero = ast.parse(fh.read(), filename=CLI_PATH)
+        return ast.parse(fh.read(), filename=CLI_PATH)
+
+
+def _main_di_cli(albero=None):
+    albero = _albero() if albero is None else albero
     return next(n for n in albero.body
                 if isinstance(n, ast.FunctionDef) and n.name == 'main')
+
+
+def _builtin_exception(nome):
+    """La classe builtin omonima, se e' un'eccezione; altrimenti None.
+
+    Derivata da `builtins`, non da un elenco trascritto: un elenco andrebbe
+    aggiornato da chi aggiunge l'handler, cioe' proprio da chi non ci pensa.
+    """
+    cls = getattr(builtins, nome, None)
+    if isinstance(cls, type) and issubclass(cls, BaseException):
+        return cls
+    return None
+
+
+def _colpevole(handler, famiglia=None):
+    """Perche' questo `except` viola la regola, o None se non la viola.
+
+    `famiglia` restringe ai builtin che ereditano da quel tipo; None
+    significa «qualunque builtin».
+
+    Un `except:` nudo e' colpevole in entrambe le letture, e va detto qui e
+    non in ognuna delle guardie: non nomina niente, quindi una guardia
+    scritta sui soli nomi lo lascerebbe passare — restando verde proprio
+    sull'handler piu' largo che esista, che cattura tutta la famiglia
+    `OSError` e anche `EngineError`. E' la stessa distinzione che la #257
+    corregge nel codice: la garanzia non puo' dipendere da come l'handler e'
+    scritto.
+    """
+    if handler.type is None:
+        return 'except: nudo (cattura tutto, famiglia OSError compresa)'
+    for nome in _nomi_catturati(handler):
+        cls = _builtin_exception(nome)
+        if cls is not None and (famiglia is None or issubclass(cls, famiglia)):
+            return nome
+    return None
+
+
+def _handler_annidati(blocco):
+    """Gli `except` che vivono *dentro* il blocco, a qualunque profondita'.
+
+    Quattro corpi, non tre: `body`, `orelse`, `finalbody` e il **corpo dei
+    rami del blocco stesso**. Un handler messo in un `finally:` o in un
+    `else:` sta dentro il blocco quanto uno messo nel corpo, e questo era
+    gia' detto; ma la pulizia scritta dentro `except EngineError:` ci sta
+    esattamente allo stesso modo, e da li' non si vedeva. La differenza non
+    e' teorica: e' il punto dove si scrive il codice di cleanup, cioe' dove
+    un `except FileNotFoundError` attorno a un `unlink()` compare da se'.
+
+    L'unica esclusione e' la **clausola** `except` dei rami del blocco --
+    non il loro corpo: li' i due tipi sono `EngineError` e `Exception`,
+    builtin per costruzione, e li fissa `test_handler_attesi_e_nel_loro_ordine`.
+    Escludere anche il corpo era piu' largo della ragione che lo escludeva,
+    e lasciava scoperto ogni builtin fuori dalla famiglia `OSError` (quella
+    la riprende la guardia di raggio, ma con un'altra diagnosi).
+    """
+    corpi = (list(blocco.body) + list(blocco.orelse) + list(blocco.finalbody)
+             + [stmt for ramo in blocco.handlers for stmt in ramo.body])
+    return [n
+            for corpo in corpi
+            for n in ast.walk(corpo)
+            if isinstance(n, ast.ExceptHandler)]
 
 
 def _contiene_load_yaml(nodo):
@@ -63,14 +158,14 @@ def _contiene_load_yaml(nodo):
     )
 
 
-def _try_del_caricamento():
+def _try_del_caricamento(albero=None):
     """Ogni `try` di `main()` che avvolge il caricamento dello YAML.
 
     Plurale di proposito: un `try` annidato attorno alle sole due righe del
     caricamento e' esattamente la forma che la #257 sostituisce, quindi la
     guardia deve vederlo e non solo quello piu' esterno.
     """
-    return [n for n in ast.walk(_main_di_cli())
+    return [n for n in ast.walk(_main_di_cli(albero))
             if isinstance(n, ast.Try) and _contiene_load_yaml(n)]
 
 
@@ -93,8 +188,6 @@ class TestGuardiaStrutturale:
             "non misura piu' niente")
 
     def test_nessun_handler_builtin_attorno_al_caricamento(self):
-        import builtins
-
         for nodo in _try_del_caricamento():
             for handler in nodo.handlers:
                 for nome in _nomi_catturati(handler):
@@ -114,6 +207,48 @@ class TestGuardiaStrutturale:
             assert nomi == HANDLER_ATTESI, (
                 f"handler attorno al caricamento: {nomi}, "
                 f"attesi {HANDLER_ATTESI}")
+
+    def test_nessun_handler_builtin_annidato_nel_blocco(self):
+        """L'altro modo di rimettere in circolo il messaggio falso.
+
+        `_try_del_caricamento` trova i `try` che *contengono* `load_yaml()`;
+        un `try/except` messo attorno al solo render sta dentro il blocco
+        della pipeline senza contenerlo, quindi da li' non si vede. Ed e'
+        proprio quello il punto in cui un `except FileNotFoundError` — o un
+        `except:` nudo, che intercetta anche l'`EngineError` dei due rami di
+        fuori — tornerebbe a dipendere dalla propria posizione.
+        """
+        colpevoli = [(motivo, h.lineno)
+                     for blocco in _try_del_caricamento()
+                     for h in _handler_annidati(blocco)
+                     for motivo in [_colpevole(h)] if motivo is not None]
+        assert not colpevoli, (
+            "un handler su un tipo builtin e' tornato dentro il try della "
+            f"pipeline: {colpevoli}. Il messaggio che ne esce vale finche' "
+            "il blocco non cresce, e cresce senza che nessun test lo dica "
+            "(issue #257).")
+
+
+def test_cli_non_cattura_nessun_errore_della_famiglia_oserror():
+    """La guardia di raggio: vale su tutto `cli.py`, pipeline o no.
+
+    Le altre due leggono il blocco della pipeline, e leggerlo basta finche'
+    il blocco e' dove il caricamento avviene. La famiglia `OSError` no: e'
+    quella che risale da qualunque profondita' di I/O, quindi un handler
+    piazzato *fuori* dal blocco la intercetterebbe lo stesso — e con lei
+    l'errore di dominio che la #257 ha creato apposta per non passare di li'.
+    """
+    colpevoli = [(motivo, nodo.lineno)
+                 for nodo in ast.walk(_albero())
+                 if isinstance(nodo, ast.ExceptHandler)
+                 for motivo in [_colpevole(nodo, famiglia=OSError)]
+                 if motivo is not None]
+    assert not colpevoli, (
+        "pge/cli.py cattura di nuovo un errore della famiglia OSError: "
+        f"{colpevoli}. Un guasto di I/O risale da qualunque profondita', "
+        "quindi il tipo non basta a collocarlo e il messaggio torna a "
+        "dipendere da dove sta l'handler (issue #241/#257). Dagli un tipo "
+        "di dominio nel punto che lo produce, come ConfigFileNotFoundError.")
 
 
 def _esegui(mocks, argv):
@@ -241,3 +376,132 @@ def test_lo_stub_yaml_dei_mock_conosce_YAMLError(mocks):
     from pge.shared.exceptions import ConfigParseError
 
     assert issubclass(ConfigParseError, yaml.YAMLError)
+
+
+# ---------------------------------------------------------------------------
+# Le guardie strutturali, misurate su sorgenti finti.
+#
+# Sabotare `cli.py` non e' un'opzione: e' il file che le guardie sorvegliano.
+# Questi sorgenti sono l'unico modo di distinguere una guardia verde perche'
+# il codice e' sano da una verde perche' non guarda -- che e' la stessa
+# distinzione, un piano piu' su, che la #257 corregge nel codice.
+# ---------------------------------------------------------------------------
+
+SABOTAGGIO_EXCEPT_NUDO = """
+def main():
+    try:
+        generator.load_yaml()
+        try:
+            api.render(generator)
+        except:
+            print("Errore: file non trovato")
+            sys.exit(1)
+    except EngineError:
+        pass
+    except Exception:
+        pass
+"""
+
+SABOTAGGIO_NEL_FINALLY = """
+def main():
+    try:
+        generator.load_yaml()
+    except EngineError:
+        pass
+    except Exception:
+        pass
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+"""
+
+SABOTAGGIO_NEL_RAMO = """
+def main():
+    try:
+        generator.load_yaml()
+    except EngineError:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+    except Exception:
+        pass
+"""
+
+CODICE_SANO = """
+def main():
+    try:
+        page = int(sys.argv[i + 1])
+    except ValueError:
+        sys.exit(1)
+    try:
+        generator.load_yaml()
+    except EngineError as err:
+        sys.exit(1)
+    except Exception:
+        sys.exit(1)
+"""
+
+
+class TestLaGuardiaMisurata:
+    """Le forme su cui una lettura ingenua tacerebbe."""
+
+    def test_vede_l_except_nudo_annidato(self):
+        """Non nomina nessun builtin: una guardia sui soli nomi lo
+        lascerebbe passare, restando verde sull'handler piu' largo che
+        esista — che cattura la famiglia OSError e anche `EngineError`."""
+        albero = _albero(SABOTAGGIO_EXCEPT_NUDO)
+        blocchi = _try_del_caricamento(albero)
+        assert blocchi, "il sorgente finto non e' piu' quello che descrive"
+        assert any(_colpevole(h) is not None
+                   for b in blocchi for h in _handler_annidati(b))
+        assert any(_colpevole(h, famiglia=OSError) is not None
+                   for h in ast.walk(albero)
+                   if isinstance(h, ast.ExceptHandler))
+
+    def test_vede_l_handler_nel_finally(self):
+        """«A nessuna profondita'» comprende `finally:` e `else:`: leggere il
+        solo `body` lascerebbe la guardia piu' stretta di come e' scritta."""
+        albero = _albero(SABOTAGGIO_NEL_FINALLY)
+        blocchi = _try_del_caricamento(albero)
+        assert blocchi, "il sorgente finto non e' piu' quello che descrive"
+        assert any(_colpevole(h) == 'FileNotFoundError'
+                   for b in blocchi for h in _handler_annidati(b))
+
+    def test_vede_l_handler_nel_corpo_di_un_ramo(self):
+        """Il `finally:` era coperto, il ramo accanto no.
+
+        La pulizia si scrive dentro `except EngineError:` almeno quanto
+        dentro `finally:`, ed e' li' che un `except FileNotFoundError`
+        attorno a un `unlink()` compare da se'. Escludere il corpo dei rami
+        insieme alla loro clausola era piu' largo della ragione che li
+        escludeva -- la clausola e' builtin per costruzione, il corpo no --
+        e lasciava passare in silenzio ogni builtin fuori dalla famiglia
+        `OSError`, che e' l'unica che la guardia di raggio riprende.
+        """
+        albero = _albero(SABOTAGGIO_NEL_RAMO)
+        blocchi = _try_del_caricamento(albero)
+        assert blocchi, "il sorgente finto non e' piu' quello che descrive"
+        assert any(_colpevole(h) == 'FileNotFoundError'
+                   for b in blocchi for h in _handler_annidati(b))
+
+    def test_lascia_stare_gli_handler_legittimi(self):
+        """L'altra meta': una guardia che accusa il codice sano chiede di
+        riscriverlo, e viene spenta. `except ValueError` attorno a un `int()`
+        su `sys.argv` sta fuori dal blocco e non e' della famiglia OSError —
+        e i due rami del blocco sono builtin per costruzione, quindi non
+        passano da `_handler_annidati`.
+        """
+        albero = _albero(CODICE_SANO)
+        blocchi = _try_del_caricamento(albero)
+        assert blocchi, "il sorgente finto non e' piu' quello che descrive"
+        assert not [h for b in blocchi for h in _handler_annidati(b)
+                    if _colpevole(h) is not None]
+        assert not [h for h in ast.walk(albero)
+                    if isinstance(h, ast.ExceptHandler)
+                    and _colpevole(h, famiglia=OSError) is not None]
+        nomi = [n for b in blocchi for h in b.handlers
+                for n in _nomi_catturati(h)]
+        assert nomi == HANDLER_ATTESI

@@ -11,7 +11,7 @@ sources:
   - src/pge/rendering/csound_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: 0110399
+last_synced_commit: e94eaf1
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -120,7 +120,11 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   (installare csound, oppure `--renderer numpy`; vedi [[errors]]). Fino alla
   issue #241 lo stesso caso usciva come «file YAML non trovato», perché la
   CLI intercettava il `FileNotFoundError` del subprocess con l'handler tenuto
-  per il file di configurazione. Senza `--keep-sco` lo score è un file
+  per il file di configurazione. Dalla #257 quell'handler non esiste più: lo
+  YAML mancante ha un tipo suo (`ConfigFileNotFoundError`) e `main()` non
+  intercetta nessun builtin lungo la pipeline, quindi il caso non si può
+  riaprire aggiungendo una riga nel posto sbagliato.
+  Senza `--keep-sco` lo score è un file
   temporaneo e **viene cancellato anche quando il render fallisce** — csound
   assente, exit code diverso da zero, o un errore mentre lo score si scrive:
   il `.sco` di un render fallito si ispeziona con `--keep-sco`, che è la

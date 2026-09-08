@@ -7,7 +7,7 @@ sources:
   - src/pge/rendering/
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: 9435ea0
+last_synced_commit: e94eaf1
 ---
 
 # Architettura Renderer
@@ -247,7 +247,8 @@ Sequenza e invarianti:
   partire il backend — il binario, e per SuperCollider anche il sorgente `.scd`
   che `sclang` compila nel `.scsyndef` caricato dallo score (non è il binario a
   compilarsi da lì: quello si installa) — e nessuno dei due eredita da
-  `FileNotFoundError`
+  `FileNotFoundError`, che dentro `EngineError` è riservato al solo file di
+  configurazione assente (`ConfigFileNotFoundError`, #257)
 - L'elenco dei tipi validi vive in `RendererFactory.available_types()`, ed è
   quello che i messaggi d'errore e la CLI interrogano: un backend nuovo non
   richiede di aggiornare nessuna lista scritta a mano
