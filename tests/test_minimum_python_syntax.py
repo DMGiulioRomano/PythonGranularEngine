@@ -29,6 +29,18 @@ Che cosa si valuta e quando, perche' la guardia non e' piu' larga del vero:
 Solo PEP 604 (`X | Y`) e' un problema: PEP 585 (`list[str]`, `dict[str, int]`)
 funziona gia' dalla 3.9.
 
+Un limite dichiarato, e va detto perche' non e' una dimenticanza: questa meta'
+guarda le **annotazioni**, non ogni `|` che l'import valuta. Un alias di tipo
+scritto come assegnamento -- `Numero = int | None` a livello di modulo -- muore
+sulla 3.9 nello stesso identico modo, e nessuna delle due meta' lo vede: e'
+sintatticamente valido, quindi il parser non protesta, e non e' un'annotazione,
+quindi non passa di qui. Allargare la lettura a ogni `Assign` non e' la
+risposta: `MASK = READ | WRITE` e' un or bit a bit legittimo, e una guardia che
+lo accusasse chiederebbe di riscrivere codice sano -- il difetto che l'altra
+meta' evita per costruzione facendo la domanda al parser. Se un alias del genere
+dovesse comparire, il posto dove restringere e' il caso `X | None`, l'unico in
+cui un or bit a bit non ha mai senso.
+
 Quella meta' pero' non basta, perche' il sintomo che questo file commemora ha
 due cause e non una. Un'annotazione PEP 604 muore alla `def`; una `match`, un
 `except*`, un `type X = int`, una f-string annidata muoiono un momento prima,
@@ -124,7 +136,12 @@ def _annotazioni_valutate(albero):
 
 def _pep604(percorso):
     """Le righe del file con una `X | Y` valutata a runtime. Lista vuota se
-    il file ha il future import (li' non si valuta niente)."""
+    il file ha il future import (li' non si valuta niente).
+
+    «Valutata a runtime» qui vuol dire *dentro un'annotazione*: un alias
+    scritto come assegnamento (`Numero = int | None`) non passa da qui, per la
+    ragione spiegata nella docstring del modulo.
+    """
     with open(percorso, encoding='utf-8') as f:
         sorgente = f.read()
     albero = ast.parse(sorgente, filename=percorso)
