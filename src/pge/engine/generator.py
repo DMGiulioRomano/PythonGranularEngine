@@ -96,6 +96,13 @@ class Generator:
                 byte non sono UTF-8/UTF-16 (il file si legge in binario e la
                 decodifica e' di PyYAML, non del locale). E' anche uno
                 yaml.YAMLError, idem.
+
+            Il perimetro tradotto e' quello, e si ferma li' di proposito: un
+            path che esiste ma non e' un file di configurazione -- una
+            directory, un file senza permessi -- resta l'OSError grezzo che
+            `open()` solleva, e la CLI lo mostra dal ramo generico invece di
+            chiamarlo «configurazione mancante». Il confine e' fissato da
+            tests/engine/test_config_loading_errors.py, non lasciato al caso.
         """
         # Byte, non testo: la decodifica e' di PyYAML, non del locale.
         # `open(path, 'r')` decodifica con `locale.getpreferredencoding()`

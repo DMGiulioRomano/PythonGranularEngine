@@ -95,6 +95,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   tipo — e c'è un test che la sabota alzando un `FileNotFoundError` *dentro*
   `yaml.safe_load`, per un file che non è lo YAML.
 
+  **Per chi usa PGE come libreria** il caricamento smette di essere un caso a
+  parte: un solo `except pge.EngineError` copre anche lo YAML che non c'è e
+  quello che non si parsa, e un ramo `except FileNotFoundError` scritto
+  accanto ad esso è ormai codice morto — arriva secondo. Il contratto è
+  aggiornato in [docs/how-to/use-as-library.md](docs/how-to/use-as-library.md),
+  insieme al confine che resta fuori (directory e permessi restano `OSError`
+  grezzi). E le docstring che motivavano la regola gemella — quella di
+  `_BinaryNotFoundError` e dei due test sui binari assenti — non citano più
+  l'handler della CLI, che questa issue cancella: citano il tipo, che è ciò
+  che adesso tiene separati i due guasti e vale anche fuori dalla CLI.
+
 - **Il log dice di nuovo quanti grani ha generato ogni stream** (issue #250).
   Dopo `Rendering completato in ...` la CLI stampa una riga per stream:
 

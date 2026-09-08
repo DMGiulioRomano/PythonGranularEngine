@@ -3,8 +3,8 @@ slug: use-as-library
 type: how-to
 status: stable
 tags: [api, library, install, render]
-sources: [src/pge/api.py, pyproject.toml]
-last_synced_commit: 5285c17
+sources: [src/pge/api.py, src/pge/engine/generator.py, src/pge/shared/exceptions.py, pyproject.toml]
+last_synced_commit: aeb0b3c
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 
@@ -95,7 +95,24 @@ passare dalla CLI né monkey-patchare i globali.
 
 6. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
    argomenti API invalidi sollevano `ValueError` (es. `audio_format`
-   stringa ignota), file YAML mancante `FileNotFoundError`.
+   stringa ignota).
+
+   Dalla issue #257 **anche i due guasti del caricamento stanno in quella
+   gerarchia**: lo YAML che non esiste è `ConfigFileNotFoundError`, quello
+   che il parser rifiuta (sintassi, o byte non UTF-8/UTF-16) è
+   `ConfigParseError`. Entrambi hanno `user_message()`, quindi un solo
+   `except pge.EngineError` copre il caricamento come copre tutto il resto —
+   un ramo `except FileNotFoundError` scritto accanto ad esso è codice morto,
+   perché arriva secondo. Le due classi restano rispettivamente un
+   `FileNotFoundError` e uno `yaml.YAMLError` (era ciò che `load_generator`
+   dichiarava nei `Raises`, e chi le catturava così continua a catturarle);
+   `ConfigFileNotFoundError` valorizza anche `errno`, `strerror` e `filename`
+   come li avrebbe riempiti `open()`.
+
+   Quello che **non** è tradotto: un path che esiste ma non è un file di
+   configurazione — una directory, un file senza permessi — resta l'`OSError`
+   grezzo di `open()`. È un confine dichiarato, non una dimenticanza: vedi
+   [[errors]].
 
 7. Csound: `renderer='csound'` con knob raggruppati in
    `api.CsoundOptions(orc_path=..., ssdir=..., sco_dir=...)`;
