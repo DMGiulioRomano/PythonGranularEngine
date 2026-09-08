@@ -144,6 +144,23 @@ def _try_della_pipeline(main_node):
     return max(candidati, key=lambda n: len(list(ast.walk(n))))
 
 
+def _dentro_al_blocco(blocco):
+    """Le istruzioni che stanno *dentro* il `try`, a qualunque ramo.
+
+    `body` piu' `orelse` e `finalbody`: la regola di questo modulo dice «a
+    nessuna profondita'», e leggere il solo `body` la lasciava piu' stretta
+    di come e' scritta -- un handler messo in un `finally:` (o in un `else:`)
+    e' dentro il blocco quanto uno messo nel corpo, e per la famiglia OSError
+    sarebbe stato colto solo dall'altra guardia, quella su tutto il file.
+
+    `handlers` no, ed e' l'unica esclusione: li' i due rami sono `EngineError`
+    e `Exception`, cioe' un builtin per costruzione, e li fissa
+    test_la_pipeline_ha_i_due_rami_dichiarati. Includerli renderebbe questa
+    guardia rossa sul codice sano.
+    """
+    return list(blocco.body) + list(blocco.orelse) + list(blocco.finalbody)
+
+
 def test_cli_non_cattura_nessun_errore_della_famiglia_oserror(albero):
     colpevoli = []
     for nodo in ast.walk(albero):
@@ -165,7 +182,7 @@ def test_cli_non_cattura_nessun_errore_della_famiglia_oserror(albero):
 def test_la_pipeline_non_contiene_handler_su_builtin(albero):
     blocco = _try_della_pipeline(_funzione(albero, 'main'))
     colpevoli = []
-    for corpo in blocco.body:
+    for corpo in _dentro_al_blocco(blocco):
         for nodo in ast.walk(corpo):
             if not isinstance(nodo, ast.ExceptHandler):
                 continue
@@ -233,6 +250,40 @@ def test_la_guardia_vede_un_except_nudo():
     assert famiglia, "la guardia sulla famiglia OSError non vede un `except:` nudo"
 
 
+def test_la_guardia_vede_un_handler_nel_finally():
+    """La misura dell'unica esclusione che `_dentro_al_blocco` non fa.
+
+    Leggendo il solo `body`, un `except FileNotFoundError` messo in un
+    `finally:` (o in un `else:`) del `try` della pipeline restava invisibile a
+    questa guardia: la regola dice «a nessuna profondita'», e valeva a una
+    profondita' sola. Per la famiglia OSError lo avrebbe colto l'altra
+    guardia, quella su tutto il file; per ogni altro builtin, nessuna.
+    """
+    albero = ast.parse(
+        "def main():\n"
+        "    try:\n"
+        "        generator.load_yaml()\n"
+        "    except EngineError:\n"
+        "        sys.exit(1)\n"
+        "    except Exception:\n"
+        "        sys.exit(1)\n"
+        "    finally:\n"
+        "        try:\n"
+        "            cleanup()\n"
+        "        except KeyError:\n"
+        "            pass\n"
+    )
+    blocco = _try_della_pipeline(_funzione(albero, 'main'))
+    visti = [_colpevole(n) for corpo in _dentro_al_blocco(blocco)
+             for n in ast.walk(corpo) if isinstance(n, ast.ExceptHandler)]
+    assert visti == ['KeyError'], visti
+    # E l'esclusione resta: i due rami del blocco non sono colpevoli di se'
+    # stessi, o la guardia sarebbe rossa su ogni CLI sana.
+    assert _colpevole(blocco.handlers[1]) == 'Exception'
+    assert blocco.handlers[1] not in [
+        n for corpo in _dentro_al_blocco(blocco) for n in ast.walk(corpo)]
+
+
 def test_la_guardia_lascia_stare_gli_handler_legittimi():
     """L'altra meta': una guardia che dice sempre di si' e' muta quanto una
     che dice sempre di no. `EngineError` e le sue sorelle di dominio non sono
@@ -253,6 +304,6 @@ def test_la_guardia_lascia_stare_gli_handler_legittimi():
     assert [_colpevole(h, famiglia=OSError) for h in handlers] == [None, None]
 
     blocco = _try_della_pipeline(_funzione(albero, 'main'))
-    dentro = [n for corpo in blocco.body for n in ast.walk(corpo)
+    dentro = [n for corpo in _dentro_al_blocco(blocco) for n in ast.walk(corpo)
               if isinstance(n, ast.ExceptHandler)]
     assert dentro == [], "il try della pipeline non contiene handler propri"
