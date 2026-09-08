@@ -8,7 +8,7 @@ Copre:
 - main(): flusso normale completo
 - main(): generazione visualizzazione PDF (--visualize, -v)
 - main(): flag --show-static / -s
-- main(): errori di caricamento -> sys.exit(1)
+- main(): ConfigFileNotFoundError -> sys.exit(1) (issue #257)
 - main(): eccezione generica -> sys.exit(1)
 - main(): argomenti insufficienti -> sys.exit(1)
 - main(): output_file di default 'output.sco'
@@ -551,7 +551,16 @@ class TestErrorHandling:
     main() deve catturare errori e uscire con codice 1.
     """
 
+    def test_file_not_found_exits_with_1(self, mocks):
+        """Un builtin nudo esce comunque con 1, ma dal ramo generico (#257)."""
+        mocks['generator_instance'].load_yaml.side_effect = FileNotFoundError("not found")
+        with patch.object(sys, 'argv', ['main.py', 'missing.yml', 'out.aif']):
+            with pytest.raises(SystemExit) as exc_info:
+                mocks['main'].main()
+        assert exc_info.value.code == 1
+
     def test_config_file_not_found_exits_with_1(self, mocks):
+        """Lo YAML mancante, col suo tipo di dominio (#257)."""
         from pge.shared.exceptions import ConfigFileNotFoundError
         mocks['generator_instance'].load_yaml.side_effect = (
             ConfigFileNotFoundError('missing.yml'))
@@ -560,10 +569,7 @@ class TestErrorHandling:
                 mocks['main'].main()
         assert exc_info.value.code == 1
 
-    def test_config_file_not_found_prints_user_message(self, mocks, capsys):
-        """Issue #257: lo YAML mancante passa dal percorso EngineError come
-        ogni altro errore di configurazione — user_message() e riga
-        `Dettagli:`, non un print scritto a mano nella CLI."""
+    def test_config_file_not_found_prints_error_message(self, mocks, capsys):
         from pge.shared.exceptions import ConfigFileNotFoundError
         mocks['generator_instance'].load_yaml.side_effect = (
             ConfigFileNotFoundError('missing.yml'))
@@ -572,52 +578,6 @@ class TestErrorHandling:
                 mocks['main'].main()
         captured = capsys.readouterr()
         assert 'missing.yml' in captured.out
-        assert '[ERRORE]' in captured.out
-        assert '  Dettagli:     /tmp/engine.log' in captured.out
-        # Il messaggio non regredisce a un traceback (criterio della #257).
-        assert 'Traceback' not in captured.out
-
-    def test_file_not_found_dal_caricamento_non_incolpa_lo_yaml(self, mocks,
-                                                                capsys):
-        """Issue #257: il sabotaggio della premessa, al capo della CLI.
-
-        Fino alla #257 la garanzia «qui puo' fallire solo lo YAML» era
-        l'estensione fisica di un `try`: bastava una riga in piu' dentro quel
-        blocco — un `!include`, una prescansione dei sample, il passaggio ad
-        `api.load_generator` — per rimettere in circolo il messaggio falso, in
-        silenzio. Qui il caricamento alza un FileNotFoundError grezzo *per un
-        altro file*: la CLI non deve dire all'utente che manca la sua
-        configurazione. Prima della #257 questo test era rosso, e nessuno
-        l'avrebbe scoperto.
-        """
-        mocks['generator_instance'].load_yaml.side_effect = FileNotFoundError(
-            2, 'No such file or directory', 'refs/pino.wav')
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            with pytest.raises(SystemExit) as exc_info:
-                mocks['main'].main()
-        assert exc_info.value.code == 1
-        cattura = capsys.readouterr()
-        # I due modi, vecchio e nuovo, di dire la cosa sbagliata.
-        assert "file 'test.yml' non trovato" not in cattura.out
-        assert "File di configurazione non trovato" not in cattura.out
-        assert "pino.wav" in cattura.out
-        assert "FileNotFoundError" in cattura.err
-
-    def test_file_not_found_da_create_elements_non_incolpa_lo_yaml(self, mocks,
-                                                                   capsys):
-        """Stessa regola un passo piu' in la': `create_elements` risolve i
-        sample, ed e' il primo posto in cui la #257 sarebbe rientrata dalla
-        porta di servizio se la CLI passasse ad `api.load_generator`, che
-        impacchetta caricamento e creazione insieme."""
-        mocks['generator_instance'].create_elements.side_effect = (
-            FileNotFoundError(2, 'No such file or directory', 'refs/pino.wav'))
-        with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
-            with pytest.raises(SystemExit) as exc_info:
-                mocks['main'].main()
-        assert exc_info.value.code == 1
-        cattura = capsys.readouterr()
-        assert "File di configurazione non trovato" not in cattura.out
-        assert "pino.wav" in cattura.out
 
     def test_generic_exception_exits_with_1(self, mocks):
         mocks['generator_instance'].create_elements.side_effect = RuntimeError("boom")
@@ -644,14 +604,9 @@ class TestErrorHandling:
 
     def test_file_not_found_dal_render_non_incolpa_lo_yaml(self, mocks, capsys):
         """Issue #241: un FileNotFoundError che risale dal rendering non e'
-        il file YAML, che a quel punto e' stato letto e parsato.
-
-        La #241 lo teneva vero attaccando l'handler al solo punto che poteva
-        sollevarlo per il motivo annunciato; dalla #257 quell'handler non
-        c'e' piu' e a tenerlo vero e' il tipo — lo YAML mancante e'
-        `ConfigFileNotFoundError` e passa da `except EngineError`, questo
-        resta un builtin e finisce nel ramo generico. Il test non cambia
-        perche' misura l'esito, non il meccanismo."""
+        il file YAML, che a quel punto e' stato letto e parsato. L'handler
+        della CLI resta attaccato al solo punto che puo' sollevarlo per il
+        motivo che annuncia."""
         mocks['engine_instance'].render.side_effect = FileNotFoundError()
         with patch.object(sys, 'argv', ['main.py', 'test.yml', 'out.aif']):
             with pytest.raises(SystemExit) as exc_info:

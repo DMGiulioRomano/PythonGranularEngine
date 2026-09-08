@@ -612,12 +612,14 @@ def main():
     # blocco, non il tipo dell'eccezione -- una riga in piu' li' dentro, o il
     # passaggio ad `api.load_generator` (che impacchetta anche
     # `create_elements`), e il messaggio falso tornava in silenzio. Adesso i
-    # due guasti del caricamento hanno un tipo di dominio
-    # (ConfigFileNotFoundError, ConfigParseError) e arrivano da `except
-    # EngineError` come ogni altro errore di configurazione; quello che
-    # nessuno ha ancora tradotto resta nel ramo generico, con il suo
-    # messaggio e il suo traceback, invece di travestirsi da configurazione
-    # mancante. La guardia e' in tests/test_cli_builtin_handlers.py.
+    # guasti del caricamento hanno un tipo di dominio
+    # (ConfigFileNotFoundError, ConfigParseError, ConfigReadError) e arrivano
+    # da `except EngineError` come ogni altro errore di configurazione;
+    # quello che nessuno ha ancora tradotto resta nel ramo generico, con il
+    # suo messaggio e il suo traceback, invece di travestirsi da
+    # configurazione mancante. La guardia -- strutturale sul blocco,
+    # sull'intero file per la famiglia OSError, e comportamentale -- e' in
+    # tests/test_cli_no_builtin_handlers.py.
     try:
         generator = Generator(yaml_file, samples_dir=samples_dir)
 
@@ -736,6 +738,15 @@ def main():
 
         print(f"Log: {get_clip_log_path()}")
 
+    # Nessun handler su un tipo builtin (issue #257). La #241 aveva stretto
+    # il `try` attorno alle due righe del caricamento -- la garanzia era la
+    # sua *estensione*, e ogni riga aggiunta la spendeva. Ora lo YAML che
+    # manca e quello malformato hanno un tipo di dominio
+    # (ConfigFileNotFoundError, ConfigParseError) e passano di qui sotto come
+    # ogni altro errore di configurazione, per tipo. Un FileNotFoundError nudo
+    # che risalga da altrove -- un sample, una pre-scansione, un domani in cui
+    # questo blocco chiami api.load_generator -- finisce nel ramo generico
+    # invece di annunciare una configurazione inesistente.
     except EngineError as e:
         _handle_engine_error(e)
         sys.exit(1)

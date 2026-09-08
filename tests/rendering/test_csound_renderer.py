@@ -227,13 +227,14 @@ class TestCsoundRendererErrors:
     @patch('pge.rendering.csound_renderer.subprocess.run')
     def test_csound_assente_non_e_un_FileNotFoundError(self, mock_run, renderer, mock_stream):
         """Specchio di test_scsynth_assente_non_e_un_FileNotFoundError
-        (issue #241): la CLI intercettava FileNotFoundError per annunciare
-        «file YAML non trovato», e il file YAML qui esiste ed e' gia' stato
-        letto. Dalla #257 quell'handler non c'e' piu', ma la regola vale
-        ancora e per una ragione piu' forte: dentro EngineError il builtin e'
-        del solo `ConfigFileNotFoundError`, quindi un binario che lo
-        ereditasse si spaccerebbe per la configurazione mancante davanti a
-        chiunque lo catturi, CLI o no."""
+        (issue #241): il file YAML qui esiste ed e' gia' stato letto, quindi
+        per il binario assente il builtin sarebbe falso -- il file che manca
+        non e' quello che il tipo lascia intendere.
+
+        La ragione storica («la CLI intercetta FileNotFoundError per
+        annunciare 'file YAML non trovato'») e' caduta con la #257, che
+        quell'handler lo toglie del tutto; la regola resta, sul valore di
+        verita' del tipo."""
         mock_run.side_effect = FileNotFoundError()
 
         with pytest.raises(Exception) as exc:

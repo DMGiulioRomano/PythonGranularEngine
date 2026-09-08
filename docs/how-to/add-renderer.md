@@ -10,7 +10,7 @@ sources:
   - src/pge/api.py
   - src/pge/cli.py
   - tests/shared/test_stdout_contract.py
-last_synced_commit: "0141021"
+last_synced_commit: 8c50e18
 entry_for: [add-renderer]
 ---
 
@@ -39,11 +39,15 @@ L'ultimo backend aggiunto è SuperCollider (issue #228): è l'esempio lavorato d
    ha già dovuto imparare due volte (#228, #241):
 
    - **binario assente = sottoclasse d'errore dedicata, mai `FileNotFoundError`**.
-     Dalla #257 quel tipo, dentro `EngineError`, significa una cosa sola: il
-     file di configurazione che l'utente ha nominato non esiste. Un binario
-     che manca e lo eredita si confonde con quello — che è esattamente il
-     guasto che la #241 ha dovuto correggere sul ramo csound. C'è una base
-     comune per questi errori, vedi [[errors]]
+     La ragione scritta qui prima — «la CLI intercetta quel tipo per annunciare
+     "file YAML non trovato"» — non vale più dalla #257, che quell'handler lo
+     toglie del tutto: `cli.main()` non cattura nessun builtin sul percorso di
+     caricamento. Quella che regge è il **valore di verità del tipo**: per un
+     binario assente `FileNotFoundError` è una bugia, il file che manca non è
+     quello che il tipo lascia intendere. Dove invece dice il vero, il tipo di
+     dominio se lo tiene accanto (`ConfigFileNotFoundError`, #257). C'è una
+     base comune per questi errori, e la regola per esteso sta in una copia
+     sola: vedi [[errors]]
    - **lo score temporaneo si cancella in un `finally` che copre anche la sua
      scrittura**, non solo la chiamata al binario: il file temporaneo esiste
      dal momento in cui se ne prende il path, e i grani sono lazy (#117) —

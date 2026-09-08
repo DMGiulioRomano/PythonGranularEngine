@@ -123,7 +123,8 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   per il file di configurazione. Dalla #257 quell'handler non esiste più: lo
   YAML mancante ha un tipo suo (`ConfigFileNotFoundError`) e `main()` non
   intercetta nessun builtin lungo la pipeline, quindi il caso non si può
-  riaprire aggiungendo una riga nel posto sbagliato. Senza `--keep-sco` lo score è un file
+  riaprire aggiungendo una riga nel posto sbagliato.
+  Senza `--keep-sco` lo score è un file
   temporaneo e **viene cancellato anche quando il render fallisce** — csound
   assente, exit code diverso da zero, o un errore mentre lo score si scrive:
   il `.sco` di un render fallito si ispeziona con `--keep-sco`, che è la

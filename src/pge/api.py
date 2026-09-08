@@ -4,10 +4,11 @@
 # Contratto del modulo
 # (docs/plans/done/2026-07-08-001-refactor-pge-library-cli-plan.md, sez. B.1):
 # - nessun sys.exit, nessuna lettura di sys.argv;
-# - errori -> eccezioni (EngineError e sottoclassi, ValueError per argomenti
-#   API invalidi). Dalla #257 anche il caricamento dello YAML sta dentro la
-#   gerarchia: ConfigFileNotFoundError e ConfigParseError, che restano pero'
-#   anche FileNotFoundError e yaml.YAMLError per chi li catturava cosi';
+# - errori -> eccezioni (EngineError e sottoclassi; ValueError per argomenti
+#   API invalidi). Dalla #257 anche il file YAML che manca o non si parsa e'
+#   un EngineError (ConfigFileNotFoundError, ConfigParseError,
+#   ConfigReadError), che pero' eredita il builtin di prima per non rompere
+#   chi lo cattura;
 # - import lazy dei moduli pesanti dentro le funzioni (stesso stile di
 #   main.py): mantiene mockabile via sys.modules e non paga matplotlib
 #   all'import;
@@ -228,16 +229,21 @@ def load_generator(yaml_path: str, *, samples_dir: Optional[str] = None):
             precedenti (submodule non ancora aggiornati).
 
     Raises:
-        EngineError e sottoclassi (ConfigFileNotFoundError,
-        ConfigParseError, SampleNotFoundError, ConfigError, ...). Dalla
-        issue #257 anche i due guasti del caricamento hanno un tipo di
-        dominio: `ConfigFileNotFoundError` per lo YAML che non c'e',
-        `ConfigParseError` per quello che non si parsa. Restano
-        rispettivamente un `FileNotFoundError` e uno `yaml.YAMLError` --
-        questa firma li dichiarava, e chi li cattura continua a catturarli --
-        ma adesso portano un `user_message()` e non passano piu' dal ramo
-        generico di chi le chiama. Nessun print proprio (quelli interni di
-        Generator restano).
+        EngineError e sottoclassi -- fra cui ConfigFileNotFoundError (YAML
+        inesistente), ConfigParseError (YAML malformato o non decodificabile)
+        e ConfigReadError (il file c'e' ma il sistema operativo non lo apre:
+        una directory al posto del file, permessi negati), che dalla #257
+        sostituiscono i builtin nudi che questa docstring dichiarava. Tutte e
+        tre ereditano il tipo che sostituiscono (FileNotFoundError,
+        yaml.YAMLError, OSError): un `except FileNotFoundError` scritto contro
+        le versioni precedenti continua a funzionare. E anche il tipo
+        *concreto* della causa, quando ne ha uno: una directory al posto del
+        file resta un IsADirectoryError, uno YAML con posizione resta un
+        yaml.MarkedYAMLError, un file non decodificabile resta un
+        UnicodeDecodeError -- e' cio' che saliva prima, e chi lo cattura per
+        nome non deve cambiare niente. Restano anche SampleNotFoundError,
+        ConfigError, ... Nessun print proprio (quelli interni di Generator
+        restano).
     """
     from pge.engine.generator import Generator
 

@@ -21,10 +21,8 @@ from pge.rendering.ftable_manager import FtableManager
 from pge.rendering.score_writer import ScoreWriter
 from pge.controllers.window_controller import WindowController
 from pge.shared.exceptions import (
-    ConfigError,
-    ConfigFileNotFoundError,
-    ConfigParseError,
-    SampleNotFoundError,
+    ConfigError, ConfigFileNotFoundError, SampleNotFoundError,
+    config_parse_error, config_read_error,
 )
 from pge.shared.seeding import session_seed
 
@@ -87,52 +85,69 @@ class Generator:
         
         Returns:
             dict: dati YAML preprocessati
-
+            
         Raises:
-            ConfigFileNotFoundError: se il file YAML non esiste. E' anche un
-                FileNotFoundError, che questa funzione ha sempre dichiarato:
-                chi lo catturava continua a catturarlo (issue #257).
-            ConfigParseError: se il file YAML è malformato, o se i suoi
-                byte non sono UTF-8/UTF-16 (il file si legge in binario e la
-                decodifica e' di PyYAML, non del locale). E' anche uno
-                yaml.YAMLError, idem.
-
-            Il perimetro tradotto e' quello, e si ferma li' di proposito: un
-            path che esiste ma non e' un file di configurazione -- una
-            directory, un file senza permessi -- resta l'OSError grezzo che
-            `open()` solleva, e la CLI lo mostra dal ramo generico invece di
-            chiamarlo «configurazione mancante». Il confine e' fissato da
-            tests/engine/test_config_loading_errors.py, non lasciato al caso.
+            ConfigFileNotFoundError: se il file YAML non esiste. Eredita
+                anche FileNotFoundError (issue #257), quindi chi catturava
+                il builtin continua a catturarlo.
+            ConfigParseError: se il file YAML è malformato o non
+                decodificabile in UTF-8 (l'encoding della specifica YAML,
+                dichiarato esplicitamente nell'open). Eredita anche
+                yaml.YAMLError, per la stessa ragione.
+            ConfigReadError: se il file c'è ma il sistema operativo non lo
+                apre — una directory al posto del file, permessi negati.
+                Eredita anche OSError, per la stessa ragione.
         """
-        # Byte, non testo: la decodifica e' di PyYAML, non del locale.
-        # `open(path, 'r')` decodifica con `locale.getpreferredencoding()`
-        # nel layer di testo, cioe' prima che PyYAML veda alcunche', e ne
-        # esce un `UnicodeDecodeError` grezzo -- che non e' uno
-        # `yaml.YAMLError` e non e' un `OSError`, quindi non cade ne' nel
-        # perimetro tradotto qui sotto ne' in quello lasciato fuori di
-        # proposito: finiva nel ramo generico della CLI, messaggio piu'
-        # traceback. Due guasti in uno: sotto `LC_ALL=C` quel locale e'
-        # ASCII, e i config accentati di questo repo non si caricavano
-        # affatto. YAML 1.1 prescrive UTF-8 o UTF-16 e PyYAML le riconosce
-        # dal BOM: la codifica del file torna un fatto del file, e un byte
-        # che non torna diventa un ReaderError, cioe' uno `yaml.YAMLError`
-        # che passa dalla porta che esiste gia'.
+        # Il try avvolge il solo caricamento dello YAML, e questo e' un
+        # vincolo, non una comodita': ogni altro `open()` che finisse qui
+        # dentro uscirebbe travestito da configurazione mancante o
+        # illeggibile -- e da qui esce ogni `OSError`, non piu' il solo
+        # `FileNotFoundError`, quindi il vincolo e' piu' stretto di prima.
+        # E' la forma
+        # esatta del difetto che la #257 chiude un livello piu' su, dove
+        # `cli.main()` catturava il builtin per estensione del blocco.
         try:
-            handle = open(self.yaml_path, 'rb')
-        except FileNotFoundError as err:
-            # La conversione sta sulla sola open(), non sul blocco che la
-            # contiene (issue #257): l'errore di dominio deve nascere dal file
-            # che il messaggio nomina. Allargarla a tutto il caricamento
-            # rifarebbe il difetto che questa issue chiude -- una garanzia
-            # per posizione invece che per tipo -- solo un piano piu' giu'.
-            raise ConfigFileNotFoundError(self.yaml_path) from err
-
-        with handle as f:
-            try:
+            # `encoding` esplicito, non il preferito del processo: lo YAML e'
+            # UTF-8 per specifica, `open(path, 'r')` no -- decodifica nel
+            # locale, che su Windows e' cp1252 e sotto un locale C senza PEP
+            # 540 e' ascii. La differenza non e' teorica: tredici dei
+            # `configs/*.yml` di questo repository portano byte non-ASCII, e
+            # senza questa parola un file valido usciva di qui come
+            # `ConfigParseError` -- «File di configurazione malformato» su un
+            # file che non ha niente che non va, cioe' la peggiore delle due
+            # diagnosi possibili. Su cp1252, che ogni byte lo decodifica, non
+            # c'e' nemmeno l'errore: i valori stringa arrivano storpiati in
+            # silenzio.
+            with open(self.yaml_path, 'r', encoding='utf-8') as f:
                 raw_data = yaml.safe_load(f)
-            except yaml.YAMLError as err:
-                raise ConfigParseError.from_yaml_error(
-                    self.yaml_path, err) from err
+        except FileNotFoundError as err:
+            raise ConfigFileNotFoundError(self.yaml_path) from err
+        except yaml.YAMLError as err:
+            # Le factory, non il costruttore: la sottoclasse restituita eredita
+            # anche il tipo *concreto* della causa, cosi' un
+            # `isinstance(e, yaml.MarkedYAMLError)` o un
+            # `except IsADirectoryError` scritti a valle continuano a
+            # funzionare come quando `load_yaml` lasciava salire il builtin.
+            raise config_parse_error(self.yaml_path, err) from err
+        except UnicodeDecodeError as err:
+            # Il terzo modo in cui un file di config non si legge. `open()` e'
+            # in modalita' testo e su UTF-8, quindi la decodifica la fa Python
+            # e un file salvato in latin-1 esce di qui prima che PyYAML veda
+            # un byte;
+            # aperto in binario sarebbe stato PyYAML a rifiutarlo, con un
+            # `yaml.reader.ReaderError` -- cioe' un `yaml.YAMLError`. Stesso
+            # guasto, stesso tipo.
+            raise config_parse_error(self.yaml_path, err) from err
+        except OSError as err:
+            # E tutti gli altri: `IsADirectoryError` (`pge configs/ out.wav`,
+            # il typo che la tab-completion fabbrica da sola),
+            # `PermissionError`, il resto di `OSError`. Sta dopo il ramo
+            # `FileNotFoundError`, che di `OSError` e' una sottoclasse: erano
+            # gli ultimi del percorso di caricamento a uscire come traceback
+            # dal ramo generico della CLI, cioe' l'enumerazione dei modi in
+            # cui un file di config non si legge era incompleta proprio sul
+            # caso piu' probabile.
+            raise config_read_error(self.yaml_path, err) from err
 
         self.data = self._eval_math_expressions(raw_data)
         # Seed top-level opzionale (issue #81): None se assente (il session

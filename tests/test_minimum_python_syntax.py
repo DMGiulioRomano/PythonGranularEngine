@@ -11,11 +11,14 @@ ma **nessuno sviluppa su 3.9**: in locale si lavora sull'interprete corrente,
 dove `str | None` in una firma e' legale, e il rosso arriva solo dal job piu'
 vecchio della matrice -- un'ora dopo, su una PR che in locale era verde.
 
-E' successo davvero, dentro la #257: `tests/test_cli_builtin_handlers.py`
--- cioe' proprio la guardia che tiene in piedi la regola della issue --
+E' successo davvero, dentro la #257: la guardia AST sugli `except` di
+`cli.py` -- cioe' proprio quella che tiene in piedi la regola della issue --
 dichiarava `-> str | None` senza `from __future__ import annotations`, e su
 3.9 esplodeva in raccolta con un `TypeError`. Il file non veniva importato
-affatto: la guardia non falliva, semplicemente non esisteva piu'.
+affatto: la guardia non falliva, semplicemente non esisteva piu'. (Quel file
+e' poi confluito in `tests/test_cli_no_builtin_handlers.py`, che le
+annotazioni non le usa affatto -- il che chiude il caso singolo e lascia in
+piedi la ragione per cui questo modulo esiste.)
 
 Che cosa si valuta e quando, perche' la guardia non e' piu' larga del vero:
 

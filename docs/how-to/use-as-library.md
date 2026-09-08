@@ -3,8 +3,8 @@ slug: use-as-library
 type: how-to
 status: stable
 tags: [api, library, install, render]
-sources: [src/pge/api.py, src/pge/engine/generator.py, src/pge/shared/exceptions.py, pyproject.toml]
-last_synced_commit: aeb0b3c
+sources: [src/pge/api.py, pyproject.toml]
+last_synced_commit: 8c50e18
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 
@@ -95,24 +95,16 @@ passare dalla CLI né monkey-patchare i globali.
 
 6. Errori: catturare `pge.EngineError` (gerarchia con `user_message()`);
    argomenti API invalidi sollevano `ValueError` (es. `audio_format`
-   stringa ignota).
-
-   Dalla issue #257 **anche i due guasti del caricamento stanno in quella
-   gerarchia**: lo YAML che non esiste è `ConfigFileNotFoundError`, quello
-   che il parser rifiuta (sintassi, o byte non UTF-8/UTF-16) è
-   `ConfigParseError`. Entrambi hanno `user_message()`, quindi un solo
-   `except pge.EngineError` copre il caricamento come copre tutto il resto —
-   un ramo `except FileNotFoundError` scritto accanto ad esso è codice morto,
-   perché arriva secondo. Le due classi restano rispettivamente un
-   `FileNotFoundError` e uno `yaml.YAMLError` (era ciò che `load_generator`
-   dichiarava nei `Raises`, e chi le catturava così continua a catturarle);
-   `ConfigFileNotFoundError` valorizza anche `errno`, `strerror` e `filename`
-   come li avrebbe riempiti `open()`.
-
-   Quello che **non** è tradotto: un path che esiste ma non è un file di
-   configurazione — una directory, un file senza permessi — resta l'`OSError`
-   grezzo di `open()`. È un confine dichiarato, non una dimenticanza: vedi
-   [[errors]].
+   stringa ignota). Il file YAML mancante è `ConfigFileNotFoundError`, quello
+   malformato o non decodificabile `ConfigParseError`, e quello che il sistema
+   operativo non apre — una directory al posto del file, permessi negati —
+   `ConfigReadError` (#257): tutti e tre sono `EngineError`, quindi un
+   solo `except` li copre insieme a tutto il resto, e tutti e tre ereditano
+   anche il builtin che sostituiscono (`FileNotFoundError`, `yaml.YAMLError`,
+   `OSError`) e, quando la causa ne ha uno, il suo tipo **concreto**
+   (`IsADirectoryError`, `yaml.MarkedYAMLError`, `UnicodeDecodeError`) — chi
+   li catturava per nome non deve cambiare niente. Sono anche picklabili, come
+   i builtin che sostituiscono: attraversano un confine di processo.
 
 7. Csound: `renderer='csound'` con knob raggruppati in
    `api.CsoundOptions(orc_path=..., ssdir=..., sco_dir=...)`;
