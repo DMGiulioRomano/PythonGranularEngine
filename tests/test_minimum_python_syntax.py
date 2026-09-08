@@ -46,29 +46,64 @@ cui un or bit a bit non ha mai senso.
 
 Quella meta' pero' non basta, perche' il sintomo che questo file commemora ha
 due cause e non una. Un'annotazione PEP 604 muore alla `def`; una `match`, un
-`except*`, un `type X = int`, una f-string annidata muoiono un momento prima,
-alla compilazione -- e l'esito e' lo stesso identico: il file non viene
-importato, il test che conteneva sparisce invece di fallire, e il rosso arriva
-solo dal job piu' vecchio della matrice. Cercare la sola PEP 604 avrebbe
-lasciato fuori la classe piu' numerosa (tutta la sintassi nuova dalla 3.10 in
-poi) proprio mentre dichiarava di sorvegliare il minimo. La seconda meta' non
-si scrive a mano: `ast.parse(..., feature_version=minimo)` chiede al parser di
-casa, ed e' il parser a dire di no.
+`except*`, un `type X = int` muoiono un momento prima, alla compilazione -- e
+l'esito e' lo stesso identico: il file non viene importato, il test che
+conteneva sparisce invece di fallire, e il rosso arriva solo dal job piu'
+vecchio della matrice. Cercare la sola PEP 604 avrebbe lasciato fuori la
+classe piu' numerosa (tutta la sintassi nuova dalla 3.10 in poi) proprio
+mentre dichiarava di sorvegliare il minimo. La seconda meta' non si scrive a
+mano: `ast.parse(..., feature_version=minimo)` chiede al parser di casa, ed e'
+il parser a dire di no.
+
+E la seconda meta' ha un buco, che vale la pena raccontare perche' e' il
+difetto di questo file ripetuto un piano piu' su. Le f-string di PEP 701
+(`f"{d["k"]}"`, `f"{'\\n'.join(a)}"`, un commento nel campo) sulla 3.9 sono
+un errore di sintassi come le altre, ma `feature_version` le vede **solo
+fino alla 3.11**: dalla 3.12 la PEP ha riscritto il tokenizer, la f-string non
+e' piu' un unico token da ri-analizzare e su quel pezzo il parser non ha piu'
+presa. Cioe' la guardia era cieca proprio sull'interprete su cui si sviluppa
+-- il Makefile installa python3.12 -- ed era invisibile in locale per la
+stessa ragione per cui lo era il difetto originale: nessuno esegue la matrice
+sul proprio portatile.
+
+La terza lettura (`_fstring_pep701`) la chiude col tokenizer di casa, che i
+confini dei campi e il delimitatore li dichiara da se'; l'unico elenco
+scritto a mano e' quello dei divieti che PEP 701 ha **tolto**, ed e' chiuso
+perche' la PEP e' conclusa. Sotto la 3.12 quei token non esistono e la
+lettura tace, sopra la 3.12 tace il parser: sono complementari per
+costruzione, e la tabella dei verdetti e' una sola -- i job vecchi della
+matrice la verificano col parser, i nuovi col tokenizer.
 
 La soglia non e' trascritta qui: si legge da `requires-python`. Il giorno in
-cui il minimo passa a 3.10 la meta' su PEP 604 si spegne da sola; la meta'
-sulla grammatica no -- si limita ad alzare l'asticella con lui.
+cui il minimo passa a 3.10 la meta' su PEP 604 si spegne da sola, a 3.12 si
+spegne quella sulle f-string; la meta' sulla grammatica no -- si limita ad
+alzare l'asticella con lui.
 """
 
 import ast
+import io
 import os
 import re
+import sys
+import tokenize
 
 import pytest
 
 
 RADICE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CARTELLE = ('src', 'tests', 'utils')
+
+# Da 3.12 una f-string non e' piu' un unico token STRING: il tokenizer la
+# apre con FSTRING_START (prefisso + delimitatore), chiude con FSTRING_END, e
+# in mezzo emette i token dell'espressione. Assenti = interprete <= 3.11, dove
+# la domanda non si pone perche' `feature_version` risponde ancora.
+FSTRING_START = getattr(tokenize, 'FSTRING_START', None)
+FSTRING_MIDDLE = getattr(tokenize, 'FSTRING_MIDDLE', None)
+FSTRING_END = getattr(tokenize, 'FSTRING_END', None)
+
+# PEP 701 (3.12) ha rimosso tre divieti dal campo di sostituzione. La versione
+# in cui sono caduti, cioe' la soglia sotto la quale valgono ancora.
+PEP701 = (3, 12)
 
 
 def _minimo_dichiarato():
@@ -186,6 +221,81 @@ def _grammatica_troppo_nuova(percorso, minimo):
     return None
 
 
+def _fstring_pep701(sorgente, minimo):
+    """Motivo se il sorgente usa una f-string che solo dalla 3.12 e' legale,
+    altrimenti None.
+
+    Esiste perche' la meta' sulla grammatica ha un buco che *dipende
+    dall'interprete di chi la esegue*, cioe' il difetto stesso che questo
+    modulo commemora. Fino alla 3.11 `ast.parse(..., feature_version=(3, 9))`
+    rifiuta le f-string di PEP 701; dalla 3.12 no -- la PEP ha riscritto il
+    tokenizer, la f-string non e' piu' un unico token da ri-analizzare, e
+    `feature_version` su quel pezzo non ha piu' presa. Misurato: su 3.11 il
+    parser vede `f"{d["k"]}"`, `f"{'\\n'.join(a)}"` e il commento nel campo;
+    su 3.12 li accetta tutti e tre in silenzio. La 3.12 e' l'interprete che
+    il Makefile installa e su cui si sviluppa: la classe di guasto piu'
+    probabile era invisibile proprio dove si scrive il codice.
+
+    Non e' un elenco di costrutti da tenere aggiornato -- l'obiezione che
+    l'altra meta' evita delegando al parser. E' l'elenco dei divieti che
+    PEP 701 ha **tolto**, ed e' chiuso perche' la PEP e' conclusa: nel campo
+    di sostituzione non potevano comparire il delimitatore della f-string,
+    un backslash, un commento, e (fuori dalle triplici) un a capo. Confini
+    dei campi e delimitatore non li indovina questa funzione: li dichiara il
+    tokenizer di casa, con FSTRING_START/MIDDLE/END.
+
+    Le due letture sono complementari per costruzione, non ridondanti: sotto
+    la 3.12 quei token non esistono e questa tace, sopra la 3.12 il parser
+    tace e parla questa.
+    """
+    if FSTRING_START is None or minimo >= PEP701:
+        return None
+    try:
+        token = list(tokenize.generate_tokens(io.StringIO(sorgente).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None  # illeggibile qui: e' l'altra meta' a doverlo dire
+
+    aperte = []
+    for t in token:
+        if t.type == FSTRING_START:
+            motivo = _fuori_legge(t, aperte)
+            if motivo is not None:
+                return motivo
+            # Il delimitatore e' la coda del token: da `rf"""` a `"""`.
+            aperte.append(t.string[t.string.index(t.string[-1]):])
+        elif t.type == FSTRING_END:
+            if aperte:
+                aperte.pop()
+        elif aperte and t.type != FSTRING_MIDDLE:
+            motivo = _fuori_legge(t, aperte)
+            if motivo is not None:
+                return motivo
+    return None
+
+
+def _fuori_legge(t, aperte):
+    """Il token viola uno dei quattro divieti caduti con PEP 701?
+
+    `aperte` sono i delimitatori delle f-string che lo contengono (una lista,
+    non un valore: `f"{f'{a}'}"` ne annida due, e il divieto vale per ognuna).
+    FSTRING_MIDDLE -- il testo letterale fra un campo e l'altro -- non passa
+    di qui: li' backslash e virgolette erano leciti anche prima.
+    """
+    if not aperte:
+        return None
+    if t.type == tokenize.COMMENT:
+        return "commento dentro il campo di una f-string"
+    if (t.type in (tokenize.NL, tokenize.NEWLINE)
+            and any(len(d) == 1 for d in aperte)):
+        return "campo su piu' righe in una f-string non triplice"
+    if '\\' in t.string:
+        return "backslash dentro il campo di una f-string"
+    for delimitatore in aperte:
+        if delimitatore in t.string:
+            return "delimitatore riusato dentro il campo di una f-string"
+    return None
+
+
 def test_requires_python_e_leggibile():
     """Senza la soglia la guardia non saprebbe quando tacere: e se
     `requires-python` sparisse, tacerebbe per sempre senza dirlo."""
@@ -273,11 +383,20 @@ def test_nessuna_grammatica_oltre_il_minimo_dichiarato():
     `type X = int` muoiono alla compilazione. Il file non viene importato in
     entrambi i casi, quindi la guardia che conteneva sparisce invece di
     fallire: e' la stessa forma di guasto, un momento prima.
+
+    Due letture, complementari per costruzione: il parser (`feature_version`)
+    e, per le sole f-string, il tokenizer. La seconda esiste perche' la prima
+    ha un buco che dipende dall'interprete di chi la esegue -- da 3.12
+    `feature_version` non gate piu' PEP 701 -- e quel buco cadeva proprio
+    sulla versione su cui si sviluppa. Vedi `_fstring_pep701`.
     """
     minimo = _minimo_dichiarato()
     colpevoli = []
     for percorso in sorted(_sorgenti()):
-        motivo = _grammatica_troppo_nuova(percorso, minimo)
+        with open(percorso, encoding='utf-8') as f:
+            sorgente = f.read()
+        motivo = (_grammatica_troppo_nuova(percorso, minimo)
+                  or _fstring_pep701(sorgente, minimo))
         if motivo is not None:
             colpevoli.append(f"{os.path.relpath(percorso, RADICE)}: {motivo}")
 
@@ -290,6 +409,71 @@ def test_nessuna_grammatica_oltre_il_minimo_dichiarato():
         "cosa scritta in una forma che la versione minima conosce, oppure "
         "alzare `requires-python`."
     )
+
+
+# Il corpus delle f-string, con il verdetto atteso: `True` = la 3.9 la
+# rifiuta. La tabella e' una sola, e le due meta' della matrice CI la
+# verificano da due lati opposti -- i job <= 3.11 col parser vero, quelli
+# >= 3.12 col tokenizer -- il che e' l'unico modo di pinnare una lettura che
+# sul proprio interprete non ha oracolo. I verdetti qui sotto vengono da
+# `ast.parse(..., feature_version=(3, 9))` su 3.11, non da memoria.
+CORPUS_FSTRING = (
+    ('x = f"{d["k"]}"\n', True),
+    ('x = f"{\'\\n\'.join(a)}"\n', True),
+    ('x = f"{a # nota\n}"\n', True),
+    ('x = f"{\n  a\n}"\n', True),
+    ('x = f"{f"{a}"}"\n', True),
+    ('x = f"{a}"\n', False),
+    ('x = f"{d[\'k\']}"\n', False),
+    ('x = f"{a!r:>{w}}"\n', False),
+    ('x = f"{a:{w}.{p}f}"\n', False),
+    ('x = f"{ {1:2}[1] }"\n', False),
+    ('x = f"{\'#\'}"\n', False),          # il cancelletto in una stringa non e' un commento
+    ('x = f"""{a\n+ b}"""\n', False),     # il campo multilinea nelle triplici era gia' lecito
+    ('x = f"""{d["k"]}"""\n', False),     # una virgoletta sola non chiude `"""`
+    ('x = f"{a}" f"{b}"\n', False),
+    ('x = rf"\\d{a}"\n', False),          # backslash fuori dal campo
+    ('x = f"\\n{a}"\n', False),
+    ('x = f"{f\'{a}\'}"\n', False),
+)
+
+
+def test_le_due_letture_insieme_coprono_le_fstring_di_pep701():
+    """La guardia misurata, sull'unico punto che non ha un oracolo in casa.
+
+    Il verdetto che conta e' quello **congiunto**: parser piu' tokenizer. Su
+    un interprete <= 3.11 risponde il parser e il tokenizer tace (i token
+    FSTRING_* non esistono); dalla 3.12 in poi e' il contrario. Chiedere alla
+    coppia di riprodurre la tabella su *ogni* interprete e' cio' che fa
+    parlare i job vecchi della matrice a garanzia dei nuovi e viceversa: se
+    una delle due meta' smettesse di vedere, la sua meta' di matrice
+    diventerebbe rossa invece di diventare silenziosa -- che e' esattamente
+    il guasto per cui questo modulo esiste.
+
+    Se `requires-python` salisse a 3.12 la domanda non avrebbe piu' oggetto,
+    e infatti `_fstring_pep701` si spegne da sola; il test la segue.
+    """
+    import tempfile
+
+    minimo = _minimo_dichiarato()
+    if minimo >= PEP701:
+        pytest.skip(f"requires-python e' {minimo[0]}.{minimo[1]}: le f-string "
+                    "di PEP 701 sono legali ovunque, la lettura non ha oggetto")
+
+    sbagliati = []
+    with tempfile.TemporaryDirectory() as d:
+        for i, (sorgente, illegale) in enumerate(CORPUS_FSTRING):
+            percorso = os.path.join(d, f'caso{i}.py')
+            with open(percorso, 'w', encoding='utf-8') as f:
+                f.write(sorgente)
+            visto = (_grammatica_troppo_nuova(percorso, minimo)
+                     or _fstring_pep701(sorgente, minimo))
+            if (visto is not None) != illegale:
+                sbagliati.append((sorgente, illegale, visto))
+
+    assert not sbagliati, (
+        "la coppia parser+tokenizer non riproduce piu' i verdetti della 3.9 "
+        f"su {sys.version_info.major}.{sys.version_info.minor}: {sbagliati}")
 
 
 def test_la_guardia_sulla_grammatica_vede_il_costrutto_nuovo():
