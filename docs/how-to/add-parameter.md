@@ -6,7 +6,7 @@ tags: [parameters, schema, extension]
 sources:
   - src/pge/parameters/parameter_definitions.py
   - src/pge/parameters/parameter_schema.py
-last_synced_commit: 8c896d8
+last_synced_commit: 4bfc074
 entry_for: [add-parameter]
 ---
 
@@ -21,11 +21,17 @@ Hai un parametro nuovo da accettare a livello stream o sub-blocco YAML (es. nuov
 - Conoscenza schema parametri ([[yaml]] § Parameter Syntax)
 - Bounds del parametro decisi (min, max, default, unità)
 - Decisione: accetta envelope o solo scalare? Se envelope → leggi anche [[make-parameter-envelope-aware]]
+- Se ha un `_range`: la banda è sempre assoluta, o ha senso dichiararla come
+  frazione del valore base? Nel secondo caso lo spec porta anche un
+  `range_unit_path` (es. `grain.duration_range_unit`), e il dominio del range
+  diventa `RELATIVE_RANGE_BOUNDS` invece di quello del parametro. Vale la pena
+  solo dove la base spazia su più ordini di grandezza — vedi [[yaml]] § Banda
+  relativa
 
 ## Passi
 
 1. Aggiungi la definizione (bounds) in `src/pge/parameters/parameter_definitions.py`
-2. Aggiungi la entry di schema in `src/pge/parameters/parameter_schema.py` (`STREAM_PARAMETER_SCHEMA` o sotto-schema appropriato)
+2. Aggiungi la entry di schema in `src/pge/parameters/parameter_schema.py` (`STREAM_PARAMETER_SCHEMA` o sotto-schema appropriato), con `range_path` e — se serve — `range_unit_path`
 3. Accedi al parametro nel `Stream` o controller via `self.parameter_name.evaluate(time)`
 4. Aggiungi test unit per il bound + test di parsing con valore valido e fuori range
 5. Aggiorna [[yaml]] § Tabella Bounds Parametri con la nuova riga

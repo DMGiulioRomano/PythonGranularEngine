@@ -10,6 +10,46 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **`grain.duration_range` può essere una frazione della durata del grano**
+  (issue #267). La chiave `grain.duration_range_unit: absolute | relative`
+  (default `absolute`, quindi nessuno YAML esistente si rilegge diversamente)
+  dichiara in che cosa la larghezza della banda è misurata: nell'unità del
+  parametro, come sempre, oppure come frazione del valore base a
+  quell'istante — letta perciò *dopo* l'envelope della `duration`.
+
+  Serve dove la base spazia su più ordini di grandezza. Nello studio da cui la
+  issue nasce `grain.duration` va da 1 campione (~0.021 ms) a 500 ms: una banda
+  assoluta è molte volte la durata sui grani corti — dove poi il clamp a 1
+  campione la taglia — e percentualmente trascurabile sui lunghi, così che
+  lungo lo sweep il *carattere* della dispersione cambia da solo, pur non
+  avendo mosso `duration_range`. All'ascolto l'effetto dell'asse si confonde
+  con l'effetto collaterale del range. Con `relative` la dispersione resta
+  quella scritta: `0.5` è ±25% della durata corrente, a 1 ms come a 500 ms.
+
+  La frazione vive in `[0, 1]` — dominio della modalità, non del parametro — e
+  le due ancore la consumano diversamente: `center` dà ±50% al massimo,
+  `min` dà `[base, 2·base]`. Sotto `center` il pavimento della banda non scende
+  mai sotto `base/2`, cioè una banda relativa non può collassare sul minimo del
+  parametro, che è poi la ragione per cui esiste. Sotto `min` il controllo del
+  tetto al parse diventa moltiplicativo (`base · (1 + range)`): la somma
+  lasciava passare in silenzio proprio le bande larghe, perché sommava una
+  frazione a una durata.
+
+  Due trappole chiuse esplicitamente. `duration_unit` **non** converte una
+  frazione — convertirla renderebbe `duration_range: 0.5` sotto
+  `duration_unit: samples` un `0.5/48000` muto, senza errore né warning da
+  leggere nel file. E `duration_range_unit: relative` **senza**
+  `duration_range` è un `MissingFieldError` al parse, non una chiave inerte:
+  al posto della banda subentrerebbe il jitter implicito, che è assoluto,
+  cioè esattamente ciò che si stava cercando di evitare.
+
+  Il meccanismo è dichiarativo (`ParameterSpec.range_unit_path`) ma cablato
+  oggi sul solo `grain.duration_range`: è l'unico parametro la cui base spazia
+  per costruzione da 1 campione a 10 secondi, mentre su `volume` (dB) e `pan`
+  (gradi) la scala è già logaritmica o ciclica e una frazione della base non
+  direbbe la stessa cosa. `VARIATION_SEMANTICS_VERSION` non si muove: a chiave
+  assente la lettura è quella di prima.
+
 - **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
   pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
   che *contengono* `load_yaml()`, ed era la lettura giusta per il difetto che
