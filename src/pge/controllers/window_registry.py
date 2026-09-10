@@ -49,7 +49,7 @@ una quinta e' una riga di catalogo e nessuna riga di emitter.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import List, Mapping, Optional, Tuple
 
@@ -85,8 +85,6 @@ ASYMMETRIC = 'asymmetric'
 
 VALID_SYMMETRIES = frozenset({SYMMETRIC, ASYMMETRIC})
 
-_NO_PARAMS: Mapping[str, float] = MappingProxyType({})
-
 
 @dataclass(frozen=True)
 class WindowSpec:
@@ -111,7 +109,17 @@ class WindowSpec:
     family: str = "window"
     symmetry: str = SYMMETRIC
     coefficients: Tuple[float, ...] = ()
-    params: Mapping[str, float] = _NO_PARAMS
+    # `default_factory` e non un mappingproxy vuoto condiviso: su Python 3.11
+    # `dataclasses` rifiuta come default qualunque valore non hashable, e un
+    # mappingproxy non lo e' -- `ValueError: mutable default ... use
+    # default_factory` alla *definizione* della classe, quindi il modulo non
+    # si importava affatto. Solo la 3.11: la 3.10 controlla i tipi mutabili
+    # noti (list, dict, set) e la 3.12 ha ristretto il controllo di nuovo, il
+    # che rende questa la classe di difetto che il gate locale non vede --
+    # gira su un interprete alla volta. `__post_init__` avvolge comunque il
+    # dict in `MappingProxyType`, quindi la sola cosa che cambia e' che ogni
+    # spec parte dal suo dict vuoto invece che da uno condiviso.
+    params: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.shape not in WindowShape.ALL:
