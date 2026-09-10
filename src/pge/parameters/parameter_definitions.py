@@ -115,8 +115,10 @@ def range_unit_is_relative(unit) -> bool:
     il path YAML della chiave e sa quindi nominarla nell'errore
     (ParameterOrchestrator); qui una grafia sbagliata legge come non-relativa e
     l'errore arriva comunque, dal punto che sa dirlo bene. Una grafia sola per
-    "e' relativo", condivisa fra il pre-normalizzatore delle unita' dello
-    Stream e l'orchestratore.
+    "e' relativo", condivisa da tutti e tre i lettori: il pre-normalizzatore
+    delle unita' dello Stream, l'orchestratore e il parser — quest'ultimo
+    l'unico a leggerla su un valore gia' validato, e proprio per questo quello
+    dove un confronto scritto a mano sarebbe passato inosservato.
     """
     return unit == RANGE_UNIT_RELATIVE
 

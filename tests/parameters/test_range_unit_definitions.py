@@ -231,3 +231,70 @@ class TestTettoDellaBandaRelativa:
                 'grain_duration', 9.5, 0.9, range_unit=RANGE_UNIT_ABSOLUTE)
         assert 'base + range' in ass.value.user_message()
         assert 'base * (1 + range)' not in ass.value.user_message()
+
+
+# =============================================================================
+# UNA GRAFIA SOLA PER «E' RELATIVO»
+# =============================================================================
+
+class TestUnaSolaGrafiaDelPredicato:
+    """`range_unit_is_relative` deve restare l'unico modo di fare la domanda.
+
+    I lettori sono tre e stanno in tre strati diversi — il pre-normalizzatore
+    delle unita' (`core/stream.py`), l'orchestratore e il parser — e la
+    docstring del predicato lo dichiara. Un `unit == RANGE_UNIT_RELATIVE`
+    scritto a mano è una seconda copia della domanda: oggi risponde uguale, e
+    il giorno che il vocabolario prendesse un alias (come `loop_unit`, dove
+    `seconds` e `absolute` sono la stessa lettura) risponderebbe diverso in un
+    lettore su tre, in silenzio.
+
+    La guardia legge il sorgente come AST, non come testo: un confronto dentro
+    una stringa o un commento non è un confronto.
+    """
+
+    _MODULI = (
+        'pge/parameters/parser.py',
+        'pge/parameters/parameter_orchestrator.py',
+        'pge/core/stream.py',
+    )
+
+    def _confronti_col_letterale(self, path):
+        import ast
+        import pathlib
+
+        src = pathlib.Path(__file__).resolve().parents[2] / 'src' / path
+        albero = ast.parse(src.read_text(encoding='utf-8'))
+
+        def nomina_il_letterale(nodo):
+            return (isinstance(nodo, ast.Name)
+                    and nodo.id == 'RANGE_UNIT_RELATIVE') or (
+                    isinstance(nodo, ast.Attribute)
+                    and nodo.attr == 'RANGE_UNIT_RELATIVE')
+
+        trovati = []
+        for nodo in ast.walk(albero):
+            if not isinstance(nodo, ast.Compare):
+                continue
+            lati = [nodo.left, *nodo.comparators]
+            if any(nomina_il_letterale(lato) for lato in lati):
+                trovati.append(nodo.lineno)
+        return trovati
+
+    @pytest.mark.parametrize('modulo', _MODULI)
+    def test_nessun_confronto_scritto_a_mano(self, modulo):
+        righe = self._confronti_col_letterale(modulo)
+
+        assert righe == [], (
+            f"{modulo}: confronto diretto con RANGE_UNIT_RELATIVE alle righe "
+            f"{righe}. Usa range_unit_is_relative(unit).")
+
+    def test_la_guardia_vede_davvero_un_confronto(self):
+        """La guardia misurata su se stessa: senza, direbbe sempre di sì."""
+        import ast
+
+        albero = ast.parse("x = unit == RANGE_UNIT_RELATIVE\n")
+        compare = [n for n in ast.walk(albero) if isinstance(n, ast.Compare)]
+
+        assert len(compare) == 1
+        assert any(isinstance(l, ast.Name) and l.id == 'RANGE_UNIT_RELATIVE'
+                   for l in [compare[0].left, *compare[0].comparators])

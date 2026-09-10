@@ -17,8 +17,8 @@ from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.parameters.parameter_definitions import (
     RANGE_UNIT_DEFAULT,
-    RANGE_UNIT_RELATIVE,
     get_parameter_definition,
+    range_unit_is_relative,
     relative_range_bounds,
     validate_range_unit,
 )
@@ -115,7 +115,7 @@ class GranularParser:
         # applica DOPO i bounds, override compreso: e' un fatto della modalita',
         # non del parametro, e vale su qualunque provenienza dei bounds.
         unit = self._validated_range_unit(range_unit)
-        is_relative = unit == RANGE_UNIT_RELATIVE
+        is_relative = range_unit_is_relative(unit)
         if is_relative:
             bounds = relative_range_bounds(bounds)
 
