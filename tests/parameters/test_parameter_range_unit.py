@@ -138,3 +138,49 @@ class TestJitterImplicito:
 
         assert min(draws) >= 9.0 - 1e-9
         assert max(draws) <= 11.0 + 1e-9
+
+
+class TestBaseConSegno:
+    """La LARGHEZZA della banda non ha segno, la base si'.
+
+    `grain_duration` vive sopra lo zero, ma il meccanismo non e' suo: il parser
+    accetta `range_unit` su qualunque parametro, e i domini con segno esistono
+    gia' (`volume` in dB, da -120 a +12). Li' la frazione va letta sul MODULO
+    della base, o la larghezza esce negativa.
+
+    E una larghezza negativa non e' un errore rumoroso: `UniformDistribution`
+    con `spread <= 0` restituisce il centro, quindi la variazione sparirebbe
+    senza un'eccezione, senza un warning e senza niente nel file da cui
+    accorgersene — lo stesso difetto muto che la modalita' relativa chiude
+    altrove (`duration_unit` che convertiva la frazione).
+    """
+
+    _DB = dict(min_val=-120.0, max_val=12.0)
+
+    def test_su_base_negativa_la_banda_e_larga_quanto_il_modulo(self):
+        """-6 dB con frazione 0.5 -> banda larga 3 dB, cioe' -7.5 .. -4.5."""
+        p = _param(-6.0, 0.5, relative=True, bounds=_bounds(**self._DB))
+
+        draws = [p.get_value(0.0) for _ in range(N)]
+
+        assert min(draws) >= -7.5 - 1e-9
+        assert max(draws) <= -4.5 + 1e-9
+        # Il punto: la banda esiste ed e' a cavallo della base. Col segno
+        # sbagliato tutti i draw sarebbero esattamente -6.0.
+        assert min(draws) < -6.0 < max(draws)
+
+    def test_su_base_negativa_l_ancora_min_sale_comunque(self):
+        """`min` parte dalla base e sale: -6 dB con frazione 0.5 -> -6 .. -3.
+
+        Con la larghezza negativa la banda non salirebbe affatto: `min` e'
+        l'ancora dove il segno della larghezza si vede meglio, perche' li' la
+        banda e' tutta da una parte sola.
+        """
+        p = _param(-6.0, 0.5, relative=True, anchor=ANCHOR_MIN,
+                   bounds=_bounds(**self._DB))
+
+        draws = [p.get_value(0.0) for _ in range(N)]
+
+        assert min(draws) >= -6.0 - 1e-9
+        assert max(draws) <= -3.0 + 1e-9
+        assert max(draws) > -6.0
