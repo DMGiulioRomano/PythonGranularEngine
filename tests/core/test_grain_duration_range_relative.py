@@ -143,6 +143,14 @@ class TestErroriDalloStream:
 
         assert 'grain.duration_range_unit' in str(exc.value)
 
+    def test_grafia_vuota(self):
+        """La chiave c'e' e non dice niente: non e' il default assoluto."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            _make_stream({'duration': 0.1, 'duration_range': 0.5,
+                          'duration_range_unit': None})
+
+        assert 'grain.duration_range_unit' in str(exc.value)
+
     def test_relative_senza_range(self):
         with pytest.raises(MissingFieldError) as exc:
             _make_stream({'duration': 0.1, 'duration_range_unit': 'relative'})

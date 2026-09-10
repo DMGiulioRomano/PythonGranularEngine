@@ -223,9 +223,13 @@ class GranularParser:
     def _validated_range_unit(self, unit: Any) -> str:
         """Valida l'unita' del range attribuendo l'errore allo stream.
 
-        `None` significa "chiave non dichiarata" e vale il default assoluto: e'
+        `None` significa "unita' non dichiarata" e vale il default assoluto: e'
         il caso di ogni parametro che l'unita' non la prevede nemmeno, quindi
-        non puo' essere un errore.
+        qui non puo' essere un errore. Qui il parser riceve un *valore*, non
+        una chiave, e non ha modo di distinguere una chiave assente da una
+        scritta e lasciata vuota: quella distinzione la fa
+        `ParameterOrchestrator._range_unit_from_spec`, che lo YAML lo legge, e
+        una chiave vuota la rifiuta prima di arrivare fin qui.
 
         Il chiamante ordinario (ParameterOrchestrator) valida gia' la grafia
         col path YAML della chiave, e li' l'errore la nomina per esteso. Questo

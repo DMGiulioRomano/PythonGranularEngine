@@ -152,8 +152,10 @@ class Stream:
         )
         self._init_stream_context(params)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
-        # Da qui in poi grain.duration/duration_range sono in secondi,
-        # qualunque sia l'unita' dichiarata nello YAML.
+        # Da qui in poi grain.duration e' in secondi qualunque sia l'unita'
+        # dichiarata nello YAML, e con lei grain.duration_range — tranne dove
+        # quest'ultima e' una frazione della base (grain.duration_range_unit:
+        # relative, issue #267), che adimensionale era e adimensionale resta.
         params = self._pre_normalize_grain_params(params, config.context.output_sr)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)

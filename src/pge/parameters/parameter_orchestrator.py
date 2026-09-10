@@ -30,6 +30,15 @@ from pge.core.stream_config import StreamConfig
 from pge.shared.exceptions import ConfigError, MissingFieldError
 from pge.shared.seeding import component_rng
 
+#: Sentinella per "la chiave non c'e'", distinta da una chiave scritta e
+#: lasciata vuota (`duration_range_unit:` -> None nello YAML). Serve perche'
+#: `resolve_yaml_path` restituisce il default in entrambi i casi, e i due casi
+#: non vogliono dire la stessa cosa: assente e' nessuna richiesta, vuota e' una
+#: riga che qualcuno ha scritto e che nessuno legge. Vedi
+#: `_range_unit_from_spec`.
+_KEY_ABSENT = object()
+
+
 class ParameterOrchestrator:
     """
     Orchestratore: collega GranularParser e GateFactory senza accoppiarli.
@@ -121,12 +130,22 @@ class ParameterOrchestrator:
         evitare. Stessa regola di `grain.duration_unit`, che pretende una
         `grain.duration` esplicita per non lasciare base e range in due domini
         diversi.
+
+        Per la stessa ragione la chiave **assente** e la chiave **vuota** non
+        prendono la stessa strada. Assente vuol dire che nessuno ha chiesto
+        niente, e il default assoluto e' la risposta giusta. Vuota
+        (`duration_range_unit:`, cioe' `None`) vuol dire che qualcuno l'ha
+        scritta: leggerla come `absolute` sarebbe il default piu' muto
+        possibile — nel file non resta niente da cui accorgersi che la riga non
+        e' stata letta. La gemella `grain.duration_unit` una grafia vuota la
+        rifiuta gia'; qui la distinzione ha bisogno di una sentinella, perche'
+        `resolve_yaml_path` non ha modo di dire assente da nullo.
         """
         if not spec.range_unit_path:
             return RANGE_UNIT_DEFAULT
 
-        raw = resolve_yaml_path(yaml_data, spec.range_unit_path, None)
-        if raw is None:
+        raw = resolve_yaml_path(yaml_data, spec.range_unit_path, _KEY_ABSENT)
+        if raw is _KEY_ABSENT:
             return RANGE_UNIT_DEFAULT
 
         try:

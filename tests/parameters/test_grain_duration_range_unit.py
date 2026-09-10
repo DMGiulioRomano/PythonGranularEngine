@@ -106,6 +106,34 @@ class TestCablaggioDalloYaml:
         assert exc.value.stream_id == 's1'
 
 
+class TestChiaveVuota:
+    """`duration_range_unit:` scritta e lasciata vuota (nello YAML: `None`).
+
+    Non e' la chiave assente. Assente vuol dire che nessuno ha chiesto niente;
+    vuota vuol dire che qualcuno l'ha scritta e nessuno la legge — e nel file
+    non resta niente da cui accorgersene, che e' il modo piu' muto di
+    sbagliare. E' la stessa ragione per cui `relative` senza `duration_range`
+    e' un errore invece di una chiave inerte, ed e' gia' la regola della
+    gemella `grain.duration_unit`, che una grafia vuota la rifiuta.
+    """
+
+    def test_la_chiave_vuota_non_e_un_default_silenzioso(self):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            _grain_duration({'duration': 0.5, 'duration_range': 0.5,
+                             'duration_range_unit': None})
+
+        assert 'grain.duration_range_unit' in str(exc.value)
+        assert exc.value.stream_id == 's1'
+
+    def test_la_chiave_assente_resta_il_default(self):
+        """Il default vale per chi non ha scritto la chiave, non per chi
+        l'ha scritta a vuoto: le due strade restano distinte."""
+        p = _grain_duration({'duration': 0.5, 'duration_range': 0.5})
+        p.set_probability_gate(AlwaysGate())
+
+        assert max(p.get_value(0.0) for _ in range(300)) <= 0.75 + 1e-9
+
+
 class TestUnitaSenzaRange:
     """`duration_range_unit: relative` senza `duration_range` e' la stessa
     trappola di `duration_unit: samples` senza `duration`: chi la scrive crede

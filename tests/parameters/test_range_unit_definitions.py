@@ -137,6 +137,19 @@ class TestParserRangeUnit:
             self._parser().parse_parameter(
                 'volume', 0.0, 12.0, range_unit=RANGE_UNIT_RELATIVE)
 
+    def test_per_il_parser_none_resta_non_dichiarato(self):
+        """La distinzione assente/vuota vive nell'orchestratore, non qui.
+
+        Il parser riceve un valore, non una chiave: `None` e' la firma di ogni
+        chiamante che l'unita' non la prevede nemmeno (create_pitch_parameter,
+        il window controller), quindi qui non puo' essere un errore. Solo chi
+        legge lo YAML sa se quella chiave c'era.
+        """
+        p = self._parser().parse_parameter(
+            'grain_duration', 0.05, 0.01, range_unit=None)
+
+        assert p.get_value(0.0) == pytest.approx(0.05, abs=0.005)
+
     def test_una_grafia_ignota_arriva_attribuita_allo_stream(self):
         with pytest.raises(InvalidFieldValueError) as exc:
             self._parser().parse_parameter(
