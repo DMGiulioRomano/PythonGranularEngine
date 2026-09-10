@@ -35,13 +35,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lasciava passare in silenzio proprio le bande larghe, perché sommava una
   frazione a una durata.
 
-  Due trappole chiuse esplicitamente. `duration_unit` **non** converte una
+  Tre trappole chiuse esplicitamente. `duration_unit` **non** converte una
   frazione — convertirla renderebbe `duration_range: 0.5` sotto
   `duration_unit: samples` un `0.5/48000` muto, senza errore né warning da
-  leggere nel file. E `duration_range_unit: relative` **senza**
+  leggere nel file. `duration_range_unit: relative` **senza**
   `duration_range` è un `MissingFieldError` al parse, non una chiave inerte:
   al posto della banda subentrerebbe il jitter implicito, che è assoluto,
-  cioè esattamente ciò che si stava cercando di evitare.
+  cioè esattamente ciò che si stava cercando di evitare. E
+  `duration_range_unit` scritta e lasciata **vuota** è un
+  `InvalidFieldValueError`, non il default: assente vuol dire che nessuno ha
+  chiesto niente, vuota vuol dire che qualcuno ha scritto una riga che nessuno
+  legge — la stessa regola con cui la chiave gemella `grain.duration_unit`
+  rifiuta già una grafia vuota.
 
   Il meccanismo è dichiarativo (`ParameterSpec.range_unit_path`) ma cablato
   oggi sul solo `grain.duration_range`: è l'unico parametro la cui base spazia

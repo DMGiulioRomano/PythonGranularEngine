@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 4bfc074
+last_synced_commit: 1113c2a
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -454,6 +454,12 @@ per cui `range_anchor` non lo tocca: non c'è nessuna frazione dichiarata da
 reinterpretare. E proprio perché il jitter prenderebbe il suo posto in
 silenzio, dichiarare `relative` **senza** il `_range` che governa è un
 `MissingFieldError` al parse, non una chiave inerte.
+
+**Assente non è vuota.** Senza la chiave la banda è assoluta, che è il default.
+La chiave scritta e lasciata vuota (`duration_range_unit:`, cioè `null`) è
+invece un `InvalidFieldValueError`: qualcuno l'ha scritta, e leggerla come
+`absolute` non lascerebbe nel file niente da cui accorgersi che quella riga non
+è stata letta. È la stessa regola della chiave gemella `grain.duration_unit`.
 
 **In partitura** la curva `grain_duration_range` mostra il valore *dichiarato*:
 in modalità relativa è la frazione, non una durata.
