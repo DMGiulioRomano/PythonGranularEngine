@@ -64,6 +64,7 @@ class Parameter:
         distribution_mode: str = 'uniform',
         range_anchor: str = ANCHOR_CENTER,
         rng: Optional[random.Random] = None,
+        range_relative: bool = False,
     ):
         self.name = name
         self.owner_id = owner_id
@@ -72,6 +73,13 @@ class Parameter:
         self._bounds = bounds
         self._mod_range = mod_range
         self._probability_gate = NeverGate()
+        # Unita' del range dichiarato (issue #267): False = assoluto (la
+        # larghezza della banda e' il numero scritto), True = relativo (il
+        # numero e' una FRAZIONE del valore base, quindi la banda si misura
+        # solo dopo aver valutato la base a quell'istante). Asse ortogonale
+        # a range_anchor: quella dice dove cade la base dentro la banda,
+        # questa quanto la banda e' larga.
+        self._range_relative = bool(range_relative)
 
         # Ancora effettiva: `range_anchor` vale solo se un range è stato
         # dichiarato. Senza range esplicito si applica il jitter implicito
@@ -117,7 +125,7 @@ class Parameter:
         
         # 1. Valuta il valore base (Base Signal)
         base_val = self._evaluate_input(self._value, time)
-        current_range = self._calculate_range(time)
+        current_range = self._calculate_range(time, base_val)
         # 2. Check Probabilità (Gate)
         # Se il gate è chiuso, restituisci subito il base value (clippato)
         if not self._probability_gate.should_apply(time):
@@ -142,16 +150,35 @@ class Parameter:
         """Helper: Estrae il valore numerico da un numero o da un Envelope."""
         return resolve_param(param, time)
 
-    def _calculate_range(self, time: float) -> float:
-        """Calcola l'ampiezza della variazione."""
+    def _calculate_range(self, time: float, base_val: float = 0.0) -> float:
+        """Calcola l'ampiezza della variazione.
+
+        `base_val` serve solo in modalita' relativa (issue #267), dove la
+        larghezza della banda e' una frazione della base a quell'istante. Ha un
+        default perche' in modalita' assoluta la base non entra nel conto.
+        """
         # Scenario B: Se l'utente non ha messo range, usa il default (Jitter implicito)
+        # Il jitter implicito resta ASSOLUTO anche sotto range_relative: non c'e'
+        # nessuna frazione dichiarata da leggere. Stessa regola di range_anchor,
+        # che sul jitter non agisce per la ragione gemella.
         if self._mod_range is None:
             return self._bounds.default_jitter
         
         val = self._evaluate_input(self._mod_range, time)
         
-        # Limita il range stesso ai bounds di validità definiti per il range
-        return max(self._bounds.min_range, min(self._bounds.max_range, val))
+        # Limita il range stesso ai bounds di validità definiti per il range.
+        # Si clampa la FRAZIONE, non il prodotto: e' la frazione che l'utente ha
+        # scritto ed e' contro il suo dominio che il parser l'ha gia' validata
+        # al parse. Clampare il prodotto farebbe divergere le due letture.
+        val = max(self._bounds.min_range, min(self._bounds.max_range, val))
+
+        if not self._range_relative:
+            return val
+
+        # Una larghezza non ha segno: `abs` copre una base negativa (dominio con
+        # segno, o una cubica che scende sotto i propri breakpoint) senza
+        # trasformare la banda in un valore che AdditiveVariation scarterebbe.
+        return val * abs(base_val)
 
     def _clamp(self, value: float, time: float) -> float:
         """Applica i limiti di sicurezza (Min/Max) e logga se taglia."""
@@ -196,7 +223,11 @@ class Parameter:
 
     @property
     def range_curve(self) -> ParameterCurve:
-        """Come varia nel tempo la deviazione per-grano (absent senza range)."""
+        """Come varia nel tempo la deviazione per-grano (absent senza range).
+
+        E' il valore DICHIARATO, non la banda effettiva: in modalita' relativa
+        (issue #267) e' la frazione, non la larghezza in unita' della base.
+        """
         return ParameterCurve.classify(self._mod_range)
 
     @property
