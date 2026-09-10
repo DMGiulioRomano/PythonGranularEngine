@@ -82,3 +82,113 @@ class TestDominioDellaFrazione:
 
         assert relativo.min_val == pytest.approx(1.0 / 48000)
         assert (relativo.min_range, relativo.max_range) == RELATIVE_RANGE_BOUNDS
+
+
+# =============================================================================
+# PARSER: dall'unita' al Parameter
+# =============================================================================
+
+class TestParserRangeUnit:
+    """`GranularParser.parse_parameter(range_unit=...)` cabla i due effetti:
+    il dominio contro cui la frazione e' validata, e la modalita' del
+    Parameter costruito."""
+
+    def _parser(self, **cfg):
+        from pge.core.stream_config import StreamConfig, StreamContext
+        from pge.parameters.parser import GranularParser
+
+        ctx = StreamContext(stream_id='s1', onset=0.0, duration=4.0,
+                            sample='x.wav', sample_dur_sec=10.0)
+        return GranularParser(StreamConfig(context=ctx, **cfg))
+
+    def test_senza_unita_resta_assoluto(self):
+        p = self._parser().parse_parameter('grain_duration', 0.05, 0.01)
+
+        assert p.get_value(0.0) == pytest.approx(0.05, abs=0.005)
+
+    def test_relativo_produce_una_banda_frazionaria(self):
+        from pge.shared.probability_gate import AlwaysGate
+
+        p = self._parser().parse_parameter(
+            'grain_duration', 0.5, 0.5, range_unit=RANGE_UNIT_RELATIVE)
+        p.set_probability_gate(AlwaysGate())
+
+        draws = [p.get_value(0.0) for _ in range(400)]
+
+        # banda = 0.5 * 0.5 = 0.25, centrata su 0.5 -> 0.375 .. 0.625
+        assert min(draws) >= 0.375 - 1e-9
+        assert max(draws) <= 0.625 + 1e-9
+        assert max(draws) - min(draws) > 0.2
+
+    def test_una_frazione_fuori_dominio_e_un_errore_di_bounds(self):
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError):
+            self._parser().parse_parameter(
+                'grain_duration', 0.05, 1.5, range_unit=RANGE_UNIT_RELATIVE)
+
+    def test_il_dominio_relativo_non_e_quello_del_parametro(self):
+        """`volume` ammette 24 dB assoluti ma solo 1.0 di frazione."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        self._parser().parse_parameter('volume', 0.0, 12.0)   # assoluto: passa
+
+        with pytest.raises(ParameterBoundError):
+            self._parser().parse_parameter(
+                'volume', 0.0, 12.0, range_unit=RANGE_UNIT_RELATIVE)
+
+    def test_una_grafia_ignota_arriva_attribuita_allo_stream(self):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            self._parser().parse_parameter(
+                'grain_duration', 0.05, 0.5, range_unit='relativo')
+
+        assert exc.value.stream_id == 's1'
+
+
+# =============================================================================
+# TETTO DELLA BANDA (range_anchor: min)
+# =============================================================================
+
+class TestTettoDellaBandaRelativa:
+    """Con ancora `min` la banda arriva a `base * (1 + frazione)`, non a
+    `base + frazione`: sommare una frazione a una durata sarebbe sommare due
+    grandezze diverse, e il controllo al parse lascerebbe passare bande che
+    poi il safety clamp schiaccia contro il tetto, un warning per grano."""
+
+    def _parser(self, anchor):
+        from pge.core.stream_config import StreamConfig, StreamContext
+        from pge.parameters.parser import GranularParser
+
+        ctx = StreamContext(stream_id='s1', onset=0.0, duration=4.0,
+                            sample='x.wav', sample_dur_sec=10.0)
+        return GranularParser(StreamConfig(context=ctx, range_anchor=anchor))
+
+    def test_una_banda_che_sfora_il_massimo_e_un_errore(self):
+        """8 s con frazione 0.5 arriva a 12 s: oltre il tetto di 10 s.
+
+        La somma 8 + 0.5 non ci arriverebbe mai — e' il caso che il controllo
+        additivo lascerebbe passare in silenzio."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            self._parser('min').parse_parameter(
+                'grain_duration', 8.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
+
+        assert '12' in str(exc.value)
+
+    def test_una_banda_che_ci_sta_passa(self):
+        self._parser('min').parse_parameter(
+            'grain_duration', 4.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
+
+    def test_col_picco_dell_envelope_di_base(self):
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError):
+            self._parser('min').parse_parameter(
+                'grain_duration', [[0, 0.01], [4, 9.0]], 0.5,
+                range_unit=RANGE_UNIT_RELATIVE)
+
+    def test_sotto_ancora_center_il_controllo_non_scatta(self):
+        """Storico: con `center` la banda arriva a meta' e la gestisce il clamp."""
+        self._parser('center').parse_parameter(
+            'grain_duration', 8.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
