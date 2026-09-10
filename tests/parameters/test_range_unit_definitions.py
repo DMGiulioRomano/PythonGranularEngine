@@ -205,3 +205,29 @@ class TestTettoDellaBandaRelativa:
         """Storico: con `center` la banda arriva a meta' e la gestisce il clamp."""
         self._parser('center').parse_parameter(
             'grain_duration', 8.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
+
+    def test_l_errore_nomina_la_formula_che_ha_applicato(self):
+        """Il messaggio deve dire `base * (1 + range)`, non `base + range`.
+
+        E' l'unico modo che ha il lettore di rifare il conto: chi ha scritto
+        `8.0` e `0.5` e legge «base + range» ottiene 8.5 e non capisce da dove
+        venga il 12 dell'errore. La formula e' la meta' utile del messaggio, e
+        cambia con la modalita': in assoluto resta la somma.
+
+        Si legge su `user_message()`, non su `str()`: `value_type` sta nel
+        corpo strutturato, ed e' quello che la CLI stampa (`cli.py` -> `print(
+        err.user_message())`). Un test su `str()` non vedrebbe la formula
+        nemmeno quando c'e'.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as rel:
+            self._parser('min').parse_parameter(
+                'grain_duration', 8.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
+        assert 'base * (1 + range)' in rel.value.user_message()
+
+        with pytest.raises(ParameterBoundError) as ass:
+            self._parser('min').parse_parameter(
+                'grain_duration', 9.5, 0.9, range_unit=RANGE_UNIT_ABSOLUTE)
+        assert 'base + range' in ass.value.user_message()
+        assert 'base * (1 + range)' not in ass.value.user_message()
