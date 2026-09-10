@@ -28,9 +28,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   La frazione vive in `[0, 1]` — dominio della modalità, non del parametro — e
   le due ancore la consumano diversamente: `center` dà ±50% al massimo,
-  `min` dà `[base, 2·base]`. Sotto `center` il pavimento della banda non scende
-  mai sotto `base/2`, cioè una banda relativa non può collassare sul minimo del
-  parametro, che è poi la ragione per cui esiste. Sotto `min` il controllo del
+  `min` dà `[base, 2·base]`. Sotto `center` il pavimento è `base·(1 − r/2)` e
+  quindi si muove con la base invece di restare fermo — la ragione per cui la
+  modalità esiste — ma non è una garanzia di stare sopra il minimo del
+  parametro, che resta fisso: sotto `base < min_val / (1 − r/2)` (per
+  `grain_duration`, con `r = 1`, sotto i 2 campioni) è di nuovo il safety clamp
+  a tenere il pavimento. Sotto `min` il controllo del
   tetto al parse diventa moltiplicativo (`base · (1 + range)`): la somma
   lasciava passare in silenzio proprio le bande larghe, perché sommava una
   frazione a una durata.

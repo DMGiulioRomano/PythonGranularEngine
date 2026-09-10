@@ -156,3 +156,57 @@ class TestErroriDalloStream:
             _make_stream({'duration': 0.1, 'duration_range_unit': 'relative'})
 
         assert 'grain.duration_range' in str(exc.value)
+
+
+class TestIlPavimentoDellaBanda:
+    """Fin dove la banda relativa tiene il pavimento sopra il minimo.
+
+    La proprieta' per cui la modalita' esiste e' che il pavimento della banda
+    e' `base * (1 - r/2)`, quindi si muove con la base invece di restare fermo:
+    su un grano corto una banda assoluta lo trascina sotto il minimo del
+    parametro, una relativa lo tiene proporzionale.
+
+    Proporzionale non vuol dire pero' «sopra il minimo in ogni caso»: il
+    minimo di `grain_duration` e' un campione, quindi `base * (1 - r/2)` ci
+    finisce sotto appena `base < 1 campione / (1 - r/2)` — a `r = 1`, sotto i
+    2 campioni. E' l'estremo esatto dello sweep dell'issue (`0.021 ms` = un
+    campione), quindi la condizione va misurata, non promessa: quello che
+    resta e' il safety clamp, un warning per grano.
+    """
+
+    _UN_CAMPIONE = 1.0 / DEFAULT_OUTPUT_SR
+
+    def _durate(self, campioni, frazione):
+        s = _make_stream({
+            'duration': campioni,
+            'duration_unit': 'samples',
+            'duration_range': frazione,
+            'duration_range_unit': 'relative',
+        })
+        return [g.duration for g in flat_grains(s)]
+
+    def test_sopra_la_soglia_il_pavimento_e_quello_della_frazione(self):
+        """4 campioni con `r = 1`: il pavimento e' 2 campioni, nessun clamp."""
+        durate = self._durate(4, 1.0)
+
+        assert min(durate) > self._UN_CAMPIONE * 1.5
+        assert min(durate) >= self._UN_CAMPIONE * 2 - 1e-12
+        assert max(durate) <= self._UN_CAMPIONE * 6 + 1e-12
+
+    def test_sotto_la_soglia_il_clamp_taglia_meta_banda(self):
+        """1 campione con `r = 1`: il pavimento sarebbe mezzo campione.
+
+        Non essendoci mezzi campioni, il clamp lo riporta a uno e una buona
+        meta' dei grani ci si accumula sopra. La banda relativa attenua il
+        problema della banda assoluta, non lo cancella — ed e' il motivo per
+        cui `yaml.md` lo dichiara con la sua condizione invece che in assoluto.
+        """
+        durate = self._durate(1, 1.0)
+        sul_minimo = sum(1 for d in durate
+                         if abs(d - self._UN_CAMPIONE) < 1e-15)
+
+        assert min(durate) == pytest.approx(self._UN_CAMPIONE)
+        assert sul_minimo > len(durate) * 0.25
+        # ...e la banda sopravvive comunque: non e' collassata TUTTA sul minimo,
+        # che e' invece quel che fa una banda assoluta su un grano di 1 campione.
+        assert max(durate) > self._UN_CAMPIONE * 1.2

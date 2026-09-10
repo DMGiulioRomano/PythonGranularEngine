@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 1113c2a
+last_synced_commit: 5a5d1a9
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -443,11 +443,15 @@ due ancore la consumano in modi diversi.
 | `center` | `[base·(1 − r/2), base·(1 + r/2)]` | ±50% |
 | `min` | `[base, base·(1 + r)]` | +100% |
 
-Sotto `center` il pavimento della banda non scende mai sotto `base/2`: una
-banda relativa, a differenza di una assoluta, **non può collassare sul minimo
-del parametro**, che è poi la ragione per cui esiste. Sotto `min` vale il
-controllo del tetto descritto sopra, con la formula `base · (1 + range)` al
-posto della somma.
+Sotto `center` il pavimento della banda è `base·(1 − r/2)`, quindi **si muove
+con la base** invece di restare fermo dove lo mette una banda assoluta: è la
+ragione per cui la modalità esiste. Non è però una garanzia di stare sopra il
+minimo del parametro, che resta fisso: il pavimento ci finisce sotto appena
+`base < min_val / (1 − r/2)` — per `grain_duration`, con `r = 1`, sotto i **2
+campioni**. Lì il safety clamp riporta al minimo la metà bassa dei draw, con un
+warning per grano; è l'estremo esatto dello sweep da cui l'issue nasce
+(`0.021 ms` è un campione a 48 kHz). Sotto `min` vale invece il controllo del
+tetto descritto sopra, con la formula `base · (1 + range)` al posto della somma.
 
 **Cosa non tocca.** Il jitter implicito resta assoluto, per la stessa ragione
 per cui `range_anchor` non lo tocca: non c'è nessuna frazione dichiarata da
