@@ -601,7 +601,7 @@ grain:
   # letta istante per istante — quindi qualunque duration_unit non la tocca,
   # perché una frazione non ha unità da convertire.
   duration_range_unit: relative
-  duration: [[0, 0.021], [60, 500]]  # ms, tre ordini di grandezza
+  duration: [[0, 0.021], [60, 500]]  # ms, da un campione a mezzo secondo
   duration_range: 0.5                # ±25% della durata corrente, sempre
 
   envelope: hanning        # finestra per shape del grano (default: hanning)
