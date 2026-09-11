@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: fb01d7f
+last_synced_commit: e42ed72
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -46,7 +46,8 @@ Sezioni rilevanti in questo doc:
   assente = durata del sample
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
 - [La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor) —
-  larghezza, forma (`distribution_mode`), ancora (`range_anchor`)
+  larghezza, forma (`distribution_mode`), ancora (`range_anchor`), unità
+  (`_range_unit`: assoluta o frazione della base)
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [DeviationProbability](#deviation_probability-variazione-stocastica)
 - [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
 - [Envelopes](#envelopes) — sintassi envelope completa
@@ -196,6 +197,7 @@ Qualsiasi parametro numerico accetta le seguenti forme:
 | Envelope lineare | `density: [[0, 10], [1, 50]]` | Interpolazione lineare tra breakpoint `[time, value]` |
 | Envelope annidata | `density: [[[0, 5], [10, 50]], 1.0, 5]` | Envelope di envelope |
 | Variazione | `grain: {duration: 0.05, duration_range: 0.01}` | banda larga `0.01` (default: `±0.005`) |
+| Variazione relativa | `grain: {duration: 0.05, duration_range: 0.5, duration_range_unit: relative}` | banda larga `0.5 × duration` (default: `±25%`) |
 | Espressione math | `onset: (pi)`, `duration: (10/2)` | Valutato via `safe_eval` |
 | Envelope normalizzato | `step: {points: [[0, 0], [1, 12]], time_mode: normalized}` | `[0, 1]` mappato su `duration` |
 | Envelope per-punto interp | `density: [[0, 5, 'cubic'], [0.5, 30, 'step'], [1, 5]]` | `type` per-segmento, override del default globale (issue #54) |
@@ -338,12 +340,13 @@ clip_margin: 0.0        # tolleranza in secondi per la coda dei grain (default 0
 ### La banda dei `_range`: `distribution_mode` e `range_anchor`
 
 Ogni parametro con un `_range` associato produce, per ogni grano, un valore
-pescato dentro una **banda**. La banda si descrive con tre concetti ortogonali,
-che vanno tenuti distinti:
+pescato dentro una **banda**. La banda si descrive con quattro concetti
+ortogonali, che vanno tenuti distinti:
 
 | concetto | chiave | cosa decide |
 |---|---|---|
 | larghezza | il valore del `_range` stesso | quanto è larga la banda |
+| unità | `<param>_range_unit` | in che cosa quella larghezza è misurata |
 | forma | `distribution_mode` | come la banda viene riempita |
 | ancora | `range_anchor` | dove cade `base` dentro la banda |
 
@@ -392,6 +395,82 @@ invece di lasciare che il safety clamp schiacci la banda contro il tetto. Il
 controllo scatta quando il massimo è calcolabile esattamente (scalare+scalare,
 envelope+scalare, scalare+envelope); con base e range entrambi envelope il
 massimo della somma non è la somma dei massimi, quindi resta il solo clamp.
+
+#### Banda relativa: `<param>_range_unit`
+
+Il `_range` è per default una **quantità assoluta**, nell'unità del parametro:
+`volume_range: 3` sono 3 dB, `duration_range: 0.01` sono 0.01 secondi. Con
+`_range_unit: relative` il numero diventa invece una **frazione del valore
+base**, letta istante per istante — quindi *dopo* l'envelope della base:
+
+```yaml
+grain:
+  duration: [[0, 0.001], [60, 0.5]]   # sweep su tre ordini di grandezza
+  duration_range: 0.5                 # banda larga metà della durata corrente
+  duration_range_unit: relative       # "absolute" (default) | "relative"
+```
+
+| `duration` in quell'istante | banda (`range_anchor: center`) |
+|---|---|
+| 1 ms | 0.75 … 1.25 ms (±25%) |
+| 100 ms | 75 … 125 ms (±25%) |
+| 500 ms | 375 … 625 ms (±25%) |
+
+Serve dove la base spazia su più ordini di grandezza. Con una banda assoluta
+la stessa `duration_range` è molte volte la durata sui grani corti (dove il
+clamp a 1 campione la taglia) e percentualmente trascurabile sui lunghi: lungo
+lo sweep il *carattere* della dispersione cambia da solo, e all'ascolto
+l'effetto dell'asse si confonde con l'effetto collaterale del range. Relativa,
+resta quello che è stato scritto.
+
+**Quale `_range` la ammette.** Oggi solo `grain.duration_range`, via
+`grain.duration_range_unit`. È l'unico parametro la cui base spazia per
+costruzione da 1 campione a 10 secondi; su `volume` (dB) e `pan` (gradi) la
+scala è già logaritmica o ciclica, e una frazione della base non direbbe la
+stessa cosa. Il meccanismo è però dichiarativo (`ParameterSpec.range_unit_path`,
+vedi [[add-parameter]]) e cablarne altri è aggiungere una riga.
+
+Da non confondere con `pointer.offset_range`, che è relativo per costruzione e
+per un altro meccanismo: è già una frazione della finestra di loop attiva, non
+del proprio valore base — che infatti non ha.
+
+**Dominio.** La frazione vive in `[0, 1]`, che è un dominio proprio della
+modalità e non del parametro: 1.0 significa «banda larga quanto la base», e le
+due ancore la consumano in modi diversi.
+
+| `range_anchor` | banda con frazione `r` | massimo a `r = 1` |
+|---|---|---|
+| `center` | `[base·(1 − r/2), base·(1 + r/2)]` | ±50% |
+| `min` | `[base, base·(1 + r)]` | +100% |
+
+Sotto `center` il pavimento della banda è `base·(1 − r/2)`, quindi **si muove
+con la base** invece di restare fermo dove lo mette una banda assoluta: è la
+ragione per cui la modalità esiste. Non è però una garanzia di stare sopra il
+minimo del parametro, che resta fisso: il pavimento ci finisce sotto appena
+`base < min_val / (1 − r/2)` — per `grain_duration`, con `r = 1`, sotto i **2
+campioni**. Lì il safety clamp riporta al minimo la metà bassa dei draw, con un
+warning per grano; è l'estremo esatto dello sweep da cui l'issue nasce
+(`0.021 ms` è un campione a 48 kHz). Sotto `min` vale invece il controllo del
+tetto descritto sopra, con la formula `base + range · |base|` al posto della
+somma — su una base positiva, cioè `base · (1 + range)`. La larghezza si misura
+sul modulo perché è la stessa che il motore usa a ogni grano: il tetto al parse
+e la banda a runtime sono due letture della stessa banda, e vengono dalla stessa
+funzione.
+
+**Cosa non tocca.** Il jitter implicito resta assoluto, per la stessa ragione
+per cui `range_anchor` non lo tocca: non c'è nessuna frazione dichiarata da
+reinterpretare. E proprio perché il jitter prenderebbe il suo posto in
+silenzio, dichiarare `relative` **senza** il `_range` che governa è un
+`MissingFieldError` al parse, non una chiave inerte.
+
+**Assente non è vuota.** Senza la chiave la banda è assoluta, che è il default.
+La chiave scritta e lasciata vuota (`duration_range_unit:`, cioè `null`) è
+invece un `InvalidFieldValueError`: qualcuno l'ha scritta, e leggerla come
+`absolute` non lascerebbe nel file niente da cui accorgersi che quella riga non
+è stata letta. È la stessa regola della chiave gemella `grain.duration_unit`.
+
+**In partitura** la curva `grain_duration_range` mostra il valore *dichiarato*:
+in modalità relativa è la frazione, non una durata.
 
 > **Cambio di comportamento (post v5.2.0).** Fino alla v5.2.0 `gaussian` leggeva
 > `range` come **σ**, con la campana illimitata richiusa solo dal clamp ai bounds
@@ -517,6 +596,14 @@ grain:
   duration_range: 4.5      # banda larga 4.5 ms (default: ±2.25 ms)
   duration: [[0, 1], [30, 100]]     # envelope: Y in millisecondi
 
+  # Unità della BANDA, indipendente da quella della base: absolute (default)
+  # | relative. Con "relative" duration_range è una frazione di duration,
+  # letta istante per istante — quindi qualunque duration_unit non la tocca,
+  # perché una frazione non ha unità da convertire.
+  duration_range_unit: relative
+  duration: [[0, 0.021], [60, 500]]  # ms, da un campione a mezzo secondo
+  duration_range: 0.5                # ±25% della durata corrente, sempre
+
   envelope: hanning        # finestra per shape del grano (default: hanning)
   # Vedi sezione "Finestre Disponibili" per tutti i valori validi.
 
@@ -615,6 +702,12 @@ Con qualunque `duration_unit` diverso da `seconds` la `grain.duration` va
 **sempre indicata esplicitamente**: il default `0.05` è in secondi e non
 verrebbe convertito, per cui base (secondi) e `duration_range` (campioni o
 millisecondi) finirebbero in domini diversi. Ometterla → `MissingFieldError`.
+
+`duration_range_unit: relative` toglie il range da quella conversione: una
+frazione è adimensionale, e convertirla la renderebbe muta (`0.5` sotto
+`samples` diventerebbe `0.5/48000`). La `duration` esplicita resta comunque
+obbligatoria — quel vincolo riguarda la base. Vedi
+[Banda relativa](#banda-relativa-param_range_unit).
 `output_sr` è una config globale del motore (48000 Hz), non impostabile
 per-stream nello YAML — per questo `milliseconds`, che non lo usa, dà le stesse
 durate a qualunque frequenza di rendering mentre `samples` no.
@@ -2362,6 +2455,7 @@ un envelope dal YAML al runtime è:
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |
+| `grain_duration_range` | 0 | 1 | — | secondi; con `duration_range_unit: relative` il numero è una frazione e il dominio è quello della modalità (`RELATIVE_RANGE_BOUNDS`), non quello del parametro — che i due `1` coincidano è un caso |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
 | `pitch_ratio` | 0.001 | 8 | 1.0 | ratio diretto |
