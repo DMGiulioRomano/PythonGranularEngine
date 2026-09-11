@@ -510,11 +510,17 @@ class Stream:
         if unit == 'seconds':
             return params
 
-        # Unita' non-secondi: il default seconds (0.05) NON viene scalato. Se
-        # grain.duration non e' esplicito, la base resterebbe in secondi mentre
-        # duration_range e' nell'unita' dichiarata -> due domini diversi nello
-        # stesso blocco. Pretendi una duration esplicita (l'unita' governa base
-        # e range insieme).
+        # Unita' non-secondi: il default seconds (0.05) NON viene scalato, e
+        # quindi una grain.duration implicita resterebbe in secondi mentre chi
+        # ha scritto l'unita' la legge in campioni o millisecondi. Pretendi una
+        # duration esplicita.
+        #
+        # Il vincolo riguarda la BASE, e solo lei. La ragione storica —
+        # «altrimenti base e range finiscono in domini diversi» — copre un ramo
+        # solo da quando il range puo' essere una frazione (issue #267): li' il
+        # range e' adimensionale per costruzione, l'unita' governa la sola base,
+        # e il vincolo resta in piedi lo stesso perche' e' il default in secondi
+        # a non voler dire quel che l'utente intende.
         label = _GRAIN_DURATION_UNIT_LABELS[unit]
         if grain.get('duration') is None:
             err = MissingFieldError(
