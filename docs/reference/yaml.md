@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 870bd6f
+last_synced_commit: e42ed72
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
