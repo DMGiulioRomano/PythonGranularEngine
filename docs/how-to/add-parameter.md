@@ -6,7 +6,7 @@ tags: [parameters, schema, extension]
 sources:
   - src/pge/parameters/parameter_definitions.py
   - src/pge/parameters/parameter_schema.py
-last_synced_commit: 4bfc074
+last_synced_commit: 870bd6f
 entry_for: [add-parameter]
 ---
 

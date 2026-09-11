@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 5a5d1a9
+last_synced_commit: 870bd6f
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -451,7 +451,11 @@ minimo del parametro, che resta fisso: il pavimento ci finisce sotto appena
 campioni**. Lì il safety clamp riporta al minimo la metà bassa dei draw, con un
 warning per grano; è l'estremo esatto dello sweep da cui l'issue nasce
 (`0.021 ms` è un campione a 48 kHz). Sotto `min` vale invece il controllo del
-tetto descritto sopra, con la formula `base · (1 + range)` al posto della somma.
+tetto descritto sopra, con la formula `base + range · |base|` al posto della
+somma — su una base positiva, cioè `base · (1 + range)`. La larghezza si misura
+sul modulo perché è la stessa che il motore usa a ogni grano: il tetto al parse
+e la banda a runtime sono due letture della stessa banda, e vengono dalla stessa
+funzione.
 
 **Cosa non tocca.** Il jitter implicito resta assoluto, per la stessa ragione
 per cui `range_anchor` non lo tocca: non c'è nessuna frazione dichiarata da
@@ -2451,7 +2455,7 @@ un envelope dal YAML al runtime è:
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |
-| `grain_duration_range` | 0 | 1 (assoluto: secondi) / 1 (relativo: frazione) | — | `duration_range_unit: relative` cambia il significato del numero, non il dominio |
+| `grain_duration_range` | 0 | 1 | — | secondi; con `duration_range_unit: relative` il numero è una frazione e il dominio è quello della modalità (`RELATIVE_RANGE_BOUNDS`), non quello del parametro — che i due `1` coincidano è un caso |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
 | `pitch_ratio` | 0.001 | 8 | 1.0 | ratio diretto |

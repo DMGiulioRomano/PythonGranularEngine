@@ -34,9 +34,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   parametro, che resta fisso: sotto `base < min_val / (1 − r/2)` (per
   `grain_duration`, con `r = 1`, sotto i 2 campioni) è di nuovo il safety clamp
   a tenere il pavimento. Sotto `min` il controllo del
-  tetto al parse diventa moltiplicativo (`base · (1 + range)`): la somma
-  lasciava passare in silenzio proprio le bande larghe, perché sommava una
-  frazione a una durata.
+  tetto al parse smette di sommare (`base + range · |base|`, cioè
+  `base · (1 + range)` su una base positiva): la somma lasciava passare in
+  silenzio proprio le bande larghe, perché sommava una frazione a una durata.
+  La larghezza viene da una funzione sola (`relative_band_width`), condivisa
+  col `Parameter` che la rimisura a ogni grano: il tetto al parse e la banda a
+  runtime sono due letture della stessa banda e devono coincidere per
+  costruzione — scritte separatamente divergevano già su una base negativa,
+  dove il prodotto scende mentre la banda sale.
 
   Tre trappole chiuse esplicitamente. `duration_unit` **non** converte una
   frazione — convertirla renderebbe `duration_range: 0.5` sotto
