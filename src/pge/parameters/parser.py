@@ -286,7 +286,7 @@ class GranularParser:
         lato:
 
             base scalare + range scalare   -> base, range
-            base envelope + range scalare  -> max(base), range
+            base envelope + range scalare  -> ogni base, range
             base scalare + range envelope  -> base, max(range)
 
         Con entrambi envelope il massimo della combinazione non e' la
@@ -294,6 +294,11 @@ class GranularParser:
         diversi): il controllo sarebbe conservativo e un falso positivo
         bloccherebbe un render valido. In quel caso resta il safety clamp.
         Vale per la somma come per il prodotto.
+
+        Sulla base si valuta ogni breakpoint e non il solo massimo: la banda
+        relativa e' monotona nella base solo finche' la frazione sta sotto 1,
+        e farne un'assunzione legherebbe questo controllo al tetto di
+        RELATIVE_RANGE_BOUNDS senza dirlo (vedi il commento al calcolo).
 
         Il picco di un envelope e' stimato dai suoi breakpoint. Con
         interpolazione cubica la curva puo' superare i breakpoint, quindi la
@@ -311,18 +316,26 @@ class GranularParser:
         if value_is_env and range_is_env:
             return
 
-        peak_value = (max(y for _, y in value.breakpoints)
-                      if value_is_env else float(value))
+        # La combinazione e' monotona nel RANGE — la larghezza non e' mai
+        # negativa (min_range >= 0) e cresce con la frazione — quindi il suo
+        # picco basta. Nella BASE no, e assumerlo era una dipendenza
+        # nascosta: sotto zero la banda relativa vale `base * (1 - r)`, che
+        # cresce con la base solo finche' `r <= 1` e decresce appena `r` lo
+        # supera. Reggeva percio' su RELATIVE_RANGE_BOUNDS[1] <= 1 — un
+        # dominio che nessuno dichiara load-bearing e che allargare sarebbe
+        # retrocompatibile ovunque tranne qui. Valutare la banda su OGNI base
+        # candidata invece che sul solo picco toglie l'assunzione: costa un
+        # max su breakpoint gia' letti, e il tetto resta quello di prima dove
+        # la base e' positiva, cioe' sull'unico parametro cablato oggi.
+        base_candidates = ([y for _, y in value.breakpoints]
+                           if value_is_env else [float(value)])
         peak_range = (max(y for _, y in mod_range.breakpoints)
                       if range_is_env else float(mod_range))
-        # Il picco della banda e' il picco della base piu' la larghezza
-        # misurata sul picco della base: la larghezza cresce con |base| e il
-        # range e' gia' validato contro min_range >= 0, quindi la
-        # combinazione e' monotona nei due picchi e valutarla sui massimi da'
-        # il massimo. Vale anche su una base negativa, dove la banda sale
-        # dalla base invece di scendere.
-        ceiling = (peak_value + relative_band_width(peak_range, peak_value)
-                   if is_relative else peak_value + peak_range)
+        ceiling = max(
+            base + (relative_band_width(peak_range, base)
+                    if is_relative else peak_range)
+            for base in base_candidates
+        )
 
         if ceiling <= bounds.max_val:
             return

@@ -41,7 +41,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   col `Parameter` che la rimisura a ogni grano: il tetto al parse e la banda a
   runtime sono due letture della stessa banda e devono coincidere per
   costruzione — scritte separatamente divergevano già su una base negativa,
-  dove il prodotto scende mentre la banda sale.
+  dove il prodotto scende mentre la banda sale. Su una base envelope il tetto
+  si misura su **ogni** breakpoint e non sul solo picco: la banda relativa
+  cresce con la base solo finché la frazione sta sotto 1, e valutarla in un
+  punto solo avrebbe legato il controllo al tetto di `RELATIVE_RANGE_BOUNDS`
+  senza dirlo — cioè avrebbe reso «allargare il dominio», che è
+  retrocompatibile ovunque, l'unica mossa capace di rimettere il controllo a
+  tacere proprio dove esiste per parlare.
 
   Tre trappole chiuse esplicitamente. `duration_unit` **non** converte una
   frazione — convertirla renderebbe `duration_range: 0.5` sotto

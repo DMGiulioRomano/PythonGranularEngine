@@ -465,3 +465,103 @@ class TestUnaSolaGrafiaDelPredicato:
         assert len(compare) == 1
         assert any(isinstance(l, ast.Name) and l.id == 'RANGE_UNIT_RELATIVE'
                    for l in [compare[0].left, *compare[0].comparators])
+
+
+# =============================================================================
+# IL TETTO NON ASSUME LA MONOTONIA DELLA BANDA NELLA BASE
+# =============================================================================
+
+class TestIlTettoNonAssumeLaMonotonia:
+    """Il tetto al parse si misura su OGNI base candidata, non sul suo picco.
+
+    `_validate_band_ceiling` valuta la banda in un punto solo — il picco della
+    base — e questo da' il massimo solo se `f(base) = base + r*|base|` cresce
+    con la base. Sopra lo zero e' sempre vero; sotto lo zero `f` vale
+    `base*(1 - r)`, che cresce con la base finche' `r <= 1` e **decresce**
+    appena `r` supera 1. Il commento accanto al calcolo giustificava il passo
+    con `min_range >= 0`, che e' il bound sbagliato: quello rende la larghezza
+    non negativa (monotonia nella *frazione*), non la combinazione monotona
+    nella base.
+
+    L'invariante che regge davvero il passo e' quindi `RELATIVE_RANGE_BOUNDS[1]
+    <= 1` — che nessuna riga dichiarava load-bearing, e che la descrizione
+    della PR annuncia anzi come allargabile «senza rompere niente» (allargare
+    un dominio e' retrocompatibile). Allargato a 2.0, il controllo tornava a
+    calcolare un tetto sotto la banda vera e a tacere proprio dove esiste per
+    parlare: il difetto che il giro di review precedente ha chiuso, rientrato
+    da un'altra porta.
+
+    Qui il puntello si toglie apposta — e' l'unico modo di misurare una
+    dipendenza nascosta — e il tetto deve reggere lo stesso.
+    """
+
+    _DOMINIO_LARGO = 2.0
+    _BASE_NEGATIVA = [[0, -8.0], [4, -3.0]]   # picco -3, ma |base| max su -8
+
+    def _parser(self, anchor='min'):
+        from pge.core.stream_config import StreamConfig, StreamContext
+        from pge.parameters.parser import GranularParser
+
+        ctx = StreamContext(stream_id='s1', onset=0.0, duration=4.0,
+                            sample='x.wav', sample_dur_sec=10.0)
+        return GranularParser(StreamConfig(context=ctx, range_anchor=anchor))
+
+    def _allarga_il_dominio(self, monkeypatch):
+        from pge.parameters import parameter_definitions
+
+        monkeypatch.setattr(parameter_definitions, 'RELATIVE_RANGE_BOUNDS',
+                            (0.0, self._DOMINIO_LARGO))
+
+    def test_su_base_envelope_negativa_il_tetto_e_il_massimo_vero(self, monkeypatch):
+        """Frazione 2.0 su base [-8, -3]: la banda arriva a 8, non a 3.
+
+        `f(-8) = -8 + 2*8 = 8`, `f(-3) = -3 + 2*3 = 3`. Valutando sul solo
+        picco della base il controllo legge 3, lo trova sotto `max_val: 5` e
+        tace; a runtime il clamp taglia a 5 con un warning per grano — il
+        sintomo che questo controllo esiste per evitare.
+        """
+        from pge.parameters.parameter_definitions import ParameterBounds
+        from pge.shared.exceptions import ParameterBoundError
+
+        self._allarga_il_dominio(monkeypatch)
+        bounds = ParameterBounds(min_val=-10.0, max_val=5.0,
+                                 min_range=0.0, max_range=self._DOMINIO_LARGO)
+
+        with pytest.raises(ParameterBoundError) as exc:
+            self._parser().parse_parameter(
+                'volume', self._BASE_NEGATIVA, self._DOMINIO_LARGO,
+                bounds_override=bounds, range_unit=RANGE_UNIT_RELATIVE)
+
+        assert '8' in exc.value.user_message()
+
+    def test_una_banda_che_ci_sta_passa_e_i_draw_la_rispettano(self, monkeypatch):
+        """L'altra meta': alzato `max_val` a 10 il parse passa, e nessun draw
+        supera il tetto che aveva promesso — senza clamp di mezzo."""
+        from pge.parameters.parameter_definitions import ParameterBounds
+        from pge.shared.probability_gate import AlwaysGate
+
+        self._allarga_il_dominio(monkeypatch)
+        bounds = ParameterBounds(min_val=-10.0, max_val=10.0,
+                                 min_range=0.0, max_range=self._DOMINIO_LARGO)
+
+        p = self._parser().parse_parameter(
+            'volume', self._BASE_NEGATIVA, self._DOMINIO_LARGO,
+            bounds_override=bounds, range_unit=RANGE_UNIT_RELATIVE)
+        p.set_probability_gate(AlwaysGate())
+
+        draws = [p.get_value(t * 4.0 / 20) for t in range(21) for _ in range(30)]
+
+        assert max(draws) <= 8.0 + 1e-9
+        assert max(draws) > 5.0           # la banda ci arriva davvero
+
+    def test_sul_dominio_odierno_la_risposta_non_cambia(self):
+        """Regressione: con `r <= 1` valutare su ogni base o sul solo picco
+        da' lo stesso numero, ed e' il numero di prima."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            self._parser().parse_parameter(
+                'grain_duration', [[0, 1.0], [4, 8.0]], 0.5,
+                range_unit=RANGE_UNIT_RELATIVE)
+
+        assert '12' in exc.value.user_message()
