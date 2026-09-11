@@ -207,12 +207,17 @@ class TestTettoDellaBandaRelativa:
             'grain_duration', 8.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
 
     def test_l_errore_nomina_la_formula_che_ha_applicato(self):
-        """Il messaggio deve dire `base * (1 + range)`, non `base + range`.
+        """Il messaggio deve dire `base + range * |base|`, non `base + range`.
 
         E' l'unico modo che ha il lettore di rifare il conto: chi ha scritto
         `8.0` e `0.5` e legge «base + range» ottiene 8.5 e non capisce da dove
         venga il 12 dell'errore. La formula e' la meta' utile del messaggio, e
         cambia con la modalita': in assoluto resta la somma.
+
+        E' la formula generale, non `base * (1 + range)`: le due coincidono
+        finche' la base e' non negativa, ma la larghezza si misura sul modulo
+        della base (relative_band_width) e il messaggio nomina cio' che il
+        controllo ha davvero calcolato.
 
         Si legge su `user_message()`, non su `str()`: `value_type` sta nel
         corpo strutturato, ed e' quello che la CLI stampa (`cli.py` -> `print(
@@ -224,13 +229,130 @@ class TestTettoDellaBandaRelativa:
         with pytest.raises(ParameterBoundError) as rel:
             self._parser('min').parse_parameter(
                 'grain_duration', 8.0, 0.5, range_unit=RANGE_UNIT_RELATIVE)
-        assert 'base * (1 + range)' in rel.value.user_message()
+        assert 'base + range * |base|' in rel.value.user_message()
 
         with pytest.raises(ParameterBoundError) as ass:
             self._parser('min').parse_parameter(
                 'grain_duration', 9.5, 0.9, range_unit=RANGE_UNIT_ABSOLUTE)
         assert 'base + range' in ass.value.user_message()
-        assert 'base * (1 + range)' not in ass.value.user_message()
+        assert '|base|' not in ass.value.user_message()
+
+
+class TestUnaSolaLetturaDellaBanda:
+    """Il tetto calcolato al parse e la banda pescata a runtime sono la stessa
+    banda, e devono coincidere per costruzione.
+
+    Sono due misure della stessa cosa in due strati diversi — `Parameter` la
+    rifa a ogni grano, il parser una volta sola per sapere se ci sta sotto
+    `max_val` — quindi vanno prese dalla stessa funzione
+    (`relative_band_width`). Scritte separatamente divergevano gia': il tetto
+    era `base * (1 + range)`, che su una base negativa *scende*, mentre la
+    banda sale (la larghezza si misura sul modulo). Il controllo calcolava
+    allora un tetto sotto il pavimento della banda vera e taceva proprio dove
+    doveva parlare, lasciando la parola al safety clamp — un warning per
+    grano, cioe' il sintomo che quel controllo esiste per evitare (vedi la sua
+    docstring).
+
+    `grain_duration` vive sopra lo zero e li' le due formule coincidono: il
+    caso si misura su un dominio con segno, come gia' fa TestBaseConSegno in
+    test_parameter_range_unit.py per la banda a runtime.
+    """
+
+    _SOTTO_ZERO = dict(min_val=-10.0, max_val=-2.0,
+                       min_range=0.0, max_range=1.0,
+                       default_jitter=0.0, variation_mode='additive')
+
+    def _parse(self, base, frazione):
+        from pge.core.stream_config import StreamConfig, StreamContext
+        from pge.parameters.parameter_definitions import ParameterBounds
+        from pge.parameters.parser import GranularParser
+
+        ctx = StreamContext(stream_id='s1', onset=0.0, duration=4.0,
+                            sample='x.wav', sample_dur_sec=10.0)
+        parser = GranularParser(StreamConfig(context=ctx, range_anchor='min'))
+        return parser.parse_parameter(
+            'volume', base, frazione,
+            bounds_override=ParameterBounds(**self._SOTTO_ZERO),
+            range_unit=RANGE_UNIT_RELATIVE)
+
+    def test_su_base_negativa_il_tetto_e_quello_della_banda_vera(self):
+        """base -6, frazione 1.0: la banda arriva a 0, il tetto e' -2.
+
+        Col prodotto il controllo calcolava -12 — sotto il pavimento della
+        banda — e passava in silenzio.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            self._parse(-6.0, 1.0)
+
+        assert '0' in str(exc.value)
+
+    def test_una_banda_che_ci_sta_passa_anche_sotto_zero(self):
+        """base -6, frazione 0.5: la banda arriva a -3, sotto il tetto -2."""
+        self._parse(-6.0, 0.5)
+
+    def test_il_tetto_al_parse_copre_i_draw(self):
+        """La misura che lega i due strati: nessun grano esce dal tetto.
+
+        Senza clamp di mezzo — il tetto dichiarato sta dentro i bounds — il
+        massimo pescato non puo' superare quello che il parse aveva promesso.
+        """
+        from pge.shared.probability_gate import AlwaysGate
+        from pge.parameters.parameter_definitions import relative_band_width
+
+        p = self._parse(-6.0, 0.5)
+        p.set_probability_gate(AlwaysGate())
+
+        tetto = -6.0 + relative_band_width(0.5, -6.0)
+        draws = [p.get_value(0.0) for _ in range(400)]
+
+        assert max(draws) <= tetto + 1e-9
+        assert max(draws) > -6.0          # la banda sale davvero
+        assert min(draws) >= -6.0 - 1e-9
+
+
+class TestLarghezzaRelativa:
+    """`relative_band_width` e' la grafia unica della larghezza."""
+
+    def test_e_la_frazione_del_modulo_della_base(self):
+        from pge.parameters.parameter_definitions import relative_band_width
+
+        assert relative_band_width(0.5, 10.0) == pytest.approx(5.0)
+        assert relative_band_width(0.5, -10.0) == pytest.approx(5.0)
+        assert relative_band_width(0.0, 10.0) == 0.0
+        assert relative_band_width(0.5, 0.0) == 0.0
+
+    @pytest.mark.parametrize('modulo', (
+        'pge/parameters/parameter.py',
+        'pge/parameters/parser.py',
+    ))
+    def test_i_due_lettori_la_chiamano_invece_di_riscriverla(self, modulo):
+        """Guardia AST: entrambi gli strati passano dalla stessa funzione.
+
+        Gemella di TestUnaSolaGrafiaDelPredicato: li' il predicato, qui la
+        larghezza. Una moltiplicazione riscritta a mano in uno dei due
+        risponderebbe uguale finche' la base resta positiva, e diverso — in
+        silenzio — il giorno che non lo e'.
+        """
+        import ast
+        import pathlib
+
+        src = pathlib.Path(__file__).resolve().parents[2] / 'src' / modulo
+        albero = ast.parse(src.read_text(encoding='utf-8'))
+
+        chiamate = [
+            n for n in ast.walk(albero)
+            if isinstance(n, ast.Call)
+            and ((isinstance(n.func, ast.Name)
+                  and n.func.id == 'relative_band_width')
+                 or (isinstance(n.func, ast.Attribute)
+                     and n.func.attr == 'relative_band_width'))
+        ]
+
+        assert chiamate, (
+            f"{modulo}: la larghezza della banda relativa non passa piu' da "
+            "relative_band_width()")
 
 
 # =============================================================================

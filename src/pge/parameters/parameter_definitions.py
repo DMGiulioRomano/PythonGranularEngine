@@ -123,6 +123,28 @@ def range_unit_is_relative(unit) -> bool:
     return unit == RANGE_UNIT_RELATIVE
 
 
+def relative_band_width(fraction: float, base: float) -> float:
+    """Larghezza della banda quando il range e' una frazione della base.
+
+    Una larghezza non ha segno: `abs` copre una base negativa (dominio con
+    segno, o una cubica che scende sotto i propri breakpoint) senza
+    trasformare la banda in un valore che AdditiveVariation scarterebbe.
+
+    Una grafia sola, perche' la banda ha due lettori che devono dire la stessa
+    cosa: `Parameter._calculate_range` la misura a ogni grano, e
+    `GranularParser._validate_band_ceiling` la misura una volta al parse per
+    sapere se il tetto sotto ancora `min` ci sta. Scritte separatamente le due
+    letture divergevano gia': il tetto era `base * (1 + range)`, che su una
+    base negativa scende invece di salire, quindi il controllo calcolava un
+    tetto sotto il pavimento della banda vera e passava in silenzio proprio
+    dove doveva parlare — lasciando il safety clamp a dirlo con un warning per
+    grano, cioe' il sintomo che quel controllo esiste per evitare. Su una base
+    non negativa le due formule coincidono (`base + range * base`), che e' il
+    caso dell'unico parametro cablato oggi.
+    """
+    return fraction * abs(base)
+
+
 def relative_range_bounds(bounds: 'ParameterBounds') -> 'ParameterBounds':
     """Gli stessi bounds col dominio del range sostituito da quello frazionario.
 

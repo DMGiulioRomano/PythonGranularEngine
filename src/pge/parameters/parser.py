@@ -19,6 +19,7 @@ from pge.parameters.parameter_definitions import (
     RANGE_UNIT_DEFAULT,
     get_parameter_definition,
     range_unit_is_relative,
+    relative_band_width,
     relative_range_bounds,
     validate_range_unit,
 )
@@ -256,11 +257,17 @@ class GranularParser:
         """Verifica che il tetto della banda stia sotto max_val.
 
         Il tetto dipende dall'unita' del range (issue #267): `base + range`
-        quando il range e' assoluto, `base * (1 + range)` quando e' una
+        quando il range e' assoluto, `base + range * |base|` quando e' una
         frazione. Sommare una frazione a una durata sommerebbe due grandezze
         diverse, e il controllo lascerebbe passare in silenzio proprio le bande
-        larghe — con `base: 8` e frazione `0.5` la somma da' 8.5, il prodotto
-        12.
+        larghe — con `base: 8` e frazione `0.5` la somma da' 8.5, la banda
+        arriva a 12.
+
+        La larghezza della banda relativa non si riscrive qui: la misura
+        `relative_band_width`, la stessa funzione che `Parameter` chiama a ogni
+        grano. Il tetto al parse e la banda a runtime sono due letture della
+        stessa banda, e devono coincidere per costruzione — scritte
+        separatamente divergevano gia' su una base negativa.
 
         Si applica SOLO con `range_anchor: min`. Sotto l'ancora `center` la
         banda arriva a `base + range/2` e resta gestita dal safety clamp a
@@ -308,18 +315,19 @@ class GranularParser:
                       if value_is_env else float(value))
         peak_range = (max(y for _, y in mod_range.breakpoints)
                       if range_is_env else float(mod_range))
-        # Il prodotto dei picchi e' il picco del prodotto solo perche' entrambi
-        # i fattori sono non negativi: il range e' gia' validato contro
-        # min_range >= 0, e questo controllo ha senso solo dove il tetto e'
-        # sopra lo zero. Sotto un dominio con segno andrebbe riscritto — ma li'
-        # una banda relativa non avrebbe comunque significato.
-        ceiling = (peak_value * (1.0 + peak_range) if is_relative
-                   else peak_value + peak_range)
+        # Il picco della banda e' il picco della base piu' la larghezza
+        # misurata sul picco della base: la larghezza cresce con |base| e il
+        # range e' gia' validato contro min_range >= 0, quindi la
+        # combinazione e' monotona nei due picchi e valutarla sui massimi da'
+        # il massimo. Vale anche su una base negativa, dove la banda sale
+        # dalla base invece di scendere.
+        ceiling = (peak_value + relative_band_width(peak_range, peak_value)
+                   if is_relative else peak_value + peak_range)
 
         if ceiling <= bounds.max_val:
             return
 
-        formula = ('base * (1 + range)' if is_relative else 'base + range')
+        formula = ('base + range * |base|' if is_relative else 'base + range')
         err = ParameterBoundError(
             param_name=param_name,
             value_type=f'{formula} (range_anchor: min)',

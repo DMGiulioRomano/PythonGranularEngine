@@ -21,7 +21,10 @@ import random
 from typing import Union, Optional, Callable, Dict
 from pge.envelopes.envelope import Envelope
 from pge.parameters.parameter_curve import ParameterCurve
-from pge.parameters.parameter_definitions import ParameterBounds
+from pge.parameters.parameter_definitions import (
+    ParameterBounds,
+    relative_band_width,
+)
 from pge.shared.logger import log_clip_warning
 from pge.shared.probability_gate import *
 from pge.shared.distribution_strategy import (
@@ -150,12 +153,15 @@ class Parameter:
         """Helper: Estrae il valore numerico da un numero o da un Envelope."""
         return resolve_param(param, time)
 
-    def _calculate_range(self, time: float, base_val: float = 0.0) -> float:
+    def _calculate_range(self, time: float, base_val: float) -> float:
         """Calcola l'ampiezza della variazione.
 
         `base_val` serve solo in modalita' relativa (issue #267), dove la
-        larghezza della banda e' una frazione della base a quell'istante. Ha un
-        default perche' in modalita' assoluta la base non entra nel conto.
+        larghezza della banda e' una frazione della base a quell'istante. E'
+        obbligatorio lo stesso: un default lo renderebbe dimenticabile, e
+        dimenticarlo in modalita' relativa non solleverebbe niente — la banda
+        varrebbe `frazione * 0`, cioe' sparirebbe in silenzio, che e' la
+        stessa forma di difetto muto che la modalita' chiude altrove.
         """
         # Scenario B: Se l'utente non ha messo range, usa il default (Jitter implicito)
         # Il jitter implicito resta ASSOLUTO anche sotto range_relative: non c'e'
@@ -175,10 +181,9 @@ class Parameter:
         if not self._range_relative:
             return val
 
-        # Una larghezza non ha segno: `abs` copre una base negativa (dominio con
-        # segno, o una cubica che scende sotto i propri breakpoint) senza
-        # trasformare la banda in un valore che AdditiveVariation scarterebbe.
-        return val * abs(base_val)
+        # Stessa lettura della banda che il parser usa per il tetto sotto
+        # ancora `min` (relative_band_width): una sola, o le due divergono.
+        return relative_band_width(val, base_val)
 
     def _clamp(self, value: float, time: float) -> float:
         """Applica i limiti di sicurezza (Min/Max) e logga se taglia."""

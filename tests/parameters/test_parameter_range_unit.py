@@ -140,6 +140,30 @@ class TestJitterImplicito:
         assert max(draws) <= 11.0 + 1e-9
 
 
+class TestLaBaseNonHaDefault:
+    """`_calculate_range` pretende la base, non la assume zero.
+
+    In modalita' assoluta la base non entra nel conto, quindi un default
+    sarebbe innocuo li' — ed e' esattamente per questo che sarebbe pericoloso:
+    un chiamante che lo dimentica non vedrebbe niente finche' qualcuno non
+    dichiara `relative`, dove la banda varrebbe `frazione * 0`, cioe'
+    sparirebbe senza un'eccezione, senza un warning e senza niente da leggere
+    nel file. La stessa forma di difetto muto che la modalita' chiude altrove
+    (`duration_unit` che convertiva la frazione).
+    """
+
+    def test_la_firma_non_permette_di_dimenticarla(self):
+        p = _param(10.0, 0.5, relative=True)
+
+        with pytest.raises(TypeError):
+            p._calculate_range(0.0)
+
+    def test_con_la_base_risponde_la_larghezza_della_banda(self):
+        p = _param(10.0, 0.5, relative=True)
+
+        assert p._calculate_range(0.0, 10.0) == pytest.approx(5.0)
+
+
 class TestBaseConSegno:
     """La LARGHEZZA della banda non ha segno, la base si'.
 
