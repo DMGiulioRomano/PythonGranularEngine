@@ -75,6 +75,27 @@ class TestDominioDellaFrazione:
         assert relativo.default_jitter == assoluto.default_jitter
         assert relativo.variation_mode == assoluto.variation_mode
 
+    def test_sostituisce_il_dominio_invece_di_restringerlo(self):
+        """«Sostituisce, non restringe» misurato dove le due letture divergono.
+
+        Nessun parametro del registry sa discriminarle: `min_range` e' 0.0 su
+        tutti — cioe' gia' `RELATIVE_RANGE_BOUNDS[0]` — e nessun `max_range`
+        cade in `(0, 1)`, quindi su `volume` (24) come su `grain_duration` (1)
+        un `min` fra i due domini risponde come una sostituzione. Il test che
+        misura su `volume` sfugge alla coincidenza dei due `1` di
+        `grain_duration` ma ricade in quella del pavimento, che e' 0.0
+        ovunque: servono bounds sintetici, che sono l'unico posto dove la
+        differenza si vede.
+        """
+        from pge.parameters.parameter_definitions import ParameterBounds
+
+        stretto = ParameterBounds(min_val=0.0, max_val=1.0,
+                                  min_range=0.2, max_range=0.4)
+
+        relativo = relative_range_bounds(stretto)
+
+        assert (relativo.min_range, relativo.max_range) == RELATIVE_RANGE_BOUNDS
+
     def test_convive_col_minimo_dinamico_di_grain_duration(self):
         """Il pavimento di 1 campione non deve sparire sotto la sostituzione."""
         dinamico = get_parameter_definition('grain_duration', output_sr=48000)
@@ -149,6 +170,30 @@ class TestParserRangeUnit:
             'grain_duration', 0.05, 0.01, range_unit=None)
 
         assert p.get_value(0.0) == pytest.approx(0.05, abs=0.005)
+
+    def test_il_dominio_relativo_vale_anche_sui_bounds_override(self):
+        """La sostituzione e' un fatto della modalita', non della provenienza.
+
+        `parse_parameter` lo dichiara in un commento («override compreso»), e
+        nessun test lo misurava: l'unico che passa un `bounds_override` insieme
+        a `relative` (TestUnaSolaLetturaDellaBanda) ci scrive dentro a mano il
+        dominio frazionario, quindi non puo' vedere se la sostituzione e'
+        avvenuta. Qui l'override porta il dominio di `volume` (24 dB): una
+        frazione di 5.0 ci starebbe, e nel dominio della modalita' no.
+        """
+        from pge.parameters.parameter_definitions import ParameterBounds
+        from pge.shared.exceptions import ParameterBoundError
+
+        largo = ParameterBounds(min_val=-120.0, max_val=12.0,
+                                min_range=0.0, max_range=24.0)
+
+        self._parser().parse_parameter(          # assoluto: 5.0 dB ci stanno
+            'volume', -6.0, 5.0, bounds_override=largo)
+
+        with pytest.raises(ParameterBoundError):
+            self._parser().parse_parameter(
+                'volume', -6.0, 5.0, bounds_override=largo,
+                range_unit=RANGE_UNIT_RELATIVE)
 
     def test_una_grafia_ignota_arriva_attribuita_allo_stream(self):
         with pytest.raises(InvalidFieldValueError) as exc:
