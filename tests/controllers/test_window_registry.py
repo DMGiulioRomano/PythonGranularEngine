@@ -32,14 +32,20 @@ dichiarata e forma prodotta sta in
 tests/rendering/test_window_shape_parity.py.
 """
 
+from dataclasses import replace
+
+import numpy as np
 import pytest
+
 from pge.controllers.window_registry import (
     ASYMMETRIC,
     SYMMETRIC,
     WindowRegistry,
     WindowShape,
     WindowSpec,
+    missing_shape_fields,
 )
+from pge.rendering.numpy_window_emitter import NumpyWindowEmitter
 
 
 # ===========================================================================
@@ -312,6 +318,70 @@ class TestWindowSpecValidation:
             WindowSpec(name='x', shape=WindowShape.RECTANGULAR,
                        description="d", symmetry='periodic')
 
+    @pytest.mark.parametrize("shape", sorted(WindowShape.REQUIRED_PARAMS))
+    def test_a_shape_without_its_params_is_refused(self, shape):
+        """Il catalogo non puo' contenere una descrizione che nessun target
+        sa leggere.
+
+        Il prezzo di lasciarla passare lo pagava chi rendeva: NumPy valuta la
+        formula con un `None` dentro (`TypeError`, non l'`InvalidWindowError`
+        che il contratto promette) e Csound scrive quel `None` in un p-field,
+        producendo `f 7 0 1024 20 7 1 None` -- una riga che muore a meta'
+        render. E' il modo di fallire che la #202 esiste per togliere di
+        mezzo, un livello piu' in basso: non un nome che un target non copre,
+        ma una descrizione che non descrive.
+        """
+        with pytest.raises(ValueError) as exc_info:
+            WindowSpec(name='incompleta', shape=shape, description="d",
+                       symmetry=ASYMMETRIC)
+
+        for key in WindowShape.REQUIRED_PARAMS[shape]:
+            assert key in str(exc_info.value)
+
+    @pytest.mark.parametrize("shape", sorted(WindowShape.REQUIRES_COEFFICIENTS))
+    def test_a_shape_without_its_coefficients_is_refused(self, shape):
+        """Una somma di coseni vuota vale zero ovunque: il grano esce come
+        silenzio digitale, e senza nemmeno un errore -- il caso degenere
+        della #225 per una strada che nessuna soglia sorveglia."""
+        with pytest.raises(ValueError) as exc_info:
+            WindowSpec(name='vuota', shape=shape, description="d")
+
+        assert 'coefficients' in str(exc_info.value)
+
+    def test_a_partial_declaration_names_only_what_is_missing(self):
+        """Il messaggio serve a sapere cosa scrivere, quindi nomina i campi
+        che mancano e non quelli gia' dichiarati."""
+        with pytest.raises(ValueError) as exc_info:
+            WindowSpec(name='mezza_curva',
+                       shape=WindowShape.EXPONENTIAL_SEGMENT,
+                       params={'start': 0.0, 'curve': 4.0},
+                       description="d", family="asymmetric",
+                       symmetry=ASYMMETRIC)
+
+        message = str(exc_info.value)
+        assert 'end' in message
+        assert 'start' not in message
+        assert 'curve' not in message
+
+    def test_a_declared_none_counts_as_missing(self):
+        """`params={'sigma': None}` e' la chiave scritta e il valore no: per
+        `param()` -- e quindi per la formula -- e' identica all'assenza."""
+        with pytest.raises(ValueError):
+            WindowSpec(name='x', shape=WindowShape.GAUSSIAN,
+                       params={'sigma': None}, description="d")
+
+    @pytest.mark.parametrize(
+        "shape",
+        sorted(WindowShape.ALL - set(WindowShape.REQUIRED_PARAMS)
+               - WindowShape.REQUIRES_COEFFICIENTS))
+    def test_a_shape_that_needs_nothing_is_built_bare(self, shape):
+        """L'altra meta': la guardia rifiuta le descrizioni incomplete, non
+        quelle spoglie. Senza questo, `REQUIRED_PARAMS` potrebbe crescere
+        fino a chiedere qualcosa a tutti e il test sopra resterebbe verde."""
+        spec = WindowSpec(name='nuda', shape=shape, description="d")
+
+        assert missing_shape_fields(spec) == ()
+
 
 # ===========================================================================
 # 5. TestWindowRegistryGet
@@ -501,19 +571,52 @@ class TestWindowRegistryDataIntegrity:
 
     def test_every_shape_declares_what_it_needs(self):
         """Una forma senza i suoi parametri e' una descrizione incompleta:
-        l'emitter la materializzerebbe con un `None` dentro la formula."""
-        required = {
-            WindowShape.GAUSSIAN: ('sigma',),
-            WindowShape.KAISER: ('beta',),
-            WindowShape.EXPONENTIAL_SEGMENT: ('start', 'curve', 'end'),
-        }
+        l'emitter la materializzerebbe con un `None` dentro la formula.
 
+        La domanda la pone `missing_shape_fields`, non un elenco trascritto
+        qui: l'elenco viveva in questo test, e una forma parametrica nuova --
+        il solo momento in cui la guardia serve -- non ci sarebbe finita
+        dentro. Ora la risposta viene dalla stessa dichiarazione che gli
+        emitter leggono.
+        """
         for name, spec in WindowRegistry.WINDOWS.items():
-            for key in required.get(spec.shape, ()):
-                assert spec.param(key) is not None, f"'{name}' non dichiara {key}"
+            assert missing_shape_fields(spec) == (), \
+                f"'{name}' non dichiara {missing_shape_fields(spec)}"
 
-            if spec.shape == WindowShape.COSINE_SUM:
-                assert len(spec.coefficients) > 0, f"'{name}' non ha coefficienti"
+    def test_the_requirements_are_declared_beside_the_shapes(self):
+        """`REQUIRED_PARAMS` parla solo di forme che esistono.
+
+        Una voce per una forma cancellata resterebbe a chiedere un parametro
+        che nessuno legge, ed e' il modo in cui una dichiarazione smette di
+        descrivere il codice restando verde.
+        """
+        assert set(WindowShape.REQUIRED_PARAMS) <= WindowShape.ALL
+        assert WindowShape.REQUIRES_COEFFICIENTS <= WindowShape.ALL
+
+    def test_every_required_field_is_actually_read(self):
+        """La misura della dichiarazione, dal lato opposto: un parametro
+        dichiarato obbligatorio dev'essere un parametro che la forma *legge*.
+
+        Si verifica togliendolo: se la materializzazione non cambia, quel
+        parametro era obbligatorio per abitudine e la dichiarazione dice una
+        cosa che il codice non fa.
+        """
+        emitter = NumpyWindowEmitter()
+
+        for shape, keys in WindowShape.REQUIRED_PARAMS.items():
+            specs = WindowRegistry.get_by_shape(shape)
+            assert specs, f"nessuna finestra di forma '{shape}' nel catalogo"
+            spec = specs[0]
+            reference = emitter.materialize(spec, 32)
+
+            for key in keys:
+                moved = dict(spec.params)
+                moved[key] = moved[key] + 0.5
+                nudged = replace(spec, params=moved)
+
+                assert not np.array_equal(emitter.materialize(nudged, 32),
+                                          reference), \
+                    f"'{shape}' dichiara '{key}' ma la forma non lo legge"
 
     def test_only_cosine_sums_carry_coefficients(self):
         """I coefficienti sono di una forma sola: trovarli altrove vuol dire

@@ -31,7 +31,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
-from pge.controllers.window_registry import WindowRegistry, WindowSpec
+from pge.controllers.window_registry import (
+    WindowRegistry,
+    WindowSpec,
+    missing_shape_fields,
+)
 
 
 class WindowEmitter(ABC):
@@ -52,6 +56,14 @@ class WindowEmitter(ABC):
         con una forma nota va supportata, e una spec del catalogo con una
         forma che il target non sa esprimere no. E' la differenza fra
         dichiarare la copertura e trascriverne l'elenco.
+
+        "Forma" vuol dire forma *piu' i suoi campi*: una spec la cui forma
+        legge un parametro che la spec non dichiara
+        (`missing_shape_fields`) non e' materializzabile da nessun target, e
+        va dichiarata fuori copertura qui invece di essere scoperta dentro
+        `materialize` -- dove il prezzo e' un `TypeError` o un `None` scritto
+        in un p-field. Rispondere di si' e poi fallire e' il difetto che la
+        #202 chiude, a un livello piu' in basso.
         """
 
     @abstractmethod
@@ -96,8 +108,20 @@ class WindowEmitter(ABC):
         Non e' "nome sconosciuto": il nome e' buono e il catalogo lo conosce.
         E' questo target che non sa esprimere quella forma, ed e' cio' che
         il messaggio deve dire.
+
+        Il `detail` lo porta il target quando la lacuna e' sua (GEN20 non ha
+        un'opzione per quei coefficienti). Quando invece manca un campo che
+        la *forma* legge, la lacuna non e' di nessun target in particolare e
+        il motivo lo scrive qui: due target che se lo dicessero da se'
+        sarebbero due frasi libere di divergere sullo stesso difetto.
         """
         from pge.shared.exceptions import InvalidWindowError
+
+        if detail is None:
+            missing = missing_shape_fields(spec)
+            if missing:
+                detail = (f"la descrizione non dichiara {', '.join(missing)}, "
+                          f"che quella forma legge")
 
         reason = (
             f"Il target '{self.target}' non sa materializzare la finestra "

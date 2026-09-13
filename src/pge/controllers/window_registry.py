@@ -46,6 +46,11 @@ sull'array materializzato (`tests/rendering/test_window_shape_parity.py`).
 `cosine_sum` copre a un colpo hamming/hanning/blackman/blackman-harris: sono
 la stessa forma con coefficienti diversi, ed e' il motivo per cui aggiungerne
 una quinta e' una riga di catalogo e nessuna riga di emitter.
+
+La colonna "parametri" di quella tabella e' eseguibile: sta in
+`WindowShape.REQUIRED_PARAMS` e `REQUIRES_COEFFICIENTS`, la legge
+`missing_shape_fields()`, e una descrizione a cui manca un campo che la sua
+forma legge non arriva a essere una `WindowSpec`.
 """
 from __future__ import annotations
 
@@ -75,6 +80,27 @@ class WindowShape:
         RECTANGULAR, SINC_LOBE, SINE_LOBE, EXPONENTIAL_SEGMENT,
     })
 
+    # Cosa una forma ha bisogno di leggere nella spec per essere una funzione.
+    #
+    # Sta qui, accanto al vocabolario delle forme, e non nel corpo di un
+    # emitter ne' nella tabella di un test: chi inventa una forma parametrica
+    # ne dichiara i parametri nella stessa riga in cui la aggiunge, e ogni
+    # lettore -- il costruttore della spec, il `supports()` di ogni target --
+    # la deriva da qui invece di trascriverla. Una seconda copia andrebbe muta
+    # esattamente nel momento in cui serve: quando la forma nuova e' appena
+    # stata scritta e nessuno si ricorda dell'elenco che vive altrove.
+    REQUIRED_PARAMS = MappingProxyType({
+        GAUSSIAN: ('sigma',),
+        KAISER: ('beta',),
+        EXPONENTIAL_SEGMENT: ('start', 'curve', 'end'),
+    })
+
+    # Le forme che senza coefficienti non sono una funzione: `cosine_sum` con
+    # la somma vuota vale zero ovunque, cioe' un grano reso come silenzio
+    # digitale -- il caso degenere della #225, per una strada che nessuna
+    # soglia sorveglia.
+    REQUIRES_COEFFICIENTS = frozenset({COSINE_SUM})
+
 
 # Simmetria dichiarata: `w(x) == w(1-x)` oppure no. E' una proprieta' della
 # forma, non una preferenza di rendering, e un test la rilegge sull'array che
@@ -84,6 +110,36 @@ SYMMETRIC = 'symmetric'
 ASYMMETRIC = 'asymmetric'
 
 VALID_SYMMETRIES = frozenset({SYMMETRIC, ASYMMETRIC})
+
+
+def missing_shape_fields(spec) -> Tuple[str, ...]:
+    """I campi che la forma di `spec` legge e che `spec` non dichiara.
+
+    E' la lettura di `WindowShape.REQUIRED_PARAMS` e `REQUIRES_COEFFICIENTS`,
+    e l'unica: il costruttore della spec la usa per rifiutare una descrizione
+    incompleta, e `supports()` di ogni target per dichiararla fuori copertura.
+
+    Prende uno spec-*like*, non una `WindowSpec`, perche' gli emitter fanno
+    lo stesso (`getattr(spec, 'shape', None)`): una spec costruita altrove --
+    o un duck type di prova -- deve poter essere interrogata senza passare
+    dal catalogo.
+
+    Una forma senza parametri restituisce sempre `()`: non e' un giudizio
+    sulla forma, e' l'elenco di cio' che manca, che per lei e' vuoto.
+    """
+    shape = getattr(spec, 'shape', None)
+    missing = []
+
+    if (shape in WindowShape.REQUIRES_COEFFICIENTS
+            and not getattr(spec, 'coefficients', ())):
+        missing.append('coefficients')
+
+    params = getattr(spec, 'params', None) or {}
+    for key in WindowShape.REQUIRED_PARAMS.get(shape, ()):
+        if params.get(key) is None:
+            missing.append(key)
+
+    return tuple(missing)
 
 
 @dataclass(frozen=True)
@@ -137,6 +193,20 @@ class WindowSpec:
         # sotto gli altri la descrizione da cui tutti derivano.
         object.__setattr__(self, 'coefficients', tuple(self.coefficients))
         object.__setattr__(self, 'params', MappingProxyType(dict(self.params)))
+
+        # Una forma senza i suoi parametri non e' una descrizione parziale:
+        # e' una descrizione che nessun target puo' leggere. Il prezzo di
+        # lasciarla passare lo pagava chi rendeva -- NumPy valuta la formula
+        # con un `None` dentro (`TypeError`), Csound scrive il `None` nel
+        # p-field e lo score muore a meta' render -- cioe' esattamente il
+        # modo di fallire che la #202 esiste per togliere di mezzo. Qui il
+        # catalogo non puo' nemmeno contenerla: il modulo non si importa.
+        missing = missing_shape_fields(self)
+        if missing:
+            raise ValueError(
+                f"WindowSpec('{self.name}'): la forma '{self.shape}' legge "
+                f"{', '.join(missing)}, che la spec non dichiara"
+            )
 
     def param(self, key: str, default: Optional[float] = None) -> Optional[float]:
         """Parametro scalare della forma, `default` se la spec non lo dichiara."""

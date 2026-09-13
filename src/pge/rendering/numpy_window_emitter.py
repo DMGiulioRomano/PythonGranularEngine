@@ -21,7 +21,11 @@ from __future__ import annotations
 import numpy as np
 
 from pge.controllers.window_emitter import WindowEmitter
-from pge.controllers.window_registry import WindowShape, WindowSpec
+from pge.controllers.window_registry import (
+    WindowShape,
+    WindowSpec,
+    missing_shape_fields,
+)
 
 
 class NumpyWindowEmitter(WindowEmitter):
@@ -48,6 +52,19 @@ class NumpyWindowEmitter(WindowEmitter):
     # =========================================================================
 
     def supports(self, spec) -> bool:
+        """La forma, *piu'* i campi che la forma legge.
+
+        Fermarsi alla forma faceva dire di si' a una descrizione che questo
+        target non puo' valutare: una gaussiana senza `sigma` divide per
+        `None` (`TypeError` a meta' render, non l'`InvalidWindowError` che il
+        contratto promette) e una somma di coseni senza coefficienti vale
+        zero ovunque -- un grano reso come silenzio digitale, senza nemmeno
+        un errore. `WindowSpec` rifiuta gia' una spec cosi' alla costruzione;
+        qui si risponde anche per le spec-like che il catalogo non ha visto,
+        che e' il caso per cui `supports()` prende uno spec-like.
+        """
+        if missing_shape_fields(spec):
+            return False
         return getattr(spec, 'shape', None) in self._SHAPES
 
     def materialize(self, spec: WindowSpec, resolution: int) -> np.ndarray:

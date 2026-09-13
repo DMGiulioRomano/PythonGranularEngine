@@ -35,7 +35,11 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from pge.controllers.window_emitter import WindowEmitter
-from pge.controllers.window_registry import WindowShape, WindowSpec
+from pge.controllers.window_registry import (
+    WindowShape,
+    WindowSpec,
+    missing_shape_fields,
+)
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,15 @@ class CsoundWindowEmitter(WindowEmitter):
         """
         shape = getattr(spec, 'shape', None)
 
+        # Una descrizione a cui manca un campo che la sua forma legge non e'
+        # traducibile: i rami sotto passerebbero il `None` nei p-field, e
+        # `f 7 0 1024 20 7 1 None` e' una riga che Csound rifiuta a meta'
+        # render. E' il difetto che la #202 toglie di mezzo, quindi la
+        # risposta e' la stessa che si da' a una forma ignota -- fuori
+        # copertura, detto prima.
+        if missing_shape_fields(spec):
+            return None
+
         if shape == WindowShape.COSINE_SUM:
             opt = self._COSINE_SUM_OPTS.get(tuple(spec.coefficients))
             return None if opt is None else self._gen20(opt)
@@ -171,8 +184,16 @@ class CsoundWindowEmitter(WindowEmitter):
                         params=(opt, self._GEN20_MAX) + extra)
 
     def _why_not(self, spec) -> Optional[str]:
-        """Il motivo del rifiuto, quando ce n'e' uno da dire."""
+        """Il motivo del rifiuto, quando ce n'e' uno *di questo target*."""
         shape = getattr(spec, 'shape', None)
+
+        # La descrizione incompleta non e' una lacuna di Csound: il motivo lo
+        # dice il contratto, uguale per ogni target (`WindowEmitter._reject`).
+        # Rispondere qui direbbe "l'apertura per sigma=None non e' nota", che
+        # manda a cercare una tabella di traduzione al posto del campo che
+        # manca.
+        if missing_shape_fields(spec):
+            return None
 
         if shape == WindowShape.COSINE_SUM:
             return (f"GEN20 non ha un'opzione per i coefficienti "
