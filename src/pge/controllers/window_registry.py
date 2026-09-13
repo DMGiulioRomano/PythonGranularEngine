@@ -208,6 +208,22 @@ class WindowSpec:
                 f"{', '.join(missing)}, che la spec non dichiara"
             )
 
+    def __hash__(self):
+        """Una spec e' un valore, e un valore si mette in un set.
+
+        `frozen=True` genera un `__hash__` sui campi, ma `params` e' un
+        `mappingproxy` e non e' hashable: la dataclass si dichiarava
+        immutabile e poi alzava `TypeError` alla prima `{spec}`, al primo
+        `lru_cache` su `supports(spec)`, al primo dizionario indicizzato per
+        descrizione. I parametri entrano nell'hash come coppie ordinate, che
+        e' la stessa uguaglianza che `__eq__` gia' osserva.
+        """
+        return hash((
+            self.name, self.shape, self.description, self.family,
+            self.symmetry, self.coefficients,
+            tuple(sorted(self.params.items())),
+        ))
+
     def param(self, key: str, default: Optional[float] = None) -> Optional[float]:
         """Parametro scalare della forma, `default` se la spec non lo dichiara."""
         return self.params.get(key, default)

@@ -287,6 +287,29 @@ class TestWindowSpecImmutability:
         with pytest.raises(TypeError):
             spec.params['sigma'] = 0.9
 
+    def test_a_spec_can_be_hashed(self):
+        """`frozen=True` promette un valore, e un valore si mette in un set.
+
+        `params` e' un `mappingproxy`, che hashable non e': l'`__hash__`
+        generato dalla dataclass alzava `TypeError`, cioe' la spec si
+        dichiarava immutabile e poi rifiutava il primo `{spec}` o il primo
+        `lru_cache` su `supports(spec)`.
+        """
+        assert len({_spec(), _spec()}) == 1
+        assert len({_spec(name='hanning'), _spec(name='hamming')}) == 2
+
+    def test_specs_differing_only_in_params_hash_apart(self):
+        gaussian = dict(shape=WindowShape.GAUSSIAN, coefficients=())
+        narrow = _spec(params={'sigma': 0.4}, **gaussian)
+        wide = _spec(params={'sigma': 0.9}, **gaussian)
+
+        assert hash(narrow) != hash(wide)
+        assert len({narrow, wide}) == 2
+
+    def test_the_whole_catalogue_is_hashable(self):
+        assert len(set(WindowRegistry.WINDOWS.values())) == \
+            len(WindowRegistry.WINDOWS)
+
     def test_params_do_not_alias_the_dict_they_came_from(self):
         source = {'sigma': 0.4}
         spec = _spec(shape=WindowShape.GAUSSIAN, coefficients=(),
