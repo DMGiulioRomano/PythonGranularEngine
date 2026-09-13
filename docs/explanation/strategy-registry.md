@@ -76,7 +76,9 @@ sono ciò che decide la forma più di ogni preferenza di stile:
   `VOICE_POINTER_STRATEGIES`, `VOICE_PAN_STRATEGIES` e `CHORD_INTERVALS`, e ne
   confronta le chiavi con il proprio registro statico: spostare o rinominare
   una di quelle cinque rende rossa la CI di un altro repository senza far
-  fallire un test di PGE. Le altre quattro mappe (density, variation, window,
+  fallire un test di PGE — quando quella CI il motore ce l'ha, perché il
+  checkout è condizionato a un secret e senza di esso la parità skippa in
+  verde (#269). Le altre quattro mappe (density, variation, window,
   grain_clip) nessuno le importa da fuori, e nemmeno i `register_*`, le
   `Factory` o `SEMITONE_LOCKED` — di quest'ultima PGE-ls tiene una copia a mano
   (`SEMITONE_LOCKED_STRATEGIES` in `granular_ls/pitch_units.py`), che un rename
@@ -84,7 +86,8 @@ sono ciò che decide la forma più di ogni preferenza di stile:
   È la stessa *classe* di esposizione che inventaria la #246, non la stessa
   esposizione — quell'issue elenca ciò che importa l'harness di parità di
   **PGE-ui**, e fra i suoi moduli non compare nessuna di queste mappe. Il
-  vincolo PGE-ls, oggi, non è registrato altrove che qui.
+  censimento dell'esposizione PGE-ls, che al momento di scrivere questa
+  decisione non esisteva, è la #269.
 - **La guardia sulla diagnostica è derivata dai sorgenti.**
   `tests/shared/test_stdout_contract.py` cerca con `ast` le `def
   register_*_strategy` di livello modulo, pretende che l'insieme dei moduli che
@@ -370,9 +373,9 @@ registrazione) — sopravvive identico. Per cinque di quei nomi, e cinque soli, 
 la condizione perché la parità di PGE-ls resti verde: le quattro mappe voce e
 `CHORD_INTERVALS`. Per tutti gli altri è disciplina interna, non vincolo
 esterno, e conviene saperlo in questi termini: chi esegue #184/#185 deve
-verificare *quali* nomi sono davvero pinnati, e il posto dove leggerlo è il
-censimento qui sopra — non la #246, che inventaria la superficie importata da
-**PGE-ui** e non nomina nessuna di queste mappe.
+verificare *quali* nomi sono davvero pinnati, e il posto dove leggerlo è la
+#269 (o il censimento qui sopra) — non la #246, che inventaria la superficie
+importata da **PGE-ui** e non nomina nessuna di queste mappe.
 
 **La documentazione di estensione è già disallineata, e questo la rimette in
 riga.** [[add-voice-strategy]] dice «registra nella factory
@@ -398,8 +401,8 @@ prese come specifica.
 - **Non spostare né rinominare** le mappe di modulo, i `register_*`, le
   `Factory`, `SEMITONE_LOCKED`, `CHORD_INTERVALS` — ma sapendo quanto costa
   ciascuno. `VOICE_PITCH/ONSET/POINTER/PAN_STRATEGIES` e `CHORD_INTERVALS` sono
-  importati per nome dal test di parità di PGE-ls: lì il costo è immediato e
-  fuori da qui. Gli altri costano dentro (`SEMITONE_LOCKED` la legge `Stream`)
+  importati per nome dal test di parità di PGE-ls (#269): lì il costo è
+  immediato e fuori da qui. Gli altri costano dentro (`SEMITONE_LOCKED` la legge `Stream`)
   o non costano ancora niente, e restano fermi per non spendere una decisione su
   niente. Se uno deve muoversi, prima l'analisi d'impatto cross-repo.
 - **Non aggiungere validazione `issubclass`** dentro `register()` in #184/#185:
@@ -421,6 +424,7 @@ prese come specifica.
 - [[add-voice-strategy]] · [[add-variation-strategy]] — le how-to che questa
   decisione obbliga a correggere
 - Issue #177 (questa decisione), #184 (tracer bullet), #185 (le altre cinque),
-  #187 e #178 (il canale della riga di registrazione), #246 (la superficie
-  interna pinnata da PGE-ui: stessa classe di vincolo, altro elenco — quello
-  di PGE-ls è censito qui)
+  #187 e #178 (il canale della riga di registrazione), #269 (la superficie
+  interna pinnata da PGE-ls: i cinque nomi di cui sopra, e perché il loro
+  presidio può tacere), #246 (la gemella per PGE-ui: stessa classe di
+  vincolo, altro elenco)
