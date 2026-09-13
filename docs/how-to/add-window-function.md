@@ -10,7 +10,7 @@ sources:
   - src/pge/rendering/numpy_window_emitter.py
   - src/pge/rendering/csound_emitter.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: e20c5f0
+last_synced_commit: d4c24ec
 entry_for: [add-window-function]
 ---
 
@@ -59,10 +59,28 @@ NumPy e non in Csound. `supports()` lo dice prima del render; senza,
 il nome passerebbe la validazione YAML e morirebbe a metà rendering — è
 quello che è successo all'alias `triangle`.
 
+### Una forma parametrica dichiara i suoi parametri
+
+Se la forma nuova legge dei campi della spec — come `gaussian` legge `sigma` —
+vanno dichiarati in `WindowShape.REQUIRED_PARAMS` (o la forma va aggiunta a
+`REQUIRES_COEFFICIENTS`, se senza coefficienti non è una funzione). **Non è
+documentazione**: è la riga da cui `missing_shape_fields()` deriva la risposta,
+e da lì la leggono il costruttore di `WindowSpec` — che rifiuta una
+descrizione incompleta, quindi il catalogo non può contenerne una — e il
+`supports()` di ogni target.
+
+Dimenticarla non dà un errore subito: dà un `None` dentro la formula NumPy
+(`TypeError` a metà render) e un `None` dentro un p-field Csound
+(`f 7 0 1024 20 7 1 None`, che lo score rifiuta), oppure — per una somma di
+coseni vuota — nessun errore affatto e un array di zeri, cioè il grano reso
+come silenzio digitale. Dichiararla è una riga; è la stessa differenza fra
+copertura dichiarata e divergenza scoperta di cui parla il paragrafo sopra,
+un livello più in basso.
+
 ## Passi
 
 1. Definisci la `WindowSpec` in `src/pge/controllers/window_registry.py` e aggiungi la entry a `WindowRegistry.WINDOWS` (chiave = nome usato in YAML): `shape`, `description`, `family`, `symmetry`, più `coefficients` o `params` secondo la forma. Se serve un sinonimo, aggiungilo a `WindowRegistry.ALIASES`
-2. Se la forma è nuova: aggiungi la costante a `WindowShape`, il ramo in `NumpyWindowEmitter._SHAPES` con il suo metodo, e in `CsoundWindowEmitter._translate` la GEN corrispondente (o niente, se Csound non la esprime: `_translate` restituisce `None` e la copertura lo dichiara)
+2. Se la forma è nuova: aggiungi la costante a `WindowShape`, **dichiara i suoi parametri** in `WindowShape.REQUIRED_PARAMS` (o la forma in `REQUIRES_COEFFICIENTS`), il ramo in `NumpyWindowEmitter._SHAPES` con il suo metodo, e in `CsoundWindowEmitter._translate` la GEN corrispondente (o niente, se Csound non la esprime: `_translate` restituisce `None` e la copertura lo dichiara)
 3. Aggiungi il caso all'oracolo di `tests/rendering/test_window_shape_parity.py` — entrambi gli oracoli — e i test unit su shape, range, simmetria
 4. Esegui la parità: la finestra nuova dev'essere **materializzabile da ogni emitter registrato**, non solo valida (vedi § Test da aggiornare)
 5. Aggiorna [[yaml]] § Finestre Disponibili con il nuovo nome
@@ -84,6 +102,8 @@ quello che è successo all'alias `triangle`.
 - Test forma window (lunghezza, range, simmetria)
 - Test integrazione con `grain: {envelope: <nome>}`
 - `tests/rendering/test_window_emitters.py::TestEveryEmitterCoversTheCatalogue` — ogni spec del catalogo è materializzabile da ogni emitter registrato: passa da sé se hai fatto il passo 2, fallisce se hai toccato solo il catalogo
+- `tests/rendering/test_window_emitters.py::TestIncompleteSpecIsDeclared` — una spec la cui forma legge un campo che la spec non dichiara è fuori copertura per **ogni** target, e ciò che un target materializza non porta buchi dentro (array non finito o tutto nullo, p-field `None`). Si parametrizza da sé sulle forme dichiarate parametriche: la forma nuova ci entra se hai fatto il passo 2
+- `tests/controllers/test_window_registry.py::TestWindowRegistryDataIntegrity::test_every_required_field_is_actually_read` — il verso opposto: un parametro dichiarato obbligatorio dev'essere un parametro che la forma legge davvero
 - `tests/rendering/test_window_shape_parity.py` — la forma dichiarata è quella prodotta, e la simmetria dichiarata si rilegge sull'array
 - `tests/rendering/test_csound_window_emitter.py::TestTranslation::test_the_expected_table_covers_the_catalogue` — una finestra senza attesi non è coperta dalla suite
 

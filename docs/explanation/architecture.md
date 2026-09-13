@@ -9,7 +9,7 @@ sources:
   - src/pge/controllers/window_emitter.py
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: e20c5f0
+last_synced_commit: d4c24ec
 ---
 
 # Architettura Renderer
@@ -183,6 +183,17 @@ Tre conseguenze che si vedono nel codice:
   in Csound, e il target lo dice prima. `available_windows()` di un target è
   la sua copertura, non il catalogo: oggi le due liste coincidono, ma la
   coincidenza è un risultato che un test verifica, non più una definizione.
+
+  "Forma" vuol dire forma **più i suoi campi**: cosa una forma legge sta
+  dichiarato accanto alle forme (`WindowShape.REQUIRED_PARAMS`,
+  `REQUIRES_COEFFICIENTS`) e lo deriva una funzione sola,
+  `missing_shape_fields()`. Rispondere sul solo nome della forma faceva dire
+  di sì a una descrizione che nessun target può leggere — un `kaiser` senza
+  `beta` — e il prezzo lo pagava chi rende: un `TypeError` dentro la formula
+  NumPy, un `None` scritto in un p-field Csound, o — per una somma di coseni
+  vuota — nessun errore e un array di zeri. È la stessa divergenza fra
+  dichiarato e reale, un livello più in basso, quindi ha la stessa risposta:
+  la descrizione incompleta non arriva a essere una `WindowSpec`.
 - **La parità di forma è misurata.** La guardia precedente confrontava i
   *nomi* (lunghezza giusta, valori finiti): due implementazioni della stessa
   finestra potevano divergere di un campione agli estremi — simmetrica contro

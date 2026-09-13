@@ -69,6 +69,48 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Csound delle finestre è il punto in cui la sintassi tornerebbe comoda —
   sa quale GEN produce una forma — e restituisce numeri.
 
+- **Una forma senza i suoi parametri non è più una descrizione che passa**
+  (issue #202). `supports()` rispondeva guardando la sola *forma*, quindi una
+  spec che dichiara `kaiser` senza `beta`, o `exponential_segment` senza
+  `start`/`curve`/`end`, risultava coperta, compariva in `covered_names()` e
+  falliva dopo: NumPy valutava la formula con un `None` dentro (`TypeError`,
+  non l'`InvalidWindowError` che il contratto promette) e Csound scriveva quel
+  `None` in un p-field, producendo `f 7 0 1024 20 7 1 None` — una riga che
+  muore a metà render. Una somma di coseni senza coefficienti era il caso
+  peggiore: nessun errore affatto, un array di zeri, cioè il grano reso come
+  silenzio digitale — il caso degenere della #225 per una strada che nessuna
+  soglia sorveglia.
+
+  Cioè esattamente il modo di fallire che la #202 esiste per togliere di
+  mezzo, un livello più in basso: non un nome che un target non copre, ma una
+  descrizione che non descrive.
+
+  Cosa una forma legge sta ora dichiarato accanto alle forme
+  (`WindowShape.REQUIRED_PARAMS`, `REQUIRES_COEFFICIENTS`) e lo legge una
+  funzione sola, `missing_shape_fields()`, con due lettori: il costruttore di
+  `WindowSpec`, che rifiuta una descrizione incompleta — il catalogo non può
+  nemmeno contenerla, il modulo non si importa — e il `supports()` di ogni
+  target, per le spec-like che il catalogo non ha visto. La colonna
+  "parametri" della tabella delle forme è diventata eseguibile.
+
+  L'elenco stava in un test (`test_every_shape_declares_what_it_needs`) e
+  girava sul solo `WindowRegistry.WINDOWS`: una seconda copia della verità, che
+  sarebbe andata muta nel momento in cui serve — quando una forma parametrica
+  nuova è appena stata scritta e nessuno si ricorda dell'elenco che vive
+  altrove. Adesso il test deriva la domanda dalla dichiarazione, e una guardia
+  gemella misura il verso opposto: un parametro dichiarato obbligatorio
+  dev'essere un parametro che la forma **legge**, verificato spostandolo e
+  chiedendo che la materializzazione si muova.
+
+  Nessuno statement `.sco` e nessun campione cambiano: le sedici finestre del
+  catalogo dichiarano già tutte ciò che leggono.
+
+- **`WindowSpec` è di nuovo hashable.** `frozen=True` genera un `__hash__` sui
+  campi, ma `params` è un `mappingproxy`, che hashable non è: la dataclass si
+  dichiarava immutabile e poi alzava `TypeError` al primo `{spec}` o al primo
+  `lru_cache` su `supports(spec)`. I parametri entrano nell'hash come coppie
+  ordinate, la stessa uguaglianza che `__eq__` già osserva.
+
 ### Cambiato
 
 - **Le registrazioni dinamiche di strategy non stampano piu' su stdout**
