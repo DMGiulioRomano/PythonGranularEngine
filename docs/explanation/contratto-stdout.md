@@ -20,7 +20,7 @@ sources:
   - src/pge/rendering/score_visualizer.py
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
-last_synced_commit: 17a0d4f
+last_synced_commit: c33d153
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -243,7 +243,11 @@ facendo scrivere alla CLI il suo riepilogo — un `print()` letto con `ast` dire
 che la riga esiste, solo i byte dicono che esce indentata); che ogni `print()`
 di `src/pge/` abbia una categoria e ogni categoria una `print()`; che nessuna
 riga non-protocollo abbia forma di protocollo; e che nessun **messaggio di
-log** ce l'abbia, perche' stderr non e' un riparo.
+log** ce l'abbia, perche' stderr non e' un riparo. Le ultime due chiedono
+**entrambe** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova e
+un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
+chiudono nell'editor lo stream in volo, e guardare la sola `[CACHE]` li
+lasciava passare.
 
 **La tabella dice dove una riga sta, non dove dovrebbe andare.** Spostare
 un'INTERFACCIA al logger resta una scelta di prodotto: cambia cio' che l'utente
@@ -257,11 +261,18 @@ di superficie pubblica, quindi con analisi d'impatto. `PREFISSO_PROTOCOLLO_CACHE
 resta piu' stretto di entrambe di proposito: e' la guardia che difende la riga
 *per stream*, non la definizione di cio' che il parser legge.
 
-**La meta' statica non arriva ovunque.** Se un valore interpolato finisca in
-`.wav` lo decide il runtime, non il sorgente: `  ✓ {path}` di
-`score_visualizer.py` ha la stessa sagoma del blocco riassuntivo e oggi stampa
-`.png`. La guardia statica riconosce la sagoma, non l'estensione; a chiudere
-quella meta' e' il test di comportamento.
+**La meta' statica non arriva ovunque, e il confine non e' dove sembra.** La
+guardia riconosce come "forma di path" solo la *sagoma pura* — indentazione
+piu' interpolazione e nient'altro — perche' e' l'unica su cui un sorgente
+basti: se un valore finisca in `.wav` lo decide il runtime. `_RE_STEM_PATH` a
+valle e' invece molto piu' larga: le basta una riga indentata che contenga
+`__` e finisca in `.aif/.aiff/.wav/.flac`, e il resto della riga puo' essere
+qualunque cosa. Percio' `  ✓ {path}` di `score_visualizer.py` (oggi un `.png`)
+e la riga `  Path cercato: {path}` di `SampleNotFoundError` **cadono fuori
+dalla guardia statica** pur potendo entrare nel parser a runtime: e' la stessa
+collisione descritta sopra, e a chiuderla non c'e' un `ast` ma il test di
+comportamento — piu' l'abitudine, qui sotto, di guardare ogni riga indentata
+che finisce con un path.
 
 ## Implicazioni codice
 
