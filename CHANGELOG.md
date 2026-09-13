@@ -20,16 +20,28 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   density, che si costruisce con due posizionali.
 
   A decidere non e' stato il gusto ma due vincoli esterni, entrambi scritti
-  nella doc: le mappe di modulo sono superficie che il test di parita' di
-  PGE-ls importa per nome (#246), e i test di qui le trattano gia' come
+  nella doc. Il primo: cinque nomi di modulo — le quattro mappe voce e
+  `CHORD_INTERVALS` — sono superficie che il test di parita' di PGE-ls importa
+  dal motore per nome. Cinque, non tutti: delle altre quattro mappe, dei
+  `register_*`, delle `Factory` e di `SEMITONE_LOCKED` PGE-ls tiene specchi
+  scritti a mano, e la #246 inventaria l'esposizione di PGE-ui, dove nessuna di
+  queste mappe compare. Il secondo: i test di qui le trattano gia' come
   dizionari (`isinstance`, `clear()`/`update()`, `del`, `pop`) — con delle
   closure il dizionario resterebbe comunque fuori, cioe' si riscriverebbe la
-  duplicazione spostata di due righe. Da cui anche il buco che il refactor
-  *apre* e che #184 deve chiudere: la guardia della #187 riconosce le `def
-  register_*_strategy` di livello modulo, e un `log_strategy_registration`
-  spostato dentro un metodo della classe generica le esce dal campo visivo —
-  la stessa lezione del settimo entry point in `contratto-stdout.md`, un giro
-  piu' in la'.
+  duplicazione spostata di due righe.
+
+  Da cui anche i due buchi che il refactor *apre* e che #184 deve chiudere. La
+  guardia della #187 riconosce le `def register_*_strategy` di livello modulo, e
+  un `log_strategy_registration` spostato dentro un metodo della classe generica
+  le esce dal campo visivo — la stessa lezione del settimo entry point in
+  `contratto-stdout.md`, un giro piu' in la'. E l'ordine degli errori della
+  facade di density e' pinnato da `tests/strategies/test_registry_errors.py`:
+  con nome ignoto *e* `distribution` assente e' l'ordine a decidere il tipo
+  dell'eccezione, quindi il lookup va interrogato prima della validazione di
+  dominio. Lo scheletro porta infine `from __future__ import annotations`, e non
+  per ornamento: `Dict[str, Type[S]] | None` e' un'annotazione di firma,
+  valutata alla `def`, e sulla 3.9 che `pyproject.toml` dichiara un PEP 604
+  valutato fa fallire l'import del modulo — il difetto pagato dalla #257.
 
 - **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
   pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`

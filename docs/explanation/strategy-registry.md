@@ -12,9 +12,13 @@ sources:
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/grain_clip_strategy.py
   - src/pge/controllers/window_selection_strategy.py
+  - src/pge/envelopes/envelope_factory.py
+  - src/pge/core/stream.py
+  - src/pge/parameters/parameter.py
   - src/pge/shared/exceptions.py
   - src/pge/shared/logger.py
   - tests/shared/test_stdout_contract.py
+  - tests/strategies/test_registry_errors.py
 last_synced_commit: e44ede3
 ---
 
@@ -66,13 +70,21 @@ funzione da cui emetterla.
 Due vincoli esterni rendono questa duplicazione più cara di quanto sembri, e
 sono ciò che decide la forma più di ogni preferenza di stile:
 
-- **I nomi di modulo sono superficie pinnata.** Il test di parità di PGE-ls
-  importa `VOICE_PITCH_STRATEGIES`, `VOICE_ONSET_STRATEGIES`,
-  `VOICE_POINTER_STRATEGIES`, `VOICE_PAN_STRATEGIES` e `CHORD_INTERVALS` dai
-  moduli del motore e ne confronta le chiavi con il proprio registro statico:
-  spostare o rinominare una di quelle mappe rende rossa la CI di un altro
-  repository senza far fallire un test di PGE. È la stessa esposizione
-  inventariata dalla #246.
+- **Cinque nomi di modulo sono superficie pinnata, e solo cinque.**
+  `tests/test_pge_parity.py` di PGE-ls importa dai moduli del motore
+  `VOICE_PITCH_STRATEGIES`, `VOICE_ONSET_STRATEGIES`,
+  `VOICE_POINTER_STRATEGIES`, `VOICE_PAN_STRATEGIES` e `CHORD_INTERVALS`, e ne
+  confronta le chiavi con il proprio registro statico: spostare o rinominare
+  una di quelle cinque rende rossa la CI di un altro repository senza far
+  fallire un test di PGE. Le altre quattro mappe (density, variation, window,
+  grain_clip) nessuno le importa da fuori, e nemmeno i `register_*`, le
+  `Factory` o `SEMITONE_LOCKED` — di quest'ultima PGE-ls tiene una copia a mano
+  (`SEMITONE_LOCKED_STRATEGIES` in `granular_ls/pitch_units.py`), che un rename
+  qui per definizione non tocca: resta indietro in silenzio invece di gridare.
+  È la stessa *classe* di esposizione che inventaria la #246, non la stessa
+  esposizione — quell'issue elenca ciò che importa l'harness di parità di
+  **PGE-ui**, e fra i suoi moduli non compare nessuna di queste mappe. Il
+  vincolo PGE-ls, oggi, non è registrato altrove che qui.
 - **La guardia sulla diagnostica è derivata dai sorgenti.**
   `tests/shared/test_stdout_contract.py` cerca con `ast` le `def
   register_*_strategy` di livello modulo, pretende che l'insieme dei moduli che
@@ -88,6 +100,8 @@ Una classe generica che **è** la mappa, in un modulo nuovo
 `src/pge/strategies/registry.py`:
 
 ```python
+from __future__ import annotations
+
 S = TypeVar("S")
 
 
@@ -113,6 +127,19 @@ class StrategyRegistry(Dict[str, Type[S]]):
             )
         return self[name](*args, **kwargs)
 ```
+
+**La prima riga non è un ornamento**, ed è la ragione per cui sta nello
+scheletro invece di essere lasciata all'esecuzione: `Dict[str, Type[S]] | None`
+è un'annotazione di *firma*, quindi l'interprete la valuta alla `def`, e sulla
+3.9 — il minimo che `pyproject.toml` dichiara — un PEP 604 valutato alza
+`TypeError` in import. Il modulo non fallirebbe un test: smetterebbe di
+esistere, e con lui la classe che tutti gli altri importano. È il difetto che
+la #257 ha pagato per davvero e che ora `tests/test_minimum_python_syntax.py`
+sorveglia su `src/`; ogni modulo di `src/pge/` porta quell'import (misurato), e
+il nuovo non fa eccezione. La base `Dict[str, Type[S]]` invece non è
+un'annotazione e si valuta comunque: è legale sulla 3.9 perché viene da
+`typing`, e lo sarebbe anche scritta `dict[str, Type[S]]`, dato che PEP 585
+c'è dalla 3.9. Solo PEP 604 è il problema.
 
 Ogni modulo conserva tre cose e nient'altro:
 
@@ -207,9 +234,15 @@ forte della prima:
    `Stream._init_voice_manager`; `CHORD_INTERVALS` è il dominio di un kwarg.
    Attaccarle all'oggetto registry darebbe alla classe generica una superficie
    per dominio, cioè il caso speciale;
-2. `CHORD_INTERVALS` è importata dal test di parità di PGE-ls e da
-   `diagnostic_provider.py`, `SEMITONE_LOCKED` da `Stream`. Spostarle costa una
-   CI rossa altrove in cambio di niente.
+2. sono già lette da chi non può seguirle. `CHORD_INTERVALS` la importa dal
+   motore, per nome, il test di parità di PGE-ls (`tests/test_pge_parity.py`);
+   il `diagnostic_provider.py` di quel repo la nomina anche lui, ma legge il
+   proprio specchio in `granular_ls/voice_strategies.py`, quindi non è un
+   secondo vincolo — è una copia a mano, e la copia non protesta.
+   `SEMITONE_LOCKED` non esce da qui: la legge `Stream._init_voice_manager`, e
+   PGE-ls ne tiene un altro specchio (`SEMITONE_LOCKED_STRATEGIES`). Spostarle
+   costa una CI rossa — altrove per la prima, qui per la seconda — in cambio di
+   niente.
 
 Resta vero che `SEMITONE_LOCKED` è una lista di nomi che deve restare allineata
 alle chiavi del registry, e che una strategy registrata dinamicamente non può
@@ -255,6 +288,18 @@ pinnata anche in dettaglio, con un test che pretende che
 Per la stessa ragione tutte le façade restano `@staticmethod` che delegano, non
 alias di metodo legato.
 
+**Una cosa la façade non può delegare, e l'ordine in cui non la delega è
+pinnato.** `tests/strategies/test_registry_errors.py` chiama
+`create_density_strategy("bogus", None, {})` e pretende
+`StrategyNotFoundError`. Lì le due condizioni di fallimento sono vive insieme —
+il nome non è registrato *e* `distribution` manca — quindi è l'ordine a
+decidere il tipo dell'eccezione, e oggi il lookup viene prima. Una façade che
+delegasse il lookup a `DENSITY_STRATEGIES.create(...)` tenendo davanti la
+propria validazione solleverebbe `InvalidStrategyConfigError` e farebbe cadere
+quel test: il lookup va interrogato per primo (`name in REGISTRY` davanti al
+controllo di `distribution`) e solo la costruzione delegata al registry. È un
+vincolo per #185, non una preferenza.
+
 ### Chi fa da tracer bullet
 
 `voice_pan_strategy`, come dice la #184 — ma non più per le ragioni scritte lì,
@@ -262,8 +307,11 @@ e vale la pena dirlo perché quelle ragioni sono invecchiate: non è più «l'un
 il cui `register_*()` stampa su stdout» (nessuna stampa più dalla #187). Regge
 lo stesso, per tre motivi:
 
-- è l'unica il cui `create()` chiama il primo parametro `strategy_name`, cioè
-  l'unica dove la convergenza su `name` si misura davvero;
+- è l'unica il cui `create()` chiama il primo parametro `strategy_name` — non
+  l'unica a divergere da `name` (variation ha `variation_mode`, density
+  `selected_param_name`), ma l'unica in cui la divergenza cade sulla firma
+  `create(name, **kwargs)` che il registry generico deve assorbire tale e
+  quale, senza casi speciali;
 - è una delle tre che emettono la riga diagnostica, quindi passa per il punto
   dove il dominio si uniforma (`'pan voce'` → `voice_pan`);
 - i suoi test sono quelli che maltrattano di più la mappa —
@@ -316,10 +364,15 @@ prossima divergenza ha un posto solo dove succedere, e che la prossima domanda
 risposta sola.
 
 **Il refactor tocca moduli che un altro repository importa per nome.** Ogni
-nome di livello modulo — le otto mappe, i sette `register_*`, le sette
-`Factory` — sopravvive identico, e non è un riguardo estetico: è la condizione
-perché la parità di PGE-ls resti verde (#246). Chi esegue #184/#185 lo verifichi
-prima di rinominare qualcosa, non dopo.
+nome di livello modulo — le otto mappe, i sette `register_*`, le otto `Factory`
+(`grain_clip` compresa: la façade ce l'ha pur senza avere il punto di
+registrazione) — sopravvive identico. Per cinque di quei nomi, e cinque soli, è
+la condizione perché la parità di PGE-ls resti verde: le quattro mappe voce e
+`CHORD_INTERVALS`. Per tutti gli altri è disciplina interna, non vincolo
+esterno, e conviene saperlo in questi termini: chi esegue #184/#185 deve
+verificare *quali* nomi sono davvero pinnati, e il posto dove leggerlo è il
+censimento qui sopra — non la #246, che inventaria la superficie importata da
+**PGE-ui** e non nomina nessuna di queste mappe.
 
 **La documentazione di estensione è già disallineata, e questo la rimette in
 riga.** [[add-voice-strategy]] dice «registra nella factory
@@ -343,8 +396,12 @@ prese come specifica.
   della diagnostica cerca `def register_*_strategy` di livello modulo, e un
   alias fa uscire il modulo dal censimento.
 - **Non spostare né rinominare** le mappe di modulo, i `register_*`, le
-  `Factory`, `SEMITONE_LOCKED`, `CHORD_INTERVALS`: sono superficie che PGE-ls
-  importa (#246). Se una deve muoversi, prima l'analisi d'impatto cross-repo.
+  `Factory`, `SEMITONE_LOCKED`, `CHORD_INTERVALS` — ma sapendo quanto costa
+  ciascuno. `VOICE_PITCH/ONSET/POINTER/PAN_STRATEGIES` e `CHORD_INTERVALS` sono
+  importati per nome dal test di parità di PGE-ls: lì il costo è immediato e
+  fuori da qui. Gli altri costano dentro (`SEMITONE_LOCKED` la legge `Stream`)
+  o non costano ancora niente, e restano fermi per non spendere una decisione su
+  niente. Se uno deve muoversi, prima l'analisi d'impatto cross-repo.
 - **Non aggiungere validazione `issubclass`** dentro `register()` in #184/#185:
   è un rifiuto nuovo e va introdotto da una issue sua.
 - **Ordine di esecuzione** → #184 (pan, con la guardia estesa a
@@ -365,4 +422,5 @@ prese come specifica.
   decisione obbliga a correggere
 - Issue #177 (questa decisione), #184 (tracer bullet), #185 (le altre cinque),
   #187 e #178 (il canale della riga di registrazione), #246 (la superficie
-  interna pinnata da PGE-ui e PGE-ls)
+  interna pinnata da PGE-ui: stessa classe di vincolo, altro elenco — quello
+  di PGE-ls è censito qui)
