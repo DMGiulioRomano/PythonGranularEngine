@@ -10,6 +10,45 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Il contratto di stdout e' accertato per intero, e sono due righe non una**
+  (issue #178). Fin qui il repo sorvegliava la sola `[CACHE] <id>: DIRTY|clean`
+  e per tutto il resto `api.py` diceva «nessuno le parsa, per quanto se ne sa».
+  Ora ognuna delle 64 `print()` di `src/pge/` ha una categoria — protocollo,
+  diagnostica, interfaccia CLI — e la categoria e' eseguibile:
+  `CLASSIFICAZIONE` in `tests/shared/test_stdout_contract.py` va confrontata
+  coi sorgenti nelle due direzioni, quindi una riga nuova senza categoria e una
+  categoria rimasta senza riga sono entrambe rosse.
+
+  **La seconda riga di protocollo non aveva nessuna guardia.** E' il blocco
+  riassuntivo di `cli.py`: sotto «Generazione completata!» ogni path esce
+  indentato di quattro spazi, e da li' PGE-ui ricava lo `stream-done`
+  dell'*ultimo* stream DIRTY del giro — gli altri li chiude la riga `[CACHE]`
+  successiva, l'ultimo non ha nessuna riga dopo di se'. Togliendole
+  l'indentazione la suite restava interamente verde e quell'unico stem prendeva
+  il pallino giallo dopo un render che aveva fatto esattamente cio' che il
+  pallino chiedeva. La guardia e' percio' di **comportamento** e non una
+  lettura `ast`: si fa scrivere alla CLI il suo riepilogo e si guardano i byte,
+  perche' un `print()` letto coi sorgenti direbbe che la riga esiste e solo
+  l'output dice che esce indentata.
+
+  **E stderr non e' il riparo che `logger.py` prometteva.** Il commento diceva
+  che la diagnostica e' al sicuro perche' la console di `logging` scrive su
+  stderr: vero sul file descriptor, falso sul canale che conta, perche' il
+  bridge di PGE-ui lancia il motore con `stderr=subprocess.STDOUT` e i due
+  flussi arrivano allo stesso parser. Con
+  `logging.basicConfig(level=DEBUG, format="%(message)s")` un record
+  diagnostico che cominci per `[CACHE] <token>: ` produce nell'editor uno
+  `stream-start` e uno `stream-done` per uno stream che non esiste. La regola
+  non e' quindi «il logger e' un altro canale», e' **nessuno, su nessun canale,
+  scrive righe con la forma del protocollo** — e ora c'e' una guardia anche sui
+  messaggi di logging, letti con `ast` come le `print()`.
+
+  Le guardie sulla forma chiedono **entrambe** le forme che
+  `render_pipeline.py` riconosce, non la sola `[CACHE]`: una
+  `print(f"    {x}")` nuova marcata interfaccia, o un `log.debug("    %s",
+  path)`, hanno la sagoma del blocco riassuntivo e chiudono in anticipo lo
+  stream in volo nell'editor.
+
 - **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
   pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
   che *contengono* `load_yaml()`, ed era la lettura giusta per il difetto che

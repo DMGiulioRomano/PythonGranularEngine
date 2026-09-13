@@ -228,8 +228,7 @@ def get_engine_log_path() -> str | None:
 #    chiama `setLevel`, quindi il livello effettivo lo eredita dal root e a
 #    deciderlo e' l'host. Sotto il default del root (WARNING) il record non
 #    viene nemmeno costruito, quindi la diagnostica muta non costa. Chi la
-#    vuole fa `logging.basicConfig(level=logging.DEBUG)`, e la console di
-#    `logging` e' stderr: nemmeno accendendola si rientra in stdout.
+#    vuole fa `logging.basicConfig(level=logging.DEBUG)`.
 #
 #    Il NOTSET e' la meta' portante, non un dettaglio omesso. Un
 #    `logger.setLevel(logging.DEBUG)` qui non renderebbe la diagnostica
@@ -239,6 +238,28 @@ def get_engine_log_path() -> str | None:
 #    NOTSET: ogni host che lo chiama si troverebbe la diagnostica su stderr
 #    senza averla chiesta. Il livello del logger e' dell'host, e va lasciato
 #    dov'e'. Lo fissa `test_diagnostic_logger_non_impone_un_livello`.
+#
+# **Quello che stderr NON e' e' un riparo**, e qui c'era scritto il
+# contrario: «la console di logging e' stderr, nemmeno accendendola si
+# rientra in stdout». Vero sul file descriptor, falso sul canale che conta.
+# Il bridge di PGE-ui lancia il motore con `stderr=subprocess.STDOUT`
+# (`RenderState.start` in `render_pipeline.py`): i due flussi arrivano allo
+# stesso `readline`, e ogni riga passa per `parse_render_line`. Misurato
+# nella #178: con `logging.basicConfig(level=DEBUG, format="%(message)s")` —
+# la configurazione piu' ordinaria che ci sia — un record diagnostico che
+# cominci per `[CACHE] <token>: ` ha prodotto nell'editor uno `stream-start`
+# e uno `stream-done` per uno stream che non esiste. A separarlo dal
+# protocollo nel formato di default e' soltanto il prefisso
+# `DEBUG:pge.diagnostics:` che il formatter antepone, cioe' una scelta
+# dell'host.
+#
+# Quindi la regola non e' «il logger e' un altro canale», e' **nessuno, su
+# nessun canale, scrive righe con la forma del protocollo**. Le forme sono
+# due — `[CACHE] <token>: <resto>` e una riga di sola indentazione piu' un
+# path che finisca in `.aif/.wav/.flac` — e la seconda e' quella che il
+# logger scrive con piu' naturalezza (`log.debug("    %s", path)`). Le tiene
+# ferme entrambe `test_nessun_messaggio_di_log_ha_la_forma_del_protocollo` in
+# `tests/shared/test_stdout_contract.py`.
 DIAGNOSTIC_LOGGER_NAME = 'pge.diagnostics'
 
 _diagnostic_logger: logging.Logger | None = None

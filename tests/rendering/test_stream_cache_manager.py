@@ -581,12 +581,18 @@ class TestDirtyStreamFiltering:
     ):
         """`[CACHE] <id>: DIRTY|clean` su stdout, uno per stream (issue #187).
 
-        Non e' una riga di servizio: e' quella da cui `parse_render_line` di
-        PGE-ui ricava `stream-start` e `stream-done`. Qui esce prima che un
-        renderer esista — la pipeline in due stadi passa da
-        `Generator.write_sco_files`, che delega a questo metodo. E' anche
-        l'emettitore piu' esposto: gli altri `print()` di questo modulo la
-        #178 non li ha ancora classificati, quindi qualcuno ci ripassera'.
+        Non e' una riga di servizio: ha la forma da cui `parse_render_line`
+        di PGE-ui ricava `stream-start` e `stream-done`, e qui esce prima che
+        un renderer esista.
+
+        Con un'avvertenza che la #178 ha accertato e che conviene tenere
+        insieme all'asserzione: l'unico chiamante di questo metodo in
+        `src/pge/` e' `Generator.generate_score_files_per_stream`, che a sua
+        volta non ha chiamanti. Nessun render passa di qui, e infatti
+        `tests/test_api_stdout.py` lo elenca fra gli irraggiungibili. La riga
+        resta protocollo *per forma* — il giorno che qualcuno ricollega quel
+        percorso, arriva al parser dell'editor senza doverlo decidere di
+        nuovo — e questa asserzione e' cio' che la tiene tale.
         Senza questa asserzione una conversione al logger non farebbe fallire
         niente, e la barra di avanzamento dell'editor resterebbe ferma a zero
         per tutto il rendering. Vedi `docs/explanation/contratto-stdout.md` e
