@@ -230,6 +230,15 @@ def get_engine_log_path() -> str | None:
 #    viene nemmeno costruito, quindi la diagnostica muta non costa. Chi la
 #    vuole fa `logging.basicConfig(level=logging.DEBUG)`.
 #
+#    Il NOTSET e' la meta' portante, non un dettaglio omesso. Un
+#    `logger.setLevel(logging.DEBUG)` qui non renderebbe la diagnostica
+#    "accendibile": la renderebbe *accesa*. `Logger.callHandlers` confronta il
+#    record col livello dell'**handler**, non ricontrolla quello del logger, e
+#    un `logging.basicConfig()` senza argomenti lascia il suo StreamHandler a
+#    NOTSET: ogni host che lo chiama si troverebbe la diagnostica su stderr
+#    senza averla chiesta. Il livello del logger e' dell'host, e va lasciato
+#    dov'e'. Lo fissa `test_diagnostic_logger_non_impone_un_livello`.
+#
 # **Quello che stderr NON e' e' un riparo**, e qui c'era scritto il
 # contrario: «la console di logging e' stderr, nemmeno accendendola si
 # rientra in stdout». Vero sul file descriptor, falso sul canale che conta.
@@ -245,18 +254,12 @@ def get_engine_log_path() -> str | None:
 # dell'host.
 #
 # Quindi la regola non e' «il logger e' un altro canale», e' **nessuno, su
-# nessun canale, scrive righe con la forma del protocollo**. La tiene ferma
-# `test_nessun_messaggio_di_log_ha_la_forma_del_protocollo` in
+# nessun canale, scrive righe con la forma del protocollo**. Le forme sono
+# due — `[CACHE] <token>: <resto>` e una riga di sola indentazione piu' un
+# path che finisca in `.aif/.wav/.flac` — e la seconda e' quella che il
+# logger scrive con piu' naturalezza (`log.debug("    %s", path)`). Le tiene
+# ferme entrambe `test_nessun_messaggio_di_log_ha_la_forma_del_protocollo` in
 # `tests/shared/test_stdout_contract.py`.
-#
-#    Il NOTSET e' la meta' portante, non un dettaglio omesso. Un
-#    `logger.setLevel(logging.DEBUG)` qui non renderebbe la diagnostica
-#    "accendibile": la renderebbe *accesa*. `Logger.callHandlers` confronta il
-#    record col livello dell'**handler**, non ricontrolla quello del logger, e
-#    un `logging.basicConfig()` senza argomenti lascia il suo StreamHandler a
-#    NOTSET: ogni host che lo chiama si troverebbe la diagnostica su stderr
-#    senza averla chiesta. Il livello del logger e' dell'host, e va lasciato
-#    dov'e'. Lo fissa `test_diagnostic_logger_non_impone_un_livello`.
 DIAGNOSTIC_LOGGER_NAME = 'pge.diagnostics'
 
 _diagnostic_logger: logging.Logger | None = None

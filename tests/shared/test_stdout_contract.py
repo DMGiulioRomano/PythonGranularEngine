@@ -427,6 +427,17 @@ def _ha_forma_di_path(forma):
             and forma.replace('{}', '').strip() == '')
 
 
+def _ha_forma_di_protocollo(forma):
+    """La riga entrerebbe in una delle due forme che PGE-ui riconosce.
+
+    Le forme sono due, e questa e' l'unica funzione che lo dice: chi chiede
+    "questa riga finisce nel parser dell'editor" non deve ricordarsi di
+    chiederlo due volte. Chiederlo per la sola `[CACHE]` e' il modo in cui la
+    meta' del blocco riassuntivo e' rimasta scoperta la prima volta.
+    """
+    return _ha_forma_cache(forma) or _ha_forma_di_path(forma)
+
+
 def _stem_paths_su_stdout(testo):
     """Le righe di `testo` che PGE-ui leggerebbe come path di uno stem."""
     return [FORMA_PROTOCOLLO_PATH.match(r).group(1)
@@ -469,10 +480,19 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
     `.`/`-` sostituito, il basename accorciato — lascia il confronto senza
     aggancio, e lo stream in volo non si chiude mai. E' lo stesso difetto che
     la `\\w` nella regex a monte aveva gia' prodotto una volta.
+
+    Il caso e' quello che il test qui sopra non copre, ed e' anche l'unico su
+    cui il confronto per suffisso si distingue da uno per gruppo catturato:
+    un **basename che contiene gia' `__`**. Li' non c'e' una posizione del
+    separatore da indovinare — `_RE_STEM_PATH` cattura tutto fino
+    all'estensione e chi legge confronta la coda — e una `print()` che
+    provasse a "ripulire" il path lo romperebbe senza che nient'altro se ne
+    accorga. Senza questo caso l'asserzione era piu' debole di quella del test
+    precedente sugli stessi byte: non poteva fallire da sola.
     """
     api_mod = mocks['main'].api
     result = api_mod.RenderResult(
-        audio_paths=['/out/PGE_test__stream-B.2.wav'],
+        audio_paths=['/out/PGE__test__stream-B.2.wav'],
         elapsed_seconds=0.0, renderer_type='numpy', per_stream=True)
     argv = ['main.py', 'test.yml', 'out.wav', '--per-stream',
             '--renderer', 'numpy', '--format', 'wav']
@@ -482,7 +502,12 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
 
     trovati = _stem_paths_su_stdout(capsys.readouterr().out)
 
-    assert any(p.endswith('__stream-B.2') for p in trovati), (
+    assert trovati == ['/out/PGE__test__stream-B.2'], (
+        "il path dello stem non esce piu' intero: PGE-ui confronta la coda "
+        "`__<id>` su quel che la regex cattura, e un basename che contiene "
+        "gia' `__` non gli da' nessun separatore da indovinare."
+    )
+    assert trovati[0].endswith('__stream-B.2'), (
         "il path dello stem non finisce piu' per `__<id>`: PGE-ui confronta "
         "proprio quel suffisso per chiudere lo stream in corso."
     )
@@ -724,16 +749,23 @@ def test_solo_le_righe_di_protocollo_hanno_forma_di_protocollo():
     E' la meta' che rende la tabella qualcosa di piu' di un elenco. Le due
     forme che `render_pipeline.py` riconosce sono uno spazio di nomi
     condiviso: chiunque scriva `[CACHE] <token>: ...` ci finisce dentro,
-    qualunque cosa intendesse dire. Classificare una riga come interfaccia
+    qualunque cosa intendesse dire — e lo stesso vale per una riga fatta di
+    sola indentazione piu' un path. Classificare una riga come interfaccia
     non la tiene fuori dal parser — solo la sua forma lo fa.
+
+    Le forme da controllare sono percio' **due**, quante ne legge il parser.
+    Questo test ne guardava una: una `print(f"    {qualcosa}")` nuova, marcata
+    interfaccia, sarebbe passata — ed e' esattamente la riga del blocco
+    riassuntivo, cioe' l'altra meta' del protocollo.
     """
     for (modulo, forma), categoria in _classificazione_ordinata():
         if categoria == PROTOCOLLO or forma is None:
             continue
-        assert not _ha_forma_cache(forma), (
+        assert not _ha_forma_di_protocollo(forma), (
             f"{modulo}: `{forma}` e' classificata {categoria} ma ha la forma "
-            "che PGE-ui parsa come stream. O e' protocollo, o va riscritta.\n"
-            "Il prefisso `[CACHE] <token>: ` finisce nel parser dell'editor "
+            "che PGE-ui parsa. O e' protocollo, o va riscritta.\n"
+            "Le due forme — `[CACHE] <token>: ...` e una riga di sola "
+            "indentazione piu' un path — finiscono nel parser dell'editor "
             "qualunque cosa la riga intenda dire: vedi issue #178."
         )
 
@@ -751,8 +783,7 @@ def test_le_righe_di_protocollo_sono_quelle_che_il_parser_legge():
         if categoria != PROTOCOLLO:
             continue
         assert forma is not None, f"{modulo}: protocollo senza forma leggibile"
-        parsata = _ha_forma_cache(forma) or _ha_forma_di_path(forma)
-        assert parsata, (
+        assert _ha_forma_di_protocollo(forma), (
             f"{modulo}: `{forma}` e' marcata protocollo ma non ha nessuna "
             "delle due forme che PGE-ui parsa. Se non la legge nessuno, e' "
             "interfaccia o diagnostica."
@@ -821,16 +852,21 @@ def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
     Il canale non protegge: il bridge unisce stderr a stdout. A separare la
     diagnostica dal protocollo resta solo la forma della riga, e questa e' la
     guardia che la tiene separata.
+
+    Le forme sono **due**, come per le `print()`. Guardare la sola `[CACHE]`
+    lasciava scoperta proprio quella che il logger scrive con piu' naturalezza:
+    `log.debug("    %s", path)` — sola indentazione piu' un path — chiude
+    nell'editor lo stream in volo, e lo chiude *prima* che sia finito.
     """
     colpevoli = []
     for rel in _moduli_pge():
         for originale, normalizzato in _messaggi_di_log(
                 ast.parse(_sorgente(rel))):
-            if _ha_forma_cache(normalizzato):
+            if _ha_forma_di_protocollo(normalizzato):
                 colpevoli.append(f"{rel}: {originale!r}")
 
     assert not colpevoli, (
-        "questi messaggi di log hanno la forma che PGE-ui parsa come stream, "
+        "questi messaggi di log hanno una delle due forme che PGE-ui parsa, "
         "e stderr NON e' un riparo (il bridge lo unisce a stdout):\n  "
         + "\n  ".join(colpevoli)
         + "\nVedi docs/explanation/contratto-stdout.md, issue #178."
@@ -840,15 +876,27 @@ def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
 def test_la_guardia_sui_messaggi_di_log_riconosce_i_segnaposto_di_logging():
     """`%s` conta come interpolazione, o la guardia e' cieca sul caso vero.
 
-    La riga che ha prodotto lo stream fantasma nella misura qui sopra e'
-    scritta con lo stile pigro di `logging` (`"...%s..."`, argomenti a parte),
-    non con una f-string. Cercare `{}` soltanto l'avrebbe lasciata passare.
+    Le righe di `logging` si scrivono con lo stile pigro (`"...%s..."`,
+    argomenti a parte), non con una f-string, e `_messaggi_di_log` le riduce
+    percio' alla stessa forma `{}` delle `print()`.
+
+    Il caso che *misura* quella riduzione e' il blocco riassuntivo, non la
+    `[CACHE]`, e conviene dire perche': per `_RE_CACHE_LINE` il token e' `\\S+`,
+    e un `%s` lo soddisfa gia' cosi' com'e' — su quel ramo la normalizzazione
+    non cambia verdetto, e un test scritto solo su di esso resta verde anche
+    dopo averla tolta (misurato). La sagoma del path invece pretende che *tutto*
+    quel che non e' indentazione sia interpolazione: li' `    %s` senza
+    riduzione e' testo, e la guardia diventa cieca.
     """
     sorgente = (
         'log = get_diagnostic_logger()\n'
         'log.debug("[CACHE] %s: registrata", nome)\n'
+        'log.debug("    %s", path)\n'
     )
 
     messaggi = _messaggi_di_log(ast.parse(sorgente))
 
-    assert [_ha_forma_cache(n) for _, n in messaggi] == [True]
+    # Sui grezzi la seconda riga non e' riconoscibile: e' la riduzione a
+    # renderla tale, ed e' questa la differenza che il test misura.
+    assert [_ha_forma_di_protocollo(o) for o, _ in messaggi] == [True, False]
+    assert [_ha_forma_di_protocollo(n) for _, n in messaggi] == [True, True]
