@@ -22,6 +22,7 @@
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
 | [parameter-curve](explanation/parameter-curve.md) | stable | parameters, envelopes, architecture, refactor |
 | [score-visualizer-layout](explanation/score-visualizer-layout.md) | stable | rendering, visualizer, architecture, refactor, matplotlib |
+| [strategy-registry](explanation/strategy-registry.md) | stable | strategy, registry, refactor, estensibilita, architecture |
 | [supercollider-backend](explanation/supercollider-backend.md) | stable | renderer, supercollider, nrt, osc, architecture |
 
 ## How-to
