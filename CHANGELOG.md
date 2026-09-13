@@ -10,190 +10,106 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
-- **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
-  pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
-  che *contengono* `load_yaml()`, ed era la lettura giusta per il difetto che
-  la issue chiude; ma un `try/except` messo attorno al solo render vive dentro
-  quel blocco senza contenere il caricamento, quindi da lì non si vedeva — e un
-  `except:` nudo in quel punto intercetterebbe anche l'`EngineError` che i due
-  rami di fuori esistono per ricevere, cioè rimetterebbe in circolo il
-  messaggio falso passando da una porta che nessun test sorvegliava.
+- **Il catalogo delle finestre descrive la forma, non il target** (issue #202).
+  Una `WindowSpec` era `gen_routine` + `gen_params`: non diceva cos'è una
+  finestra, diceva come Csound la produce. Il back-end NumPy non poteva
+  derivarne niente e teneva una seconda definizione — due cataloghi con in
+  comune i *nomi* e non le forme, divergiti due volte (`blackman_harris`
+  esistente solo lato Csound, l'alias `triangle` che passava la validazione
+  YAML ed esplodeva a metà render).
 
-  Tre letture invece di una, in `tests/test_cli_no_builtin_handlers.py`:
-  gli handler annidati nel blocco a qualunque profondità (`body`, `else:`,
-  `finally:` e il corpo dei due rami — solo la loro clausola `except` resta
-  fuori, ed è fissata a parte: escludere anche il corpo era più largo della
-  ragione che lo escludeva, e lasciava scoperto proprio il punto dove il
-  cleanup si scrive), nessun handler della famiglia `OSError` in **tutto** il
-  file — è la famiglia che risale da ogni profondità di I/O, quindi l'unica che
-  il tipo da solo non basta a collocare — e i due rami dichiarati nel loro
-  ordine. Il nome del builtin non si legge da un elenco trascritto ma da
-  `builtins`, e un `except:` nudo è colpevole in entrambe le letture: non
-  nomina niente, quindi una guardia scritta sui soli nomi resterebbe verde
-  proprio sull'handler più largo che esista.
+  Adesso la descrizione è una — forma matematica, coefficienti, parametri,
+  simmetria, più la convenzione di campionamento dichiarata — e i target la
+  traducono: `CsoundWindowEmitter` (spec → routine GEN e p-field, che
+  `CsoundEmitter` scrive come statement `f`) e `NumpyWindowEmitter`
+  (spec → `np.ndarray`), sotto un contratto comune (`WindowEmitter`).
+  `NumpyWindowRegistry` resta la cache e la soglia dei 10 campioni.
 
-  E le guardie sono **misurate**: `TestLaGuardiaMisurata` le fa girare su
-  sorgenti finti sabotati — l'`except:` nudo annidato, l'handler in un
-  `finally:`, quello nel corpo di un ramo del blocco, e il codice sano che
-  deve restare verde — perché sabotare `cli.py` non è un'opzione, è il file
-  che sorvegliano. È l'unico modo di distinguere una guardia verde perché il
-  codice è sano da una verde perché non guarda: la stessa distinzione, un
-  piano più su, che la #257 corregge nel codice.
+  Le forme sono meno delle finestre, ed è il guadagno misurabile: `cosine_sum`
+  è parametrica, quindi hamming, hanning, blackman e blackman-harris sono
+  quattro terne di coefficienti e **un ramo solo** in ciascun target. Una
+  quinta somma di coseni è una riga di catalogo e nessuna riga di emitter.
 
-- **Il log dice di nuovo quanti grani ha generato ogni stream** (issue #250).
-  Dopo `Rendering completato in ...` la CLI stampa una riga per stream:
+- **La copertura di un target è dichiarata, non scoperta a metà render**
+  (issue #202). `NumpyWindowRegistry.available_windows()` restituiva
+  `WindowRegistry.all_names()`: il registry *dichiarava* di saper generare
+  ogni nome del catalogo mentre `_generate()` poteva rifiutarne uno, ed è il
+  meccanismo che rendeva silenziosa la divergenza. Adesso `available_windows()`
+  è la copertura dell'emitter (`supports()` / `covered_names()`); le due liste
+  oggi coincidono, ma la coincidenza è un risultato che un test verifica, non
+  più una definizione.
 
-  ```
-    → stream2: 48213 grani (3 voci)
-    → stream3: grani non generati (cache)
-  ```
+  La copertura è parziale per davvero: GEN20 è un menu chiuso di finestre,
+  quindi una somma di coseni con altri coefficienti — flat-top, Nuttall — è
+  materializzabile in NumPy e non in Csound, e il target lo dice prima del
+  render invece di lasciarlo scoprire allo score.
 
-  Il conteggio non e' mai stato una riga sua: usciva dal `__repr__` di
-  `Stream`, stampato a costruzione da `Generator._create_streams`. Con la
-  generazione lazy (#117) a quel punto i grani non esistono ancora, e il repr
-  dice `grains=lazy` — non un difetto, il prezzo corretto di #117. Il numero
-  torna quindi **a valle**, dove i grani ci sono davvero.
+- **La parità di *forma* fra catalogo e materializzazione è verificata**
+  (issue #202, `tests/rendering/test_window_shape_parity.py`). La guardia
+  precedente confrontava i nomi — lunghezza giusta, valori finiti — quindi due
+  implementazioni della stessa finestra potevano divergere di un campione agli
+  estremi (simmetrica contro periodica) senza che niente se ne accorgesse. La
+  suite nuova ha due oracoli indipendenti: quello **esterno** (le built-in
+  NumPy e le formule scritte a mano, cioè il suono che il motore rendeva prima
+  del refactoring) e quello **derivato dalla spec** (la forma dichiarata dal
+  catalogo, valutata dai suoi campi). Devono dire la stessa cosa, e la
+  `symmetry` dichiarata si rilegge sull'array. La guardia è misurata: sostituendo
+  il campionamento periodico a quello dichiarato, diventa rossa.
 
-  La lettura e' passiva e non rimette in circolo il lavoro che #117 aveva
-  tolto: `api.collect_grain_counts` legge `voices` solo sugli stream con
-  `generated` True (stesso schema di `export_grain_json`), quindi costa
-  O(voci) e non O(grani), e su chi e' stato saltato dalla cache non tocca
-  `.voices` — leggerla li' rigenererebbe in fase di stampa esattamente i
-  grani risparmiati. Per la stessa ragione non c'e' nessun contatore
-  mantenuto durante `generate_grains()`: sarebbe stato uno stato duplicato
-  rispetto a `voices`, che per design e' l'unica fonte di verita' (#201).
+  Resta fuori portata ciò che solo Csound può dire: le GEN le esegue lui. Le
+  due divergenze possibili — l'apertura della gaussiana (il catalogo dichiara
+  `sigma`, GEN20 vuole il suo parametro di apertura, e la scala la definisce
+  Csound) e la convenzione di campionamento — sono **dichiarate** in
+  `csound_window_emitter.py` e nella sua suite, non date per buone. La prima
+  è anche il motivo per cui la traduzione della gaussiana è una tabella di
+  valori noti e non una formula: fuori dai valori noti si dichiara la lacuna,
+  non si inventa un numero.
 
-  Il dato non nasce nella CLI ma in `RenderResult.grain_counts`
-  (`stream_id -> StreamGrainCount(grains, voices)`, `None` per gli stream non
-  materializzati): l'API resta senza print e il conteggio e' disponibile
-  anche ai consumer non-CLI. Ogni stream compare nella mappa, cosi' chi
-  stampa non deve tornare a interrogare `generator.streams` per sapere chi
-  manca; `None` significa "saltato dalla cache", non "zero grani", e la CLI
-  lo dice a parole invece di inventare un numero.
+- **La guardia AST della #203 copre anche i tre moduli nuovi**: il traduttore
+  Csound delle finestre è il punto in cui la sintassi tornerebbe comoda —
+  sa quale GEN produce una forma — e restituisce numeri.
 
-- **`--bw`: un preset della partitura leggibile in stampa bianco e nero**
-  (issue #248). La MAP e' pensata per lo schermo, e le figure del paper CIM
-  2026 hanno un vincolo di leggibilita' in B&W. Il flag (o `BW=true` da Make,
-  o `config={'bw': True}` da libreria) sposta i default del visualizer; a
-  flag spento non cambia un pixel — con una sola eccezione, dichiarata sotto
-  fra le correzioni, che riguarda chi fissava gia' `grain_alpha_range`.
+- **Una forma senza i suoi parametri non è più una descrizione che passa**
+  (issue #202). `supports()` rispondeva guardando la sola *forma*, quindi una
+  spec che dichiara `kaiser` senza `beta`, o `exponential_segment` senza
+  `start`/`curve`/`end`, risultava coperta, compariva in `covered_names()` e
+  falliva dopo: NumPy valutava la formula con un `None` dentro (`TypeError`,
+  non l'`InvalidWindowError` che il contratto promette) e Csound scriveva quel
+  `None` in un p-field, producendo `f 7 0 1024 20 7 1 None` — una riga che
+  muore a metà render. Una somma di coseni senza coefficienti era il caso
+  peggiore: nessun errore affatto, un array di zeri, cioè il grano reso come
+  silenzio digitale — il caso degenere della #225 per una strada che nessuna
+  soglia sorveglia.
 
-  In grigio collassavano due cose, e in modo peggiore di quanto sembri:
+  Cioè esattamente il modo di fallire che la #202 esiste per togliere di
+  mezzo, un livello più in basso: non un nome che un target non copre, ma una
+  descrizione che non descrive.
 
-  - **il segno del detune.** I due bracci di `pitch_div` non hanno solo la
-    stessa chiarezza: convertita in luminanza la mappa non e' nemmeno
-    monotona. A +/-150 cent su un range di +/-300 i due grani stanno a 0.510
-    e 0.595, a +/-50 cent a 0.481 e 0.509 — cioe' un grano calante e uno
-    crescente diventano lo stesso grigio. `pitch_div_bw` spende sulla
-    luminanza tutta l'escursione, in modo strettamente monotono, compressa a
-    circa 0.15-0.85: col braccio alto sul bianco i grani acuti sparirebbero
-    sulla carta, col basso sul nero si confonderebbero con assi e griglia;
-  - **l'identita' delle curve.** `ENVELOPE_STYLES`, mappa **parallela** a
-    `ENVELOPE_COLORS` nello stesso modulo matplotlib-free, sostituisce la
-    tinta con `(linestyle, linewidth)`: il pattern dice il parametro, lo
-    spessore dice la variante (`_prob` piu' sottile della base, `_range` piu'
-    spesso), come faceva il chiaro/scuro della stessa tinta. La coppia e'
-    unica per chiave.
+  Cosa una forma legge sta ora dichiarato accanto alle forme
+  (`WindowShape.REQUIRED_PARAMS`, `REQUIRES_COEFFICIENTS`) e lo legge una
+  funzione sola, `missing_shape_fields()`, con due lettori: il costruttore di
+  `WindowSpec`, che rifiuta una descrizione incompleta — il catalogo non può
+  nemmeno contenerla, il modulo non si importa — e il `supports()` di ogni
+  target, per le spec-like che il catalogo non ha visto. La colonna
+  "parametri" della tabella delle forme è diventata eseguibile.
 
-  **L'alpha dei grani viene fissata, e costa qualcosa.** Sul fondo bianco il
-  composito e' `a*g + (1-a)`: l'alpha e la luminanza del grigio sono lo
-  **stesso canale**, e con l'alpha libera un grano grave suonato piano
-  schiarisce fino a leggersi come acuto — il canale che il preset esiste per
-  salvare mangiato da quello che prova a conservare. Fissandola a 0.9 il
-  grigio torna funzione del solo pitch (un grano grave e pianissimo resta piu'
-  scuro di uno acuto e forte), ma **il volume smette di dirsi nel riempimento
-  del grano**. Il prezzo e' esplicito e si riapre passando
-  `grain_alpha_range`. Non 1.0: a opacita' piena un cluster denso diventa una
-  lastra e la densita' smette di leggersi.
+  L'elenco stava in un test (`test_every_shape_declares_what_it_needs`) e
+  girava sul solo `WindowRegistry.WINDOWS`: una seconda copia della verità, che
+  sarebbe andata muta nel momento in cui serve — quando una forma parametrica
+  nuova è appena stata scritta e nessuno si ricorda dell'elenco che vive
+  altrove. Adesso il test deriva la domanda dalla dichiarazione, e una guardia
+  gemella misura il verso opposto: un parametro dichiarato obbligatorio
+  dev'essere un parametro che la forma **legge**, verificato spostandolo e
+  chiedendo che la materializzazione si muova.
 
-  Il preset e' un insieme di **default**, non un modo a parte: ogni chiave
-  passata insieme a `bw` vince, e i dizionari-dato si fondono sul preset
-  invece che sui default cromatici — ritoccare un colore non riporta a colori
-  tutti gli altri. Con gli stili in gioco la legenda per-corsia diventa un
-  **campione** della curva (stesso pattern, stesso spessore, su tutta la
-  larghezza utile della colonna) invece del simbolo corto storico, che di un
-  tratteggio non mostrerebbe nemmeno un ciclo: matplotlib scala il pattern per
-  lo spessore, quindi ingrossare la chiave per farla vedere l'avrebbe
-  riportata a leggersi piena.
+  Nessuno statement `.sco` e nessun campione cambiano: le sedici finestre del
+  catalogo dichiarano già tutte ciò che leggono.
 
-  Monocromo anche a schermo: waveform, maschera del loop, lente e label degli
-  stream passano a grigi. Verificato a pixel su `PGE_test.yml` — saturazione
-  massima 0 su tutta la pagina.
-
-  Nuova doc: [`docs/how-to/print-score-bw.md`](docs/how-to/print-score-bw.md).
-
-- **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
-  in `pge.shared.logger`, issue #187). Logger `pge.diagnostics` col solo
-  `NullHandler`: nessun handler proprio, nessun file, nessuna `./logs` creata
-  di soppiatto — a differenza di `get_engine_logger()`, che si auto-configura.
-  Una libreria non configura il logging del suo ospite. Il DEBUG e' il livello
-  del **record**, non del logger: `get_diagnostic_logger()` non chiama
-  `setLevel` e il livello effettivo resta quello che decide l'host. Non e'
-  un'omissione: `callHandlers` confronta il record col livello dell'*handler*
-  e non ricontrolla quello del logger, quindi un `setLevel(DEBUG)` qui non
-  renderebbe la diagnostica accendibile ma **accesa** su stderr per chiunque
-  chiami `logging.basicConfig()`. Lo fissa
-  `test_diagnostic_logger_non_impone_un_livello`.
-
-- **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
-  forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
-  protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
-  tutti e quattro i moduli che la emettono — i tre renderer sul percorso
-  diretto e `StreamCacheManager.get_dirty_stream_dicts`, che e' dove la riga
-  esce sulla pipeline in due stadi (`Generator.write_sco_files`) — e che in
-  `src/pge/strategies/` non ricompaia nessun `print()`. Il criterio e' la
-  forma della riga, non il prefisso: le chiamate sono ricomposte in un
-  template (`[CACHE] {}: `), perche' `[CACHE]` da solo lascia passare il
-  riepilogo `[CACHE] <n>/<m> stream da ricompilare` che nessuno parsa. Quel
-  template e' piu' stretto della regex a valle, di proposito: la guardia
-  difende la riga per stream, non definisce cosa il parser legge.
-
-- **La lista degli emettitori della riga `[CACHE]` e' confrontata con i
-  sorgenti** (`test_la_lista_degli_emettitori_e_completa`). Una lista scritta a
-  mano copre chi c'era quando e' stata scritta: un backend nuovo che dichiara
-  lo stato della cache emette la stessa riga e non ci entra da solo, e la
-  guardia sarebbe rimasta verde sopra un emettitore che nessuno sorveglia —
-  sul canale dove csound e supercollider non hanno altro presidio. Il passo
-  corrispondente e' ora nella checklist di
-  [`docs/how-to/add-renderer.md`](docs/how-to/add-renderer.md), che prima non
-  lo portava benche' `contratto-stdout.md` la indicasse.
-
-- **Test di comportamento sulla riga `[CACHE]` del cache manager**
-  (`tests/rendering/test_stream_cache_manager.py`). Era l'unico emettitore
-  della riga di protocollo senza nessuna asserzione, ne' di comportamento ne'
-  statica.
-
-- **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
-  interfaccia CLI: chi legge cosa, e su quale canale. Compresa la regola che
-  la tabella da sola non lascia dedurre: la regex di PGE-ui e'
-  `^\[CACHE\]\s+(\S+):\s+(.+)$`, e un token *letterale* la soddisfa quanto
-  un id interpolato — `cli.py` stampa gia' `[CACHE] Manifest: <path>` e
-  `[CACHE] GC: ...`, che l'editor matcha e scarta con l'insieme degli id
-  dichiarati dalla richiesta, un filtro inerte quando la richiesta non li
-  dichiara. Ogni riga in quella forma e' quindi protocollo per il solo fatto
-  della forma, e le due di `cli.py` non sono libere di andarsene al logger
-  come fossero diagnostica: la doc lo dichiara invece di lasciarlo intendere.
-
-- **La guardia della diagnostica non e' piu' scoped per cartella**
-  (`test_la_registrazione_dinamica_non_stampa`,
-  `test_la_lista_dei_punti_di_registrazione_e_completa`). I punti di
-  registrazione dinamica sono sette, non tre, e non stanno tutti in
-  `strategies/`: `register_window_strategy` vive in
-  `controllers/window_selection_strategy.py`, dove vive il registry delle
-  finestre. Una guardia che sorveglia una cartella ne copriva sei, e sul
-  settimo rimettere esattamente la `print()` che la #187 ha tolto lasciava
-  verde la suite intera. Ora il criterio e' la **funzione**
-  `register_*_strategy` ovunque viva, e la lista dei moduli e' confrontata coi
-  sorgenti come quella degli emettitori della riga `[CACHE]`.
-
-- **Controprova sulla misura del `NullHandler`**
-  (`tests/shared/test_diagnostic_logger.py`). Il test che verifica il mancato
-  ricorso a `logging.lastResort` neutralizza gli handler che pytest mette sul
-  root e sostituisce `lastResort` con una spia: senza quella neutralizzazione
-  `callHandlers` non arrivava mai a `lastResort` e il test restava verde anche
-  cancellando la riga che dice di difendere. Un secondo test misura la misura,
-  ribaltandone il verdetto su un logger nudo.
-
+- **`WindowSpec` è di nuovo hashable.** `frozen=True` genera un `__hash__` sui
+  campi, ma `params` è un `mappingproxy`, che hashable non è: la dataclass si
+  dichiarava immutabile e poi alzava `TypeError` al primo `{spec}` o al primo
+  `lru_cache` su `supports(spec)`. I parametri entrano nell'hash come coppie
+  ordinate, la stessa uguaglianza che `__eq__` già osserva.
 
 ### Cambiato
 
@@ -540,6 +456,207 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   risolve nel corpo di ciascuno invece di essere inoltrata tal quale.
 
 ### Modificato
+
+- **Gli statement `.sco` non si sono mossi di un byte**, i commenti sì (issue
+  #202). Le `description` del catalogo hanno smesso di citare le GEN routine
+  (`"Hanning/von Hann window (GEN20 opt 2)"` → `"Hanning/von Hann window"`) e
+  finiscono nel commento sopra ogni tabella di finestra: il golden di
+  `tests/rendering/test_csound_score_bytes.py` è aggiornato di proposito.
+  Le righe `f` sono identiche, ed è l'affermazione che il refactoring doveva
+  dimostrare.
+
+- **Quattro finestre cambiano di ~1e-16** (issue #202). hamming, hanning e
+  blackman sono calcolate dalla somma di coseni dichiarata invece che da
+  `np.hamming`/`np.hanning`/`np.blackman`, e `half_sine` da `sin(pi x)`
+  invece che da `linspace(0, pi)`: stessa forma, ordine delle operazioni in
+  virgola mobile diverso. Le altre dodici sono identiche bit per bit,
+  blackman-harris compresa (era già la formula esplicita). Lo scarto è quindici
+  ordini di grandezza sotto la quantizzazione di un float32, ma è scritto qui
+  perché non lo si scopra da un diff di byte audio.
+
+- **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
+  pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
+  che *contengono* `load_yaml()`, ed era la lettura giusta per il difetto che
+  la issue chiude; ma un `try/except` messo attorno al solo render vive dentro
+  quel blocco senza contenere il caricamento, quindi da lì non si vedeva — e un
+  `except:` nudo in quel punto intercetterebbe anche l'`EngineError` che i due
+  rami di fuori esistono per ricevere, cioè rimetterebbe in circolo il
+  messaggio falso passando da una porta che nessun test sorvegliava.
+
+  Tre letture invece di una, in `tests/test_cli_no_builtin_handlers.py`:
+  gli handler annidati nel blocco a qualunque profondità (`body`, `else:`,
+  `finally:` e il corpo dei due rami — solo la loro clausola `except` resta
+  fuori, ed è fissata a parte: escludere anche il corpo era più largo della
+  ragione che lo escludeva, e lasciava scoperto proprio il punto dove il
+  cleanup si scrive), nessun handler della famiglia `OSError` in **tutto** il
+  file — è la famiglia che risale da ogni profondità di I/O, quindi l'unica che
+  il tipo da solo non basta a collocare — e i due rami dichiarati nel loro
+  ordine. Il nome del builtin non si legge da un elenco trascritto ma da
+  `builtins`, e un `except:` nudo è colpevole in entrambe le letture: non
+  nomina niente, quindi una guardia scritta sui soli nomi resterebbe verde
+  proprio sull'handler più largo che esista.
+
+  E le guardie sono **misurate**: `TestLaGuardiaMisurata` le fa girare su
+  sorgenti finti sabotati — l'`except:` nudo annidato, l'handler in un
+  `finally:`, quello nel corpo di un ramo del blocco, e il codice sano che
+  deve restare verde — perché sabotare `cli.py` non è un'opzione, è il file
+  che sorvegliano. È l'unico modo di distinguere una guardia verde perché il
+  codice è sano da una verde perché non guarda: la stessa distinzione, un
+  piano più su, che la #257 corregge nel codice.
+
+- **Il log dice di nuovo quanti grani ha generato ogni stream** (issue #250).
+  Dopo `Rendering completato in ...` la CLI stampa una riga per stream:
+
+  ```
+    → stream2: 48213 grani (3 voci)
+    → stream3: grani non generati (cache)
+  ```
+
+  Il conteggio non e' mai stato una riga sua: usciva dal `__repr__` di
+  `Stream`, stampato a costruzione da `Generator._create_streams`. Con la
+  generazione lazy (#117) a quel punto i grani non esistono ancora, e il repr
+  dice `grains=lazy` — non un difetto, il prezzo corretto di #117. Il numero
+  torna quindi **a valle**, dove i grani ci sono davvero.
+
+  La lettura e' passiva e non rimette in circolo il lavoro che #117 aveva
+  tolto: `api.collect_grain_counts` legge `voices` solo sugli stream con
+  `generated` True (stesso schema di `export_grain_json`), quindi costa
+  O(voci) e non O(grani), e su chi e' stato saltato dalla cache non tocca
+  `.voices` — leggerla li' rigenererebbe in fase di stampa esattamente i
+  grani risparmiati. Per la stessa ragione non c'e' nessun contatore
+  mantenuto durante `generate_grains()`: sarebbe stato uno stato duplicato
+  rispetto a `voices`, che per design e' l'unica fonte di verita' (#201).
+
+  Il dato non nasce nella CLI ma in `RenderResult.grain_counts`
+  (`stream_id -> StreamGrainCount(grains, voices)`, `None` per gli stream non
+  materializzati): l'API resta senza print e il conteggio e' disponibile
+  anche ai consumer non-CLI. Ogni stream compare nella mappa, cosi' chi
+  stampa non deve tornare a interrogare `generator.streams` per sapere chi
+  manca; `None` significa "saltato dalla cache", non "zero grani", e la CLI
+  lo dice a parole invece di inventare un numero.
+
+- **`--bw`: un preset della partitura leggibile in stampa bianco e nero**
+  (issue #248). La MAP e' pensata per lo schermo, e le figure del paper CIM
+  2026 hanno un vincolo di leggibilita' in B&W. Il flag (o `BW=true` da Make,
+  o `config={'bw': True}` da libreria) sposta i default del visualizer; a
+  flag spento non cambia un pixel — con una sola eccezione, dichiarata sotto
+  fra le correzioni, che riguarda chi fissava gia' `grain_alpha_range`.
+
+  In grigio collassavano due cose, e in modo peggiore di quanto sembri:
+
+  - **il segno del detune.** I due bracci di `pitch_div` non hanno solo la
+    stessa chiarezza: convertita in luminanza la mappa non e' nemmeno
+    monotona. A +/-150 cent su un range di +/-300 i due grani stanno a 0.510
+    e 0.595, a +/-50 cent a 0.481 e 0.509 — cioe' un grano calante e uno
+    crescente diventano lo stesso grigio. `pitch_div_bw` spende sulla
+    luminanza tutta l'escursione, in modo strettamente monotono, compressa a
+    circa 0.15-0.85: col braccio alto sul bianco i grani acuti sparirebbero
+    sulla carta, col basso sul nero si confonderebbero con assi e griglia;
+  - **l'identita' delle curve.** `ENVELOPE_STYLES`, mappa **parallela** a
+    `ENVELOPE_COLORS` nello stesso modulo matplotlib-free, sostituisce la
+    tinta con `(linestyle, linewidth)`: il pattern dice il parametro, lo
+    spessore dice la variante (`_prob` piu' sottile della base, `_range` piu'
+    spesso), come faceva il chiaro/scuro della stessa tinta. La coppia e'
+    unica per chiave.
+
+  **L'alpha dei grani viene fissata, e costa qualcosa.** Sul fondo bianco il
+  composito e' `a*g + (1-a)`: l'alpha e la luminanza del grigio sono lo
+  **stesso canale**, e con l'alpha libera un grano grave suonato piano
+  schiarisce fino a leggersi come acuto — il canale che il preset esiste per
+  salvare mangiato da quello che prova a conservare. Fissandola a 0.9 il
+  grigio torna funzione del solo pitch (un grano grave e pianissimo resta piu'
+  scuro di uno acuto e forte), ma **il volume smette di dirsi nel riempimento
+  del grano**. Il prezzo e' esplicito e si riapre passando
+  `grain_alpha_range`. Non 1.0: a opacita' piena un cluster denso diventa una
+  lastra e la densita' smette di leggersi.
+
+  Il preset e' un insieme di **default**, non un modo a parte: ogni chiave
+  passata insieme a `bw` vince, e i dizionari-dato si fondono sul preset
+  invece che sui default cromatici — ritoccare un colore non riporta a colori
+  tutti gli altri. Con gli stili in gioco la legenda per-corsia diventa un
+  **campione** della curva (stesso pattern, stesso spessore, su tutta la
+  larghezza utile della colonna) invece del simbolo corto storico, che di un
+  tratteggio non mostrerebbe nemmeno un ciclo: matplotlib scala il pattern per
+  lo spessore, quindi ingrossare la chiave per farla vedere l'avrebbe
+  riportata a leggersi piena.
+
+  Monocromo anche a schermo: waveform, maschera del loop, lente e label degli
+  stream passano a grigi. Verificato a pixel su `PGE_test.yml` — saturazione
+  massima 0 su tutta la pagina.
+
+  Nuova doc: [`docs/how-to/print-score-bw.md`](docs/how-to/print-score-bw.md).
+
+- **Diagnostic logger** (`get_diagnostic_logger`, `log_strategy_registration`
+  in `pge.shared.logger`, issue #187). Logger `pge.diagnostics` col solo
+  `NullHandler`: nessun handler proprio, nessun file, nessuna `./logs` creata
+  di soppiatto — a differenza di `get_engine_logger()`, che si auto-configura.
+  Una libreria non configura il logging del suo ospite. Il DEBUG e' il livello
+  del **record**, non del logger: `get_diagnostic_logger()` non chiama
+  `setLevel` e il livello effettivo resta quello che decide l'host. Non e'
+  un'omissione: `callHandlers` confronta il record col livello dell'*handler*
+  e non ricontrolla quello del logger, quindi un `setLevel(DEBUG)` qui non
+  renderebbe la diagnostica accendibile ma **accesa** su stderr per chiunque
+  chiami `logging.basicConfig()`. Lo fissa
+  `test_diagnostic_logger_non_impone_un_livello`.
+
+- **`tests/shared/test_stdout_contract.py`** — la classificazione della #178 in
+  forma eseguibile. Legge i sorgenti con `ast` e pretende che la riga di
+  protocollo `[CACHE] <id>: DIRTY|clean` resti un `print(..., flush=True)` in
+  tutti e quattro i moduli che la emettono — i tre renderer sul percorso
+  diretto e `StreamCacheManager.get_dirty_stream_dicts`, che e' dove la riga
+  esce sulla pipeline in due stadi (`Generator.write_sco_files`) — e che in
+  `src/pge/strategies/` non ricompaia nessun `print()`. Il criterio e' la
+  forma della riga, non il prefisso: le chiamate sono ricomposte in un
+  template (`[CACHE] {}: `), perche' `[CACHE]` da solo lascia passare il
+  riepilogo `[CACHE] <n>/<m> stream da ricompilare` che nessuno parsa. Quel
+  template e' piu' stretto della regex a valle, di proposito: la guardia
+  difende la riga per stream, non definisce cosa il parser legge.
+
+- **La lista degli emettitori della riga `[CACHE]` e' confrontata con i
+  sorgenti** (`test_la_lista_degli_emettitori_e_completa`). Una lista scritta a
+  mano copre chi c'era quando e' stata scritta: un backend nuovo che dichiara
+  lo stato della cache emette la stessa riga e non ci entra da solo, e la
+  guardia sarebbe rimasta verde sopra un emettitore che nessuno sorveglia —
+  sul canale dove csound e supercollider non hanno altro presidio. Il passo
+  corrispondente e' ora nella checklist di
+  [`docs/how-to/add-renderer.md`](docs/how-to/add-renderer.md), che prima non
+  lo portava benche' `contratto-stdout.md` la indicasse.
+
+- **Test di comportamento sulla riga `[CACHE]` del cache manager**
+  (`tests/rendering/test_stream_cache_manager.py`). Era l'unico emettitore
+  della riga di protocollo senza nessuna asserzione, ne' di comportamento ne'
+  statica.
+
+- **`docs/explanation/contratto-stdout.md`** — protocollo, diagnostica e
+  interfaccia CLI: chi legge cosa, e su quale canale. Compresa la regola che
+  la tabella da sola non lascia dedurre: la regex di PGE-ui e'
+  `^\[CACHE\]\s+(\S+):\s+(.+)$`, e un token *letterale* la soddisfa quanto
+  un id interpolato — `cli.py` stampa gia' `[CACHE] Manifest: <path>` e
+  `[CACHE] GC: ...`, che l'editor matcha e scarta con l'insieme degli id
+  dichiarati dalla richiesta, un filtro inerte quando la richiesta non li
+  dichiara. Ogni riga in quella forma e' quindi protocollo per il solo fatto
+  della forma, e le due di `cli.py` non sono libere di andarsene al logger
+  come fossero diagnostica: la doc lo dichiara invece di lasciarlo intendere.
+
+- **La guardia della diagnostica non e' piu' scoped per cartella**
+  (`test_la_registrazione_dinamica_non_stampa`,
+  `test_la_lista_dei_punti_di_registrazione_e_completa`). I punti di
+  registrazione dinamica sono sette, non tre, e non stanno tutti in
+  `strategies/`: `register_window_strategy` vive in
+  `controllers/window_selection_strategy.py`, dove vive il registry delle
+  finestre. Una guardia che sorveglia una cartella ne copriva sei, e sul
+  settimo rimettere esattamente la `print()` che la #187 ha tolto lasciava
+  verde la suite intera. Ora il criterio e' la **funzione**
+  `register_*_strategy` ovunque viva, e la lista dei moduli e' confrontata coi
+  sorgenti come quella degli emettitori della riga `[CACHE]`.
+
+- **Controprova sulla misura del `NullHandler`**
+  (`tests/shared/test_diagnostic_logger.py`). Il test che verifica il mancato
+  ricorso a `logging.lastResort` neutralizza gli handler che pytest mette sul
+  root e sostituisce `lastResort` con una spia: senza quella neutralizzazione
+  `callHandlers` non arrivava mai a `lastResort` e il test restava verde anche
+  cancellando la riga che dice di difendere. Un secondo test misura la misura,
+  ribaltandone il verdetto su un logger nudo.
 
 - **Il file YAML che manca, e quello che non si parsa, hanno un tipo loro**
   (issue #257). `Generator.load_yaml` sollevava due builtin nudi —

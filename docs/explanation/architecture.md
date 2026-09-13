@@ -5,9 +5,11 @@ status: stable
 tags: [architecture, rendering, ocp]
 sources:
   - src/pge/rendering/
+  - src/pge/controllers/window_registry.py
+  - src/pge/controllers/window_emitter.py
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: e94eaf1
+last_synced_commit: d4c24ec
 ---
 
 # Architettura Renderer
@@ -141,7 +143,81 @@ e i tre moduli tornano a fare una cosa sola:
 |--------|-----------|
 | `core/grain.py` | il dato, e basta |
 | `rendering/ftable_manager.py` | allocatore di numeri di tabella e symbol table condivisa fra i back-end (il renderer NumPy riceve la stessa `table_map`, lo score SuperCollider ne fa numeri di buffer) |
-| `controllers/window_registry.py` | il catalogo: quali nomi lo YAML può scrivere e qual è il canonico di ciascuno |
+| `controllers/window_registry.py` | il catalogo: quali nomi lo YAML può scrivere, qual è il canonico di ciascuno e che **forma** ha (§ successivo) |
+
+### La descrizione di una finestra non è la sua materializzazione
+
+La #203 ha tolto la sintassi dal catalogo; restava che il catalogo, la
+finestra, la descrivesse **nei termini di un target**. Una `WindowSpec` era
+`gen_routine` più `gen_params`: non diceva cos'è una finestra, diceva come
+Csound la produce. Il back-end NumPy non poteva derivarne niente e la
+reimplementava da capo — due definizioni della stessa cosa, con in comune i
+*nomi* e non le forme.
+
+Il rischio non era teorico. `blackman_harris` è esistita per un po' solo lato
+Csound; l'alias `triangle` passava la validazione YAML ed esplodeva a metà
+render con `RENDERER=numpy`. Il meccanismo che rendeva silenziosa la
+divergenza: `NumpyWindowRegistry.available_windows()` restituiva l'intero
+catalogo, cioè **dichiarava** di saper generare nomi che poi `_generate()`
+rifiutava.
+
+Dalla issue #202 la descrizione è una e i target la traducono:
+
+```
+WindowRegistry                      il catalogo: forma, coefficienti,
+  └── WindowSpec                    parametri, simmetria — nessun GEN,
+                                    nessuna funzione NumPy
+        ├── CsoundWindowEmitter →   GenTable(routine, p-field)  → CsoundEmitter
+        └── NumpyWindowEmitter  →   np.ndarray
+```
+
+Tre conseguenze che si vedono nel codice:
+
+- **Le forme sono meno delle finestre.** `cosine_sum` è una forma
+  parametrica: hamming, hanning, blackman e blackman-harris sono quattro
+  terne di coefficienti e un ramo solo. Aggiungerne una quinta è una riga di
+  catalogo e zero righe di emitter.
+- **La copertura è dichiarata** (`WindowEmitter.supports`), non scoperta a
+  render time. GEN20 è un menu chiuso di finestre: una somma di coseni con
+  altri coefficienti — flat-top, Nuttall — è materializzabile in NumPy e non
+  in Csound, e il target lo dice prima. `available_windows()` di un target è
+  la sua copertura, non il catalogo: oggi le due liste coincidono, ma la
+  coincidenza è un risultato che un test verifica, non più una definizione.
+
+  "Forma" vuol dire forma **più i suoi campi**: cosa una forma legge sta
+  dichiarato accanto alle forme (`WindowShape.REQUIRED_PARAMS`,
+  `REQUIRES_COEFFICIENTS`) e lo deriva una funzione sola,
+  `missing_shape_fields()`. Rispondere sul solo nome della forma faceva dire
+  di sì a una descrizione che nessun target può leggere — un `kaiser` senza
+  `beta` — e il prezzo lo pagava chi rende: un `TypeError` dentro la formula
+  NumPy, un `None` scritto in un p-field Csound, o — per una somma di coseni
+  vuota — nessun errore e un array di zeri. È la stessa divergenza fra
+  dichiarato e reale, un livello più in basso, quindi ha la stessa risposta:
+  la descrizione incompleta non arriva a essere una `WindowSpec`.
+- **La parità di forma è misurata.** La guardia precedente confrontava i
+  *nomi* (lunghezza giusta, valori finiti): due implementazioni della stessa
+  finestra potevano divergere di un campione agli estremi — simmetrica contro
+  periodica — senza che niente se ne accorgesse.
+  `tests/rendering/test_window_shape_parity.py` confronta la materializzazione
+  con due oracoli indipendenti e rilegge sull'array la simmetria dichiarata.
+
+Cosa resta fuori portata: le GEN le esegue Csound, quindi che la tabella
+Csound e l'array NumPy coincidano davvero è verificabile solo rendendo con
+Csound. Le due divergenze possibili — l'apertura della gaussiana (il catalogo
+dichiara `sigma`, GEN20 vuole il suo parametro di apertura, e la scala la
+definisce Csound) e la convenzione di campionamento — sono dichiarate in
+`rendering/csound_window_emitter.py` e nella suite del traduttore, non
+nascoste in un'equivalenza data per buona.
+
+SuperCollider non ha un emitter proprio: consuma gli array del target NumPy
+(`SCScoreWriter` li impacchetta in `/b_setn`), vedi
+[[supercollider-backend]].
+
+L'altra metà delle tabelle — i sample — non ha lo stesso difetto: la
+descrizione neutra c'è già (`{numero: ('sample', path)}`, la symbol table di
+`FtableManager`) e le due materializzazioni ne derivano (`sample_ftable` per
+Csound, `SampleRegistry.load` per NumPy). Non c'è una seconda definizione da
+unificare, quindi non c'è un emitter da introdurre.
 
 `ScoreWriter` dispone le sezioni del file e riceve l'emitter dal costruttore
 (default: `CsoundEmitter()` — scelto su `is None`, non sulla verità
