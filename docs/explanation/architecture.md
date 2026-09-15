@@ -9,7 +9,7 @@ sources:
   - src/pge/controllers/window_emitter.py
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: d4c24ec
+last_synced_commit: 2a75242
 ---
 
 # Architettura Renderer

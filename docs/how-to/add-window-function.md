@@ -10,7 +10,7 @@ sources:
   - src/pge/rendering/numpy_window_emitter.py
   - src/pge/rendering/csound_emitter.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 3679477
+last_synced_commit: 2a75242
 entry_for: [add-window-function]
 ---
 
@@ -80,7 +80,7 @@ un livello più in basso.
 ## Passi
 
 1. Definisci la `WindowSpec` in `src/pge/controllers/window_registry.py` e aggiungi la entry a `WindowRegistry.WINDOWS` (chiave = nome usato in YAML): `shape`, `description`, `family`, `symmetry`, più `coefficients` o `params` secondo la forma. Se serve un sinonimo, aggiungilo a `WindowRegistry.ALIASES`
-2. Se la forma è nuova: aggiungi la costante a `WindowShape`, **dichiara i suoi parametri** in `WindowShape.REQUIRED_PARAMS` (o la forma in `REQUIRES_COEFFICIENTS`), il ramo in `NumpyWindowEmitter._SHAPES` con il suo metodo, e in `CsoundWindowEmitter._translate` la GEN corrispondente (o niente, se Csound non la esprime: `_translate` restituisce `None` e la copertura lo dichiara)
+2. Se la forma è nuova: aggiungi la costante a `WindowShape` **e a `WindowShape.ALL`** (il vocabolario che `WindowSpec.__post_init__` interroga: senza, la entry di catalogo alza `ValueError` e il modulo non si importa), **dichiara i suoi parametri** in `WindowShape.REQUIRED_PARAMS` (o la forma in `REQUIRES_COEFFICIENTS`), il ramo in `NumpyWindowEmitter._SHAPES` con il suo metodo, e in `CsoundWindowEmitter._translate` la GEN corrispondente (o niente, se Csound non la esprime: `_translate` restituisce `None` e la copertura lo dichiara)
 3. Aggiungi il caso all'oracolo di `tests/rendering/test_window_shape_parity.py` — entrambi gli oracoli — e i test unit su shape, range, simmetria
 4. Esegui la parità: la finestra nuova dev'essere **materializzabile da ogni emitter registrato**, non solo valida (vedi § Test da aggiornare)
 5. Aggiorna [[yaml]] § Finestre Disponibili con il nuovo nome
