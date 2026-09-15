@@ -10,6 +10,62 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **`docs/explanation/strategy-registry.md`** — la forma decisa del registry
+  generico di strategy (issue #177): decisione, non esecuzione (quella e'
+  #184 e #185). Lo schema duplicato sta in **nove** moduli, non sei — il
+  criterio e' la forma (il `raise StrategyNotFoundError` dentro `create()`),
+  non la cartella `strategies/`, e il nono e' `DistributionFactory` in
+  `shared/distribution_strategy.py`, che tiene la mappa come attributo di
+  classe e registra con una classmethod: due grafie che lo fanno sparire sia
+  dal censimento per cartella sia da quello per nome di funzione — e la forma scelta e'
+  una classe che *e'* la mappa (`StrategyRegistry(Dict[str, Type[S]])`), con
+  `strategy_kind` alla costruzione e `create(name, *args, **kwargs)` che non
+  guarda dentro gli argomenti: e' cio' che fa entrare dalla stessa porta la
+  density, che si costruisce con due posizionali.
+
+  A decidere non e' stato il gusto ma due vincoli esterni, entrambi scritti
+  nella doc. Il primo: cinque nomi di modulo — le quattro mappe voce e
+  `CHORD_INTERVALS` — sono superficie che il test di parita' di PGE-ls importa
+  dal motore per nome. Cinque, non tutti: delle altre quattro mappe, dei
+  `register_*`, delle `Factory` e di `SEMITONE_LOCKED` PGE-ls tiene specchi
+  scritti a mano, e la #246 inventaria l'esposizione di PGE-ui, dove nessuna di
+  queste mappe compare. Il secondo: i test di qui le trattano gia' come
+  dizionari (`isinstance`, `clear()`/`update()`, `del`, `pop`) — con delle
+  closure il dizionario resterebbe comunque fuori, cioe' si riscriverebbe la
+  duplicazione spostata di due righe.
+
+  Da cui anche i due punti che #184 deve chiudere. Il primo: le guardie della
+  #187 sono due, e una sola perde di vista la classe generica. Quella per
+  funzione riconosce le `def register_*_strategy` di livello modulo, e un
+  `log_strategy_registration` spostato dentro un metodo le esce dal campo
+  visivo; quella per cartella copre `strategies/registry.py` per la collocazione
+  del modulo, non per merito. Misurato **sul modulo cablato**, non sullo
+  scheletro che nessuno chiama: la stessa `print()` dentro
+  `StrategyRegistry.register` fa cadere due test in `strategies/` e uno solo in
+  `shared/` — fra le due collocazioni c'e' un test di differenza, non un rosso
+  contro una suite verde. A parlare in entrambe e' un presidio
+  *comportamentale* che la #187 ha lasciato accanto a quelli per `ast`: i tre
+  test che chiamano il vero `register_*_strategy` sotto `capsys` (pan, density,
+  variation). Copertura incidentale pero': non tocca `create`, e non tocca i
+  quattro registry che il refactor fa cominciare a parlare. Il presidio va
+  quindi reso indipendente dalla cartella e dal caso: e' la stessa lezione del
+  settimo entry point in `contratto-stdout.md`, un giro piu' in la' — e un
+  secondo precedente ancora scoperto esiste gia', `DistributionFactory.register`,
+  che cade fuori da entrambe le guardie. Con un
+  passo che #184 non puo' saltare: il finder per `ast` e' condiviso con il
+  censimento `trovati == dichiarati`, quindi insegnargli
+  `StrategyRegistry.register` fa entrare il modulo della classe fra i trovati e
+  va dichiarato nello stesso commit, o a cadere e' una guardia che #184 non
+  stava toccando. Il secondo: l'ordine degli errori
+  della facade di density e' pinnato da
+  `tests/strategies/test_registry_errors.py`:
+  con nome ignoto *e* `distribution` assente e' l'ordine a decidere il tipo
+  dell'eccezione, quindi il lookup va interrogato prima della validazione di
+  dominio. Lo scheletro porta infine `from __future__ import annotations`, e non
+  per ornamento: `Dict[str, Type[S]] | None` e' un'annotazione di firma,
+  valutata alla `def`, e sulla 3.9 che `pyproject.toml` dichiara un PEP 604
+  valutato fa fallire l'import del modulo — il difetto pagato dalla #257.
+
 - **Il catalogo delle finestre descrive la forma, non il target** (issue #202).
   Una `WindowSpec` era `gen_routine` + `gen_params`: non diceva cos'è una
   finestra, diceva come Csound la produce. Il back-end NumPy non poteva
