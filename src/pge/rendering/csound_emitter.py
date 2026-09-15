@@ -220,6 +220,13 @@ class CsoundEmitter:
                         ),
                     )
 
+                # Lo statement si costruisce prima di scrivere il commento:
+                # dalla #202 `_ftable_from_spec` puo' rifiutare -- il target
+                # Csound non e' tenuto a coprire ogni forma del catalogo --
+                # e un rifiuto in mezzo lascerebbe nel file un `; Window:`
+                # senza la sua tabella sotto.
+                statement = self._ftable_from_spec(num, spec, None)
+
                 f.write(self.comment(f'Window: {key} - {spec.description}'))
-                f.write(self._ftable_from_spec(num, spec, None))
+                f.write(statement)
                 f.write('\n')
