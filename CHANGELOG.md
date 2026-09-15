@@ -128,6 +128,43 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `lru_cache` su `supports(spec)`. I parametri entrano nell'hash come coppie
   ordinate, la stessa uguaglianza che `__eq__` già osserva.
 
+- **E `WindowSpec` è un valore per intero, non solo immutabile.** Il
+  contenitore di `params` era un `MappingProxyType`: sola lettura sì, valore
+  no — e ha preteso un aggiramento per ogni cosa che un valore sa fare. Non è
+  hashable (di qui l'`__hash__` esplicito qui sopra), non è ammesso come
+  default di una dataclass su Python 3.11 (`default_factory`), non è
+  picklable, quindi `pickle.dumps(spec)` e `copy.deepcopy(spec)` alzavano
+  `TypeError: cannot pickle 'mappingproxy' object` — e il motore rende anche
+  in multiprocesso (`numpy_parallel`), dove tutto ciò che raggiunge un worker
+  attraversa il pickle. Il quarto sintomo non era chiudibile dal lato della
+  spec: `dataclasses.asdict` deep-copia i campi **uno per uno**, quindi passa
+  accanto a qualunque `__getstate__` e muore sul proxy comunque. Quattro
+  sintomi di una causa sola, che è la scelta del contenitore: `params` è ora
+  un `FrozenParams`, un `Mapping` normale che di quei difetti non ha nessuno
+  — l'assegnazione alza `TypeError` come prima, e il resto funziona perché è
+  una classe qualunque.
+
+- **Il rifiuto di uno spec-like senza nome è l'errore promesso, non un
+  `AttributeError`.** `supports()` prende uno spec-*like* di proposito, e
+  `missing_shape_fields` lo legge con `getattr` per questo; il messaggio del
+  rifiuto leggeva invece `spec.name` per attributo, quindi una descrizione
+  arrivata da fuori catalogo usciva con l'eccezione sbagliata proprio dal
+  punto che esiste per sollevare quella giusta.
+
+- **La copertura del target NumPy è ciò che sa davvero valutare.**
+  `_SHAPES` mappa la forma sul *nome* del metodo, e un nome si sbaglia a
+  scrivere: interrogando la sola tabella, `supports()` rispondeva di sì e
+  `materialize()` usciva con l'`AttributeError` del `getattr` — dichiarato e
+  reale che divergono dentro lo stesso oggetto, cioè il difetto della #202 in
+  miniatura. Le due metà del contratto passano ora dalla stessa domanda
+  (`_evaluator`): il metodo esiste?
+
+- **Un rifiuto di finestra non lascia più un commento orfano nel `.sco`.**
+  `write_ftables` scriveva `; Window: <nome>` e *poi* costruiva lo statement;
+  dalla #202 quella costruzione può rifiutare — un target non è tenuto a
+  coprire ogni forma del catalogo — e il file restava con l'intestazione senza
+  la sua tabella sotto. Lo statement si costruisce prima.
+
 ### Cambiato
 
 - **Le registrazioni dinamiche di strategy non stampano piu' su stdout**
