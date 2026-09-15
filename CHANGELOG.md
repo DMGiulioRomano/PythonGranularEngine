@@ -190,7 +190,25 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `write_ftables` scriveva `; Window: <nome>` e *poi* costruiva lo statement;
   dalla #202 quella costruzione può rifiutare — un target non è tenuto a
   coprire ogni forma del catalogo — e il file restava con l'intestazione senza
-  la sua tabella sotto. Lo statement si costruisce prima.
+  la sua tabella sotto. Lo statement si costruisce prima, e da ora la cosa è
+  **misurata** (`TestARejectedWindowLeavesNoOrphanComment`): rimettendo i due
+  `write` nell'ordine di prima la guardia diventa rossa. Senza, era l'unica
+  correzione della #202 che nessun test vedeva — la copertura del catalogo è
+  totale per costruzione, quindi il rifiuto va messo in scena, con una somma
+  di coseni fuori dal menu GEN20 nel catalogo per la durata del test. La
+  misura ha due metà: ciò che precede il rifiuto resta nel file, così
+  l'invariante parla del commento orfano e non della sezione intera.
+
+- **La guardia sul messaggio di una descrizione incompleta vede la
+  regressione che dichiara.** `test_the_message_names_the_field_that_is_missing`
+  è scritta contro una frase precisa — «l'apertura GEN20 corrispondente a
+  `sigma=None` non è nota», che manda a cercare la tabella di traduzione al
+  posto del campo che manca — e chiedeva solo che il messaggio nominasse
+  `sigma`: lo fa anche la frase sbagliata. Togliendo la guardia in
+  `CsoundWindowEmitter._why_not` la suite restava verde. Ciò che separa le due
+  frasi è il `None`, cioè il valore che la spec **non** ha: un messaggio che lo
+  cita sta rispondendo sulla traduzione di un valore invece che sull'assenza
+  del campo, e la lettura vale per ogni target.
 
 ### Cambiato
 
