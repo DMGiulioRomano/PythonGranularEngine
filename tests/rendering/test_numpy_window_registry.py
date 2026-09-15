@@ -538,9 +538,15 @@ class TestSmallWindows:
 
 class TestCatalogueParity:
     """Il catalogo delle finestre e' uno solo: WindowRegistry dice quali nomi
-    lo YAML puo' scrivere, questo registry e' l'adapter che li materializza in
+    lo YAML puo' scrivere, e per il target NumPy quei nomi devono produrre un
     array. Se i due divergono, un nome accettato dalla validazione esplode al
-    momento del render."""
+    momento del render.
+
+    Dalla #202 chi materializza non e' piu' questo registry ma
+    `NumpyWindowEmitter`, e la domanda generale -- ogni spec del catalogo e'
+    materializzabile da *ogni* target registrato -- vive in
+    `tests/rendering/test_window_emitters.py`. Qui resta la lettura dal lato
+    del registry, che e' quello che il renderer chiama davvero."""
 
     def test_triangle_alias_renders_as_bartlett(self, registry):
         """`triangle` e' l'alias documentato di `bartlett`: il renderer numpy
@@ -567,9 +573,18 @@ class TestCatalogueParity:
         assert len(registry) == 1
 
     def test_available_windows_are_the_catalogue_names(self, registry):
-        """`available_windows()` e' cio' che finisce nel messaggio d'errore di
-        un nome sbagliato: deve elencare i nomi scrivibili nello YAML, alias
-        compresi, non l'elenco privato dei generatori."""
+        """Le due liste coincidono -- ma dalla #202 e' un *risultato*, non la
+        definizione di `available_windows()`.
+
+        Quella lista e' la copertura dell'emitter (`covered_names()`):
+        restituire il catalogo per costruzione era il meccanismo che rendeva
+        silenziosa la divergenza, perche' il registry dichiarava di saper
+        generare ogni nome mentre la generazione poteva rifiutarne uno. Il
+        giorno in cui un target diventasse parziale -- caso legittimo e
+        previsto, GEN20 e' un menu chiuso -- questa uguaglianza cade, e cosa
+        debba valere al suo posto lo decide
+        `test_window_emitters.py::TestAvailableWindowsFollowsCoverage`, non
+        questa riga."""
         from pge.controllers.window_registry import WindowRegistry
 
         assert set(registry.available_windows()) == set(WindowRegistry.all_names())
