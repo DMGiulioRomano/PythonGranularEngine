@@ -221,11 +221,12 @@ class TestWindowFtable:
     def test_gen16_segment_follows_the_table_size(self, emitter, size):
         """Il segmento GEN16 e' lungo quanto la tabella.
 
-        `gen_params` del catalogo scrive 1024 come durata del segmento --
-        il default -- ma quel numero e' in *punti*: lasciato fisso, una
-        `size` diversa emetteva una tabella da N punti con dentro un
-        segmento da 1024. Il catalogo dichiara la forma della curva, la
-        dimensione la decide chi materializza.
+        La durata del segmento e' in *punti*, quindi e' un numero che il
+        catalogo non puo' dichiarare: prima della #202 stava scritto 1024
+        nei `gen_params` della spec -- il default -- e una `size` diversa
+        emetteva una tabella da N punti con dentro un segmento da 1024. Il
+        catalogo dichiara la forma della curva, la dimensione la decide chi
+        materializza.
         """
         assert emitter.window_ftable(3, 'expodec', size=size) == \
             f'f 3 0 {size} 16 1 {size} 4 0\n'
@@ -311,16 +312,34 @@ class TestWindowFtableCoversTheCatalogue:
             assert int(parts[4]) in self.VALID_GEN_ROUTINES
             assert len(parts) >= 6
 
-    def test_statement_carries_the_whole_spec(self, emitter):
-        """GEN routine e parametri, nell'ordine in cui il catalogo li scrive."""
+    def test_statement_carries_the_whole_translation(self, emitter):
+        """GEN routine e parametri, nell'ordine in cui il traduttore li da'.
+
+        Dalla #202 la routine non e' piu' un campo della spec -- il catalogo
+        descrive la forma, `CsoundWindowEmitter` sceglie la GEN -- quindi cio'
+        che si verifica qui e' che lo statement non perda niente della
+        traduzione, non che ricopi il catalogo.
+        """
         from pge.controllers.window_registry import WindowRegistry
+        from pge.rendering.csound_window_emitter import CsoundWindowEmitter
+
+        translator = CsoundWindowEmitter()
+        size = CsoundEmitter.default_window_table_size
 
         for name in WindowRegistry.all_names():
-            spec = WindowRegistry.get(name)
+            table = translator.materialize(WindowRegistry.get(name), size)
             parts = emitter.window_ftable(1, name).split()
 
-            assert parts[4] == str(spec.gen_routine)
-            assert parts[5:] == [str(p) for p in spec.gen_params]
+            assert parts[4] == str(table.routine)
+            assert parts[5:] == [emitter._pfield(p) for p in table.params]
+
+    def test_an_integral_pfield_is_written_as_an_integer(self, emitter):
+        """I parametri della spec sono numeri (`start=1.0`), i p-field sono
+        testo: `1.0` al posto di `1` cambierebbe ogni `.sco` gia' scritto
+        senza cambiare una nota."""
+        assert emitter.window_ftable(3, 'expodec') == 'f 3 0 1024 16 1 1024 4 0\n'
+        assert '1.0' not in emitter.window_ftable(3, 'expodec')
+        assert emitter.window_ftable(4, 'half_sine') == 'f 4 0 1024 9 0.5 1 0\n'
 
     def test_asymmetric_family_is_gen16(self, emitter):
         from pge.controllers.window_registry import WindowRegistry
@@ -384,7 +403,7 @@ class TestWriteFtables:
     def test_window_entry_carries_its_description(self, emitter):
         content = self._write(emitter, {1: ('window', 'hanning')})
 
-        assert '; Window: hanning - Hanning/von Hann window (GEN20 opt 2)' in content
+        assert '; Window: hanning - Hanning/von Hann window' in content
         assert 'f 1 0 1024 20 2 1' in content
 
     def test_sorted_by_table_number(self, emitter):
@@ -444,6 +463,73 @@ class TestWriteFtables:
         assert 'f 2 0 1024 20 2 1' in content
 
 
+class TestARejectedWindowLeavesNoOrphanComment:
+    """Un rifiuto del target non lascia nel `.sco` un commento senza la sua
+    tabella sotto.
+
+    Dalla #202 `_ftable_from_spec` puo' rifiutare: il catalogo descrive la
+    forma e il target Csound non e' tenuto a coprirle tutte (GEN20 e' un menu
+    chiuso). La riga `; Window: ...` e lo statement sono due `write` distinti,
+    quindi l'ordine fra il rifiuto e il commento *e'* il difetto: scritto
+    prima, il commento resta nel file a promettere una tabella che non c'e'
+    -- e chi legge lo score non ha modo di distinguerlo da una tabella persa
+    altrove.
+
+    La copertura del catalogo e' totale per costruzione
+    (`TestEveryEmitterCoversTheCatalogue`), quindi la spec fuori copertura
+    va messa nel catalogo per la durata del test: e' il caso che si presenta
+    a chi aggiunge una finestra toccando il solo catalogo, cioe' esattamente
+    il momento in cui questo file lo si legge.
+    """
+
+    NUTTALL = (0.355768, 0.487396, 0.144232, 0.012604)
+
+    @pytest.fixture
+    def uncovered(self, monkeypatch):
+        """Una somma di coseni che GEN20 non ha in menu, nel catalogo."""
+        from pge.controllers.window_registry import (
+            WindowRegistry, WindowShape, WindowSpec)
+
+        spec = WindowSpec(
+            name='nuttall',
+            shape=WindowShape.COSINE_SUM,
+            coefficients=self.NUTTALL,
+            description="Nuttall window",
+        )
+        monkeypatch.setitem(WindowRegistry.WINDOWS, 'nuttall', spec)
+        return spec
+
+    def test_the_target_really_refuses_it(self, emitter, uncovered):
+        """La premessa: senza un rifiuto vero il resto della classe sarebbe
+        verde a vuoto."""
+        assert emitter.window_emitter.supports(uncovered) is False
+
+    def test_the_section_carries_no_comment_for_it(self, emitter, uncovered):
+        buf = io.StringIO()
+
+        with pytest.raises(InvalidWindowError):
+            emitter.write_ftables(buf, {1: ('window', 'nuttall')})
+
+        assert '; Window: nuttall' not in buf.getvalue()
+        assert 'Nuttall window' not in buf.getvalue()
+
+    def test_a_covered_window_still_gets_its_comment(self, emitter, uncovered):
+        """L'altra meta' della misura: il commento non manca perche' la
+        sezione non ne scrive mai, e cio' che precede il rifiuto resta nel
+        file -- l'invariante e' sul commento orfano, non sulla sezione
+        intera."""
+        buf = io.StringIO()
+
+        with pytest.raises(InvalidWindowError):
+            emitter.write_ftables(buf, {1: ('window', 'hanning'),
+                                        2: ('window', 'nuttall')})
+
+        content = buf.getvalue()
+        assert '; Window: hanning - Hanning/von Hann window' in content
+        assert 'f 1 0 1024 20 2 1' in content
+        assert '; Window: nuttall' not in content
+
+
 # =============================================================================
 # 5. LA GUARDIA: la sintassi Csound non torna sotto il renderer
 # =============================================================================
@@ -454,8 +540,9 @@ def _code_string_constants(path: Path):
     Legge il sorgente come codice invece che come testo: un commento non
     esiste nell'AST, e una docstring viene riconosciuta e saltata. Cosi' la
     guardia parla dei letterali che finiscono in un output, non di come il
-    modulo si descrive -- che per il catalogo delle finestre e' per forza in
-    termini Csound (i GEN sono la sua materia).
+    modulo si descrive -- che per il traduttore Csound delle finestre e' per
+    forza in termini Csound (i GEN sono la sua materia). Il catalogo, dalla
+    #202, non li nomina piu' nemmeno nelle docstring: descrive le forme.
     """
     tree = ast.parse(path.read_text(encoding='utf-8'))
 
@@ -497,6 +584,14 @@ TARGET_FREE_MODULES = [
     # Non ha ceduto un metodo come gli altri tre, ma e' il modulo che la
     # sintassi la aveva sotto mano: dispone le sezioni, e le scriveva.
     'pge.rendering.score_writer',
+    # I traduttori delle finestre (#202). Quello Csound e' il caso
+    # interessante: sa quale GEN routine produce una forma, ed e' esattamente
+    # il punto in cui la sintassi tornerebbe comoda. Restituisce numeri --
+    # una `GenTable` -- e la riga la scrive questo modulo.
+    'pge.controllers.window_emitter',
+    'pge.rendering.csound_window_emitter',
+    'pge.rendering.numpy_window_emitter',
+    'pge.rendering.window_emitters',
 ]
 
 
