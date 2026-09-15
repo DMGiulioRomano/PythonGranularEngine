@@ -290,10 +290,10 @@ class TestWindowSpecImmutability:
     def test_a_spec_can_be_hashed(self):
         """`frozen=True` promette un valore, e un valore si mette in un set.
 
-        `params` e' un `mappingproxy`, che hashable non e': l'`__hash__`
-        generato dalla dataclass alzava `TypeError`, cioe' la spec si
-        dichiarava immutabile e poi rifiutava il primo `{spec}` o il primo
-        `lru_cache` su `supports(spec)`.
+        Quando `params` era un `mappingproxy` -- sola lettura ma non un
+        valore -- l'`__hash__` generato dalla dataclass alzava `TypeError`:
+        la spec si dichiarava immutabile e poi rifiutava il primo `{spec}` o
+        il primo `lru_cache` su `supports(spec)`.
         """
         assert len({_spec(), _spec()}) == 1
         assert len({_spec(name='hanning'), _spec(name='hamming')}) == 2
@@ -318,6 +318,80 @@ class TestWindowSpecImmutability:
         source['sigma'] = 0.9
 
         assert spec.param('sigma') == 0.4
+
+    def test_a_spec_survives_the_pickle(self):
+        """Un valore attraversa anche un confine di processo.
+
+        Quando `params` era un `mappingproxy` -- picklable, non e' -- la
+        spec alzava `TypeError: cannot pickle 'mappingproxy' object`: la
+        stessa promessa mancata dell'hash, sull'altra meta' di cio' che un
+        valore deve saper fare. Il motore ha un renderer multiprocesso
+        (`numpy_parallel`), quindi non e' un'ipotesi di scuola: e' il giorno
+        in cui una spec entra in un payload di worker.
+        """
+        import pickle
+
+        spec = _spec(shape=WindowShape.GAUSSIAN, coefficients=(),
+                     params={'sigma': 0.4})
+        restored = pickle.loads(pickle.dumps(spec))
+
+        assert restored == spec
+        assert hash(restored) == hash(spec)
+        assert restored.param('sigma') == 0.4
+
+    def test_a_restored_spec_is_still_read_only(self):
+        """Il giro di pickle non deve restituire una spec piu' debole
+        dell'originale: `params` torna avvolto, non come dict nudo."""
+        import pickle
+
+        restored = pickle.loads(pickle.dumps(
+            _spec(shape=WindowShape.GAUSSIAN, coefficients=(),
+                  params={'sigma': 0.4})))
+
+        with pytest.raises(TypeError):
+            restored.params['sigma'] = 0.9
+
+    def test_a_spec_can_be_deep_copied(self):
+        """`deepcopy` passa dalla stessa porta del pickle, e ci moriva
+        uguale."""
+        import copy
+
+        spec = _spec(shape=WindowShape.GAUSSIAN, coefficients=(),
+                     params={'sigma': 0.4})
+        clone = copy.deepcopy(spec)
+
+        assert clone == spec
+        assert clone.params is not spec.params
+
+    def test_a_spec_can_be_turned_into_a_dict(self):
+        """`dataclasses.asdict` e' il sintomo che un `__getstate__` sulla
+        spec non chiudeva.
+
+        `asdict` deep-copia i campi **uno per uno**, quindi passa accanto a
+        qualunque stato dichiarato dalla spec e finisce sul contenitore di
+        `params`: con un `mappingproxy` moriva li' comunque. E' la prova che
+        la causa era il contenitore, non la spec.
+        """
+        import dataclasses
+
+        spec = _spec(shape=WindowShape.GAUSSIAN, coefficients=(),
+                     params={'sigma': 0.4})
+
+        assert dataclasses.asdict(spec)['params']['sigma'] == 0.4
+
+    def test_params_compare_equal_to_the_plain_dict(self):
+        """Il contenitore cambia, l'uguaglianza osservabile no."""
+        spec = _spec(shape=WindowShape.GAUSSIAN, coefficients=(),
+                     params={'sigma': 0.4})
+
+        assert spec.params == {'sigma': 0.4}
+        assert dict(spec.params) == {'sigma': 0.4}
+
+    def test_the_whole_catalogue_survives_the_pickle(self):
+        import pickle
+
+        for name, spec in WindowRegistry.WINDOWS.items():
+            assert pickle.loads(pickle.dumps(spec)) == spec, name
 
 
 # ===========================================================================

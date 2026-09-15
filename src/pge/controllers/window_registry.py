@@ -54,6 +54,7 @@ forma legge non arriva a essere una `WindowSpec`.
 """
 from __future__ import annotations
 
+import collections.abc
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import List, Mapping, Optional, Tuple
@@ -142,6 +143,56 @@ def missing_shape_fields(spec) -> Tuple[str, ...]:
     return tuple(missing)
 
 
+class FrozenParams(collections.abc.Mapping):
+    """I parametri scalari di una forma, come *valore*: sola lettura,
+    hashable, picklable, deep-copiabile.
+
+    Il contenitore era un `MappingProxyType`, che sola lettura lo e' e valore
+    non lo e' -- e ha preteso un aggiramento per ogni cosa che un valore sa
+    fare. Tre, in questo solo file: non e' hashable (`__hash__` esplicito
+    perche' `frozen=True` non bastava), non e' ammesso come default di una
+    dataclass su Python 3.11 (`default_factory=dict`), non e' picklable
+    (`pickle.dumps(spec)` e `copy.deepcopy(spec)` alzavano `TypeError:
+    cannot pickle 'mappingproxy' object`). Il quarto restava aperto:
+    `dataclasses.asdict(spec)` deep-copia i campi **uno per uno**, quindi
+    passa accanto a qualunque `__getstate__` scritto sulla spec e muore sul
+    proxy comunque.
+
+    Quattro sintomi di una causa sola, che e' la scelta del contenitore. Un
+    `Mapping` normale non ne ha nessuno: l'assegnazione alza `TypeError`
+    (nessun `__setitem__` da ereditare) come il proxy, e tutto il resto
+    funziona perche' e' una classe qualunque.
+
+    Il dict di partenza viene copiato: la spec e' un dato condiviso fra tutti
+    gli emitter e vive in un dict di classe, quindi non deve restare
+    agganciata al dict di chi l'ha costruita.
+    """
+
+    def __init__(self, data=()):
+        self._data = dict(data)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self._data!r})"
+
+    def __hash__(self):
+        """`Mapping` definisce `__eq__` e quindi azzera `__hash__`.
+
+        Le coppie ordinate sono la stessa uguaglianza che `__eq__` osserva --
+        che e' anche il motivo per cui l'hash della spec puo' smettere di
+        trattare `params` come un caso a parte.
+        """
+        return hash(tuple(sorted(self._data.items())))
+
+
 @dataclass(frozen=True)
 class WindowSpec:
     """Descrizione di una finestra grano, indipendente dal target.
@@ -165,16 +216,14 @@ class WindowSpec:
     family: str = "window"
     symmetry: str = SYMMETRIC
     coefficients: Tuple[float, ...] = ()
-    # `default_factory` e non un mappingproxy vuoto condiviso: su Python 3.11
-    # `dataclasses` rifiuta come default qualunque valore non hashable, e un
-    # mappingproxy non lo e' -- `ValueError: mutable default ... use
-    # default_factory` alla *definizione* della classe, quindi il modulo non
-    # si importava affatto. Solo la 3.11: la 3.10 controlla i tipi mutabili
-    # noti (list, dict, set) e la 3.12 ha ristretto il controllo di nuovo, il
-    # che rende questa la classe di difetto che il gate locale non vede --
-    # gira su un interprete alla volta. `__post_init__` avvolge comunque il
-    # dict in `MappingProxyType`, quindi la sola cosa che cambia e' che ogni
-    # spec parte dal suo dict vuoto invece che da uno condiviso.
+    # Un `FrozenParams()` vuoto e' hashable, quindi sarebbe ammesso anche
+    # come default diretto; resta `default_factory` perche' su Python 3.11
+    # `dataclasses` rifiuta come default qualunque valore non hashable e
+    # quella regola e' cambiata tre volte in tre versioni (la 3.10 controlla
+    # i tipi mutabili noti, la 3.12 ha ristretto di nuovo) -- cioe' e' la
+    # classe di difetto che il gate locale non vede, girando su un
+    # interprete alla volta. `__post_init__` riavvolge comunque, quindi la
+    # fabbrica non costa nulla.
     params: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -192,7 +241,7 @@ class WindowSpec:
         # dict di classe: se restasse mutabile, un target potrebbe riscrivere
         # sotto gli altri la descrizione da cui tutti derivano.
         object.__setattr__(self, 'coefficients', tuple(self.coefficients))
-        object.__setattr__(self, 'params', MappingProxyType(dict(self.params)))
+        object.__setattr__(self, 'params', FrozenParams(self.params))
 
         # Una forma senza i suoi parametri non e' una descrizione parziale:
         # e' una descrizione che nessun target puo' leggere. Il prezzo di
@@ -211,12 +260,14 @@ class WindowSpec:
     def __hash__(self):
         """Una spec e' un valore, e un valore si mette in un set.
 
-        `frozen=True` genera un `__hash__` sui campi, ma `params` e' un
-        `mappingproxy` e non e' hashable: la dataclass si dichiarava
-        immutabile e poi alzava `TypeError` alla prima `{spec}`, al primo
-        `lru_cache` su `supports(spec)`, al primo dizionario indicizzato per
-        descrizione. I parametri entrano nell'hash come coppie ordinate, che
-        e' la stessa uguaglianza che `__eq__` gia' osserva.
+        Finche' `params` e' stato un `mappingproxy` questo metodo era
+        obbligatorio: l'`__hash__` generato da `frozen=True` alzava
+        `TypeError` alla prima `{spec}`, al primo `lru_cache` su
+        `supports(spec)`, al primo dizionario indicizzato per descrizione.
+        Con `FrozenParams` il generato basterebbe -- resta scritto perche' e'
+        il punto in cui si legge *che cosa* identifica una spec, e perche'
+        l'ordine delle coppie e' dichiarato qui invece che dipendere
+        dall'ordine d'inserimento.
         """
         return hash((
             self.name, self.shape, self.description, self.family,
