@@ -114,6 +114,11 @@ Una classe generica che **è** la mappa, in un modulo nuovo
 ```python
 from __future__ import annotations
 
+from typing import Dict, Type, TypeVar
+
+from pge.shared.exceptions import StrategyNotFoundError
+from pge.shared.logger import log_strategy_registration
+
 S = TypeVar("S")
 
 
@@ -196,11 +201,14 @@ di costruzione (`**kwargs` per pan, due posizionali per density, nessun
 argomento per variation). Il codice che li misura vive in #184, dove diventa
 test.
 
-### `strategy_kind` alla costruzione (domanda 2)
+### Il dominio alla costruzione (domanda 2)
 
-Alla costruzione. Il `kind` non è un dato della chiamata, è una proprietà del
+Alla costruzione. Il dominio non è un dato della chiamata, è una proprietà del
 registry: `create()` non ha modo di sbagliarlo e nessun chiamante deve
-ripeterlo. Quel valore è già quello che `StrategyNotFoundError` riporta oggi
+ripeterlo. Ha due grafie e vanno tenute entrambe anche in #184: `kind` come
+parametro del costruttore, `strategy_kind` come parola chiave di
+`StrategyNotFoundError` — la seconda è superficie dell'eccezione e il nome che
+porta oggi, la prima no. Il valore è già quello che l'errore riporta
 (`voice_pan`, `density`, `variation`, …), quindi **i messaggi d'errore non
 cambiano** — verificato che nessuno, in PGE-ui o PGE-ls, li parsi.
 
