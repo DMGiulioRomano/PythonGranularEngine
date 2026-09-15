@@ -20,10 +20,11 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/strategies/test_registry_errors.py
   - tests/strategies/test_strategies.py
+  - tests/strategies/test_variation_registry.py
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: e44ede3
+last_synced_commit: 9369710
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -342,10 +343,21 @@ lo stesso, per tre motivi:
   quale, senza casi speciali;
 - è una delle tre che emettono la riga diagnostica, quindi passa per il punto
   dove il dominio si uniforma (`'pan voce'` → `voice_pan`);
-- i suoi test sono quelli che maltrattano di più la mappa —
-  `isinstance(..., dict)`, snapshot e ripristino con `clear()`/`update()`,
-  `pop()` nel `finally` — cioè sono la verifica che la classe generica soddisfi
-  la superficie `dict` che tutti danno per scontata.
+- i suoi test esercitano la mappa in tutte le *forme* che la classe generica
+  deve soddisfare — `isinstance(..., dict)`, snapshot e ripristino con
+  `dict()`/`clear()`/`update()`, `pop()` nel `finally`, indicizzazione e
+  appartenenza — quindi un `dict` sottoclassato che non regge la superficie
+  cade già sul tracer bullet, senza aspettare #185.
+
+**Non è però il banco di prova più largo, e crederlo sarebbe il modo di
+sbagliare #185.** A maltrattare di più la mappa sono i test di *variation*:
+oltre a tutto ciò che fa pan, `tests/strategies/test_variation_registry.py`
+misura la lunghezza, itera le chiavi e gli `items()`, legge i `values()`.
+Nessuna di quelle operazioni è a rischio su una sottoclasse di `dict` — è
+proprio perché il verde di pan non le ha viste che vanno nominate qui: il
+tracer bullet non è la prova che la superficie `dict` sia coperta, è la prova
+che la forma decisa regge su un modulo. La copertura si misura in #185, ed è
+`variation` a doverla misurare.
 
 Se per farla passare servisse un caso speciale nella classe generica, la regola
 è quella della #184: si torna qui e si cambia la forma, non si aggiunge
