@@ -463,6 +463,73 @@ class TestWriteFtables:
         assert 'f 2 0 1024 20 2 1' in content
 
 
+class TestARejectedWindowLeavesNoOrphanComment:
+    """Un rifiuto del target non lascia nel `.sco` un commento senza la sua
+    tabella sotto.
+
+    Dalla #202 `_ftable_from_spec` puo' rifiutare: il catalogo descrive la
+    forma e il target Csound non e' tenuto a coprirle tutte (GEN20 e' un menu
+    chiuso). La riga `; Window: ...` e lo statement sono due `write` distinti,
+    quindi l'ordine fra il rifiuto e il commento *e'* il difetto: scritto
+    prima, il commento resta nel file a promettere una tabella che non c'e'
+    -- e chi legge lo score non ha modo di distinguerlo da una tabella persa
+    altrove.
+
+    La copertura del catalogo e' totale per costruzione
+    (`TestEveryEmitterCoversTheCatalogue`), quindi la spec fuori copertura
+    va messa nel catalogo per la durata del test: e' il caso che si presenta
+    a chi aggiunge una finestra toccando il solo catalogo, cioe' esattamente
+    il momento in cui questo file lo si legge.
+    """
+
+    NUTTALL = (0.355768, 0.487396, 0.144232, 0.012604)
+
+    @pytest.fixture
+    def uncovered(self, monkeypatch):
+        """Una somma di coseni che GEN20 non ha in menu, nel catalogo."""
+        from pge.controllers.window_registry import (
+            WindowRegistry, WindowShape, WindowSpec)
+
+        spec = WindowSpec(
+            name='nuttall',
+            shape=WindowShape.COSINE_SUM,
+            coefficients=self.NUTTALL,
+            description="Nuttall window",
+        )
+        monkeypatch.setitem(WindowRegistry.WINDOWS, 'nuttall', spec)
+        return spec
+
+    def test_the_target_really_refuses_it(self, emitter, uncovered):
+        """La premessa: senza un rifiuto vero il resto della classe sarebbe
+        verde a vuoto."""
+        assert emitter.window_emitter.supports(uncovered) is False
+
+    def test_the_section_carries_no_comment_for_it(self, emitter, uncovered):
+        buf = io.StringIO()
+
+        with pytest.raises(InvalidWindowError):
+            emitter.write_ftables(buf, {1: ('window', 'nuttall')})
+
+        assert '; Window: nuttall' not in buf.getvalue()
+        assert 'Nuttall window' not in buf.getvalue()
+
+    def test_a_covered_window_still_gets_its_comment(self, emitter, uncovered):
+        """L'altra meta' della misura: il commento non manca perche' la
+        sezione non ne scrive mai, e cio' che precede il rifiuto resta nel
+        file -- l'invariante e' sul commento orfano, non sulla sezione
+        intera."""
+        buf = io.StringIO()
+
+        with pytest.raises(InvalidWindowError):
+            emitter.write_ftables(buf, {1: ('window', 'hanning'),
+                                        2: ('window', 'nuttall')})
+
+        content = buf.getvalue()
+        assert '; Window: hanning - Hanning/von Hann window' in content
+        assert 'f 1 0 1024 20 2 1' in content
+        assert '; Window: nuttall' not in content
+
+
 # =============================================================================
 # 5. LA GUARDIA: la sintassi Csound non torna sotto il renderer
 # =============================================================================
