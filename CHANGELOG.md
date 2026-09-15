@@ -159,6 +159,33 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   miniatura. Le due metà del contratto passano ora dalla stessa domanda
   (`_evaluator`): il metodo esiste?
 
+- **I parametri di una forma si leggono da una porta sola.** `supports()`
+  prende uno spec-*like* di proposito, e `missing_shape_fields` lo legge con
+  `getattr(spec, 'params', ...)`: è la lettura che il contratto dichiara.
+  Gli emitter leggevano però `spec.param(key)`, che è un metodo di
+  `WindowSpec` e di nessun altro — due porte per la stessa domanda, e la
+  seconda non era quella dichiarata. Una descrizione arrivata da fuori
+  catalogo con i suoi `params` e senza quel metodo passava la prima lettura
+  e moriva sulla seconda: NumPy rispondeva `supports() is True` e usciva da
+  `materialize()` con un `AttributeError` invece dell'`InvalidWindowError`
+  promesso, Csound alzava `AttributeError` già da `supports()`, che di
+  mestiere restituisce un booleano. È la stessa lezione del `getattr` dentro
+  `_reject` e di `_evaluator`, su un terzo accessorio: `shape_param()` sta
+  accanto a `missing_shape_fields`, e `WindowSpec.param` delega lì invece di
+  essere una seconda lettura.
+
+- **Dove la copertura parziale vive, e dove no** (documentazione). Un target
+  può legittimamente non arrivare dappertutto, ma una finestra entra nel
+  **catalogo** solo quando ogni target la sa produrre: la validazione YAML
+  passa da `all_names()` e non sa con quale renderer si sta rendendo, quindi
+  un nome scoperto da un target sarebbe di nuovo l'alias `triangle`, e
+  `TestEveryEmitterCoversTheCatalogue` lo chiede. La how-to
+  `add-window-function` diceva invece che per una forma nuova la traduzione
+  Csound si può sostituire con la dichiarazione della lacuna, e che la
+  guardia «passa da sé»: seguendo quel passo la suite resta rossa. La
+  copertura parziale è per le spec che il catalogo non contiene — quelle che
+  un chiamante costruisce da sé.
+
 - **Un rifiuto di finestra non lascia più un commento orfano nel `.sco`.**
   `write_ftables` scriveva `; Window: <nome>` e *poi* costruiva lo statement;
   dalla #202 quella costruzione può rifiutare — un target non è tenuto a

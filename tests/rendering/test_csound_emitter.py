@@ -221,11 +221,12 @@ class TestWindowFtable:
     def test_gen16_segment_follows_the_table_size(self, emitter, size):
         """Il segmento GEN16 e' lungo quanto la tabella.
 
-        `gen_params` del catalogo scrive 1024 come durata del segmento --
-        il default -- ma quel numero e' in *punti*: lasciato fisso, una
-        `size` diversa emetteva una tabella da N punti con dentro un
-        segmento da 1024. Il catalogo dichiara la forma della curva, la
-        dimensione la decide chi materializza.
+        La durata del segmento e' in *punti*, quindi e' un numero che il
+        catalogo non puo' dichiarare: prima della #202 stava scritto 1024
+        nei `gen_params` della spec -- il default -- e una `size` diversa
+        emetteva una tabella da N punti con dentro un segmento da 1024. Il
+        catalogo dichiara la forma della curva, la dimensione la decide chi
+        materializza.
         """
         assert emitter.window_ftable(3, 'expodec', size=size) == \
             f'f 3 0 {size} 16 1 {size} 4 0\n'

@@ -9,7 +9,7 @@ sources:
   - src/pge/controllers/window_emitter.py
   - src/pge/cli.py
   - src/main.py
-last_synced_commit: 2a75242
+last_synced_commit: d3d1130
 ---
 
 # Architettura Renderer
@@ -183,6 +183,14 @@ Tre conseguenze che si vedono nel codice:
   in Csound, e il target lo dice prima. `available_windows()` di un target è
   la sua copertura, non il catalogo: oggi le due liste coincidono, ma la
   coincidenza è un risultato che un test verifica, non più una definizione.
+
+  Coincidono perché una finestra entra nel **catalogo** solo quando ogni
+  target la sa produrre, e una guardia lo chiede
+  (`TestEveryEmitterCoversTheCatalogue`): la validazione YAML passa da
+  `all_names()` e non sa con quale renderer si sta rendendo, quindi un nome
+  scoperto da un target sarebbe di nuovo l'alias `triangle`. La copertura
+  parziale è per le spec che il catalogo non contiene — quelle che un
+  chiamante costruisce da sé.
 
   "Forma" vuol dire forma **più i suoi campi**: cosa una forma legge sta
   dichiarato accanto alle forme (`WindowShape.REQUIRED_PARAMS`,

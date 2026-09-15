@@ -111,7 +111,9 @@ class CsoundEmitter:
                 `instrument_name`.
 
         Raises:
-            InvalidWindowError: il catalogo non conosce `name`.
+            InvalidWindowError: il catalogo non conosce `name`, oppure il
+                target Csound non sa esprimere quella forma -- due cose
+                diverse, vedi `_ftable_from_spec`.
         """
         spec = WindowRegistry.get(name)
         if spec is None:
