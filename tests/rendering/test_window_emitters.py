@@ -294,12 +294,25 @@ class TestIncompleteSpecIsDeclared:
     def test_the_message_names_the_field_that_is_missing(self, emitter):
         """Il messaggio serve a sapere cosa scrivere nel catalogo, quindi
         nomina il campo e non la tabella di traduzione del target: prima, la
-        gaussiana senza sigma rispondeva 'l'apertura GEN20 per sigma=None non
-        e' nota', che manda a cercare la cosa sbagliata."""
+        gaussiana senza sigma rispondeva "l'apertura GEN20 corrispondente a
+        sigma=None non e' nota", che manda a cercare la cosa sbagliata.
+
+        Nominare il campo non basta a distinguere le due frasi -- anche
+        quella sbagliata scrive `sigma`, ed e' il motivo per cui il solo
+        `'sigma' in messaggio` restava verde togliendo la guardia in
+        `CsoundWindowEmitter._why_not`: la guardia non vedeva la regressione
+        che dichiara. Cio' che le separa e' il `None`: e' il valore che la
+        spec **non** ha, e un messaggio che lo cita sta rispondendo sulla
+        traduzione di un valore invece che sull'assenza del campo. Vale per
+        ogni target, quindi la lettura sta qui e non nella suite di uno solo.
+        """
         with pytest.raises(InvalidWindowError) as exc_info:
             emitter.materialize(_BareSpec(WindowShape.GAUSSIAN), RESOLUTION)
 
-        assert 'sigma' in str(exc_info.value)
+        message = str(exc_info.value)
+
+        assert 'sigma' in message
+        assert 'None' not in message, message
 
     @pytest.mark.parametrize("emitter", EMITTERS, ids=EMITTER_IDS)
     def test_it_shows_up_as_uncovered(self, emitter):
