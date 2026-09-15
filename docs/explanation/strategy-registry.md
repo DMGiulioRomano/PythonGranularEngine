@@ -100,9 +100,9 @@ sono ciò che decide la forma più di ogni preferenza di stile:
   funzioni stampi. Il refactor passa dentro quella guardia, e conviene sapere
   in che modo: una forma che facesse sparire quelle `def` non la spegnerebbe —
   il censimento pretende `trovati == dichiarati`, quindi diventa rosso subito.
-  A spegnersi in silenzio e' la *copertura*, un passo dopo: riallineata la
+  A spegnersi in silenzio è la *copertura*, un passo dopo: riallineata la
   lista dichiarata per tornare verdi, la guardia per funzione non sorveglia
-  piu' niente. E' la differenza su cui gira tutta la sezione «Il `print()`».
+  più niente. È la differenza su cui gira tutta la sezione «Il `print()`».
 
 ## Modello
 
@@ -264,8 +264,8 @@ forte della prima:
    costa una CI rossa — altrove per la prima, qui per la seconda — in cambio di
    niente.
 
-Resta vero che `SEMITONE_LOCKED` è una lista di nomi che deve restare allineata
-alle chiavi del registry, e che una strategy registrata dinamicamente non può
+Resta vero che `SEMITONE_LOCKED` è un `frozenset` di nomi che deve restare
+allineato alle chiavi del registry, e che una strategy registrata dinamicamente non può
 dichiararsi semitone-locked. La cura sarebbe metadato sulla classe, non sul
 registry: è materiale per la decomposizione di `Stream` (#190) e per il wiring
 (#186), non per qui.
@@ -427,10 +427,12 @@ scrittura diretta è quel che fanno le fixture per rimettere a posto lo stato.
 
 **La riga diagnostica passa da tre registry a sette.** Uniformare vuol dire
 anche estendere, non solo togliere: i quattro muti di oggi (pitch, onset,
-pointer, window) cominciano a parlare. L'ottavo è `grain_clip`, e resta fuori
-dal conto perché oggi un punto di registrazione non ce l'ha: diventerebbero otto
-solo se il seguito decidesse di dargliene uno, che è appunto la domanda lasciata
-aperta in «Chi resta fuori». Su un canale spento di default il prezzo è nullo a
+pointer, window) cominciano a parlare. Sette è però il conto a convergenza
+avvenuta, non quello di #184/#185: alla fine di #185 i registry che parlano sono
+sei, perché `window` è nel seguito insieme a `grain_clip` (vedi «Chi resta
+fuori»). L'ottavo è `grain_clip`, e resta fuori dal conto perché oggi un punto
+di registrazione non ce l'ha: diventerebbero otto solo se il seguito decidesse
+di dargliene uno, che è appunto la domanda lasciata aperta lì. Su un canale spento di default il prezzo è nullo a
 runtime; il prezzo vero è che d'ora in poi «registrare» e «annunciare la
 registrazione» sono la stessa operazione e non si possono più separare per
 registry — che è precisamente quel che si voleva.
