@@ -39,6 +39,7 @@ from pge.controllers.window_registry import (
     WindowShape,
     WindowSpec,
     missing_shape_fields,
+    shape_param,
 )
 
 
@@ -149,12 +150,12 @@ class CsoundWindowEmitter(WindowEmitter):
             return self._gen20(self._TRIANGULAR_OPT)
 
         if shape == WindowShape.GAUSSIAN:
-            openness = self._GAUSSIAN_OPENNESS.get(spec.param('sigma'))
+            openness = self._GAUSSIAN_OPENNESS.get(shape_param(spec, 'sigma'))
             return (None if openness is None
                     else self._gen20(self._GAUSSIAN_OPT, openness))
 
         if shape == WindowShape.KAISER:
-            return self._gen20(self._KAISER_OPT, spec.param('beta'))
+            return self._gen20(self._KAISER_OPT, shape_param(spec, 'beta'))
 
         if shape == WindowShape.RECTANGULAR:
             return self._gen20(self._RECTANGLE_OPT)
@@ -172,8 +173,8 @@ class CsoundWindowEmitter(WindowEmitter):
             # curva, non quanti punti servano a disegnarla.
             return GenTable(
                 routine=self._GEN16,
-                params=(spec.param('start'), resolution,
-                        spec.param('curve'), spec.param('end')),
+                params=(shape_param(spec, 'start'), resolution,
+                        shape_param(spec, 'curve'), shape_param(spec, 'end')),
             )
 
         return None
@@ -200,5 +201,5 @@ class CsoundWindowEmitter(WindowEmitter):
                     f"{tuple(spec.coefficients)}")
         if shape == WindowShape.GAUSSIAN:
             return (f"l'apertura GEN20 corrispondente a sigma="
-                    f"{spec.param('sigma')} non e' nota")
+                    f"{shape_param(spec, 'sigma')} non e' nota")
         return None

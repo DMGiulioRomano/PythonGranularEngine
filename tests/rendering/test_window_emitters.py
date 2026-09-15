@@ -76,6 +76,30 @@ class _BareSpec:
         return self.params.get(key, default)
 
 
+class _PlainSpec:
+    """Una spec-like che espone i suoi `params` e *non* il metodo `param()`.
+
+    E' la forma minima che il contratto dichiara di accettare:
+    `missing_shape_fields` legge i parametri con `getattr(spec, 'params')`,
+    quindi a uno spec-like basta quell'attributo. Gli emitter leggevano
+    invece `spec.param(key)` -- un metodo che ha solo `WindowSpec` -- ed e'
+    la seconda porta da cui la stessa domanda usciva con una risposta
+    diversa: `NumpyWindowEmitter.supports()` rispondeva di si' e
+    `materialize()` moriva con un `AttributeError` (non l'`InvalidWindowError`
+    che il contratto promette), mentre `CsoundWindowEmitter.supports()` --
+    che deve restituire un booleano -- alzava `AttributeError` da se'.
+
+    E' il difetto della #202 sull'accessorio invece che sulla forma:
+    dichiarato e reale che divergono dentro lo stesso oggetto.
+    """
+
+    def __init__(self, shape, params=None, coefficients=()):
+        self.name = f'plain_{shape}'
+        self.shape = shape
+        self.coefficients = coefficients
+        self.params = dict(params or {})
+
+
 def _artifact_is_well_formed(artifact):
     """Un artefatto materializzato non porta buchi dentro.
 
@@ -313,6 +337,83 @@ class TestIncompleteSpecIsDeclared:
                        if NumpyWindowEmitter().supports(_BareSpec(shape))]
 
         assert bare_shapes
+
+
+# =============================================================================
+# 2ter. I PARAMETRI SI LEGGONO DA UNA PORTA SOLA
+# =============================================================================
+
+class TestSpecLikeIsReadThroughOneDoor:
+    """`supports()` prende uno spec-*like* di proposito, e va letto come tale
+    fino in fondo.
+
+    `missing_shape_fields` lo legge con `getattr(spec, 'params', ...)` --
+    cioe' dichiara che a una descrizione arrivata da fuori catalogo basta
+    quell'attributo -- mentre gli emitter leggevano i parametri con
+    `spec.param(key)`, che e' un metodo di `WindowSpec` e di nessun altro.
+    Due porte per la stessa domanda, e la seconda non era quella dichiarata:
+    e' la stessa lezione del `getattr` dentro `_reject` (il nome di una
+    spec-like) e di `_evaluator` (il metodo che valuta una forma), su un
+    terzo accessorio.
+
+    Il sintomo era diverso per i due target, e nessuno dei due e' il
+    contratto: NumPy rispondeva `supports() is True` e moriva dentro
+    `materialize()` con un `AttributeError` invece dell'`InvalidWindowError`
+    promesso; Csound alzava `AttributeError` gia' da `supports()`, che di
+    mestiere restituisce un booleano.
+    """
+
+    PARAMETRIC = {
+        WindowShape.GAUSSIAN: {'sigma': 0.4},
+        WindowShape.KAISER: {'beta': 6.0},
+        WindowShape.EXPONENTIAL_SEGMENT: {'start': 1.0, 'curve': 4.0,
+                                          'end': 0.0},
+    }
+
+    @pytest.mark.parametrize("emitter", EMITTERS, ids=EMITTER_IDS)
+    @pytest.mark.parametrize("shape", sorted(PARAMETRIC))
+    def test_a_spec_like_without_param_is_supported(self, emitter, shape):
+        spec = _PlainSpec(shape, self.PARAMETRIC[shape])
+
+        assert emitter.supports(spec) is True
+
+    @pytest.mark.parametrize("emitter", EMITTERS, ids=EMITTER_IDS)
+    @pytest.mark.parametrize("shape", sorted(PARAMETRIC))
+    def test_it_materializes_like_the_spec_that_has_the_method(
+            self, emitter, shape):
+        """La misura: non solo non esplode -- produce lo stesso artefatto
+        della `WindowSpec` che quei parametri li dichiara uguali."""
+        params = self.PARAMETRIC[shape]
+        plain = _PlainSpec(shape, params)
+        full = WindowSpec(name=plain.name, shape=shape, description="d",
+                          params=params,
+                          family='asymmetric'
+                          if shape == WindowShape.EXPONENTIAL_SEGMENT
+                          else 'window',
+                          symmetry='asymmetric'
+                          if shape == WindowShape.EXPONENTIAL_SEGMENT
+                          else 'symmetric')
+
+        produced = emitter.materialize(plain, RESOLUTION)
+        expected = emitter.materialize(full, RESOLUTION)
+
+        if isinstance(produced, np.ndarray):
+            np.testing.assert_array_equal(produced, expected)
+        else:
+            assert produced == expected
+
+    @pytest.mark.parametrize("emitter", EMITTERS, ids=EMITTER_IDS)
+    @pytest.mark.parametrize("shape", sorted(PARAMETRIC))
+    def test_without_its_params_it_is_refused_as_promised(
+            self, emitter, shape):
+        """L'altra meta': la porta unica non deve ammettere di piu' -- una
+        spec-like incompleta resta fuori copertura, e il rifiuto e'
+        l'eccezione del contratto."""
+        spec = _PlainSpec(shape)
+
+        assert emitter.supports(spec) is False
+        with pytest.raises(InvalidWindowError):
+            emitter.materialize(spec, RESOLUTION)
 
 
 # =============================================================================

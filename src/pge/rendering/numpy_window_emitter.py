@@ -25,6 +25,7 @@ from pge.controllers.window_registry import (
     WindowShape,
     WindowSpec,
     missing_shape_fields,
+    shape_param,
 )
 
 
@@ -129,10 +130,10 @@ class NumpyWindowEmitter(WindowEmitter):
     def _gaussian(self, spec: WindowSpec, n: int) -> np.ndarray:
         """exp(-0.5 (u/sigma)^2): campana centrata, sigma normalizzata su
         meta' finestra."""
-        return np.exp(-0.5 * (self._u(n) / spec.param('sigma')) ** 2)
+        return np.exp(-0.5 * (self._u(n) / shape_param(spec, 'sigma')) ** 2)
 
     def _kaiser(self, spec: WindowSpec, n: int) -> np.ndarray:
-        return np.kaiser(n, beta=spec.param('beta'))
+        return np.kaiser(n, beta=shape_param(spec, 'beta'))
 
     def _rectangular(self, spec: WindowSpec, n: int) -> np.ndarray:
         return np.ones(n, dtype=np.float64)
@@ -158,9 +159,9 @@ class NumpyWindowEmitter(WindowEmitter):
         stretta abbastanza che appena sopra il ramo esponenziale vale ancora
         la retta: fra i due non c'e' salto, ed e' misurato.
         """
-        start = spec.param('start')
-        curve = spec.param('curve')
-        end = spec.param('end')
+        start = shape_param(spec, 'start')
+        curve = shape_param(spec, 'curve')
+        end = shape_param(spec, 'end')
         x = self._x(n)
 
         if abs(curve) < 1e-10:

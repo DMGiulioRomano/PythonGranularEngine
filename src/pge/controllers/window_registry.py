@@ -113,6 +113,28 @@ ASYMMETRIC = 'asymmetric'
 VALID_SYMMETRIES = frozenset({SYMMETRIC, ASYMMETRIC})
 
 
+def shape_param(spec, key: str, default: Optional[float] = None):
+    """Il parametro scalare `key` della forma di `spec`, `default` se assente.
+
+    E' la lettura dei parametri, e l'unica -- come `missing_shape_fields` e'
+    l'unica lettura di cosa manchi. Le due devono passare dalla stessa porta:
+    `missing_shape_fields` legge `spec.params` con `getattr`, cioe' dichiara
+    che a un target basta esporre quell'attributo, mentre gli emitter
+    leggevano `spec.param(key)` -- un metodo che ha solo `WindowSpec`. Uno
+    spec-like con i suoi `params` e senza quel metodo passava percio'
+    `supports()` e moriva dentro `materialize()` con un `AttributeError`:
+    copertura dichiarata e copertura reale che divergono dentro lo stesso
+    oggetto, cioe' il difetto della #202 sull'accessorio invece che sulla
+    forma. Con una porta sola non c'e' un secondo modo di leggere da cui
+    divergere.
+
+    `WindowSpec.param` e' il comodo per chi la spec ce l'ha in mano; questa
+    funzione e' cio' che legge chi riceve uno spec-*like*.
+    """
+    params = getattr(spec, 'params', None) or {}
+    return params.get(key, default)
+
+
 def missing_shape_fields(spec) -> Tuple[str, ...]:
     """I campi che la forma di `spec` legge e che `spec` non dichiara.
 
@@ -135,9 +157,8 @@ def missing_shape_fields(spec) -> Tuple[str, ...]:
             and not getattr(spec, 'coefficients', ())):
         missing.append('coefficients')
 
-    params = getattr(spec, 'params', None) or {}
     for key in WindowShape.REQUIRED_PARAMS.get(shape, ()):
-        if params.get(key) is None:
+        if shape_param(spec, key) is None:
             missing.append(key)
 
     return tuple(missing)
@@ -276,8 +297,13 @@ class WindowSpec:
         ))
 
     def param(self, key: str, default: Optional[float] = None) -> Optional[float]:
-        """Parametro scalare della forma, `default` se la spec non lo dichiara."""
-        return self.params.get(key, default)
+        """Parametro scalare della forma, `default` se la spec non lo dichiara.
+
+        E' il comodo per chi la spec ce l'ha in mano. Chi riceve uno
+        spec-*like* legge da `shape_param()`, che e' la stessa lettura senza
+        pretendere questo metodo.
+        """
+        return shape_param(self, key, default)
 
 
 def _asymmetric_curve(name: str, start: float, curve: float, end: float,
