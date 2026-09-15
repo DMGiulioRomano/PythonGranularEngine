@@ -12,8 +12,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 - **`docs/explanation/strategy-registry.md`** — la forma decisa del registry
   generico di strategy (issue #177): decisione, non esecuzione (quella e'
-  #184 e #185). Lo schema duplicato sta in **otto** moduli, non sei — il
-  criterio e' la forma, non la cartella `strategies/` — e la forma scelta e'
+  #184 e #185). Lo schema duplicato sta in **nove** moduli, non sei — il
+  criterio e' la forma (il `raise StrategyNotFoundError` dentro `create()`),
+  non la cartella `strategies/`, e il nono e' `DistributionFactory` in
+  `shared/distribution_strategy.py`, che tiene la mappa come attributo di
+  classe e registra con una classmethod: due grafie che lo fanno sparire sia
+  dal censimento per cartella sia da quello per nome di funzione — e la forma scelta e'
   una classe che *e'* la mappa (`StrategyRegistry(Dict[str, Type[S]])`), con
   `strategy_kind` alla costruzione e `create(name, *args, **kwargs)` che non
   guarda dentro gli argomenti: e' cio' che fa entrare dalla stessa porta la
@@ -45,7 +49,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   variation). Copertura incidentale pero': non tocca `create`, e non tocca i
   quattro registry che il refactor fa cominciare a parlare. Il presidio va
   quindi reso indipendente dalla cartella e dal caso: e' la stessa lezione del
-  settimo entry point in `contratto-stdout.md`, un giro piu' in la'. Con un
+  settimo entry point in `contratto-stdout.md`, un giro piu' in la' — e un
+  secondo precedente ancora scoperto esiste gia', `DistributionFactory.register`,
+  che cade fuori da entrambe le guardie. Con un
   passo che #184 non puo' saltare: il finder per `ast` e' condiviso con il
   censimento `trovati == dichiarati`, quindi insegnargli
   `StrategyRegistry.register` fa entrare il modulo della classe fra i trovati e

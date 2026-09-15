@@ -12,12 +12,16 @@ sources:
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/grain_clip_strategy.py
   - src/pge/controllers/window_selection_strategy.py
+  - src/pge/shared/distribution_strategy.py
   - src/pge/envelopes/envelope_factory.py
   - src/pge/core/stream.py
   - src/pge/parameters/parameter.py
   - src/pge/shared/exceptions.py
   - src/pge/shared/logger.py
+  - tests/shared/test_distribution_strategy.py
+  - tests/shared/test_range_anchor.py
   - tests/shared/test_stdout_contract.py
+  - tests/strategies/test_misc_strategy_errors.py
   - tests/strategies/test_registry_errors.py
   - tests/strategies/test_strategies.py
   - tests/strategies/test_variation_registry.py
@@ -41,10 +45,13 @@ vincolo che l'ha decisa.
 
 ## Problema
 
-Lo stesso schema — un dizionario di modulo, una `register_*()`, una classe
-`Factory` con un solo `create()` statico — è ripetuto in **otto** moduli, non
-sei. La #177 ne elenca sei perché guarda `strategies/`; il criterio però non è
-la cartella, è la forma:
+Lo stesso schema — una mappa nome → classe, un punto di registrazione, una
+classe `Factory` il cui `create()` fa lookup e alza `StrategyNotFoundError` —
+è ripetuto in **nove** moduli, non sei. La #177 ne elenca sei perché guarda
+`strategies/`; il criterio però non è la cartella, è la forma, e applicato
+davvero arriva a nove: il criterio operativo è il `raise
+StrategyNotFoundError(strategy_kind=…)` dentro `create()`, che nell'albero ha
+esattamente nove siti.
 
 | modulo | mappa | registrazione | riga diagnostica | `create()` |
 |---|---|---|---|---|
@@ -56,20 +63,37 @@ la cartella, è la forma:
 | `strategies/variation_registry.py` | `VARIATION_STRATEGIES` | `(mode_name, strategy_class)` | sì, dominio `'variation'` | `create(variation_mode)` |
 | `controllers/window_selection_strategy.py` | `WINDOW_STRATEGY_REGISTRY` | `(name, cls)` | no | `create(name, **kwargs)` + `from_spec(...)` |
 | `strategies/grain_clip_strategy.py` | `GRAIN_CLIP_STRATEGIES` | — | — | `create(name, **kwargs)` |
+| `shared/distribution_strategy.py` | `DistributionFactory._registry` (attributo di classe) | `DistributionFactory.register(name, strategy_class)`, classmethod, **valida** | no | `create(mode, rng=None, anchor=…)` |
 
 La tabella è la prova che si tratta di duplicazione e non di somiglianza: per
 una cosa sola — «registra una classe sotto un nome» — ci sono tre parole per il
 primo parametro (`name`, `param_name`, `mode_name`), due per il secondo (`cls`,
-`strategy_class`), due convenzioni per il nome della mappa (`*_STRATEGIES` e
-`WINDOW_STRATEGY_REGISTRY`), tre etichette di dominio scritte a mano, e un
-ottavo registry che non ha nemmeno il punto di registrazione.
+`strategy_class`), tre convenzioni per il nome della mappa
+(`*_STRATEGIES`, `WINDOW_STRATEGY_REGISTRY` e un `_registry` privato di classe),
+tre etichette di dominio scritte a mano sulla riga diagnostica e nove sul
+`strategy_kind` dell'errore, un registry che non ha nemmeno il punto di
+registrazione e uno che il punto di registrazione ce l'ha ma **valida**.
+
+**L'ultima riga è quella che il censimento per cartella non poteva vedere, ed è
+la più istruttiva delle nove.** `DistributionFactory` (`shared/`) tiene la
+mappa come attributo di classe invece che come nome di modulo e registra con
+una classmethod `register`, non con una `def register_*_strategy`: due
+differenze di grafia che la fanno sparire da entrambe le grate con cui si
+guarda di solito — la cartella `strategies/` e il nome della funzione. Per
+forma è però della famiglia più di `grain_clip`, che nel conto c'è: alza lo
+stesso `StrategyNotFoundError` con lo stesso `strategy_kind`, e un punto di
+registrazione ce l'ha. Torna due volte più sotto, perché è il **contro-esempio
+vivo** a due decisioni di questo documento: è l'unico registry dell'albero che
+valida alla registrazione (§ «`base` è portato, non imposto»), ed è il secondo
+punto di registrazione fuori dal campo visivo delle guardie della #187
+(§ «Il `print()`»).
 
 **Un punto della #177 è già stato sciolto altrove, e conviene arrivarci
 sapendolo.** Il `print()` alla registrazione non esiste più: la #187 lo ha
 portato a `log_strategy_registration`, cioè al logger `pge.diagnostics`, e la
 regola di quale riga vive su stdout è scritta in [[contratto-stdout]]. Quel che
 resta della divergenza descritta dalla issue non è il canale, è **chi la riga la
-emette**: tre registry su otto la emettono, quattro tacciono, uno non ha la
+emette**: tre registry su nove la emettono, cinque tacciono, uno non ha la
 funzione da cui emetterla.
 
 Due vincoli esterni rendono questa duplicazione più cara di quanto sembri, e
@@ -238,10 +262,32 @@ niente.
 
 Il registry riceve l'ABC del proprio dominio: serve a inferire il tipo di
 ritorno di `create()` e a rendere l'oggetto autodescrittivo. **Non** verifica
-`issubclass` alla registrazione: sarebbe un rifiuto nuovo, e un rifiuto nuovo è
-un cambio di superficie pubblica — chi oggi registra una strategy duck-typed
-smetterebbe di poterlo fare. Se lo si vuole, è una issue sua, con la sua analisi
-d'impatto, non un effetto collaterale del refactor.
+`issubclass` alla registrazione: per gli otto registry che convergono sarebbe
+un rifiuto nuovo, e un rifiuto nuovo è un cambio di superficie pubblica — chi
+oggi registra una strategy duck-typed smetterebbe di poterlo fare. Se lo si
+vuole, è una issue sua, con la sua analisi d'impatto, non un effetto collaterale
+del refactor.
+
+**Il nono registry però valida già, e la direzione in cui sbaglia è
+l'opposta.** `DistributionFactory.register` rifiuta una classe che non sia
+sottoclasse di `DistributionStrategy`, con `InvalidStrategyConfigError`
+(`strategy_kind="distribution"`, `field="strategy_class"`); il rifiuto è
+superficie pubblica dichiarata — `tests/shared/test_range_anchor.py` lo scrive
+in una docstring — ed è pinnato da due test,
+`tests/shared/test_distribution_strategy.py` e
+`tests/strategies/test_misc_strategy_errors.py`. Convertirlo sulla forma decisa
+qui non sarebbe quindi meccanico: **toglierebbe** un rifiuto vivo e farebbe
+cadere quei due test. È esattamente il caso che la regola di #184 nomina — se
+un modulo chiede un'eccezione si torna a questo documento e si cambia la forma,
+non si aggiunge l'eccezione — e per questo `distribution` non è nel giro di
+#184/#185 né nel suo seguito immediato: la decisione che gli serve (validare è
+opzione del registry, o è la classe generica a doverlo sapere fare?) è una
+domanda in più, e va posta prima di toccarlo, non durante.
+
+Che è anche il motivo per cui il censimento doveva arrivarci: il guadagno
+promesso più sotto è che «questo registry valida?» abbia **una risposta sola**,
+e finché distribution resta fuori dal conto quella domanda ne ha due senza che
+nessuno lo veda scritto.
 
 ### Le costanti restano dove sono (domanda 3)
 
@@ -327,7 +373,25 @@ Che è esattamente la lezione del settimo entry point in [[contratto-stdout]] �
 il criterio è la funzione, non la cartella — un giro più in là:
 `register_window_strategy` è già il precedente di un punto di registrazione che
 vive fuori da `strategies/` ed è rimasto scoperto fino alla guardia per
-funzione. Da cui due regole per #184:
+funzione.
+
+**E non è l'unico: ce n'è un secondo, ancora scoperto, e il censimento per
+forma è ciò che lo rende visibile.** `DistributionFactory.register`
+(`shared/distribution_strategy.py`) è un punto di registrazione documentato
+come superficie pubblica, e cade fuori da *entrambe* le guardie per due motivi
+indipendenti: non sta in `strategies/`, come quello delle finestre, e in più
+non è una `def register_*_strategy` di livello modulo ma una classmethod
+`register` — cioè la stessa grafia che qui si teme per
+`StrategyRegistry.register`. Oggi non stampa, quindi il buco è latente e non un
+rosso mancato; ma è il precedente esatto della cecità che #184 deve chiudere, e
+allargare il finder a un *metodo* chiamato `register` è il passo che
+potenzialmente porta dentro anche lui. Chi esegue #184 decida quale dei due
+criteri sta scrivendo — «il metodo `register` di `StrategyRegistry`» o «un
+metodo `register` su un registry» — perché il secondo cambia anche l'insieme
+dei `trovati` del censimento qui sotto, e il primo lascia distribution fuori
+con la sua cecità intatta.
+
+Da cui due regole per #184:
 la guardia impari anche `StrategyRegistry.register`, così che il presidio smetta
 di dipendere dalla cartella e dal caso; e le `def register_*_strategy` restino
 `def` di modulo (una riga di corpo che delega), non alias
@@ -430,6 +494,14 @@ resti misurato su un modulo solo. La prima porta anche `from_spec()`, che è
 lettura di YAML e resta sua; il secondo non ha punto di registrazione e la
 conversione è l'occasione per decidere se debba averlo.
 
+`distribution_strategy` rientra anche lui, ma **più tardi ancora e con una
+domanda aperta davanti**: la sua `register` valida `issubclass` e quel rifiuto
+è pinnato (vedi «`base` è portato, non imposto»), quindi convertirlo sulla
+forma decisa qui è una perdita di comportamento, non una riscrittura. Finché
+quella domanda non ha risposta è nel censimento e fuori dal giro: sapere che è
+della famiglia serve per non decidere due volte la stessa cosa in modi diversi,
+che è il guadagno per cui esiste questo documento.
+
 ## Trade-off
 
 **Ereditare da `dict` è un compromesso, ed è quello che i vincoli scelgono.**
@@ -447,25 +519,29 @@ anche estendere, non solo togliere: i quattro muti di oggi (pitch, onset,
 pointer, window) cominciano a parlare. Sette è però il conto a convergenza
 avvenuta, non quello di #184/#185: alla fine di #185 i registry che parlano sono
 sei, perché `window` è nel seguito insieme a `grain_clip` (vedi «Chi resta
-fuori»). L'ottavo è `grain_clip`, e resta fuori dal conto perché oggi un punto
-di registrazione non ce l'ha: diventerebbero otto solo se il seguito decidesse
-di dargliene uno, che è appunto la domanda lasciata aperta lì. Su un canale
+fuori»). Gli altri due sono quelli che il conto non tocca, ciascuno per il
+proprio motivo: `grain_clip` un punto di registrazione oggi non ce l'ha — ne
+parlerebbe otto solo se il seguito decidesse di dargliene uno, che è appunto la
+domanda lasciata aperta lì — e `distribution` ce l'ha ma è fermo davanti alla
+domanda sulla validazione, quindi il suo eventuale nono ingresso è oltre
+l'orizzonte di questa decisione. Su un canale
 spento di default il prezzo è nullo a runtime; il prezzo vero è che d'ora in
 poi «registrare» e «annunciare la registrazione» sono la stessa operazione e
 non si possono più separare per registry — che è precisamente quel che si
 voleva.
 
-**Il risparmio in righe è modesto.** Otto copie di una ventina di righe
-diventano una classe di trenta più otto superfici sottili: il conto netto è
-piccolo, e chi cerca lì il guadagno resterà deluso. Il guadagno è che la
+**Il risparmio in righe è modesto.** Le copie di una ventina di righe che
+convergono davvero — otto delle nove, distribution a parte — diventano una
+classe di trenta più otto superfici sottili: il conto netto è piccolo, e chi cerca lì il guadagno resterà deluso. Il guadagno è che la
 prossima divergenza ha un posto solo dove succedere, e che la prossima domanda
 («questo registry valida? logga? come si chiama il primo parametro?») ha una
 risposta sola.
 
 **Il refactor tocca moduli che un altro repository importa per nome.** Ogni
-nome di livello modulo — le otto mappe, i sette `register_*`, le otto `Factory`
-(`grain_clip` compresa: la façade ce l'ha pur senza avere il punto di
-registrazione) — sopravvive identico. Per cinque di quei nomi, e cinque soli, è
+nome di livello modulo — le otto mappe di modulo, i sette `register_*`, le nove
+`Factory` (`grain_clip` compresa: la façade ce l'ha pur senza avere il punto di
+registrazione; `DistributionFactory` compresa, che la mappa la tiene dentro di
+sé) — sopravvive identico. Per cinque di quei nomi, e cinque soli, è
 la condizione perché la parità di PGE-ls resti verde: le quattro mappe voce e
 `CHORD_INTERVALS`. Per tutti gli altri è disciplina interna, non vincolo
 esterno, e conviene saperlo in questi termini: chi esegue #184/#185 deve
@@ -502,11 +578,15 @@ prese come specifica.
   o non costano ancora niente, e restano fermi per non spendere una decisione su
   niente. Se uno deve muoversi, prima l'analisi d'impatto cross-repo.
 - **Non aggiungere validazione `issubclass`** dentro `register()` in #184/#185:
-  è un rifiuto nuovo e va introdotto da una issue sua.
+  per i registry che convergono è un rifiuto nuovo e va introdotto da una issue
+  sua. Vale al contrario per `DistributionFactory`, che quel rifiuto ce l'ha già
+  e pinnato: lì il rischio è **toglierlo** convertendo, e la conversione aspetta
+  una decisione propria.
 - **Ordine di esecuzione** → #184 (pan, con la guardia estesa a
   `StrategyRegistry.register`), poi #185 (pitch, onset, pointer, density,
   variation), poi un seguito per `window_selection_strategy` e
-  `grain_clip_strategy`.
+  `grain_clip_strategy`, e `distribution_strategy` dopo la decisione sulla
+  validazione.
 - **Se il tracer bullet chiede un'eccezione** → si torna a questo documento e si
   cambia la forma. Un caso speciale nella classe generica è il segnale che la
   forma è sbagliata, non che il modulo è strano.
