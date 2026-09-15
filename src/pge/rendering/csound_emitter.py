@@ -23,9 +23,13 @@ Cosa resta a chi ha ceduto il metodo:
 - `FtableManager` e' l'allocatore di numeri di tabella e la symbol table
   condivisa fra i back-end (il renderer NumPy riceve la stessa `table_map`,
   e lo score SuperCollider ne fa numeri di buffer): alloca, non scrive;
-- `WindowRegistry` e' il catalogo -- decide quali nomi lo YAML puo' scrivere
-  e qual e' il canonico di ciascuno. Chi materializza e' un adapter: questo
-  modulo per Csound, `NumpyWindowRegistry` per l'array.
+- `WindowRegistry` e' il catalogo -- decide quali nomi lo YAML puo' scrivere,
+  qual e' il canonico di ciascuno e, dalla #202, che *forma* ha ciascuna
+  finestra. Chi la traduce per un target e' un `WindowEmitter`, e non e' piu'
+  questo modulo: `CsoundWindowEmitter` restituisce una `GenTable` -- routine e
+  p-field, numeri -- e qui se ne scrive la riga; `NumpyWindowEmitter`
+  restituisce l'array, e `NumpyWindowRegistry` gli mette intorno la cache e la
+  soglia sotto la quale non si finestra.
 
 **Contratto di formattazione: ogni builder restituisce una riga di score
 completa, newline inclusa.** Chi scrive il file concatena senza doversi
