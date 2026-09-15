@@ -119,7 +119,7 @@ class NumpyWindowEmitter(WindowEmitter):
         x = self._x(n)
         out = np.zeros(n, dtype=np.float64)
         for k, coefficient in enumerate(spec.coefficients):
-            out = out + ((-1.0) ** k) * coefficient * np.cos(2.0 * np.pi * k * x)
+            out += ((-1.0) ** k) * coefficient * np.cos(2.0 * np.pi * k * x)
         return out
 
     def _triangular(self, spec: WindowSpec, n: int) -> np.ndarray:
