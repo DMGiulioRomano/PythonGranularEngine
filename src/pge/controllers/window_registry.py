@@ -233,8 +233,15 @@ def _asymmetric_curve(name: str, start: float, curve: float, end: float,
                       description: str) -> WindowSpec:
     """Una delle curve esponenziali del catalogo (famiglia Roads).
 
-    `curve` e' il parametro di curvatura della forma dichiarata sopra: >0 la
-    curva parte ripida e si appiattisce, <0 il contrario, 0 e' la retta.
+    `curve` e' il parametro di curvatura della forma dichiarata sopra, e il
+    suo segno dice *dove sta la parte ripida*: la pendenza va come
+    e^(curve x), quindi con `curve > 0` cresce lungo la curva -- si parte
+    piatti e si accelera verso la fine -- e con `curve < 0` il contrario.
+    `curve = 0` e' la retta, che e' anche il limite della formula.
+
+    E' una riga su cui si sceglie un segno, quindi non resta una promessa:
+    `tests/rendering/test_window_shape_parity.py` la rilegge sull'array
+    materializzato, come gia' fa con la `symmetry` dichiarata.
     """
     return WindowSpec(
         name=name,

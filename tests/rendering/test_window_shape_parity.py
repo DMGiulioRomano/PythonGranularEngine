@@ -43,6 +43,7 @@ from pge.controllers.window_registry import (
     SYMMETRIC,
     WindowRegistry,
     WindowShape,
+    WindowSpec,
 )
 from pge.rendering.numpy_window_emitter import NumpyWindowEmitter
 from pge.rendering.numpy_window_registry import (
@@ -287,3 +288,86 @@ class TestDeclaredSymmetry:
         simmetrico o tutto asimmetrico."""
         declared = {spec.symmetry for spec in WindowRegistry.WINDOWS.values()}
         assert declared == {SYMMETRIC, ASYMMETRIC}
+
+
+# =============================================================================
+# 4. IL SEGNO DI `curve` E' UNA PROMESSA SULLA FORMA
+# =============================================================================
+
+class TestDeclaredCurvature:
+    """La curvatura dichiarata e' quella materializzata.
+
+    Stessa lezione della simmetria, su un campo che finora nessun test
+    rileggeva: `curve` non e' un numero opaco, il suo *segno* dice dove sta
+    la parte ripida della curva, e il catalogo lo scriveva al contrario --
+    "curve > 0: parte ripida e si appiattisce", mentre la derivata della
+    forma dichiarata va come e^(curve x), cioe' con `curve > 0` la pendenza
+    cresce lungo la curva. Chi sceglieva il segno leggendo quella riga
+    prendeva la curva opposta a quella che voleva, e niente lo diceva: la
+    simmetria era misurata, la curvatura no.
+    """
+
+    CURVED = [spec.name for spec in
+              WindowRegistry.get_by_shape(WindowShape.EXPONENTIAL_SEGMENT)]
+
+    @pytest.mark.parametrize("name", CURVED)
+    def test_the_sign_of_curve_places_the_steep_half(self, emitter, name):
+        spec = WindowRegistry.get(name)
+        curve = spec.param('curve')
+        steps = np.abs(np.diff(emitter.materialize(spec, 129)))
+
+        # Il rapporto vero e' e^|curve| -- da 54 per le curve a 4 a 2.2e4 per
+        # quelle a 10 -- quindi un ordine di grandezza e' una soglia larga
+        # che nessuna delle due letture puo' superare per caso.
+        if curve > 0:
+            assert steps[-1] > 10.0 * steps[0], (
+                f"{name}: curve={curve} > 0, la parte ripida va in fondo")
+        else:
+            assert steps[0] > 10.0 * steps[-1], (
+                f"{name}: curve={curve} < 0, la parte ripida va all'inizio")
+
+    def test_both_signs_are_represented(self):
+        """Il test sopra sarebbe verde a meta' se il catalogo dichiarasse un
+        segno solo: sarebbe l'altro ramo a non girare mai, che e' esattamente
+        il modo in cui un'affermazione invertita resta verde."""
+        signs = {np.sign(spec.param('curve'))
+                 for spec in WindowRegistry.get_by_shape(
+                     WindowShape.EXPONENTIAL_SEGMENT)}
+
+        assert signs == {1.0, -1.0}
+
+    def test_a_zero_curve_is_the_straight_line(self, emitter):
+        np.testing.assert_allclose(
+            emitter.materialize(_segment(0.0), 65), np.linspace(0.0, 1.0, 65),
+            atol=TOL, rtol=0)
+
+    def test_the_branch_at_zero_is_a_limit_and_not_a_jump(self, emitter):
+        """Il ramo lineare non e' una convenzione scelta per comodita': e' il
+        limite della formula, che in zero e' 0/0 e basta.
+
+        Si misura appena sopra la soglia del ramo (1e-10), dove la formula
+        esponenziale viene calcolata per davvero: se li' vale ancora la
+        retta, il `if` non introduce una discontinuita' nella famiglia. Lo
+        scarto residuo -- 1e-7 -- e' la cancellazione di `1 - e^(1e-9)`, non
+        una curvatura.
+        """
+        np.testing.assert_allclose(
+            emitter.materialize(_segment(1e-9), 65), np.linspace(0.0, 1.0, 65),
+            atol=1e-6, rtol=0)
+
+
+def _segment(curve: float):
+    """Una rampa 0 -> 1 di curvatura `curve`, fuori catalogo.
+
+    Il catalogo non dichiara curve a zero -- le sue sei sono tutte a +-4 o
+    +-10 -- ma la forma le prevede, e il ramo che le tratta e' codice vivo:
+    va esercitato da una spec, non dal metodo privato dell'emitter.
+    """
+    return WindowSpec(
+        name=f'segment_{curve}',
+        shape=WindowShape.EXPONENTIAL_SEGMENT,
+        description=f"Segmento esponenziale (curve={curve})",
+        family="asymmetric",
+        symmetry=ASYMMETRIC,
+        params={'start': 0.0, 'curve': curve, 'end': 1.0},
+    )

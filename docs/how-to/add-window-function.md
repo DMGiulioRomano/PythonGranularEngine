@@ -10,7 +10,7 @@ sources:
   - src/pge/rendering/numpy_window_emitter.py
   - src/pge/rendering/csound_emitter.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: d4c24ec
+last_synced_commit: 3679477
 entry_for: [add-window-function]
 ---
 
@@ -104,7 +104,7 @@ un livello più in basso.
 - `tests/rendering/test_window_emitters.py::TestEveryEmitterCoversTheCatalogue` — ogni spec del catalogo è materializzabile da ogni emitter registrato: passa da sé se hai fatto il passo 2, fallisce se hai toccato solo il catalogo
 - `tests/rendering/test_window_emitters.py::TestIncompleteSpecIsDeclared` — una spec la cui forma legge un campo che la spec non dichiara è fuori copertura per **ogni** target, e ciò che un target materializza non porta buchi dentro (array non finito o tutto nullo, p-field `None`). Si parametrizza da sé sulle forme dichiarate parametriche: la forma nuova ci entra se hai fatto il passo 2
 - `tests/controllers/test_window_registry.py::TestWindowRegistryDataIntegrity::test_every_required_field_is_actually_read` — il verso opposto: un parametro dichiarato obbligatorio dev'essere un parametro che la forma legge davvero
-- `tests/rendering/test_window_shape_parity.py` — la forma dichiarata è quella prodotta, e la simmetria dichiarata si rilegge sull'array
+- `tests/rendering/test_window_shape_parity.py` — la forma dichiarata è quella prodotta, e ciò che la spec dichiara *sulla* forma si rilegge sull'array: la `symmetry`, e il segno di `curve` per le curve esponenziali (`TestDeclaredCurvature`). Una forma nuova con un campo che ne descrive l'andamento va misurata qui, non solo documentata
 - `tests/rendering/test_csound_window_emitter.py::TestTranslation::test_the_expected_table_covers_the_catalogue` — una finestra senza attesi non è coperta dalla suite
 
 ## Verifica

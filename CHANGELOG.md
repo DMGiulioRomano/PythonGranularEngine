@@ -69,6 +69,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Csound delle finestre è il punto in cui la sintassi tornerebbe comoda —
   sa quale GEN produce una forma — e restituisce numeri.
 
+- **Anche la curvatura dichiarata si rilegge sull'array** (issue #202,
+  `TestDeclaredCurvature`). `symmetry` era misurata, `curve` no — ed era
+  descritta **al contrario**, in due posti: «`curve > 0`: la curva parte
+  ripida e si appiattisce». La derivata della forma dichiarata va come
+  `e^(curve x)`, quindi con `curve > 0` la pendenza *cresce* lungo la curva:
+  si parte piatti e si accelera verso la fine. Chi sceglieva il segno leggendo
+  quella riga — è la riga su cui lo si sceglie — prendeva la curva opposta a
+  quella che voleva, e nessun test lo diceva. Ora il segno è una promessa
+  misurata, su tutte e sei le curve del catalogo, e la misura c'è: specchiando
+  la curvatura, la guardia diventa rossa. Con essa il ramo lineare, che è il
+  *limite* della formula e non una convenzione scelta per comodità: appena
+  sopra la soglia il ramo esponenziale vale ancora la retta, quindi fra i due
+  non c'è salto.
+
+  Nessun campione si muove: le curve materializzate sono identiche: era la
+  prosa a dire il contrario di quello che il codice calcolava.
+
 - **Una forma senza i suoi parametri non è più una descrizione che passa**
   (issue #202). `supports()` rispondeva guardando la sola *forma*, quindi una
   spec che dichiara `kaiser` senza `beta`, o `exponential_segment` senza

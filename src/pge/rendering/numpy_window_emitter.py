@@ -135,9 +135,14 @@ class NumpyWindowEmitter(WindowEmitter):
     def _exponential_segment(self, spec: WindowSpec, n: int) -> np.ndarray:
         """start + (end - start) (1 - e^(curve x)) / (1 - e^curve).
 
-        `curve` positivo: la curva parte ripida e si appiattisce; negativo: il
-        contrario; zero: la retta, che e' anche il limite della formula ma non
-        se ne calcola (divisione 0/0).
+        La derivata va come e^(curve x), quindi il segno di `curve` colloca
+        la parte ripida: positivo la mette in fondo (la curva parte piatta e
+        accelera), negativo all'inizio (parte ripida e si appiattisce).
+
+        Zero e' la retta -- il limite della formula, non un caso a parte --
+        ma li' la formula e' 0/0, da cui il ramo esplicito. La soglia e'
+        stretta abbastanza che appena sopra il ramo esponenziale vale ancora
+        la retta: fra i due non c'e' salto, ed e' misurato.
         """
         start = spec.param('start')
         curve = spec.param('curve')
