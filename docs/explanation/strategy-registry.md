@@ -336,6 +336,21 @@ censimento dei sorgenti: il test lo direbbe subito, ma la decisione è che i
 wrapper restino, perché sono l'API di estensione documentata e portano le
 proprie docstring con gli esempi.
 
+**La prima delle due regole si porta dietro un passo, e non è opzionale.**
+`_funzioni_di_registrazione` non serve una guardia sola: la leggono sia
+`test_la_registrazione_dinamica_non_stampa` sia
+`test_la_lista_dei_punti_di_registrazione_e_completa`, che su quello stesso
+insieme asserisce `trovati == dichiarati`. Insegnarle `StrategyRegistry.register`
+fa dunque entrare `strategies/registry.py` fra i `trovati` — misurato: senza
+altro, il censimento fallisce con `solo nei sorgenti: ['strategies/registry.py']`,
+e a cadere è una guardia che #184 non stava toccando. Il modulo della classe va
+quindi aggiunto a `MODULI_CON_REGISTRAZIONE_DINAMICA` nello stesso commit che
+allarga il criterio, dove non è un'eccezione ma il caso proprio: è il punto di
+registrazione, ora che la registrazione vive lì. L'alternativa — una guardia
+separata per il metodo, che lasci il finder condiviso intatto — tiene il
+censimento verde ma rimette in piedi due criteri per una regola sola, cioè
+esattamente ciò che questa sezione toglie di mezzo.
+
 ### density e variation entrano, le loro façade no (domanda 5)
 
 Entrano per **archiviazione, lookup ed errore**: sono un dizionario nome →
@@ -386,9 +401,11 @@ lo stesso, per tre motivi:
 
 **Non è però il banco di prova più largo, e crederlo sarebbe il modo di
 sbagliare #185.** A maltrattare di più la mappa sono i test di *variation*:
-oltre a tutto ciò che fa pan, `tests/strategies/test_variation_registry.py`
-misura la lunghezza, itera le chiavi e gli `items()`, legge i `values()`.
-Nessuna di quelle operazioni è a rischio su una sottoclasse di `dict` — è
+`tests/strategies/test_variation_registry.py` rifà per intero la superficie di
+pan — `isinstance`, `dict()`/`clear()`/`update()`, `pop()`, indicizzazione,
+appartenenza, `items()` — e vi aggiunge tre operazioni che pan non compie mai:
+misura la lunghezza, itera il registry direttamente (`for key in ...`), legge i
+`values()`. Nessuna delle tre è a rischio su una sottoclasse di `dict` — è
 proprio perché il verde di pan non le ha viste che vanno nominate qui: il
 tracer bullet non è la prova che la superficie `dict` sia coperta, è la prova
 che la forma decisa regge su un modulo. La copertura si misura in #185, ed è

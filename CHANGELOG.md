@@ -45,7 +45,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   variation). Copertura incidentale pero': non tocca `create`, e non tocca i
   quattro registry che il refactor fa cominciare a parlare. Il presidio va
   quindi reso indipendente dalla cartella e dal caso: e' la stessa lezione del
-  settimo entry point in `contratto-stdout.md`, un giro piu' in la'. Il secondo: l'ordine degli errori
+  settimo entry point in `contratto-stdout.md`, un giro piu' in la'. Con un
+  passo che #184 non puo' saltare: il finder per `ast` e' condiviso con il
+  censimento `trovati == dichiarati`, quindi insegnargli
+  `StrategyRegistry.register` fa entrare il modulo della classe fra i trovati e
+  va dichiarato nello stesso commit, o a cadere e' una guardia che #184 non
+  stava toccando. Il secondo: l'ordine degli errori
   della facade di density e' pinnato da
   `tests/strategies/test_registry_errors.py`:
   con nome ignoto *e* `distribution` assente e' l'ordine a decidere il tipo
