@@ -124,8 +124,18 @@ class NumpyWindowEmitter(WindowEmitter):
         return out
 
     def _triangular(self, spec: WindowSpec, n: int) -> np.ndarray:
-        """1 - |2x - 1|. `np.bartlett` e' esattamente questa forma."""
-        return np.bartlett(n)
+        """1 - |2x - 1|, la forma dichiarata, valutata.
+
+        `np.bartlett` e' la stessa funzione a meno dell'ordine delle
+        operazioni (~3e-16) -- ed e' l'oracolo esterno del parity test, che
+        continua a sorvegliarla da fuori -- ma per `M <= 1` risponde `[1.0]`
+        per convenzione propria, dove la forma dichiarata in x=0 vale 0. Era
+        l'unica finestra materializzata da una built-in invece che dalla
+        formula, e la convenzione della built-in non e' quella del catalogo:
+        il traduttore traduce cio' che il catalogo dichiara, e non finestrare
+        una lunghezza degenere e' politica del registry (#225), non sua.
+        """
+        return 1.0 - np.abs(2.0 * self._x(n) - 1.0)
 
     def _gaussian(self, spec: WindowSpec, n: int) -> np.ndarray:
         """exp(-0.5 (u/sigma)^2): campana centrata, sigma normalizzata su

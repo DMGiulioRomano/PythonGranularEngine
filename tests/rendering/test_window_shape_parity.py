@@ -262,6 +262,44 @@ class TestMaterializationMatchesTheDeclaredShape:
             registry.get('triangle', 64), registry.get('bartlett', 64))
 
 
+class TestTheDeclaredShapeHoldsDownToOneSample:
+    """La parita' sopra parte da 10 campioni, che e' la soglia del registry
+    (#225) e non il limite del contratto: `materialize` accetta qualunque
+    risoluzione positiva, e `CsoundWindowEmitter.supports` ne usa una da 1
+    punto per interrogare la traduzione.
+
+    Sotto i 10 campioni non ci arriva il renderer -- la soglia risponde con
+    la finestra piatta prima di chiamare l'emitter -- quindi e' lo spazio in
+    cui una divergenza fra forma dichiarata e forma prodotta puo' vivere
+    senza che nessuno la veda. Ce n'era una: `_triangular` chiamava
+    `np.bartlett`, che per `M <= 1` restituisce `[1.0]` per convenzione
+    propria, mentre la forma dichiarata -- `1 - |2x - 1|` in x=0 -- vale 0.
+    Una finestra su sedici materializzata da una built-in invece che dalla
+    formula, e proprio nel punto in cui le due convenzioni si separano.
+
+    La politica sulle lunghezze degeneri sta nel registry e ci resta: qui si
+    chiede solo che il traduttore traduca cio' che il catalogo dichiara,
+    anche dove nessuno guarda.
+    """
+
+    @pytest.mark.parametrize("name", ALL_NAMES)
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_emitter_materializes_the_declared_shape(self, emitter, name, n):
+        spec = WindowRegistry.get(name)
+        np.testing.assert_allclose(
+            emitter.materialize(spec, n), spec_oracle(spec, n),
+            atol=TOL, rtol=0, err_msg=f"{name} n={n}"
+        )
+
+    def test_the_threshold_still_answers_before_the_emitter(self, registry):
+        """L'altra meta', perche' la classe sopra non si legga come un
+        cambio di politica: sotto i 10 campioni il renderer continua a non
+        finestrare, e il valore che vede non e' quello della forma."""
+        for n in (1, 2, 3):
+            np.testing.assert_array_equal(registry.get('bartlett', n),
+                                          np.ones(n))
+
+
 # =============================================================================
 # 3. LA SIMMETRIA DICHIARATA E' QUELLA MATERIALIZZATA
 # =============================================================================

@@ -519,14 +519,25 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Le righe `f` sono identiche, ed è l'affermazione che il refactoring doveva
   dimostrare.
 
-- **Quattro finestre cambiano di ~1e-16** (issue #202). hamming, hanning e
+- **Cinque finestre cambiano di ~1e-16** (issue #202). hamming, hanning e
   blackman sono calcolate dalla somma di coseni dichiarata invece che da
-  `np.hamming`/`np.hanning`/`np.blackman`, e `half_sine` da `sin(pi x)`
-  invece che da `linspace(0, pi)`: stessa forma, ordine delle operazioni in
-  virgola mobile diverso. Le altre dodici sono identiche bit per bit,
-  blackman-harris compresa (era già la formula esplicita). Lo scarto è quindici
-  ordini di grandezza sotto la quantizzazione di un float32, ma è scritto qui
-  perché non lo si scopra da un diff di byte audio.
+  `np.hamming`/`np.hanning`/`np.blackman`, `half_sine` da `sin(pi x)` invece
+  che da `linspace(0, pi)`, e `bartlett` (con il suo alias `triangle`) da
+  `1 - |2x - 1|` invece che da `np.bartlett`: stessa forma, ordine delle
+  operazioni in virgola mobile diverso. Le altre undici sono identiche bit per
+  bit, blackman-harris compresa (era già la formula esplicita). Lo scarto è
+  quindici ordini di grandezza sotto la quantizzazione di un float32, ma è
+  scritto qui perché non lo si scopra da un diff di byte audio.
+
+  `bartlett` è l'ultima ad arrivarci, e per un motivo che non è di stile:
+  `np.bartlett` per `M <= 1` risponde `[1.0]` per convenzione propria, dove
+  la forma dichiarata in x=0 vale 0 — cioè la sola finestra del catalogo
+  materializzata da una built-in invece che dalla formula era anche la sola
+  a divergere dalla forma dichiarata, alla risoluzione più piccola che il
+  contratto ammette. La parità di forma partiva da 10 campioni (la soglia del
+  registry, #225), quindi lì non guardava nessuno; adesso ci arriva fino a 1.
+  Non finestrare una lunghezza degenere resta politica del registry: il
+  renderer sotto i 10 campioni continua a non chiamare l'emitter.
 
 - **La guardia sugli `except` di `cli.py` copre anche cio' che il blocco della
   pipeline non contiene** (issue #257). La guardia strutturale leggeva i `try`
