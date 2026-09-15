@@ -30,12 +30,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   closure il dizionario resterebbe comunque fuori, cioe' si riscriverebbe la
   duplicazione spostata di due righe.
 
-  Da cui anche i due buchi che il refactor *apre* e che #184 deve chiudere. La
-  guardia della #187 riconosce le `def register_*_strategy` di livello modulo, e
-  un `log_strategy_registration` spostato dentro un metodo della classe generica
-  le esce dal campo visivo — la stessa lezione del settimo entry point in
-  `contratto-stdout.md`, un giro piu' in la'. E l'ordine degli errori della
-  facade di density e' pinnato da `tests/strategies/test_registry_errors.py`:
+  Da cui anche i due punti che #184 deve chiudere. Il primo: le guardie della
+  #187 sono due, e una sola perde di vista la classe generica. Quella per
+  funzione riconosce le `def register_*_strategy` di livello modulo, e un
+  `log_strategy_registration` spostato dentro un metodo le esce dal campo
+  visivo; quella per cartella copre `strategies/registry.py` per la collocazione
+  del modulo, non per merito — misurato: la stessa `print()` dentro
+  `StrategyRegistry.register` e' rossa li' e lascia l'intera suite verde se il
+  modulo sta in `shared/`. Il presidio va quindi reso indipendente da dove vive
+  la classe: e' la stessa lezione del settimo entry point in
+  `contratto-stdout.md`, un giro piu' in la'. Il secondo: l'ordine degli errori
+  della facade di density e' pinnato da
+  `tests/strategies/test_registry_errors.py`:
   con nome ignoto *e* `distribution` assente e' l'ordine a decidere il tipo
   dell'eccezione, quindi il lookup va interrogato prima della validazione di
   dominio. Lo scheletro porta infine `from __future__ import annotations`, e non

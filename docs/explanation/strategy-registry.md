@@ -19,6 +19,10 @@ sources:
   - src/pge/shared/logger.py
   - tests/shared/test_stdout_contract.py
   - tests/strategies/test_registry_errors.py
+  - tests/strategies/test_strategies.py
+  - tests/strategies/test_voice_pan_strategy.py
+  - tests/test_minimum_python_syntax.py
+  - pyproject.toml
 last_synced_commit: e44ede3
 ---
 
@@ -262,18 +266,35 @@ onset, pointer, window). È voluto: è una riga `DEBUG` su un logger che di
 default non ha handler, quindi non compare a nessuno che non l'abbia accesa, e
 l'alternativa sarebbe conservare la divergenza per non toccarla.
 
-C'è però un buco che il refactor **apre**, e va chiuso nello stesso passo. La
-guardia della #187 riconosce le `def register_*_strategy` di livello modulo: il
-`log_strategy_registration` che si sposta dentro un *metodo* di
-`StrategyRegistry` esce dal suo campo visivo, e da lì una `print()` potrebbe
-rientrare lasciando la suite verde. È la stessa lezione del settimo entry point
-in [[contratto-stdout]] — il criterio è la funzione, non la cartella — un giro
-più in là: la guardia deve imparare anche `StrategyRegistry.register`, e le
-`def register_*_strategy` devono restare `def` di modulo (una riga di corpo che
-delega), non alias `register_x = REGISTRY.register`. Un alias farebbe sparire
-quel modulo dal censimento dei sorgenti: il test lo direbbe subito, ma la
-decisione è che i wrapper restino, perché sono l'API di estensione documentata e
-portano le proprie docstring con gli esempi.
+C'è però un presidio che il refactor **indebolisce**, e va rinforzato nello
+stesso passo. Le guardie della #187 sono due, e una sola perde di vista la
+classe generica. `test_la_registrazione_dinamica_non_stampa` riconosce con `ast`
+le `def register_*_strategy` di livello modulo: un `log_strategy_registration`
+spostato dentro un *metodo* di `StrategyRegistry` le esce dal campo visivo.
+`test_le_strategie_non_stampano` invece è scoped per **cartella** e vieta
+qualunque `print()` in `strategies/*.py`, quindi copre `strategies/registry.py`
+— dove questa decisione mette la classe — pur non sapendo niente di lei.
+
+**Misurato**, perché la differenza è tutta lì: la stessa `print()` dentro
+`StrategyRegistry.register` fa fallire
+`test_le_strategie_non_stampano[registry.py]` se il modulo sta in
+`src/pge/strategies/`, e lascia l'**intera suite verde** se sta altrove (provato
+in `src/pge/shared/`). Il buco quindi non è aperto oggi: è aperto il giorno in
+cui la classe cambia cartella, e a tenerlo chiuso nel frattempo è la
+collocazione, non un presidio che sappia cosa sta guardando.
+
+Che è esattamente la lezione del settimo entry point in [[contratto-stdout]] —
+il criterio è la funzione, non la cartella — un giro più in là:
+`register_window_strategy` è già il precedente di un punto di registrazione che
+vive fuori da `strategies/` ed è rimasto scoperto fino alla guardia per
+funzione. Da cui due regole per #184:
+la guardia impari anche `StrategyRegistry.register`, così che il presidio smetta
+di dipendere da dove vive il modulo; e le `def register_*_strategy` restino
+`def` di modulo (una riga di corpo che delega), non alias
+`register_x = REGISTRY.register`. Un alias farebbe sparire quel modulo dal
+censimento dei sorgenti: il test lo direbbe subito, ma la decisione è che i
+wrapper restino, perché sono l'API di estensione documentata e portano le
+proprie docstring con gli esempi.
 
 ### density e variation entrano, le loro façade no (domanda 5)
 
@@ -353,9 +374,13 @@ cls` resta una registrazione legale e muta, che scavalca la riga diagnostica.
 Il secondo è voluto: la riga appartiene al punto di ingresso esplicito, e la
 scrittura diretta è quel che fanno le fixture per rimettere a posto lo stato.
 
-**La riga diagnostica passa da tre registry a otto.** Uniformare vuol dire
-anche estendere, non solo togliere. Su un canale spento di default il prezzo è
-nullo a runtime; il prezzo vero è che d'ora in poi «registrare» e «annunciare la
+**La riga diagnostica passa da tre registry a sette.** Uniformare vuol dire
+anche estendere, non solo togliere: i quattro muti di oggi (pitch, onset,
+pointer, window) cominciano a parlare. L'ottavo è `grain_clip`, e resta fuori
+dal conto perché oggi un punto di registrazione non ce l'ha: diventerebbero otto
+solo se il seguito decidesse di dargliene uno, che è appunto la domanda lasciata
+aperta in «Chi resta fuori». Su un canale spento di default il prezzo è nullo a
+runtime; il prezzo vero è che d'ora in poi «registrare» e «annunciare la
 registrazione» sono la stessa operazione e non si possono più separare per
 registry — che è precisamente quel che si voleva.
 
