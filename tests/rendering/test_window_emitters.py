@@ -175,6 +175,33 @@ class TestUncoveredSpecIsDeclared:
         assert 'tapered_cosine' in message
 
     @pytest.mark.parametrize("emitter", EMITTERS, ids=EMITTER_IDS)
+    def test_a_spec_like_without_a_name_is_still_refused_as_promised(
+            self, emitter):
+        """Il rifiuto e' un `InvalidWindowError`, anche quando la spec-like
+        e' meno di quanto il catalogo garantisce.
+
+        `supports()` prende uno spec-*like* di proposito, e `missing_shape_fields`
+        lo legge con `getattr` per questo. Il messaggio del rifiuto leggeva
+        invece `spec.name` per attributo: una descrizione arrivata da fuori --
+        un plugin, un ramo a meta' -- usciva con un `AttributeError`, cioe'
+        con l'eccezione sbagliata proprio nel punto che esiste per dare quella
+        giusta.
+        """
+        class _NamelessSpec:
+            shape = WindowShape.GAUSSIAN
+            coefficients = ()
+            params = {}
+
+            def param(self, key, default=None):
+                return self.params.get(key, default)
+
+        with pytest.raises(InvalidWindowError) as exc_info:
+            emitter.materialize(_NamelessSpec(), RESOLUTION)
+
+        assert emitter.target in str(exc_info.value)
+        assert 'sigma' in str(exc_info.value)
+
+    @pytest.mark.parametrize("emitter", EMITTERS, ids=EMITTER_IDS)
     def test_non_positive_resolution_is_refused(self, emitter):
         spec = WindowRegistry.get('hanning')
 
@@ -340,6 +367,42 @@ class TestAvailableWindowsFollowsCoverage:
 
         with pytest.raises(InvalidWindowError):
             registry.get('hanning', RESOLUTION)
+
+
+class _TypoEmitter(NumpyWindowEmitter):
+    """Il target NumPy con una voce di `_SHAPES` che non risolve."""
+
+    _SHAPES = dict(NumpyWindowEmitter._SHAPES,
+                   **{WindowShape.TRIANGULAR: '_triangulare'})
+
+
+class TestCoverageIsWhatTheTargetCanActuallyEvaluate:
+    """`_SHAPES` mappa la forma sul *nome* del metodo che la valuta, e un
+    nome e' una cosa che si sbaglia a scrivere.
+
+    Chiedendo alla sola tabella, `supports()` rispondeva di si' e
+    `materialize()` usciva con l'`AttributeError` del `getattr` -- copertura
+    dichiarata e copertura reale che divergono dentro lo stesso oggetto,
+    cioe' il difetto della #202 in miniatura. La domanda e' una: il metodo
+    esiste?
+    """
+
+    def test_an_unresolvable_shape_is_declared_uncovered(self):
+        emitter = _TypoEmitter()
+
+        assert emitter.supports(WindowRegistry.get('bartlett')) is False
+        assert 'bartlett' in emitter.uncovered_names()
+
+    def test_it_raises_the_contract_error_and_not_an_attribute_error(self):
+        emitter = _TypoEmitter()
+
+        with pytest.raises(InvalidWindowError):
+            emitter.materialize(WindowRegistry.get('bartlett'), RESOLUTION)
+
+    def test_the_other_shapes_are_untouched(self):
+        emitter = _TypoEmitter()
+
+        assert emitter.supports(WindowRegistry.get('hanning')) is True
 
 
 # =============================================================================

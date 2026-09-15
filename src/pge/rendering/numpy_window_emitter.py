@@ -65,7 +65,7 @@ class NumpyWindowEmitter(WindowEmitter):
         """
         if missing_shape_fields(spec):
             return False
-        return getattr(spec, 'shape', None) in self._SHAPES
+        return self._evaluator(spec) is not None
 
     def materialize(self, spec: WindowSpec, resolution: int) -> np.ndarray:
         """Array float64 di `resolution` campioni.
@@ -78,7 +78,21 @@ class NumpyWindowEmitter(WindowEmitter):
         if not self.supports(spec):
             raise self._reject(spec)
 
-        return getattr(self, self._SHAPES[spec.shape])(spec, resolution)
+        return self._evaluator(spec)(spec, resolution)
+
+    def _evaluator(self, spec):
+        """Il metodo che valuta la forma di `spec`, o `None` se non c'e'.
+
+        `_SHAPES` mappa la forma sul *nome* del metodo, e un nome e' una cosa
+        che si sbaglia a scrivere: chiedendo alla sola tabella, `supports()`
+        rispondeva di si' e `materialize()` usciva con l'`AttributeError` del
+        `getattr` -- dichiarato e reale che divergono dentro lo stesso
+        oggetto, cioe' il difetto della #202 in miniatura. Le due meta' del
+        contratto fanno la stessa domanda, e la domanda e' se il metodo
+        esiste.
+        """
+        method = self._SHAPES.get(getattr(spec, 'shape', None))
+        return None if method is None else getattr(self, method, None)
 
     # =========================================================================
     # LE FORME

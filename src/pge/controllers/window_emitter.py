@@ -123,13 +123,21 @@ class WindowEmitter(ABC):
                 detail = (f"la descrizione non dichiara {', '.join(missing)}, "
                           f"che quella forma legge")
 
+        # `getattr` e non l'attributo, per la stessa ragione per cui lo usa
+        # `missing_shape_fields`: qui arriva uno spec-*like*, che il catalogo
+        # puo' non aver mai visto. Letti per attributo, un nome o una forma
+        # che mancano facevano uscire un `AttributeError` dal punto che
+        # esiste per sollevare l'`InvalidWindowError` promesso dal contratto.
+        name = getattr(spec, 'name', None)
+        shape = getattr(spec, 'shape', None)
+
         reason = (
             f"Il target '{self.target}' non sa materializzare la finestra "
-            f"'{spec.name}' (forma '{spec.shape}')"
+            f"'{name}' (forma '{shape}')"
         )
         if detail:
             reason = f"{reason}: {detail}"
-        return InvalidWindowError(name=spec.name, reason=reason)
+        return InvalidWindowError(name=name, reason=reason)
 
     def _require_resolution(self, resolution: int):
         """Risoluzione non positiva: nessun target ha una finestra da dare."""
