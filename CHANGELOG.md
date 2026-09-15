@@ -35,11 +35,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   funzione riconosce le `def register_*_strategy` di livello modulo, e un
   `log_strategy_registration` spostato dentro un metodo le esce dal campo
   visivo; quella per cartella copre `strategies/registry.py` per la collocazione
-  del modulo, non per merito — misurato: la stessa `print()` dentro
-  `StrategyRegistry.register` e' rossa li' e lascia l'intera suite verde se il
-  modulo sta in `shared/`. Il presidio va quindi reso indipendente da dove vive
-  la classe: e' la stessa lezione del settimo entry point in
-  `contratto-stdout.md`, un giro piu' in la'. Il secondo: l'ordine degli errori
+  del modulo, non per merito. Misurato **sul modulo cablato**, non sullo
+  scheletro che nessuno chiama: la stessa `print()` dentro
+  `StrategyRegistry.register` fa cadere due test in `strategies/` e uno solo in
+  `shared/` — fra le due collocazioni c'e' un test di differenza, non un rosso
+  contro una suite verde. A parlare in entrambe e' un presidio
+  *comportamentale* che la #187 ha lasciato accanto a quelli per `ast`: i tre
+  test che chiamano il vero `register_*_strategy` sotto `capsys` (pan, density,
+  variation). Copertura incidentale pero': non tocca `create`, e non tocca i
+  quattro registry che il refactor fa cominciare a parlare. Il presidio va
+  quindi reso indipendente dalla cartella e dal caso: e' la stessa lezione del
+  settimo entry point in `contratto-stdout.md`, un giro piu' in la'. Il secondo: l'ordine degli errori
   della facade di density e' pinnato da
   `tests/strategies/test_registry_errors.py`:
   con nome ignoto *e* `distribution` assente e' l'ordine a decidere il tipo

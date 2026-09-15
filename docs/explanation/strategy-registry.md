@@ -280,13 +280,40 @@ spostato dentro un *metodo* di `StrategyRegistry` le esce dal campo visivo.
 qualunque `print()` in `strategies/*.py`, quindi copre `strategies/registry.py`
 — dove questa decisione mette la classe — pur non sapendo niente di lei.
 
-**Misurato**, perché la differenza è tutta lì: la stessa `print()` dentro
-`StrategyRegistry.register` fa fallire
+**Misurato — e la prima misura era presa nella sola configurazione in cui il
+difetto non può esistere.** Su uno scheletro *non cablato*, cioè un modulo che
+nessuno chiama, una `print()` dentro `StrategyRegistry.register` fa fallire
 `test_le_strategie_non_stampano[registry.py]` se il modulo sta in
-`src/pge/strategies/`, e lascia l'**intera suite verde** se sta altrove (provato
-in `src/pge/shared/`). Il buco quindi non è aperto oggi: è aperto il giorno in
-cui la classe cambia cartella, e a tenerlo chiuso nel frattempo è la
-collocazione, non un presidio che sappia cosa sta guardando.
+`src/pge/strategies/` e lascia l'intera suite verde se sta altrove: da lì la
+conclusione che a tenere chiuso il buco fosse la cartella. Ma il modulo cablato
+è ciò che questa decisione prescrive, e lì il conto cambia. Con
+`VOICE_PAN_STRATEGIES` costruita sulla classe e il wrapper che le delega — cioè
+#184 fatta — la stessa `print()` dà:
+
+| collocazione della classe | test rossi |
+|---|---|
+| `src/pge/strategies/registry.py` | `test_le_strategie_non_stampano[registry.py]` **e** `test_register_logs_instead_of_printing` |
+| `src/pge/shared/registry.py` | solo `test_register_logs_instead_of_printing` |
+
+Fra le due collocazioni c'è **un test di differenza**, non un rosso contro
+un'intera suite verde. A parlare nella seconda riga è un presidio che la #187 ha
+lasciato accanto a quelli per `ast`: tre test *comportamentali* —
+`test_register_logs_instead_of_printing` (pan),
+`test_register_density_logs_instead_of_printing` (density),
+`test_register_does_not_write_to_stdout` (variation) — chiamano il vero
+`register_*_strategy` sotto `capsys` e pretendono `captured.out == ''`. Una
+`print()` nella classe generica passa di lì qualunque cartella la ospiti.
+
+**Il che non salva la prescrizione: la rende più precisa.** Quella copertura è
+*incidentale*. Vale finché almeno una fra pan, density e variation resta cablata
+su questa classe e tiene la propria asserzione; copre il solo cammino che quei
+tre test percorrono, `register` e non `create`; e non dice niente sui quattro
+registry che il refactor fa *cominciare* a parlare (pitch, onset, pointer,
+window), nessuno dei quali ha un test con `capsys` sul proprio wrapper. Le
+guardie per `ast` — quelle scritte apposta per sorvegliare questo — restano
+invece cieche alla classe in entrambe le collocazioni. Il buco quindi non è
+«aperto il giorno in cui la classe cambia cartella»: è aperto da subito nei
+presidi che dovrebbero vederlo, e a coprirlo per caso è un test scritto per pan.
 
 Che è esattamente la lezione del settimo entry point in [[contratto-stdout]] —
 il criterio è la funzione, non la cartella — un giro più in là:
@@ -294,7 +321,7 @@ il criterio è la funzione, non la cartella — un giro più in là:
 vive fuori da `strategies/` ed è rimasto scoperto fino alla guardia per
 funzione. Da cui due regole per #184:
 la guardia impari anche `StrategyRegistry.register`, così che il presidio smetta
-di dipendere da dove vive il modulo; e le `def register_*_strategy` restino
+di dipendere dalla cartella e dal caso; e le `def register_*_strategy` restino
 `def` di modulo (una riga di corpo che delega), non alias
 `register_x = REGISTRY.register`. Un alias farebbe sparire quel modulo dal
 censimento dei sorgenti: il test lo direbbe subito, ma la decisione è che i
