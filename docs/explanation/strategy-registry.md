@@ -96,8 +96,12 @@ sono ciò che decide la forma più di ogni preferenza di stile:
   `tests/shared/test_stdout_contract.py` cerca con `ast` le `def
   register_*_strategy` di livello modulo, pretende che l'insieme dei moduli che
   ne contengono una sia *esattamente* quello dichiarato, e che nessuna di quelle
-  funzioni stampi. Il refactor passa dentro quella guardia: una forma che
-  facesse sparire quelle `def` la spegnerebbe.
+  funzioni stampi. Il refactor passa dentro quella guardia, e conviene sapere
+  in che modo: una forma che facesse sparire quelle `def` non la spegnerebbe —
+  il censimento pretende `trovati == dichiarati`, quindi diventa rosso subito.
+  A spegnersi in silenzio e' la *copertura*, un passo dopo: riallineata la
+  lista dichiarata per tornare verdi, la guardia per funzione non sorveglia
+  piu' niente. E' la differenza su cui gira tutta la sezione «Il `print()`».
 
 ## Modello
 
