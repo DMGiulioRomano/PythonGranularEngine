@@ -1,24 +1,31 @@
-# src/rendering/numpy_window_registry.py
+# src/pge/rendering/numpy_window_registry.py
 """
-NumpyWindowRegistry - Genera e cachea array NumPy per le finestre grano.
+NumpyWindowRegistry - cache e politiche di rendering per le finestre grano.
 
-Equivalente NumPy di cio' che Csound fa con:
-- GEN20: window functions standard (hanning, hamming, blackman, ecc.)
-- GEN16: curve esponenziali asimmetriche (expodec, rexpodec, exporise, ecc.)
-- GEN09: forme composite (half_sine)
+Le finestre le *descrive* il catalogo (`pge.controllers.window_registry`) e le
+*materializza* `NumpyWindowEmitter`. Qui resta cio' che non e' ne' descrizione
+ne' traduzione:
 
-Gli array sono indicizzati per (name, N) dove N e' la lunghezza in campioni.
-Un grano di 50ms a 48000 Hz richiede N = 2400 campioni.
+- la cache per (nome canonico, N), perche' un grano di 50 ms a 48 kHz sono
+  2400 campioni e i grani sono milioni;
+- la soglia sotto la quale non si finestra (#225);
+- la risoluzione degli alias prima della cache, cosi' che `triangle` e
+  `bartlett` condividano una voce sola.
 
 Il NumpyAudioRenderer moltiplica l'audio del grano per la finestra:
     grain_audio = raw_samples * window
+
+Fino alla #202 questa classe conteneva anche una seconda definizione delle
+finestre, indipendente da quella del catalogo: e' andata a
+`NumpyWindowEmitter`, che la deriva dalla forma dichiarata.
 """
 from __future__ import annotations
 
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pge.controllers.window_registry import WindowRegistry
+from pge.rendering.numpy_window_emitter import NumpyWindowEmitter
 
 
 # Sotto quanti campioni la finestra non viene applicata (issue #225).
@@ -48,34 +55,15 @@ class NumpyWindowRegistry:
     (name, N) e conservata in cache per i grani successivi.
     """
 
-    # =========================================================================
-    # DEFINIZIONI FINESTRE
-    # =========================================================================
-
-    # Finestre NumPy built-in
-    _NUMPY_WINDOWS = {
-        'hanning':  np.hanning,
-        'hamming':  np.hamming,
-        'blackman': np.blackman,
-        'bartlett': np.bartlett,
-    }
-
-    # Finestre asimmetriche (equivalenti GEN16 Csound)
-    # Formato: (start_value, curve_type, end_value)
-    _GEN16_WINDOWS = {
-        'expodec':        (1.0,   4.0,  0.0),
-        'expodec_strong': (1.0,  10.0,  0.0),
-        'exporise':       (0.0,  -4.0,  1.0),
-        'exporise_strong':(0.0, -10.0,  1.0),
-        'rexpodec':       (1.0,  -4.0,  0.0),
-        'rexporise':      (0.0,   4.0,  1.0),
-    }
-
-    # =========================================================================
-    # INIT
-    # =========================================================================
-
-    def __init__(self):
+    def __init__(self, emitter: Optional[NumpyWindowEmitter] = None):
+        """
+        Args:
+            emitter: il traduttore da usare. Iniettabile perche' la copertura
+                del target e' cio' che questa classe dichiara in
+                `available_windows()`: un emitter diverso e' un target
+                diverso, e si deve poterlo osservare.
+        """
+        self._emitter = emitter or NumpyWindowEmitter()
         self._cache: Dict[Tuple[str, int], np.ndarray] = {}
 
     # =========================================================================
@@ -97,7 +85,8 @@ class NumpyWindowRegistry:
             Array NumPy float64 di lunghezza n
 
         Raises:
-            ValueError: se il nome non e' valido o n <= 0
+            InvalidWindowError: nome fuori catalogo, forma che questo target
+                non sa materializzare, oppure n <= 0.
         """
         if n <= 0:
             from pge.shared.exceptions import InvalidWindowError
@@ -121,20 +110,26 @@ class NumpyWindowRegistry:
         if key in self._cache:
             return self._cache[key]
 
-        window = self._generate(canonical, n)
+        window = self._emitter.materialize(WindowRegistry.WINDOWS[canonical], n)
         self._cache[key] = window
         return window
 
     def available_windows(self) -> List[str]:
-        """Nomi di finestra scrivibili nello YAML, alias compresi.
+        """Nomi di finestra che *questo target* sa produrre, alias compresi.
 
-        Viene dal catalogo, non da un elenco locale: e' la lista che finisce
-        nel messaggio d'errore quando un nome non esiste, e deve dire cosa
-        l'utente puo' scrivere. Che il catalogo sia integralmente
-        materializzabile in array e' garantito dal parity test in
-        tests/rendering/test_numpy_window_registry.py.
+        Non e' il catalogo: e' la copertura dichiarata dall'emitter. La
+        differenza e' il difetto che la #202 chiude -- restituire
+        `WindowRegistry.all_names()` significava dichiarare di saper generare
+        ogni nome mentre la generazione poteva sollevare `InvalidWindowError`
+        a meta' render, e una finestra aggiunta al solo lato Csound passava la
+        validazione YAML per poi morire nel rendering.
+
+        Oggi le due liste coincidono, e la guardia in
+        `tests/rendering/test_window_emitters.py` chiede che continuino a
+        coincidere per ogni emitter registrato: la coincidenza e' un
+        risultato, non piu' una definizione.
         """
-        return WindowRegistry.all_names()
+        return self._emitter.covered_names()
 
     def __len__(self) -> int:
         """Numero di entry attualmente in cache."""
@@ -142,131 +137,3 @@ class NumpyWindowRegistry:
 
     def __repr__(self) -> str:
         return f"NumpyWindowRegistry(cached={len(self._cache)})"
-
-    # =========================================================================
-    # GENERAZIONE
-    # =========================================================================
-
-    def _generate(self, name: str, n: int) -> np.ndarray:
-        """Genera l'array finestra per il nome dato."""
-        # 1. NumPy built-in
-        if name in self._NUMPY_WINDOWS:
-            return self._NUMPY_WINDOWS[name](n)
-
-        # 2. Kaiser (built-in con parametro beta)
-        if name == 'kaiser':
-            return np.kaiser(n, beta=6.0)
-
-        # 3. GEN16 equivalenti (curve esponenziali)
-        if name in self._GEN16_WINDOWS:
-            start, curve, end = self._GEN16_WINDOWS[name]
-            return self._gen16(n, start, curve, end)
-
-        # 4. Gaussian (campana centrata, sigma=0.4)
-        if name == 'gaussian':
-            return self._gaussian(n)
-
-        # 5. Blackman-Harris a 4 termini (GEN20 opt 5) — campana stretta con
-        # massima soppressione dei lobi laterali. NumPy non ha un built-in
-        # (np.blackman e' la variante a 3 termini): formula esplicita.
-        if name == 'blackman_harris':
-            return self._blackman_harris(n)
-
-        # 6. Half-sine (GEN09 equivalente)
-        if name == 'half_sine':
-            return self._half_sine(n)
-
-        # 7. Rectangle (GEN20 opt 8) — finestra piatta
-        if name == 'rectangle':
-            return np.ones(n, dtype=np.float64)
-
-        # 8. Sinc (GEN20 opt 9) — lobo centrale sin(πx)/(πx)
-        if name == 'sinc':
-            return self._sinc(n)
-
-        # Nome non valido
-        from pge.shared.exceptions import InvalidWindowError
-        raise InvalidWindowError(name=name, available=self.available_windows())
-
-    @staticmethod
-    def _gen16(n: int, start: float, curve: float, end: float) -> np.ndarray:
-        """
-        Genera curva esponenziale equivalente a GEN16 di Csound.
-
-        Formula:
-            Se curve == 0: interpolazione lineare
-            Se curve != 0: y = start + (end - start) * (1 - exp(c*x)) / (1 - exp(c))
-
-        Con curve > 0: la curva sale lentamente poi accelera (convessa per rise)
-        Con curve < 0: la curva sale rapidamente poi decelera (concava per rise)
-
-        Args:
-            n: lunghezza in campioni
-            start: valore iniziale
-            curve: parametro di curvatura (0 = lineare)
-            end: valore finale
-        """
-        x = np.linspace(0.0, 1.0, n)
-
-        if abs(curve) < 1e-10:
-            return start + (end - start) * x
-
-        normalized = (1.0 - np.exp(curve * x)) / (1.0 - np.exp(curve))
-        return start + (end - start) * normalized
-
-    @staticmethod
-    def _gaussian(n: int, sigma: float = 0.4) -> np.ndarray:
-        """
-        Genera una finestra gaussiana centrata.
-
-        Equivalente a GEN20 di Csound con p5=gaussian.
-        sigma controlla la larghezza: 0.4 = leggermente più stretta di hanning.
-
-        Args:
-            n:     lunghezza in campioni
-            sigma: deviazione standard normalizzata rispetto a metà finestra
-        """
-        x = np.linspace(-1.0, 1.0, n)
-        return np.exp(-0.5 * (x / sigma) ** 2)
-
-    @staticmethod
-    def _blackman_harris(n: int) -> np.ndarray:
-        """
-        Finestra Blackman-Harris a 4 termini (equivalente GEN20 opt 5 Csound).
-
-        w(x) = a0 - a1*cos(2*pi*x) + a2*cos(4*pi*x) - a3*cos(6*pi*x)
-        con x in [0, 1] (= k/(N-1)) e coefficienti
-        a0=0.35875, a1=0.48829, a2=0.14128, a3=0.01168.
-
-        Campana simmetrica molto stretta: ~0 ai bordi, picco 1.0 al centro,
-        lobi laterali soppressi (~ -92 dB). np.blackman e' la variante a 3
-        termini, quindi la calcoliamo esplicitamente come gaussian/sinc.
-        """
-        x = np.linspace(0.0, 1.0, n)
-        return (
-            0.35875
-            - 0.48829 * np.cos(2.0 * np.pi * x)
-            + 0.14128 * np.cos(4.0 * np.pi * x)
-            - 0.01168 * np.cos(6.0 * np.pi * x)
-        )
-
-    @staticmethod
-    def _half_sine(n: int) -> np.ndarray:
-        """
-        Genera mezza sinusoide, equivalente a GEN09 con params [0.5, 1, 0].
-
-        Produce una curva simmetrica che va da 0 a 1 e torna a 0,
-        con forma sinusoidale (piu' morbida di hanning ai bordi).
-        """
-        return np.sin(np.linspace(0.0, np.pi, n))
-
-    @staticmethod
-    def _sinc(n: int) -> np.ndarray:
-        """
-        Lobo centrale della funzione sinc: sin(πx)/(πx) per x in [-1, 1].
-
-        Equivalente a GEN20 opt 9 di Csound. Picco 1.0 al centro, zero agli estremi.
-        np.sinc(x) calcola sin(πx)/(πx), quindi linspace(-1, 1) produce
-        esattamente il lobo centrale senza lobi laterali negativi.
-        """
-        return np.sinc(np.linspace(-1.0, 1.0, n))
