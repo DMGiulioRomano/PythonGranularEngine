@@ -18,6 +18,7 @@ sources:
   - src/pge/parameters/parameter.py
   - src/pge/shared/exceptions.py
   - src/pge/shared/logger.py
+  - tests/shared/test_diagnostic_logger.py
   - tests/shared/test_distribution_strategy.py
   - tests/shared/test_range_anchor.py
   - tests/shared/test_stdout_contract.py
@@ -237,10 +238,25 @@ porta oggi, la prima no. Il valore è già quello che l'errore riporta
 cambiano** — verificato che nessuno, in PGE-ui o PGE-ls, li parsi.
 
 Lo stesso `kind` diventa anche il dominio della riga diagnostica, e questo
-uniforma le tre etichette scritte a mano: `'pan voce'` diventa `voice_pan`. Il
-test che oggi la sorveglia chiede `'pan' in messaggio`, quindi resta verde; la
-docstring di `log_strategy_registration`, che cita `'pan voce'` come esempio, va
-aggiornata insieme.
+uniforma le tre etichette scritte a mano: `'pan voce'` diventa `voice_pan`.
+
+**Quell'etichetta non è sorvegliata da nessun test, e crederla sorvegliata è il
+modo di sbagliare il rename.** La lettura naturale di
+`test_register_logs_instead_of_printing` è che `assert 'pan' in messaggi[0]`
+pinni il dominio — e resti verde perché `voice_pan` contiene `pan`. Misurato,
+non è così: il test registra la strategy sotto la chiave `'logged_pan'` e la
+riga successiva asserisce `'logged_pan' in messaggi[0]`, quindi è **il nome
+registrato** a soddisfare anche la prima asserzione. Sostituendo il dominio del
+modulo con `'XYZ_dominio_sbagliato'` l'intera suite resta verde (6826 passed,
+18 skipped): la prima asserzione non discrimina nulla.
+
+La conseguenza per #184 è che il rename `'pan voce'` → `voice_pan` va
+verificato leggendo, non aspettandosi un rosso — e che il letterale sopravvive
+in altri due punti che nessun test allinea: la docstring di
+`log_strategy_registration`, che lo cita come esempio di `domain`, e
+`tests/shared/test_diagnostic_logger.py`, che lo passa come proprio letterale a
+una chiamata diretta dell'helper. Vanno aggiornati nello stesso commit, o
+restano indietro in silenzio.
 
 ### `create(name, *args, **kwargs)`
 
@@ -582,6 +598,10 @@ prese come specifica.
   sua. Vale al contrario per `DistributionFactory`, che quel rifiuto ce l'ha già
   e pinnato: lì il rischio è **toglierlo** convertendo, e la conversione aspetta
   una decisione propria.
+- **Rinominando il dominio della riga diagnostica** (`'pan voce'` → `voice_pan`)
+  non aspettarti un rosso: nessun test lo pinna, misurato. I tre letterali —
+  il modulo, la docstring di `log_strategy_registration`,
+  `tests/shared/test_diagnostic_logger.py` — vanno allineati leggendo.
 - **Ordine di esecuzione** → #184 (pan, con la guardia estesa a
   `StrategyRegistry.register`), poi #185 (pitch, onset, pointer, density,
   variation), poi un seguito per `window_selection_strategy` e
