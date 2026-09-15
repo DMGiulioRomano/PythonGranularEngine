@@ -432,10 +432,11 @@ avvenuta, non quello di #184/#185: alla fine di #185 i registry che parlano sono
 sei, perché `window` è nel seguito insieme a `grain_clip` (vedi «Chi resta
 fuori»). L'ottavo è `grain_clip`, e resta fuori dal conto perché oggi un punto
 di registrazione non ce l'ha: diventerebbero otto solo se il seguito decidesse
-di dargliene uno, che è appunto la domanda lasciata aperta lì. Su un canale spento di default il prezzo è nullo a
-runtime; il prezzo vero è che d'ora in poi «registrare» e «annunciare la
-registrazione» sono la stessa operazione e non si possono più separare per
-registry — che è precisamente quel che si voleva.
+di dargliene uno, che è appunto la domanda lasciata aperta lì. Su un canale
+spento di default il prezzo è nullo a runtime; il prezzo vero è che d'ora in
+poi «registrare» e «annunciare la registrazione» sono la stessa operazione e
+non si possono più separare per registry — che è precisamente quel che si
+voleva.
 
 **Il risparmio in righe è modesto.** Otto copie di una ventina di righe
 diventano una classe di trenta più otto superfici sottili: il conto netto è
