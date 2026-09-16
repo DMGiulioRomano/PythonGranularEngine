@@ -29,6 +29,11 @@ class ParameterSpec:
         yaml_path: Percorso nel YAML (supporta dot notation: 'grain.duration')
         default: Valore di default se assente nel YAML
         range_path: Percorso YAML per il parametro _range associato (opzionale)
+        range_unit_path: Percorso YAML della chiave che dichiara l'UNITA' del
+            _range (issue #267): 'absolute' (default, la larghezza e' il numero
+            scritto) o 'relative' (il numero e' una frazione del valore base).
+            Ha senso solo insieme a range_path. Opzionale: senza, il range e'
+            assoluto e la chiave non esiste per quel parametro.
         deviation_probability_key: Chiave nel blocco deviation_probability (opzionale)
         is_smart: Se True, crea un oggetto Parameter. Se False, valore raw.
     
@@ -39,6 +44,7 @@ class ParameterSpec:
     yaml_path: str
     default: Any
     range_path: Optional[str] = None
+    range_unit_path: Optional[str] = None
     deviation_probability_key: Optional[str] = None
     is_smart: bool = True
     exclusive_group: Optional[str] = None
@@ -85,6 +91,14 @@ STREAM_PARAMETER_SCHEMA: List[ParameterSpec] = [
         yaml_path='grain.duration',
         default=0.05,
         range_path='grain.duration_range',
+        # Unico parametro con la banda relativa (issue #267): e' l'unico la cui
+        # base spazia per costruzione su piu' ordini di grandezza — da 1
+        # campione a 10 secondi — e su cui quindi una banda assoluta cambia
+        # carattere da sola lungo un envelope. Su volume (dB), pan (gradi) e
+        # pitch la scala e' gia' logaritmica o ciclica: una frazione della base
+        # li' non direbbe la stessa cosa. Il meccanismo pero' e' dichiarativo:
+        # cablarne un altro e' aggiungere questa riga.
+        range_unit_path='grain.duration_range_unit',
         deviation_probability_key='duration'
     ),
     ParameterSpec(

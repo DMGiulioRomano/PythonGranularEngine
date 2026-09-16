@@ -12,8 +12,10 @@ Qui definiamo COSA sono i parametri, non COME vengono calcolati.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict
+
+from pge.shared.exceptions import InvalidFieldValueError
 
 @dataclass(frozen=True)
 class ParameterBounds:
@@ -40,6 +42,121 @@ class ParameterBounds:
     max_range: float = 0.0
     default_jitter: float = 0.0
     variation_mode: str = 'additive'
+
+# =============================================================================
+# UNITA' DEL RANGE DICHIARATO
+# =============================================================================
+# Terzo asse della banda dei `_range`, ortogonale a `distribution_mode` (come
+# la banda si riempie) e a `range_anchor` (dove cade la base dentro la banda):
+# **quanto la banda e' larga**.
+#
+#   absolute (default) -> la larghezza e' il numero scritto, nell'unita' del
+#                         parametro (secondi, dB, gradi)
+#   relative           -> il numero e' una FRAZIONE del valore base a quel
+#                         momento, quindi la larghezza e' `frazione * base`
+#
+# Nasce da issue #267: con `grain.duration` che spazia su piu' ordini di
+# grandezza una banda assoluta e' molte volte la durata sui grani corti e
+# percentualmente trascurabile sui lunghi, e il carattere della dispersione
+# cambia da solo lungo lo sweep. Precedente in casa: `pointer.offset_range` e'
+# gia' relativo, frazione della finestra di loop attiva.
+#
+# Sta qui e non in distribution_strategy.py accanto a RANGE_ANCHORS perche'
+# quello che l'unita' cambia e' il DOMINIO del range — la materia di questo
+# modulo — non il modo in cui la distribuzione lo riempie: chi consuma
+# l'ancora e' la DistributionStrategy, chi consuma l'unita' e' il Parameter,
+# prima che la distribuzione entri in scena.
+
+RANGE_UNIT_ABSOLUTE = 'absolute'
+RANGE_UNIT_RELATIVE = 'relative'
+
+#: Grafie ammesse per una chiave `<param>_range_unit`. La prima e' canonica.
+#: Esposto come registry perche' PGE-ls e PGE-ui lo leggano dal vivo invece di
+#: tenerne una copia statica (stesso ruolo di RANGE_ANCHORS e LOOP_UNITS).
+RANGE_UNITS = (RANGE_UNIT_ABSOLUTE, RANGE_UNIT_RELATIVE)
+
+#: Default: assoluto, cioe' la semantica storica. Chi non scrive la chiave non
+#: vede cambiare niente, e nessun YAML esistente si rilegge diversamente.
+RANGE_UNIT_DEFAULT = RANGE_UNIT_ABSOLUTE
+
+#: Dominio del range dichiarato in modalita' relativa: una frazione in [0, 1].
+#: 1.0 significa una banda larga quanto la base, che le due ancore consumano in
+#: modi diversi — `center` -> [base/2, 3*base/2] (±50%), `min` -> [base, 2*base]
+#: (+100%). E' un dominio proprio della modalita', non del parametro: che per
+#: `grain_duration` coincida col max_range assoluto (1.0 s) e' una coincidenza
+#: numerica, e alzare l'uno non deve alzare l'altro.
+RELATIVE_RANGE_BOUNDS = (0.0, 1.0)
+
+
+def validate_range_unit(unit, field: str = 'range_unit') -> str:
+    """Valida una grafia di `<param>_range_unit`, restituendola normalizzata.
+
+    Args:
+        unit: la grafia scritta nel YAML.
+        field: il path YAML della chiave, per nominarla nell'errore. Il
+            chiamante lo conosce (`spec.range_unit_path`), questo modulo no.
+
+    Raises:
+        InvalidFieldValueError: se la grafia non e' fra RANGE_UNITS.
+    """
+    if unit not in RANGE_UNITS:
+        raise InvalidFieldValueError(
+            field=field,
+            value=unit,
+            hint=f"valori ammessi: {' | '.join(RANGE_UNITS)}",
+        )
+    return unit
+
+
+def range_unit_is_relative(unit) -> bool:
+    """True se la grafia dichiara una banda relativa.
+
+    Lettura PURA: non valida il vocabolario. La validazione tocca a chi conosce
+    il path YAML della chiave e sa quindi nominarla nell'errore
+    (ParameterOrchestrator); qui una grafia sbagliata legge come non-relativa e
+    l'errore arriva comunque, dal punto che sa dirlo bene. Una grafia sola per
+    "e' relativo", condivisa da tutti e tre i lettori: il pre-normalizzatore
+    delle unita' dello Stream, l'orchestratore e il parser — quest'ultimo
+    l'unico a leggerla su un valore gia' validato, e proprio per questo quello
+    dove un confronto scritto a mano sarebbe passato inosservato.
+    """
+    return unit == RANGE_UNIT_RELATIVE
+
+
+def relative_band_width(fraction: float, base: float) -> float:
+    """Larghezza della banda quando il range e' una frazione della base.
+
+    Una larghezza non ha segno: `abs` copre una base negativa (dominio con
+    segno, o una cubica che scende sotto i propri breakpoint) senza
+    trasformare la banda in un valore che AdditiveVariation scarterebbe.
+
+    Una grafia sola, perche' la banda ha due lettori che devono dire la stessa
+    cosa: `Parameter._calculate_range` la misura a ogni grano, e
+    `GranularParser._validate_band_ceiling` la misura una volta al parse per
+    sapere se il tetto sotto ancora `min` ci sta. Scritte separatamente le due
+    letture divergevano gia': il tetto era `base * (1 + range)`, che su una
+    base negativa scende invece di salire, quindi il controllo calcolava un
+    tetto sotto il pavimento della banda vera e passava in silenzio proprio
+    dove doveva parlare — lasciando il safety clamp a dirlo con un warning per
+    grano, cioe' il sintomo che quel controllo esiste per evitare. Su una base
+    non negativa le due formule coincidono (`base + range * base`), che e' il
+    caso dell'unico parametro cablato oggi.
+    """
+    return fraction * abs(base)
+
+
+def relative_range_bounds(bounds: 'ParameterBounds') -> 'ParameterBounds':
+    """Gli stessi bounds col dominio del range sostituito da quello frazionario.
+
+    Sostituisce, non restringe: il dominio assoluto e quello relativo misurano
+    grandezze diverse, e un `min` fra i due non vorrebbe dire niente.
+    """
+    return replace(
+        bounds,
+        min_range=RELATIVE_RANGE_BOUNDS[0],
+        max_range=RELATIVE_RANGE_BOUNDS[1],
+    )
+
 
 # =============================================================================
 # SYSTEM CONSTANTS & DEFAULTS

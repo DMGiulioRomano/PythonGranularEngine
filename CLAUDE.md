@@ -15,8 +15,9 @@ Inspired by Barry Truax's DMX-1000 (1988).
 **Prima di modificare un modulo esistente:** esegui `/impact-analysis`.
 
 **Impatto cross-repo:** ogni modifica alla superficie pubblica (YAML, errori,
-CLI, formati) richiede analisi d'impatto su `PGE-ls` e `PGE-ui` ed eventuale
-apertura di issue. Regola completa: @.claude/rules/cross-repo-impact.md
+CLI, formati) richiede analisi d'impatto su `PGE-ls`, `PGE-ui` e `gl-ls` ed
+eventuale apertura di issue — una per repo, e la copertura di uno non implica
+quella degli altri. Regola completa: @.claude/rules/cross-repo-impact.md
 
 **Sync del paper CIM 2026:** quando una PR su PGE tocca qualcosa usato dagli
 esempi del paper (rendering, score visualizer, superficie usata da

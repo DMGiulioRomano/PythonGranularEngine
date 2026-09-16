@@ -239,13 +239,13 @@ class TestParameterSpecFieldDefinition:
     """Verifica che la struttura del dataclass sia corretta."""
 
     def test_field_count(self):
-        """ParameterSpec ha esattamente 8 campi."""
-        assert len(fields(ParameterSpec)) == 8
+        """ParameterSpec ha esattamente 9 campi."""
+        assert len(fields(ParameterSpec)) == 9
 
     def test_field_names(self):
         """I nomi dei campi sono quelli attesi."""
         expected = {
-            'name', 'yaml_path', 'default', 'range_path',
+            'name', 'yaml_path', 'default', 'range_path', 'range_unit_path',
             'deviation_probability_key', 'is_smart', 'exclusive_group', 'group_priority'
         }
         actual = {f.name for f in fields(ParameterSpec)}

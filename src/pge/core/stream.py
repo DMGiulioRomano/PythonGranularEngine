@@ -33,6 +33,7 @@ from pge.shared.exceptions import (
     MissingFieldError,
     SampleNotFoundError,
 )
+from pge.parameters.parameter_definitions import range_unit_is_relative
 from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 from pge.parameters.read_direction import (
@@ -151,8 +152,10 @@ class Stream:
         )
         self._init_stream_context(params)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
-        # Da qui in poi grain.duration/duration_range sono in secondi,
-        # qualunque sia l'unita' dichiarata nello YAML.
+        # Da qui in poi grain.duration e' in secondi qualunque sia l'unita'
+        # dichiarata nello YAML, e con lei grain.duration_range — tranne dove
+        # quest'ultima e' una frazione della base (grain.duration_range_unit:
+        # relative, issue #267), che adimensionale era e adimensionale resta.
         params = self._pre_normalize_grain_params(params, config.context.output_sr)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
@@ -471,10 +474,24 @@ class Stream:
         i valori Y; l'asse X resta tempo). Il fattore dipende dall'unita':
         1/output_sr per 'samples', 1e-3 per 'milliseconds'.
 
+        `grain.duration_range_unit: relative` (issue #267) toglie il range da
+        quella conversione: li' il numero non e' una durata ma una FRAZIONE
+        della durata, e una frazione non ha unita' da convertire. Convertirla
+        sarebbe il modo peggiore di sbagliare — `duration_range: 0.5` sotto
+        `duration_unit: samples` diventerebbe 0.5/48000, la variazione
+        sparirebbe, e non ci sarebbe ne' un errore ne' un warning da leggere.
+
         Unico punto del sistema che legge 'duration_unit' dal dizionario
         grezzo: e' un meta-parametro che controlla l'interpretazione degli
-        altri, non un valore sintetizzabile. Il dict originale non viene
-        mutato (cache fingerprint e stream_data_map leggono i dati grezzi).
+        altri, non un valore sintetizzabile. Vale anche per il secondo
+        meta-parametro letto qui, 'duration_range_unit', di cui pero' questo
+        metodo non e' l'unico lettore: la validazione del vocabolario e
+        l'errore per un `relative` senza range stanno nell'orchestratore, che
+        conosce i path YAML e sa nominarli. Qui serve solo sapere se il range
+        va convertito, quindi la lettura e' pura (range_unit_is_relative).
+
+        Il dict originale non viene mutato (cache fingerprint e
+        stream_data_map leggono i dati grezzi).
         """
         grain = params.get('grain')
         if not isinstance(grain, dict) or 'duration_unit' not in grain:
@@ -493,11 +510,17 @@ class Stream:
         if unit == 'seconds':
             return params
 
-        # Unita' non-secondi: il default seconds (0.05) NON viene scalato. Se
-        # grain.duration non e' esplicito, la base resterebbe in secondi mentre
-        # duration_range e' nell'unita' dichiarata -> due domini diversi nello
-        # stesso blocco. Pretendi una duration esplicita (l'unita' governa base
-        # e range insieme).
+        # Unita' non-secondi: il default seconds (0.05) NON viene scalato, e
+        # quindi una grain.duration implicita resterebbe in secondi mentre chi
+        # ha scritto l'unita' la legge in campioni o millisecondi. Pretendi una
+        # duration esplicita.
+        #
+        # Il vincolo riguarda la BASE, e solo lei. La ragione storica —
+        # «altrimenti base e range finiscono in domini diversi» — copre un ramo
+        # solo da quando il range puo' essere una frazione (issue #267): li' il
+        # range e' adimensionale per costruzione, l'unita' governa la sola base,
+        # e il vincolo resta in piedi lo stesso perche' e' il default in secondi
+        # a non voler dire quel che l'utente intende.
         label = _GRAIN_DURATION_UNIT_LABELS[unit]
         if grain.get('duration') is None:
             err = MissingFieldError(
@@ -513,8 +536,13 @@ class Stream:
         factor = (
             1.0 / output_sr if unit == 'samples' else SECONDS_PER_MILLISECOND
         )
+        # Il range entra nella conversione solo se e' una durata; se e' una
+        # frazione della base (issue #267) resta com'e' scritto.
+        keys = ('duration',) if range_unit_is_relative(
+            grain.get('duration_range_unit')) else ('duration', 'duration_range')
+
         scaled_grain = dict(grain)
-        for key in ('duration', 'duration_range'):
+        for key in keys:
             if key in scaled_grain and scaled_grain[key] is not None:
                 scaled_grain[key] = scale_raw_param_values(scaled_grain[key], factor)
 

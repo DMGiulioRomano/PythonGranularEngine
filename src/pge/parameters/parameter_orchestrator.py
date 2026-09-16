@@ -19,11 +19,25 @@ from pge.parameters.parser import GranularParser
 from pge.shared.probability_gate import ProbabilityGate
 from pge.parameters.parameter import Parameter
 from pge.parameters.parameter_schema import ParameterSpec, resolve_yaml_path
-from pge.parameters.parameter_definitions import DEFAULT_PROB
+from pge.parameters.parameter_definitions import (
+    DEFAULT_PROB,
+    RANGE_UNIT_DEFAULT,
+    range_unit_is_relative,
+    validate_range_unit,
+)
 from pge.parameters.exclusive_selector import ExclusiveGroupSelector
 from pge.core.stream_config import StreamConfig
-from pge.shared.exceptions import ConfigError
+from pge.shared.exceptions import ConfigError, MissingFieldError
 from pge.shared.seeding import component_rng
+
+#: Sentinella per "la chiave non c'e'", distinta da una chiave scritta e
+#: lasciata vuota (`duration_range_unit:` -> None nello YAML). Serve perche'
+#: `resolve_yaml_path` restituisce il default in entrambi i casi, e i due casi
+#: non vogliono dire la stessa cosa: assente e' nessuna richiesta, vuota e' una
+#: riga che qualcuno ha scritto e che nessuno legge. Vedi
+#: `_range_unit_from_spec`.
+_KEY_ABSENT = object()
+
 
 class ParameterOrchestrator:
     """
@@ -93,7 +107,65 @@ class ParameterOrchestrator:
             name=spec.name,  # Stessa chiave per bounds e attributo
             value_raw=value,
             range_raw=range_val,
+            range_unit=self._range_unit_from_spec(spec, yaml_data, range_val),
         )
+
+    def _range_unit_from_spec(
+        self,
+        spec: ParameterSpec,
+        yaml_data: dict,
+        range_val: Any,
+    ) -> str:
+        """L'unita' del `_range` dichiarata nello YAML (issue #267).
+
+        Qui e non nel parser perche' qui si conoscono i due path YAML: quello
+        dell'unita', per nominare la chiave in un errore di vocabolario, e
+        quello del range, per nominare la chiave che manca. Il parser conosce
+        solo il nome del parametro (`grain_duration`), che non e' come si
+        scrive nel file.
+
+        Un `relative` senza il range che governa e' un errore, non una chiave
+        inerte: senza range dichiarato scatta il jitter implicito, che e'
+        assoluto — cioe' esattamente cio' che l'utente stava cercando di
+        evitare. Stessa regola di `grain.duration_unit`, che pretende una
+        `grain.duration` esplicita per non lasciare base e range in due domini
+        diversi.
+
+        Per la stessa ragione la chiave **assente** e la chiave **vuota** non
+        prendono la stessa strada. Assente vuol dire che nessuno ha chiesto
+        niente, e il default assoluto e' la risposta giusta. Vuota
+        (`duration_range_unit:`, cioe' `None`) vuol dire che qualcuno l'ha
+        scritta: leggerla come `absolute` sarebbe il default piu' muto
+        possibile — nel file non resta niente da cui accorgersi che la riga non
+        e' stata letta. La gemella `grain.duration_unit` una grafia vuota la
+        rifiuta gia'; qui la distinzione ha bisogno di una sentinella, perche'
+        `resolve_yaml_path` non ha modo di dire assente da nullo.
+        """
+        if not spec.range_unit_path:
+            return RANGE_UNIT_DEFAULT
+
+        raw = resolve_yaml_path(yaml_data, spec.range_unit_path, _KEY_ABSENT)
+        if raw is _KEY_ABSENT:
+            return RANGE_UNIT_DEFAULT
+
+        try:
+            unit = validate_range_unit(raw, field=spec.range_unit_path)
+        except ConfigError as err:
+            err.stream_id = self._config.context.stream_id
+            raise
+
+        if range_unit_is_relative(unit) and range_val is None:
+            err = MissingFieldError(
+                field=spec.range_path,
+                hint=(f"con {spec.range_unit_path}: {unit} la banda va "
+                      "dichiarata esplicitamente come frazione del valore "
+                      "base (senza, varrebbe il jitter implicito, che e' "
+                      "assoluto)."),
+            )
+            err.stream_id = self._config.context.stream_id
+            raise err
+
+        return unit
 
     def create_parameter_with_gate(
         self,
