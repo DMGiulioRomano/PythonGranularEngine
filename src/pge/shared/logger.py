@@ -257,9 +257,20 @@ def get_engine_log_path() -> str | None:
 # nessun canale, scrive righe con la forma del protocollo**. Le forme sono
 # due — `[CACHE] <token>: <resto>` e una riga di sola indentazione piu' un
 # path che finisca in `.aif/.wav/.flac` — e la seconda e' quella che il
-# logger scrive con piu' naturalezza (`log.debug("    %s", path)`). Le tiene
-# ferme entrambe `test_nessun_messaggio_di_log_ha_la_forma_del_protocollo` in
+# logger scrive con piu' naturalezza (`log.debug("    %s", path)`). Le
+# sorveglia `test_nessun_messaggio_di_log_ha_la_forma_del_protocollo` in
 # `tests/shared/test_stdout_contract.py`.
+#
+# Quella guardia pero' non e' larga quanto la regola, e chi scrive qui deve
+# saperlo: legge i sorgenti, e di una riga indentata riconosce solo la sagoma
+# pura — indentazione piu' interpolazione e nient'altro. `log.debug("    stem:
+# %s", path)` le passa davanti e arriva lo stesso al parser dell'editor,
+# perche' a valle il testo fra l'indentazione e il path non e' vincolato.
+# Allargarla accuserebbe il debug degli envelope, che indentato lo e' ma di
+# path non ne porta: la differenza sta nel valore, e il valore un `ast` non
+# ce l'ha. Il confine e' misurato da `test_la_sagoma_e_piu_stretta_del_parser`
+# e la regola per intero sta in `docs/explanation/contratto-stdout.md`: una
+# riga indentata che finisce con un path va guardata a mano.
 DIAGNOSTIC_LOGGER_NAME = 'pge.diagnostics'
 
 _diagnostic_logger: logging.Logger | None = None
