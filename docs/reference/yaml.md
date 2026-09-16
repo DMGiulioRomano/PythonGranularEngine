@@ -469,8 +469,13 @@ invece un `InvalidFieldValueError`: qualcuno l'ha scritta, e leggerla come
 `absolute` non lascerebbe nel file niente da cui accorgersi che quella riga non
 è stata letta. È la stessa regola della chiave gemella `grain.duration_unit`.
 
-**In partitura** la curva `grain_duration_range` mostra il valore *dichiarato*:
-in modalità relativa è la frazione, non una durata.
+**Dove la curva si vede** il valore mostrato è quello *dichiarato*: in modalità
+relativa `grain_duration_range` è la frazione, non una durata. Vale per
+entrambi i consumatori della faccia `range` (vedi [[parameter-curve]]) — la
+corsia `gr dur rng` della partitura PDF e il layer
+`<stream_id>/grain_duration_range` delle sessioni Sonic Visualiser, che è quello
+che resta su disco e dove un cursore di misura leggerebbe `0.5` come mezzo
+secondo.
 
 > **Cambio di comportamento (post v5.2.0).** Fino alla v5.2.0 `gaussian` leggeva
 > `range` come **σ**, con la campana illimitata richiusa solo dal clamp ai bounds

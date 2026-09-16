@@ -10,7 +10,7 @@ sources:
   - src/pge/shared/probability_gate.py
   - src/pge/rendering/envelope_extractor.py
   - src/pge/shared/logger.py
-last_synced_commit: d0d40c6
+last_synced_commit: e479944
 ---
 
 # ParameterCurve: come si legge il comportamento nel tempo di un parametro
@@ -32,7 +32,7 @@ consumatori che devono **leggerle** senza sintetizzare audio:
 | Faccia | Dove vive oggi | Cos'è |
 |---|---|---|
 | valore base | `Parameter._value` | `Envelope` o scalare |
-| deviazione per-grano | `Parameter._mod_range` | `Envelope` o scalare o `None` |
+| deviazione per-grano | `Parameter._mod_range` | `Envelope` o scalare o `None` — il valore **dichiarato**, vedi sotto |
 | probabilità di deviation_probability | `Parameter._probability_gate` | `EnvelopeGate`, `RandomGate`, `NeverGate`, `AlwaysGate` |
 
 I consumatori sono `ScoreVisualizer` (partitura PDF) e `SVExporter` (sessioni
@@ -189,6 +189,27 @@ il modulo dei parametri.
 
 - `Parameter` espone le tre facce come `ParameterCurve` (`value_curve`,
   `range_curve`, `probability_curve`); `value` resta per retro-compatibilità.
+- **La faccia `range` è il valore dichiarato, non la banda effettiva**, e da
+  #267 le due possono differire. Con `<param>_range_unit: relative` (oggi il
+  solo `grain.duration_range`, vedi [[yaml]] § Banda relativa) il numero
+  scritto è una **frazione adimensionale** del valore base, e la larghezza
+  della banda — `frazione × |base|` — esiste solo istante per istante, dopo
+  aver valutato la base: non è una faccia, perché non è un dato che il
+  `Parameter` tiene. `range_curve` pubblica quindi la frazione, e la riga della
+  tabella qui sopra va letta come «deviazione per-grano **dichiarata**»: sotto
+  `relative` quel numero non è una deviazione nell'unità del parametro.
+
+  Lo vedono entrambi i consumatori, non solo la partitura: nel PDF è la corsia
+  `gr dur rng`, nelle sessioni Sonic Visualiser è il layer
+  `<stream_id>/grain_duration_range` — cioè la vista che resta su disco, dove
+  un cursore di misura leggerebbe `0.5` come mezzo secondo. Nessuna delle due
+  dichiara un'unità (`grain_duration_range` non ha una conversione propria in
+  `envelope_extractor`, quindi stampa un numero nudo già in modalità assoluta):
+  la modalità relativa eredita quella lacuna, non la introduce. Farle rispondere
+  la larghezza effettiva sarebbe una scelta di progetto — richiede un tempo, che
+  la faccia non ha — e va presa qui, non nell'estrattore. Un test la tiene
+  ferma (`TestLaFacciaRangePubblicaLaFrazione`), così il giorno che la scelta
+  cambia queste righe cadono con lei.
 - **Il dominio lo dichiara il value object, la tolleranza è di chi legge.**
   `ParameterCurve.classify` rifiuta ciò che non è un `Envelope`, un numero o
   `None`, con un errore che nomina il tipo. Ma `Parameter.__init__` non valida

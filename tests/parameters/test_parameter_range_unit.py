@@ -208,3 +208,36 @@ class TestBaseConSegno:
         assert min(draws) >= -6.0 - 1e-9
         assert max(draws) <= -3.0 + 1e-9
         assert max(draws) > -6.0
+
+
+class TestLaFacciaRangePubblicaLaFrazione:
+    """`range_curve` pubblica il valore DICHIARATO, non la banda effettiva.
+
+    E' la faccia che `envelope_extractor` legge, e i suoi consumatori sono
+    due: la partitura PDF (`ScoreVisualizer`, corsia `gr dur rng`) e le
+    sessioni Sonic Visualiser (`SVExporter`), dove la curva diventa un layer
+    `<stream_id>/grain_duration_range` salvato su disco. In modalita' relativa
+    quel numero e' una frazione adimensionale e non una durata — un `0.5` che
+    nessuna delle due viste sa distinguere da mezzo secondo.
+
+    Misurato qui invece che lasciato in prosa nei tre posti che lo dichiarano
+    (la docstring di `range_curve`, [[yaml]] § Banda relativa,
+    [[parameter-curve]]): far rispondere alla faccia la larghezza effettiva
+    sarebbe una scelta legittima, ma allora quelle tre righe diventano false
+    tutte insieme, e questo test e' cio' che le fa cadere con lei.
+    """
+
+    def test_la_faccia_riporta_la_frazione_non_la_larghezza(self):
+        p = _param(100.0, 0.5, relative=True)
+
+        assert p.range_curve.kind == 'constant'
+        assert p.range_curve.value == pytest.approx(0.5)
+        # la banda che il motore misura davvero a quell'istante e' un'altra
+        assert p._calculate_range(0.0, 100.0) == pytest.approx(50.0)
+
+    def test_in_modalita_assoluta_le_due_letture_coincidono(self):
+        """Il contrasto: senza `relative` la faccia E' la larghezza."""
+        p = _param(100.0, 0.5, relative=False)
+
+        assert p.range_curve.value == pytest.approx(0.5)
+        assert p._calculate_range(0.0, 100.0) == pytest.approx(0.5)

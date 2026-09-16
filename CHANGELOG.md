@@ -69,6 +69,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   direbbe la stessa cosa. `VARIATION_SEMANTICS_VERSION` non si muove: a chiave
   assente la lettura è quella di prima.
 
+  Dove la curva del range si vede — la corsia `gr dur rng` della partitura e il
+  layer `<stream_id>/grain_duration_range` delle sessioni Sonic Visualiser — il
+  numero mostrato è quello **dichiarato**, quindi sotto `relative` è la frazione
+  e non una durata: la larghezza effettiva esiste solo istante per istante e non
+  è una faccia del `Parameter`. Nessuna delle due viste dichiara un'unità già
+  oggi, quindi la modalità eredita la lacuna invece di introdurla.
+
 - **`docs/explanation/strategy-registry.md`** — la forma decisa del registry
   generico di strategy (issue #177): decisione, non esecuzione (quella e'
   #184 e #185). Lo schema duplicato sta in **nove** moduli, non sei — il
