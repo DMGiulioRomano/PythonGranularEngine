@@ -20,7 +20,7 @@ sources:
   - src/pge/rendering/score_visualizer.py
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
-last_synced_commit: c33d153
+last_synced_commit: 12a8649
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -235,7 +235,7 @@ rendering*, cioe' un prodotto del programma; questa avrebbe configurato il
 logging di chi importa `pge`, che non e' affare di `pge`.
 
 **La classificazione e' un test, non una prosa.** `test_stdout_contract.py`
-legge i sorgenti con `ast` e chiede sei cose: che la riga `[CACHE] <id>: ...`
+legge i sorgenti con `ast` e chiede sette cose: che la riga `[CACHE] <id>: ...`
 sia ancora un `print()` flushato nei quattro moduli che la emettono; che quei
 quattro siano **tutti** quelli che la emettono; che il blocco riassuntivo esca
 ancora indentato e col suffisso `__<id>` (e questo lo misura sull'output vero,
@@ -247,7 +247,8 @@ log** ce l'abbia, perche' stderr non e' un riparo. Le ultime due chiedono
 **entrambe** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova e
 un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
 chiudono nell'editor lo stream in volo, e guardare la sola `[CACHE]` li
-lasciava passare.
+lasciava passare. La settima e' il **confine** delle due precedenti: quanto la
+sagoma sia piu' stretta del parser, e perche' non si chiuda allargandola.
 
 **La tabella dice dove una riga sta, non dove dovrebbe andare.** Spostare
 un'INTERFACCIA al logger resta una scelta di prodotto: cambia cio' che l'utente
@@ -273,6 +274,24 @@ dalla guardia statica** pur potendo entrare nel parser a runtime: e' la stessa
 collisione descritta sopra, e a chiuderla non c'e' un `ast` ma il test di
 comportamento — piu' l'abitudine, qui sotto, di guardare ogni riga indentata
 che finisce con un path.
+
+Il confine e' **misurato** (`test_la_sagoma_e_piu_stretta_del_parser`), non
+solo scritto qui: un limite lasciato alla prosa e' esattamente cio' che la
+#178 e' venuta a togliere, e sarebbe stato il primo a non accorgersi di essere
+cambiato. Il test tiene le due direzioni. Che lo scarto esista: `    stem:
+{}`, `  → {}`, `    {}.wav` arrivano al parser e la sagoma tace. E che non sia
+chiudibile allargando la sagoma, che e' la conclusione ovvia e la sola
+sbagliata: col criterio largo comincerebbero a parlare le righe di debug di
+`envelope_builder.py` (`  Pattern points: %s`), indentate e interpolate come
+le altre ma senza un path dentro — e una guardia che accusa a ogni giro una
+riga sana non e' piu' stretta ne' piu' larga, e' spenta, perche' la si mette a
+tacere. A separare le due servirebbe il valore, che un `ast` non ha. Il giorno
+che un criterio statico ci arrivasse, quel test diventa rosso sulla seconda
+meta' e dice che la sagoma si puo' allargare.
+
+Lo stesso confine vale per la guardia sui **messaggi di log**, dove pesa di
+piu' perche' li' non c'e' nessun test di comportamento accanto: `logger.py` lo
+dice in prima persona, sopra `DIAGNOSTIC_LOGGER_NAME`.
 
 ## Implicazioni codice
 

@@ -422,6 +422,20 @@ def _ha_forma_di_path(forma):
     comportamento della sezione 3; questa funzione riconosce solo la *sagoma*
     — indentazione piu' interpolazione e nient'altro — che e' cio' che rende
     una riga candidata a essere letta come path di uno stem.
+
+    **E la sagoma e' piu' stretta di `_RE_STEM_PATH`**, che e' il limite
+    dichiarato di tutta la meta' statica: al parser basta una riga indentata
+    che contenga `__` e finisca per un'estensione audio, e cio' che sta in
+    mezzo puo' essere qualunque cosa — `    stem: {}`, `  → {}`, `    {}.wav`
+    ci entrano tutte, e qui tacciono. Allargare non e' gratis, ed e' misurato
+    da `test_la_sagoma_e_piu_stretta_del_parser`: con il criterio largo
+    parlerebbero le righe di debug di `envelope_builder.py` (`  Pattern
+    points: %s`), che di path non ne portano mai. Nessuna lettura di sorgente
+    separa le due, perche' la differenza sta nel valore. Il confine resta
+    quindi qui, dichiarato, e a coprire il resto c'e' il test di
+    comportamento della sezione 3 piu' la regola in
+    `docs/explanation/contratto-stdout.md`: ogni riga indentata che finisce
+    con un path va guardata a mano.
     """
     return (forma is not None and forma[:1].isspace()
             and forma.replace('{}', '').strip() == '')
@@ -693,6 +707,23 @@ CLASSIFICAZIONE = {
 }
 
 
+def _forma_di_argomento(node):
+    """La forma di un argomento di `print()`, o `None` se non e' testo.
+
+    `None` vuol dire "qui non c'e' nessun testo da leggere staticamente":
+    `print(err.user_message())`, e `print()` senza argomenti. Il criterio e'
+    **stringa letterale**, non "e' una costante": un `print(42)` e' una
+    costante che `_template` riduce a stringa vuota, che e' una forma come
+    un'altra e finirebbe in tabella come tale — mentre la riga che produce
+    non ha piu' testo leggibile di quella di `user_message()`.
+    """
+    if isinstance(node, ast.JoinedStr):
+        return _template(node)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
 def _print_censiti():
     """Le `print()` di `src/pge/`, come (modulo, forma del primo argomento).
 
@@ -704,11 +735,8 @@ def _print_censiti():
     censiti = set()
     for rel in _moduli_pge():
         for chiamata in _print_calls(ast.parse(_sorgente(rel))):
-            forma = _template(chiamata.args[0]) if chiamata.args else None
-            if chiamata.args and not isinstance(
-                    chiamata.args[0], (ast.Constant, ast.JoinedStr)):
-                forma = None
-            censiti.add((rel, forma))
+            censiti.add((rel, _forma_di_argomento(
+                chiamata.args[0] if chiamata.args else None)))
     return censiti
 
 
@@ -744,7 +772,7 @@ def _classificazione_ordinata():
 
 
 def test_solo_le_righe_di_protocollo_hanno_forma_di_protocollo():
-    """Nessuna riga classificata altrimenti entra nel parser di PGE-ui.
+    """Nessuna riga classificata altrimenti ha una forma che il parser legge.
 
     E' la meta' che rende la tabella qualcosa di piu' di un elenco. Le due
     forme che `render_pipeline.py` riconosce sono uno spazio di nomi
@@ -757,6 +785,19 @@ def test_solo_le_righe_di_protocollo_hanno_forma_di_protocollo():
     Questo test ne guardava una: una `print(f"    {qualcosa}")` nuova, marcata
     interfaccia, sarebbe passata — ed e' esattamente la riga del blocco
     riassuntivo, cioe' l'altra meta' del protocollo.
+
+    **Il titolo dice "forma" e non "entra", e la differenza e' il confine
+    della lettura statica** (`test_la_sagoma_e_piu_stretta_del_parser`). Due
+    cose passano di qui e possono comunque arrivare al parser, e sono
+    entrambe vive: `  ✓ {}` di `score_visualizer.py`, che oggi porta un
+    `.png`; e le righe senza forma leggibile, saltate qui sotto — la sola e'
+    `print(err.user_message())`, che stampa fra l'altro il `  Path cercato:`
+    di un `SampleNotFoundError`, cioe' una riga indentata con dentro il path
+    di un sample. Un sample che si chiami `voce__streamA.wav` chiude in
+    anticipo lo stream `streamA`. Nessuna delle due e' un buco da tappare
+    qui: dipendono dal valore, non dalla forma. Stanno in
+    `docs/explanation/contratto-stdout.md`, sezione «La meta' statica non
+    arriva ovunque».
     """
     for (modulo, forma), categoria in _classificazione_ordinata():
         if categoria == PROTOCOLLO or forma is None:
@@ -821,6 +862,22 @@ METODI_LOG = {'debug', 'info', 'warning', 'warn', 'error',
               'exception', 'critical', 'log'}
 
 
+# I segnaposto di `logging` sono `%s`/`%d`, non `{}`: qui contano come
+# interpolazioni esattamente come quelli di una f-string, e la riduzione a
+# `{}` e' cio' che rende la guardia capace di leggerli.
+#
+# Le grafie ammesse sono quelle di `printf`, non il solo `%s` nudo: flag,
+# ampiezza, precisione e la mappatura per nome (`%-20s`, `%.3f`, `%(path)s`)
+# sono interpolazioni quanto lui. Riconoscere il solo `%s` faceva dipendere il
+# verdetto dalla *grafia del segnaposto* invece che dalla forma della riga: un
+# `log.debug(f"    {x}")` era sorvegliato e `log.debug("    %.3f", x)` no,
+# benche' siano la stessa riga scritta due volte. Misurato: sui messaggi che
+# `src/pge/` scrive oggi l'allargamento non cambia nessun verdetto, perche'
+# tutti usano `%s`.
+SEGNAPOSTO_LOG = re.compile(
+    r'%(?:\([^)]*\))?[-+ #0]*[0-9*]*(?:\.[0-9*]+)?[hlL]?[sdrfgiouxXeEc]')
+
+
 def _messaggi_di_log(tree):
     """I messaggi letterali passati a una chiamata di logging.
 
@@ -840,14 +897,12 @@ def _messaggi_di_log(tree):
             continue
         forma = _template(args[0])
         if forma:
-            # I segnaposto di `logging` sono `%s`/`%d`, non `{}`: qui contano
-            # come interpolazioni esattamente come quelli di una f-string.
-            messaggi.append((forma, re.sub(r'%[sdrfgi]', '{}', forma)))
+            messaggi.append((forma, SEGNAPOSTO_LOG.sub('{}', forma)))
     return messaggi
 
 
 def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
-    """Nessuna riga di logging entrerebbe nel parser di PGE-ui.
+    """Nessuna riga di logging ha una forma che il parser di PGE-ui legge.
 
     Il canale non protegge: il bridge unisce stderr a stdout. A separare la
     diagnostica dal protocollo resta solo la forma della riga, e questa e' la
@@ -857,6 +912,15 @@ def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
     lasciava scoperta proprio quella che il logger scrive con piu' naturalezza:
     `log.debug("    %s", path)` — sola indentazione piu' un path — chiude
     nell'editor lo stream in volo, e lo chiude *prima* che sia finito.
+
+    **Con lo stesso confine della sezione 4**, e qui conta di piu' perche' non
+    c'e' nessun test di comportamento accanto: la sagoma e' piu' stretta di
+    `_RE_STEM_PATH`, quindi `log.debug("    stem: %s", path)` e
+    `log.debug("  → %s", path)` passano di qui e arrivano lo stesso al parser.
+    Il confine e' misurato da `test_la_sagoma_e_piu_stretta_del_parser`, che
+    dice anche perche' non si puo' spostare. Questa guardia copre la sagoma
+    pura; il resto e' la regola scritta in
+    `docs/explanation/contratto-stdout.md`.
     """
     colpevoli = []
     for rel in _moduli_pge():
@@ -874,7 +938,7 @@ def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
 
 
 def test_la_guardia_sui_messaggi_di_log_riconosce_i_segnaposto_di_logging():
-    """`%s` conta come interpolazione, o la guardia e' cieca sul caso vero.
+    """Un segnaposto conta come interpolazione, o la guardia e' cieca.
 
     Le righe di `logging` si scrivono con lo stile pigro (`"...%s..."`,
     argomenti a parte), non con una f-string, e `_messaggi_di_log` le riduce
@@ -887,16 +951,89 @@ def test_la_guardia_sui_messaggi_di_log_riconosce_i_segnaposto_di_logging():
     dopo averla tolta (misurato). La sagoma del path invece pretende che *tutto*
     quel che non e' indentazione sia interpolazione: li' `    %s` senza
     riduzione e' testo, e la guardia diventa cieca.
+
+    E le grafie sono quelle di `printf`, non il solo `%s` nudo. Con un
+    segnaposto solo in elenco il verdetto dipendeva dalla *grafia* invece che
+    dalla forma della riga: `    %.3f` e `    %(path)s` sono la stessa riga di
+    `    %s` — e la stessa di `f"    {x}"`, che era gia' sorvegliata — e
+    tacevano.
     """
     sorgente = (
         'log = get_diagnostic_logger()\n'
         'log.debug("[CACHE] %s: registrata", nome)\n'
         'log.debug("    %s", path)\n'
+        'log.debug("    %-20s", path)\n'
+        'log.debug("    %(path)s", dati)\n'
+        'log.debug("    %.3f", secondi)\n'
     )
 
     messaggi = _messaggi_di_log(ast.parse(sorgente))
 
-    # Sui grezzi la seconda riga non e' riconoscibile: e' la riduzione a
-    # renderla tale, ed e' questa la differenza che il test misura.
-    assert [_ha_forma_di_protocollo(o) for o, _ in messaggi] == [True, False]
-    assert [_ha_forma_di_protocollo(n) for _, n in messaggi] == [True, True]
+    # Sui grezzi solo la `[CACHE]` e' riconoscibile — per lei il token e'
+    # `\S+`, che un `%s` soddisfa gia' — e sono le altre quattro a misurare la
+    # riduzione: e' lei a renderle tali, ed e' questa la differenza che il
+    # test misura.
+    assert [_ha_forma_di_protocollo(o) for o, _ in messaggi] == \
+        [True, False, False, False, False]
+    assert [_ha_forma_di_protocollo(n) for _, n in messaggi] == \
+        [True, True, True, True, True]
+
+
+# =============================================================================
+# 6. IL CONFINE DELLA LETTURA STATICA — dichiarato, e misurato
+# =============================================================================
+# Le due guardie sulla forma (sezione 4 per le `print()`, sezione 5 per il
+# logger) sono piu' strette del parser a valle, e il doc lo dice. Un limite
+# scritto in prosa pero' e' la stessa cosa che la #178 e' venuta a togliere:
+# non si accorge di essere stato contraddetto, e nemmeno di essere diventato
+# superfluo. Questo test lo tiene dove sta.
+
+def test_la_sagoma_e_piu_stretta_del_parser():
+    """Il limite della lettura statica, nelle due direzioni che lo definiscono.
+
+    La sagoma riconosce «indentazione piu' interpolazione e nient'altro»;
+    `_RE_STEM_PATH` si accontenta di una riga indentata che contenga `__` e
+    finisca per un'estensione audio, e fra le due cose ci mette qualunque
+    testo. Le righe qui sotto stanno in quello scarto: la guardia tace, il
+    parser le prende.
+
+    E la seconda meta' e' quella che tiene fermo il confine, perche' senza di
+    essa la conclusione ovvia sarebbe «allarga la sagoma». Allargarla alla
+    forma che il parser accetta fa parlare le righe di debug di
+    `envelope_builder.py`, che di path non ne portano mai: sono indentate e
+    interpolate come le altre, e nessuna lettura di sorgente le distingue —
+    la differenza sta nel valore, che il sorgente non ha. Una guardia che
+    accusa il debug degli envelope a ogni giro non e' piu' stretta ne' piu'
+    larga: e' spenta, perche' la si mette a tacere.
+
+    Se un giorno un criterio statico separasse le due, questo test diventa
+    rosso sulla seconda meta' e la sagoma va allargata.
+    """
+    scarto = ['    stem: {}', '  → {}', '    {}.wav']
+    for forma in scarto:
+        riga = forma.replace('{}', '/out/PGE_test__streamA.wav')
+        assert FORMA_PROTOCOLLO_PATH.match(riga), (
+            f"{forma!r} non arriva piu' al parser: se `_RE_STEM_PATH` si e' "
+            "ristretta, questo scarto e' cambiato e la sagoma va rivista."
+        )
+        assert not _ha_forma_di_path(forma), (
+            f"{forma!r} e' entrata nella sagoma: il confine si e' spostato, "
+            "e le due guardie sulla forma ora coprono piu' di quel che i "
+            "loro docstring dichiarano. Aggiornali, e aggiorna "
+            "docs/explanation/contratto-stdout.md."
+        )
+
+    # L'altra meta': allargare non e' gratis. `  Pattern points: %s` e'
+    # `envelope_builder.py`, viva e innocua, e ha esattamente la forma di
+    # `    stem: {}` qui sopra.
+    innocua = '  Pattern points: {}'
+    assert innocua in {n for rel in _moduli_pge()
+                       for _, n in _messaggi_di_log(ast.parse(_sorgente(rel)))}, (
+        "il messaggio di `envelope_builder.py` che misura il costo "
+        "dell'allargamento non esiste piu': serve un altro esempio vivo, "
+        "oppure il costo e' sparito e la sagoma si puo' allargare."
+    )
+    assert FORMA_PROTOCOLLO_PATH.match(
+        innocua.replace('{}', '/out/PGE_test__streamA.wav')), (
+        "l'esempio non e' piu' nello scarto: non misura piu' niente."
+    )

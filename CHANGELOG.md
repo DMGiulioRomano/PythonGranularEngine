@@ -49,6 +49,22 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   path)`, hanno la sagoma del blocco riassuntivo e chiudono in anticipo lo
   stream in volo nell'editor.
 
+  **E il confine di quelle guardie e' misurato, non dichiarato.** Leggono i
+  sorgenti, quindi di una riga indentata riconoscono la sola sagoma pura —
+  indentazione piu' interpolazione e nient'altro — mentre a valle
+  `_RE_STEM_PATH` accetta qualunque testo fra le due: `log.debug("    stem:
+  %s", path)` passa davanti alla guardia e arriva al parser lo stesso. Il
+  limite era gia' scritto nel doc, ed era percio' della stessa specie che la
+  #178 e' venuta a togliere — prosa che non si accorge di essere cambiata.
+  Ora lo tiene un test, nelle due direzioni: che lo scarto esista, e che non
+  sia chiudibile allargando la sagoma (col criterio largo comincerebbero ad
+  accusare il debug degli envelope, indentato ma senza path dentro: a
+  separarli servirebbe il valore, che un `ast` non ha). La guardia sui
+  messaggi di log riconosce inoltre tutte le grafie di `printf`, non il solo
+  `%s`: prima `log.debug("    %.3f", x)` taceva dove `f"    {x}"` parlava,
+  cioe' il verdetto dipendeva dalla grafia del segnaposto invece che dalla
+  forma della riga.
+
 - **`docs/explanation/strategy-registry.md`** — la forma decisa del registry
   generico di strategy (issue #177): decisione, non esecuzione (quella e'
   #184 e #185). Lo schema duplicato sta in **nove** moduli, non sei — il
