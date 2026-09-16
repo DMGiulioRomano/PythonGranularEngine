@@ -407,29 +407,51 @@ class TestLarghezzaRelativa:
 class TestUnaSolaGrafiaDelPredicato:
     """`range_unit_is_relative` deve restare l'unico modo di fare la domanda.
 
-    I lettori sono tre e stanno in tre strati diversi — il pre-normalizzatore
-    delle unita' (`core/stream.py`), l'orchestratore e il parser — e la
-    docstring del predicato lo dichiara. Un `unit == RANGE_UNIT_RELATIVE`
-    scritto a mano è una seconda copia della domanda: oggi risponde uguale, e
-    il giorno che il vocabolario prendesse un alias (come `loop_unit`, dove
-    `seconds` e `absolute` sono la stessa lettura) risponderebbe diverso in un
-    lettore su tre, in silenzio.
+    Un `unit == RANGE_UNIT_RELATIVE` scritto a mano è una seconda copia della
+    domanda: oggi risponde uguale, e il giorno che il vocabolario prendesse un
+    alias (come `loop_unit`, dove `seconds` e `absolute` sono la stessa
+    lettura) risponderebbe diverso in un lettore solo, in silenzio.
+
+    Il censimento è **derivato dall'albero dei sorgenti**, non un elenco di
+    moduli scritto qui. I lettori di oggi sono tre — il pre-normalizzatore
+    delle unita' (`core/stream.py`), l'orchestratore e il parser — ma sono
+    tre oggi: nominarli sarebbe una seconda copia proprio della cosa che
+    questa guardia esiste per impedire, e andrebbe muta esattamente quando
+    serve, cioè il giorno che un quarto lettore nasce senza che nessuno si
+    ricordi di aggiungerlo alla lista. Chi scrive il quarto lettore non è chi
+    ricorda l'elenco.
+
+    L'unica esenzione è il modulo che il letterale lo **possiede**: là dentro
+    il confronto e' la definizione del predicato, non una sua copia. Ed e'
+    dichiarata per nome, cosi' che aggiungerne una seconda sia una riga da
+    scrivere qui e non un silenzio.
 
     La guardia legge il sorgente come AST, non come testo: un confronto dentro
     una stringa o un commento non è un confronto.
     """
 
-    _MODULI = (
-        'pge/parameters/parser.py',
-        'pge/parameters/parameter_orchestrator.py',
-        'pge/core/stream.py',
-    )
+    #: Il modulo che dichiara `RANGE_UNIT_RELATIVE` e ne tiene il predicato:
+    #: il confronto dentro `range_unit_is_relative` e' la grafia unica, non una
+    #: copia. Ogni altro modulo di `src/pge/` deve passare dal predicato.
+    _PROPRIETARIO = 'pge/parameters/parameter_definitions.py'
 
-    def _confronti_col_letterale(self, path):
-        import ast
+    @staticmethod
+    def _radice():
         import pathlib
 
-        src = pathlib.Path(__file__).resolve().parents[2] / 'src' / path
+        return pathlib.Path(__file__).resolve().parents[2] / 'src'
+
+    @classmethod
+    def _moduli(cls):
+        """Ogni `.py` sotto `src/pge/`, in ordine stabile."""
+        return sorted(p.relative_to(cls._radice()).as_posix()
+                      for p in cls._radice().rglob('*.py'))
+
+    @classmethod
+    def _confronti_col_letterale(cls, path):
+        import ast
+
+        src = cls._radice() / path
         albero = ast.parse(src.read_text(encoding='utf-8'))
 
         def nomina_il_letterale(nodo):
@@ -447,16 +469,49 @@ class TestUnaSolaGrafiaDelPredicato:
                 trovati.append(nodo.lineno)
         return trovati
 
-    @pytest.mark.parametrize('modulo', _MODULI)
-    def test_nessun_confronto_scritto_a_mano(self, modulo):
-        righe = self._confronti_col_letterale(modulo)
+    def test_il_censimento_vede_i_lettori_di_oggi(self):
+        """Il censimento non e' vuoto e contiene i tre moduli noti.
 
-        assert righe == [], (
-            f"{modulo}: confronto diretto con RANGE_UNIT_RELATIVE alle righe "
-            f"{righe}. Usa range_unit_is_relative(unit).")
+        Senza, un `rglob` che non trova niente — radice sbagliata, layout
+        cambiato — renderebbe verde per vacuita' tutto il resto della classe.
+        """
+        moduli = self._moduli()
+
+        assert len(moduli) > 30
+        assert self._PROPRIETARIO in moduli
+        for noto in ('pge/parameters/parser.py',
+                     'pge/parameters/parameter_orchestrator.py',
+                     'pge/core/stream.py'):
+            assert noto in moduli
+
+    def test_nessun_confronto_scritto_a_mano_in_tutto_il_motore(self):
+        """Il censimento vero: nessun modulo fuori dal proprietario."""
+        copie = {
+            modulo: righe
+            for modulo in self._moduli()
+            if modulo != self._PROPRIETARIO
+            and (righe := self._confronti_col_letterale(modulo))
+        }
+
+        assert copie == {}, (
+            "confronto diretto con RANGE_UNIT_RELATIVE fuori da "
+            f"{self._PROPRIETARIO}: {copie}. Usa range_unit_is_relative(unit).")
+
+    def test_il_proprietario_il_confronto_ce_l_ha(self):
+        """L'esenzione non nasconde un buco: la' il confronto c'e' davvero.
+
+        E' anche la misura della guardia su codice vero — se il riconoscitore
+        smettesse di vedere un `ast.Compare`, il censimento qui sopra tacerebbe
+        su tutto, e questo e' il test che se ne accorge.
+        """
+        righe = self._confronti_col_letterale(self._PROPRIETARIO)
+
+        assert len(righe) == 1, (
+            f"{self._PROPRIETARIO}: attesa una sola grafia del confronto "
+            f"(dentro range_unit_is_relative), trovate {righe}")
 
     def test_la_guardia_vede_davvero_un_confronto(self):
-        """La guardia misurata su se stessa: senza, direbbe sempre di sì."""
+        """La guardia misurata su se stessa: senza, direbbe sempre di s\u00ec."""
         import ast
 
         albero = ast.parse("x = unit == RANGE_UNIT_RELATIVE\n")
@@ -465,7 +520,6 @@ class TestUnaSolaGrafiaDelPredicato:
         assert len(compare) == 1
         assert any(isinstance(l, ast.Name) and l.id == 'RANGE_UNIT_RELATIVE'
                    for l in [compare[0].left, *compare[0].comparators])
-
 
 # =============================================================================
 # IL TETTO NON ASSUME LA MONOTONIA DELLA BANDA NELLA BASE
