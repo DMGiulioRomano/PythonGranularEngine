@@ -16,6 +16,13 @@ Il golden copre le quattro forme di f-statement in circolazione (GEN01 per il
 sample, GEN20/GEN16/GEN09 per le finestre), una voice vuota (che va saltata
 mantenendo la numerazione delle altre), un grano da un campione a 48 kHz (le
 otto cifre decimali di p2/p3) e i due valori di `per_stream`.
+
+Aggiornato una volta, di proposito, dalla issue #202: le `WindowSpec` hanno
+smesso di descriversi in termini di GEN routine, e la loro `description`
+finisce nel commento sopra ogni tabella di finestra. **Gli statement non si
+sono mossi di un byte** -- ed e' l'affermazione che la #202 doveva dimostrare:
+il catalogo agnostico piu' il traduttore Csound producono la stessa tabella
+che produceva il catalogo scritto in GEN.
 """
 from __future__ import annotations
 
@@ -102,13 +109,13 @@ GOLDEN_ABSOLUTE = '''; =========================================================
 ; Sample: refs/voce.wav
 f 1 0 0 1 "refs/voce.wav" 0 0 1
 
-; Window: hanning - Hanning/von Hann window (GEN20 opt 2)
+; Window: hanning - Hanning/von Hann window
 f 2 0 1024 20 2 1
 
-; Window: expodec - Exponential decay (GEN16, Roads-style)
+; Window: expodec - Exponential decay (Roads-style)
 f 3 0 1024 16 1 1024 4 0
 
-; Window: half_sine - Half-sine envelope (GEN09)
+; Window: half_sine - Half-sine envelope
 f 4 0 1024 9 0.5 1 0
 
 ; =============================================================================
