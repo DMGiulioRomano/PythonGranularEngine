@@ -5,8 +5,9 @@ status: stable
 tags: [voices, strategy, extension]
 sources:
   - src/pge/strategies/
+  - src/pge/strategies/registry.py
   - src/pge/core/stream.py
-last_synced_commit: 8c896d8
+last_synced_commit: 250c84f
 entry_for: [add-voice-strategy]
 ---
 
@@ -27,7 +28,22 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 
 1. Sottoclasse l'ABC giusta in `src/pge/strategies/`
 2. Implementa `get_<axis>_offset(voice_index, num_voices, time)`
-3. Registra nella factory `Voice<Axis>StrategyFactory.REGISTRY`
+3. Registra nella mappa di modulo dell'asse — `VOICE_<AXIS>_STRATEGIES`, che
+   sta accanto alle classi in `voice_<axis>_strategy.py`. A runtime si passa
+   invece per `register_voice_<axis>_strategy(nome, Classe)`, che e' l'API di
+   estensione dinamica.
+
+   La factory **non** ha un attributo `REGISTRY`, e non l'ha mai avuto: questo
+   passo diceva `Voice<Axis>StrategyFactory.REGISTRY` e mandava a un nome
+   inesistente. La mappa vive a livello di modulo, che e' dove i test la
+   cercano e dove la parita' di PGE-ls la importa per nome.
+
+   Per **pan** la mappa e' un `StrategyRegistry` (issue #184, forma decisa in
+   #177): il valore si scrive uguale, ma la registrazione dinamica e la
+   costruzione passano per i metodi del registry invece che per codice
+   ripetuto nel modulo. Gli altri tre assi sono ancora sulla forma vecchia —
+   un `dict` di modulo — e ci restano fino a #185; da fuori le due forme si
+   usano allo stesso modo.
 4. Se i parametri richiedono parsing custom (es. envelope auto-detect), estendi `_build_<axis>_strategy` in `src/pge/core/stream.py` via `_parse_strategy_kwarg`
 5. Test: `tests/strategies/test_voice_<axis>_strategy.py` con voice-0 invariant + envelope param + (per le stochastiche) determinismo dal `stream_id`
 
@@ -36,7 +52,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 | Path | Tipo |
 |------|------|
 | `src/pge/strategies/voice_<axis>_<nome>.py` | nuovo file |
-| `src/pge/strategies/voice_<axis>_factory.py` | aggiunta a REGISTRY |
+| `src/pge/strategies/voice_<axis>_strategy.py` | aggiunta a `VOICE_<AXIS>_STRATEGIES` |
 | `src/pge/core/stream.py` | eventuale parsing kwarg |
 | `tests/strategies/test_voice_<axis>_strategy.py` | nuovi test |
 

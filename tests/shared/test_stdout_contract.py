@@ -303,6 +303,8 @@ def test_le_strategie_non_stampano(modulo):
 
 MODULI_CON_REGISTRAZIONE_DINAMICA = [
     os.path.join('controllers', 'window_selection_strategy.py'),
+    os.path.join('shared', 'distribution_strategy.py'),
+    os.path.join('strategies', 'registry.py'),
     os.path.join('strategies', 'strategy_registry.py'),
     os.path.join('strategies', 'variation_registry.py'),
     os.path.join('strategies', 'voice_onset_strategy.py'),
@@ -313,13 +315,39 @@ MODULI_CON_REGISTRAZIONE_DINAMICA = [
 
 
 def _funzioni_di_registrazione(tree):
-    """Le `def register_*_strategy(...)` di livello modulo."""
-    return [
+    """I corpi in cui una registrazione dinamica viene scritta.
+
+    Due grafie, e la seconda e' arrivata con la #184:
+
+    - `def register_*_strategy(...)` di livello modulo — l'API di estensione
+      documentata, che i moduli conservano anche dopo essere passati al
+      registry generico (un alias di `REGISTRY.register` li farebbe uscire di
+      qui, ed e' il motivo per cui la decisione di #177 vieta l'alias);
+    - un metodo chiamato esattamente `register` dentro una classe — la grafia
+      di `StrategyRegistry.register`, dove la registrazione *vive* dalla #184,
+      e quella di `DistributionFactory.register`, che aveva la stessa forma da
+      prima ed era cieca a entrambe le guardie.
+
+    Il criterio e' `register` esatto, non `register_*`: `register_sample` e
+    `register_window` di `FtableManager` sono metodi che cominciano per
+    `register` e non registrano nessuna strategy. Una guardia che li
+    accusasse chiederebbe di mantenere una lista di falsi positivi — il
+    difetto opposto a quello che questa allargatura chiude.
+    """
+    di_modulo = [
         node for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name.startswith('register_')
         and node.name.endswith('_strategy')
     ]
+    di_classe = [
+        figlio
+        for classe in ast.walk(tree) if isinstance(classe, ast.ClassDef)
+        for figlio in classe.body
+        if isinstance(figlio, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and figlio.name == 'register'
+    ]
+    return di_modulo + di_classe
 
 
 def test_la_lista_dei_punti_di_registrazione_e_completa():
@@ -343,6 +371,75 @@ def test_la_lista_dei_punti_di_registrazione_e_completa():
         "MODULI_CON_REGISTRAZIONE_DINAMICA: la sua conferma e' diagnostica, e "
         "vedi docs/explanation/contratto-stdout.md."
     )
+
+
+def test_il_finder_vede_la_registrazione_dentro_una_classe():
+    """Il criterio e' la funzione, non la cartella — ne' la `def` di modulo.
+
+    Con la #184 la registrazione di pan non e' piu' scritta nel proprio
+    modulo: `register_voice_pan_strategy` delega a `StrategyRegistry.register`,
+    che e' un *metodo*. Il finder guardava `tree.body`, quindi quel metodo gli
+    usciva dal campo visivo, e con lui il corpo dove la `print()` tornerebbe.
+
+    Misurato per sabotaggio, con la classe cablata: una `print()` dentro
+    `StrategyRegistry.register` lasciava verde
+    `test_la_registrazione_dinamica_non_stampa` — cioe' la guardia scritta
+    apposta per questo — e a prenderla erano la guardia per *cartella* e i
+    test comportamentali di pan. Copertura incidentale: vale finche' la classe
+    resta in `strategies/` e finche' pan tiene la propria asserzione, e non
+    dice niente sui registry che #185 fara' cominciare a parlare.
+
+    E' lo stesso difetto del settimo entry point (`register_window_strategy`,
+    che sta in `controllers/`) un giro piu' in la'.
+    """
+    trovate = _funzioni_di_registrazione(
+        ast.parse(_sorgente(os.path.join('strategies', 'registry.py')))
+    )
+
+    assert [f.name for f in trovate] == ['register'], (
+        "il finder non vede `StrategyRegistry.register`: la registrazione "
+        "vive li' dalla #184, e una print() in quel corpo passerebbe sotto la "
+        "guardia per funzione."
+    )
+
+
+def test_il_finder_vede_anche_il_punto_di_registrazione_di_distribution():
+    """`DistributionFactory.register` era cieco a **entrambe** le guardie.
+
+    Per due motivi indipendenti, ed e' il precedente esatto della cecita' che
+    la #184 chiude: non sta in `strategies/`, come quello delle finestre, e in
+    piu' non e' una `def register_*_strategy` di modulo ma una classmethod
+    `register` — la stessa grafia che la classe generica introduce.
+
+    Oggi non stampa, quindi il buco era latente e non un rosso mancato. Il
+    criterio scelto in #184 e' il piu' largo dei due che la decisione lasciava
+    aperti — «un metodo `register` su un registry», non «il metodo `register`
+    di `StrategyRegistry`» — proprio per non lasciarlo intatto: costa due voci
+    nella lista dichiarata e chiude il buco senza convertire `distribution`,
+    che resta sulla forma vecchia con la propria validazione `issubclass`
+    (pinnata altrove) finche' non ha la sua decisione.
+    """
+    trovate = _funzioni_di_registrazione(
+        ast.parse(_sorgente(os.path.join('shared', 'distribution_strategy.py')))
+    )
+
+    assert [f.name for f in trovate] == ['register']
+
+
+def test_il_finder_non_confonde_ogni_register_con_una_registrazione():
+    """Il criterio largo resta un criterio, non una rete a strascico.
+
+    `register_sample` e `register_window` di `FtableManager` cominciano per
+    `register` e sono metodi, ma non sono punti di registrazione dinamica di
+    strategy: allargare a `register_*` invece che a `register` li tirerebbe
+    dentro, e la lista dichiarata diventerebbe un elenco di falsi positivi da
+    mantenere.
+    """
+    trovate = _funzioni_di_registrazione(
+        ast.parse(_sorgente(os.path.join('rendering', 'ftable_manager.py')))
+    )
+
+    assert trovate == []
 
 
 @pytest.mark.parametrize('relpath', MODULI_CON_REGISTRAZIONE_DINAMICA)
