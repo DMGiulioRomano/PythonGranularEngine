@@ -31,7 +31,7 @@ import types
 from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
 from unittest.mock import Mock, MagicMock, patch, PropertyMock
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 
 # =============================================================================
@@ -42,7 +42,10 @@ from typing import Tuple
 class ParameterBounds:
     """Mock ParameterBounds - replica fedelta del production code."""
     min_val: float
-    max_val: float
+    # Optional e non `float | None`: pyproject dichiara il supporto a Python
+    # 3.9, dove la PEP 604 valutata a runtime (qui lo e', e' una dataclass)
+    # muore in raccolta. Lo pinna tests/test_minimum_python_syntax.py.
+    max_val: Optional[float]
     min_range: float = 0.0
     max_range: float = 0.0
     default_jitter: float = 0.0
@@ -50,7 +53,8 @@ class ParameterBounds:
 
 
 # Bounds di riferimento dal registry reale
-DENSITY_BOUNDS = ParameterBounds(min_val=0.01, max_val=4000.0)
+# Senza tetto dalla issue #272: il registry vero dichiara max_val=None.
+DENSITY_BOUNDS = ParameterBounds(min_val=0.01, max_val=None)
 FILL_FACTOR_BOUNDS = ParameterBounds(min_val=0.001, max_val=50.0)
 PITCH_SEMITONES_BOUNDS = ParameterBounds(
     min_val=-36.0, max_val=36.0,
@@ -529,12 +533,12 @@ class TestFillFactorStrategyInit:
         assert strategy._fill_factor is ff_param
 
     def test_loads_density_bounds(self):
-        """Carica i bounds di density per il clamping."""
+        """Carica i bounds di density: pavimento sì, tetto no (issue #272)."""
         ff_param = _make_param(2.0, name='fill_factor')
         dist_param = _make_param(0.0, name='distribution')
         strategy = FillFactorStrategy(ff_param, dist_param)
         assert strategy._density_bounds.min_val == pytest.approx(0.01)
-        assert strategy._density_bounds.max_val == pytest.approx(4000.0)
+        assert strategy._density_bounds.max_val is None
 
 
 class TestFillFactorStrategyCalculate:
@@ -608,24 +612,29 @@ class TestFillFactorStrategyCalculate:
 class TestFillFactorStrategyClamping:
     """Test clamping ai bounds di density."""
 
-    def test_clamps_to_max_density(self):
-        """Risultato clampato al massimo di density (4000.0)."""
+    def test_no_upper_clamp(self):
+        """Verso l'alto non si taglia piu' (issue #272).
+
+        Prima usciva 4000, e il fill_factor reso era 4 invece di 50: il taglio
+        del quoziente non passa da `log_clip_warning`, quindi non lo diceva
+        nessuno.
+        """
         ff_param = _make_param(50.0)
         dist_param = _make_param(0.0)
         strategy = FillFactorStrategy(ff_param, dist_param)
 
         result = strategy.calculate_density(0.0, grain_duration=0.001)
-        assert result == pytest.approx(4000.0)
+        assert result == pytest.approx(50000.0)
 
-    def test_one_sample_grain_duration_clamped_to_max(self):
+    def test_one_sample_grain_duration_is_not_clamped(self):
         """Grano da 1 campione (grain.duration_unit samples): la density
-        derivata (fill_factor/dur = 96000) resta clampata a 4000."""
+        derivata (fill_factor/dur = 96000) passa intera (issue #272)."""
         ff_param = _make_param(2.0)
         dist_param = _make_param(0.0)
         strategy = FillFactorStrategy(ff_param, dist_param)
 
         result = strategy.calculate_density(0.0, grain_duration=1.0 / 48000)
-        assert result == pytest.approx(4000.0)
+        assert result == pytest.approx(96000.0)
 
     def test_clamps_to_min_density(self):
         """Risultato clampato al minimo di density (0.01)."""
@@ -646,8 +655,15 @@ class TestFillFactorStrategyClamping:
         raw = 2.0 / 0.05
         assert result == pytest.approx(raw)
 
-    def test_result_always_within_density_bounds(self):
-        """Qualunque combinazione, il risultato e nei density bounds."""
+    def test_result_always_above_the_density_floor(self):
+        """Qualunque combinazione, il risultato sta sopra il pavimento.
+
+        Era `0.01 <= result <= 4000`, e passava per fortuna: con `seed(42)`
+        nessuna delle 50 estrazioni toccava il tetto, che pure `50/0.001`
+        sfonda di dodici volte. Il tetto adesso non c'e' (issue #272); il
+        pavimento sì, ed e' l'unica meta' che valga la pena asserire, perche'
+        e' quella che tiene in piedi `1.0 / density`.
+        """
         import random
         random.seed(42)
 
@@ -660,8 +676,10 @@ class TestFillFactorStrategyClamping:
             strategy = FillFactorStrategy(ff_param, dist_param)
 
             result = strategy.calculate_density(0.0, grain_duration=gd_val)
-            assert 0.01 <= result <= 4000.0, \
-                f"Fuori bounds: ff={ff_val}, gd={gd_val}, result={result}"
+            assert result >= 0.01, \
+                f"Sotto il pavimento: ff={ff_val}, gd={gd_val}, result={result}"
+            assert result == pytest.approx(max(0.01, ff_val / gd_val)), \
+                f"Quoziente alterato: ff={ff_val}, gd={gd_val}, result={result}"
 
 
 class TestFillFactorStrategyEnvelope:
@@ -1074,13 +1092,13 @@ class TestEdgeCases:
         assert strategy.calculate(0.0) == pytest.approx(8.0)
 
     def test_fill_factor_very_small_grain_duration(self):
-        """grain_duration molto piccolo - risultato clampato."""
+        """grain_duration molto piccolo - il quoziente passa (issue #272)."""
         ff_param = _make_param(10.0)
         dist_param = _make_param(0.0)
         strategy = FillFactorStrategy(ff_param, dist_param)
 
         result = strategy.calculate_density(0.0, grain_duration=0.001)
-        assert result == pytest.approx(4000.0)
+        assert result == pytest.approx(10000.0)
 
     def test_fill_factor_very_large_grain_duration(self):
         """grain_duration molto grande - risultato clampato al minimo."""

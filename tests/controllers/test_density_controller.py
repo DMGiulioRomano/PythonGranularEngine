@@ -217,16 +217,20 @@ class TestInterOnsetFillFactor:
 
         assert iot == pytest.approx(expected_iot)
 
-    def test_fill_factor_clamped_density(self, mock_config):
-        """fill_factor molto alto con grain_dur molto piccolo -> density clampata."""
+    def test_fill_factor_alto_su_grano_corto_non_viene_tappato(self, mock_config):
+        """fill_factor alto con grain_dur piccolo -> density alta, non tagliata.
+
+        Fino alla issue #272 usciva `1/4000`: il quoziente veniva richiuso nel
+        vecchio `density.max_val` e il fill_factor reso era 4 invece di 50,
+        senza che nulla lo dicesse.
+        """
         params = _build_fill_factor_params(fill_factor=50.0, distribution=0.0)
         dc = _make_density_controller(mock_config, params)
 
-        # 50.0 / 0.001 = 50000, ma density max = 4000
+        # 50.0 / 0.001 = 50000, e 50000 resta
         iot = dc.calculate_inter_onset(0.0, current_grain_duration=0.001)
 
-        # density clampata a 4000 -> IOT = 1/4000 = 0.00025
-        assert iot == pytest.approx(1.0 / 4000.0)
+        assert iot == pytest.approx(1.0 / 50000.0)
 
 
 # =============================================================================
@@ -488,14 +492,14 @@ class TestEdgeCases:
         assert iot == pytest.approx(5.0)
 
     def test_fill_factor_with_very_short_grain(self, mock_config):
-        """fill_factor con grain molto breve -> density alta (clampata)."""
+        """fill_factor con grain molto breve -> density alta, intera (#272)."""
         params = _build_fill_factor_params(fill_factor=10.0, distribution=0.0)
         dc = _make_density_controller(mock_config, params)
 
         iot = dc.calculate_inter_onset(0.0, current_grain_duration=0.001)
-        # density = 10.0 / 0.001 = 10000, ma clampata a 4000
-        # IOT = 1/4000 = 0.00025
-        assert iot == pytest.approx(1.0 / 4000.0)
+        # density = 10.0 / 0.001 = 10000, e 10000 resta
+        # IOT = 1/10000 = 0.0001
+        assert iot == pytest.approx(1.0 / 10000.0)
 
 
 # =============================================================================

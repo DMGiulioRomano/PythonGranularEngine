@@ -146,13 +146,20 @@ class FillFactorStrategy(DensityStrategy):
     Strategia: density = fill_factor / grain_duration.
 
     Nota sul clamping: fill_factor e grain_duration vengono gia' clampati
-    nei loro rispettivi bounds da Parameter.get_value(). Pero' il valore
-    DERIVATO (la divisione) puo' uscire dai bounds di densita':
-      - fill_factor massimo / grain_duration minimo -> densita' molto alta
-      - fill_factor minimo / grain_duration massimo -> densita' molto bassa
-    Questa strategia e' quindi responsabile di clampare il risultato
-    nei bounds di 'density', garantendo che l'output sia sempre valido.
-    """    
+    nei loro rispettivi bounds da Parameter.get_value(). Il valore DERIVATO
+    (la divisione) puo' pero' finire sotto il pavimento di 'density' —
+    fill_factor minimo su grain_duration massimo fa 0.0001 — e li' va alzato:
+    sotto quel pavimento c'e' lo zero, e `1.0 / density` e' l'IOT.
+
+    Verso l'alto no (issue #272). 'density' non ha piu' un tetto, e in questa
+    modalita' non ne aveva mai avuto uno di dichiarato: a essere tagliato era
+    il quoziente, cioe' `fill_factor` veniva onorato solo finche'
+    `grain.duration >= fill_factor / 4000`. Sotto — 1 ms esatti con
+    `fill_factor: 4` — il motore rendeva un fill_factor piu' basso di quello
+    scritto e non lo diceva a nessuno, perche' `log_clip_warning` sta dentro
+    `Parameter._clamp` e questa divisione non passa di li'. Adesso il
+    quoziente passa intero e a parlare e' il warning di DensityController.
+    """
     def __init__(self, fill_factor_param: Parameter, distribution_param: Parameter):
         self._fill_factor = fill_factor_param
         self._density_bounds = get_parameter_definition('density')
@@ -172,8 +179,7 @@ class FillFactorStrategy(DensityStrategy):
         return self._clamp(fill_factor / context['grain_duration'])
 
     def _clamp(self, raw_density: float) -> float:
-        return max(self._density_bounds.min_val,
-                   min(self._density_bounds.max_val, raw_density))
+        return self._density_bounds.clamp(raw_density)
 
     @property
     def name(self) -> str:
