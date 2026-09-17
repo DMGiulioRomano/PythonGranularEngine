@@ -264,6 +264,13 @@ registrato** a soddisfare anche la prima asserzione. Sostituendo il dominio del
 modulo con `'XYZ_dominio_sbagliato'` l'intera suite resta verde (6826 passed,
 18 skipped): la prima asserzione non discrimina nulla.
 
+**E #184 l'ha chiusa, per pan soltanto.** La misura qui sopra descrive lo stato
+*prima* del tracer bullet, e va letta come storia: l'asserzione ora nomina
+`voice_pan` per esteso — che nella chiave registrata dal test (`logged_pan`)
+non compare — quindi lo stesso sabotaggio che lasciava la suite interamente
+verde adesso fa tre rossi. Per i cinque moduli che #185 deve rinominare la
+misura vale ancora tale e quale, e con lei la conseguenza qui sotto.
+
 La conseguenza per #184 è che il rename `'pan voce'` → `voice_pan` va
 verificato leggendo, non aspettandosi un rosso — e che il letterale sopravvive
 in altri due punti che nessun test allinea: la docstring di
