@@ -227,7 +227,7 @@ def test_log_strategy_registration_formatta_pigramente():
     livello = logger.level
     logger.setLevel(logging.DEBUG)
     try:
-        log_strategy_registration('pan voce', 'stereo_spread', _Strategia)
+        log_strategy_registration('voice_pan', 'stereo_spread', _Strategia)
     finally:
         logger.removeHandler(spia)
         logger.setLevel(livello)

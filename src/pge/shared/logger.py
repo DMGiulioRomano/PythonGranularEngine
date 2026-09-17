@@ -301,7 +301,7 @@ def log_strategy_registration(domain: str, name: str, strategy_class: type) -> N
     """Registrazione dinamica di una strategy: diagnostica, non protocollo.
 
     Args:
-        domain: dominio del registry ('density', 'variation', 'pan voce')
+        domain: dominio del registry ('density', 'variation', 'voice_pan')
         name: chiave con cui la strategy e' stata registrata
         strategy_class: la classe registrata (se ne logga il `__name__`)
     """
