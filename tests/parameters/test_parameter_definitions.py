@@ -310,9 +310,16 @@ class TestDensityTimeBounds:
     """Bounds per i parametri Density & Time."""
 
     def test_density_bounds(self):
+        """Nessun tetto dalla issue #272: il pavimento resta, e da solo.
+
+        Il 4000 di prima non tagliava un valore scritto ma il quoziente
+        `fill_factor / grain_duration`, in silenzio. Il pavimento invece non
+        e' un limite musicale: `avg_iot = 1.0 / density` divide per quel
+        numero.
+        """
         b = GRANULAR_PARAMETERS['density']
         assert b.min_val == 0.01
-        assert b.max_val == 4000.0
+        assert b.max_val is None
         assert b.variation_mode == 'additive'  # default
 
     def test_density_min_positive(self):
@@ -340,9 +347,10 @@ class TestDensityTimeBounds:
         assert b.max_val == 1.0
 
     def test_effective_density_bounds(self):
+        """Segue 'density' (issue #272): e' la stessa grandezza."""
         b = GRANULAR_PARAMETERS['effective_density']
         assert b.min_val == 1
-        assert b.max_val == 4000.0
+        assert b.max_val is None
 
     def test_effective_density_min_at_least_one(self):
         """effective_density minimo 1 (almeno un grano)."""

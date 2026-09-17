@@ -13,7 +13,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: e42ed72
+last_synced_commit: 92712ef
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -550,7 +550,30 @@ distribution: 0.0
 distribution: [[0, 0.0], [30, 1.0]]
 ```
 
-Bounds: `density` ∈ [0.01, 4000], `fill_factor` ∈ [0.001, 50], `distribution` ∈ [0, 1].
+Bounds: `density` ∈ [0.01, ∞), `fill_factor` ∈ [0.001, 50], `distribution` ∈ [0, 1].
+
+**La densità non ha un tetto** (issue #272). Fino alla 8.x il massimo era
+4000 g/s, e in modalità `fill_factor` non tagliava un valore scritto ma il
+quoziente: la regola implicita era `grain.duration >= fill_factor / 4000`
+— 1 ms esatti con `fill_factor: 4` — e sotto quella soglia il motore rendeva
+un `fill_factor` più basso di quello dichiarato senza dirlo. `fill_factor: 8`
+con grani da 1 ms rendeva 4; `fill_factor: 4` con grani da 0.4 ms rendeva 1.6.
+Il taglio non passava da `log_clip_warning` (che vive dentro
+`Parameter._clamp`, e la density derivata non è un `Parameter`), quindi non
+lasciava traccia né nei log né in partitura.
+
+Il **minimo** invece resta, e non è un limite musicale: l'inter-onset è
+`1.0 / density`, quindi una densità nulla è una divisione per zero e una
+negativa è un cursore che non avanza.
+
+Conseguenza pratica: con grani brevi il conteggio dei grani ora cresce come
+il `fill_factor` chiede. `fill_factor: 4` su grani da 0.4 ms sono 10000
+grani/secondo per voce, non 4000. Sopra i 4000 g/s — la vecchia soglia — il
+motore scrive una riga `[DENSITY_HIGH]` sul clip log (`./logs/`, rate limit
+5 s di tempo-stream) con densità richiesta, durata del grano e IOT
+risultante: non è un taglio, è la riga che il vecchio clamp non scriveva, e
+serve a riconoscere un `grain.duration` sbagliato di un ordine di grandezza
+prima che il render finisca la RAM.
 
 ---
 
@@ -758,7 +781,10 @@ Note sui grani a precisione di campione:
   10 campioni la scelta del renderer domina il risultato più della scelta
   della finestra.
 - **Densità derivata**: con `fill_factor` e grani da 1 campione la density
-  `fill_factor/duration` satura al bound massimo (4000 g/s).
+  `fill_factor/duration` è enorme — `fill_factor: 2` su un grano da un
+  campione fa 96000 grani/secondo — e dalla #272 viene onorata per intero:
+  prima saturava a 4000 in silenzio. È il regime in cui il conteggio dei
+  grani esplode, ed è il motivo del `[DENSITY_HIGH]` sul clip log.
 
 ---
 
@@ -2456,7 +2482,7 @@ un envelope dal YAML al runtime è:
 
 | Parametro | Min | Max | Default | Note |
 |-----------|-----|-----|---------|------|
-| `density` | 0.01 | 4000 | — | grani/secondo |
+| `density` | 0.01 | — (nessun tetto) | — | grani/secondo; sopra 4000 avvisa sul clip log (#272) |
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |

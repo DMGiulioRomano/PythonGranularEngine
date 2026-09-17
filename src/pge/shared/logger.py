@@ -443,6 +443,56 @@ def log_loop_drift_warning(stream_id: str, elapsed_time: float,
     )
 
 
+def log_high_density_warning(stream_id: str, elapsed_time: float,
+                             density: float, threshold: float,
+                             grain_duration: float,
+                             mode: str,
+                             interval: float,
+                             is_first: bool = False):
+    """
+    Logga il passaggio della density sopra la soglia di attenzione.
+
+    Non e' il resoconto di un taglio: dalla issue #272 la density non ha piu'
+    un tetto e il valore richiesto viene onorato per intero. E' il contrario —
+    e' la riga che il vecchio clamp NON scriveva. Fino a qui una `density`
+    derivata oltre i 4000 g/s veniva richiusa in silenzio, e un
+    `fill_factor: 8` su grani da 1 ms rendeva 4 senza che nulla lo dicesse:
+    ne' un log, ne' un errore, ne' uno scarto in partitura.
+
+    Adesso quel numero si vede, e serve a due cose: riconoscere il refuso
+    (un `grain.duration` di troppo corto fa esplodere il conteggio dei grani)
+    e sapere quale sia la density vera quando la si e' voluta davvero.
+
+    Args:
+        stream_id: ID dello stream
+        elapsed_time: tempo corrente nello stream
+        density: densita' richiesta in grani/secondo (quella che verra' resa)
+        threshold: soglia di attenzione superata
+        grain_duration: durata del grano a quell'onset, in secondi
+        mode: 'fill_factor' o 'density' — da quale delle due strade arriva
+        interval: intervallo del rate limiting, per dirlo nel primo avviso
+        is_first: True al primo avviso dello stream
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    tag = "[DENSITY_HIGH_FIRST]" if is_first else "[DENSITY_HIGH]"
+    note = (f" << PRIMO AVVISO — log successivi soppressi "
+            f"(rate limit {interval:g}s)") if is_first else ""
+
+    logger.warning(
+        f"{tag} [{stream_id}] "
+        f"t={elapsed_time:>7.3f}s | "
+        f"density={density:>12.1f} g/s | "
+        f"soglia={threshold:.0f} | "
+        f"grain={grain_duration * 1000:.4f} ms | "
+        f"IOT={1.0 / density * 1000:.5f} ms | "
+        f"mode={mode}"
+        f"{note}"
+    )
+
+
 def log_loop_dynamic_mode(stream_id: str, loop_start_initial: float,
                           loop_end_initial: float, start_overridden: bool,
                           original_start: float):
