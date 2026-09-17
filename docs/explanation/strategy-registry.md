@@ -4,6 +4,7 @@ type: explanation
 status: stable
 tags: [strategy, registry, refactor, estensibilita, architecture]
 sources:
+  - src/pge/strategies/registry.py
   - src/pge/strategies/voice_pitch_strategy.py
   - src/pge/strategies/voice_onset_strategy.py
   - src/pge/strategies/voice_pointer_strategy.py
@@ -23,13 +24,14 @@ sources:
   - tests/shared/test_range_anchor.py
   - tests/shared/test_stdout_contract.py
   - tests/strategies/test_misc_strategy_errors.py
+  - tests/strategies/test_registry.py
   - tests/strategies/test_registry_errors.py
   - tests/strategies/test_strategies.py
   - tests/strategies/test_variation_registry.py
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 9369710
+last_synced_commit: 250c84f
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -38,9 +40,16 @@ last_synced_commit: 9369710
 
 Questo documento è l'esito della issue #177: la **decisione** su che forma prende
 il registry generico, non la sua esecuzione. L'esecuzione è #184 (tracer bullet)
-e #185 (le altre). Al commit qui sopra nessun modulo è ancora stato convertito:
-quel che segue descrive la forma verso cui convergere e, per ogni scelta, il
-vincolo che l'ha decisa.
+e #185 (le altre).
+
+**Stato: il tracer bullet è stato sparato, e la forma ha retto.** La #184 ha
+messo la classe in `src/pge/strategies/registry.py` e vi ha cablato
+`voice_pan_strategy`; gli altri otto registry sono ancora sulla forma vecchia.
+Nessun caso speciale è servito per farla passare — che era la domanda a cui il
+tracer bullet doveva rispondere. Quel che segue descrive la forma e, per ogni
+scelta, il vincolo che l'ha decisa; dove #184 ha *aggiunto* qualcosa alla
+decisione — la misura eseguibile dello scheletro, il criterio della guardia —
+è detto sul posto.
 
 ---
 
@@ -60,6 +69,7 @@ esattamente nove siti.
 | `strategies/voice_onset_strategy.py` | `VOICE_ONSET_STRATEGIES` | `(name, cls)` | no | `create(name, **kwargs)` |
 | `strategies/voice_pointer_strategy.py` | `VOICE_POINTER_STRATEGIES` | `(name, cls)` | no | `create(name, **kwargs)` |
 | `strategies/voice_pan_strategy.py` | `VOICE_PAN_STRATEGIES` | `(name, strategy_class)` | sì, dominio `'pan voce'` | `create(strategy_name, **kwargs)` |
+| ↳ *dopo #184* | `StrategyRegistry('voice_pan', …)` | delega a `.register` | sì, dominio `voice_pan` | `create(name, **kwargs)`, delega |
 | `strategies/strategy_registry.py` | `DENSITY_STRATEGIES` | `(param_name, strategy_class)` | sì, dominio `'density'` | `create_density_strategy(selected_param_name, param_obj, all_params)` |
 | `strategies/variation_registry.py` | `VARIATION_STRATEGIES` | `(mode_name, strategy_class)` | sì, dominio `'variation'` | `create(variation_mode)` |
 | `controllers/window_selection_strategy.py` | `WINDOW_STRATEGY_REGISTRY` | `(name, cls)` | no | `create(name, **kwargs)` + `from_spec(...)` |
@@ -223,8 +233,12 @@ non solo argomentato: `isinstance(..., dict)`, il giro
 diagnostica che arriva a `pge.diagnostics` e non a stdout,
 `StrategyNotFoundError` con `strategy_kind`/`name`/`available`, e le tre forme
 di costruzione (`**kwargs` per pan, due posizionali per density, nessun
-argomento per variation). Il codice che li misura vive in #184, dove diventa
-test.
+argomento per variation). Il codice che li misura vive in #184, dove è
+diventato test: `tests/strategies/test_registry.py` interroga la classe da
+sola — non attraverso pan — perché è la classe che gli altri otto registry
+erediteranno, e perché due costi *dichiarati* vanno pinnati come tali e non
+lasciati alla prosa: `copy()` restituisce un `dict` spoglio, e
+`registry[name] = cls` resta una registrazione legale e muta.
 
 ### Il dominio alla costruzione (domanda 2)
 
@@ -407,6 +421,22 @@ metodo `register` su un registry» — perché il secondo cambia anche l'insieme
 dei `trovati` del censimento qui sotto, e il primo lascia distribution fuori
 con la sua cecità intatta.
 
+**#184 ha scritto il secondo**, cioè il più largo: un metodo chiamato
+esattamente `register` dentro una classe, accanto alle `def
+register_*_strategy` di modulo. Il censimento cresce perciò di *due* voci e
+non di una — `strategies/registry.py` e `shared/distribution_strategy.py` — e
+nessuna delle due è un'eccezione: sono i punti di registrazione, ora che la
+guardia li vede. Sorvegliare `distribution` non è convertirlo: resta sulla
+forma vecchia con la sua validazione `issubclass`, in attesa della decisione
+che gli serve.
+
+Il criterio è `register` **esatto** e non `register_*`, e la differenza è
+misurata: `FtableManager.register_sample` e `register_window` sono metodi che
+cominciano per `register` e non registrano nessuna strategy. Una guardia che
+li accusasse chiederebbe di mantenere una lista di falsi positivi — il difetto
+speculare a quello che l'allargamento chiude — quindi c'è un test anche per
+quella direzione.
+
 Da cui due regole per #184:
 la guardia impari anche `StrategyRegistry.register`, così che il presidio smetta
 di dipendere dalla cartella e dal caso; e le `def register_*_strategy` restino
@@ -571,7 +601,11 @@ riga.** [[add-voice-strategy]] dice «registra nella factory
 `VariationFactory.REGISTRY`: quell'attributo non è mai esistito. La forma decisa
 qui non lo introduce — la mappa vive a livello di modulo, dove i test e PGE-ls
 la cercano — quindi le due how-to vanno corrette nel passo che le tocca, non
-prese come specifica.
+prese come specifica. #184 ha corretto [[add-voice-strategy]], che è la
+how-to dell'asse toccato: il passo 3 nomina ora la mappa di modulo e la
+`register_voice_<axis>_strategy`, e dice quale asse è già sulla forma nuova.
+[[add-variation-strategy]] resta da correggere e tocca a #185, che è il passo
+che la tocca.
 
 ## Implicazioni codice
 
@@ -602,9 +636,15 @@ prese come specifica.
   non aspettarti un rosso: nessun test lo pinna, misurato. I tre letterali —
   il modulo, la docstring di `log_strategy_registration`,
   `tests/shared/test_diagnostic_logger.py` — vanno allineati leggendo.
-- **Ordine di esecuzione** → #184 (pan, con la guardia estesa a
-  `StrategyRegistry.register`), poi #185 (pitch, onset, pointer, density,
-  variation), poi un seguito per `window_selection_strategy` e
+  **Per pan questo non vale più**: #184 ha reso discriminante l'asserzione di
+  `test_register_logs_instead_of_printing` (`'voice_pan'`, che nella chiave
+  registrata dal test non compare, invece di `'pan'`, che ci compariva), e lo
+  stesso sabotaggio che prima lasciava la suite interamente verde ora fa tre
+  rossi. Per gli altri cinque la regola resta quella scritta qui, ed è #185 a
+  doverla applicare leggendo.
+- **Ordine di esecuzione** → ~~#184 (pan, con la guardia estesa a
+  `StrategyRegistry.register`)~~ **fatta**, poi #185 (pitch, onset, pointer,
+  density, variation), poi un seguito per `window_selection_strategy` e
   `grain_clip_strategy`, e `distribution_strategy` dopo la decisione sulla
   validazione.
 - **Se il tracer bullet chiede un'eccezione** → si torna a questo documento e si
