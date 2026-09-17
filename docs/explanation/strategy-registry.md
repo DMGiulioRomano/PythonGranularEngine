@@ -367,14 +367,24 @@ il perché sta tutto nella sua natura: **censisce, non vieta**.
 
 **Misurato — e la prima misura era presa nella sola configurazione in cui il
 difetto non può esistere.** Su uno scheletro *non cablato*, cioè un modulo che
-nessuno chiama, una `print()` dentro `StrategyRegistry.register` fa fallire
-`test_le_strategie_non_stampano[registry.py]` se il modulo sta in
-`src/pge/strategies/` e lascia l'intera suite verde se sta altrove: da lì la
-conclusione che a tenere chiuso il buco fosse la cartella. Ma il modulo cablato
-è ciò che questa decisione prescrive, e lì il conto cambia. Con
-`VOICE_PAN_STRATEGIES` costruita sulla classe e il wrapper che le delega — cioè
-#184 fatta — la stessa `print()` dà (rimisurato sulla suite intera al commit in
-frontmatter, dopo la #266):
+nessuno chiama, una `print()` dentro `StrategyRegistry.register` faceva fallire
+`test_le_strategie_non_stampano[registry.py]` se il modulo stava in
+`src/pge/strategies/` e lasciava l'intera suite verde se stava altrove: da lì la
+conclusione che a tenere chiuso il buco fosse la cartella.
+
+Quella seconda metà è scaduta con la stessa #266 che cambia il conto qui sotto,
+e va detto qui e non solo più giù, perché è la premessa da cui la conclusione
+veniva. Rimisurato adesso, sempre non cablato: in `shared/registry.py` la suite
+non è verde, resta rosso `test_ogni_print_di_src_pge_e_classificato` — che non
+guarda né la cartella né chi chiama — e in `strategies/registry.py` di rossi ce
+ne sono due. Fra le due collocazioni la differenza è sempre di un test, ed è
+sempre quello per cartella: a reggere la conclusione era la differenza, non il
+verde, e quella regge ancora.
+
+Ma il modulo cablato è ciò che questa decisione prescrive, e lì il conto cambia.
+Con `VOICE_PAN_STRATEGIES` costruita sulla classe e il wrapper che le delega —
+cioè #184 fatta — la stessa `print()` dà (rimisurato sulla suite intera al
+commit in frontmatter, dopo la #266):
 
 | collocazione della classe | test rossi |
 |---|---|
