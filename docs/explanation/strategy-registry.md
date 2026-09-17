@@ -29,7 +29,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 9369710
+last_synced_commit: 92712ef
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -128,6 +128,12 @@ sono ciò che decide la forma più di ogni preferenza di stile:
   A spegnersi in silenzio è la *copertura*, un passo dopo: riallineata la
   lista dichiarata per tornare verdi, la guardia per funzione non sorveglia
   più niente. È la differenza su cui gira tutta la sezione «Il `print()`».
+  Da quando questa decisione è stata scritta quella guardia non è più sola:
+  la #266 le ha messo accanto un censimento delle `print()` di **tutto**
+  `src/pge/` (`test_ogni_print_di_src_pge_e_classificato`), che di ciascuna
+  pretende una voce in `CLASSIFICAZIONE` invece di vietarla. Vede quindi
+  anche la classe generica, ovunque la si collochi — ma vedere e proibire
+  non sono la stessa cosa, e la differenza è misurata in quella sezione.
 
 ## Modello
 
@@ -247,8 +253,8 @@ pinni il dominio — e resti verde perché `voice_pan` contiene `pan`. Misurato,
 non è così: il test registra la strategy sotto la chiave `'logged_pan'` e la
 riga successiva asserisce `'logged_pan' in messaggi[0]`, quindi è **il nome
 registrato** a soddisfare anche la prima asserzione. Sostituendo il dominio del
-modulo con `'XYZ_dominio_sbagliato'` l'intera suite resta verde (6826 passed,
-18 skipped): la prima asserzione non discrimina nulla.
+modulo con `'XYZ_dominio_sbagliato'` l'intera suite resta verde (`make tests`:
+6905 passed, 18 skipped): la prima asserzione non discrimina nulla.
 
 La conseguenza per #184 è che il rename `'pan voce'` → `voice_pan` va
 verificato leggendo, non aspettandosi un rosso — e che il letterale sopravvive
@@ -350,6 +356,14 @@ spostato dentro un *metodo* di `StrategyRegistry` le esce dal campo visivo.
 qualunque `print()` in `strategies/*.py`, quindi copre `strategies/registry.py`
 — dove questa decisione mette la classe — pur non sapendo niente di lei.
 
+**Accanto alle due ce n'è ora un terzo, che non è della #187 e non è un
+divieto.** `test_ogni_print_di_src_pge_e_classificato` è arrivato dopo la prima
+stesura di questa decisione (#178, scaglione #266) e chiede a `CLASSIFICAZIONE`
+una voce per ogni `print()` di `src/pge/`, nelle due direzioni: una `print()`
+nuova che nessuno classifica è rossa, ovunque viva. Cambia perciò il conto della
+misura qui sotto — che è stata rifatta — ma non la prescrizione, e il perché sta
+tutto nella sua natura: **censisce, non vieta**.
+
 **Misurato — e la prima misura era presa nella sola configurazione in cui il
 difetto non può esistere.** Su uno scheletro *non cablato*, cioè un modulo che
 nessuno chiama, una `print()` dentro `StrategyRegistry.register` fa fallire
@@ -358,32 +372,52 @@ nessuno chiama, una `print()` dentro `StrategyRegistry.register` fa fallire
 conclusione che a tenere chiuso il buco fosse la cartella. Ma il modulo cablato
 è ciò che questa decisione prescrive, e lì il conto cambia. Con
 `VOICE_PAN_STRATEGIES` costruita sulla classe e il wrapper che le delega — cioè
-#184 fatta — la stessa `print()` dà:
+#184 fatta — la stessa `print()` dà (rimisurato sulla suite intera al commit in
+frontmatter, dopo la #266):
 
 | collocazione della classe | test rossi |
 |---|---|
-| `src/pge/strategies/registry.py` | `test_le_strategie_non_stampano[registry.py]` **e** `test_register_logs_instead_of_printing` |
-| `src/pge/shared/registry.py` | solo `test_register_logs_instead_of_printing` |
+| `src/pge/strategies/registry.py` | `test_le_strategie_non_stampano[registry.py]`, `test_ogni_print_di_src_pge_e_classificato`, `test_register_logs_instead_of_printing` |
+| `src/pge/shared/registry.py` | `test_ogni_print_di_src_pge_e_classificato`, `test_register_logs_instead_of_printing` |
 
-Fra le due collocazioni c'è **un test di differenza**, non un rosso contro
-un'intera suite verde. A parlare nella seconda riga è un presidio che la #187 ha
-lasciato accanto a quelli per `ast`: tre test *comportamentali* —
-`test_register_logs_instead_of_printing` (pan),
+Fra le due collocazioni resta **un test di differenza**, non un rosso contro
+un'intera suite verde — ed è sempre quello scoped per cartella, perché il
+censimento della #266 parla in entrambe le righe e quindi non discrimina. A
+tenere la seconda riga sono dunque due presidi di natura diversa, e la
+differenza fra i due è tutto ciò che conta qui.
+
+Il primo la #187 l'ha lasciato accanto a quelli per `ast`: tre test
+*comportamentali* — `test_register_logs_instead_of_printing` (pan),
 `test_register_density_logs_instead_of_printing` (density),
 `test_register_does_not_write_to_stdout` (variation) — chiamano il vero
 `register_*_strategy` sotto `capsys` e pretendono `captured.out == ''`. Una
 `print()` nella classe generica passa di lì qualunque cartella la ospiti.
 
-**Il che non salva la prescrizione: la rende più precisa.** Quella copertura è
-*incidentale*. Vale finché almeno una fra pan, density e variation resta cablata
-su questa classe e tiene la propria asserzione; copre il solo cammino che quei
-tre test percorrono, `register` e non `create`; e non dice niente sui quattro
-registry che il refactor fa *cominciare* a parlare (pitch, onset, pointer,
-window), nessuno dei quali ha un test con `capsys` sul proprio wrapper. Le
-guardie per `ast` — quelle scritte apposta per sorvegliare questo — restano
-invece cieche alla classe in entrambe le collocazioni. Il buco quindi non è
-«aperto il giorno in cui la classe cambia cartella»: è aperto da subito nei
-presidi che dovrebbero vederlo, e a coprirlo per caso è un test scritto per pan.
+Il secondo è il censimento della #266, e la sua copertura è di un altro tipo:
+non vieta la `print()`, **pretende che sia dichiarata**. `DIAGNOSTICA` è una
+categoria legale — `engine/generator.py` ne ha due — quindi il rimedio che
+riporta il verde è una riga in `CLASSIFICAZIONE`, non la rimozione della
+`print()`. Misurato: aggiunta quella voce per `shared/registry.py`, il
+censimento tace e resta rosso il solo `test_register_logs_instead_of_printing`.
+È esattamente il suo scopo dichiarato — rendere deliberata ogni riga su stdout,
+non proibirla — ma vuol dire che a *chiudere* il buco non arriva: lo rende
+rumoroso, e il rumore si spegne con una riga.
+
+**Il che non salva la prescrizione: la rende più precisa.** La copertura
+comportamentale è *incidentale*. Vale finché almeno una fra pan, density e
+variation resta cablata su questa classe e tiene la propria asserzione; copre il
+solo cammino che quei tre test percorrono, `register` e non `create`; e non dice
+niente sui quattro registry che il refactor fa *cominciare* a parlare (pitch,
+onset, pointer, window), nessuno dei quali ha un test con `capsys` sul proprio
+wrapper. Il censimento della #266 non è incidentale — vede la classe per
+costruzione, in tutte e due le collocazioni — ma si accontenta di una riga di
+classificazione, quindi non è un divieto. Le guardie per `ast` — quelle scritte
+apposta per sorvegliare *questo*, cioè per vietarlo anche fuori da
+`strategies/` — restano invece cieche alla classe in entrambe le collocazioni.
+Il buco quindi non è «aperto il giorno in cui la classe cambia cartella»: è
+aperto da subito nei presidi che dovrebbero vederlo, e a tenerlo chiuso
+concorrono un test scritto per pan e un censimento che lo rende rumoroso senza
+proibirlo.
 
 Che è esattamente la lezione del settimo entry point in [[contratto-stdout]] —
 il criterio è la funzione, non la cartella — un giro più in là:
@@ -505,10 +539,11 @@ significherebbe cambiare cosa accetta — un'altra decisione, con un altro
 impatto.
 
 `window_selection_strategy` e `grain_clip_strategy` invece **rientrano**, ma
-dopo: sono il seguito di #185, non parte di #184/#185, così che il tracer bullet
-resti misurato su un modulo solo. La prima porta anche `from_spec()`, che è
-lettura di YAML e resta sua; il secondo non ha punto di registrazione e la
-conversione è l'occasione per decidere se debba averlo.
+dopo: sono il seguito di #185 — aperto nel frattempo come #265 — non parte di
+#184/#185, così che il tracer bullet resti misurato su un modulo solo. La prima
+porta anche `from_spec()`, che è lettura di YAML e resta sua; il secondo non ha
+punto di registrazione e la conversione è l'occasione per decidere se debba
+averlo.
 
 `distribution_strategy` rientra anche lui, ma **più tardi ancora e con una
 domanda aperta davanti**: la sua `register` valida `issubclass` e quel rifiuto
@@ -534,7 +569,7 @@ scrittura diretta è quel che fanno le fixture per rimettere a posto lo stato.
 anche estendere, non solo togliere: i quattro muti di oggi (pitch, onset,
 pointer, window) cominciano a parlare. Sette è però il conto a convergenza
 avvenuta, non quello di #184/#185: alla fine di #185 i registry che parlano sono
-sei, perché `window` è nel seguito insieme a `grain_clip` (vedi «Chi resta
+sei, perché `window` è nel seguito insieme a `grain_clip` (#265, vedi «Chi resta
 fuori»). Gli altri due sono quelli che il conto non tocca, ciascuno per il
 proprio motivo: `grain_clip` un punto di registrazione oggi non ce l'ha — ne
 parlerebbe otto solo se il seguito decidesse di dargliene uno, che è appunto la
