@@ -161,14 +161,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   visivo; quella per cartella copre `strategies/registry.py` per la collocazione
   del modulo, non per merito. Misurato **sul modulo cablato**, non sullo
   scheletro che nessuno chiama: la stessa `print()` dentro
-  `StrategyRegistry.register` fa cadere due test in `strategies/` e uno solo in
+  `StrategyRegistry.register` fa cadere tre test in `strategies/` e due in
   `shared/` — fra le due collocazioni c'e' un test di differenza, non un rosso
-  contro una suite verde. A parlare in entrambe e' un presidio
-  *comportamentale* che la #187 ha lasciato accanto a quelli per `ast`: i tre
-  test che chiamano il vero `register_*_strategy` sotto `capsys` (pan, density,
-  variation). Copertura incidentale pero': non tocca `create`, e non tocca i
-  quattro registry che il refactor fa cominciare a parlare. Il presidio va
-  quindi reso indipendente dalla cartella e dal caso: e' la stessa lezione del
+  contro una suite verde. A parlare in entrambe sono due presidi di natura
+  diversa. Uno e' *comportamentale*, lasciato dalla #187 accanto a quelli per
+  `ast`: i tre test che chiamano il vero `register_*_strategy` sotto `capsys`
+  (pan, density, variation) — copertura incidentale pero', che non tocca
+  `create` e non tocca i quattro registry che il refactor fa cominciare a
+  parlare. L'altro e' il censimento di `CLASSIFICAZIONE` arrivato con la #266,
+  che vede ogni `print()` di `src/pge/` e quindi la classe generica ovunque
+  stia: quello incidentale non e', ma **censisce e non vieta** — misurato,
+  dichiarando la riga come `DIAGNOSTICA` il censimento tace e resta rosso il
+  solo test di pan. Il presidio va quindi reso indipendente dalla cartella e
+  dal caso: e' la stessa lezione del
   settimo entry point in `contratto-stdout.md`, un giro piu' in la' — e un
   secondo precedente ancora scoperto esiste gia', `DistributionFactory.register`,
   che cade fuori da entrambe le guardie. Con un
