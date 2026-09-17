@@ -302,9 +302,9 @@ qui non sarebbe quindi meccanico: **toglierebbe** un rifiuto vivo e farebbe
 cadere quei due test. È esattamente il caso che la regola di #184 nomina — se
 un modulo chiede un'eccezione si torna a questo documento e si cambia la forma,
 non si aggiunge l'eccezione — e per questo `distribution` non è nel giro di
-#184/#185 né nel suo seguito immediato: la decisione che gli serve (validare è
-opzione del registry, o è la classe generica a doverlo sapere fare?) è una
-domanda in più, e va posta prima di toccarlo, non durante.
+#184/#185 né nel suo seguito immediato (#265): la decisione che gli serve
+(validare è opzione del registry, o è la classe generica a doverlo sapere
+fare?) è una domanda in più, e va posta prima di toccarlo, non durante.
 
 Che è anche il motivo per cui il censimento doveva arrivarci: il guadagno
 promesso più sotto è che «questo registry valida?» abbia **una risposta sola**,
@@ -360,9 +360,10 @@ qualunque `print()` in `strategies/*.py`, quindi copre `strategies/registry.py`
 divieto.** `test_ogni_print_di_src_pge_e_classificato` è arrivato dopo la prima
 stesura di questa decisione (#178, scaglione #266) e chiede a `CLASSIFICAZIONE`
 una voce per ogni `print()` di `src/pge/`, nelle due direzioni: una `print()`
-nuova che nessuno classifica è rossa, ovunque viva. Cambia perciò il conto della
-misura qui sotto — che è stata rifatta — ma non la prescrizione, e il perché sta
-tutto nella sua natura: **censisce, non vieta**.
+nuova che nessuno classifica è rossa ovunque viva, e una voce che resta in
+tabella dopo che la riga se n'è andata è rossa a sua volta. Cambia perciò il
+conto della misura qui sotto — che è stata rifatta — ma non la prescrizione, e
+il perché sta tutto nella sua natura: **censisce, non vieta**.
 
 **Misurato — e la prima misura era presa nella sola configurazione in cui il
 difetto non può esistere.** Su uno scheletro *non cablato*, cioè un modulo che
@@ -415,9 +416,9 @@ classificazione, quindi non è un divieto. Le guardie per `ast` — quelle scrit
 apposta per sorvegliare *questo*, cioè per vietarlo anche fuori da
 `strategies/` — restano invece cieche alla classe in entrambe le collocazioni.
 Il buco quindi non è «aperto il giorno in cui la classe cambia cartella»: è
-aperto da subito nei presidi che dovrebbero vederlo, e a tenerlo chiuso
-concorrono un test scritto per pan e un censimento che lo rende rumoroso senza
-proibirlo.
+aperto da subito nei presidi che dovrebbero vederlo, e chiuso non lo tiene
+nessuno — a coprirlo per caso è un test scritto per pan, e accanto a lui un
+censimento che lo rende rumoroso senza proibirlo.
 
 Che è esattamente la lezione del settimo entry point in [[contratto-stdout]] —
 il criterio è la funzione, non la cartella — un giro più in là:
@@ -639,7 +640,7 @@ prese come specifica.
   `tests/shared/test_diagnostic_logger.py` — vanno allineati leggendo.
 - **Ordine di esecuzione** → #184 (pan, con la guardia estesa a
   `StrategyRegistry.register`), poi #185 (pitch, onset, pointer, density,
-  variation), poi un seguito per `window_selection_strategy` e
+  variation), poi #265 per `window_selection_strategy` e
   `grain_clip_strategy`, e `distribution_strategy` dopo la decisione sulla
   validazione.
 - **Se il tracer bullet chiede un'eccezione** → si torna a questo documento e si
@@ -655,6 +656,7 @@ prese come specifica.
 - [[add-voice-strategy]] · [[add-variation-strategy]] — le how-to che questa
   decisione obbliga a correggere
 - Issue #177 (questa decisione), #184 (tracer bullet), #185 (le altre cinque),
+  #265 (il seguito: `window_selection_strategy` e `grain_clip_strategy`),
   #187 e #178 (il canale della riga di registrazione), #269 (la superficie
   interna pinnata da PGE-ls: i cinque nomi di cui sopra, e perché il loro
   presidio può tacere), #246 (la gemella per PGE-ui: stessa classe di
