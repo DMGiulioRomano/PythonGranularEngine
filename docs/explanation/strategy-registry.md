@@ -436,21 +436,33 @@ il criterio è la funzione, non la cartella — un giro più in là:
 vive fuori da `strategies/` ed è rimasto scoperto fino alla guardia per
 funzione.
 
-**E non è l'unico: ce n'è un secondo, ancora scoperto, e il censimento per
-forma è ciò che lo rende visibile.** `DistributionFactory.register`
-(`shared/distribution_strategy.py`) è un punto di registrazione documentato
-come superficie pubblica, e cade fuori da *entrambe* le guardie per due motivi
-indipendenti: non sta in `strategies/`, come quello delle finestre, e in più
-non è una `def register_*_strategy` di livello modulo ma una classmethod
-`register` — cioè la stessa grafia che qui si teme per
+**E non è l'unico: ce n'è un secondo, ancora senza divieto, e il censimento per
+forma di questo documento è ciò che lo rende visibile.**
+`DistributionFactory.register` (`shared/distribution_strategy.py`) è un punto di
+registrazione documentato come superficie pubblica, e cade fuori da *entrambe*
+le guardie per due motivi indipendenti: non sta in `strategies/`, come quello
+delle finestre, e in più non è una `def register_*_strategy` di livello modulo
+ma una classmethod `register` — cioè la stessa grafia che qui si teme per
 `StrategyRegistry.register`. Oggi non stampa, quindi il buco è latente e non un
 rosso mancato; ma è il precedente esatto della cecità che #184 deve chiudere, e
 allargare il finder a un *metodo* chiamato `register` è il passo che
-potenzialmente porta dentro anche lui. Chi esegue #184 decida quale dei due
-criteri sta scrivendo — «il metodo `register` di `StrategyRegistry`» o «un
-metodo `register` su un registry» — perché il secondo cambia anche l'insieme
-dei `trovati` del censimento qui sotto, e il primo lascia distribution fuori
-con la sua cecità intatta.
+potenzialmente porta dentro anche lui.
+
+**Anche qui la #266 sposta il confine di «scoperto», e nella stessa direzione.**
+Misurato: una `print()` dentro `DistributionFactory.register` oggi fa cadere un
+test, `test_ogni_print_di_src_pge_e_classificato`, e nessun altro — né quella
+per cartella, che il modulo non lo vede, né quella per funzione, che la
+classmethod le esce dal campo visivo. Vale quindi parola per parola quel che
+vale per la classe generica: la riga non passerebbe più in silenzio, ma il
+rimedio che riporta il verde è una voce in `CLASSIFICAZIONE`, non la rimozione
+della `print()`. Ciò che resta scoperto è il **divieto**, non il censimento — ed
+è la distinzione da tenere in mano leggendo il paragrafo qui sotto.
+
+Chi esegue #184 decida quale dei due criteri sta scrivendo — «il metodo
+`register` di `StrategyRegistry`» o «un metodo `register` su un registry» —
+perché il secondo cambia anche l'insieme dei `trovati` del censimento qui sotto,
+e il primo lascia distribution fuori dai divieti, con la sua cecità intatta
+nelle sole guardie che vietano.
 
 Da cui due regole per #184:
 la guardia impari anche `StrategyRegistry.register`, così che il presidio smetta
@@ -667,7 +679,9 @@ prese come specifica.
   decisione obbliga a correggere
 - Issue #177 (questa decisione), #184 (tracer bullet), #185 (le altre cinque),
   #265 (il seguito: `window_selection_strategy` e `grain_clip_strategy`),
-  #187 e #178 (il canale della riga di registrazione), #269 (la superficie
+  #187 e #178 (il canale della riga di registrazione), #266 (lo scaglione di
+  #178 che ha portato il censimento di `CLASSIFICAZIONE`, da cui il conto della
+  misura in «Il `print()`»), #269 (la superficie
   interna pinnata da PGE-ls: i cinque nomi di cui sopra, e perché il loro
   presidio può tacere), #246 (la gemella per PGE-ui: stessa classe di
   vincolo, altro elenco)

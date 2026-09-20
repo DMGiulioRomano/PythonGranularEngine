@@ -175,8 +175,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   solo test di pan. Il presidio va quindi reso indipendente dalla cartella e
   dal caso: e' la stessa lezione del
   settimo entry point in `contratto-stdout.md`, un giro piu' in la' — e un
-  secondo precedente ancora scoperto esiste gia', `DistributionFactory.register`,
-  che cade fuori da entrambe le guardie. Con un
+  secondo precedente esiste gia', `DistributionFactory.register`, che cade fuori
+  da entrambe le guardie che vietano; scoperto resta pero' il solo divieto,
+  perche' il censimento della #266 vede anche lui (misurato: una `print()` li'
+  fa cadere quell'unico test, e il verde torna con una riga di
+  classificazione). Con un
   passo che #184 non puo' saltare: il finder per `ast` e' condiviso con il
   censimento `trovati == dichiarati`, quindi insegnargli
   `StrategyRegistry.register` fa entrare il modulo della classe fra i trovati e
