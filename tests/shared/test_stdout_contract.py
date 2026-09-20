@@ -295,7 +295,24 @@ def test_le_strategie_non_stampano(modulo):
 # sei entry point su sette, e sul settimo il presidio mancava del tutto —
 # `register_window_strategy` sta in `controllers/`, perche' li' sta il registry
 # delle finestre. Misurato: rimettendo in quella funzione esattamente la
-# `print()` che la #187 ha tolto dalle altre tre, la suite intera resta verde.
+# `print()` che la #187 ha tolto dalle altre tre, la suite intera restava verde
+# **prima di questo test**.
+#
+# Quel verde e' poi scaduto, e va detto qui perche' e' la misura da cui questa
+# guardia viene. Il censimento piu' sotto
+# (`test_ogni_print_di_src_pge_e_classificato`, scaglione #266) vede ogni
+# `print()` di `src/pge/`, quindi vede anche quella. Rimisurato a `92712ef`:
+# la `print()` rimessa in `register_window_strategy` fa cadere due test,
+# questo e il censimento.
+#
+# La conclusione non cambia, e la ragione e' che i due non fanno la stessa
+# cosa: il censimento **censisce e non vieta**. `DIAGNOSTICA` e' una categoria
+# legale, quindi il rimedio che lo zittisce e' una riga in `CLASSIFICAZIONE`,
+# non la rimozione della `print()` — misurato: dichiarata quella voce, resta
+# rosso questo test e nient'altro. A **vietare** la riga sul settimo entry
+# point c'e' dunque ancora solo questa guardia. E' la stessa distinzione che
+# `docs/explanation/strategy-registry.md` fa, nella sezione «Il `print()`»,
+# per `StrategyRegistry.register` e per `DistributionFactory.register`.
 #
 # La lista e' dichiarata *e* derivata, come quella degli emettitori: la
 # dichiarazione dice cosa si sorveglia, il confronto coi sorgenti impedisce che
