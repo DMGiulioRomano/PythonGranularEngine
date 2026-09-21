@@ -472,6 +472,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   nessun modulo di `pge` è oggi in quella posizione, quindi non cambia nessun
   verdetto — chiude il buco prima che qualcuno ci cada dentro.
 
+  Quella superficie ha però un limite, ed è dichiarato invece di sparire: è
+  ciò che il modulo *definisce*, non ciò che riespone importandolo.
+  `pge.parameters.parser` importa `Envelope`, e `parser.Envelope` esiste, ma
+  la classe è di `pge.envelopes.envelope`: un test che ne mette una finta a
+  livello di modulo sta facendo il doppio di un collaboratore — pratica
+  normale — non la riscrittura del modulo che il suo nome promette, e la
+  guardia lo accuserebbe dicendo il falso, che a definire quel nome è
+  `parser`. È la stessa famiglia dei due paragrafi qui sopra — il criterio
+  scritto più largo di quello letto — con la risposta opposta, perché qui
+  allargare vuol dire accusare chi non c'entra. Misurato sui 66 file
+  sorvegliati: zero casi, e i due dove la distinzione cambierebbe qualcosa
+  sono già dichiarati.
+
   Una grafia sola, infine, per il percorso del sorgente (`_sorgente_di`): lo
   leggono la scoperta e la guardia sulla riscrittura, e scritto due volte il
   giorno in cui il layout di `src/` cambia una delle due resta indietro in
@@ -503,10 +516,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   compare nella riga — e il letterale può stare dentro una chiamata:
   `os.path.join('/Users/tizio/repo', 'src')` è la stessa cartella della
   stessa macchina, ed è una chiamata, quindi passava. Sono le due riscritture
-  più ovvie della riga, e adesso valgono come lei. Il nome si raccoglie
-  dall'import invece di accusare ogni `path` che capiti: una lista che si
-  chiama `path` è una variabile qualunque, e una guardia rumorosa la si
-  spegne.
+  più ovvie della riga, e adesso valgono come lei.
+
+  Il bersaglio ha anche il verso opposto, ed è l'unico punto dove questa
+  sezione può accusare chi non c'entra. Il nome semplice si raccoglie
+  dall'import invece di prenderlo per buono — una lista che si chiama `path`
+  è una variabile qualunque — e per un po' è stato il solo dei due a farlo:
+  all'attributo bastava chiamarsi `path`, qualunque cosa ci stesse prima, e
+  un `cfg.path = '/tmp/x'` in un file di test era un rosso con sopra un
+  messaggio che parla di `sys.path`. Ora si chiedono tutti e due i pezzi, e
+  il modulo si riconosce anche dietro un altro attributo (`os.sys.path` è lo
+  stesso posto). Restringere lì non assolve nessuno: le sei grafie positive
+  restano rosse, e su tutta `tests/` il verdetto non cambia — una guardia
+  rumorosa la si spegne, ed è lo stesso argomento di tutte le righe qui
+  sopra.
 
   I percorsi calcolati (`os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`)
   restano leciti in ognuna delle grafie, ma per la ragione giusta: non perché
