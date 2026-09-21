@@ -779,18 +779,52 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   che il pavimento dichiara di garantire, sfondata dall'altro capo); `.nan`
   riconosciuto come violazione ma raccontato dal ramo `MAX`, che con
   `max_val=None` sottrae e formatta un `None` e muore di `TypeError` sullo
-  stdout. Il parser li richiude sul pavimento, quindi tornano a essere un
-  valore fuori banda: stesso errore pulito di prima. `violated_bound()`
-  (`shared/logger.py`) è la grafia sola della scelta del bound — senza tetto
-  l'unico violabile è il pavimento — e ha tre lettori: `log_clip_warning`,
-  `log_config_warning` e la validazione al parse, che ne tenevano tre copie.
+  stdout. Il parser li richiude su un bound, quindi tornano a essere un
+  valore fuori banda: stesso errore pulito di prima — un bound è finito e un
+  non-finito non gli è mai uguale, `nan` compreso, quindi il confronto che
+  solleva scatta sempre. `violated_bound()` (`shared/logger.py`) è la grafia
+  sola della scelta del bound — senza tetto l'unico violabile è il pavimento
+  — e ha **quattro** lettori: `log_clip_warning`, `log_config_warning`, la
+  validazione al parse, e `_clip_to_band` stessa, che da lì prende il punto
+  di caduta invece di deciderlo per conto suo. Le due domande sono metà
+  della stessa risposta — dove cade il valore, quale bound viene nominato —
+  e in permissive mode escono affiancate sulla stessa riga
+  (`raw=… → clip=… | MAX=…`): scritte separate discordavano subito, perché
+  un `+inf` sotto un tetto *finito* cadeva sul pavimento ed era raccontato
+  come MAX, cioè la riga diceva «sopra il massimo» e scriveva il minimo. Ed
+  era anche il comportamento storico a muoversi proprio dove si dichiarava
+  fermo: `min(100, inf)` ha sempre dato il tetto, e torna a darlo.
 
   **Effetto sull'audio**: ogni stream che stava sopra i 4000 g/s nominali
   cambia — più grani, fill più alto, e il tempo di render cresce in
-  proporzione. Nel repertorio del repo riguarda `configs/PGE_cim.yml`
-  (stream19 e stream24, 91500 g/s nominali) e
-  `configs/PGE_issue225_loop_probe.yml` (47619 g/s). Sotto quella soglia non
-  cambia una cifra.
+  proporzione. Sotto quella soglia non cambia una cifra. Il censimento è
+  misurato sulla curva nominale `fill_factor(t) / grain_duration(t)` di ogni
+  stream del repertorio, non stimato dagli estremi dei due parametri: il
+  picco vero è quello del **quoziente**, e nessuno stream tiene il suo
+  `fill_factor` massimo proprio dove il grano è al minimo.
+
+  | config | stream | picco | grani (voce 0) |
+  |---|---|---|---|
+  | `PGE_cim.yml` | stream19 | 24 253 g/s | 1 731 → 5 042 (×2,9) |
+  | `PGE_cim.yml` | stream24 | 24 253 g/s | 1 788 → 5 100 (×2,9) |
+  | `PGE_issue225_loop_probe.yml` | s1_sweep_hanning | 47 589 g/s | 16 000 → 79 008 (×4,9) |
+  | `PGE_issue225_loop_probe.yml` | s2_sweep_expodec | 47 589 g/s | 16 000 → 79 008 (×4,9) |
+  | `PGE_issue225_loop_probe.yml` | s3_fixed_n2_hanning | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s4_fixed_n1_hanning | 48 000 g/s | 16 000 → 192 000 (×12) |
+  | `PGE_issue225_loop_probe.yml` | s5_loop_mobile_n2 | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s7_fixed_n2_kaiser | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s8_fixed_n2_gaussian | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s9_sweep_threshold | 9 600 g/s | 14 006 → 17 747 (×1,3) |
+  | `prova.yml` | stream9 | 10 000 g/s | 461 003 → 764 199 (×1,7) |
+
+  Il caso grosso è l'ultimo, ed è anche quello da cui la issue è partita:
+  `prova.yml` stream9 è lo stream a grani da 0.4 ms che chiedeva
+  `fill_factor: 4` e ne rendeva 1.6 — 249 secondi e `num_voices: 2`, quindi
+  è il rincaro di render più alto del repertorio in termini assoluti,
+  nonostante il picco più basso della tabella. `PGE_cim.yml` è il meno
+  toccato dei tre: i suoi stream19/24 tengono `fill_factor` 9.15 all'inizio e
+  il grano da 0.1 ms molto più tardi, dove il `fill_factor` è già sceso
+  intorno a 2.4.
 
 - **Una grafia sola del safety clamp**: `ParameterBounds.clamp()`. La stessa
   domanda aveva due risposte — `Parameter._clamp`, che il `max_val=None` lo
