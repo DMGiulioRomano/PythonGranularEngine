@@ -461,10 +461,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   né un `def` né un `class` e passa — accusare le assegnazioni renderebbe
   rosso anche `Stream = pge.core.stream.Stream`, che è il modulo vero.
 
+  Quella lettura vale per tutti e due i lati del confronto, e per un po' è
+  valsa per uno solo: la superficie del *sorgente* si leggeva dal solo
+  `tree.body`, cioè con il criterio stretto messo dalla parte dove
+  restringere vuol dire assolvere. Un modulo che definisce la sua classe
+  dentro un `try:` — il fallback di una dipendenza opzionale, la forma che
+  questo repo ha per numpy e matplotlib — la teneva fuori dalla propria
+  superficie, e un test che la riscriveva a livello di modulo passava la
+  seconda guardia in silenzio. Le due letture sono ora la stessa funzione;
+  nessun modulo di `pge` è oggi in quella posizione, quindi non cambia nessun
+  verdetto — chiude il buco prima che qualcuno ci cada dentro.
+
   Una grafia sola, infine, per il percorso del sorgente (`_sorgente_di`): lo
   leggono la scoperta e la guardia sulla riscrittura, e scritto due volte il
   giorno in cui il layout di `src/` cambia una delle due resta indietro in
-  silenzio — la guardia, cioè la metà che deve parlare.
+  silenzio — la guardia, cioè la metà che deve parlare. È lo stesso argomento
+  del paragrafo qui sopra, ed è il motivo per cui là è finito in una funzione
+  sola invece che in due letture gemelle.
 
 - **Via i percorsi assoluti di altre macchine dal `sys.path` dei test**
   (issue #274, quarta sezione della stessa guardia). Erano
@@ -482,9 +495,24 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `sys.path[:0] = [...]` e la riassegnazione secca — perché fermarsi a
   `insert` sarebbe stato il difetto di questa sezione applicato a sé stessa:
   la riga muta sarebbe tornata al primo `+=`, con sopra un test verde a dire
-  che non c'era. I percorsi calcolati (`os.path.abspath(...)`,
-  `str(REPO_ROOT / 'utils')`) restano leciti in ognuna delle grafie: non sono
-  letterali, ed è il letterale il criterio.
+  che non c'era.
+
+  L'argomento vale per tutti e tre i pezzi dell'istruzione, e all'inizio era
+  stato applicato al solo verbo in mezzo. Il bersaglio può essere un nome
+  semplice — `from sys import path` e poi `path.insert(...)`, dove `sys` non
+  compare nella riga — e il letterale può stare dentro una chiamata:
+  `os.path.join('/Users/tizio/repo', 'src')` è la stessa cartella della
+  stessa macchina, ed è una chiamata, quindi passava. Sono le due riscritture
+  più ovvie della riga, e adesso valgono come lei. Il nome si raccoglie
+  dall'import invece di accusare ogni `path` che capiti: una lista che si
+  chiama `path` è una variabile qualunque, e una guardia rumorosa la si
+  spegne.
+
+  I percorsi calcolati (`os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`)
+  restano leciti in ognuna delle grafie, ma per la ragione giusta: non perché
+  siano chiamate — ora si guarda dentro anche quelle — bensì perché non
+  contengono nessun letterale assoluto. È il letterale il criterio, in
+  qualsiasi posizione stia.
 
 ### Cambiato
 
