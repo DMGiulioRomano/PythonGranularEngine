@@ -847,17 +847,54 @@ class TestRegistryGenerico:
         VoicePanStrategy, _, _, _, registry, _, _ = _get_module()
         assert registry.base is VoicePanStrategy
 
-    def test_il_dominio_del_registry_e_quello_dell_errore(self):
+    def test_il_dominio_del_registry_e_quello_dell_errore(self, caplog):
         """Una fonte sola per le due grafie: `kind` alla costruzione.
 
         Nessun chiamante ripete il dominio, quindi `create()` non ha modo di
         sbagliarlo — che e' il motivo per cui sta nel costruttore e non nella
         chiamata.
+
+        **Le due grafie sono la riga di log e l'errore**, e vanno confrontate
+        fra loro. `exc.value.strategy_kind == registry.kind` era vero per
+        costruzione: `create()` legge `self.kind`, quindi l'uguaglianza regge
+        per qualunque valore, e infatti sostituendo il dominio del modulo con
+        una stringa qualsiasi questo test restava verde mentre ne cadevano
+        tre. E' lo stesso difetto che questa PR ha tolto un test piu' in la'
+        (l'asserzione contro l'alias, anche quella vera per costruzione):
+        un'asserzione che promette un pin e lo prende da una fonte sola.
+
+        Confrontare la riga con l'errore discrimina: chi reinlinea un
+        letterale in uno dei due punti — che e' esattamente cio' che
+        succedeva prima della #184, `'pan voce'` di qua e `voice_pan` di la'
+        — li fa divergere. Rinominare il dominio *in un posto solo* lo lascia
+        verde di proposito: quel che pinna il letterale e'
+        `test_il_dominio_e_voice_pan`, qui sopra.
         """
         from pge.shared.exceptions import StrategyNotFoundError
-        _, _, _, _, registry, _, VoicePanStrategyFactory = _get_module()
+        VoicePanStrategy, _, _, _, registry, register, factory = _get_module()
+
+        class SondaPan(VoicePanStrategy):
+            def get_pan_offset(self, voice_index, num_voices, time):
+                return 0.0
+
+            @property
+            def name(self):
+                return 'sonda'
+
+        # La chiave e il nome della classe non contengono il dominio: se lo
+        # contenessero, l'`in` qui sotto sarebbe soddisfatto da loro e non
+        # misurerebbe piu' niente — la trappola in cui `'pan' in messaggio`
+        # era caduta.
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            register('sonda_dominio', SondaPan)
+        riga = [r.getMessage() for r in caplog.records
+                if r.name == DIAGNOSTIC_LOGGER_NAME][0]
+
         with pytest.raises(StrategyNotFoundError) as exc:
-            VoicePanStrategyFactory.create('inesistente')
+            factory.create('inesistente')
+
+        assert exc.value.strategy_kind not in 'sonda_dominio SondaPan'
+        assert exc.value.strategy_kind in riga
         assert exc.value.strategy_kind == registry.kind
 
     def test_register_resta_una_def_di_modulo(self):
