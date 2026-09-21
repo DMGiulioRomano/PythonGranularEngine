@@ -31,7 +31,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 250c84f
+last_synced_commit: a36de8f
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -404,8 +404,9 @@ verde, e quella regge ancora.
 
 Ma il modulo cablato è ciò che questa decisione prescrive, e lì il conto cambia.
 Con `VOICE_PAN_STRATEGIES` costruita sulla classe e il wrapper che le delega —
-cioè #184 fatta — la stessa `print()` dà (rimisurato sulla suite intera al
-commit in frontmatter, dopo la #266):
+cioè #184 fatta — la stessa `print()` dava, **a `92712ef`, cioè con la #184
+simulata a mano e non ancora scritta** (misurato sulla suite intera, dopo la
+#266):
 
 | collocazione della classe | test rossi |
 |---|---|
@@ -417,6 +418,21 @@ un'intera suite verde — ed è sempre quello scoped per cartella, perché il
 censimento della #266 parla in entrambe le righe e quindi non discrimina. A
 tenere la seconda riga sono dunque due presidi di natura diversa, e la
 differenza fra i due è tutto ciò che conta qui.
+
+**E la #184, scrivendola davvero, ha cambiato il conto in entrambe le righe —
+la conclusione no.** La guardia per funzione vede ora il metodo, e la classe si
+è portata dietro una suite propria: rimisurato sul codice di #184, la stessa
+`print()` dà cinque rossi dove la classe sta (`strategies/registry.py`) —
+`test_le_strategie_non_stampano[registry.py]`,
+`test_la_registrazione_dinamica_non_stampa[strategies/registry.py]`,
+`test_ogni_print_di_src_pge_e_classificato`,
+`tests/strategies/test_registry.py::test_la_registrazione_non_stampa` e
+`test_register_logs_instead_of_printing` — e quattro in `shared/registry.py`,
+gli stessi meno quello per cartella (misurato spostando davvero il modulo e
+riallineando la lista dichiarata, che il censimento pretende allineata). La
+differenza fra le due collocazioni è ancora di un test ed è ancora quello per
+cartella; quel che cambia è che adesso, accanto ai presidi incidentali di cui
+sotto, a parlare c'è anche una guardia **scritta per questo**.
 
 Il primo la #187 l'ha lasciato accanto a quelli per `ast`: tre test
 *comportamentali* — `test_register_logs_instead_of_printing` (pan),
@@ -445,11 +461,14 @@ wrapper. Il censimento della #266 non è incidentale — vede la classe per
 costruzione, in tutte e due le collocazioni — ma si accontenta di una riga di
 classificazione, quindi non è un divieto. Le guardie per `ast` — quelle scritte
 apposta per sorvegliare *questo*, cioè per vietarlo anche fuori da
-`strategies/` — restano invece cieche alla classe in entrambe le collocazioni.
-Il buco quindi non è «aperto il giorno in cui la classe cambia cartella»: è
-aperto da subito nei presidi che dovrebbero vederlo, e chiuso non lo tiene
-nessuno — a coprirlo per caso è un test scritto per pan, e accanto a lui un
-censimento che lo rende rumoroso senza proibirlo.
+`strategies/` — restavano invece cieche alla classe in entrambe le
+collocazioni. Il buco quindi non era «aperto il giorno in cui la classe cambia
+cartella»: era aperto da subito nei presidi che dovrebbero vederlo, e chiuso
+non lo teneva nessuno — a coprirlo per caso era un test scritto per pan, e
+accanto a lui un censimento che lo rende rumoroso senza proibirlo. **È il
+paragrafo che la #184 ha chiuso**, ed è il motivo per cui la regola qui sotto
+chiede alla guardia di imparare `StrategyRegistry.register`: fatto quello, il
+divieto non dipende più né dalla cartella né da pan.
 
 Che è esattamente la lezione del settimo entry point in [[contratto-stdout]] —
 il criterio è la funzione, non la cartella — un giro più in là:
@@ -470,14 +489,23 @@ allargare il finder a un *metodo* chiamato `register` è il passo che
 potenzialmente porta dentro anche lui.
 
 **Anche qui la #266 sposta il confine di «scoperto», e nella stessa direzione.**
-Misurato: una `print()` dentro `DistributionFactory.register` oggi fa cadere un
-test, `test_ogni_print_di_src_pge_e_classificato`, e nessun altro — né quella
-per cartella, che il modulo non lo vede, né quella per funzione, che la
-classmethod le esce dal campo visivo. Vale quindi parola per parola quel che
-vale per la classe generica: la riga non passerebbe più in silenzio, ma il
+Misurato a `92712ef`: una `print()` dentro `DistributionFactory.register` faceva
+cadere un test, `test_ogni_print_di_src_pge_e_classificato`, e nessun altro —
+né quella per cartella, che il modulo non lo vede, né quella per funzione, che
+la classmethod le usciva dal campo visivo. Valeva quindi parola per parola quel
+che vale per la classe generica: la riga non passerebbe più in silenzio, ma il
 rimedio che riporta il verde è una voce in `CLASSIFICAZIONE`, non la rimozione
-della `print()`. Ciò che resta scoperto è il **divieto**, non il censimento — ed
-è la distinzione da tenere in mano leggendo il paragrafo qui sotto.
+della `print()`. Ciò che restava scoperto era il **divieto**, non il censimento
+— ed è la distinzione da tenere in mano leggendo il paragrafo qui sotto.
+
+**Quella misura è scaduta con la #184, ed è l'unico punto di questa sezione in
+cui la conclusione cambia e non solo il conto.** Scegliendo il criterio largo,
+la guardia per funzione ha smesso di essere cieca alla classmethod: rimisurato
+sul codice di #184, la stessa `print()` fa cadere **due** test, il censimento e
+`test_la_registrazione_dinamica_non_stampa[shared/distribution_strategy.py]`.
+Il divieto che mancava a `distribution` adesso c'è, e senza che `distribution`
+sia stato convertito — che è precisamente ciò che il paragrafo qui sotto
+chiedeva di decidere.
 
 Chi esegue #184 decida quale dei due criteri sta scrivendo — «il metodo
 `register` di `StrategyRegistry`» o «un metodo `register` su un registry» —
