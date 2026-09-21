@@ -442,6 +442,30 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   parametrizzate su niente. E un pavimento sul numero di coppie copre il caso
   in cui a svuotarsi sia anche la lista.
 
+  «A livello di modulo» vuol dire *all'import*, non *in prima colonna*, e le
+  due cose divergono proprio sulla grafia che batte le due metà insieme:
+
+  ```python
+  try:
+      from pge.parameters.parser import GranularParser
+  except ImportError:
+      class GranularParser: ...
+  ```
+
+  lì l'import c'è e il nome è indentato, quindi una lettura del solo
+  `tree.body` assolveva un file che all'import può girare sulla copia. Il
+  criterio scende ora in ogni corpo che gira all'import — `if`, `try`, gli
+  `except`, `with`, i cicli — e si ferma sul primo `def` o `class`, dove
+  finisce il livello di modulo: le finte dentro una fixture restano fuori
+  come prima. Resta dichiarato che un alias (`GranularParser = _Finto`) non è
+  né un `def` né un `class` e passa — accusare le assegnazioni renderebbe
+  rosso anche `Stream = pge.core.stream.Stream`, che è il modulo vero.
+
+  Una grafia sola, infine, per il percorso del sorgente (`_sorgente_di`): lo
+  leggono la scoperta e la guardia sulla riscrittura, e scritto due volte il
+  giorno in cui il layout di `src/` cambia una delle due resta indietro in
+  silenzio — la guardia, cioè la metà che deve parlare.
+
 - **Via i percorsi assoluti di altre macchine dal `sys.path` dei test**
   (issue #274, quarta sezione della stessa guardia). Erano
   `sys.path.insert(0, '/home/claude')` in tre file e un
@@ -452,6 +476,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   (`pythonpath = . src`) e di `tests/conftest.py`, non per quelle righe. Dove
   valevano non servivano, dove non valevano tacevano — e chi leggeva
   `_import_real_parameter()` poteva crederle necessarie.
+
+  La guardia che le tiene fuori riconosce tutte le grafie dello stesso
+  inserimento — `insert`/`append`/`extend`, `sys.path += [...]`,
+  `sys.path[:0] = [...]` e la riassegnazione secca — perché fermarsi a
+  `insert` sarebbe stato il difetto di questa sezione applicato a sé stessa:
+  la riga muta sarebbe tornata al primo `+=`, con sopra un test verde a dire
+  che non c'era. I percorsi calcolati (`os.path.abspath(...)`,
+  `str(REPO_ROOT / 'utils')`) restano leciti in ognuna delle grafie: non sono
+  letterali, ed è il letterale il criterio.
 
 ### Cambiato
 

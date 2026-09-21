@@ -45,6 +45,13 @@ modulo omonimo, e la `SIMULAZIONI_DICHIARATE` dice chi non lo fa e perché —
 che è il valore vero di questa suite: il debito smette di essere invisibile e
 diventa una riga che qualcuno deve cancellare.
 
+Secondo limite, della stessa famiglia: la riscrittura si riconosce come
+`class` o `def`, non come alias. `GranularParser = _Finto` non è né l'uno né
+l'altro e passa. Accusare le assegnazioni renderebbe rosso anche
+`Stream = pge.core.stream.Stream`, che è il modulo vero e non una copia, e
+una guardia rumorosa la si spegne. Annidare la copia, invece, non basta più a
+farla passare: vedi `_nomi_di_modulo`.
+
 Limite dichiarato: la corrispondenza è esatta sul nome. `tests/test_cli_*.py`
 non nomina nessun modulo (`pge/cli_contract.py` non esiste) e non entra fra le
 coppie; `tests/parameters/test_parser_errors.py` nemmeno. Sorvegliano
@@ -103,6 +110,18 @@ SIMULAZIONI_DICHIARATE = {
 # SCOPERTA — le coppie (file di test, modulo che nomina)
 # =============================================================================
 
+def _sorgente_di(puntato):
+    """Il file che il modulo `puntato` nomina.
+
+    Una grafia sola, perche' la leggono in due: la scoperta, che la usa per
+    decidere se la coppia esiste, e la guardia sulla riscrittura, che deve
+    aprire quello stesso file. Scritta due volte, il giorno in cui il layout
+    di `src/` cambia una delle due resta indietro in silenzio — e quella che
+    resta indietro e' la guardia, cioe' la meta' che deve parlare.
+    """
+    return os.path.join(SRC_PGE, *puntato.split('.')[1:]) + '.py'
+
+
 def _coppie():
     """`(relpath sotto tests/, modulo puntato, path del sorgente)`.
 
@@ -123,10 +142,10 @@ def _coppie():
             if not (nome.startswith('test_') and nome.endswith('.py')):
                 continue
             modulo = nome[len('test_'):-len('.py')]
-            sorgente = os.path.join(SRC_PGE, area, modulo + '.py')
+            puntato = '.'.join(x for x in ('pge', area, modulo) if x)
+            sorgente = _sorgente_di(puntato)
             if not os.path.isfile(sorgente):
                 continue
-            puntato = '.'.join(x for x in ('pge', area, modulo) if x)
             trovate.append((os.path.join(area, nome), puntato, sorgente))
     return sorted(trovate)
 
@@ -198,16 +217,53 @@ def _importa(tree, puntato):
 
 
 def _nomi_di_modulo(tree):
-    """Classi e funzioni definite **a livello di modulo**.
+    """Classi e funzioni che **all'import** finiscono nel namespace del file.
 
-    Solo il primo livello: una classe finta dentro una fixture è un dettaglio
-    di un test, una classe finta a livello di modulo è ciò che il resto del
-    file usa al posto del modulo vero — ed è la forma che hanno tutte e tre
-    le riscritture censite.
+    Il criterio non è la colonna ma l'esecuzione: una classe finta dentro una
+    fixture è un dettaglio di un test e non entra, una classe finta che gira
+    all'import prende il posto del modulo vero per tutto il file — ed è
+    quest'ultima la forma che hanno tutte e tre le riscritture censite.
+
+    Le due cose non coincidono con `tree.body`, e la differenza è esattamente
+    la grafia che batte **tutte e due** le guardie in una volta:
+
+        try:
+            from pge.parameters.parser import GranularParser
+        except ImportError:
+            class GranularParser: ...
+
+    lì l'import c'è (prima metà verde) e il nome è indentato di quattro spazi
+    (seconda metà verde), mentre all'import il file può benissimo girare
+    sulla copia. Si scende quindi in ogni corpo di istruzione — `if`, `try`,
+    gli `except`, `with`, i cicli — e ci si ferma sul primo `def` o `class`,
+    perché da lì in giù non è più livello di modulo.
+
+    Limite dichiarato: un alias (`GranularParser = _Finto`) non è né un `def`
+    né un `class` e non entra. Accusare le assegnazioni renderebbe rosso
+    anche `Stream = pge.core.stream.Stream`, che è il modulo vero e non una
+    copia, e una guardia rumorosa la si spegne.
     """
-    return {n.name for n in tree.body
+    nomi = set()
+
+    def visita(corpo):
+        for n in corpo:
             if isinstance(n, (ast.ClassDef, ast.FunctionDef,
-                              ast.AsyncFunctionDef))}
+                              ast.AsyncFunctionDef)):
+                nomi.add(n.name)
+                continue
+            for figlio in ast.iter_child_nodes(n):
+                if isinstance(figlio, ast.stmt):
+                    visita([figlio])
+                else:
+                    # `except ...:` e `case ...:` non sono istruzioni, ma un
+                    # corpo ce l'hanno; un'espressione no (il `body` di una
+                    # lambda è un'espressione sola, non una lista).
+                    annidato = getattr(figlio, 'body', None)
+                    if isinstance(annidato, list):
+                        visita(annidato)
+
+    visita(tree.body)
+    return nomi
 
 
 def _nomi_pubblici(path):
@@ -262,7 +318,7 @@ def test_il_file_omonimo_non_riscrive_il_modulo_che_nomina(rel_test, puntato):
     importa `pge.parameters.parameter` e poi fa girare 63 test su una
     `class Parameter` propria.
     """
-    sorgente = os.path.join(SRC_PGE, *puntato.split('.')[1:]) + '.py'
+    sorgente = _sorgente_di(puntato)
     doppioni = _riscritture(rel_test, sorgente)
 
     assert not doppioni, (
@@ -383,6 +439,52 @@ def test_il_criterio_vede_la_riscrittura():
     assert _nomi_di_modulo(tree) & {'GranularParser'}
 
 
+@pytest.mark.parametrize('sorgente', [
+    # La grafia che batte tutte e due le guardie in una volta: l'import c'è,
+    # e il nome è indentato.
+    'try:\n    from pge.parameters.parser import GranularParser\n'
+    'except ImportError:\n    class GranularParser: pass\n',
+    'import sys\nif sys.version_info >= (3, 12):\n'
+    '    class GranularParser: pass\n',
+    'import sys\nif False:\n    pass\nelse:\n'
+    '    class GranularParser: pass\n',
+    'try:\n    pass\nfinally:\n    class GranularParser: pass\n',
+    'import contextlib\nwith contextlib.suppress(Exception):\n'
+    '    class GranularParser: pass\n',
+    'for _ in (1,):\n    def GranularParser(): pass\n',
+])
+def test_il_criterio_vede_la_riscrittura_annidata(sorgente):
+    """Indentare la copia non la rende un dettaglio locale.
+
+    Questi corpi girano all'import: quando finiscono, il namespace del file
+    ha dentro la copia, e i test che stanno sotto la usano al posto del
+    modulo — che è la definizione stessa della riscrittura. Contare solo
+    `tree.body` lasciava fuori proprio la forma che passa anche la prima
+    guardia, cioè l'unica capace di far tacere le due metà insieme.
+    """
+    assert 'GranularParser' in _nomi_di_modulo(ast.parse(sorgente))
+
+
+@pytest.mark.parametrize('sorgente', [
+    # Dentro un metodo: il pattern normale di mezza suite.
+    'class TestX:\n    def test_a(self):\n'
+    '        class GranularParser: pass\n',
+    # Dentro una funzione di modulo: esiste solo mentre la funzione gira.
+    'def fabbrica():\n    class GranularParser: pass\n'
+    '    return GranularParser\n',
+    # Dentro una fixture.
+    'import pytest\n@pytest.fixture\ndef parser():\n'
+    '    class GranularParser: pass\n    return GranularParser()\n',
+])
+def test_il_criterio_non_accusa_le_finte_annidate_in_una_funzione(sorgente):
+    """Il confine è il primo `def`/`class`, non l'indentazione.
+
+    Scendere anche lì renderebbe rossa mezza suite su classi che nessuno
+    vede fuori dalla chiamata, e una guardia rumorosa la si spegne.
+    """
+    assert 'GranularParser' not in _nomi_di_modulo(ast.parse(sorgente))
+
+
 def test_il_criterio_non_accusa_le_finte_locali():
     """Una classe finta dentro una fixture non prende il posto del modulo.
 
@@ -426,32 +528,60 @@ def test_il_criterio_guarda_solo_i_nomi_pubblici(tmp_path):
 # in `test_parameter.py` la riga stava proprio dentro `_import_real_parameter()`,
 # cioè l'unica funzione del file che toccava produzione.
 
-def _percorsi_assoluti_in_sys_path(tree):
-    """I literal assoluti passati a `<qualcosa>.path.insert/append(...)`.
+def _e_un_path(nodo):
+    """`sys.path`, o l'alias `_sys.path` che `test_parameter.py` usava."""
+    return isinstance(nodo, ast.Attribute) and nodo.attr == 'path'
 
-    Il criterio è la forma della chiamata più il letterale: `sys.path` e
-    `_sys.path` (l'alias che `test_parameter.py` usava) passano di qui, e ciò
-    che si accusa è solo una stringa costante che comincia per `/`. I path
-    calcolati — `os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`, che sono
-    la forma di tutti gli altri inserimenti della suite — non sono
+
+def _letterali_assoluti(nodo):
+    """Le stringhe costanti che cominciano per `/`, liste e tuple comprese.
+
+    I path calcolati — `os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`,
+    che sono la forma di tutti gli altri inserimenti della suite — non sono
     `ast.Constant` e non entrano.
+    """
+    if (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)
+            and os.path.isabs(nodo.value)):
+        return [nodo.value]
+    if isinstance(nodo, (ast.List, ast.Tuple)):
+        return [v for e in nodo.elts for v in _letterali_assoluti(e)]
+    # `['/x'] + sys.path`: la concatenazione e' la grafia della
+    # riassegnazione, e il letterale ci sta dentro come in una lista.
+    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add):
+        return _letterali_assoluti(nodo.left) + _letterali_assoluti(nodo.right)
+    return []
+
+
+def _percorsi_assoluti_in_sys_path(tree):
+    """I literal assoluti che un file aggiunge a `sys.path`, in ogni grafia.
+
+    Il criterio è la forma dell'istruzione più il letterale. Le grafie sono
+    quattro e valgono tutte la stessa riga — `insert`/`append`/`extend`,
+    `sys.path += [...]`, `sys.path[:0] = [...]` e la riassegnazione secca —
+    perché una guardia che ne riconoscesse una sola si spegnerebbe da sé al
+    primo `+=`: sarebbe la stessa riga muta che questa sezione toglie, con
+    sopra un test verde che dice il contrario.
     """
     trovati = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if not (isinstance(func, ast.Attribute)
-                and func.attr in ('insert', 'append')):
-            continue
-        base = func.value
-        if not (isinstance(base, ast.Attribute) and base.attr == 'path'):
-            continue
-        for arg in node.args:
-            if (isinstance(arg, ast.Constant)
-                    and isinstance(arg.value, str)
-                    and os.path.isabs(arg.value)):
-                trovati.append(arg.value)
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (isinstance(func, ast.Attribute)
+                    and func.attr in ('insert', 'append', 'extend')
+                    and _e_un_path(func.value)):
+                for arg in node.args:
+                    trovati.extend(_letterali_assoluti(arg))
+        elif isinstance(node, ast.AugAssign):
+            if _e_un_path(node.target):
+                trovati.extend(_letterali_assoluti(node.value))
+        elif isinstance(node, ast.Assign):
+            for bersaglio in node.targets:
+                # `sys.path[:0] = [...]` è un'assegnazione a una fetta, e la
+                # fetta di `sys.path` è `sys.path`.
+                if isinstance(bersaglio, ast.Subscript):
+                    bersaglio = bersaglio.value
+                if _e_un_path(bersaglio):
+                    trovati.extend(_letterali_assoluti(node.value))
     return trovati
 
 
@@ -494,6 +624,25 @@ def test_il_criterio_vede_i_percorsi_di_un_altra_macchina():
     assert len(_percorsi_assoluti_in_sys_path(ast.parse(sorgente))) == 2
 
 
+@pytest.mark.parametrize('sorgente', [
+    "import sys\nsys.path.extend(['/home/claude'])\n",
+    "import sys\nsys.path += ['/home/claude']\n",
+    "import sys\nsys.path[:0] = ['/home/claude']\n",
+    "import sys\nsys.path[0:0] = ('/home/claude',)\n",
+    "import sys\nsys.path = ['/home/claude'] + sys.path\n",
+    "import sys as _sys\n_sys.path.extend(['/home/claude'])\n",
+])
+def test_il_criterio_vede_le_altre_grafie_dello_stesso_inserimento(sorgente):
+    """`+=` e `extend` sono la stessa riga di `insert`, e valgono lo stesso.
+
+    Riconoscerne una sola sarebbe il difetto di questa sezione applicato a
+    sé stessa: la riga muta resterebbe, con sopra un test verde a dire che
+    non c'è.
+    """
+    assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) \
+        == ['/home/claude']
+
+
 def test_il_criterio_non_accusa_i_percorsi_calcolati():
     """La forma che usa il resto della suite resta legittima."""
     sorgente = (
@@ -502,6 +651,9 @@ def test_il_criterio_non_accusa_i_percorsi_calcolati():
         "    os.path.join(os.path.dirname(__file__), '../src')))\n"
         "sys.path.insert(1, os.path.join(REPO_ROOT, 'utils'))\n"
         "sys.path.insert(0, str(REPO_ROOT / 'utils'))\n"
+        "sys.path += [os.path.join(REPO_ROOT, 'utils')]\n"
+        "sys.path.extend([str(REPO_ROOT / 'utils')])\n"
+        "sys.path[:0] = [os.path.dirname(__file__)]\n"
     )
 
     assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
