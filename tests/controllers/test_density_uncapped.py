@@ -304,6 +304,8 @@ class TestAvvisoDensitaAlta:
             for i in range(500):
                 dc.calculate_inter_onset(i * 1e-5, current_grain_duration=0.001)
 
+        assert caplog.records, \
+            "zero righe: il solo limite superiore lo soddisfa anche il silenzio"
         assert len(caplog.records) < 10, \
             f"{len(caplog.records)} righe per 500 onset ravvicinati"
 
@@ -483,6 +485,52 @@ class TestBoundViolato:
         """Dove il tetto c'e', il comportamento storico non si muove."""
         from pge.shared.logger import violated_bound
         assert violated_bound(float('inf'), 0.01, 4000.0) == ("MAX", 4000.0)
+
+
+class TestDoveCadeUnNonFinito:
+    """Il non-finito cade sul bound che viene poi nominato.
+
+    Sono due meta' della stessa risposta: `_clip_to_band` decide DOVE mettere
+    il valore, `violated_bound` decide QUALE bound raccontare — e in
+    permissive mode escono affiancate sulla stessa riga
+    (`raw=... -> clip=... | MAX=...`). Tenute separate divergevano subito: un
+    `+inf` sotto un tetto finito veniva richiuso sul PAVIMENTO e raccontato
+    come MAX, cioe' la riga diceva «sopra il massimo» e scriveva il minimo.
+
+    Ed era anche il contratto storico a muoversi, proprio dove il docstring
+    di `_clip_to_band` promette che non si muove: `min(100, inf)` dava il
+    tetto. Una grafia sola — il punto di caduta e' il bound che
+    `violated_bound` nomina — e le due non possono piu' discordare.
+    """
+
+    BANDE = [(0.0, 100.0), (0.01, None)]
+    NON_FINITI = [float('inf'), float('-inf'), float('nan')]
+
+    @pytest.mark.parametrize("min_bound,max_bound", BANDE)
+    @pytest.mark.parametrize("value", NON_FINITI)
+    def test_cade_sul_bound_nominato(self, value, min_bound, max_bound):
+        from pge.parameters.parser import _clip_to_band
+        from pge.shared.logger import violated_bound
+
+        assert (_clip_to_band(value, min_bound, max_bound)
+                == violated_bound(value, min_bound, max_bound)[1])
+
+    def test_col_tetto_finito_un_inf_torna_sul_tetto(self):
+        """Il caso storico, scritto per nome: `min(100, inf)` era il tetto."""
+        from pge.parameters.parser import _clip_to_band
+        assert _clip_to_band(float('inf'), 0.0, 100.0) == 100.0
+
+    @pytest.mark.parametrize("min_bound,max_bound", BANDE)
+    @pytest.mark.parametrize("value", NON_FINITI)
+    def test_resta_comunque_una_violazione(self, value, min_bound, max_bound):
+        """Cadere su un bound non basta: deve restare DIVERSO dal valore.
+
+        E' quel confronto (`clipped != clean`) a sollevare al parse, e un
+        non-finito non e' mai uguale a un bound finito — `nan` compreso, che
+        non e' uguale a niente.
+        """
+        from pge.parameters.parser import _clip_to_band
+        assert _clip_to_band(value, min_bound, max_bound) != value
 
 
 def test_la_generazione_termina_anche_col_massimo_dichiarabile(rendered_stream):

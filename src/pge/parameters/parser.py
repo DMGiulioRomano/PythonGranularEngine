@@ -35,6 +35,7 @@ from pge.shared.exceptions import (
     InvalidParameterError,
     ParameterBoundError,
 )
+from pge.shared.logger import violated_bound
 from pge.shared.seeding import component_rng
 
 
@@ -58,12 +59,23 @@ def _clip_to_band(value: float, min_bound: float,
       sullo stdout — dove gli errori di configurazione promettono una riga
       pulita, e dove la suite e2e verifica che non ci sia un Traceback.
 
-    Richiudere il non-finito sul pavimento li rimette com'erano: un valore
-    fuori banda, rifiutato al parse. Dove il tetto e' finito non cambia
-    niente, perche' li' erano gia' un clip.
+    Richiudere il non-finito su un bound li rimette com'erano: un valore
+    fuori banda, rifiutato al parse — un bound e' finito e un non-finito non
+    gli e' mai uguale, `nan` compreso, quindi il confronto che solleva scatta
+    sempre.
+
+    SU QUALE bound lo decide `violated_bound`, non una riga sua. Le due
+    risposte sono meta' della stessa: questa dice dove cade il valore, quella
+    quale bound viene poi nominato, e in permissive mode escono affiancate
+    sulla stessa riga (`raw=... -> clip=... | MAX=...`). Scritte separate
+    discordavano subito — un `+inf` sotto un tetto finito cadeva sul
+    PAVIMENTO ed era raccontato come MAX: la riga diceva «sopra il massimo» e
+    scriveva il minimo. Passando di li' il caso col tetto torna anche a fare
+    quello che ha sempre fatto, cioe' `min(4000, inf)` = il tetto: dove il
+    tetto e' finito non cambia niente davvero, non solo nell'esito.
     """
     if not math.isfinite(value):
-        return min_bound
+        return violated_bound(value, min_bound, max_bound)[1]
     if max_bound is None:
         return max(min_bound, value)
     return max(min_bound, min(max_bound, value))
@@ -408,11 +420,7 @@ class GranularParser:
         Returns:
             Parametro validato (clippato se necessario)
         """
-        from pge.shared.logger import (
-            CLIP_LOG_CONFIG,
-            log_config_warning,
-            violated_bound,
-        )
+        from pge.shared.logger import CLIP_LOG_CONFIG, log_config_warning
         
         if param is None:
             return None
