@@ -566,6 +566,14 @@ Il **minimo** invece resta, e non è un limite musicale: l'inter-onset è
 `1.0 / density`, quindi una densità nulla è una divisione per zero e una
 negativa è un cursore che non avanza.
 
+Per la stessa ragione un valore **non finito** resta un errore al parse:
+`.inf` e `.nan` sono scalari legali in YAML, e con un tetto finito li
+fermava il confronto stesso (`min(4000, inf)` è un clip). Senza tetto quel
+confronto non c'è più, e `density: .inf` renderebbe `1.0 / density` uguale
+a zero — cioè il cursore che non avanza dall'altro capo, un render che non
+finisce. Il parser li rifiuta con `ParameterBoundError`, come faceva prima
+il tetto.
+
 Conseguenza pratica: con grani brevi il conteggio dei grani ora cresce come
 il `fill_factor` chiede. `fill_factor: 4` su grani da 0.4 ms sono 10000
 grani/secondo per voce, non 4000. Sopra i 4000 g/s — la vecchia soglia — il
@@ -2482,7 +2490,7 @@ un envelope dal YAML al runtime è:
 
 | Parametro | Min | Max | Default | Note |
 |-----------|-----|-----|---------|------|
-| `density` | 0.01 | — (nessun tetto) | — | grani/secondo; sopra 4000 avvisa sul clip log (#272) |
+| `density` | 0.01 | — (nessun tetto; `.inf`/`.nan` restano un errore) | — | grani/secondo; sopra 4000 avvisa sul clip log (#272) |
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |

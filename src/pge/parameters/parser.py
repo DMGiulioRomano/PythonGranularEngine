@@ -12,6 +12,7 @@ Responsabilità:
 """
 from __future__ import annotations
 
+import math
 from typing import Union, Optional, List, Any
 from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
@@ -35,6 +36,38 @@ from pge.shared.exceptions import (
     ParameterBoundError,
 )
 from pge.shared.seeding import component_rng
+
+
+def _clip_to_band(value: float, min_bound: float,
+                  max_bound: Optional[float]) -> float:
+    """Il valore richiuso nella banda. Un non-finito la viola sempre.
+
+    Finche' ogni parametro aveva un tetto finito, `inf` e `nan` li fermava il
+    confronto stesso: `min(4000, inf)` e `min(4000, nan)` danno tutti e due
+    4000, cioe' un clip, cioe' l'errore al parse. Da quando `density` non ha
+    piu' un tetto (issue #272) quel confronto non c'e' piu', e i due passano
+    in due modi entrambi peggiori dell'errore che sostituiscono:
+
+    - `.inf` viene *accettato*, e `avg_iot = 1.0 / density` diventa zero:
+      il cursore di `generate_grains` non avanza affatto, cioe' un render
+      che non finisce e che dopo la prima riga `[DENSITY_HIGH]` non dice
+      piu' niente. E' esattamente l'invariante che il pavimento dichiara di
+      garantire, sfondata dall'altro capo;
+    - `.nan` resta una violazione, ma non essendo ne' sopra ne' sotto manda
+      chi la racconta su `max_bound`, che e' None, e muore di TypeError
+      sullo stdout — dove gli errori di configurazione promettono una riga
+      pulita, e dove la suite e2e verifica che non ci sia un Traceback.
+
+    Richiudere il non-finito sul pavimento li rimette com'erano: un valore
+    fuori banda, rifiutato al parse. Dove il tetto e' finito non cambia
+    niente, perche' li' erano gia' un clip.
+    """
+    if not math.isfinite(value):
+        return min_bound
+    if max_bound is None:
+        return max(min_bound, value)
+    return max(min_bound, min(max_bound, value))
+
 
 class GranularParser:
     """
@@ -375,7 +408,11 @@ class GranularParser:
         Returns:
             Parametro validato (clippato se necessario)
         """
-        from pge.shared.logger import log_config_warning, CLIP_LOG_CONFIG
+        from pge.shared.logger import (
+            CLIP_LOG_CONFIG,
+            log_config_warning,
+            violated_bound,
+        )
         
         if param is None:
             return None
@@ -385,12 +422,12 @@ class GranularParser:
         # Caso 1: Numero scalare
         if isinstance(param, (int, float)):
             clean = float(param)
-            clipped = max(min_bound, clean) if max_bound is None else max(min_bound, min(max_bound, clean))
+            clipped = _clip_to_band(clean, min_bound, max_bound)
 
             if clipped != clean:
                 # Calcola messaggio di errore
-                bound_type = "MIN" if clean < min_bound else "MAX"
-                bound_value = min_bound if clean < min_bound else max_bound
+                bound_type, bound_value = violated_bound(
+                    clean, min_bound, max_bound)
                 deviation = clean - bound_value
                 
                 error_msg = (
@@ -433,12 +470,12 @@ class GranularParser:
             fixed_points = []
             
             for t, y in param.breakpoints:
-                clipped_y = max(min_bound, y) if max_bound is None else max(min_bound, min(max_bound, y))
+                clipped_y = _clip_to_band(y, min_bound, max_bound)
 
                 if clipped_y != y:
                     needs_fixing = True
-                    bound_type = "MIN" if y < min_bound else "MAX"
-                    bound_value = min_bound if y < min_bound else max_bound
+                    bound_type, bound_value = violated_bound(
+                        y, min_bound, max_bound)
                     deviation = y - bound_value
                     
                     errors.append(
@@ -458,7 +495,7 @@ class GranularParser:
                 if validation_mode == 'strict':
                     violations_list = []
                     for t, y in param.breakpoints:
-                        clipped_y = max(min_bound, y) if max_bound is None else max(min_bound, min(max_bound, y))
+                        clipped_y = _clip_to_band(y, min_bound, max_bound)
                         if clipped_y != y:
                             violations_list.append((t, y))
                     err = ParameterBoundError(
@@ -473,7 +510,7 @@ class GranularParser:
                 else:
                     # Log ogni violazione
                     for t, y in param.breakpoints:
-                        clipped_y = max(min_bound, y) if max_bound is None else max(min_bound, min(max_bound, y))
+                        clipped_y = _clip_to_band(y, min_bound, max_bound)
                         if clipped_y != y:
                             log_config_warning(
                                 stream_id=self.stream_id,

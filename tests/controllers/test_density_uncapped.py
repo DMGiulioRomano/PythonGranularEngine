@@ -296,7 +296,8 @@ class TestAvvisoDensitaAlta:
         """A density 50000 si passa di qui 50000 volte al secondo.
 
         Senza rate limiting il log diventa il collo di bottiglia del render,
-        ed e' lo stesso motivo per cui `_log_loop_drift_warning` ce l'ha.
+        ed e' lo stesso motivo per cui `PointerController` tiene il suo
+        `_drift_log_interval`.
         """
         dc = _controller(mock_config, _fill_factor_params(fill_factor=50.0))
         with caplog.at_level('WARNING'):
@@ -381,3 +382,125 @@ class TestFillFactorRealizzato:
         )
         onsets = [g.onset for g in stream.voices[0]]
         assert onsets and all(math.isfinite(o) for o in onsets)
+
+
+# =============================================================================
+# 7. CIO' CHE IL TETTO FERMAVA SENZA VOLERLO: I NON-FINITI
+# =============================================================================
+
+class TestNonFinitiRestanoUnErrore:
+    """`.inf` e `.nan` erano rifiutati dal tetto, non da una regola.
+
+    Il vecchio `max_val=4000.0` li fermava per effetto collaterale:
+    `min(4000, inf)` e `min(4000, nan)` danno tutti e due 4000, cioe' un
+    clip, cioe' `ParameterBoundError` al parse. Tolto il tetto quel confronto
+    non c'e' piu', e i due passavano in due modi entrambi peggiori
+    dell'errore che sostituivano — `.inf` accettato (e `1.0 / density` uguale
+    a zero: il cursore di `generate_grains` che non avanza, un render che non
+    finisce), `.nan` raccontato dal ramo MAX, che con `max_bound=None`
+    sottrae un None e muore di TypeError sullo stdout.
+
+    Sono la stessa prova in due punti: che togliere un tetto non deve
+    togliere anche cio' che il tetto fermava per caso.
+    """
+
+    @staticmethod
+    def _parser(stream_id="probe_nonfinito", duration=5.0):
+        from pge.core.stream_config import StreamConfig, StreamContext
+        from pge.parameters.parser import GranularParser
+
+        ctx = StreamContext(stream_id=stream_id, onset=0.0, duration=duration,
+                            sample="x.wav", sample_dur_sec=10.0)
+        return GranularParser(StreamConfig(distribution_mode="uniform",
+                                           time_mode="absolute", context=ctx))
+
+    @pytest.mark.parametrize("value", [float('inf'), float('nan')])
+    def test_uno_scalare_non_finito_e_fuori_banda(self, value):
+        """`density: .inf` e `density: .nan` sono YAML legali: `.inf` e `.nan`
+        sono scalari float del formato, quindi arrivano al parser come numeri.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            self._parser().parse_parameter(name="density", value_raw=value)
+
+        assert exc.value.param_name == "density"
+        assert exc.value.stream_id == "probe_nonfinito"
+
+    @pytest.mark.parametrize("value", [float('inf'), float('nan')])
+    def test_un_breakpoint_non_finito_e_fuori_banda(self, value):
+        """Stessa regola dentro un envelope: la porta e' la stessa funzione."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError):
+            self._parser(duration=2.0).parse_parameter(
+                name="density", value_raw=[[0, 10.0], [1, value]])
+
+    def test_il_messaggio_non_muore_sul_tetto_assente(self):
+        """Il TypeError era nel *racconto* della violazione, non nel rilevarla.
+
+        `error_msg` formatta `bound_value` con `:.2f` e ne calcola la
+        deviazione: con `max_bound=None` scelto per esclusione erano
+        `None:.2f` e `nan - None`. La riga deve uscire, ed e' l'unica cosa
+        che l'utente vede.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            self._parser().parse_parameter(name="density",
+                                           value_raw=float('nan'))
+
+        msg = exc.value.user_message()
+        assert "density" in msg
+        assert "[ERRORE]" in msg
+
+
+class TestBoundViolato:
+    """`violated_bound` e' la scelta del bound, una grafia sola per tre lettori.
+
+    I tre erano `log_clip_warning`, `log_config_warning` e la validazione al
+    parse, ognuno con la propria riga `"MIN" if v < min else "MAX"` — che
+    sceglie MAX *per esclusione*, quindi risponde `max_val` anche quando
+    `max_val` e' None e il valore non e' semplicemente sopra: e' `nan`.
+    """
+
+    def test_sotto_il_pavimento_e_min(self):
+        from pge.shared.logger import violated_bound
+        assert violated_bound(-1.0, 0.01, 4000.0) == ("MIN", 0.01)
+
+    def test_sopra_il_tetto_e_max(self):
+        from pge.shared.logger import violated_bound
+        assert violated_bound(9999.0, 0.01, 4000.0) == ("MAX", 4000.0)
+
+    def test_senza_tetto_il_violato_e_sempre_il_pavimento(self):
+        """Non c'e' un tetto da violare: rispondere MAX significa rispondere None."""
+        from pge.shared.logger import violated_bound
+        assert violated_bound(1e9, 0.01, None) == ("MIN", 0.01)
+        assert violated_bound(float('inf'), 0.01, None) == ("MIN", 0.01)
+        assert violated_bound(float('nan'), 0.01, None) == ("MIN", 0.01)
+
+    def test_col_tetto_un_non_finito_resta_MAX(self):
+        """Dove il tetto c'e', il comportamento storico non si muove."""
+        from pge.shared.logger import violated_bound
+        assert violated_bound(float('inf'), 0.01, 4000.0) == ("MAX", 4000.0)
+
+
+def test_la_generazione_termina_anche_col_massimo_dichiarabile(rendered_stream):
+    """L'invariante che il pavimento dichiara, verificata dall'altro capo.
+
+    Il pavimento esiste perche' `avg_iot = 1.0 / density` deve restare un
+    numero che fa avanzare il cursore. Senza tetto quel cursore si ferma
+    anche dall'alto — a `density` infinita l'IOT e' zero — e il pavimento da
+    solo non lo vede. Qui la density e' alta ma finita: la generazione deve
+    finire, ed e' l'unica meta' che un test possa misurare, perche' quella
+    infinita adesso non arriva neppure al motore.
+    """
+    stream = rendered_stream(
+        duration=0.2,
+        density=20000.0,
+        grain={'duration': 0.001, 'envelope': 'hanning'},
+    )
+    onsets = [g.onset for g in stream.voices[0]]
+    assert onsets, "nessun grano generato"
+    assert all(math.isfinite(o) for o in onsets)
+    assert onsets == sorted(onsets), "il cursore deve avanzare"

@@ -313,6 +313,28 @@ def log_strategy_registration(domain: str, name: str, strategy_class: type) -> N
     )
 
 
+def violated_bound(value: float, min_val: float, max_val):
+    """Quale bound e' stato violato, come `(tipo, valore)`.
+
+    Senza tetto l'unico bound violabile e' il pavimento, e va detto invece
+    che dedotto: la forma storica `"MIN" if value < min_val else "MAX"`
+    sceglieva MAX per esclusione, quindi con `max_val=None` — la grafia che
+    `density` usa dalla issue #272, e `loop_dur` da sempre — consegnava un
+    None a chi poi lo sottrae (`deviation`) o lo formatta (`:.4f`). Non e'
+    un caso di laboratorio: `nan` e `inf` non sono minori del pavimento, e
+    cadevano entrambi in quel ramo.
+
+    Vive qui e non nei chiamanti perche' i chiamanti sono tre — le due
+    funzioni qui sotto e la validazione al parse in `parser.py` — ed erano
+    tre copie della stessa riga, cioe' il modo in cui una smette di valere
+    senza che nessuno se ne accorga (la stessa ragione di
+    `ParameterBounds.clamp`).
+    """
+    if max_val is not None and value > max_val:
+        return "MAX", max_val
+    return "MIN", min_val
+
+
 def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value, 
                      min_val, max_val, is_envelope=False):
     """
@@ -334,15 +356,9 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
         return
     
     # Calcola bound violato
-    if raw_value < min_val:
-        deviation = raw_value - min_val
-        bound_type = "MIN"
-        bound_value = min_val
-    else:
-        deviation = raw_value - max_val
-        bound_type = "MAX"
-        bound_value = max_val
-    
+    bound_type, bound_value = violated_bound(raw_value, min_val, max_val)
+    deviation = raw_value - bound_value
+
     source_type = "ENV" if is_envelope else "FIX"
     
     logger.warning(
@@ -380,15 +396,9 @@ def log_config_warning(stream_id: str, param_name: str,
         return
     
     # Calcola bound violato
-    if raw_value < min_val:
-        deviation = raw_value - min_val
-        bound_type = "MIN"
-        bound_value = min_val
-    else:
-        deviation = raw_value - max_val
-        bound_type = "MAX"
-        bound_value = max_val
-    
+    bound_type, bound_value = violated_bound(raw_value, min_val, max_val)
+    deviation = raw_value - bound_value
+
     # Tag diverso per config
     logger.warning(
         f"[CONFIG] [{stream_id}] {param_name:<20} | "

@@ -769,6 +769,22 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   è sul tempo-stream e non sul numero di chiamate, così una densità che sfonda
   a metà del brano parla comunque.
 
+  **I valori non finiti restano un errore.** `.inf` e `.nan` sono scalari
+  legali in YAML, e finché ogni parametro aveva un tetto finito li fermava il
+  confronto stesso: `min(4000, inf)` e `min(4000, nan)` sono tutti e due un
+  clip, cioè un `ParameterBoundError` al parse. Senza tetto quel confronto non
+  c'è più, e i due passavano in due modi entrambi peggiori dell'errore che
+  sostituivano — `.inf` accettato, con `1.0 / density` uguale a zero, cioè il
+  cursore di `generate_grains` fermo e un render che non finisce (l'invariante
+  che il pavimento dichiara di garantire, sfondata dall'altro capo); `.nan`
+  riconosciuto come violazione ma raccontato dal ramo `MAX`, che con
+  `max_val=None` sottrae e formatta un `None` e muore di `TypeError` sullo
+  stdout. Il parser li richiude sul pavimento, quindi tornano a essere un
+  valore fuori banda: stesso errore pulito di prima. `violated_bound()`
+  (`shared/logger.py`) è la grafia sola della scelta del bound — senza tetto
+  l'unico violabile è il pavimento — e ha tre lettori: `log_clip_warning`,
+  `log_config_warning` e la validazione al parse, che ne tenevano tre copie.
+
   **Effetto sull'audio**: ogni stream che stava sopra i 4000 g/s nominali
   cambia — più grani, fill più alto, e il tempo di render cresce in
   proporzione. Nel repertorio del repo riguarda `configs/PGE_cim.yml`
