@@ -823,6 +823,37 @@ def test_nessun_test_inserisce_in_sys_path_un_percorso_assoluto(rel):
     )
 
 
+def test_la_scoperta_vede_i_file_della_suite():
+    """Il pavimento della quarta sezione, per l'argomento della prima.
+
+    La guardia qui sopra è parametrizzata su `_file_di_test()` esattamente
+    come le due della prima sezione lo sono su `_coppie()`, e un parametrize
+    vuoto non è un rosso: pytest lo salta e la suite resta verde sopra un
+    presidio che non esiste più. `test_la_scoperta_vede_la_suite` mette quel
+    pavimento sotto una delle due scoperte, e l'argomento — scritto lì per
+    intero — vale per tutte e due: le scoperte di questo file sono due, e il
+    presidio ne copriva una.
+
+    Il numero è basso di proposito, come l'altro: oggi i file sono un
+    centinaio e mezzo, e un valore stretto diventerebbe una trascrizione da
+    aggiornare a ogni test nuovo. Accanto, l'unico nome che non può
+    invecchiare: questo file, chiesto a `__file__` invece che trascritto —
+    un filtro che smettesse di vedere i `.py` della radice di `tests/`
+    passerebbe il pavimento e non lui.
+    """
+    files = sorted(_file_di_test())
+
+    assert len(files) >= 50, (
+        f"la scoperta trova {len(files)} file sotto tests/: troppo pochi "
+        "perché la guardia sui percorsi assoluti stia ancora leggendo la "
+        "suite. Controlla _file_di_test()."
+    )
+    assert os.path.relpath(__file__, TESTS_DIR) in files, (
+        "_file_di_test() non trova nemmeno il file che la contiene: la "
+        "guardia sui percorsi assoluti sta leggendo un'altra cartella."
+    )
+
+
 def test_il_criterio_vede_i_percorsi_di_un_altra_macchina():
     """Le due grafie censite, alias compreso."""
     sorgente = (
