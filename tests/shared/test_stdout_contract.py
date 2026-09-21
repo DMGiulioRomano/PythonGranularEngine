@@ -40,13 +40,22 @@ toglierlo si paga una volta sola, tardi.
 Il metodo di `Generator` si chiama cosi': la prosa di questo file diceva
 `write_sco_files`, che non esiste in `src/pge/` e non e' mai esistito.
 
-**E i punti di registrazione non stanno tutti in `strategies/`.** Sono sette,
-e il settimo — `register_window_strategy` — vive in
-`controllers/window_selection_strategy.py`, dove vive il registry delle
-finestre. Una guardia scoped per *cartella* ne copre sei e tace sul settimo:
-la `print()` che la #187 ha tolto poteva rientrare da li' lasciando verde la
-suite intera. Anche questa lista e' quindi dichiarata *e* derivata, come
-quella degli emettitori.
+**E i punti di registrazione non stanno tutti in `strategies/`.** Erano sette
+quando questa prosa e' stata scritta, e il settimo — `register_window_strategy`
+— vive in `controllers/window_selection_strategy.py`, dove vive il registry
+delle finestre. Una guardia scoped per *cartella* ne copriva sei e taceva sul
+settimo: la `print()` che la #187 ha tolto poteva rientrare da li' lasciando
+verde la suite intera. Anche questa lista e' quindi dichiarata *e* derivata,
+come quella degli emettitori.
+
+**Dalla #184 sono nove**, perche' il criterio del finder si e' allargato a un
+metodo chiamato esattamente `register` dentro una classe: sono entrati
+`StrategyRegistry.register` — dove la registrazione di pan *vive* adesso — e
+`DistributionFactory.register`, che quella grafia ce l'aveva da prima. Sette
+dei nove stanno in `strategies/`, quindi la guardia per cartella ne copre
+sette e tace sui due di fuori (`controllers/window_selection_strategy.py` e
+`shared/distribution_strategy.py`). La lezione non cambia, cambia il conto:
+la cartella non e' il criterio.
 
 **Il criterio e' la forma, non il prefisso.** `[CACHE]` da solo non
 discrimina: lo stesso modulo stampa anche `[CACHE] <n>/<m> stream da
@@ -291,10 +300,11 @@ def test_le_strategie_non_stampano(modulo):
 # 2a. LA DIAGNOSTICA NON VIVE SOLO IN `strategies/`
 # =============================================================================
 # Il test qui sopra e' scoped per *cartella*, e la cartella non e' il criterio:
-# il criterio e' essere un punto di registrazione dinamica. I due coincidono per
-# sei entry point su sette, e sul settimo il presidio mancava del tutto —
+# il criterio e' essere un punto di registrazione dinamica. Coincidevano per sei
+# entry point su sette, e sul settimo il presidio mancava del tutto —
 # `register_window_strategy` sta in `controllers/`, perche' li' sta il registry
-# delle finestre. Misurato: rimettendo in quella funzione esattamente la
+# delle finestre. Dalla #184 i punti sono nove e quelli fuori da `strategies/`
+# sono due: il secondo e' `DistributionFactory.register`, in `shared/`. Misurato: rimettendo in quella funzione esattamente la
 # `print()` che la #187 ha tolto dalle altre tre, la suite intera restava verde
 # **prima di questo test**.
 #
