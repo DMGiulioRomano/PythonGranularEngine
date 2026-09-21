@@ -581,11 +581,45 @@ def _nomi_di_sys_path(tree):
     return nomi
 
 
-def _e_un_path(nodo, alias=()):
-    """`sys.path`, l'alias `_sys.path` che `test_parameter.py` usava, o il
-    nome legato da `from sys import path` (vedi `_nomi_di_sys_path`)."""
-    if isinstance(nodo, ast.Attribute):
-        return nodo.attr == 'path'
+def _nomi_del_modulo_sys(tree):
+    """I nomi con cui il file chiama il modulo `sys`.
+
+    `sys` ci sta sempre — e' il nome del modulo, e un file che lo usa senza
+    importarlo lo prende comunque da li' — accanto agli alias che l'import
+    dichiara: `import sys as _sys`, la grafia che `_import_real_parameter()`
+    usava, e `from os import sys`, che lega lo stesso modulo per un'altra
+    strada.
+    """
+    nomi = {'sys'}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            nomi.update(a.asname or a.name
+                        for a in node.names if a.name == 'sys')
+    return nomi
+
+
+def _e_un_path(nodo, moduli=('sys',), alias=()):
+    """`sys.path`, e non qualunque cosa si chiami `path`.
+
+    Due grafie, come il bersaglio dell'istruzione: l'attributo — `sys.path`,
+    l'alias `_sys.path` che `test_parameter.py` usava, `os.sys.path` che e'
+    lo stesso modulo per un'altra strada — e il nome semplice legato da
+    `from sys import path` (vedi `_nomi_di_sys_path`).
+
+    Nell'attributo si chiedono tutti e due i pezzi, non il solo `path`.
+    Accusare ogni attributo che porti quel nome rende rosso un
+    `cfg.path = '/tmp/x'`, che non e' `sys.path` e non e' la riga che questa
+    sezione toglie — con sopra un messaggio che parla di `sys.path` e nomina
+    una issue che non c'entra. E' lo stesso contrappeso che il nome semplice
+    ha gia': il nome si raccoglie dall'import invece di darlo per scontato,
+    perche' una guardia rumorosa la si spegne. Il principio era scritto per
+    uno dei due estremi e valeva per uno solo dei due.
+    """
+    if isinstance(nodo, ast.Attribute) and nodo.attr == 'path':
+        base = nodo.value
+        if isinstance(base, ast.Name):
+            return base.id in moduli
+        return isinstance(base, ast.Attribute) and base.attr in moduli
     return isinstance(nodo, ast.Name) and nodo.id in alias
 
 
@@ -627,19 +661,25 @@ def _percorsi_assoluti_in_sys_path(tree):
     stare dentro una chiamata (vedi `_letterali_assoluti`). Riconoscere solo
     la grafia centrale lasciava fuori le due riscritture più ovvie della
     stessa riga.
+
+    Il bersaglio ha pero' anche il verso opposto, ed e' l'unico posto dove
+    questa sezione puo' accusare chi non c'entra: `sys.path` si chiede al
+    modulo *e* al campo (`_e_un_path`), perche' `cfg.path` non e' `sys.path`
+    e un rosso li' parlerebbe di una riga che il file non ha.
     """
     alias = _nomi_di_sys_path(tree)
+    moduli = _nomi_del_modulo_sys(tree)
     trovati = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             func = node.func
             if (isinstance(func, ast.Attribute)
                     and func.attr in ('insert', 'append', 'extend')
-                    and _e_un_path(func.value, alias)):
+                    and _e_un_path(func.value, moduli, alias)):
                 for arg in node.args:
                     trovati.extend(_letterali_assoluti(arg))
         elif isinstance(node, ast.AugAssign):
-            if _e_un_path(node.target, alias):
+            if _e_un_path(node.target, moduli, alias):
                 trovati.extend(_letterali_assoluti(node.value))
         elif isinstance(node, ast.Assign):
             for bersaglio in node.targets:
@@ -647,7 +687,7 @@ def _percorsi_assoluti_in_sys_path(tree):
                 # fetta di `sys.path` è `sys.path`.
                 if isinstance(bersaglio, ast.Subscript):
                     bersaglio = bersaglio.value
-                if _e_un_path(bersaglio, alias):
+                if _e_un_path(bersaglio, moduli, alias):
                     trovati.extend(_letterali_assoluti(node.value))
     return trovati
 
@@ -698,6 +738,8 @@ def test_il_criterio_vede_i_percorsi_di_un_altra_macchina():
     "import sys\nsys.path[0:0] = ('/home/claude',)\n",
     "import sys\nsys.path = ['/home/claude'] + sys.path\n",
     "import sys as _sys\n_sys.path.extend(['/home/claude'])\n",
+    # Lo stesso modulo per un'altra strada: `os.sys` è `sys`.
+    "import os\nos.sys.path.insert(0, '/home/claude')\n",
     # Il bersaglio è un nome semplice: `sys` non compare nella riga.
     "from sys import path\npath.insert(0, '/home/claude')\n",
     "from sys import path as _p\n_p += ['/home/claude']\n",
@@ -734,6 +776,30 @@ def test_il_criterio_non_accusa_una_lista_che_si_chiama_path():
         "path += ['/opt/altro']\n"
     )
 
+    assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
+
+
+@pytest.mark.parametrize('sorgente', [
+    # L'assegnazione secca: un oggetto qualunque con un campo `path`.
+    "import sys\ncfg.path = '/tmp/fuori'\n",
+    "import sys\nself.path = '/tmp/fuori'\n",
+    # Le altre due grafie, sullo stesso attributo.
+    "import sys\ncfg.path.append('/tmp/fuori')\n",
+    "import sys\ncfg.path += ['/tmp/fuori']\n",
+])
+def test_il_criterio_non_accusa_un_campo_path_di_un_altro_oggetto(sorgente):
+    """`cfg.path` non è `sys.path`, e il rosso parlerebbe di sys.path.
+
+    È il contrappeso che il nome semplice aveva già — `_nomi_di_sys_path`
+    raccoglie il nome dall'import invece di accusare ogni `path` che capiti —
+    e che all'attributo mancava: bastava chiamarsi `path`, qualunque cosa ci
+    stesse prima. Il principio era scritto per uno dei due estremi della riga
+    e valeva per uno solo dei due.
+
+    Ogni grafia porta il suo `import sys`, altrimenti sarebbe verde per la
+    ragione sbagliata: perché in quel file `sys` non c'è, invece che perché
+    quell'oggetto non è `sys`.
+    """
     assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
 
 
