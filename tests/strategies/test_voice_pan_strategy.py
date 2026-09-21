@@ -37,6 +37,7 @@ Organizzazione:
 """
 
 import logging
+import types
 
 import pytest
 
@@ -535,7 +536,12 @@ class TestRegisterFunction:
             messaggi = [r.getMessage() for r in caplog.records
                         if r.name == DIAGNOSTIC_LOGGER_NAME]
             assert len(messaggi) == 1
-            assert 'pan' in messaggi[0]
+            # Il dominio per esteso, non 'pan': la chiave registrata qui e'
+            # `logged_pan`, quindi un `'pan' in messaggio` era soddisfatto
+            # dalla riga successiva e non discriminava nulla — sostituendo il
+            # dominio del modulo con una stringa qualsiasi la suite restava
+            # verde (misurato in #177). `voice_pan` nella chiave non c'e'.
+            assert 'voice_pan' in messaggi[0]
             assert 'logged_pan' in messaggi[0]
             assert 'LoggedPan' in messaggi[0]
 
@@ -807,3 +813,134 @@ class TestStochasticPanSeed:
         s = VoicePanStrategyFactory.create('stochastic', spread=180.0, stream_id='s1', seed=42)
         expected = _seeded_pos(42, "s1", 1) * 180.0 / 2.0
         assert s.get_pan_offset(1, 4, 0.0) == pytest.approx(expected)
+
+
+# =============================================================================
+# 14. IL REGISTRY GENERICO — PAN E' IL TRACER BULLET (issue #184)
+# =============================================================================
+
+class TestRegistryGenerico:
+    """Pan e' il primo modulo cablato su `StrategyRegistry` (#177 → #184).
+
+    Quel che segue non ripete la superficie della classe generica — quella e'
+    misurata in `tests/strategies/test_registry.py` — ma pinna il *cablaggio*:
+    che la mappa di modulo sia davvero quell'oggetto, che porti il dominio
+    giusto, e che le tre facciate di modulo siano rimaste dove i test, la
+    parita' di PGE-ls e la documentazione di estensione le cercano.
+    """
+
+    def test_la_mappa_di_modulo_e_un_strategy_registry(self):
+        from pge.strategies.registry import StrategyRegistry
+        _, _, _, _, registry, _, _ = _get_module()
+        assert isinstance(registry, StrategyRegistry)
+
+    def test_il_dominio_e_voice_pan(self):
+        """Lo stesso `kind` va nell'errore e nella riga diagnostica.
+
+        Era `'pan voce'` sulla riga di log e `'voice_pan'` nell'errore: due
+        grafie per una cosa sola, ed e' la prima a cedere.
+        """
+        _, _, _, _, registry, _, _ = _get_module()
+        assert registry.kind == 'voice_pan'
+
+    def test_il_registry_porta_la_propria_abc(self):
+        VoicePanStrategy, _, _, _, registry, _, _ = _get_module()
+        assert registry.base is VoicePanStrategy
+
+    def test_il_dominio_del_registry_e_quello_dell_errore(self, caplog):
+        """Una fonte sola per le due grafie: `kind` alla costruzione.
+
+        Nessun chiamante ripete il dominio, quindi `create()` non ha modo di
+        sbagliarlo — che e' il motivo per cui sta nel costruttore e non nella
+        chiamata.
+
+        **Le due grafie sono la riga di log e l'errore**, e vanno confrontate
+        fra loro. `exc.value.strategy_kind == registry.kind` era vero per
+        costruzione: `create()` legge `self.kind`, quindi l'uguaglianza regge
+        per qualunque valore, e infatti sostituendo il dominio del modulo con
+        una stringa qualsiasi questo test restava verde mentre ne cadevano
+        tre. E' lo stesso difetto che questa PR ha tolto un test piu' in la'
+        (l'asserzione contro l'alias, anche quella vera per costruzione):
+        un'asserzione che promette un pin e lo prende da una fonte sola.
+
+        Confrontare la riga con l'errore discrimina: chi reinlinea un
+        letterale in uno dei due punti — che e' esattamente cio' che
+        succedeva prima della #184, `'pan voce'` di qua e `voice_pan` di la'
+        — li fa divergere. Rinominare il dominio *in un posto solo* lo lascia
+        verde di proposito: quel che pinna il letterale e'
+        `test_il_dominio_e_voice_pan`, qui sopra.
+        """
+        from pge.shared.exceptions import StrategyNotFoundError
+        VoicePanStrategy, _, _, _, registry, register, factory = _get_module()
+
+        class SondaPan(VoicePanStrategy):
+            def get_pan_offset(self, voice_index, num_voices, time):
+                return 0.0
+
+            @property
+            def name(self):
+                return 'sonda'
+
+        # La chiave e il nome della classe non contengono il dominio: se lo
+        # contenessero, l'`in` qui sotto sarebbe soddisfatto da loro e non
+        # misurerebbe piu' niente — la trappola in cui `'pan' in messaggio`
+        # era caduta.
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            register('sonda_dominio', SondaPan)
+        riga = [r.getMessage() for r in caplog.records
+                if r.name == DIAGNOSTIC_LOGGER_NAME][0]
+
+        with pytest.raises(StrategyNotFoundError) as exc:
+            factory.create('inesistente')
+
+        assert exc.value.strategy_kind not in 'sonda_dominio SondaPan'
+        assert exc.value.strategy_kind in riga
+        assert exc.value.strategy_kind == registry.kind
+
+    def test_register_resta_una_def_di_modulo(self):
+        """Non un alias di `REGISTRY.register`.
+
+        La guardia della diagnostica cerca `def register_*_strategy` di
+        livello modulo: un alias farebbe uscire questo modulo dal censimento
+        dei sorgenti — e i wrapper restano comunque, perche' sono l'API di
+        estensione documentata e portano i propri esempi.
+
+        Il criterio e' il **tipo**, non l'identita'. `registry.register` e' un
+        metodo legato, e un metodo legato lo si costruisce a ogni accesso
+        all'attributo: `alias is not registry.register` e' vero anche quando
+        `alias = registry.register`, cioe' proprio nel caso che questo test
+        deve vietare. Misurato. Un `def` di modulo e' una `FunctionType`, un
+        alias una `MethodType`: li' la differenza c'e', e la seconda
+        asserzione la conferma dal lato del modulo di provenienza
+        (`pge.strategies.registry` invece di questo).
+        """
+        import pge.strategies.voice_pan_strategy as modulo
+        _, _, _, _, _, register_voice_pan_strategy, _ = _get_module()
+        assert isinstance(register_voice_pan_strategy, types.FunctionType)
+        assert register_voice_pan_strategy.__module__ == modulo.__name__
+
+    def test_la_factory_resta_uno_staticmethod_che_delega(self):
+        """La facciata non diventa un alias di metodo legato.
+
+        `VoicePanStrategyFactory.create` e' superficie pubblica documentata:
+        resta uno `@staticmethod` che inoltra al registry.
+        """
+        _, _, _, _, _, _, VoicePanStrategyFactory = _get_module()
+        assert isinstance(
+            VoicePanStrategyFactory.__dict__['create'], staticmethod
+        )
+
+    def test_il_primo_parametro_della_factory_si_chiama_name(self):
+        """Cambio di firma dichiarato (#184): `strategy_name` → `name`.
+
+        Era l'unico `create()` dell'albero a chiamare la chiave con un nome
+        proprio, ed e' il motivo per cui pan fa da tracer bullet: la
+        divergenza cade sulla firma che il registry generico deve assorbire
+        tale e quale. Tutti i chiamanti di oggi — `Stream`, i test — lo
+        passano posizionalmente, quindi la convergenza non rompe niente.
+        """
+        _, RangePanStrategy, _, _, _, _, VoicePanStrategyFactory = _get_module()
+        assert isinstance(
+            VoicePanStrategyFactory.create(name='range', spread=90.0),
+            RangePanStrategy,
+        )

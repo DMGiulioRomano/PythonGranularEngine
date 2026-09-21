@@ -16,9 +16,14 @@ Design (uniformato a voice_onset_strategy / voice_pointer_strategy / voice_pitch
 - RangePanStrategy: distribuzione deterministica equidistante in [-spread/2, +spread/2]
 - StochasticPanStrategy: posizioni casuali stabili per voce (seed deterministico)
 - StepPanStrategy: voce i → i × step gradi
-- VOICE_PAN_STRATEGIES: registry globale {nome: classe}
-- register_voice_pan_strategy(): estensibilita' dinamica
-- VoicePanStrategyFactory: factory con create() statico
+- VOICE_PAN_STRATEGIES: registry globale {nome: classe}, `StrategyRegistry`
+  del dominio 'voice_pan' (issue #184 — primo modulo sulla forma generica
+  decisa in #177; gli altri otto registry sono ancora sulla forma vecchia —
+  cinque li converte la #185, `window_selection_strategy` e
+  `grain_clip_strategy` la #265, `distribution_strategy` dopo la decisione
+  sulla validazione)
+- register_voice_pan_strategy(): estensibilita' dinamica, delega al registry
+- VoicePanStrategyFactory: factory con create() statico, delega al registry
 
 Ogni strategy possiede il proprio parametro come StrategyParam
 (Union[float, Envelope]) e lo risolve internamente con resolve_param(param, time):
@@ -33,12 +38,9 @@ from abc import ABC, abstractmethod
 from typing import Dict, Type
 
 from pge.parameters.parameter import resolve_param, StrategyParam
-from pge.shared.exceptions import (
-    InvalidStrategyConfigError,
-    StrategyNotFoundError,
-)
-from pge.shared.logger import log_strategy_registration
+from pge.shared.exceptions import InvalidStrategyConfigError
 from pge.shared.seeding import voice_rng
+from pge.strategies.registry import StrategyRegistry
 
 
 # =============================================================================
@@ -227,11 +229,11 @@ class StepPanStrategy(VoicePanStrategy):
 # REGISTRY
 # =============================================================================
 
-VOICE_PAN_STRATEGIES: Dict[str, Type[VoicePanStrategy]] = {
+VOICE_PAN_STRATEGIES = StrategyRegistry('voice_pan', VoicePanStrategy, {
     'range':      RangePanStrategy,
     'stochastic': StochasticPanStrategy,
     'step':       StepPanStrategy,
-}
+})
 
 
 # =============================================================================
@@ -263,8 +265,7 @@ def register_voice_pan_strategy(
 
         register_voice_pan_strategy('stereo_spread', MyStereoSpread)
     """
-    VOICE_PAN_STRATEGIES[name] = strategy_class
-    log_strategy_registration('pan voce', name, strategy_class)
+    VOICE_PAN_STRATEGIES.register(name, strategy_class)
 
 
 # =============================================================================
@@ -286,28 +287,26 @@ class VoicePanStrategyFactory:
     """
 
     @staticmethod
-    def create(strategy_name: str, **kwargs) -> VoicePanStrategy:
+    def create(name: str, **kwargs) -> VoicePanStrategy:
         """
         Crea e restituisce un'istanza della strategy specificata.
 
+        Il primo parametro si chiamava `strategy_name` (issue #184): era
+        l'unico `create()` dell'albero a dare un nome proprio a quella che e'
+        la chiave del registry, e la convergenza su `name` e' meta' della
+        ragione per cui pan fa da tracer bullet. Tutti i chiamanti lo passano
+        posizionalmente, quindi il cambio non rompe nessuna chiamata viva.
+
         Args:
-            strategy_name: nome della strategy nel registry
-                           ('range', 'stochastic', 'step', o custom)
+            name: nome della strategy nel registry
+                  ('range', 'stochastic', 'step', o custom)
             **kwargs: parametri passati al costruttore della strategy
 
         Returns:
             Istanza di VoicePanStrategy corrispondente al nome
 
         Raises:
-            StrategyNotFoundError: se strategy_name non e' nel registry,
-                        con messaggio che elenca le strategy disponibili
+            StrategyNotFoundError: se `name` non e' nel registry, con
+                        messaggio che elenca le strategy disponibili
         """
-        if strategy_name not in VOICE_PAN_STRATEGIES:
-            raise StrategyNotFoundError(
-                strategy_kind="voice_pan",
-                name=strategy_name,
-                available=list(VOICE_PAN_STRATEGIES.keys()),
-            )
-
-        strategy_class = VOICE_PAN_STRATEGIES[strategy_name]
-        return strategy_class(**kwargs)
+        return VOICE_PAN_STRATEGIES.create(name, **kwargs)

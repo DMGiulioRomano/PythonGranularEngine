@@ -396,6 +396,55 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
+- **`voice_pan_strategy` passa al registry generico** (issue #184, forma decisa
+  in #177). Lo stesso schema — una mappa nome → classe, un punto di
+  registrazione, una `Factory` il cui `create()` fa lookup e alza
+  `StrategyNotFoundError` — era ripetuto in nove moduli, e le copie stavano
+  divergendo: tre parole per il primo parametro della registrazione, due per il
+  secondo, tre etichette di dominio scritte a mano sulla riga diagnostica.
+  `StrategyRegistry` (`src/pge/strategies/registry.py`) **è** la mappa — eredita
+  da `dict`, perché il dizionario deve restare raggiungibile e mutabile sotto il
+  proprio nome di modulo: le fixture ne fanno snapshot e ripristino con
+  `dict()`/`clear()`/`update()`, e la parità di PGE-ls ne legge le chiavi
+  importandolo per nome — e riceve il proprio dominio alla costruzione, così che
+  nessun chiamante lo ripeta e `create()` non possa sbagliarlo.
+
+  Pan è il tracer bullet, non il primo di una conversione in blocco: **gli altri
+  otto registry sono ancora sulla forma vecchia** e funzionano. Lo scopo era
+  provare che la forma regge prima di replicarla, e la prova è che non è servito
+  nessun caso speciale per assorbire i due scarti di pan.
+
+  Un cambio di firma, dichiarato: il primo parametro di
+  `VoicePanStrategyFactory.create` passa da `strategy_name` a `name`. Era
+  l'unico `create()` dell'albero a dare un nome proprio a quella che è la chiave
+  del registry; tutti i chiamanti vivi lo passano posizionalmente, quindi
+  nessuna chiamata si rompe. `register_voice_pan_strategy` conserva la propria
+  firma e resta una `def` di modulo che delega — non un alias, che la farebbe
+  uscire dal censimento dei punti di registrazione — e i messaggi d'errore non
+  cambiano: `StrategyNotFoundError` riporta `strategy_kind`, `name` e
+  `available` come prima.
+
+  Il dominio della riga diagnostica si uniforma a quello dell'errore:
+  `'pan voce'` → `voice_pan`. Il letterale sopravviveva in altri due punti che
+  nessun test allineava — la docstring di `log_strategy_registration` e il
+  letterale che `test_diagnostic_logger` passa per conto suo — e vanno con
+  questo cambio. La #177 aveva misurato che l'asserzione che sembrava pinnare
+  quel dominio non discriminava nulla: a soddisfare `'pan' in messaggio` era la
+  chiave registrata dal test, non il dominio, e sostituire il dominio con una
+  stringa qualsiasi lasciava la suite interamente verde. Ora l'asserzione nomina
+  `voice_pan` e lo stesso sabotaggio fa tre rossi.
+
+  La guardia della diagnostica impara la nuova grafia. Con la registrazione che
+  vive dentro un *metodo*, il finder che guardava le `def` di livello modulo
+  usciva dal campo visivo: una `print()` in `StrategyRegistry.register` lasciava
+  verde proprio la guardia scritta per sorvegliare i punti di registrazione.
+  Il criterio ora riconosce anche un metodo chiamato esattamente `register`
+  dentro una classe, il che chiude di conseguenza un secondo buco preesistente
+  — `DistributionFactory.register`, cieco a entrambe le guardie perché non sta
+  in `strategies/` e non è una `def` di modulo. Sorvegliarlo non è convertirlo:
+  `distribution` resta sulla forma vecchia con la propria validazione
+  `issubclass`, che è pinnata e che la forma generica non ha.
+
 - **Le registrazioni dinamiche di strategy non stampano piu' su stdout**
   (issue #187, primo scaglione della #178). `register_density_strategy`,
   `register_variation_strategy` e `register_voice_pan_strategy` passano dal
