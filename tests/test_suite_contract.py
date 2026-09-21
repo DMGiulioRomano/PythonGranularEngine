@@ -562,28 +562,53 @@ def test_la_superficie_del_modulo_comprende_le_definizioni_all_import(tmp_path):
 # in `test_parameter.py` la riga stava proprio dentro `_import_real_parameter()`,
 # cioè l'unica funzione del file che toccava produzione.
 
-def _e_un_path(nodo):
-    """`sys.path`, o l'alias `_sys.path` che `test_parameter.py` usava."""
-    return isinstance(nodo, ast.Attribute) and nodo.attr == 'path'
+def _nomi_di_sys_path(tree):
+    """I nomi con cui il file chiama `sys.path` senza passare per `sys`.
+
+    `from sys import path` lega la lista a un nome semplice, e da lì
+    `path.insert(0, '/home/claude')` è la stessa riga di tutte le altre —
+    mentre `_e_un_path`, che cerca un attributo, non la vede. Il nome si
+    raccoglie dall'import invece di accusare ogni `path` che capiti: un
+    `path` qualunque è una variabile locale, e una guardia rumorosa la si
+    spegne.
+    """
+    nomi = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.ImportFrom) and not node.level
+                and node.module == 'sys'):
+            nomi.update(a.asname or a.name
+                        for a in node.names if a.name == 'path')
+    return nomi
+
+
+def _e_un_path(nodo, alias=()):
+    """`sys.path`, l'alias `_sys.path` che `test_parameter.py` usava, o il
+    nome legato da `from sys import path` (vedi `_nomi_di_sys_path`)."""
+    if isinstance(nodo, ast.Attribute):
+        return nodo.attr == 'path'
+    return isinstance(nodo, ast.Name) and nodo.id in alias
 
 
 def _letterali_assoluti(nodo):
-    """Le stringhe costanti che cominciano per `/`, liste e tuple comprese.
+    """I letterali assoluti che compaiono dentro l'espressione inserita.
 
-    I path calcolati — `os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`,
-    che sono la forma di tutti gli altri inserimenti della suite — non sono
-    `ast.Constant` e non entrano.
+    Si guarda tutta l'espressione, non la sua sola cima: liste, tuple,
+    concatenazioni e **chiamate**. Riconoscere le tre forme strutturali e
+    fermarsi lì era, sul valore, la stessa distrazione che fermarsi a
+    `insert` era sull'istruzione: `os.path.join('/Users/tizio/repo', 'src')`
+    è la stessa riga di `'/Users/tizio/repo/src'`, ed è una chiamata, quindi
+    passava.
+
+    I percorsi calcolati restano leciti perché non contengono nessun
+    letterale assoluto, non perché siano chiamate:
+    `os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'))` e
+    `str(REPO_ROOT / 'utils')` — la forma di tutti gli altri inserimenti
+    della suite — non ne hanno uno. È il letterale il criterio, in qualsiasi
+    posizione stia.
     """
-    if (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)
-            and os.path.isabs(nodo.value)):
-        return [nodo.value]
-    if isinstance(nodo, (ast.List, ast.Tuple)):
-        return [v for e in nodo.elts for v in _letterali_assoluti(e)]
-    # `['/x'] + sys.path`: la concatenazione e' la grafia della
-    # riassegnazione, e il letterale ci sta dentro come in una lista.
-    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add):
-        return _letterali_assoluti(nodo.left) + _letterali_assoluti(nodo.right)
-    return []
+    return [n.value for n in ast.walk(nodo)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and os.path.isabs(n.value)]
 
 
 def _percorsi_assoluti_in_sys_path(tree):
@@ -595,18 +620,26 @@ def _percorsi_assoluti_in_sys_path(tree):
     perché una guardia che ne riconoscesse una sola si spegnerebbe da sé al
     primo `+=`: sarebbe la stessa riga muta che questa sezione toglie, con
     sopra un test verde che dice il contrario.
+
+    Lo stesso vale per i due estremi dell'istruzione, che hanno avuto la
+    stessa distrazione ciascuno: il bersaglio può essere un nome semplice
+    (`from sys import path`, vedi `_nomi_di_sys_path`) e il letterale può
+    stare dentro una chiamata (vedi `_letterali_assoluti`). Riconoscere solo
+    la grafia centrale lasciava fuori le due riscritture più ovvie della
+    stessa riga.
     """
+    alias = _nomi_di_sys_path(tree)
     trovati = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             func = node.func
             if (isinstance(func, ast.Attribute)
                     and func.attr in ('insert', 'append', 'extend')
-                    and _e_un_path(func.value)):
+                    and _e_un_path(func.value, alias)):
                 for arg in node.args:
                     trovati.extend(_letterali_assoluti(arg))
         elif isinstance(node, ast.AugAssign):
-            if _e_un_path(node.target):
+            if _e_un_path(node.target, alias):
                 trovati.extend(_letterali_assoluti(node.value))
         elif isinstance(node, ast.Assign):
             for bersaglio in node.targets:
@@ -614,7 +647,7 @@ def _percorsi_assoluti_in_sys_path(tree):
                 # fetta di `sys.path` è `sys.path`.
                 if isinstance(bersaglio, ast.Subscript):
                     bersaglio = bersaglio.value
-                if _e_un_path(bersaglio):
+                if _e_un_path(bersaglio, alias):
                     trovati.extend(_letterali_assoluti(node.value))
     return trovati
 
@@ -665,20 +698,53 @@ def test_il_criterio_vede_i_percorsi_di_un_altra_macchina():
     "import sys\nsys.path[0:0] = ('/home/claude',)\n",
     "import sys\nsys.path = ['/home/claude'] + sys.path\n",
     "import sys as _sys\n_sys.path.extend(['/home/claude'])\n",
+    # Il bersaglio è un nome semplice: `sys` non compare nella riga.
+    "from sys import path\npath.insert(0, '/home/claude')\n",
+    "from sys import path as _p\n_p += ['/home/claude']\n",
+    # Il letterale sta dentro una chiamata: stessa cartella, stessa riga.
+    "import os, sys\n"
+    "sys.path.insert(0, os.path.join('/home/claude', 'src'))\n",
+    "import os, sys\nsys.path += [os.path.expanduser('/home/claude')]\n",
 ])
 def test_il_criterio_vede_le_altre_grafie_dello_stesso_inserimento(sorgente):
     """`+=` e `extend` sono la stessa riga di `insert`, e valgono lo stesso.
 
     Riconoscerne una sola sarebbe il difetto di questa sezione applicato a
     sé stessa: la riga muta resterebbe, con sopra un test verde a dire che
-    non c'è.
+    non c'è. Vale per tutti e tre i pezzi dell'istruzione, non solo per il
+    verbo in mezzo: il bersaglio può essere un nome (`from sys import path`)
+    e il letterale può stare dentro una chiamata — le due riscritture più
+    ovvie della stessa riga, e le due che passavano.
     """
     assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) \
         == ['/home/claude']
 
 
+def test_il_criterio_non_accusa_una_lista_che_si_chiama_path():
+    """`path` è un nome comune: senza l'import non è `sys.path`.
+
+    È il contrappeso della grafia qui sopra. Accusare ogni `path.append` che
+    si incontri renderebbe rossa qualunque lista di percorsi costruita da un
+    test, e una guardia rumorosa la si spegne — per questo il nome si
+    raccoglie da `from sys import path` invece di darlo per scontato.
+    """
+    sorgente = (
+        "path = []\n"
+        "path.append('/home/claude')\n"
+        "path += ['/opt/altro']\n"
+    )
+
+    assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
+
+
 def test_il_criterio_non_accusa_i_percorsi_calcolati():
-    """La forma che usa il resto della suite resta legittima."""
+    """La forma che usa il resto della suite resta legittima.
+
+    Ed è verde per la ragione giusta: non perché siano chiamate — dentro le
+    chiamate ora si guarda — ma perché non contengono nessun letterale
+    assoluto. È questo test a tenere il criterio largo dal diventare
+    rumoroso.
+    """
     sorgente = (
         "import os, sys\n"
         "sys.path.insert(0, os.path.abspath(\n"
