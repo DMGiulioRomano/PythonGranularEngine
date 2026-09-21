@@ -25,13 +25,14 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/strategies/test_misc_strategy_errors.py
   - tests/strategies/test_registry.py
+  - tests/strategies/test_registry_convergenza.py
   - tests/strategies/test_registry_errors.py
   - tests/strategies/test_strategies.py
   - tests/strategies/test_variation_registry.py
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 9eb36eb
+last_synced_commit: f2f0157
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -63,6 +64,12 @@ davvero arriva a nove: il criterio operativo è il `raise
 StrategyNotFoundError(strategy_kind=…)` dentro `create()`, che nell'albero ha
 esattamente nove siti.
 
+**La tabella fotografa lo stato prima di #184/#185**, che è il suo mestiere:
+è il problema come lo si è trovato. Le due righe `↳` dicono dove è arrivato.
+Dopo #185 quei nove siti sono **quattro** — `window_selection_strategy`,
+`grain_clip_strategy`, `distribution_strategy` e `StrategyRegistry.create`,
+l'ultimo dei quali serve sei registry.
+
 | modulo | mappa | registrazione | riga diagnostica | `create()` |
 |---|---|---|---|---|
 | `strategies/voice_pitch_strategy.py` | `VOICE_PITCH_STRATEGIES` | `(name, cls)` | no | `create(name, **kwargs)` |
@@ -72,6 +79,7 @@ esattamente nove siti.
 | ↳ *dopo #184* | `StrategyRegistry('voice_pan', …)` | delega a `.register` | sì, dominio `voice_pan` | `create(name, **kwargs)`, delega |
 | `strategies/strategy_registry.py` | `DENSITY_STRATEGIES` | `(param_name, strategy_class)` | sì, dominio `'density'` | `create_density_strategy(selected_param_name, param_obj, all_params)` |
 | `strategies/variation_registry.py` | `VARIATION_STRATEGIES` | `(mode_name, strategy_class)` | sì, dominio `'variation'` | `create(variation_mode)` |
+| ↳ *dopo #185* (pitch, onset, pointer, density, variation) | `StrategyRegistry('<kind>', …)` | `(name, strategy_class)`, delega a `.register` | sì, dominio `<kind>` | delega a `.create`; density tiene la propria façade e la propria validazione |
 | `controllers/window_selection_strategy.py` | `WINDOW_STRATEGY_REGISTRY` | `(name, cls)` | no | `create(name, **kwargs)` + `from_spec(...)` |
 | `strategies/grain_clip_strategy.py` | `GRAIN_CLIP_STRATEGIES` | — | — | `create(name, **kwargs)` |
 | `shared/distribution_strategy.py` | `DistributionFactory._registry` (attributo di classe) | `DistributionFactory.register(name, strategy_class)`, classmethod, **valida** | no | `create(mode, rng=None, anchor=…)` |
@@ -274,8 +282,19 @@ modulo con `'XYZ_dominio_sbagliato'` l'intera suite resta verde (`make tests`:
 *prima* del tracer bullet, e va letta come storia: l'asserzione ora nomina
 `voice_pan` per esteso — che nella chiave registrata dal test (`logged_pan`)
 non compare — quindi lo stesso sabotaggio che lasciava la suite interamente
-verde adesso fa tre rossi. Per i cinque moduli che #185 deve rinominare la
-misura vale ancora tale e quale, e con lei la conseguenza qui sotto.
+verde adesso fa tre rossi.
+
+**E #185 l'ha chiusa per gli altri cinque, ma per un'altra strada: non
+rinominando.** I cinque domini erano già la stringa che compariva nel loro
+`StrategyNotFoundError` (`voice_pitch`, `voice_onset`, `voice_pointer`,
+`density`, `variation`), quindi non c'era nessun `'pan voce'` da riscrivere —
+il letterale a mano è semplicemente sparito, perché la riga la emette il
+registry dal proprio `kind`. Quel che #185 aggiunge è l'asserzione che
+discrimina, per tutti e cinque:
+`test_registry_convergenza.py::test_la_registrazione_delega_al_registry`
+registra una chiave (`_convergenza_di_prova`) in cui nessuno dei cinque domini
+compare come sottostringa, quindi il dominio è l'unica cosa che può
+soddisfarla.
 
 La conseguenza per #184 è che il rename `'pan voce'` → `voice_pan` va
 verificato leggendo, non aspettandosi un rosso — e che il letterale sopravvive
@@ -588,6 +607,12 @@ quel test: il lookup va interrogato per primo (`name in REGISTRY` davanti al
 controllo di `distribution`) e solo la costruzione delegata al registry. È un
 vincolo per #185, non una preferenza.
 
+**#185 l'ha applicato in questa forma**: la validazione di `distribution` sta
+dentro il ramo `selected_param_name in DENSITY_STRATEGIES`, così che un nome
+non registrato cada sul `create` del registry qualunque cosa contenga
+`all_params`, e la façade non ricostruisca l'errore per conto proprio. Il test
+che lo pinna è rimasto quello che c'era.
+
 ### Chi fa da tracer bullet
 
 `voice_pan_strategy`, come dice la #184 — ma non più per le ragioni scritte lì,
@@ -620,9 +645,21 @@ tracer bullet non è la prova che la superficie `dict` sia coperta, è la prova
 che la forma decisa regge su un modulo. La copertura si misura in #185, ed è
 `variation` a doverla misurare.
 
+**Misurata: la superficie regge, e il rosso è arrivato da un'altra parte.** Le
+tre operazioni in più — lunghezza, iterazione diretta, `values()` — sono
+passate senza toccare la classe, come previsto. A cadere sulla conversione di
+variation è stato invece `test_register_logs_confirmation`, che pretende
+`len(messaggi) == 1`: lasciare nel modulo la sua `log_strategy_registration`
+accanto alla delega a `StrategyRegistry.register` fa uscire la riga **due
+volte**. È il difetto che solo i due registry già parlanti (density, variation)
+potevano avere, e che il tracer bullet non poteva vedere — pan la sua
+`print()` l'aveva persa con la #187 — quindi la lezione di questa sezione
+resta giusta per una ragione diversa da quella scritta: il banco di prova più
+largo non era la superficie `dict`, era la riga diagnostica.
+
 Se per farla passare servisse un caso speciale nella classe generica, la regola
 è quella della #184: si torna qui e si cambia la forma, non si aggiunge
-l'eccezione.
+l'eccezione. Non è servito: né per pan, né per i cinque di #185.
 
 ### Chi resta fuori
 
@@ -661,11 +698,11 @@ Il secondo è voluto: la riga appartiene al punto di ingresso esplicito, e la
 scrittura diretta è quel che fanno le fixture per rimettere a posto lo stato.
 
 **La riga diagnostica passa da tre registry a sette.** Uniformare vuol dire
-anche estendere, non solo togliere: i quattro muti di oggi (pitch, onset,
+anche estendere, non solo togliere: i quattro muti di allora (pitch, onset,
 pointer, window) cominciano a parlare. Sette è però il conto a convergenza
-avvenuta, non quello di #184/#185: alla fine di #185 i registry che parlano sono
-sei, perché `window` è nel seguito insieme a `grain_clip` (#265, vedi «Chi resta
-fuori»). Gli altri due sono quelli che il conto non tocca, ciascuno per il
+avvenuta, non quello di #184/#185: **con #185 chiusa i registry che parlano sono
+sei**, perché `window` è nel seguito insieme a `grain_clip` (#265, vedi «Chi
+resta fuori»). Gli altri due sono quelli che il conto non tocca, ciascuno per il
 proprio motivo: `grain_clip` un punto di registrazione oggi non ce l'ha — ne
 parlerebbe otto solo se il seguito decidesse di dargliene uno, che è appunto la
 domanda lasciata aperta lì — e `distribution` ce l'ha ma è fermo davanti alla
@@ -704,8 +741,12 @@ la cercano — quindi le due how-to vanno corrette nel passo che le tocca, non
 prese come specifica. #184 ha corretto [[add-voice-strategy]], che è la
 how-to dell'asse toccato: il passo 3 nomina ora la mappa di modulo e la
 `register_voice_<axis>_strategy`, e dice quale asse è già sulla forma nuova.
-[[add-variation-strategy]] resta da correggere e tocca a #185, che è il passo
-che la tocca.
+#185 ha corretto [[add-variation-strategy]] allo stesso modo: il passo 2
+nomina la mappa di modulo `VARIATION_STRATEGIES` e la
+`register_variation_strategy(name, strategy_class)`, e dice che la mappa è uno
+`StrategyRegistry`. Il passo 3 di [[add-voice-strategy]] perde a sua volta la
+frase che distingueva pan dagli altri tre assi: ora sono tutti sulla forma
+nuova.
 
 ## Implicazioni codice
 
@@ -740,11 +781,18 @@ che la tocca.
   `test_register_logs_instead_of_printing` (`'voice_pan'`, che nella chiave
   registrata dal test non compare, invece di `'pan'`, che ci compariva), e lo
   stesso sabotaggio che prima lasciava la suite interamente verde ora fa tre
-  rossi. Per gli altri cinque la regola resta quella scritta qui, ed è #185 a
-  doverla applicare leggendo.
+  rossi. **Per gli altri cinque non vale più nemmeno come regola**: #185 ha
+  trovato i domini già allineati agli errori — niente da rinominare — e ha
+  lasciato al loro posto un'asserzione che discrimina, una per registry
+  (`test_registry_convergenza.py`). In `src/` non c'è più un solo letterale di
+  dominio: `log_strategy_registration` ha un unico chiamante,
+  `StrategyRegistry.register`, che passa il proprio `kind`. Restano gli esempi
+  nella docstring dell'helper e i quattro letterali che
+  `tests/shared/test_diagnostic_logger.py` passa a chiamate dirette
+  dell'helper — dati di quel test, non la copia dell'etichetta di un modulo.
 - **Ordine di esecuzione** → ~~#184 (pan, con la guardia estesa a
-  `StrategyRegistry.register`)~~ **fatta**, poi #185 (pitch, onset, pointer,
-  density, variation), poi #265 per `window_selection_strategy` e
+  `StrategyRegistry.register`)~~ **fatta**, ~~#185 (pitch, onset, pointer,
+  density, variation)~~ **fatta**, poi #265 per `window_selection_strategy` e
   `grain_clip_strategy`, e `distribution_strategy` dopo la decisione sulla
   validazione.
 - **Se il tracer bullet chiede un'eccezione** → si torna a questo documento e si

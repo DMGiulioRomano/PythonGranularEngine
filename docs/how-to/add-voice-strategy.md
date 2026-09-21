@@ -7,7 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
   - src/pge/core/stream.py
-last_synced_commit: a36de8f
+last_synced_commit: f2f0157
 entry_for: [add-voice-strategy]
 ---
 
@@ -38,12 +38,12 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
    inesistente. La mappa vive a livello di modulo, che e' dove i test la
    cercano e dove la parita' di PGE-ls la importa per nome.
 
-   Per **pan** la mappa e' un `StrategyRegistry` (issue #184, forma decisa in
-   #177): il valore si scrive uguale, ma la registrazione dinamica e la
-   costruzione passano per i metodi del registry invece che per codice
-   ripetuto nel modulo. Gli altri tre assi sono ancora sulla forma vecchia —
-   un `dict` di modulo — e ci restano fino a #185; da fuori le due forme si
-   usano allo stesso modo.
+   Le mappe dei quattro assi sono `StrategyRegistry` (issue #184 per pan,
+   #185 per pitch, onset e pointer; forma decisa in #177): il valore si scrive
+   uguale, ma la registrazione dinamica e la costruzione passano per i metodi
+   del registry invece che per codice ripetuto in ogni modulo. La firma e'
+   la stessa su tutti e quattro — `register_voice_<axis>_strategy(name,
+   strategy_class)` — e la mappa resta un `dict` a tutti gli effetti.
 4. Se i parametri richiedono parsing custom (es. envelope auto-detect), estendi `_build_<axis>_strategy` in `src/pge/core/stream.py` via `_parse_strategy_kwarg`
 5. Test: `tests/strategies/test_voice_<axis>_strategy.py` con voice-0 invariant + envelope param + (per le stochastiche) determinismo dal `stream_id`
 
