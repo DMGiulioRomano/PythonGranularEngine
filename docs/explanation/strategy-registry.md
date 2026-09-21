@@ -31,7 +31,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: a36de8f
+last_synced_commit: 9eb36eb
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -528,6 +528,13 @@ cominciano per `register` e non registrano nessuna strategy. Una guardia che
 li accusasse chiederebbe di mantenere una lista di falsi positivi — il difetto
 speculare a quello che l'allargamento chiude — quindi c'è un test anche per
 quella direzione.
+
+Quel test **verifica le proprie esche prima di scartarle**, e chi scrive
+l'analogo per #185 erediti la ragione: le due `register_*` stanno in un modulo
+che della guardia non sa niente, quindi un `assert trovate == []` da solo resta
+verde anche quando non c'è più niente da scartare — misurato, rinominando
+`register_sample`. Il confine fra criterio largo e criterio stretto smetterebbe
+di essere tenuto esattamente nel momento in cui qualcuno allarga il criterio.
 
 Da cui due regole per #184:
 la guardia impari anche `StrategyRegistry.register`, così che il presidio smetta
