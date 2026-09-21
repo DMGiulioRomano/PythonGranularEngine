@@ -313,6 +313,28 @@ def log_strategy_registration(domain: str, name: str, strategy_class: type) -> N
     )
 
 
+def violated_bound(value: float, min_val: float, max_val):
+    """Quale bound e' stato violato, come `(tipo, valore)`.
+
+    Senza tetto l'unico bound violabile e' il pavimento, e va detto invece
+    che dedotto: la forma storica `"MIN" if value < min_val else "MAX"`
+    sceglieva MAX per esclusione, quindi con `max_val=None` — la grafia che
+    `density` usa dalla issue #272, e `loop_dur` da sempre — consegnava un
+    None a chi poi lo sottrae (`deviation`) o lo formatta (`:.4f`). Non e'
+    un caso di laboratorio: `nan` e `inf` non sono minori del pavimento, e
+    cadevano entrambi in quel ramo.
+
+    Vive qui e non nei chiamanti perche' i chiamanti sono tre — le due
+    funzioni qui sotto e la validazione al parse in `parser.py` — ed erano
+    tre copie della stessa riga, cioe' il modo in cui una smette di valere
+    senza che nessuno se ne accorga (la stessa ragione di
+    `ParameterBounds.clamp`).
+    """
+    if max_val is not None and value > max_val:
+        return "MAX", max_val
+    return "MIN", min_val
+
+
 def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value, 
                      min_val, max_val, is_envelope=False):
     """
@@ -334,15 +356,9 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
         return
     
     # Calcola bound violato
-    if raw_value < min_val:
-        deviation = raw_value - min_val
-        bound_type = "MIN"
-        bound_value = min_val
-    else:
-        deviation = raw_value - max_val
-        bound_type = "MAX"
-        bound_value = max_val
-    
+    bound_type, bound_value = violated_bound(raw_value, min_val, max_val)
+    deviation = raw_value - bound_value
+
     source_type = "ENV" if is_envelope else "FIX"
     
     logger.warning(
@@ -380,15 +396,9 @@ def log_config_warning(stream_id: str, param_name: str,
         return
     
     # Calcola bound violato
-    if raw_value < min_val:
-        deviation = raw_value - min_val
-        bound_type = "MIN"
-        bound_value = min_val
-    else:
-        deviation = raw_value - max_val
-        bound_type = "MAX"
-        bound_value = max_val
-    
+    bound_type, bound_value = violated_bound(raw_value, min_val, max_val)
+    deviation = raw_value - bound_value
+
     # Tag diverso per config
     logger.warning(
         f"[CONFIG] [{stream_id}] {param_name:<20} | "
@@ -439,6 +449,56 @@ def log_loop_drift_warning(stream_id: str, elapsed_time: float,
         f"loop_drift={loop_start_drift_rate:.6f} s/s | "
         f"min_speed_needed>={min_speed_needed:.6f} | "
         f"ratio_actual/needed={speed_ratio / max(min_speed_needed, 1e-9):.3f}x"
+        f"{note}"
+    )
+
+
+def log_high_density_warning(stream_id: str, elapsed_time: float,
+                             density: float, threshold: float,
+                             grain_duration: float,
+                             mode: str,
+                             interval: float,
+                             is_first: bool = False):
+    """
+    Logga il passaggio della density sopra la soglia di attenzione.
+
+    Non e' il resoconto di un taglio: dalla issue #272 la density non ha piu'
+    un tetto e il valore richiesto viene onorato per intero. E' il contrario —
+    e' la riga che il vecchio clamp NON scriveva. Fino a qui una `density`
+    derivata oltre i 4000 g/s veniva richiusa in silenzio, e un
+    `fill_factor: 8` su grani da 1 ms rendeva 4 senza che nulla lo dicesse:
+    ne' un log, ne' un errore, ne' uno scarto in partitura.
+
+    Adesso quel numero si vede, e serve a due cose: riconoscere il refuso
+    (un `grain.duration` di troppo corto fa esplodere il conteggio dei grani)
+    e sapere quale sia la density vera quando la si e' voluta davvero.
+
+    Args:
+        stream_id: ID dello stream
+        elapsed_time: tempo corrente nello stream
+        density: densita' richiesta in grani/secondo (quella che verra' resa)
+        threshold: soglia di attenzione superata
+        grain_duration: durata del grano a quell'onset, in secondi
+        mode: 'fill_factor' o 'density' — da quale delle due strade arriva
+        interval: intervallo del rate limiting, per dirlo nel primo avviso
+        is_first: True al primo avviso dello stream
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    tag = "[DENSITY_HIGH_FIRST]" if is_first else "[DENSITY_HIGH]"
+    note = (f" << PRIMO AVVISO — log successivi soppressi "
+            f"(rate limit {interval:g}s)") if is_first else ""
+
+    logger.warning(
+        f"{tag} [{stream_id}] "
+        f"t={elapsed_time:>7.3f}s | "
+        f"density={density:>12.1f} g/s | "
+        f"soglia={threshold:.0f} | "
+        f"grain={grain_duration * 1000:.4f} ms | "
+        f"IOT={1.0 / density * 1000:.5f} ms | "
+        f"mode={mode}"
         f"{note}"
     )
 

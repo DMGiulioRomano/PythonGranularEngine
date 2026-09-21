@@ -46,16 +46,23 @@ def test_parser_invalid_input_format_raises_invalid_parameter_error():
 
 
 def test_parser_scalar_out_of_bounds_raises_parameter_bound_error():
-    """Scalare fuori bounds in strict mode → ParameterBoundError."""
+    """Scalare fuori bounds in strict mode → ParameterBoundError.
+
+    Il parametro e' `fill_factor` e non `density` dalla issue #272: la density
+    il tetto non ce l'ha piu', quindi non c'e' piu' un numero che la porti
+    fuori banda verso l'alto. Qui sotto esame c'e' la macchina degli errori
+    del parser — attribuzione allo stream, nome, valore — non il parametro,
+    che serve solo da veicolo e deve percio' essere uno ancora limitato.
+    """
     parser = _make_parser(stream_id="drone_b")
 
     with pytest.raises(ParameterBoundError) as exc_info:
-        parser.parse_parameter(name="density", value_raw=999999.0)
+        parser.parse_parameter(name="fill_factor", value_raw=999999.0)
 
     err = exc_info.value
     assert isinstance(err, ConfigError)
     assert err.stream_id == "drone_b"
-    assert err.param_name == "density"
+    assert err.param_name == "fill_factor"
     assert err.value == 999999.0
 
 
@@ -64,11 +71,12 @@ def test_parser_envelope_out_of_bounds_raises_parameter_bound_error():
     parser = _make_parser(stream_id="drone_c", duration=2.0)
 
     with pytest.raises(ParameterBoundError) as exc_info:
-        parser.parse_parameter(name="density", value_raw=[[0, 999999.0], [1, 5]])
+        parser.parse_parameter(name="fill_factor",
+                               value_raw=[[0, 999999.0], [1, 5]])
 
     err = exc_info.value
     assert err.stream_id == "drone_c"
-    assert err.param_name == "density"
+    assert err.param_name == "fill_factor"
     assert len(err.violations) >= 1
 
 

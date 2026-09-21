@@ -13,11 +13,36 @@ from pge.strategies.strategy_registry import StrategyFactory, DENSITY_STRATEGIES
 from pge.core.stream_config import StreamConfig
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 from pge.shared.seeding import component_rng
+from pge.shared.logger import log_high_density_warning
 
 # Griglia di campionamento della curva di densita' reale. Piu' fitta dei 33
 # punti di DEFAULT_OFFSET_SAMPLES perche' qui la forma e' un'iperbole, non una
 # spezzata: i breakpoint degli input non ne descrivono la curvatura.
 DEFAULT_DENSITY_SAMPLES = 129
+
+#: Sopra questa densita' il motore scrive una riga sul clip log (issue #272).
+#:
+#: Il numero non e' nuovo: e' esattamente il vecchio `density.max_val`, cioe'
+#: il punto in cui il motore fino a ieri TAGLIAVA, in silenzio. Tolto il
+#: tetto, quella stessa soglia smette di essere un limite e diventa il punto
+#: in cui si parla: sopra di li' si e' in territorio che non ha mai prodotto
+#: audio, e sopra di li' un refuso nel YAML — un `grain.duration` di un ordine
+#: di grandezza sbagliato — e' un render che non finisce invece di un fill
+#: piu' basso del dichiarato.
+#:
+#: Sceglierne uno diverso significherebbe dichiarare una soglia nuova. Questa
+#: e' gia' nel repertorio: e' la riga che separa cio' che il motore ha sempre
+#: rifiutato da cio' che adesso accetta.
+DENSITY_NOTICE_THRESHOLD = 4000.0
+
+#: Ogni quanti secondi di tempo-stream l'avviso puo' ripetersi.
+#:
+#: A density 50000 si passa da `calculate_inter_onset` 50000 volte al secondo:
+#: senza rate limiting il log diventerebbe il collo di bottiglia del render.
+#: Stesso valore e stesso motivo di `_drift_log_interval` in
+#: PointerController, che ha la nota esplicita «non spammare il log ad ogni
+#: grano (density=2000!)».
+DENSITY_NOTICE_INTERVAL = 5.0
 
 class DensityController:
     """
@@ -66,6 +91,19 @@ class DensityController:
             self._loaded_params  # Passa tutti i params per accedere a 'distribution'
         )
         self.distribution_param = self._loaded_params['distribution']
+        self._init_density_notice(config)
+
+    def _init_density_notice(self, config) -> None:
+        """Stato del rate limiting dell'avviso di density alta (issue #272).
+
+        Lo stream_id viene copiato qui e non letto a ogni onset: a density
+        alta questo metodo di lettura verrebbe percorso decine di migliaia di
+        volte al secondo.
+        """
+        self._notice_stream_id = getattr(
+            getattr(config, 'context', None), 'stream_id', '?')
+        self._notice_last_logged = float('-inf')
+        self._notice_emitted = False
     
     def _find_selected_param(self) -> str:
         """
@@ -110,11 +148,49 @@ class DensityController:
             grain_duration=current_grain_duration
         )
 
+        # 2. CONTROLLER: la density non ha un tetto (issue #272), ma sopra la
+        #    soglia storica lo dice. Il vecchio clamp tagliava qui, in
+        #    silenzio; questa e' la riga che non scriveva.
+        self._notice_high_density(elapsed_time, density, current_grain_duration)
+
         # 3. CONTROLLER: Calcola average IOT
         avg_iot = 1.0 / density
-        
+
         # 4. CONTROLLER: Applica distribuzione Truax
         return self._apply_truax_distribution(avg_iot, elapsed_time)
+
+    def _notice_high_density(self, elapsed_time: float, density: float,
+                             grain_duration: float) -> None:
+        """Segnala una density sopra DENSITY_NOTICE_THRESHOLD, con rate limit.
+
+        Non e' un clamp e non tocca il valore: `density` e' gia' quella che
+        verra' resa. E' l'unica traccia che resta di un regime che prima
+        veniva tagliato senza dirlo.
+
+        Il rate limiting e' sul tempo-stream, non sul numero di chiamate:
+        cosi' una density che sfonda solo a meta' del brano parla comunque —
+        un avviso solo, emesso al primo onset, perderebbe proprio il caso che
+        va visto.
+        """
+        if density <= DENSITY_NOTICE_THRESHOLD:
+            return
+        if elapsed_time - self._notice_last_logged < DENSITY_NOTICE_INTERVAL:
+            return
+
+        self._notice_last_logged = elapsed_time
+        is_first = not self._notice_emitted
+        self._notice_emitted = True
+
+        log_high_density_warning(
+            stream_id=self._notice_stream_id,
+            elapsed_time=elapsed_time,
+            density=density,
+            threshold=DENSITY_NOTICE_THRESHOLD,
+            grain_duration=grain_duration,
+            mode=self.mode,
+            interval=DENSITY_NOTICE_INTERVAL,
+            is_first=is_first,
+        )
 
     def _apply_truax_distribution(self, avg_iot: float, elapsed_time: float) -> float:
         """

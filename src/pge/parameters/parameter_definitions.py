@@ -43,6 +43,25 @@ class ParameterBounds:
     default_jitter: float = 0.0
     variation_mode: str = 'additive'
 
+    def clamp(self, value: float) -> float:
+        """Richiude `value` nella banda. Un tetto assente lascia passare.
+
+        E' la grafia unica del safety clamp, e ha due chiamanti: il
+        `Parameter._clamp` che poi logga il taglio, e `FillFactorStrategy`,
+        che sul valore DERIVATO (`fill_factor / grain_duration`) non ha un
+        Parameter da cui passare.
+
+        Sta qui e non nei due chiamanti perche' le due copie erano gia'
+        divergenti: quella del Parameter il `max_val=None` lo gestiva (lo usa
+        `loop_dur` da sempre), quella della strategy no — `min(None, x)` e' un
+        TypeError. Finche' la density aveva un tetto la differenza non si
+        vedeva, ed e' esattamente il modo in cui una delle due copie smette di
+        valere senza che nessuno se ne accorga.
+        """
+        if self.max_val is None:
+            return max(self.min_val, value)
+        return max(self.min_val, min(self.max_val, value))
+
 # =============================================================================
 # UNITA' DEL RANGE DICHIARATO
 # =============================================================================
@@ -177,9 +196,23 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
     # =========================================================================
     # DENSITY & TIME
     # =========================================================================
+    # Nessun tetto (issue #272). Il massimo storico era 4000 g/s, e in
+    # modalita' fill_factor non tagliava un valore scritto ma il quoziente
+    # `fill_factor / grain_duration`: la regola implicita era
+    # `grain.duration >= fill_factor / 4000` — 1 ms esatti con
+    # `fill_factor: 4` — e sotto quella soglia il motore onorava un
+    # fill_factor piu' basso di quello dichiarato, senza dirlo. Il taglio non
+    # passava da `log_clip_warning`, che vive dentro `Parameter._clamp`: la
+    # density derivata non e' un Parameter, quindi non c'era riga di log,
+    # errore o scarto da nessuna parte.
+    #
+    # Il pavimento invece RESTA, e non e' un limite musicale: e' la garanzia
+    # che `avg_iot = 1.0 / density` non divida per zero e che il cursore di
+    # `generate_grains` avanzi. Cio' che il tetto nascondeva lo dice adesso
+    # il warning di DensityController (DENSITY_NOTICE_THRESHOLD).
     'density': ParameterBounds(
         min_val=0.01,
-        max_val=4000.0,
+        max_val=None,
     ),
     
     'fill_factor': ParameterBounds(
@@ -193,9 +226,14 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         # distribution non ha solitamente un range stocastico associato
     ),
     
+    # Segue 'density' senza tetto (issue #272): e' la stessa grandezza, il
+    # segnaposto sotto cui la partitura pubblica la curva `fill_factor(t) /
+    # grain_duration(t)`. Un tetto qui dichiarerebbe un limite che il motore
+    # non applica piu', cioe' farebbe mentire proprio la curva che esiste per
+    # mostrare la density vera.
     'effective_density': ParameterBounds(
         min_val=1,
-        max_val=4000.0
+        max_val=None
     ),
 
     # =========================================================================

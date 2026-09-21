@@ -789,6 +789,107 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Modificato
 
+- **`density` non ha più un tetto, e la saturazione non è più muta** (issue
+  #272). `density.max_val` era `4000.0`, e in modalità `fill_factor` quel
+  numero non tagliava un valore scritto da qualcuno ma il **quoziente**
+  `fill_factor / grain_duration`, calcolato a ogni onset dentro
+  `FillFactorStrategy._clamp`. La regola implicita era quindi
+  `grain.duration >= fill_factor / 4000` — 1 ms esatti con `fill_factor: 4` —
+  e sotto quella soglia il motore onorava un `fill_factor` più basso di
+  quello dichiarato: `fill_factor: 8` con grani da 1 ms rendeva 4,
+  `fill_factor: 4` con grani da 0.4 ms rendeva 1.6.
+
+  Il taglio era invisibile da ogni lato. Non passava da `log_clip_warning`,
+  che vive dentro `Parameter._clamp`: la density derivata non è un
+  `Parameter`, quindi niente riga di log, niente errore, niente scarto. E non
+  si vedeva neppure in partitura, dove `effective_density` è disegnata su una
+  scala `(1, 200)`: a 4000 il plateau è fuori quadro. Restava solo un fill
+  più basso di quello scritto, su una partitura che dichiarava il contrario.
+
+  Ora il quoziente passa intero. Il **pavimento** invece resta, e non è un
+  limite musicale: l'inter-onset è `1.0 / density`, quindi a zero è una
+  divisione per zero e sotto zero è un cursore che non avanza, cioè
+  `generate_grains` che non termina. `effective_density` segue `density`
+  senza tetto per la stessa ragione — è la stessa grandezza, ed è la curva
+  che la partitura pubblica proprio per mostrare la densità vera.
+
+  Al posto del taglio c'è una riga. Sopra `DENSITY_NOTICE_THRESHOLD`
+  (`density_controller.py`, 4000 g/s — cioè esattamente il vecchio tetto: il
+  numero non è nuovo, è il punto in cui il motore tagliava) `DensityController`
+  scrive un `[DENSITY_HIGH]` sul clip log con densità richiesta, durata del
+  grano, IOT risultante e modalità. Non è un clamp e non tocca il valore: è la
+  riga che il vecchio clamp non scriveva, e serve a riconoscere un
+  `grain.duration` sbagliato di un ordine di grandezza — che senza tetto è un
+  render che non finisce invece di un fill più basso. Rate limit di 5 s di
+  tempo-stream, sul modello di `_drift_log_interval` in `PointerController` e
+  per lo stesso motivo (a density 50000 si passa di lì 50000 volte al secondo);
+  è sul tempo-stream e non sul numero di chiamate, così una densità che sfonda
+  a metà del brano parla comunque.
+
+  **I valori non finiti restano un errore.** `.inf` e `.nan` sono scalari
+  legali in YAML, e finché ogni parametro aveva un tetto finito li fermava il
+  confronto stesso: `min(4000, inf)` e `min(4000, nan)` sono tutti e due un
+  clip, cioè un `ParameterBoundError` al parse. Senza tetto quel confronto non
+  c'è più, e i due passavano in due modi entrambi peggiori dell'errore che
+  sostituivano — `.inf` accettato, con `1.0 / density` uguale a zero, cioè il
+  cursore di `generate_grains` fermo e un render che non finisce (l'invariante
+  che il pavimento dichiara di garantire, sfondata dall'altro capo); `.nan`
+  riconosciuto come violazione ma raccontato dal ramo `MAX`, che con
+  `max_val=None` sottrae e formatta un `None` e muore di `TypeError` sullo
+  stdout. Il parser li richiude su un bound, quindi tornano a essere un
+  valore fuori banda: stesso errore pulito di prima — un bound è finito e un
+  non-finito non gli è mai uguale, `nan` compreso, quindi il confronto che
+  solleva scatta sempre. `violated_bound()` (`shared/logger.py`) è la grafia
+  sola della scelta del bound — senza tetto l'unico violabile è il pavimento
+  — e ha **quattro** lettori: `log_clip_warning`, `log_config_warning`, la
+  validazione al parse, e `_clip_to_band` stessa, che da lì prende il punto
+  di caduta invece di deciderlo per conto suo. Le due domande sono metà
+  della stessa risposta — dove cade il valore, quale bound viene nominato —
+  e in permissive mode escono affiancate sulla stessa riga
+  (`raw=… → clip=… | MAX=…`): scritte separate discordavano subito, perché
+  un `+inf` sotto un tetto *finito* cadeva sul pavimento ed era raccontato
+  come MAX, cioè la riga diceva «sopra il massimo» e scriveva il minimo. Ed
+  era anche il comportamento storico a muoversi proprio dove si dichiarava
+  fermo: `min(100, inf)` ha sempre dato il tetto, e torna a darlo.
+
+  **Effetto sull'audio**: ogni stream che stava sopra i 4000 g/s nominali
+  cambia — più grani, fill più alto, e il tempo di render cresce in
+  proporzione. Sotto quella soglia non cambia una cifra. Il censimento è
+  misurato sulla curva nominale `fill_factor(t) / grain_duration(t)` di ogni
+  stream del repertorio, non stimato dagli estremi dei due parametri: il
+  picco vero è quello del **quoziente**, e nessuno stream tiene il suo
+  `fill_factor` massimo proprio dove il grano è al minimo.
+
+  | config | stream | picco | grani (voce 0) |
+  |---|---|---|---|
+  | `PGE_cim.yml` | stream19 | 24 253 g/s | 1 731 → 5 042 (×2,9) |
+  | `PGE_cim.yml` | stream24 | 24 253 g/s | 1 788 → 5 100 (×2,9) |
+  | `PGE_issue225_loop_probe.yml` | s1_sweep_hanning | 47 589 g/s | 16 000 → 79 008 (×4,9) |
+  | `PGE_issue225_loop_probe.yml` | s2_sweep_expodec | 47 589 g/s | 16 000 → 79 008 (×4,9) |
+  | `PGE_issue225_loop_probe.yml` | s3_fixed_n2_hanning | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s4_fixed_n1_hanning | 48 000 g/s | 16 000 → 192 000 (×12) |
+  | `PGE_issue225_loop_probe.yml` | s5_loop_mobile_n2 | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s7_fixed_n2_kaiser | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s8_fixed_n2_gaussian | 24 000 g/s | 16 000 → 96 000 (×6) |
+  | `PGE_issue225_loop_probe.yml` | s9_sweep_threshold | 9 600 g/s | 14 006 → 17 747 (×1,3) |
+  | `prova.yml` | stream9 | 10 000 g/s | 461 003 → 764 199 (×1,7) |
+
+  Il caso grosso è l'ultimo, ed è anche quello da cui la issue è partita:
+  `prova.yml` stream9 è lo stream a grani da 0.4 ms che chiedeva
+  `fill_factor: 4` e ne rendeva 1.6 — 249 secondi e `num_voices: 2`, quindi
+  è il rincaro di render più alto del repertorio in termini assoluti,
+  nonostante il picco più basso della tabella. `PGE_cim.yml` è il meno
+  toccato dei tre: i suoi stream19/24 tengono `fill_factor` 9.15 all'inizio e
+  il grano da 0.1 ms molto più tardi, dove il `fill_factor` è già sceso
+  intorno a 2.4.
+
+- **Una grafia sola del safety clamp**: `ParameterBounds.clamp()`. La stessa
+  domanda aveva due risposte — `Parameter._clamp`, che il `max_val=None` lo
+  gestiva (`loop_dur` lo usa da sempre), e `FillFactorStrategy._clamp`, che
+  non lo gestiva, perché `min(None, x)` è un `TypeError`. Finché la density
+  un tetto ce l'aveva la differenza non si vedeva; toglierlo l'avrebbe fatta
+  esplodere. Le due copie chiamano la stessa funzione.
+
 - **Gli statement `.sco` non si sono mossi di un byte**, i commenti sì (issue
   #202). Le `description` del catalogo hanno smesso di citare le GEN routine
   (`"Hanning/von Hann window (GEN20 opt 2)"` → `"Hanning/von Hann window"`) e

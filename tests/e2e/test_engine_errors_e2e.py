@@ -114,6 +114,13 @@ streams:
       duration_range: 0.01
 """
 
+# La violazione e' sul PAVIMENTO e non piu' sul tetto (issue #272): da quando
+# `density.max_val` e' None non esiste piu' un numero che la porti fuori banda
+# verso l'alto, e il vecchio `density: 999999` smetteva di sollevare per
+# mettersi a generare cinque milioni di grani — il test moriva in timeout
+# invece che sull'asserzione. Il pavimento c'e' ancora, ed e' l'unico bound
+# che `density` dichiari: 0.0001 sta sotto 0.01, quindi il parser rifiuta al
+# parse come prima e le asserzioni continuano a nominare `density`.
 YAML_PARAM_OUT_OF_BOUNDS = f"""\
 composition:
   title: "test param bound violation"
@@ -123,7 +130,7 @@ streams:
     duration: 5
     sample: "{REAL_SAMPLE}"
     distribution_mode: 'gaussian'
-    density: 999999
+    density: 0.0001
     distribution: [[0,1],[1,1]]
     pointer:
       speed_ratio: 1.0
