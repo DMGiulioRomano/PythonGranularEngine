@@ -468,12 +468,32 @@ def test_il_finder_non_confonde_ogni_register_con_una_registrazione():
     strategy: allargare a `register_*` invece che a `register` li tirerebbe
     dentro, e la lista dichiarata diventerebbe un elenco di falsi positivi da
     mantenere.
+
+    **Le esche vanno verificate prima dello scarto**, o la misura e' vuota.
+    Le due `register_*` stanno in un modulo che non ha idea di questa guardia:
+    rinominate, spostate, o tolte con la classe, `trovate == []` resta verde
+    senza piu' niente da scartare — e nessuno sta piu' tenendo il confine fra
+    criterio largo e criterio stretto, proprio mentre qualcuno lo allarga.
+    Misurato: rinominando `register_sample` in `add_sample` questo test
+    restava verde. E' lo stesso difetto che il file misura altrove,
+    un'asserzione soddisfatta dal vuoto, sulla guardia che lo misura.
     """
-    trovate = _funzioni_di_registrazione(
-        ast.parse(_sorgente(os.path.join('rendering', 'ftable_manager.py')))
+    tree = ast.parse(_sorgente(os.path.join('rendering', 'ftable_manager.py')))
+
+    esche = sorted(
+        figlio.name
+        for classe in ast.walk(tree) if isinstance(classe, ast.ClassDef)
+        for figlio in classe.body
+        if isinstance(figlio, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and figlio.name.startswith('register')
+    )
+    assert esche == ['register_sample', 'register_window'], (
+        "il banco di prova non c'e' piu': questa guardia misura che il finder "
+        "scarti i `register_*` di `FtableManager`, e li' adesso ci sono "
+        f"{esche}. Senza esche l'asserzione qui sotto e' verde per vuoto."
     )
 
-    assert trovate == []
+    assert _funzioni_di_registrazione(tree) == []
 
 
 @pytest.mark.parametrize('relpath', MODULI_CON_REGISTRAZIONE_DINAMICA)
