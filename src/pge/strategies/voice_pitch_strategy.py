@@ -21,9 +21,10 @@ Design:
 - RangePitchStrategy: distribuiti linearmente in [0, pitch_range]
 - ChordPitchStrategy: offsets da nome accordo, extend all'ottava se num_voices > chord
 - StochasticPitchStrategy: offset fisso per voce (stabile entro un run)
-- VOICE_PITCH_STRATEGIES: registry globale {nome: classe}
-- register_voice_pitch_strategy(): estensibilità dinamica
-- VoicePitchStrategyFactory: factory con create() statico
+- VOICE_PITCH_STRATEGIES: registry globale {nome: classe}, `StrategyRegistry`
+  del dominio 'voice_pitch' (issue #185, forma decisa in #177)
+- register_voice_pitch_strategy(): estensibilità dinamica, delega al registry
+- VoicePitchStrategyFactory: factory con create() statico, delega al registry
 
 Coerente con: voice_pan_strategy.py, variation_strategy.py
 """
@@ -33,11 +34,9 @@ import math
 from abc import ABC, abstractmethod
 from typing import Dict, List, Type
 
-from pge.shared.exceptions import (
-    InvalidStrategyConfigError,
-    StrategyNotFoundError,
-)
+from pge.shared.exceptions import InvalidStrategyConfigError
 from pge.shared.seeding import voice_rng
+from pge.strategies.registry import StrategyRegistry
 
 from pge.parameters.parameter import resolve_param, StrategyParam
 
@@ -520,14 +519,14 @@ class SpectralPitchStrategy(VoicePitchStrategy):
 # REGISTRY
 # =============================================================================
 
-VOICE_PITCH_STRATEGIES: Dict[str, Type[VoicePitchStrategy]] = {
+VOICE_PITCH_STRATEGIES = StrategyRegistry('voice_pitch', VoicePitchStrategy, {
     'step':              StepPitchStrategy,
     'range':             RangePitchStrategy,
     'chord':             ChordPitchStrategy,
     'chord_progression': ChordProgressionPitchStrategy,
     'stochastic':        StochasticPitchStrategy,
     'spectral':          SpectralPitchStrategy,
-}
+})
 
 # Strategie i cui offset sono intrinsecamente in semitoni (interi da
 # CHORD_INTERVALS / 12*log2): in v1 accettano solo l'unità `semitones`.
@@ -535,15 +534,18 @@ VOICE_PITCH_STRATEGIES: Dict[str, Type[VoicePitchStrategy]] = {
 SEMITONE_LOCKED = frozenset({'chord', 'chord_progression', 'spectral'})
 
 
-def register_voice_pitch_strategy(name: str, cls: Type[VoicePitchStrategy]) -> None:
+def register_voice_pitch_strategy(
+    name: str,
+    strategy_class: Type[VoicePitchStrategy]
+) -> None:
     """
     Registra dinamicamente una nuova VoicePitchStrategy.
 
     Args:
         name: chiave stringa per il registry
-        cls: classe che implementa VoicePitchStrategy
+        strategy_class: classe che implementa VoicePitchStrategy
     """
-    VOICE_PITCH_STRATEGIES[name] = cls
+    VOICE_PITCH_STRATEGIES.register(name, strategy_class)
 
 
 # =============================================================================
@@ -572,12 +574,7 @@ class VoicePitchStrategyFactory:
             Istanza di VoicePitchStrategy
 
         Raises:
-            KeyError: se il nome non è nel registry
+            StrategyNotFoundError: se `name` non è nel registry, con
+                        l'elenco delle strategy disponibili
         """
-        if name not in VOICE_PITCH_STRATEGIES:
-            raise StrategyNotFoundError(
-                strategy_kind="voice_pitch",
-                name=name,
-                available=list(VOICE_PITCH_STRATEGIES.keys()),
-            )
-        return VOICE_PITCH_STRATEGIES[name](**kwargs)
+        return VOICE_PITCH_STRATEGIES.create(name, **kwargs)
