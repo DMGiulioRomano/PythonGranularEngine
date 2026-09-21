@@ -16,8 +16,6 @@ Coverage:
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-import sys
-sys.path.insert(0, '/home/claude')
 
 from typing import Union, Optional, Any
 

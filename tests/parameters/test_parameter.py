@@ -18,8 +18,6 @@ Coverage:
 
 import pytest
 from unittest.mock import Mock
-import sys
-sys.path.insert(0, '/home/claude')
 
 # Imports necessari
 from typing import Union, Optional
@@ -882,10 +880,13 @@ import importlib
 import sys as _sys
 
 def _import_real_parameter():
-    """Importa il modulo reale parameters.parameter via src/."""
-    src_path = '/Users/giuliodemattia/github/DMGiulioRomano/PythonGranularEngine/src'
-    if src_path not in _sys.path:
-        _sys.path.insert(0, src_path)
+    """Importa il modulo reale `pge.parameters.parameter`.
+
+    `src/` e' gia' su sys.path via `pytest.ini` (`pythonpath = . src`) e
+    `tests/conftest.py`: qui basta importare. La riga che ci inseriva un
+    path assoluto valeva su una macchina sola, e dove non valeva non
+    falliva (issue #274).
+    """
     # Force-reimport per evitare conflitti con mock class Parameter sopra
     if 'pge.parameters.parameter' in _sys.modules:
         return _sys.modules['pge.parameters.parameter']

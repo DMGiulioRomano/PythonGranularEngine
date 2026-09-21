@@ -17,8 +17,6 @@ Coverage:
 import pytest
 from abc import ABC
 from unittest.mock import Mock, patch
-import sys
-sys.path.insert(0, '/home/claude')
 
 # Creo implementazione minimale per i test
 from abc import ABC, abstractmethod
