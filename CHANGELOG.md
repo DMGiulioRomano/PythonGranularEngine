@@ -394,6 +394,65 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   cita sta rispondendo sulla traduzione di un valore invece che sull'assenza
   del campo, e la lettura vale per ogni target.
 
+- **Il nome di un file di test è una promessa, e `tests/test_suite_contract.py`
+  la verifica** (issue #274). Ogni `tests/<area>/test_<modulo>.py` che nomina
+  un modulo esistente deve importare `pge.<area>.<modulo>` e non può
+  riscriverne a livello di modulo le classi e le funzioni pubbliche. La
+  guardia legge i sorgenti, nell'idioma che il repo ha già in
+  `tests/shared/test_stdout_contract.py`: la lista dei file sorvegliati è
+  scoperta, non trascritta.
+
+  Il difetto che chiude non è un buco di copertura — i moduli in questione
+  sono coperti dal *resto* della suite — ma un'esca. Chi modifica
+  `parameter.py` apre `test_parameter.py`, legge 72 test sul comportamento di
+  `Parameter` e sta leggendo il comportamento di un'altra classe con lo stesso
+  nome; nella PR #273 è successo tre volte di fila, e i due file non hanno
+  potuto né confermare né smentire. Una riscrittura non fallisce mai: resta
+  coerente con sé stessa mentre il modulo vero cambia.
+
+  Le due metà servono entrambe perché ciascuna è verde sul difetto dell'altra:
+  `test_parameter.py` importa davvero il modulo — in fondo al file, per i 9
+  test di `TestResolveParam` — e accanto ridefinisce `class Parameter`, quindi
+  la sola prima metà lo assolverebbe; `test_parser.py` non importa niente, e
+  la sola seconda lo assolverebbe il giorno in cui rinominasse la propria
+  copia.
+
+  La guardia ha trovato un terzo caso che la #274 non censiva:
+  `tests/shared/test_probability_gate.py` riscrive tutti e cinque i gate e non
+  importa mai `pge.shared.probability_gate`. Misurato: togliere i tre file
+  dalla suite non muove di una riga la copertura dei tre moduli che nominano
+  (97%, 95%, 85%) — 199 test, zero righe di produzione.
+
+  I tre sono dichiarati in `SIMULAZIONI_DICHIARATE` con il motivo, ed è quella
+  lista il valore della guardia: il debito smette di essere una scoperta da
+  rifare a ogni review e diventa una riga che qualcuno deve cancellare —
+  riscrivendo quei test contro produzione, quando toccherà quei moduli per
+  un'altra ragione. La lista non può invecchiare: un'eccezione che smette di
+  violare fa fallire la suite, e va tolta invece di restare a dire il falso.
+
+  Quattro presidi perché la guardia non sia verde a vuoto. Le quattro grafie
+  dell'import sono misurate una per una, `importlib.import_module` compresa —
+  è l'unica con cui `test_parameter.py` tocca produzione, e leggere solo gli
+  `import` la darebbe per assente. Il confronto sul prefisso pretende un punto
+  dopo: senza, `pge.parameters.parameter_definitions` conterebbe come
+  `pge.parameters.parameter`, e `test_parameter.py` passerebbe la prima metà
+  grazie a un import che riguarda un altro file. La lista delle eccezioni è il
+  canarino della scoperta — se `_coppie()` si rompe, le tre dichiarate
+  spariscono da lì e la suite lo dice, invece di lasciare due guardie
+  parametrizzate su niente. E un pavimento sul numero di coppie copre il caso
+  in cui a svuotarsi sia anche la lista.
+
+- **Via i percorsi assoluti di altre macchine dal `sys.path` dei test**
+  (issue #274, quarta sezione della stessa guardia). Erano
+  `sys.path.insert(0, '/home/claude')` in tre file e un
+  `/Users/<nome>/…/src` dentro `_import_real_parameter()`, cioè l'unica
+  funzione di `test_parameter.py` che toccava produzione. Nessuno dei quattro
+  faceva fallire niente, ed è il punto: inserire una cartella inesistente in
+  `sys.path` è legale, e l'import riusciva comunque per via di `pytest.ini`
+  (`pythonpath = . src`) e di `tests/conftest.py`, non per quelle righe. Dove
+  valevano non servivano, dove non valevano tacevano — e chi leggeva
+  `_import_real_parameter()` poteva crederle necessarie.
+
 ### Cambiato
 
 - **`voice_pan_strategy` passa al registry generico** (issue #184, forma decisa
