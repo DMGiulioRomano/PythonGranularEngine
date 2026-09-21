@@ -37,6 +37,7 @@ Organizzazione:
 """
 
 import logging
+import types
 
 import pytest
 
@@ -866,10 +867,19 @@ class TestRegistryGenerico:
         livello modulo: un alias farebbe uscire questo modulo dal censimento
         dei sorgenti — e i wrapper restano comunque, perche' sono l'API di
         estensione documentata e portano i propri esempi.
+
+        Il criterio e' il **tipo**, non l'identita'. `registry.register` e' un
+        metodo legato, e un metodo legato lo si costruisce a ogni accesso
+        all'attributo: `alias is not registry.register` e' vero anche quando
+        `alias = registry.register`, cioe' proprio nel caso che questo test
+        deve vietare. Misurato. Un `def` di modulo e' una `FunctionType`, un
+        alias una `MethodType`: li' la differenza c'e', e la seconda
+        asserzione la conferma dal lato del modulo di provenienza
+        (`pge.strategies.registry` invece di questo).
         """
         import pge.strategies.voice_pan_strategy as modulo
-        _, _, _, _, registry, register_voice_pan_strategy, _ = _get_module()
-        assert register_voice_pan_strategy is not registry.register
+        _, _, _, _, _, register_voice_pan_strategy, _ = _get_module()
+        assert isinstance(register_voice_pan_strategy, types.FunctionType)
         assert register_voice_pan_strategy.__module__ == modulo.__name__
 
     def test_la_factory_resta_uno_staticmethod_che_delega(self):

@@ -312,3 +312,4 @@ class TestSnapshotERipristino:
         copia = _registry().copy()
         assert copia == {'alfa': _Alfa}
         assert not hasattr(copia, 'kind')
+        assert not hasattr(copia, 'create')
