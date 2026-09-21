@@ -115,7 +115,7 @@ SIMULAZIONI_DICHIARATE = {
 # SCOPERTA — le coppie (file di test, modulo che nomina)
 # =============================================================================
 
-def _sorgente_di(puntato):
+def _sorgente_di(puntato, src=None):
     """Il file che il modulo `puntato` nomina.
 
     Una grafia sola, perche' la leggono in due: la scoperta, che la usa per
@@ -123,32 +123,49 @@ def _sorgente_di(puntato):
     aprire quello stesso file. Scritta due volte, il giorno in cui il layout
     di `src/` cambia una delle due resta indietro in silenzio — e quella che
     resta indietro e' la guardia, cioe' la meta' che deve parlare.
+
+    `src` serve soltanto ai test della scoperta, che le danno un albero
+    finto: in produzione la radice e' una sola.
     """
-    return os.path.join(SRC_PGE, *puntato.split('.')[1:]) + '.py'
+    return os.path.join(src or SRC_PGE, *puntato.split('.')[1:]) + '.py'
 
 
-def _coppie():
+def _coppie(tests_dir=None, src=None):
     """`(relpath sotto tests/, modulo puntato, path del sorgente)`.
 
     Solo dove il modulo nominato esiste davvero: un `test_<x>.py` che non
     corrisponde a nessun `<x>.py` non promette niente e non è affare di
-    questa suite.
+    questa suite. È quel controllo — non la profondità — a decidere: una
+    cartella di `tests/` che non corrisponde a un package di `pge` non
+    produce coppie perché il sorgente non c'è, non perché qualcuno l'abbia
+    saltata.
+
+    La corrispondenza vale quindi a **qualsiasi** profondità:
+    `tests/<a>/<b>/test_<m>.py` ↔ `src/pge/<a>/<b>/<m>.py` è la stessa
+    promessa di un livello solo, e leggerne uno soltanto era un criterio più
+    stretto di quello dichiarato, messo — come già due volte in questa suite
+    — dalla parte che assolve: un file annidato sarebbe uscito dalla
+    sorveglianza in silenzio, senza nemmeno finire in
+    `SIMULAZIONI_DICHIARATE`. `tests/rendering/renderers/` esiste già (oggi
+    con il solo `__init__.py`), e `pge` non ha ancora un package annidato:
+    misurato, la lettura larga non aggiunge nessuna coppia alle 69 di oggi.
+
+    `tests_dir` e `src` servono soltanto ai test della scoperta, che le
+    danno un albero finto.
     """
+    tests_dir = tests_dir or TESTS_DIR
     trovate = []
-    for radice, cartelle, files in os.walk(TESTS_DIR):
+    for radice, cartelle, files in os.walk(tests_dir):
         cartelle[:] = [c for c in cartelle if c != '__pycache__']
-        area = os.path.relpath(radice, TESTS_DIR)
+        area = os.path.relpath(radice, tests_dir)
         area = '' if area == '.' else area
-        # Solo il primo livello: `tests/<area>/` e la radice. Più in fondo
-        # non c'è una cartella che corrisponda a un package di `pge`.
-        if os.sep in area:
-            continue
+        pezzi = area.split(os.sep) if area else []
         for nome in sorted(files):
             if not (nome.startswith('test_') and nome.endswith('.py')):
                 continue
             modulo = nome[len('test_'):-len('.py')]
-            puntato = '.'.join(x for x in ('pge', area, modulo) if x)
-            sorgente = _sorgente_di(puntato)
+            puntato = '.'.join(['pge'] + pezzi + [modulo])
+            sorgente = _sorgente_di(puntato, src)
             if not os.path.isfile(sorgente):
                 continue
             trovate.append((os.path.join(area, nome), puntato, sorgente))
@@ -413,6 +430,56 @@ def test_la_scoperta_vede_la_suite():
         "perché `tests/<area>/test_<modulo>.py` sia ancora la convenzione "
         "che questa suite legge. Controlla _coppie()."
     )
+
+
+def test_la_scoperta_segue_i_package_annidati(tmp_path):
+    """`<area>` può essere un package annidato, e la promessa è la stessa.
+
+    `tests/<a>/<b>/test_<m>.py` promette `src/pge/<a>/<b>/<m>.py` esattamente
+    come un livello solo. Fermarsi al primo livello era un criterio più
+    stretto di quello dichiarato, messo dalla parte che assolve: un file
+    annidato usciva dalla sorveglianza in silenzio, senza nemmeno finire in
+    `SIMULAZIONI_DICHIARATE` — cioè il falso negativo che questa suite
+    esiste per togliere, sulla sua stessa scoperta.
+
+    Su `tests/` non è un caso di scuola: `tests/rendering/renderers/` esiste
+    già, oggi con il solo `__init__.py`. Il verdetto di oggi non cambia (`pge`
+    non ha package annidati, le coppie restano 69), quindi il buco si chiude
+    prima che qualcuno ci cada dentro — l'albero qui è finto proprio perché
+    l'albero vero non può ancora misurarlo.
+    """
+    tests = tmp_path / 'tests' / 'rendering' / 'renderers'
+    tests.mkdir(parents=True)
+    (tests / 'test_foo.py').write_text('', encoding='utf-8')
+    (tests / 'test_senza_modulo.py').write_text('', encoding='utf-8')
+    src = tmp_path / 'src' / 'pge' / 'rendering' / 'renderers'
+    src.mkdir(parents=True)
+    (src / 'foo.py').write_text('', encoding='utf-8')
+
+    coppie = _coppie(str(tmp_path / 'tests'), str(tmp_path / 'src' / 'pge'))
+
+    assert coppie == [(
+        os.path.join('rendering', 'renderers', 'test_foo.py'),
+        'pge.rendering.renderers.foo',
+        str(src / 'foo.py'),
+    )], coppie
+
+
+def test_la_scoperta_non_inventa_coppie_dove_il_modulo_non_c_e(tmp_path):
+    """Il contrappeso della profondità: a decidere resta il sorgente.
+
+    Allargare la lettura senza questo sarebbe la guardia rumorosa che la
+    suite dichiara tre volte di non voler essere: `tests/export/fixtures/`
+    non è un package di `pge`, e una coppia lì dentro accuserebbe un file di
+    non importare un modulo che non esiste.
+    """
+    tests = tmp_path / 'tests' / 'export' / 'fixtures' / 'sv_reference'
+    tests.mkdir(parents=True)
+    (tests / 'test_qualcosa.py').write_text('', encoding='utf-8')
+    (tmp_path / 'src' / 'pge').mkdir(parents=True)
+
+    assert _coppie(str(tmp_path / 'tests'),
+                   str(tmp_path / 'src' / 'pge')) == []
 
 
 # =============================================================================
