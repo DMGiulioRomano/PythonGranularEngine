@@ -442,6 +442,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   parametrizzate su niente. E un pavimento sul numero di coppie copre il caso
   in cui a svuotarsi sia anche la lista.
 
+  Quel pavimento vale per **tutte e due** le scoperte del file, e per un po'
+  ne ha coperta una: anche la sezione sui percorsi assoluti è parametrizzata
+  su una scoperta (`_file_di_test()`), e un parametrize vuoto non è un rosso
+  — pytest stampa `got empty parameter set` ed esce 0. Il secondo pavimento
+  ha due metà perché ne servono due: il conto vede la scoperta che si svuota,
+  l'ancora — il file stesso, chiesto a `__file__` invece che trascritta —
+  vede la scoperta che si *sposta*, dove il conto resterebbe verde.
+
   «A livello di modulo» vuol dire *all'import*, non *in prima colonna*, e le
   due cose divergono proprio sulla grafia che batte le due metà insieme:
 
@@ -485,6 +493,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   sorvegliati: zero casi, e i due dove la distinzione cambierebbe qualcosa
   sono già dichiarati.
 
+  Stessa famiglia, terza volta, sulla scoperta invece che sul confronto:
+  `tests/<a>/<b>/test_<m>.py` promette `src/pge/<a>/<b>/<m>.py` come un
+  livello solo, e `_coppie()` saltava qualunque cartella oltre il primo sulla
+  fede di un commento che nessun test misurava. La metà stretta stava di
+  nuovo dalla parte che assolve — un file annidato usciva dalla sorveglianza
+  in silenzio, senza nemmeno passare da `SIMULAZIONI_DICHIARATE` — e la
+  cartella dove cadere esiste già (`tests/rendering/renderers/`, oggi con il
+  solo `__init__.py`). A decidere resta il sorgente e non la profondità:
+  `tests/export/fixtures/` non produce coppie perché il modulo non c'è, ed è
+  quel controllo — con il suo test — a tenere la lettura larga dal diventare
+  rumorosa. Misurato: le coppie restano 69, le sorvegliate 66.
+
   Una grafia sola, infine, per il percorso del sorgente (`_sorgente_di`): lo
   leggono la scoperta e la guardia sulla riscrittura, e scritto due volte il
   giorno in cui il layout di `src/` cambia una delle due resta indietro in
@@ -502,6 +522,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   (`pythonpath = . src`) e di `tests/conftest.py`, non per quelle righe. Dove
   valevano non servivano, dove non valevano tacevano — e chi leggeva
   `_import_real_parameter()` poteva crederle necessarie.
+
+  Nella stessa funzione, e della stessa famiglia, un commento che dice
+  l'opposto del codice: «Force-reimport per evitare conflitti con mock class
+  `Parameter` sopra», sopra un ramo che il modulo in `sys.modules` lo
+  restituisce. Il conflitto non esiste — la copia vive nel namespace del
+  test, non dentro il modulo importato — e il ramo nemmeno serve, perché
+  `import_module` restituisce già il modulo in cache. Resta la sola chiamata.
 
   La guardia che le tiene fuori riconosce tutte le grafie dello stesso
   inserimento — `insert`/`append`/`extend`, `sys.path += [...]`,
