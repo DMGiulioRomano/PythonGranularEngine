@@ -22,13 +22,15 @@ se un giorno rinominasse la propria copia.
 
 ## Perché
 
-La #274 ha misurato che tre file della suite non eseguono una riga del modulo
-che nominano. Non è un buco di copertura — quei moduli sono coperti dal
-*resto* della suite, al 97%, al 95% e all'85% — ma un'esca: chi modifica
-`parameter.py` apre `test_parameter.py`, legge 72 test sul comportamento di
-`Parameter`, e sta leggendo il comportamento di un'altra classe che si chiama
-allo stesso modo. Nella PR #273 è successo per tre volte di fila: i due file
-non hanno potuto né confermare né smentire, e sono rimasti verdi.
+La #274 ha misurato **due** file della suite che non spostano di una riga la
+copertura del modulo che nominano; il terzo — `test_probability_gate.py` — lo
+ha trovato questa guardia, e la sua misura è di qui. Non è un buco di
+copertura — quei moduli sono coperti dal *resto* della suite, al 97%, al 95%
+e all'85% — ma un'esca: chi modifica `parameter.py` apre `test_parameter.py`,
+legge 72 test sul comportamento di `Parameter`, e sta leggendo il
+comportamento di un'altra classe che si chiama allo stesso modo. Nella PR
+#273 è successo per tre volte di fila: i due file non hanno potuto né
+confermare né smentire, e sono rimasti verdi.
 
 Il difetto è muto per costruzione: una riscrittura non fallisce mai, e il
 giorno in cui il modulo vero cambia comportamento la copia resta coerente con
