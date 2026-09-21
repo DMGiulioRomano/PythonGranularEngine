@@ -52,6 +52,9 @@ l'altro e passa. Accusare le assegnazioni renderebbe rosso anche
 una guardia rumorosa la si spegne. Annidare la copia, invece, non basta più a
 farla passare: vedi `_nomi_di_modulo`.
 
+Terzo limite, sul lato del sorgente: la superficie è ciò che il modulo
+*definisce*, non ciò che riespone importandolo — vedi `_nomi_pubblici`.
+
 Limite dichiarato: la corrispondenza è esatta sul nome. `tests/test_cli_*.py`
 non nomina nessun modulo (`pge/cli_contract.py` non esiste) e non entra fra le
 coppie; `tests/parameters/test_parser_errors.py` nemmeno. Sorvegliano
@@ -267,7 +270,7 @@ def _nomi_di_modulo(tree):
 
 
 def _nomi_pubblici(path):
-    """Classi e funzioni pubbliche che il modulo espone al primo livello.
+    """Classi e funzioni pubbliche che il modulo **definisce** al primo livello.
 
     «Primo livello» vuol dire qui la stessa cosa che vuol dire per il file di
     test — ciò che gira all'import — e si legge con la stessa `_nomi_di_modulo`,
@@ -288,6 +291,15 @@ def _nomi_pubblici(path):
     `DENSITY_BOUNDS` accanto a quello del modulo sta scrivendo una fixture,
     non una riscrittura, e accusarlo renderebbe la guardia rumorosa proprio
     dove non ha niente da dire.
+
+    Fuori restano anche i nomi che il modulo **riespone** importandoli:
+    `pge.parameters.parser` importa `Envelope`, e `parser.Envelope` esiste,
+    ma la classe è di `pge.envelopes.envelope`. Un test che ne mette una
+    finta a livello di modulo sta facendo il doppio di un collaboratore —
+    pratica normale — non la riscrittura del modulo che il suo nome promette,
+    e la seconda guardia lo accuserebbe dicendo che a definirlo è `parser`.
+    Misurato: sui 66 file sorvegliati la distinzione non cambia nessun
+    verdetto, e i due dove cambierebbe sono già dichiarati qui sopra.
     """
     return {n for n in _nomi_di_modulo(_albero(path))
             if not n.startswith('_')}
@@ -336,9 +348,10 @@ def test_il_file_omonimo_non_riscrive_il_modulo_che_nomina(rel_test, puntato):
 
     assert not doppioni, (
         f"tests/{rel_test} ridefinisce a livello di modulo "
-        f"{sorted(doppioni)}, che `{puntato}` espone. Chi legge il file crede "
-        "di leggere il comportamento del modulo e legge quello della copia. "
-        "Se la simulazione è voluta, dichiarala in SIMULAZIONI_DICHIARATE. "
+        f"{sorted(doppioni)}, che `{puntato}` definisce. Chi legge il file "
+        "crede di leggere il comportamento del modulo e legge quello della "
+        "copia. Se la simulazione è voluta, dichiarala in "
+        "SIMULAZIONI_DICHIARATE. "
         "Vedi issue #274."
     )
 
@@ -549,6 +562,28 @@ def test_la_superficie_del_modulo_comprende_le_definizioni_all_import(tmp_path):
         encoding='utf-8')
 
     assert _nomi_pubblici(str(modulo)) == {'Finestra', 'Pubblica'}
+
+
+def test_la_superficie_del_modulo_e_quella_definita_non_quella_riesposta(
+        tmp_path):
+    """Un nome che il modulo importa non è suo, ed è un'esclusione voluta.
+
+    `pge.parameters.parser` riespone `Envelope`, che però definisce
+    `pge.envelopes.envelope`: un test che ne mette una finta a livello di
+    modulo sta facendo il doppio di un collaboratore, non la riscrittura del
+    modulo che il suo nome promette. Accusarlo sarebbe rumore, e per giunta
+    con un messaggio falso — direbbe che a definire quel nome è `parser`.
+
+    È l'altra faccia del test qui sopra: là la lettura del sorgente si
+    allarga perché restringere assolve, qui si ferma perché allargare accusa
+    chi non c'entra. Misurato sui 66 file sorvegliati: la distinzione non
+    cambia nessun verdetto.
+    """
+    modulo = tmp_path / 'm.py'
+    modulo.write_text('from pge.envelopes.envelope import Envelope\n'
+                      'class Propria: pass\n', encoding='utf-8')
+
+    assert _nomi_pubblici(str(modulo)) == {'Propria'}
 
 
 # =============================================================================
