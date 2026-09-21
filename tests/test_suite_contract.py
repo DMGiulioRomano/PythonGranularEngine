@@ -269,15 +269,28 @@ def _nomi_di_modulo(tree):
 def _nomi_pubblici(path):
     """Classi e funzioni pubbliche che il modulo espone al primo livello.
 
+    «Primo livello» vuol dire qui la stessa cosa che vuol dire per il file di
+    test — ciò che gira all'import — e si legge con la stessa `_nomi_di_modulo`,
+    per l'argomento che `_sorgente_di` fa per il percorso: scritto due volte,
+    il criterio diverge, e quella che resta indietro è la metà che deve
+    parlare. Qui la copia stretta stava proprio dalla parte del sorgente, cioè
+    dove restringerla *assolve*. Un modulo che definisce la sua classe dentro
+    un `try:` — il fallback di una dipendenza opzionale, la forma che questo
+    repo ha per numpy e matplotlib — la teneva fuori dalla propria superficie,
+    e un test che la riscriveva a livello di modulo passava la seconda guardia
+    in silenzio: il falso negativo esatto di cui questa suite parla.
+
+    Oggi nessun modulo di `pge` definisce un nome pubblico in quella
+    posizione, quindi la lettura larga non cambia nessun verdetto — chiude il
+    buco prima che qualcuno ci cada dentro.
+
     Le costanti restano fuori di proposito: un test che dichiara un
     `DENSITY_BOUNDS` accanto a quello del modulo sta scrivendo una fixture,
     non una riscrittura, e accusarlo renderebbe la guardia rumorosa proprio
     dove non ha niente da dire.
     """
-    return {n.name for n in _albero(path).body
-            if isinstance(n, (ast.ClassDef, ast.FunctionDef,
-                              ast.AsyncFunctionDef))
-            and not n.name.startswith('_')}
+    return {n for n in _nomi_di_modulo(_albero(path))
+            if not n.startswith('_')}
 
 
 def _riscritture(rel_test, sorgente):
@@ -515,6 +528,27 @@ def test_il_criterio_guarda_solo_i_nomi_pubblici(tmp_path):
                       'COSTANTE = 3\n', encoding='utf-8')
 
     assert _nomi_pubblici(str(modulo)) == {'Pubblica'}
+
+
+def test_la_superficie_del_modulo_comprende_le_definizioni_all_import(tmp_path):
+    """Anche il sorgente ha un «livello di modulo» che non è la prima colonna.
+
+    Il fallback di una dipendenza opzionale definisce la classe dentro un
+    `try:`, e all'import quella classe è la superficie del modulo come
+    qualunque altra. Leggendo il solo `tree.body` restava fuori, e un test
+    che la riscriveva a livello di modulo passava la seconda guardia: il
+    criterio stretto stava dalla parte dove restringere vuol dire assolvere.
+    """
+    modulo = tmp_path / 'm.py'
+    modulo.write_text(
+        'try:\n'
+        '    from numpy import Finestra\n'
+        'except ImportError:\n'
+        '    class Finestra: pass\n'
+        'class Pubblica: pass\n',
+        encoding='utf-8')
+
+    assert _nomi_pubblici(str(modulo)) == {'Finestra', 'Pubblica'}
 
 
 # =============================================================================
