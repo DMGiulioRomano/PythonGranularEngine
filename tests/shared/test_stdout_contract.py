@@ -303,10 +303,17 @@ def test_le_strategie_non_stampano(modulo):
 # il criterio e' essere un punto di registrazione dinamica. Coincidevano per sei
 # entry point su sette, e sul settimo il presidio mancava del tutto —
 # `register_window_strategy` sta in `controllers/`, perche' li' sta il registry
-# delle finestre. Dalla #184 i punti sono nove e quelli fuori da `strategies/`
-# sono due: il secondo e' `DistributionFactory.register`, in `shared/`. Misurato: rimettendo in quella funzione esattamente la
+# delle finestre. Misurato: rimettendo in quella funzione esattamente la
 # `print()` che la #187 ha tolto dalle altre tre, la suite intera restava verde
 # **prima di questo test**.
+#
+# Dalla #184 i punti sono nove, e quelli fuori da `strategies/` sono due: il
+# secondo e' `DistributionFactory.register`, in `shared/`. La misura qui sopra
+# **non e' la sua** — va detto, perche' infilata prima di quella frase se ne
+# prendeva l'antecedente, e su distribution e' falsa. Li' la `print()` non c'e'
+# mai stata, e rimettercela oggi fa cadere due test, questo e il censimento
+# (misurato): a mancargli era il divieto, non il censimento, ed e' il criterio
+# allargato di #184 a darglielo.
 #
 # Quel verde e' poi scaduto, e va detto qui perche' e' la misura da cui questa
 # guardia viene. Il censimento piu' sotto
@@ -471,12 +478,19 @@ def test_il_finder_non_confonde_ogni_register_con_una_registrazione():
 
 @pytest.mark.parametrize('relpath', MODULI_CON_REGISTRAZIONE_DINAMICA)
 def test_la_registrazione_dinamica_non_stampa(relpath):
-    """Nessun `print()` dentro un `register_*_strategy`, ovunque viva.
+    """Nessun `print()` in un punto di registrazione, ovunque viva.
 
     La conferma di una registrazione dinamica e' diagnostica: va a
     `log_strategy_registration` (issue #187). Qui il criterio e' la funzione,
     non la cartella, cosi' che la porta non possa riaprirsi da un registry che
     sta altrove.
+
+    E dalla #184 «funzione» sono **due** grafie, non una: le `def
+    register_*_strategy` di modulo e i metodi chiamati `register` dentro una
+    classe, che e' dove la registrazione di pan vive adesso. Le enumera
+    `_funzioni_di_registrazione`, che questa guardia condivide col censimento
+    qui sopra — quindi la riassuntiva va letta di li' invece che trascritta:
+    diceva `register_*_strategy`, cioe' meta' del criterio che applica.
     """
     tree = ast.parse(_sorgente(relpath))
 
