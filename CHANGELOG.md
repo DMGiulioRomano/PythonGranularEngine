@@ -433,7 +433,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Quattro presidi perché la guardia non sia verde a vuoto. Le quattro grafie
   dell'import sono misurate una per una, `importlib.import_module` compresa —
   è l'unica con cui `test_parameter.py` tocca produzione, e leggere solo gli
-  `import` la darebbe per assente. Il confronto sul prefisso pretende un punto
+  `import` la darebbe per assente — e con loro l'import *relativo*, che la
+  prima metà scarta prima di leggerlo: `from . import parameter` non ha un
+  modulo da confrontare, e senza quella guardia la lettura non dà un verdetto
+  sbagliato, scoppia. La grafia è scrivibile (`tests/e2e/` e
+  `tests/rendering/renderers/` sono package), e non era misurata. Il confronto sul prefisso pretende un punto
   dopo: senza, `pge.parameters.parameter_definitions` conterebbe come
   `pge.parameters.parameter`, e `test_parameter.py` passerebbe la prima metà
   grazie a un import che riguarda un altro file. La lista delle eccezioni è il
@@ -571,10 +575,26 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   un `cfg.path = '/tmp/x'` in un file di test era un rosso con sopra un
   messaggio che parla di `sys.path`. Ora si chiedono tutti e due i pezzi, e
   il modulo si riconosce anche dietro un altro attributo (`os.sys.path` è lo
-  stesso posto). Restringere lì non assolve nessuno: le sei grafie positive
+  stesso posto). Restringere lì non assolve nessuno: le grafie positive
   restano rosse, e su tutta `tests/` il verdetto non cambia — una guardia
   rumorosa la si spegne, ed è lo stesso argomento di tutte le righe qui
   sopra.
+
+  Le stesse tre distrazioni, infine, una volta sola più in là: nei *presidi*
+  invece che nel criterio. Misurato mutando il sorgente, tre pezzi di questa
+  sezione non avevano nessun caso che potesse renderli rossi — cioè erano
+  scritti e non verificati, che è la forma esatta della riga muta di cui
+  parla tutta la voce. `append` stava nella tupla dei verbi e in nessuna
+  grafia positiva, nascosto dai due contrappesi che sono gli unici `append`
+  del file e restano verdi comunque (`cfg.path.append`, `path.append`): con
+  `sys.path.append('/home/claude')` — la grafia più ovvia dopo `insert` —
+  toglierlo dalla tupla lasciava il file tutto verde. E il contrappeso sul
+  bersaglio guardava solo l'oggetto (`cfg`, `self`, una lista locale), mai il
+  membro: togliere `nodo.attr == 'path'` faceva di `sys.argv.insert(0,
+  '/abs')` un rosso che parla di `sys.path`, e togliere il filtro
+  dell'import faceva di `from sys import argv` un alias della lista — file
+  verde in tutti e due i casi. Ciascuno ha ora il suo caso, rosso sulla
+  mutazione corrispondente.
 
   I percorsi calcolati (`os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`)
   restano leciti in ognuna delle grafie, ma per la ragione giusta: non perché
