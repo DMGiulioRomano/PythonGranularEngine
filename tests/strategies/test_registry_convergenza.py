@@ -74,6 +74,15 @@ attributo di classe -- `DistributionFactory._registry`,
 Per quelle il presidio e' il censimento dei punti di registrazione in
 `tests/shared/test_stdout_contract.py`, che legge i `def register_*_strategy` e
 i metodi `register`: un criterio ortogonale a questo, non lo stesso ripetuto.
+
+Il confronto e' su due piani e servono entrambi: l'insieme dei *file* dice se
+e' nato un modulo che nessuno ha dichiarato, l'elenco dei *nomi* per file dice
+se dentro un file dichiarato e' nata una seconda mappa. Il secondo piano
+copriva i soli `CONVERTITI`, e li' il buco era misurabile: appendendo
+`SONDA_STRATEGIES = {...}` a `grain_clip_strategy.py` -- un asse nuovo sulla
+forma vecchia, esattamente il caso per cui il censimento esiste -- l'insieme
+dei file non si muoveva e il test restava verde. Per questo `FUORI_DAL_GIRO`
+porta il nome della propria mappa accanto alla ragione.
 """
 import ast
 import importlib
@@ -196,10 +205,11 @@ CONVERTITI = [
 # tabella e non i suoi valori, che erano percio' morti.
 FUORI_DAL_GIRO = {
     os.path.join('controllers', 'window_selection_strategy.py'):
-        'issue #265, dopo il tracer bullet',
+        ('WINDOW_STRATEGY_REGISTRY', 'issue #265, dopo il tracer bullet'),
     os.path.join('strategies', 'grain_clip_strategy.py'):
-        'issue #265: non ha un punto di registrazione, e se debba averlo '
-        'e\' parte di quella decisione',
+        ('GRAIN_CLIP_STRATEGIES',
+         'issue #265: non ha un punto di registrazione, e se debba averlo '
+         'e\' parte di quella decisione'),
 }
 
 IDS = [caso.kind for caso in CONVERTITI]
@@ -308,7 +318,7 @@ def test_il_censimento_della_famiglia_e_completo():
         f"  solo nei sorgenti: {sorted(set(trovate) - dichiarate)}\n"
         "  solo nella tabella: "
         + ', '.join(
-            f"{rel} (dichiarata fuori dal giro: {FUORI_DAL_GIRO[rel]})"
+            f"{rel} (dichiarata fuori dal giro: {FUORI_DAL_GIRO[rel][1]})"
             if rel in FUORI_DAL_GIRO else rel
             for rel in sparite
         ) + "\n"
@@ -319,10 +329,20 @@ def test_il_censimento_della_famiglia_e_completo():
     # Il nome della mappa e' quello che la tabella dichiara: i test qui sopra
     # la cercano per attributo, quindi un rename la farebbe sparire invece di
     # fallire.
-    for caso in CONVERTITI:
-        assert trovate[caso.relpath] == [caso.mappa], (
-            f"{caso.relpath} non espone piu' {caso.mappa} ma "
-            f"{trovate[caso.relpath]}"
+    #
+    # Vale anche per i due file fuori dal giro, che non hanno un test per
+    # attributo ma hanno lo stesso buco: il confronto fra insiemi qui sopra
+    # ragiona sui *file*, quindi una seconda mappa aggiunta a un file gia'
+    # dichiarato non sposta nessun insieme. Misurato: appendendo
+    # `SONDA_STRATEGIES = {...}` a `grain_clip_strategy.py` — cioe' un asse
+    # nuovo sulla forma vecchia, esattamente il caso per cui il censimento
+    # esiste — questo test restava verde. Un file dichiarato espone una mappa
+    # e quella soltanto.
+    attese = {caso.relpath: [caso.mappa] for caso in CONVERTITI}
+    attese.update({rel: [mappa] for rel, (mappa, _) in FUORI_DAL_GIRO.items()})
+    for rel, nomi in attese.items():
+        assert trovate[rel] == nomi, (
+            f"{rel} non espone piu' {nomi} ma {trovate[rel]}"
         )
 
 
@@ -578,7 +598,7 @@ def test_la_firma_della_classe_generica_e_quella_delle_sei_facade():
     Il suo secondo parametro si chiamava `cls` -- esattamente il nome da cui
     pitch, onset e pointer sono stati convertiti in questa issue -- quindi la
     misura, letta solo sulle facade, lasciava `cls` vivo nell'unico punto che
-    le serve tutte e sei: il nome da cui si converge sopravviveva sotto quello
+    le serve tutte e sei: il nome da cui si converte sopravviveva sotto quello
     a cui si converge. Nessuna chiamata viva passa i due argomenti per parola
     chiave (misurato: in `src/` e in `tests/` ogni `.register(` e'
     posizionale), quindi la convergenza qui non rompe niente piu' di quanto ne
