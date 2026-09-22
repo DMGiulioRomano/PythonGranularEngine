@@ -534,6 +534,33 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ipotizzare nessun nome — quindi vale anche per la costante che a qualcuno
   verrà in mente domani.
 
+  **Un secondo giro di revisione ne ha trovate altre due, della stessa
+  famiglia — una misura più stretta di ciò che dichiara.** La convergenza
+  delle firme si fermava un livello sopra chi la esegue: le due guardie
+  leggevano le sei façade, e `StrategyRegistry.register` — il metodo a cui
+  tutte e sei delegano, e un punto di registrazione a pieno titolo per il
+  censimento di `tests/shared/test_stdout_contract.py` — teneva `cls` come
+  secondo parametro, cioè esattamente il nome da cui pitch, onset e pointer
+  sono stati convertiti. Si chiama `strategy_class` anche lì, e una guardia
+  nuova lo pretende; nessuna chiamata viva passava quei due argomenti per
+  parola chiave. E il censimento della famiglia confrontava due piani ma ne
+  misurava uno solo per intero: l'insieme dei *file* per tutti, l'elenco dei
+  *nomi* per i soli `CONVERTITI`. Misurato: appendendo `SONDA_STRATEGIES =
+  {...}` a `grain_clip_strategy.py` — un asse nuovo sulla forma vecchia,
+  esattamente il caso per cui il censimento esiste — nessun insieme si muoveva
+  e il test restava verde. `FUORI_DAL_GIRO` porta ora il nome della propria
+  mappa accanto alla ragione, e il controllo sui nomi vale su tutti i file
+  dichiarati.
+
+  Due misure di `docs/explanation/strategy-registry.md` erano infine più larghe
+  del misurato, e sono state ricontate: i registry che tacciono dopo #185 sono
+  **due** (`window` e `distribution`, che la `register` ce l'ha ma muta), non
+  uno — contarne uno faceva nove registri su otto e contraddiceva la sezione
+  «Il `print()`» due paragrafi più in là — e gli `strategy_kind` scritti a mano
+  dentro il modulo che #185 ha convertito sono **dieci**, non undici: gli altri
+  due `"voice_pitch"` stanno in `core/stream.py`, che questa issue non tocca.
+  Il totale di ventidue in `src/` era giusto.
+
   Restano fuori i tre di sempre, e per le ragioni loro: `WINDOW_STRATEGY_REGISTRY`
   e `GRAIN_CLIP_STRATEGIES` sono la #265, `DistributionFactory` aspetta la
   decisione sulla validazione — la sua `register` rifiuta una classe che non sia

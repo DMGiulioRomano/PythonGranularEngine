@@ -117,9 +117,14 @@ regola di quale riga vive su stdout è scritta in [[contratto-stdout]]. Quel che
 resta della divergenza descritta dalla issue non è il canale, è **chi la riga la
 emette**: tre registry su nove la emettono, cinque tacciono, uno non ha la
 funzione da cui emetterla. Quel conto è la fotografia del prima, come la
-tabella qui sotto: dopo #185 i registry che parlano sono sei, uno tace
-(`window`) e uno non ha ancora la funzione (`grain_clip`) — il conto a
-convergenza avvenuta è nella sezione «Il `print()`», che lo tiene aggiornato.
+tabella qui sotto: dopo #185 i registry che parlano sono sei, **due**
+tacciono (`window` e `distribution`) e uno non ha ancora la funzione
+(`grain_clip`) — il conto a convergenza avvenuta è nella sezione «Il
+`print()`», che lo tiene aggiornato. I due che tacciono non tacciono per la
+stessa ragione, ed è la sezione «Chi resta fuori» a dirlo: `window` è nel
+seguito (#265), `DistributionFactory.register` è ferma davanti alla decisione
+sulla validazione. Contarne uno solo faceva nove registri su otto, e mandava a
+cercare in `distribution` una riga che non c'è.
 
 Due vincoli esterni rendono questa duplicazione più cara di quanto sembri, e
 sono ciò che decide la forma più di ogni preferenza di stile:
@@ -799,9 +804,10 @@ nuova.
 
   La misura è quella e non una più larga, perché la più larga sarebbe falsa e
   verrebbe letta come regola: lo `strategy_kind` degli **errori** è ancora
-  scritto a mano in ventidue punti di `src/`, undici dei quali
-  `"voice_pitch"` dentro il modulo che #185 ha convertito e uno `"density"`
-  nella façade che ha riscritto. Non è una svista: il censimento della #177 —
+  scritto a mano in ventidue punti di `src/`, **dieci** dei quali
+  `"voice_pitch"` dentro il modulo che #185 ha convertito — altri due stanno
+  in `core/stream.py`, che #185 non tocca — e uno `"density"` nella façade
+  che ha riscritto. Non è una svista: il censimento della #177 —
   «tre etichette di dominio scritte a mano» — contava i chiamanti
   dell'helper, non ogni stringa che nomina un dominio, e a quel censimento
   risponde questa riga. Gli `strategy_kind` degli errori sono un'altra
