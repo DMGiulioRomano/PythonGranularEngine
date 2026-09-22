@@ -445,7 +445,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   argomento — e anche il primo ha ora il suo caso: senza
   `nome != 'import_module'` qualunque chiamata che nomini il modulo in una
   stringa conterebbe come import, `patch('pge.<area>.<modulo>....')`
-  compresa, che in questa suite sono 264 righe. È la direzione che fa danno:
+  compresa, che questa suite scrive a centinaia — e con cui oggi undici dei
+  66 file sorvegliati nominano il *proprio* modulo. È la direzione che fa
+  danno:
   un file che riscrive il modulo e si limita a spiarne un nome con `patch`
   passerebbe la prima metà, cioè proprio la popolazione che la guardia esiste
   per trovare. La lista delle eccezioni è il

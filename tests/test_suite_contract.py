@@ -583,8 +583,8 @@ def test_il_criterio_riconosce_le_grafie_dell_import(sorgente):
     # Una stringa che nessuno importa.
     's = "pge.parameters.parameter"',
     # La stessa stringa dentro una chiamata che non e' `import_module`:
-    # `patch` nomina il modulo, non e' una delle quattro grafie, e questa
-    # suite la scrive 264 volte.
+    # `patch` nomina il modulo, non e' una delle quattro grafie, ed e' una
+    # riga che questa suite scrive a centinaia.
     "from unittest.mock import patch\n"
     "patch('pge.parameters.parameter.Parameter')\n",
     "from unittest.mock import patch\n"
@@ -601,8 +601,9 @@ def test_il_criterio_non_scambia_un_omonimo_per_il_modulo(sorgente):
     stringa vale come import solo dentro `import_module`. Togliere
     `nome != 'import_module'` lasciava il file **tutto verde**, e da li' in
     poi qualunque chiamata che nominasse il modulo in una stringa contava
-    come import — `patch('pge.<area>.<modulo>....')`, che in questa suite
-    sono 264 righe. E' la direzione che fa danno: un file che riscrive il
+    come import — `patch('pge.<area>.<modulo>....')`, che questa suite scrive
+    a centinaia, e con cui oggi undici dei 66 file sorvegliati nominano il
+    **proprio** modulo. E' la direzione che fa danno: un file che riscrive il
     modulo e si limita a spiare un nome con `patch` passerebbe la prima
     meta', cioe' proprio la popolazione che questa suite esiste per trovare.
     """
