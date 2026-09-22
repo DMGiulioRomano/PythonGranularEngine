@@ -34,6 +34,13 @@ registry) e il secondo `strategy_class`. Tutti i chiamanti vivi li passano
 posizionalmente (misurato: nessuna chiamata per parola chiave in `src/` o in
 `tests/`), quindi la convergenza non rompe niente.
 
+**«Ovunque» include la classe generica**, non solo le facade. I sei
+`register_*` delegano a `StrategyRegistry.register`, che per il censimento di
+`tests/shared/test_stdout_contract.py` e' un punto di registrazione come loro,
+e il suo secondo parametro si chiamava `cls` -- il nome da cui pitch, onset e
+pointer sono stati convertiti qui. Misurata sulle sole facade, la convergenza
+lasciava quel nome vivo nell'unico punto che le serve tutte e sei.
+
 **Chi resta fuori, e perche' e' dichiarato qui invece che dedotto.**
 `StrategyFactory.create_density_strategy` non e' nel giro delle firme uniformi:
 tiene la propria (`selected_param_name, param_obj, all_params`) e la propria
@@ -554,6 +561,40 @@ def test_il_primo_parametro_di_create_si_chiama_name(caso):
     assert parametri[0] == 'name', (
         f"{caso.factory}.{caso.create}{tuple(parametri)}: il primo parametro "
         "e' la chiave del registry e si chiama `name`"
+    )
+
+
+def test_la_firma_della_classe_generica_e_quella_delle_sei_facade():
+    """La convergenza non si ferma un livello sopra chi la esegue.
+
+    Le due guardie qui sopra leggono le sei `register_*` di modulo e i cinque
+    `create` di solo lookup, cioe' le *facade*. Ma la registrazione la fa
+    `StrategyRegistry.register`, a cui tutte e sei delegano, e per il
+    censimento di `tests/shared/test_stdout_contract.py` quello e' un punto di
+    registrazione come gli altri: `_funzioni_di_registrazione` enumera le `def
+    register_*_strategy` di modulo **e** i metodi chiamati `register` dentro
+    una classe.
+
+    Il suo secondo parametro si chiamava `cls` -- esattamente il nome da cui
+    pitch, onset e pointer sono stati convertiti in questa issue -- quindi la
+    misura, letta solo sulle facade, lasciava `cls` vivo nell'unico punto che
+    le serve tutte e sei: il nome da cui si converge sopravviveva sotto quello
+    a cui si converge. Nessuna chiamata viva passa i due argomenti per parola
+    chiave (misurato: in `src/` e in `tests/` ogni `.register(` e'
+    posizionale), quindi la convergenza qui non rompe niente piu' di quanto ne
+    rompesse sulle facade.
+    """
+    parametri = list(inspect.signature(StrategyRegistry.register).parameters)
+    assert parametri[1:] == ['name', 'strategy_class'], (
+        f"StrategyRegistry.register{tuple(parametri)}: la #185 vuole "
+        "(name, strategy_class), la stessa firma delle sei facade che "
+        "delegano qui"
+    )
+
+    parametri = list(inspect.signature(StrategyRegistry.create).parameters)
+    assert parametri[1] == 'name', (
+        f"StrategyRegistry.create{tuple(parametri)}: il primo parametro e' "
+        "la chiave del registry e si chiama `name`"
     )
 
 
