@@ -934,10 +934,23 @@ def test_la_scoperta_vede_i_file_della_suite():
 
     Il numero è basso di proposito, come l'altro: oggi i file sono un
     centinaio e mezzo, e un valore stretto diventerebbe una trascrizione da
-    aggiornare a ogni test nuovo. Accanto, l'unico nome che non può
-    invecchiare: questo file, chiesto a `__file__` invece che trascritto —
-    un filtro che smettesse di vedere i `.py` della radice di `tests/`
+    aggiornare a ogni test nuovo. Accanto, due ancore, perché il conto è
+    cieco a due spostamenti diversi e ciascuna ne vede uno.
+
+    La prima è questo file, chiesto a `__file__` invece che trascritto: un
+    filtro che smettesse di vedere i `.py` della radice di `tests/`
     passerebbe il pavimento e non lui.
+
+    La seconda è la sola cosa che distingue questa scoperta dalle altre due:
+    legge **ogni** `.py`, non i soli `test_*.py`, e quel «ogni» era scritto
+    e non misurato. `__file__` non poteva dirlo — si chiama `test_…` anche
+    lui — quindi la mutazione che restringe `_file_di_test()` ai file di
+    test lasciava il file **tutto verde**, e con lei se ne andava
+    `tests/conftest.py`: l'unico file della suite che scriva davvero in
+    `sys.path`, e il posto dove quella riga naturalmente vive. Il criterio è
+    l'estensione, quindi l'ancora chiede che almeno un `.py` non sia un file
+    di test, invece di nominarne uno — un nome trascritto sarebbe la lista
+    che invecchia da sola.
     """
     files = sorted(_file_di_test())
 
@@ -949,6 +962,15 @@ def test_la_scoperta_vede_i_file_della_suite():
     assert os.path.relpath(__file__, TESTS_DIR) in files, (
         "_file_di_test() non trova nemmeno il file che la contiene: la "
         "guardia sui percorsi assoluti sta leggendo un'altra cartella."
+    )
+    assert [f for f in files
+            if not os.path.basename(f).startswith('test_')], (
+        "_file_di_test() non trova nessun `.py` che non sia un file di "
+        "test: il criterio della quarta sezione è l'estensione, non il "
+        "prefisso. Fuori dalla guardia sui percorsi assoluti finirebbe "
+        "`tests/conftest.py`, che in `sys.path` ci scrive davvero, ed è il "
+        "posto dove quella riga naturalmente vive. Controlla "
+        "_file_di_test()."
     )
 
 
