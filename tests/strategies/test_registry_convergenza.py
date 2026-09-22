@@ -20,9 +20,12 @@ misura le tre cose che la convergenza produce e che nessun test vedeva:
    parte;
 3. il `create()` delle factory non costruisce piu' l'errore per conto proprio.
    Il lookup e `StrategyNotFoundError` vivono nel registry, la factory delega,
-   e la guardia e' sul *corpo* di `create` -- nessun `raise` -- perche' il
-   comportamento da solo non distingue una delega da una quinta copia della
-   stessa riga.
+   e la guardia e' sul *corpo* di `create` perche' il comportamento da solo
+   non distingue una delega da una quinta copia della stessa riga. Sono due
+   guardie, non una, e la differenza e' density: sulle cinque facade di solo
+   lookup il corpo non alza **niente**, mentre il divieto del solo `raise
+   StrategyNotFoundError` vale su tutte e sei -- density inclusa, che una
+   validazione sua da difendere ce l'ha.
 
 Piu' la convergenza delle firme, che e' un criterio della #185 e non un gusto:
 il primo parametro si chiama `name` ovunque (`variation_mode`, `mode_name` e
@@ -38,6 +41,16 @@ validazione, che non e' lookup ma una regola su come si costruisce una strategy
 di density. L'ordine fra le due -- lookup prima, validazione dopo -- decide il
 tipo dell'eccezione quando entrambe le condizioni sono vive, ed e' pinnato in
 `tests/strategies/test_registry_errors.py`, non qui.
+
+**Fuori dalla firma, e da nient'altro.** `create_uniforme=False` e' una
+esenzione sulla forma della firma, non sulla delega: density il lookup lo
+delega come gli altri cinque, quindi sta in entrambe le misure che lo
+verificano -- la guardia sul sorgente qui sopra e l'errore chiesto al vivo,
+che raggiunge la sua facade coi posizionali dichiarati in `Caso`. Il flag le
+teneva fuori tutte e tre, cioe' era piu' largo della propria ragione, e la
+conseguenza era misurabile: rimettendo a mano in `create_density_strategy` il
+`raise StrategyNotFoundError` che la #185 ha tolto, `make tests` restava
+interamente verde.
 
 `WINDOW_STRATEGY_REGISTRY` e `GRAIN_CLIP_STRATEGIES` sono della famiglia ma
 fuori da #184/#185: sono la #265. `DistributionFactory` e' fuori piu' a lungo e
@@ -89,8 +102,13 @@ class Caso(NamedTuple):
     factory: str
     create: str
     # La facade di density non e' uniforme per decisione, non per dimenticanza:
-    # vedi il docstring del modulo.
+    # vedi il docstring del modulo. Il flag esenta la *firma* e nient'altro:
+    # le due guardie sulla delega valgono anche per lei, per la via qui sotto.
     create_uniforme: bool
+    # I posizionali che il `create` vuole dopo la chiave. Servono a chiedere
+    # l'errore di lookup a una facade che non e' `(name, **kwargs)`: senza di
+    # loro density usciva anche da quella misura, e non per decisione.
+    create_args_extra: tuple = ()
 
 
 CONVERTITI = [
@@ -159,11 +177,16 @@ CONVERTITI = [
         factory='StrategyFactory',
         create='create_density_strategy',
         create_uniforme=False,
+        create_args_extra=(None, {}),
     ),
 ]
 
-# Della famiglia, ma fuori dal giro di #184/#185. Il valore e' la ragione, ed
-# e' li' perche' il messaggio di un censimento rosso la deve poter citare.
+# Della famiglia, ma fuori dal giro di #184/#185. Il valore e' la ragione, e il
+# messaggio del censimento la cita quando uno di questi path sparisce dai
+# sorgenti: e' il momento in cui serve, perche' dice che cosa sta scadendo --
+# se il registry e' stato convertito la riga va spostata in CONVERTITI, se e'
+# stato tolto la ragione se ne va con lui. Fin qui il messaggio nominava la
+# tabella e non i suoi valori, che erano percio' morti.
 FUORI_DAL_GIRO = {
     os.path.join('controllers', 'window_selection_strategy.py'):
         'issue #265, dopo il tracer bullet',
@@ -272,10 +295,16 @@ def test_il_censimento_della_famiglia_e_completo():
     }
     dichiarate = {caso.relpath for caso in CONVERTITI} | set(FUORI_DAL_GIRO)
 
+    sparite = sorted(dichiarate - set(trovate))
     assert set(trovate) == dichiarate, (
         "la famiglia dei registry non e' piu' allineata ai sorgenti.\n"
         f"  solo nei sorgenti: {sorted(set(trovate) - dichiarate)}\n"
-        f"  solo nella tabella: {sorted(dichiarate - set(trovate))}\n"
+        "  solo nella tabella: "
+        + ', '.join(
+            f"{rel} (dichiarata fuori dal giro: {FUORI_DAL_GIRO[rel]})"
+            if rel in FUORI_DAL_GIRO else rel
+            for rel in sparite
+        ) + "\n"
         "Un registry nuovo va su StrategyRegistry (CONVERTITI) oppure "
         "dichiarato fuori dal giro con la sua ragione (FUORI_DAL_GIRO)."
     )
@@ -361,14 +390,8 @@ def test_la_registrazione_resta_una_def_di_modulo(caso):
 # 3. IL `create()` DELLA FACTORY DELEGA AL REGISTRY
 # =============================================================================
 
-@pytest.mark.parametrize('caso', UNIFORMI, ids=IDS_UNIFORMI)
-def test_create_non_alza_l_errore_per_conto_proprio(caso):
-    """Il corpo di `create` non contiene `raise`: il lookup e' del registry.
-
-    Il comportamento da solo non discrimina -- un `create` che ricostruisce
-    `StrategyNotFoundError` a mano supera il test qui sotto -- e ricostruirlo
-    e' proprio la duplicazione che la #177 ha misurato divergere.
-    """
+def _corpo_di_create(caso):
+    """Il nodo AST del `create` della factory dichiarata dal caso."""
     tree = ast.parse(_sorgente(caso.relpath))
     corpi = [
         figlio for classe in ast.walk(tree)
@@ -380,7 +403,62 @@ def test_create_non_alza_l_errore_per_conto_proprio(caso):
     assert len(corpi) == 1, (
         f"{caso.factory}.{caso.create} non trovato in {caso.relpath}"
     )
-    alza = [n for n in ast.walk(corpi[0]) if isinstance(n, ast.Raise)]
+    return corpi[0]
+
+
+def _nome_alzato(nodo):
+    """Il nome dell'eccezione costruita da un `raise`, o `None`."""
+    eccezione = nodo.exc
+    if isinstance(eccezione, ast.Call):
+        eccezione = eccezione.func
+    return eccezione.id if isinstance(eccezione, ast.Name) else None
+
+
+@pytest.mark.parametrize('caso', CONVERTITI, ids=IDS)
+def test_create_non_ricostruisce_strategy_not_found(caso):
+    """Nessun `create` della famiglia riscrive l'errore di lookup.
+
+    Il criterio nomina una sola eccezione, ed e' quel che le permette di
+    valere anche dove `create` ha il diritto di alzare qualcosa di suo: su
+    density, che prima non aveva nessuna guardia sulla delega.
+    `create_uniforme=False` la escludeva da entrambe le misure sulla delega,
+    ma quel flag dichiara un'esenzione sulla *firma*: il lookup density lo
+    delega come gli altri cinque. Misurato: rimettendo in
+    `create_density_strategy` il `raise StrategyNotFoundError` che la #185 ha
+    tolto -- la copia esatta che la #177 ha visto divergere -- `make tests`
+    restava interamente verde.
+
+    Il comportamento non puo' discriminare: una copia scritta a mano alza la
+    stessa classe, col dominio giusto e con `available` letto dal registry
+    vivo, quindi supera ogni asserzione sull'eccezione. Solo il sorgente lo
+    dice.
+    """
+    ricostruzioni = [
+        n for n in ast.walk(_corpo_di_create(caso))
+        if isinstance(n, ast.Raise) and _nome_alzato(n) == 'StrategyNotFoundError'
+    ]
+
+    assert not ricostruzioni, (
+        f"{caso.factory}.{caso.create} ricostruisce StrategyNotFoundError "
+        "per conto proprio: il lookup e il suo errore vivono in "
+        "StrategyRegistry.create, la facade delega."
+    )
+
+
+@pytest.mark.parametrize('caso', UNIFORMI, ids=IDS_UNIFORMI)
+def test_create_non_alza_l_errore_per_conto_proprio(caso):
+    """Sulle cinque facade di solo lookup il corpo non alza **niente**.
+
+    Le due guardie si dividono il lavoro per criterio e per popolazione, e le
+    due divisioni vanno in senso opposto. Questa ha il criterio piu' severo --
+    qualunque `raise`, non una classe nominata -- e la popolazione piu'
+    stretta: vale dove non c'e' nessuna regola di costruzione da difendere,
+    quindi dove ogni `raise` e' codice che il registry gia' fa. Density ha la
+    propria validazione, percio' il criterio severo non le si puo' applicare e
+    la copre quella qui sopra, che nomina una sola eccezione ma le vale su
+    tutte e sei.
+    """
+    alza = [n for n in ast.walk(_corpo_di_create(caso)) if isinstance(n, ast.Raise)]
     assert not alza, (
         f"{caso.factory}.{caso.create} alza ancora un'eccezione per conto "
         "proprio: il lookup e StrategyNotFoundError vivono in "
@@ -388,12 +466,17 @@ def test_create_non_alza_l_errore_per_conto_proprio(caso):
     )
 
 
-@pytest.mark.parametrize('caso', UNIFORMI, ids=IDS_UNIFORMI)
+@pytest.mark.parametrize('caso', CONVERTITI, ids=IDS)
 def test_create_alza_strategy_not_found_con_il_dominio_del_registry(caso):
     """La delega non cambia l'errore che il chiamante vede.
 
     `available` e' letto dal registry vivo, non da una lista scritta nel
     modulo: una strategy registrata a runtime compare fra le disponibili.
+
+    Density e' qui come gli altri cinque, per i posizionali che `Caso`
+    dichiara: la sua firma non e' uniforme, il suo errore di lookup si'. A
+    tenerla fuori era il flag della firma, e l'esenzione era piu' larga della
+    sua ragione.
     """
     modulo = importlib.import_module(caso.modulo)
     registry = _registry(caso)
@@ -407,7 +490,7 @@ def test_create_alza_strategy_not_found_con_il_dominio_del_registry(caso):
         registry[nome] = StrategyDiProva
 
         with pytest.raises(StrategyNotFoundError) as info:
-            crea('_nome_che_nessuno_registra')
+            crea('_nome_che_nessuno_registra', *caso.create_args_extra)
 
         err = info.value
         assert err.strategy_kind == caso.kind
@@ -478,13 +561,49 @@ def test_il_primo_parametro_di_create_si_chiama_name(caso):
 # 5. LE COSTANTI ACCANTO AL REGISTRY NON SONO STATE TRASCINATE DENTRO
 # =============================================================================
 
+# Gli attributi che la classe generica da' a **ogni** registry. Derivati da
+# un'istanza, non trascritti: aggiungerne uno a `StrategyRegistry` e' una
+# decisione sulla forma, e la guardia qui sotto non deve accusarla.
+SUPERFICIE_GENERICA = frozenset(vars(StrategyRegistry('_sonda', object)))
+
+
+@pytest.mark.parametrize('caso', CONVERTITI, ids=IDS)
+def test_nessun_registry_porta_una_superficie_per_dominio(caso):
+    """Sull'oggetto registry non si attacca niente che sia di un dominio solo.
+
+    E' il divieto della #177 -- la classe e' generica, e una costante
+    attaccata a un'istanza le darebbe una superficie che gli altri cinque non
+    hanno -- misurato sull'intera superficie d'istanza invece che su un nome
+    ipotizzato. Il candidato vivo e' `SEMITONE_LOCKED`, e la guardia che
+    c'era chiedeva `semitone_locked`: la grafia minuscola, che la costante non
+    ha in nessun punto dell'albero. Misurato: scrivendo
+    `VOICE_PITCH_STRATEGIES.SEMITONE_LOCKED = SEMITONE_LOCKED` -- cioe'
+    facendo esattamente la mossa vietata -- `tests/strategies/` e
+    `tests/shared/` restavano verdi.
+
+    Confrontare le chiavi di `vars()` con quelle di un registry appena
+    costruito non ipotizza nessun nome, quindi vale anche per la costante che
+    a qualcuno verra' in mente domani.
+    """
+    registry = _registry(caso)
+    attaccati = sorted(set(vars(registry)) - SUPERFICIE_GENERICA)
+
+    assert not attaccati, (
+        f"{caso.mappa} porta attributi che la classe generica non da' a "
+        f"tutti: {attaccati}. Una costante di dominio resta un nome di "
+        "modulo -- attaccarla al registry e' il caso speciale che la #177 "
+        "vieta (docs/explanation/strategy-registry.md)."
+    )
+
+
 def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
     """`SEMITONE_LOCKED` e' un'affermazione sulle unita', non contenuto.
 
     La legge `Stream._init_voice_manager` importandola per nome, e resta un
-    `frozenset` di chiavi del registry: attaccarla all'oggetto registry
-    darebbe alla classe generica una superficie per dominio, cioe' il caso
-    speciale che la #177 vieta.
+    `frozenset` di chiavi del registry. Che non sia attaccata all'oggetto
+    registry lo dice la guardia qui sopra, per tutti e sei e senza ipotizzare
+    la grafia; qui restano le due cose che sono sue: il tipo, e
+    l'allineamento alle chiavi.
     """
     from pge.strategies.voice_pitch_strategy import (
         SEMITONE_LOCKED,
@@ -492,7 +611,6 @@ def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
     )
 
     assert isinstance(SEMITONE_LOCKED, frozenset)
-    assert not hasattr(VOICE_PITCH_STRATEGIES, 'semitone_locked')
     assert SEMITONE_LOCKED <= set(VOICE_PITCH_STRATEGIES), (
         "SEMITONE_LOCKED nomina strategy che il registry non ha: "
         f"{sorted(SEMITONE_LOCKED - set(VOICE_PITCH_STRATEGIES))}"

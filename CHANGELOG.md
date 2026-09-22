@@ -494,11 +494,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   la superficie su cui mezza suite fa snapshot e ripristino e da cui la parità
   di PGE-ls legge le chiavi), che una registrazione produca **una** riga
   diagnostica col dominio del registry — zero significa che non delega, due che
-  il modulo tiene anche la propria chiamata — e che il corpo di `create` non
-  contenga più un `raise`. Quest'ultima è una guardia sul sorgente perché il
+  il modulo tiene anche la propria chiamata — e che nessun `create` ricostruisca
+  l'errore di lookup. Quest'ultima è una guardia sul sorgente perché il
   comportamento non discrimina: un `create` che ricostruisce
   `StrategyNotFoundError` a mano passa qualunque test sull'eccezione, ed è
-  esattamente la copia che la #177 ha misurato divergere. La famiglia è
+  esattamente la copia che la #177 ha misurato divergere. Sono **due** guardie,
+  e le due divisioni vanno in senso opposto: sulle cinque façade di solo lookup
+  il criterio è severo (nessun `raise`, di nessuna classe), su tutte e sei —
+  density inclusa, che una validazione sua ce l'ha — è il `raise
+  StrategyNotFoundError` a essere vietato per nome. La famiglia è
   **derivata** dai sorgenti e non solo dichiarata, così che un asse nuovo nato
   sulla forma vecchia sia rosso invece che invisibile; il limite della lettura
   è dichiarato nel modulo (vede le mappe di *modulo*, non quelle che vivono
@@ -512,6 +516,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   generica una superficie per dominio, cioè il caso speciale. Nessun nome
   esportato cambia, quindi il test di parità di PGE-ls, che importa quelle due
   e le quattro mappe di voce, non vede niente di diverso.
+
+  **Due di quelle misure erano soddisfatte dal vuoto, e la revisione della PR
+  le ha misurate prima di ripararle** — nello stesso modo in cui questo
+  documento chiede che siano misurate le altre, per sabotaggio.
+  `create_uniforme=False` escludeva density da **tre** test invece che da uno:
+  il flag dichiara un'esenzione sulla firma, e la firma ne riguarda uno solo.
+  Misurato: rimettendo in `create_density_strategy` il `raise
+  StrategyNotFoundError` che questa voce ha tolto — la copia esatta che la #177
+  ha visto divergere — `make tests` restava interamente verde. La guardia sulla
+  costante attaccata al registry chiedeva `semitone_locked`, grafia minuscola
+  che la costante non ha in nessun punto dell'albero; misurato: scrivendo
+  `VOICE_PITCH_STRATEGIES.SEMITONE_LOCKED = SEMITONE_LOCKED`, cioè facendo
+  esattamente la mossa vietata, `tests/strategies/` e `tests/shared/`
+  restavano verdi. Adesso il confronto è sull'intera superficie d'istanza
+  contro quella di un registry appena costruito, per tutti e sei e senza
+  ipotizzare nessun nome — quindi vale anche per la costante che a qualcuno
+  verrà in mente domani.
 
   Restano fuori i tre di sempre, e per le ragioni loro: `WINDOW_STRATEGY_REGISTRY`
   e `GRAIN_CLIP_STRATEGIES` sono la #265, `DistributionFactory` aspetta la
