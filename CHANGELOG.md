@@ -552,6 +552,28 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   mappa accanto alla ragione, e il controllo sui nomi vale su tutti i file
   dichiarati.
 
+  **Un terzo giro ne ha trovata una della stessa famiglia, e sull'unico caso
+  scoperto.** La guardia sul sorgente che vieta di ricostruire
+  `StrategyNotFoundError` dentro un `create` leggeva il solo `ast.Name`,
+  cioè la grafia `raise StrategyNotFoundError(...)`. Con la grafia ad
+  attributo — `raise exc.StrategyNotFoundError(...)` dopo un `from pge.shared
+  import exceptions as exc`, che `tests/shared/test_engine_exceptions.py` già
+  usa — il nodo è un `ast.Attribute` e la guardia non vedeva niente. Misurato:
+  rimettendo in `create_density_strategy` il `raise` che questa voce ha tolto,
+  scritto così, `tests/strategies/` e `tests/shared/` restavano verdi. Il buco
+  cadeva proprio su density, l'unico dei sei che la guardia severa (nessun
+  `raise`, di nessuna classe) non può coprire perché una validazione sua ce
+  l'ha: sugli altri cinque la copia sarebbe stata presa comunque. Il criterio
+  è ora il nome finale, `attr` o `id`, e morde su entrambe le grafie.
+
+  Nello stesso giro, la guardia sulla superficie per dominio moriva con un
+  `TypeError` invece di rispondere, se un registry tornava un `dict` spoglio:
+  `vars()` di un `dict` non esiste. È la premessa di un'altra misura — che
+  quel caso lo dice già col proprio messaggio — quindi legge `__dict__` con un
+  default, e un `dict` spoglio non ha niente di attaccato, che è la risposta
+  giusta alla domanda di lì. Il censimento sabotato fa ora tre rossi nominati
+  invece di due più un errore.
+
   Due misure di `docs/explanation/strategy-registry.md` erano infine più larghe
   del misurato, e sono state ricontate: i registry che tacciono dopo #185 sono
   **due** (`window` e `distribution`, che la `register` ce l'ha ma muta), non

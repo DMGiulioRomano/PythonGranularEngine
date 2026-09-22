@@ -434,10 +434,27 @@ def _corpo_di_create(caso):
 
 
 def _nome_alzato(nodo):
-    """Il nome dell'eccezione costruita da un `raise`, o `None`."""
+    """Il nome dell'eccezione costruita da un `raise`, o `None`.
+
+    **Le due grafie contano entrambe**, e leggere il solo `ast.Name` rendeva
+    la guardia qui sotto piu' stretta della regola che dichiara -- lo stesso
+    difetto che questa issue ha gia' corretto due volte. Misurato: rimettendo
+    in `create_density_strategy` il `raise` che la #185 ha tolto, scritto
+    `exc.StrategyNotFoundError(...)` con `from pge.shared import exceptions
+    as exc` (la grafia che `tests/shared/test_engine_exceptions.py` gia' usa),
+    `tests/strategies/` e `tests/shared/` restavano verdi: la copia esatta che
+    la #177 ha visto divergere rientrava dalla porta di servizio, e proprio
+    sull'unico caso -- density -- che la guardia severa non copre.
+
+    Il criterio e' il nome finale, `attr` o `id`: che l'eccezione arrivi da un
+    import diretto o da un modulo importato per nome non cambia che cosa il
+    `create` sta ricostruendo.
+    """
     eccezione = nodo.exc
     if isinstance(eccezione, ast.Call):
         eccezione = eccezione.func
+    if isinstance(eccezione, ast.Attribute):
+        return eccezione.attr
     return eccezione.id if isinstance(eccezione, ast.Name) else None
 
 
@@ -647,7 +664,12 @@ def test_nessun_registry_porta_una_superficie_per_dominio(caso):
     a qualcuno verra' in mente domani.
     """
     registry = _registry(caso)
-    attaccati = sorted(set(vars(registry)) - SUPERFICIE_GENERICA)
+    # `vars()` di un `dict` spoglio alza TypeError: un registry tornato sulla
+    # forma vecchia farebbe morire questa misura sulla premessa di un'altra,
+    # che quel caso lo dice col proprio messaggio
+    # (test_la_mappa_di_modulo_e_un_registry_generico). Senza `__dict__` non
+    # c'e' niente di attaccato, che e' la risposta giusta alla domanda di qui.
+    attaccati = sorted(set(getattr(registry, '__dict__', {})) - SUPERFICIE_GENERICA)
 
     assert not attaccati, (
         f"{caso.mappa} porta attributi che la classe generica non da' a "
