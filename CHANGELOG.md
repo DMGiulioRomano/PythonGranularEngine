@@ -440,7 +440,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `tests/rendering/renderers/` sono package), e non era misurata. Il confronto sul prefisso pretende un punto
   dopo: senza, `pge.parameters.parameter_definitions` conterebbe come
   `pge.parameters.parameter`, e `test_parameter.py` passerebbe la prima metà
-  grazie a un import che riguarda un altro file. La lista delle eccezioni è il
+  grazie a un import che riguarda un altro file. La grafia dinamica chiede
+  due cose alla chiamata — il nome della funzione e un letterale come
+  argomento — e anche il primo ha ora il suo caso: senza
+  `nome != 'import_module'` qualunque chiamata che nomini il modulo in una
+  stringa conterebbe come import, `patch('pge.<area>.<modulo>....')`
+  compresa, che in questa suite sono 264 righe. È la direzione che fa danno:
+  un file che riscrive il modulo e si limita a spiarne un nome con `patch`
+  passerebbe la prima metà, cioè proprio la popolazione che la guardia esiste
+  per trovare. La lista delle eccezioni è il
   canarino della scoperta — se `_coppie()` si rompe, le tre dichiarate
   spariscono da lì e la suite lo dice, invece di lasciare due guardie
   parametrizzate su niente. E un pavimento sul numero di coppie copre il caso
@@ -450,10 +458,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ha coperta una sola: un parametrize vuoto non è un rosso — pytest stampa
   `got empty parameter set` ed esce 0 — e le scoperte di questo file sono
   tre. La sezione sui percorsi assoluti gira su `_file_di_test()`, e il suo
-  pavimento ha due metà perché ne servono due: il conto vede la scoperta che
-  si svuota, l'ancora — il file stesso, chiesto a `__file__` invece che
-  trascritta — vede la scoperta che si *sposta*, dove il conto resterebbe
-  verde.
+  pavimento ha tre pezzi perché ne servono tre: il conto vede la scoperta che
+  si svuota, e due ancore vedono i due modi in cui può *spostarsi*, dove il
+  conto resterebbe verde. La prima è il file stesso, chiesto a `__file__`
+  invece che trascritto, e vede la scoperta che cambia cartella. La seconda è
+  la sola cosa che distingue questa scoperta dalle altre due — legge **ogni**
+  `.py`, non i soli `test_*.py` — e quel «ogni» è stato per un po' scritto e
+  non misurato, perché `__file__` non poteva dirlo: si chiama `test_…` anche
+  lui. Restringendo la scoperta ai file di test il pavimento restava verde
+  (154 file diventano 150) e con la mutazione se ne andava `tests/conftest.py`,
+  che in `sys.path` ci scrive davvero ed è l'unico file della suite a farlo:
+  la sezione avrebbe smesso di guardare il suo unico soggetto reale in
+  silenzio. L'ancora chiede che almeno un `.py` non sia un file di test,
+  perché il criterio è l'estensione — nominare `conftest.py` sarebbe la
+  trascrizione che invecchia da sola.
 
   La terza è `_sorvegliate()`, ed era la scoperta scoperta: le due guardie
   che sono il punto della suite sono parametrizzate su di lei — non su
@@ -595,6 +613,24 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   dell'import faceva di `from sys import argv` un alias della lista — file
   verde in tutti e due i casi. Ciascuno ha ora il suo caso, rosso sulla
   mutazione corrispondente.
+
+  Sullo stesso estremo della riga, e per la terza volta, ne restavano due: i
+  due raccoglitori chiedono all'import **quale modulo** e **quale nome**, e a
+  essere misurato era il solo nome. Le grafie negative sbagliavano il nome
+  (`from sys import argv`) oppure l'oggetto (`cfg`, `self`, una lista
+  locale), nessuna sbagliava il modulo da cui il nome arriva: togliendo
+  `node.module == 'sys'` da `_nomi_di_sys_path` e `a.name == 'sys'` da
+  `_nomi_del_modulo_sys` il file restava tutto verde tutte e due le volte. E
+  le righe che ne uscivano non sono di scuola — `from os import path` è la
+  grafia più comune che leghi quel nome in Python e `import os` sta in metà
+  di questa suite — quindi sotto la mutazione un `path.append(...)` o un
+  `os.path.insert(...)` diventano un rosso che parla di `sys.path` e cita una
+  issue che non c'entra. Con loro, l'esempio con cui la docstring
+  giustificava il ramo `ImportFrom` di `_nomi_del_modulo_sys` non lo
+  attraversava: `from os import sys` lega il nome `sys`, che il valore di
+  partenza ha già, e la riga che quel ramo serve è `from os import sys as
+  _s`. Ora ogni metà di ogni filtro dice quale grafia tiene fuori, e ha il
+  caso che la misura.
 
   I percorsi calcolati (`os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`)
   restano leciti in ognuna delle grafie, ma per la ragione giusta: non perché
