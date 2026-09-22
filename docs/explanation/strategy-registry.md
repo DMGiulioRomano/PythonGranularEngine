@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: f2f0157
+last_synced_commit: 48efb26
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -43,11 +43,14 @@ Questo documento è l'esito della issue #177: la **decisione** su che forma pren
 il registry generico, non la sua esecuzione. L'esecuzione è #184 (tracer bullet)
 e #185 (le altre).
 
-**Stato: il tracer bullet è stato sparato, e la forma ha retto.** La #184 ha
-messo la classe in `src/pge/strategies/registry.py` e vi ha cablato
-`voice_pan_strategy`; gli altri otto registry sono ancora sulla forma vecchia.
-Nessun caso speciale è servito per farla passare — che era la domanda a cui il
-tracer bullet doveva rispondere. Quel che segue descrive la forma e, per ogni
+**Stato: il tracer bullet è stato sparato, la forma ha retto, e la replica è
+fatta.** La #184 ha messo la classe in `src/pge/strategies/registry.py` e vi ha
+cablato `voice_pan_strategy`; la #185 ci ha portato altri cinque registry
+(pitch, onset, pointer, density, variation), e i **tre** che restano sono
+quelli che questo documento tiene fuori per ragioni loro — `window_selection`
+e `grain_clip` (#265), `distribution` dopo la decisione sulla validazione.
+Nessun caso speciale è servito per farla passare, né al tracer bullet né alla
+replica — che era la domanda a cui il tracer bullet doveva rispondere. Quel che segue descrive la forma e, per ogni
 scelta, il vincolo che l'ha decisa; dove #184 ha *aggiunto* qualcosa alla
 decisione — la misura eseguibile dello scheletro, il criterio della guardia —
 è detto sul posto.
@@ -113,7 +116,10 @@ portato a `log_strategy_registration`, cioè al logger `pge.diagnostics`, e la
 regola di quale riga vive su stdout è scritta in [[contratto-stdout]]. Quel che
 resta della divergenza descritta dalla issue non è il canale, è **chi la riga la
 emette**: tre registry su nove la emettono, cinque tacciono, uno non ha la
-funzione da cui emetterla.
+funzione da cui emetterla. Quel conto è la fotografia del prima, come la
+tabella qui sotto: dopo #185 i registry che parlano sono sei, uno tace
+(`window`) e uno non ha ancora la funzione (`grain_clip`) — il conto a
+convergenza avvenuta è nella sezione «Il `print()`», che lo tiene aggiornato.
 
 Due vincoli esterni rendono questa duplicazione più cara di quanto sembri, e
 sono ciò che decide la forma più di ogni preferenza di stile:
@@ -784,12 +790,22 @@ nuova.
   rossi. **Per gli altri cinque non vale più nemmeno come regola**: #185 ha
   trovato i domini già allineati agli errori — niente da rinominare — e ha
   lasciato al loro posto un'asserzione che discrimina, una per registry
-  (`test_registry_convergenza.py`). In `src/` non c'è più un solo letterale di
-  dominio: `log_strategy_registration` ha un unico chiamante,
-  `StrategyRegistry.register`, che passa il proprio `kind`. Restano gli esempi
-  nella docstring dell'helper e i quattro letterali che
+  (`test_registry_convergenza.py`). **Sulla riga diagnostica** in `src/` non
+  c'è più un solo letterale di dominio: `log_strategy_registration` ha un
+  unico chiamante, `StrategyRegistry.register`, che passa il proprio `kind`.
+  Restano gli esempi nella docstring dell'helper e i quattro letterali che
   `tests/shared/test_diagnostic_logger.py` passa a chiamate dirette
   dell'helper — dati di quel test, non la copia dell'etichetta di un modulo.
+
+  La misura è quella e non una più larga, perché la più larga sarebbe falsa e
+  verrebbe letta come regola: lo `strategy_kind` degli **errori** è ancora
+  scritto a mano in ventidue punti di `src/`, undici dei quali
+  `"voice_pitch"` dentro il modulo che #185 ha convertito e uno `"density"`
+  nella façade che ha riscritto. Non è una svista: il censimento della #177 —
+  «tre etichette di dominio scritte a mano» — contava i chiamanti
+  dell'helper, non ogni stringa che nomina un dominio, e a quel censimento
+  risponde questa riga. Gli `strategy_kind` degli errori sono un'altra
+  domanda, e nessuna issue l'ha ancora posta.
 - **Ordine di esecuzione** → ~~#184 (pan, con la guardia estesa a
   `StrategyRegistry.register`)~~ **fatta**, ~~#185 (pitch, onset, pointer,
   density, variation)~~ **fatta**, poi #265 per `window_selection_strategy` e
