@@ -394,6 +394,252 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   cita sta rispondendo sulla traduzione di un valore invece che sull'assenza
   del campo, e la lettura vale per ogni target.
 
+- **Il nome di un file di test è una promessa, e `tests/test_suite_contract.py`
+  la verifica** (issue #274). Ogni `tests/<area>/test_<modulo>.py` che nomina
+  un modulo esistente deve importare `pge.<area>.<modulo>` e non può
+  riscriverne a livello di modulo le classi e le funzioni pubbliche. La
+  guardia legge i sorgenti, nell'idioma che il repo ha già in
+  `tests/shared/test_stdout_contract.py`: la lista dei file sorvegliati è
+  scoperta, non trascritta.
+
+  Il difetto che chiude non è un buco di copertura — i moduli in questione
+  sono coperti dal *resto* della suite — ma un'esca. Chi modifica
+  `parameter.py` apre `test_parameter.py`, legge 72 test sul comportamento di
+  `Parameter` e sta leggendo il comportamento di un'altra classe con lo stesso
+  nome; nella PR #273 è successo tre volte di fila, e i due file non hanno
+  potuto né confermare né smentire. Una riscrittura non fallisce mai: resta
+  coerente con sé stessa mentre il modulo vero cambia.
+
+  Le due metà servono entrambe perché ciascuna è verde sul difetto dell'altra:
+  `test_parameter.py` importa davvero il modulo — in fondo al file, per i 9
+  test di `TestResolveParam` — e accanto ridefinisce `class Parameter`, quindi
+  la sola prima metà lo assolverebbe; `test_parser.py` non importa niente, e
+  la sola seconda lo assolverebbe il giorno in cui rinominasse la propria
+  copia.
+
+  La guardia ha trovato un terzo caso che la #274 non censiva:
+  `tests/shared/test_probability_gate.py` riscrive tutti e cinque i gate e non
+  importa mai `pge.shared.probability_gate`. Misurato: togliere i tre file
+  dalla suite non muove di una riga la copertura dei tre moduli che nominano
+  (97%, 95%, 85%) — 199 test, zero righe di produzione.
+
+  I tre sono dichiarati in `SIMULAZIONI_DICHIARATE` con il motivo, ed è quella
+  lista il valore della guardia: il debito smette di essere una scoperta da
+  rifare a ogni review e diventa una riga che qualcuno deve cancellare —
+  riscrivendo quei test contro produzione, quando toccherà quei moduli per
+  un'altra ragione. La lista non può invecchiare: un'eccezione che smette di
+  violare fa fallire la suite, e va tolta invece di restare a dire il falso.
+
+  Quattro presidi perché la guardia non sia verde a vuoto. Le quattro grafie
+  dell'import sono misurate una per una, `importlib.import_module` compresa —
+  è l'unica con cui `test_parameter.py` tocca produzione, e leggere solo gli
+  `import` la darebbe per assente — e con loro l'import *relativo*, che la
+  prima metà scarta prima di leggerlo: `from . import parameter` non ha un
+  modulo da confrontare, e senza quella guardia la lettura non dà un verdetto
+  sbagliato, scoppia. La grafia è scrivibile (`tests/e2e/` e
+  `tests/rendering/renderers/` sono package), e non era misurata. Il confronto sul prefisso pretende un punto
+  dopo: senza, `pge.parameters.parameter_definitions` conterebbe come
+  `pge.parameters.parameter`, e `test_parameter.py` passerebbe la prima metà
+  grazie a un import che riguarda un altro file. La grafia dinamica chiede
+  due cose alla chiamata — il nome della funzione e un letterale come
+  argomento — e anche il primo ha ora il suo caso: senza
+  `nome != 'import_module'` qualunque chiamata che nomini il modulo in una
+  stringa conterebbe come import, `patch('pge.<area>.<modulo>....')`
+  compresa, che questa suite scrive a centinaia — e con cui oggi undici dei
+  66 file sorvegliati nominano il *proprio* modulo. È la direzione che fa
+  danno:
+  un file che riscrive il modulo e si limita a spiarne un nome con `patch`
+  passerebbe la prima metà, cioè proprio la popolazione che la guardia esiste
+  per trovare. La lista delle eccezioni è il
+  canarino della scoperta — se `_coppie()` si rompe, le tre dichiarate
+  spariscono da lì e la suite lo dice, invece di lasciare due guardie
+  parametrizzate su niente. E un pavimento sul numero di coppie copre il caso
+  in cui a svuotarsi sia anche la lista.
+
+  Quel pavimento vale per **ogni** scoperta che parametrizza, e per un po' ne
+  ha coperta una sola: un parametrize vuoto non è un rosso — pytest stampa
+  `got empty parameter set` ed esce 0 — e le scoperte di questo file sono
+  tre. La sezione sui percorsi assoluti gira su `_file_di_test()`, e il suo
+  pavimento ha tre pezzi perché ne servono tre: il conto vede la scoperta che
+  si svuota, e due ancore vedono i due modi in cui può *spostarsi*, dove il
+  conto resterebbe verde. La prima è il file stesso, chiesto a `__file__`
+  invece che trascritto, e vede la scoperta che cambia cartella. La seconda è
+  la sola cosa che distingue questa scoperta dalle altre due — legge **ogni**
+  `.py`, non i soli `test_*.py` — e quel «ogni» è stato per un po' scritto e
+  non misurato, perché `__file__` non poteva dirlo: si chiama `test_…` anche
+  lui. Restringendo la scoperta ai file di test il pavimento restava verde
+  (154 file diventano 150) e con la mutazione se ne andava `tests/conftest.py`,
+  che in `sys.path` ci scrive davvero ed è l'unico file della suite a farlo:
+  la sezione avrebbe smesso di guardare il suo unico soggetto reale in
+  silenzio. L'ancora chiede che almeno un `.py` non sia un file di test,
+  perché il criterio è l'estensione — nominare `conftest.py` sarebbe la
+  trascrizione che invecchia da sola.
+
+  La terza è `_sorvegliate()`, ed era la scoperta scoperta: le due guardie
+  che sono il punto della suite sono parametrizzate su di lei — non su
+  `_coppie()`, come dicevano il pavimento e il canarino delle dichiarate — e
+  fra le due c'è il filtro della lista, che nessun test attraversava.
+  Misurato mutando il sorgente: `_sorvegliate()` vuota fa saltare tutte e due
+  le guardie e la suite esce 0, con `_coppie()` intatta e il canarino verde;
+  una coppia sola ne fa girare una su 66, sempre verde. Il pavimento nuovo ha
+  anche lui due metà, ma diverse da quelle dell'altro, perché qui a monte c'è
+  un filtro invece di un `os.walk`: la relazione — `_sorvegliate()` è
+  `_coppie()` meno le dichiarate, e nient'altro — vede il filtro che comincia
+  a scartare file sorvegliati, cioè a farli uscire dalla sorveglianza senza
+  nemmeno passare dalla lista; il conto resta per l'unico caso in cui il
+  filtro fa esattamente ciò che dichiara e il parametrize si svuota lo
+  stesso, la lista che cresce fino a inghiottire la suite, dove la relazione
+  tace per costruzione ed è l'unico limite scritto a quanto quella lista può
+  allargarsi.
+
+  «A livello di modulo» vuol dire *all'import*, non *in prima colonna*, e le
+  due cose divergono proprio sulla grafia che batte le due metà insieme:
+
+  ```python
+  try:
+      from pge.parameters.parser import GranularParser
+  except ImportError:
+      class GranularParser: ...
+  ```
+
+  lì l'import c'è e il nome è indentato, quindi una lettura del solo
+  `tree.body` assolveva un file che all'import può girare sulla copia. Il
+  criterio scende ora in ogni corpo che gira all'import — `if`, `try`, gli
+  `except`, `with`, i cicli — e si ferma sul primo `def` o `class`, dove
+  finisce il livello di modulo: le finte dentro una fixture restano fuori
+  come prima. Resta dichiarato che un alias (`GranularParser = _Finto`) non è
+  né un `def` né un `class` e passa — accusare le assegnazioni renderebbe
+  rosso anche `Stream = pge.core.stream.Stream`, che è il modulo vero.
+
+  Quella lettura vale per tutti e due i lati del confronto, e per un po' è
+  valsa per uno solo: la superficie del *sorgente* si leggeva dal solo
+  `tree.body`, cioè con il criterio stretto messo dalla parte dove
+  restringere vuol dire assolvere. Un modulo che definisce la sua classe
+  dentro un `try:` — il fallback di una dipendenza opzionale, la forma che
+  questo repo ha per numpy e matplotlib — la teneva fuori dalla propria
+  superficie, e un test che la riscriveva a livello di modulo passava la
+  seconda guardia in silenzio. Le due letture sono ora la stessa funzione;
+  nessun modulo di `pge` è oggi in quella posizione, quindi non cambia nessun
+  verdetto — chiude il buco prima che qualcuno ci cada dentro.
+
+  Quella superficie ha però un limite, ed è dichiarato invece di sparire: è
+  ciò che il modulo *definisce*, non ciò che riespone importandolo.
+  `pge.parameters.parser` importa `Envelope`, e `parser.Envelope` esiste, ma
+  la classe è di `pge.envelopes.envelope`: un test che ne mette una finta a
+  livello di modulo sta facendo il doppio di un collaboratore — pratica
+  normale — non la riscrittura del modulo che il suo nome promette, e la
+  guardia lo accuserebbe dicendo il falso, che a definire quel nome è
+  `parser`. È la stessa famiglia dei due paragrafi qui sopra — il criterio
+  scritto più largo di quello letto — con la risposta opposta, perché qui
+  allargare vuol dire accusare chi non c'entra. Misurato sui 66 file
+  sorvegliati: zero casi, e i due dove la distinzione cambierebbe qualcosa
+  sono già dichiarati.
+
+  Stessa famiglia, terza volta, sulla scoperta invece che sul confronto:
+  `tests/<a>/<b>/test_<m>.py` promette `src/pge/<a>/<b>/<m>.py` come un
+  livello solo, e `_coppie()` saltava qualunque cartella oltre il primo sulla
+  fede di un commento che nessun test misurava. La metà stretta stava di
+  nuovo dalla parte che assolve — un file annidato usciva dalla sorveglianza
+  in silenzio, senza nemmeno passare da `SIMULAZIONI_DICHIARATE` — e la
+  cartella dove cadere esiste già (`tests/rendering/renderers/`, oggi con il
+  solo `__init__.py`). A decidere resta il sorgente e non la profondità:
+  `tests/export/fixtures/` non produce coppie perché il modulo non c'è, ed è
+  quel controllo — con il suo test — a tenere la lettura larga dal diventare
+  rumorosa. Misurato: le coppie restano 69, le sorvegliate 66.
+
+  Una grafia sola, infine, per il percorso del sorgente (`_sorgente_di`): lo
+  leggono la scoperta e la guardia sulla riscrittura, e scritto due volte il
+  giorno in cui il layout di `src/` cambia una delle due resta indietro in
+  silenzio — la guardia, cioè la metà che deve parlare. È lo stesso argomento
+  del paragrafo qui sopra, ed è il motivo per cui là è finito in una funzione
+  sola invece che in due letture gemelle.
+
+- **Via i percorsi assoluti di altre macchine dal `sys.path` dei test**
+  (issue #274, quarta sezione della stessa guardia). Erano
+  `sys.path.insert(0, '/home/claude')` in tre file e un
+  `/Users/<nome>/…/src` dentro `_import_real_parameter()`, cioè l'unica
+  funzione di `test_parameter.py` che toccava produzione. Nessuno dei quattro
+  faceva fallire niente, ed è il punto: inserire una cartella inesistente in
+  `sys.path` è legale, e l'import riusciva comunque per via di `pytest.ini`
+  (`pythonpath = . src`) e di `tests/conftest.py`, non per quelle righe. Dove
+  valevano non servivano, dove non valevano tacevano — e chi leggeva
+  `_import_real_parameter()` poteva crederle necessarie.
+
+  Nella stessa funzione, e della stessa famiglia, un commento che dice
+  l'opposto del codice: «Force-reimport per evitare conflitti con mock class
+  `Parameter` sopra», sopra un ramo che il modulo in `sys.modules` lo
+  restituisce. Il conflitto non esiste — la copia vive nel namespace del
+  test, non dentro il modulo importato — e il ramo nemmeno serve, perché
+  `import_module` restituisce già il modulo in cache. Resta la sola chiamata.
+
+  La guardia che le tiene fuori riconosce tutte le grafie dello stesso
+  inserimento — `insert`/`append`/`extend`, `sys.path += [...]`,
+  `sys.path[:0] = [...]` e la riassegnazione secca — perché fermarsi a
+  `insert` sarebbe stato il difetto di questa sezione applicato a sé stessa:
+  la riga muta sarebbe tornata al primo `+=`, con sopra un test verde a dire
+  che non c'era.
+
+  L'argomento vale per tutti e tre i pezzi dell'istruzione, e all'inizio era
+  stato applicato al solo verbo in mezzo. Il bersaglio può essere un nome
+  semplice — `from sys import path` e poi `path.insert(...)`, dove `sys` non
+  compare nella riga — e il letterale può stare dentro una chiamata:
+  `os.path.join('/Users/tizio/repo', 'src')` è la stessa cartella della
+  stessa macchina, ed è una chiamata, quindi passava. Sono le due riscritture
+  più ovvie della riga, e adesso valgono come lei.
+
+  Il bersaglio ha anche il verso opposto, ed è l'unico punto dove questa
+  sezione può accusare chi non c'entra. Il nome semplice si raccoglie
+  dall'import invece di prenderlo per buono — una lista che si chiama `path`
+  è una variabile qualunque — e per un po' è stato il solo dei due a farlo:
+  all'attributo bastava chiamarsi `path`, qualunque cosa ci stesse prima, e
+  un `cfg.path = '/tmp/x'` in un file di test era un rosso con sopra un
+  messaggio che parla di `sys.path`. Ora si chiedono tutti e due i pezzi, e
+  il modulo si riconosce anche dietro un altro attributo (`os.sys.path` è lo
+  stesso posto). Restringere lì non assolve nessuno: le grafie positive
+  restano rosse, e su tutta `tests/` il verdetto non cambia — una guardia
+  rumorosa la si spegne, ed è lo stesso argomento di tutte le righe qui
+  sopra.
+
+  Le stesse tre distrazioni, infine, una volta sola più in là: nei *presidi*
+  invece che nel criterio. Misurato mutando il sorgente, tre pezzi di questa
+  sezione non avevano nessun caso che potesse renderli rossi — cioè erano
+  scritti e non verificati, che è la forma esatta della riga muta di cui
+  parla tutta la voce. `append` stava nella tupla dei verbi e in nessuna
+  grafia positiva, nascosto dai due contrappesi che sono gli unici `append`
+  del file e restano verdi comunque (`cfg.path.append`, `path.append`): con
+  `sys.path.append('/home/claude')` — la grafia più ovvia dopo `insert` —
+  toglierlo dalla tupla lasciava il file tutto verde. E il contrappeso sul
+  bersaglio guardava solo l'oggetto (`cfg`, `self`, una lista locale), mai il
+  membro: togliere `nodo.attr == 'path'` faceva di `sys.argv.insert(0,
+  '/abs')` un rosso che parla di `sys.path`, e togliere il filtro
+  dell'import faceva di `from sys import argv` un alias della lista — file
+  verde in tutti e due i casi. Ciascuno ha ora il suo caso, rosso sulla
+  mutazione corrispondente.
+
+  Sullo stesso estremo della riga, e per la terza volta, ne restavano due: i
+  due raccoglitori chiedono all'import **quale modulo** e **quale nome**, e a
+  essere misurato era il solo nome. Le grafie negative sbagliavano il nome
+  (`from sys import argv`) oppure l'oggetto (`cfg`, `self`, una lista
+  locale), nessuna sbagliava il modulo da cui il nome arriva: togliendo
+  `node.module == 'sys'` da `_nomi_di_sys_path` e `a.name == 'sys'` da
+  `_nomi_del_modulo_sys` il file restava tutto verde tutte e due le volte. E
+  le righe che ne uscivano non sono di scuola — `from os import path` è la
+  grafia più comune che leghi quel nome in Python e `import os` sta in metà
+  di questa suite — quindi sotto la mutazione un `path.append(...)` o un
+  `os.path.insert(...)` diventano un rosso che parla di `sys.path` e cita una
+  issue che non c'entra. Con loro, l'esempio con cui la docstring
+  giustificava il ramo `ImportFrom` di `_nomi_del_modulo_sys` non lo
+  attraversava: `from os import sys` lega il nome `sys`, che il valore di
+  partenza ha già, e la riga che quel ramo serve è `from os import sys as
+  _s`. Ora ogni metà di ogni filtro dice quale grafia tiene fuori, e ha il
+  caso che la misura.
+
+  I percorsi calcolati (`os.path.abspath(...)`, `str(REPO_ROOT / 'utils')`)
+  restano leciti in ognuna delle grafie, ma per la ragione giusta: non perché
+  siano chiamate — ora si guarda dentro anche quelle — bensì perché non
+  contengono nessun letterale assoluto. È il letterale il criterio, in
+  qualsiasi posizione stia.
+
 ### Cambiato
 
 - **`voice_pan_strategy` passa al registry generico** (issue #184, forma decisa
