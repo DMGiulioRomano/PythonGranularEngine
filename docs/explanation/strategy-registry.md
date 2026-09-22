@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: fd0b908
+last_synced_commit: 9882ebe
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -340,6 +340,21 @@ un rifiuto nuovo, e un rifiuto nuovo è un cambio di superficie pubblica — chi
 oggi registra una strategy duck-typed smetterebbe di poterlo fare. Se lo si
 vuole, è una issue sua, con la sua analisi d'impatto, non un effetto collaterale
 del refactor.
+
+**Non imposto non vuol dire non misurato, e #185 ha dovuto separare le due
+cose.** Il divieto riguarda `register`, che non deve *rifiutare* una classe:
+non dice nulla su che cosa i registry della famiglia contengano oggi. E
+quello non lo chiedeva nessuno — `registry.base` era confrontata solo con il
+nome che la tabella del presidio dichiara, cioè due grafie dello stesso nome —
+mentre `base` non la legge nessun ramo di codice, essendo portata per il
+seguito (#265, e la decisione qui sotto su `distribution`). Un `base` cablato
+sull'ABC di un altro asse era perciò **inerte**: misurato, con
+`StrategyRegistry('voice_pointer', VoiceOnsetStrategy, …)` e la tabella
+d'accordo — le due grafie sbagliate insieme, che è la forma che prende la
+copia di un `Caso` dall'asse accanto — `make tests` restava interamente verde.
+`test_registry_convergenza.py::test_il_registry_non_e_vuoto_e_mappa_nomi_su_classi`
+misura ora il contenuto contro la `base` del proprio registry: non respinge
+niente, quindi non tocca la superficie pubblica che il divieto protegge.
 
 **Il nono registry però valida già, e la direzione in cui sbaglia è
 l'opposta.** `DistributionFactory.register` rifiuta una classe che non sia
