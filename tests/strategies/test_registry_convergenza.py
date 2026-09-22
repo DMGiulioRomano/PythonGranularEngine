@@ -288,13 +288,39 @@ def test_la_mappa_di_modulo_e_un_registry_generico(caso):
 
 @pytest.mark.parametrize('caso', CONVERTITI, ids=IDS)
 def test_il_registry_non_e_vuoto_e_mappa_nomi_su_classi(caso):
-    """Il contenuto sopravvive alla conversione, chiave per chiave."""
+    """Il contenuto sopravvive alla conversione, chiave per chiave.
+
+    **E la `base` dichiarata e' vera del contenuto.** Il test qui sopra la
+    confronta con `getattr(modulo, caso.base)`, cioe' chiede che il sorgente
+    dica quel che dice la tabella: due grafie dello stesso nome, non una
+    misura di che cosa quella classe sia. Un `Caso` nasce copiando quello
+    dell'asse accanto, e li' il nome della ABC e' una delle sette righe da
+    cambiare -- sbagliarla in tutte e due le grafie insieme e' esattamente la
+    forma che quella copia prende. Misurato: cablando
+    `StrategyRegistry('voice_pointer', VoiceOnsetStrategy, ...)` e mettendo
+    `base='VoiceOnsetStrategy'` nella tabella, `make tests` restava
+    interamente verde -- `base` non la legge nessuno, quindi un valore
+    sbagliato e' inerte finche' qualcuno non ci costruisce sopra (la #265, o
+    la decisione sulla validazione di `distribution`).
+
+    Non e' il rifiuto che `tests/strategies/test_registry.py` vieta: li' il
+    divieto e' su `StrategyRegistry.register`, che non deve **rifiutare** una
+    classe duck-typed, perche' sarebbe superficie pubblica nuova. Qui non si
+    rifiuta niente, si misura quel che i sei registry della famiglia gia'
+    contengono.
+    """
     registry = _registry(caso)
 
     assert len(registry) > 0, f"{caso.mappa} e' vuota"
     for nome, cls in registry.items():
         assert isinstance(nome, str) and nome, f"chiave non valida: {nome!r}"
         assert isinstance(cls, type), f"{nome} non mappa una classe: {cls!r}"
+        assert issubclass(cls, registry.base), (
+            f"{caso.mappa}['{nome}'] e' {cls.__name__}, che non eredita la "
+            f"base dichiarata dal registry ({registry.base.__name__}): o la "
+            "strategy non e' di questo dominio, o il `base` passato alla "
+            "costruzione nomina la ABC di un altro asse."
+        )
 
 
 def test_il_censimento_della_famiglia_e_completo():

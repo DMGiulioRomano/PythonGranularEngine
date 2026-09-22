@@ -566,6 +566,24 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   l'ha: sugli altri cinque la copia sarebbe stata presa comunque. Il criterio
   è ora il nome finale, `attr` o `id`, e morde su entrambe le grafie.
 
+  **Un quarto giro ne ha trovata una sul campo che nessuno legge.** La `base`
+  di ciascuno dei sei registry era confrontata con `getattr(modulo,
+  caso.base)`, cioe' si chiedeva che il sorgente dicesse quel che dice la
+  tabella del test: due grafie dello stesso nome, non una misura di che cosa
+  quella classe sia. Nessuno chiedeva che la ABC dichiarata fosse vera del
+  contenuto del registry, e `base` non la legge nessun ramo di codice --
+  e' portata per la #265 e per la decisione sulla validazione di
+  `distribution` -- quindi un valore sbagliato e' inerte, cioe' invisibile
+  fino al giorno in cui ci si costruisce sopra. Misurato: cablando
+  `StrategyRegistry('voice_pointer', VoiceOnsetStrategy, ...)` e mettendo
+  `base='VoiceOnsetStrategy'` nella tabella -- le due grafie sbagliate
+  insieme, che e' la forma che prende la copia di un `Caso` dall'asse accanto
+  -- `make tests` restava interamente verde. Il contenuto di ogni registry e'
+  ora misurato contro la propria `base`. Non e' il rifiuto che
+  `StrategyRegistry.register` non deve fare: li' il divieto vale perche'
+  rifiutare una classe duck-typed sarebbe superficie pubblica nuova, qui non
+  si rifiuta niente e si misura quel che i sei registry gia' contengono.
+
   Nello stesso giro, la guardia sulla superficie per dominio moriva con un
   `TypeError` invece di rispondere, se un registry tornava un `dict` spoglio:
   `vars()` di un `dict` non esiste. È la premessa di un'altra misura — che
