@@ -575,6 +575,11 @@ def test_il_criterio_riconosce_le_grafie_dell_import(sorgente):
     'from pge.parameters.parameter_definitions import ParameterBounds',
     # Omonimo in un altro package.
     'from pge.rendering import parameter',
+    # Omonimo per via relativa: non nomina nessun modulo di `pge`, e non ha
+    # nemmeno un modulo da leggere. La grafia e' scrivibile — `tests/e2e/` e
+    # `tests/rendering/renderers/` sono package — e senza la guardia su
+    # `node.level` la prima meta' non risponde: scoppia.
+    'from . import parameter',
     # Una stringa che nessuno importa.
     's = "pge.parameters.parameter"',
 ])
