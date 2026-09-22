@@ -741,9 +741,13 @@ def _nomi_di_sys_path(tree):
     mentre `_e_un_path`, che cerca un attributo, non la vede. Il nome si
     raccoglie dall'import invece di accusare ogni `path` che capiti: un
     `path` qualunque è una variabile locale, e una guardia rumorosa la si
-    spegne. Il filtro ha due metà per lo stesso motivo: l'import dev'essere
-    da `sys` **e** dev'essere di `path`, altrimenti `from sys import argv`
-    farebbe di `argv` un alias della lista.
+    spegne. Il filtro ha due metà per lo stesso motivo, e ciascuna tiene
+    fuori una grafia diversa: l'import dev'essere **di** `path`, altrimenti
+    `from sys import argv` farebbe di `argv` un alias della lista, e
+    dev'essere **da** `sys`, altrimenti `from os import path` — la grafia
+    più comune che leghi quel nome — farebbe di `os.path` la lista di
+    `sys`, e un `path.append('/Users/tizio/repo')` sarebbe un rosso con
+    sopra un messaggio che parla di `sys.path`.
     """
     nomi = set()
     for node in ast.walk(tree):
@@ -760,8 +764,14 @@ def _nomi_del_modulo_sys(tree):
     `sys` ci sta sempre — e' il nome del modulo, e un file che lo usa senza
     importarlo lo prende comunque da li' — accanto agli alias che l'import
     dichiara: `import sys as _sys`, la grafia che `_import_real_parameter()`
-    usava, e `from os import sys`, che lega lo stesso modulo per un'altra
-    strada.
+    usava, e `from os import sys as _s`, che lega lo stesso modulo per
+    un'altra strada. L'esempio del secondo ramo dev'essere quello, con
+    l'alias: `from os import sys` senza alias lega il nome `sys`, che il
+    valore di partenza ha gia', quindi non e' la riga che quel ramo serve —
+    e un esempio che non lo attraversa e' un ramo dichiarato e non misurato.
+
+    Anche qui il filtro ha due metà: l'import dev'essere **di** `sys`, o
+    `import os` farebbe di `os.path` la lista di `sys`.
     """
     nomi = {'sys'}
     for node in ast.walk(tree):
@@ -948,6 +958,10 @@ def test_il_criterio_vede_i_percorsi_di_un_altra_macchina():
     "import sys as _sys\n_sys.path.extend(['/home/claude'])\n",
     # Lo stesso modulo per un'altra strada: `os.sys` è `sys`.
     "import os\nos.sys.path.insert(0, '/home/claude')\n",
+    # Lo stesso modulo legato per nome, con un alias: e' questa la riga che
+    # il ramo `ImportFrom` di `_nomi_del_modulo_sys` serve — senza alias il
+    # nome sarebbe `sys`, che il valore di partenza ha gia'.
+    "from os import sys as _s\n_s.path.insert(0, '/home/claude')\n",
     # Il bersaglio è un nome semplice: `sys` non compare nella riga.
     "from sys import path\npath.insert(0, '/home/claude')\n",
     "from sys import path as _p\n_p += ['/home/claude']\n",
@@ -993,6 +1007,39 @@ def test_il_criterio_non_accusa_una_lista_che_si_chiama_path():
         "path += ['/opt/altro']\n"
     )
 
+    assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
+
+
+@pytest.mark.parametrize('sorgente', [
+    # `from os import path` e' la grafia piu' comune che leghi quel nome, e
+    # non lega la lista di `sys`.
+    "from os import path\npath.insert(0, '/tmp/fuori')\n",
+    "from os import path\npath.append('/Users/tizio/repo')\n",
+    "from os import path as _p\n_p += ['/tmp/fuori']\n",
+    "from os import path\npath = '/tmp/fuori'\n",
+    # Lo stesso dall'altra parte: `import os` non fa di `os.path` la lista.
+    "import os\nos.path.insert(0, '/tmp/fuori')\n",
+    "import os\nos.path.extend(['/tmp/fuori'])\n",
+])
+def test_il_criterio_non_accusa_il_path_di_un_altro_modulo(sorgente):
+    """Il nome giusto, legato dal modulo sbagliato: `os.path` non e' `sys.path`.
+
+    I due raccoglitori chiedono all'import due cose ciascuno — **quale
+    modulo** e **quale nome** — e a essere misurata era una sola: le grafie
+    negative sbagliavano il nome (`from sys import argv`) oppure l'oggetto
+    (`cfg`, `self`, una lista locale), nessuna sbagliava il modulo da cui il
+    nome arriva. Misurato togliendo `node.module == 'sys'` da
+    `_nomi_di_sys_path` e `a.name == 'sys'` da `_nomi_del_modulo_sys`: il
+    file restava **tutto verde** tutte e due le volte.
+
+    E le due righe che ne uscivano non sono di scuola. `from os import path`
+    e' la grafia piu' comune che leghi quel nome in Python, e `import os` sta
+    in meta' di questa suite: sotto la mutazione un `path.append(...)` o un
+    `os.path.insert(...)` diventano un rosso con sopra un messaggio che parla
+    di `sys.path` e cita una issue che non c'entra — la guardia rumorosa che
+    questa sezione dichiara di non voler essere, per la terza volta sullo
+    stesso estremo della riga.
+    """
     assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
 
 
