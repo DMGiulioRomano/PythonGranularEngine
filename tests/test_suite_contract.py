@@ -582,6 +582,13 @@ def test_il_criterio_riconosce_le_grafie_dell_import(sorgente):
     'from . import parameter',
     # Una stringa che nessuno importa.
     's = "pge.parameters.parameter"',
+    # La stessa stringa dentro una chiamata che non e' `import_module`:
+    # `patch` nomina il modulo, non e' una delle quattro grafie, e questa
+    # suite la scrive 264 volte.
+    "from unittest.mock import patch\n"
+    "patch('pge.parameters.parameter.Parameter')\n",
+    "from unittest.mock import patch\n"
+    "with patch('pge.parameters.parameter.resolve_param'):\n    pass\n",
 ])
 def test_il_criterio_non_scambia_un_omonimo_per_il_modulo(sorgente):
     """`parameter_definitions` non è `parameter`, e il punto è il criterio.
@@ -589,6 +596,15 @@ def test_il_criterio_non_scambia_un_omonimo_per_il_modulo(sorgente):
     Senza il punto obbligatorio dopo il prefisso, `test_parameter.py`
     passerebbe la prima guardia grazie a un import che riguarda un altro
     file: la guardia direbbe di sorvegliare un modulo mai toccato.
+
+    Le ultime due righe misurano l'altro filtro della grafia dinamica: la
+    stringa vale come import solo dentro `import_module`. Togliere
+    `nome != 'import_module'` lasciava il file **tutto verde**, e da li' in
+    poi qualunque chiamata che nominasse il modulo in una stringa contava
+    come import — `patch('pge.<area>.<modulo>....')`, che in questa suite
+    sono 264 righe. E' la direzione che fa danno: un file che riscrive il
+    modulo e si limita a spiare un nome con `patch` passerebbe la prima
+    meta', cioe' proprio la popolazione che questa suite esiste per trovare.
     """
     assert not _importa(ast.parse(sorgente), 'pge.parameters.parameter')
 
