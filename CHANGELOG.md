@@ -442,13 +442,31 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   parametrizzate su niente. E un pavimento sul numero di coppie copre il caso
   in cui a svuotarsi sia anche la lista.
 
-  Quel pavimento vale per **tutte e due** le scoperte del file, e per un po'
-  ne ha coperta una: anche la sezione sui percorsi assoluti è parametrizzata
-  su una scoperta (`_file_di_test()`), e un parametrize vuoto non è un rosso
-  — pytest stampa `got empty parameter set` ed esce 0. Il secondo pavimento
-  ha due metà perché ne servono due: il conto vede la scoperta che si svuota,
-  l'ancora — il file stesso, chiesto a `__file__` invece che trascritta —
-  vede la scoperta che si *sposta*, dove il conto resterebbe verde.
+  Quel pavimento vale per **ogni** scoperta che parametrizza, e per un po' ne
+  ha coperta una sola: un parametrize vuoto non è un rosso — pytest stampa
+  `got empty parameter set` ed esce 0 — e le scoperte di questo file sono
+  tre. La sezione sui percorsi assoluti gira su `_file_di_test()`, e il suo
+  pavimento ha due metà perché ne servono due: il conto vede la scoperta che
+  si svuota, l'ancora — il file stesso, chiesto a `__file__` invece che
+  trascritta — vede la scoperta che si *sposta*, dove il conto resterebbe
+  verde.
+
+  La terza è `_sorvegliate()`, ed era la scoperta scoperta: le due guardie
+  che sono il punto della suite sono parametrizzate su di lei — non su
+  `_coppie()`, come dicevano il pavimento e il canarino delle dichiarate — e
+  fra le due c'è il filtro della lista, che nessun test attraversava.
+  Misurato mutando il sorgente: `_sorvegliate()` vuota fa saltare tutte e due
+  le guardie e la suite esce 0, con `_coppie()` intatta e il canarino verde;
+  una coppia sola ne fa girare una su 66, sempre verde. Il pavimento nuovo ha
+  anche lui due metà, ma diverse da quelle dell'altro, perché qui a monte c'è
+  un filtro invece di un `os.walk`: la relazione — `_sorvegliate()` è
+  `_coppie()` meno le dichiarate, e nient'altro — vede il filtro che comincia
+  a scartare file sorvegliati, cioè a farli uscire dalla sorveglianza senza
+  nemmeno passare dalla lista; il conto resta per l'unico caso in cui il
+  filtro fa esattamente ciò che dichiara e il parametrize si svuota lo
+  stesso, la lista che cresce fino a inghiottire la suite, dove la relazione
+  tace per costruzione ed è l'unico limite scritto a quanto quella lista può
+  allargarsi.
 
   «A livello di modulo» vuol dire *all'import*, non *in prima colonna*, e le
   due cose divergono proprio sulla grafia che batte le due metà insieme:

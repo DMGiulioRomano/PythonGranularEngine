@@ -389,8 +389,10 @@ def test_ogni_simulazione_dichiarata_e_ancora_una_simulazione():
 
     Fallisce anche quando a rompersi è la scoperta: se `_coppie()` smette di
     trovare le coppie, le tre dichiarate spariscono da lì e questo test lo
-    dice. È il canarino delle due guardie qui sopra, che a scoperta vuota
-    sarebbero verdi senza guardare niente.
+    dice. È il canarino di `_coppie()`, e solo di quella: le due guardie qui
+    sopra leggono `_sorvegliate()`, che è `_coppie()` filtrata, e una
+    `_sorvegliate()` vuota lascia verde anche questo test — il suo pavimento
+    è `test_le_guardie_girano_su_tutte_le_coppie_sorvegliate`.
     """
     trovate = {rel: (mod, src) for rel, mod, src in _coppie()}
 
@@ -417,11 +419,16 @@ def test_ogni_simulazione_dichiarata_e_ancora_una_simulazione():
 def test_la_scoperta_vede_la_suite():
     """Un pavimento sul numero di coppie, non un censimento.
 
-    Le due guardie sono parametrizzate sulla scoperta: se questa torna vuota
-    — `src/pge` spostato, `tests/` riorganizzato — pytest le salta e la suite
-    resta verde sopra un presidio che non esiste più. Il numero è basso di
-    proposito: oggi le coppie sono una sessantina, e un valore stretto
-    diventerebbe una trascrizione da aggiornare a ogni modulo nuovo.
+    `_coppie()` è la materia prima delle due guardie: se torna vuota —
+    `src/pge` spostato, `tests/` riorganizzato — non resta niente da
+    sorvegliare. Il numero è basso di proposito: oggi le coppie sono una
+    sessantina, e un valore stretto diventerebbe una trascrizione da
+    aggiornare a ogni modulo nuovo.
+
+    Questo pavimento sta sotto la scoperta, non sotto il `parametrize`: le
+    due guardie leggono `_sorvegliate()`, che è `_coppie()` meno le
+    dichiarate, e fra le due c'è un filtro che questo test non attraversa.
+    Il pavimento di quel filtro è il test qui sotto.
     """
     coppie = _coppie()
 
@@ -429,6 +436,61 @@ def test_la_scoperta_vede_la_suite():
         f"la scoperta trova {len(coppie)} coppie test/modulo: troppo poche "
         "perché `tests/<area>/test_<modulo>.py` sia ancora la convenzione "
         "che questa suite legge. Controlla _coppie()."
+    )
+
+
+def test_le_guardie_girano_su_tutte_le_coppie_sorvegliate():
+    """Il pavimento sotto la scoperta che le due guardie leggono davvero.
+
+    Le scoperte di questo file sono tre — `_coppie()`, `_sorvegliate()` e
+    `_file_di_test()` — e a parametrizzare sono la seconda e la terza. Il
+    pavimento è nato sotto la prima e sotto la terza, cioè sotto una delle
+    due che contano: `_sorvegliate()` è la sola scoperta che parametrizza
+    senza averne uno, ed è quella su cui girano le due guardie che sono il
+    punto della suite.
+
+    Il buco non era teorico. Misurato mutando il sorgente: con
+    `_sorvegliate()` che torna vuota pytest stampa `got empty parameter set`
+    per tutte e due le guardie ed **esce 0**; con una coppia sola ne gira una
+    su 66 e stampa verde. In nessuno dei due casi parlava qualcun altro —
+    `test_la_scoperta_vede_la_suite` misura `_coppie()`, che è intatta, e il
+    canarino delle dichiarate pure.
+
+    Le due metà non si coprono a vicenda, e la misura dice quale fa il
+    lavoro. La **relazione** è quella che morde: fra `_coppie()` e il
+    `parametrize` c'è un filtro, l'unica cosa che ha il diritto di togliere è
+    `SIMULAZIONI_DICHIARATE`, e un filtro che cominciasse a scartare file
+    sorvegliati li farebbe uscire in silenzio, senza nemmeno passare dalla
+    lista — il falso negativo che questa suite esiste per togliere. Tutte e
+    quattro le mutazioni provate (vuota, una coppia sola, le prime trenta,
+    due aree su dieci) sono rosse su di lei, e le ultime due **solo** su di
+    lei. È derivata dalle due scoperte e dalla lista, non trascritta, quindi
+    non invecchia a ogni modulo nuovo.
+
+    Il **conto** resta per l'unico caso in cui il filtro fa esattamente ciò
+    che dichiara e il `parametrize` si svuota lo stesso: la lista che cresce
+    fino a inghiottire la suite. Lì la relazione tace per costruzione
+    (`coppie - dichiarate` è davvero vuoto) e il canarino qui sopra pure,
+    perché ogni riga aggiunta viola per davvero. È l'unico assert del file
+    che metta un limite a quanto `SIMULAZIONI_DICHIARATE` può allargarsi —
+    una lista che è debito, e che dovrebbe accorciarsi.
+    """
+    coppie = {rel for rel, _, _ in _coppie()}
+    sorvegliate = {rel for rel, _ in _sorvegliate()}
+
+    assert len(sorvegliate) >= 20, (
+        f"le due guardie girerebbero su {len(sorvegliate)} coppie: troppo "
+        "poche perché un `parametrize` vuoto è uno skip, non un rosso, e la "
+        "suite resterebbe verde sopra un presidio che non c'è più. "
+        "Controlla _sorvegliate()."
+    )
+    assert sorvegliate == coppie - set(SIMULAZIONI_DICHIARATE), (
+        "_sorvegliate() non è `_coppie()` meno le dichiarate: fuori dalla "
+        "sorveglianza finiscono anche "
+        f"{sorted(coppie - sorvegliate - set(SIMULAZIONI_DICHIARATE))}, e "
+        "dentro "
+        f"{sorted(sorvegliate - coppie)}. Un file che esce di lì esce in "
+        "silenzio, senza passare da SIMULAZIONI_DICHIARATE."
     )
 
 
@@ -827,12 +889,14 @@ def test_la_scoperta_vede_i_file_della_suite():
     """Il pavimento della quarta sezione, per l'argomento della prima.
 
     La guardia qui sopra è parametrizzata su `_file_di_test()` esattamente
-    come le due della prima sezione lo sono su `_coppie()`, e un parametrize
-    vuoto non è un rosso: pytest lo salta e la suite resta verde sopra un
-    presidio che non esiste più. `test_la_scoperta_vede_la_suite` mette quel
-    pavimento sotto una delle due scoperte, e l'argomento — scritto lì per
-    intero — vale per tutte e due: le scoperte di questo file sono due, e il
-    presidio ne copriva una.
+    come le due della prima sezione lo sono su `_sorvegliate()`, e un
+    parametrize vuoto non è un rosso: pytest lo salta e la suite resta verde
+    sopra un presidio che non esiste più. L'argomento — scritto qui per
+    intero — vale per ogni scoperta che parametrizza, e le scoperte di
+    questo file sono tre: `_coppie()`, il `_sorvegliate()` che la filtra e
+    questa. Il loro pavimento sta rispettivamente in
+    `test_la_scoperta_vede_la_suite`,
+    `test_le_guardie_girano_su_tutte_le_coppie_sorvegliate` e qui.
 
     Il numero è basso di proposito, come l'altro: oggi i file sono un
     centinaio e mezzo, e un valore stretto diventerebbe una trascrizione da
