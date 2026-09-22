@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 48efb26
+last_synced_commit: fd0b908
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -191,9 +191,9 @@ class StrategyRegistry(Dict[str, Type[S]]):
         self.kind = kind
         self.base = base
 
-    def register(self, name: str, cls: Type[S]) -> None:
-        self[name] = cls
-        log_strategy_registration(self.kind, name, cls)
+    def register(self, name: str, strategy_class: Type[S]) -> None:
+        self[name] = strategy_class
+        log_strategy_registration(self.kind, name, strategy_class)
 
     def create(self, name: str, *args, **kwargs) -> S:
         if name not in self:
@@ -263,7 +263,7 @@ diventato test: `tests/strategies/test_registry.py` interroga la classe da
 sola — non attraverso pan — perché è la classe che gli altri otto registry
 erediteranno, e perché due costi *dichiarati* vanno pinnati come tali e non
 lasciati alla prosa: `copy()` restituisce un `dict` spoglio, e
-`registry[name] = cls` resta una registrazione legale e muta.
+`registry[name] = strategy_class` resta una registrazione legale e muta.
 
 ### Il dominio alla costruzione (domanda 2)
 
@@ -704,7 +704,8 @@ stretta — è preclusa da ciò che i test e la parità di PGE-ls già trattano 
 un dizionario. Il costo si paga in due punti: `registry.copy()` restituisce un
 `dict` normale, che non ha né `kind` né `create()` (chi vuole un registry lo
 costruisce, chi vuole uno snapshot ha quel che gli serve); e `registry['x'] =
-cls` resta una registrazione legale e muta, che scavalca la riga diagnostica.
+strategy_class` resta una registrazione legale e muta, che scavalca la riga
+diagnostica.
 Il secondo è voluto: la riga appartiene al punto di ingresso esplicito, e la
 scrittura diretta è quel che fanno le fixture per rimettere a posto lo stato.
 
@@ -801,6 +802,16 @@ nuova.
   Restano gli esempi nella docstring dell'helper e i quattro letterali che
   `tests/shared/test_diagnostic_logger.py` passa a chiamate dirette
   dell'helper — dati di quel test, non la copia dell'etichetta di un modulo.
+
+  **E non si ferma sulle façade.** `StrategyRegistry.register` — il metodo a
+  cui tutte e sei delegano, e un punto di registrazione a pieno titolo per il
+  censimento di [[contratto-stdout]], che legge le `def register_*_strategy`
+  di modulo **e** i metodi `register` dentro una classe — teneva `cls` come
+  secondo parametro: il nome da cui pitch, onset e pointer sono stati
+  convertiti, sopravvissuto nell'unico punto che serve tutti e sei i domini.
+  Si chiama `strategy_class` anche lì, e
+  `test_registry_convergenza.py::test_la_firma_della_classe_generica_e_quella_delle_sei_facade`
+  lo pretende.
 
   La misura è quella e non una più larga, perché la più larga sarebbe falsa e
   verrebbe letta come regola: lo `strategy_kind` degli **errori** è ancora
