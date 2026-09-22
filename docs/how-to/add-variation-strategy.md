@@ -6,7 +6,7 @@ tags: [strategy, variation, extension]
 sources:
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/registry.py
-last_synced_commit: f2f0157
+last_synced_commit: a849234
 entry_for: [add-variation-strategy]
 ---
 

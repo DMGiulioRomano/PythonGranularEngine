@@ -7,7 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
   - src/pge/core/stream.py
-last_synced_commit: f2f0157
+last_synced_commit: a849234
 entry_for: [add-voice-strategy]
 ---
 
