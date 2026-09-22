@@ -736,7 +736,9 @@ def _nomi_di_sys_path(tree):
     mentre `_e_un_path`, che cerca un attributo, non la vede. Il nome si
     raccoglie dall'import invece di accusare ogni `path` che capiti: un
     `path` qualunque è una variabile locale, e una guardia rumorosa la si
-    spegne.
+    spegne. Il filtro ha due metà per lo stesso motivo: l'import dev'essere
+    da `sys` **e** dev'essere di `path`, altrimenti `from sys import argv`
+    farebbe di `argv` un alias della lista.
     """
     nomi = set()
     for node in ast.walk(tree):
@@ -765,7 +767,8 @@ def _nomi_del_modulo_sys(tree):
 
 
 def _e_un_path(nodo, moduli=('sys',), alias=()):
-    """`sys.path`, e non qualunque cosa si chiami `path`.
+    """`sys.path`: non qualunque cosa si chiami `path`, e nemmeno
+    qualunque cosa stia su `sys`.
 
     Due grafie, come il bersaglio dell'istruzione: l'attributo — `sys.path`,
     l'alias `_sys.path` che `test_parameter.py` usava, `os.sys.path` che e'
@@ -931,6 +934,7 @@ def test_il_criterio_vede_i_percorsi_di_un_altra_macchina():
 
 
 @pytest.mark.parametrize('sorgente', [
+    "import sys\nsys.path.append('/home/claude')\n",
     "import sys\nsys.path.extend(['/home/claude'])\n",
     "import sys\nsys.path += ['/home/claude']\n",
     "import sys\nsys.path[:0] = ['/home/claude']\n",
@@ -956,6 +960,15 @@ def test_il_criterio_vede_le_altre_grafie_dello_stesso_inserimento(sorgente):
     verbo in mezzo: il bersaglio può essere un nome (`from sys import path`)
     e il letterale può stare dentro una chiamata — le due riscritture più
     ovvie della stessa riga, e le due che passavano.
+
+    Vale anche fra i verbi, uno per uno, ed è la parte che mancava: i tre
+    stanno in un criterio solo e a `append` non corrispondeva nessun caso.
+    Misurato togliendolo dalla tupla: il file restava **tutto verde**, cioè
+    il criterio dichiarava una grafia che nessun test poteva far diventare
+    rossa — la stessa riga muta che questa sezione toglie, questa volta
+    dentro la guardia. A nasconderlo erano proprio i due contrappesi
+    (`cfg.path.append`, `path.append`): gli unici `append` del file, e verdi
+    tutti e due comunque vada, perché a parlare lì è il bersaglio.
     """
     assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) \
         == ['/home/claude']
@@ -995,9 +1008,50 @@ def test_il_criterio_non_accusa_un_campo_path_di_un_altro_oggetto(sorgente):
     stesse prima. Il principio era scritto per uno dei due estremi della riga
     e valeva per uno solo dei due.
 
-    Ogni grafia porta il suo `import sys`, altrimenti sarebbe verde per la
-    ragione sbagliata: perché in quel file `sys` non c'è, invece che perché
-    quell'oggetto non è `sys`.
+    L'`import sys` di ogni grafia non è quello che le tiene verdi, e dirlo
+    era il verde per la ragione sbagliata al contrario: `_nomi_del_modulo_sys`
+    ci mette `sys` **sempre**, e lo dichiara — un file che lo usa senza
+    importarlo lo prende comunque da lì — quindi togliere l'import non
+    cambierebbe nessuno di questi verdetti. Resta perché è la grafia realistica
+    (un file che scrive `cfg.path` di solito importa anche `sys`), non perché
+    porti il verdetto. A portarlo è il bersaglio, che qui non è `sys`; il caso
+    opposto — il modulo giusto, il membro sbagliato — è il test qui sotto.
+    """
+    assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
+
+
+@pytest.mark.parametrize('sorgente', [
+    # Il modulo giusto, l'attributo sbagliato.
+    "import sys\nsys.argv.insert(0, '/tmp/fuori')\n",
+    "import sys\nsys.argv += ['/tmp/fuori']\n",
+    "import sys\nsys.executable = '/tmp/fuori'\n",
+    # Lo stesso, dietro l'altro attributo: `os.sys` è `sys`.
+    "import os\nos.sys.argv.insert(0, '/tmp/fuori')\n",
+    # Il nome semplice: l'import da `sys` c'è, ma non lega `path`.
+    "from sys import argv\nargv.insert(0, '/tmp/fuori')\n",
+    "from sys import argv as _a\n_a += ['/tmp/fuori']\n",
+])
+def test_il_criterio_non_accusa_un_altro_membro_di_sys(sorgente):
+    """`sys.argv` non è `sys.path`, e nemmeno l'`argv` legato per nome.
+
+    L'altra metà del contrappeso qui sopra, e la metà che non era misurata.
+    Il bersaglio si chiede in due pezzi — il modulo *e* il campo — e i test
+    guardavano solo il primo: tutte le grafie negative sbagliavano oggetto
+    (`cfg`, `self`, una lista locale), nessuna sbagliava membro. Misurato
+    togliendo `nodo.attr == 'path'` da `_e_un_path`: il file restava tutto
+    verde, e `sys.argv.insert(0, '/abs')` — riga che mezza suite potrebbe
+    scrivere — diventava un rosso con sopra un messaggio che parla di
+    `sys.path` e cita una issue che non c'entra.
+
+    Le ultime due righe sono la stessa distrazione sul nome semplice:
+    `_nomi_di_sys_path` chiede all'import di legare proprio `path`, e
+    togliendo quel filtro — anche lì, file tutto verde — `from sys import
+    argv` faceva di `argv` un alias di `sys.path`.
+
+    È il terzo giro della stessa famiglia su questa sezione: il principio
+    scritto per un estremo e applicato a uno solo, con la differenza che
+    stavolta a essere scritto per metà non era il criterio ma il suo
+    contrappeso.
     """
     assert _percorsi_assoluti_in_sys_path(ast.parse(sorgente)) == []
 
