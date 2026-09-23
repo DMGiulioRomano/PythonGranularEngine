@@ -62,16 +62,27 @@ class StrategyFactory:
         `create_density_strategy("bogus", None, {})` e pretende
         `StrategyNotFoundError`. Per questo la validazione e' subordinata al
         lookup (`name in DENSITY_STRATEGIES`) invece di stare davanti.
+
+        Subordinata e' anche la **lettura**, non solo il `raise`: con
+        `all_params.get(...)` davanti al gate un `all_params` che non e' una
+        mappa alzava `AttributeError` — fuori dalla gerarchia `EngineError`,
+        cioe' un traceback nudo — dove il lookup avrebbe detto
+        `StrategyNotFoundError`. Il nome non registrato e' proprio il caso in
+        cui quella lettura non serve a nessuno.
         """
         # La strategia density ha bisogno anche del parametro distribution
-        distribution_param = all_params.get('distribution')
-        if (selected_param_name in DENSITY_STRATEGIES
-                and not isinstance(distribution_param, Parameter)):
-            raise InvalidStrategyConfigError(
-                strategy_kind="density",
-                field="distribution",
-                value=distribution_param,
-                hint="density strategy richiede parametro 'distribution' valido",
-            )
+        distribution_param = None
+        if selected_param_name in DENSITY_STRATEGIES:
+            distribution_param = all_params.get('distribution')
+            if not isinstance(distribution_param, Parameter):
+                raise InvalidStrategyConfigError(
+                    strategy_kind="density",
+                    field="distribution",
+                    value=distribution_param,
+                    hint=(
+                        "density strategy richiede parametro "
+                        "'distribution' valido"
+                    ),
+                )
         return DENSITY_STRATEGIES.create(
             selected_param_name, param_obj, distribution_param)
