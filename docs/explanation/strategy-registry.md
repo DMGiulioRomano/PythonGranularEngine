@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 9882ebe
+last_synced_commit: f77df48
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -341,6 +341,17 @@ oggi registra una strategy duck-typed smetterebbe di poterlo fare. Se lo si
 vuole, è una issue sua, con la sua analisi d'impatto, non un effetto collaterale
 del refactor.
 
+**Né rientra dalla riga diagnostica.** `log_strategy_registration` leggeva
+`strategy_class.__name__` come espressione argomento, cioè avidamente, quindi
+un registrabile chiamabile ma senza quel dunder (una `functools.partial`)
+moriva di `AttributeError` dentro `register`, con la diagnostica accesa o
+spenta. Con #185 la cosa riguarda pitch, onset e pointer, i cui `register_*`
+prima assegnavano nel dizionario senza ispezionare niente: l'etichetta si
+risolve ora senza pretenderla (`__name__`, altrimenti il nome del tipo), e
+`tests/strategies/test_registry.py::TestRegister::test_register_accetta_un_registrabile_senza_dunder_name`
+lo pinna accanto a `test_register_non_verifica_issubclass`, che misurava la
+stessa promessa con una *classe*.
+
 **Non imposto non vuol dire non misurato, e #185 ha dovuto separare le due
 cose.** Il divieto riguarda `register`, che non deve *rifiutare* una classe:
 non dice nulla su che cosa i registry della famiglia contengano oggi. E
@@ -637,7 +648,12 @@ vincolo per #185, non una preferenza.
 dentro il ramo `selected_param_name in DENSITY_STRATEGIES`, così che un nome
 non registrato cada sul `create` del registry qualunque cosa contenga
 `all_params`, e la façade non ricostruisca l'errore per conto proprio. Il test
-che lo pinna è rimasto quello che c'era.
+che pinna l'ordine è rimasto quello che c'era; il «qualunque cosa contenga»
+lo pinna `test_density_not_found_non_dipende_dal_tipo_di_all_params`, nello
+stesso file, perché dentro il ramo sta anche la *lettura* di `distribution` e
+non solo il `raise` — con `all_params.get(...)` davanti al gate un
+`all_params` che non è una mappa alzava `AttributeError` invece dell'errore di
+lookup.
 
 ### Chi fa da tracer bullet
 
@@ -814,7 +830,7 @@ nuova.
   (`test_registry_convergenza.py`). **Sulla riga diagnostica** in `src/` non
   c'è più un solo letterale di dominio: `log_strategy_registration` ha un
   unico chiamante, `StrategyRegistry.register`, che passa il proprio `kind`.
-  Restano gli esempi nella docstring dell'helper e i quattro letterali che
+  Restano gli esempi nella docstring dell'helper e i cinque letterali che
   `tests/shared/test_diagnostic_logger.py` passa a chiamate dirette
   dell'helper — dati di quel test, non la copia dell'etichetta di un modulo.
 

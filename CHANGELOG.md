@@ -613,6 +613,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   due `"voice_pitch"` stanno in `core/stream.py`, che questa issue non tocca.
   Il totale di ventidue in `src/` era giusto.
 
+  Lo stesso documento è rimasto poi indietro sulle due correzioni che la
+  review ha portato *dopo* il suo ultimo riallineamento, pur avendone i file
+  fra le `sources`: diceva **quattro** i letterali di dominio che
+  `tests/shared/test_diagnostic_logger.py` passa all'helper, e sono cinque da
+  quando il caso della `functools.partial` ne ha aggiunto uno; e non diceva
+  né che la riga diagnostica non pretende più un `__name__` — che è la
+  promessa di «`base` è portato, non imposto» misurata su un registrabile che
+  non è una classe — né quale test pinna il «qualunque cosa contenga
+  `all_params`» della facade di density. Ricontato e scritto;
+  `add-voice-strategy` aveva lo stesso SHA fermo prima di un sorgente mosso,
+  senza niente da cambiare nel testo.
+
   Restano fuori i tre di sempre, e per le ragioni loro: `WINDOW_STRATEGY_REGISTRY`
   e `GRAIN_CLIP_STRATEGIES` sono la #265, `DistributionFactory` aspetta la
   decisione sulla validazione — la sua `register` rifiuta una classe che non sia
