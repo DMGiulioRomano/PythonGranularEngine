@@ -642,6 +642,37 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
+- **Le quattro dimensioni di `voices:` sono una riga di tabella** (issue
+  #186). `Stream._init_voice_manager` costruiva le strategy di pitch,
+  onset_offset, pointer e pan con quattro blocchi copiati; ora c'e' un passo
+  solo, `_build_voice_strategy`, ripetuto su `Stream._VOICE_AXES` — chiave
+  YAML, Factory, kwarg di `VoiceManager` — e le differenze vere stanno nel
+  `take_block_keys` della riga che le ha: per il pitch l'hard break di
+  `semitone_range`, la chiave di blocco `unit` validata contro
+  `SEMITONE_LOCKED`, i kwarg strutturali di `chord_progression`; per il
+  pointer la chiave di blocco `normalized`. Onset e pan non ne hanno.
+
+  Nessuna superficie si muove: stesse chiavi, stessi errori con lo stesso
+  `stream_id`, stesso ordine di valutazione (pitch, onset_offset, pointer,
+  pan, qualunque sia l'ordine dello YAML), stesso nome del metodo — PGE-ls e
+  gl-ls citano `_init_voice_manager`. Quattro di queste proprieta' erano vere
+  per costruzione con i blocchi copiati e nessun test le diceva; ora le pinna
+  `TestVoicesWiring`, misurata sabotando il ciclo nei modi plausibili di
+  sbagliarlo: consumare il blocco originale invece di una copia (il Generator
+  tiene lo stesso dict e la cache ne fa il fingerprint), ciclare sulle chiavi
+  YAML invece che sulla tabella, generalizzare `unit` a tutte le dimensioni,
+  perdere lo `stream_id` di un errore.
+
+  La issue dava la #185 come prerequisito, perche' «senza il registry
+  generico il collasso richiederebbe casi speciali». Non era cosi': il wiring
+  parla con le Factory, e `create(name, **kwargs)` e' la stessa firma sulle
+  quattro da prima della #184 — la chiamata in `Stream` era posizionale anche
+  quando pan chiamava il parametro `strategy_name`. Le righe guadagnate sono
+  meno di quante la issue ne promettesse: il metodo scende da 169 a 78 righe,
+  ma la parte davvero duplicata era il passo comune — copia, nome, iniezione
+  stocastica, conversione dei kwarg, `create` — e le differenze del pitch non
+  si comprimono: si spostano in un metodo che le nomina.
+
 - **`voice_pan_strategy` passa al registry generico** (issue #184, forma decisa
   in #177). Lo stesso schema — una mappa nome → classe, un punto di
   registrazione, una `Factory` il cui `create()` fa lookup e alza

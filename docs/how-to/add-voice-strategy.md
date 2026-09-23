@@ -7,7 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
   - src/pge/core/stream.py
-last_synced_commit: a36de8f
+last_synced_commit: 189e7b1
 entry_for: [add-voice-strategy]
 ---
 
@@ -44,7 +44,23 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
    ripetuto nel modulo. Gli altri tre assi sono ancora sulla forma vecchia —
    un `dict` di modulo — e ci restano fino a #185; da fuori le due forme si
    usano allo stesso modo.
-4. Se i parametri richiedono parsing custom (es. envelope auto-detect), estendi `_build_<axis>_strategy` in `src/pge/core/stream.py` via `_parse_strategy_kwarg`
+4. I kwarg della strategy non chiedono wiring. `Stream._build_voice_strategy`
+   (`src/pge/core/stream.py`) e' il passo unico delle quattro dimensioni
+   (issue #186): passa ogni kwarg per `_parse_strategy_kwarg`, che rende
+   envelope quelli che ne hanno la forma, e inietta `stream_id`/`seed` se la
+   strategy si chiama `stochastic`.
+
+   `stream.py` va toccato solo in due casi, entrambi nel `take_block_keys`
+   della dimensione in `Stream._VOICE_AXES`: un kwarg con la forma di un
+   envelope che envelope non e' (come `progression` di `chord_progression`),
+   da sottrarre alla conversione; oppure una chiave di blocco, config della
+   dimensione e non della strategy (come `unit` del pitch o `normalized` del
+   pointer). Pitch e pointer un `take_block_keys` ce l'hanno gia'
+   (`_take_voice_pitch_keys`, `_take_voice_pointer_keys`); onset e pan no, e la
+   riga di tabella e' dove aggiungerlo.
+
+   Il passo scritto qui prima nominava `_build_<axis>_strategy`: quella
+   funzione non e' mai esistita.
 5. Test: `tests/strategies/test_voice_<axis>_strategy.py` con voice-0 invariant + envelope param + (per le stochastiche) determinismo dal `stream_id`
 
 ## File toccati
@@ -53,7 +69,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 |------|------|
 | `src/pge/strategies/voice_<axis>_<nome>.py` | nuovo file |
 | `src/pge/strategies/voice_<axis>_strategy.py` | aggiunta a `VOICE_<AXIS>_STRATEGIES` |
-| `src/pge/core/stream.py` | eventuale parsing kwarg |
+| `src/pge/core/stream.py` | solo kwarg strutturali o chiavi di blocco (`take_block_keys`) |
 | `tests/strategies/test_voice_<axis>_strategy.py` | nuovi test |
 
 ## Test da aggiornare

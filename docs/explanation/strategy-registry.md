@@ -356,8 +356,12 @@ forte della prima:
 Resta vero che `SEMITONE_LOCKED` è un `frozenset` di nomi che deve restare
 allineato alle chiavi del registry, e che una strategy registrata dinamicamente non può
 dichiararsi semitone-locked. La cura sarebbe metadato sulla classe, non sul
-registry: è materiale per la decomposizione di `Stream` (#190) e per il wiring
-(#186), non per qui.
+registry. Il wiring (#186) non l'ha presa, e l'ha resa più piccola: la lettura
+di `SEMITONE_LOCKED` ora sta in un punto solo, `Stream._take_voice_pitch_keys`,
+che è dove un attributo di classe andrebbe letto. Spostare la dichiarazione dai
+nomi alle classi resta però una decisione sulla superficie d'estensione
+([[add-voice-strategy]]) e tocca `voice_pitch_strategy.py`: materiale per la
+decomposizione di `Stream` (#190) o per una issue sua, non per qui.
 
 ### Il `print()` (domanda 4)
 

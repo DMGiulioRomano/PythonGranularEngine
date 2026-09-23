@@ -6,7 +6,7 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
-last_synced_commit: 8a8029c
+last_synced_commit: 189e7b1
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -122,9 +122,11 @@ YAML 'voices:'
     │
     ▼
 Stream._init_voice_manager()
-    ├─ _parse_strategy_kwarg(): list/dict → Envelope, altrimenti float
-    ├─ Factory per ogni strategy  (VoicePitchStrategyFactory, ecc.)
-    ├─ Auto-injection stream_id   (per riproducibilità stochastic)
+    ├─ per ogni riga di _VOICE_AXES presente nello YAML → _build_voice_strategy():
+    │    ├─ take_block_keys della dimensione (solo pitch e pointer)
+    │    ├─ Auto-injection stream_id   (per riproducibilità stochastic)
+    │    ├─ _parse_strategy_kwarg(): list/dict → Envelope, altrimenti invariato
+    │    └─ Factory della dimensione   (VoicePitchStrategyFactory, ecc.)
     └─ VoiceManager(max_voices, strategy...)  # ogni strategy possiede il proprio param (Union[float, Envelope])
 
     ▼
@@ -573,35 +575,50 @@ step=15, 4 voci → [0, 15, 30, 45]
 
 ### Parsing YAML → `_init_voice_manager()`
 
-`src/pge/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`:
+`src/pge/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`.
+Le quattro dimensioni non sono quattro blocchi di codice ma quattro righe di
+una tabella (issue #186). Ogni riga dice dove sta il sotto-blocco nello YAML,
+quale Factory lo costruisce e in quale kwarg di `VoiceManager` finisce:
 
 ```python
-def _init_voice_manager(self, params: dict) -> None:
-    v = params.get('voices', {})
-    if not v:
-        self._voice_manager = VoiceManager(max_voices=1)
-        return
-
-    # num_voices è un Parameter (scalare o envelope). max_voices = ceil del picco
-    # dei breakpoint (o dello scalare): così la voce di confine frazionaria (fade)
-    # ha sempre uno slot.
-    max_voices = ceil(max_value_of(self._num_voices))
-
-    # Per le strategie stochastiche, stream_id viene auto-iniettato
-    # per garantire riproducibilità tra sessioni con lo stesso YAML
-    pitch_strategy   = _build_pitch_strategy(v, self.stream_id)
-    onset_strategy   = _build_onset_strategy(v, self.stream_id)
-    pointer_strategy = _build_pointer_strategy(v, self.stream_id)
-    pan_strategy     = _build_pan_strategy(v, self.stream_id)
-
-    self._voice_manager = VoiceManager(
-        max_voices       = max_voices,
-        pitch_strategy   = pitch_strategy,
-        onset_strategy   = onset_strategy,
-        pointer_strategy = pointer_strategy,
-        pan_strategy     = pan_strategy,
-    )
+_VOICE_AXES = (
+    _VoiceAxis('pitch',        VoicePitchStrategyFactory,   'pitch_strategy',
+               _take_voice_pitch_keys),
+    _VoiceAxis('onset_offset', VoiceOnsetStrategyFactory,   'onset_strategy'),
+    _VoiceAxis('pointer',      VoicePointerStrategyFactory, 'pointer_strategy',
+               _take_voice_pointer_keys),
+    _VoiceAxis('pan',          VoicePanStrategyFactory,     'pan_strategy'),
+)
 ```
+
+`_init_voice_manager` cicla sulla tabella e, per ogni dimensione presente,
+chiama `_build_voice_strategy` — il passo comune: copia del sotto-blocco (lo
+YAML letto resta quello scritto, perché la cache ne fa il fingerprint),
+`strategy` come nome, `stream_id` e `seed` iniettati se la strategy è
+`stochastic`, gli altri kwarg passati a `_parse_strategy_kwarg`, poi
+`Factory.create(name, **kwargs)`.
+
+Quel che distingue davvero una dimensione sta nel suo `take_block_keys`, che
+toglie da `kw` ciò che il passo comune non deve vedere:
+
+| dimensione | differenza | dove va |
+|---|---|---|
+| `pitch` | `semitone_range` → hard break (rinominato `pitch_range`) | `InvalidStrategyConfigError` |
+| `pitch` | `unit`, chiave di blocco; rifiutata ≠ semitones sulle `SEMITONE_LOCKED` | `VoiceManager(pitch_unit=…)` |
+| `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression`: forma di envelope senza esserlo, più `time_mode`/`duration` dello stream | alla strategy tali e quali |
+| `pointer` | `normalized`, chiave di blocco, solo bool | `Stream._voice_pointer_normalized` (letto da `_create_grain`) |
+
+`onset_offset` e `pan` non ne hanno: sono il passo comune e basta. Le chiavi di
+blocco restano della propria dimensione — un `unit` sotto `pan` arriva al
+costruttore della strategy come un kwarg qualunque, e lì viene rifiutato (oggi
+con un `TypeError` grezzo, non con un errore di configurazione).
+
+Il ciclo è sulla tabella e non sulle chiavi di `voices:`: le dimensioni si
+valutano sempre nell'ordine pitch, onset_offset, pointer, pan, e con più
+sotto-blocchi sbagliati l'errore è quello della prima, qualunque sia l'ordine
+in cui lo YAML le scrive. `max_voices` è il `ceil` del picco di `num_voices`
+(scalare o breakpoint), così la voce di confine frazionaria (fade) ha sempre
+uno slot.
 
 ### Output di `generate_grains()`
 
@@ -827,7 +844,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer con `time` arg e envelope |
 | `tests/strategies/test_voice_pan_strategy.py` | Range, stochastic, step pan con `time` arg, voice-0 invariant, spread/step envelope |
 | `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager; `TestGenerateGrainsEnvelopePerGrain`: verifica valore esatto pitch_ratio per grain a `voice_cursors[vi]` |
-| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized` |
+| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori (#186) |
 
 **Esecuzione test multi-voice:**
 ```bash
