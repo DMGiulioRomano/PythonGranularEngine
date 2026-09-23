@@ -459,8 +459,8 @@ def _corpo_di_create(caso):
     return corpi[0]
 
 
-def _nome_alzato(nodo):
-    """Il nome dell'eccezione costruita da un `raise`, o `None`.
+def _nome_finale(espressione):
+    """Il nome finale di un'espressione, `attr` o `id`, o `None`.
 
     **Le due grafie contano entrambe**, e leggere il solo `ast.Name` rendeva
     la guardia qui sotto piu' stretta della regola che dichiara -- lo stesso
@@ -472,16 +472,34 @@ def _nome_alzato(nodo):
     la #177 ha visto divergere rientrava dalla porta di servizio, e proprio
     sull'unico caso -- density -- che la guardia severa non copre.
 
-    Il criterio e' il nome finale, `attr` o `id`: che l'eccezione arrivi da un
-    import diretto o da un modulo importato per nome non cambia che cosa il
-    `create` sta ricostruendo.
+    Che l'eccezione arrivi da un import diretto o da un modulo importato per
+    nome non cambia che cosa il `create` sta ricostruendo. Resta fuori un
+    alias d'import (`from ... import StrategyNotFoundError as X`): il nome
+    finale e' allora un altro, e leggerlo vorrebbe risolvere gli import del
+    modulo.
     """
-    eccezione = nodo.exc
-    if isinstance(eccezione, ast.Call):
-        eccezione = eccezione.func
-    if isinstance(eccezione, ast.Attribute):
-        return eccezione.attr
-    return eccezione.id if isinstance(eccezione, ast.Name) else None
+    if isinstance(espressione, ast.Attribute):
+        return espressione.attr
+    return espressione.id if isinstance(espressione, ast.Name) else None
+
+
+def _ricostruisce(nodo, eccezione):
+    """Se `nodo` costruisce o alza `eccezione`.
+
+    **La costruzione, non solo il `raise`.** Leggere l'eccezione dentro il
+    `raise` lasciava fuori la grafia in due tempi -- `errore =
+    StrategyNotFoundError(...)` e poi `raise errore` -- dove il `raise` nomina
+    una variabile e la copia sta una riga sopra. Misurato: scritto cosi' in
+    `create_density_strategy`, `tests/strategies/` e `tests/shared/`
+    restavano verdi, ancora sull'unico caso che la guardia severa non copre.
+    Resta il `raise` della classe nuda (`raise StrategyNotFoundError`), che
+    la istanzia senza una `Call` scritta.
+    """
+    if isinstance(nodo, ast.Call):
+        return _nome_finale(nodo.func) == eccezione
+    if isinstance(nodo, ast.Raise):
+        return _nome_finale(nodo.exc) == eccezione
+    return False
 
 
 @pytest.mark.parametrize('caso', CONVERTITI, ids=IDS)
@@ -505,7 +523,7 @@ def test_create_non_ricostruisce_strategy_not_found(caso):
     """
     ricostruzioni = [
         n for n in ast.walk(_corpo_di_create(caso))
-        if isinstance(n, ast.Raise) and _nome_alzato(n) == 'StrategyNotFoundError'
+        if _ricostruisce(n, 'StrategyNotFoundError')
     ]
 
     assert not ricostruzioni, (

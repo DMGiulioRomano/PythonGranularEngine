@@ -592,6 +592,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   giusta alla domanda di lì. Il censimento sabotato fa ora tre rossi nominati
   invece di due più un errore.
 
+  **Un quinto giro ha trovato la stessa guardia del terzo, una grafia più in
+  là.** Quella che vieta di ricostruire `StrategyNotFoundError` dentro un
+  `create` cercava l'eccezione *dentro il `raise`*, quindi la grafia in due
+  tempi — `errore = StrategyNotFoundError(...)` e poi `raise errore` — le
+  sfuggiva: il `raise` nomina una variabile, la copia sta una riga sopra.
+  Misurato: scritto così in `create_density_strategy`, `tests/strategies/` e
+  `tests/shared/` restavano verdi, di nuovo sull'unico caso che la guardia
+  severa non copre. Il criterio è ora la *costruzione* (una `Call` il cui nome
+  finale è l'eccezione) oltre al `raise` della classe nuda, e le tre grafie —
+  diretta, ad attributo, in due tempi — fanno ciascuna un rosso su density.
+  Resta fuori, dichiarato nel modulo, un alias d'import.
+
   Due misure di `docs/explanation/strategy-registry.md` erano infine più larghe
   del misurato, e sono state ricontate: i registry che tacciono dopo #185 sono
   **due** (`window` e `distribution`, che la `register` ce l'ha ma muta), non
