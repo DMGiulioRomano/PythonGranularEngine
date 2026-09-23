@@ -1127,3 +1127,152 @@ class TestVoiceStrategyTimeModeInheritance:
         assert isinstance(step_env, Envelope)
         assert resolve_param(step_env, 2.0) == pytest.approx(0.0)
         assert resolve_param(step_env, 8.0) == pytest.approx(1.0)
+
+
+# =============================================================================
+# 12. Il wiring delle quattro dimensioni (issue #186)
+# =============================================================================
+#
+# Il collasso dei quattro blocchi di _init_voice_manager in un ciclo su una
+# tabella puo' rompere quattro cose che le sezioni sopra non pinnavano, perche'
+# con quattro blocchi copiati erano vere per costruzione:
+#
+# - il blocco `voices:` e' letto, non consumato: il Generator tiene lo stesso
+#   dict in `stream_data_map` e la cache ne fa il fingerprint;
+# - le chiavi speciali restano della propria dimensione: `unit` e
+#   `semitone_range` del pitch, `normalized` del pointer;
+# - le dimensioni si valutano in un ordine fisso, non in quello dello YAML;
+# - gli errori delle differenze nominano lo stream.
+
+import copy
+import itertools
+
+from pge.shared.exceptions import InvalidFieldValueError, StrategyNotFoundError
+
+
+# Un blocco che passa per ogni ramo del wiring nello stesso Stream: le due
+# chiavi di blocco (unit, normalized), i kwarg strutturali di
+# chord_progression piu' il time_mode che le viene iniettato, l'iniezione
+# stocastica, un kwarg envelope-like.
+_VOICES_OGNI_RAMO = {
+    'num_voices': 3,
+    'pitch': {
+        'strategy': 'chord_progression',
+        'progression': [[0.0, 'maj7'], [1.0, 'min7']],
+        'interp': 'linear',
+        'voice_leading': 'positional',
+        'unit': 'semitones',
+    },
+    'onset_offset': {'strategy': 'stochastic', 'max_offset': 0.2},
+    'pointer': {'strategy': 'linear', 'step': [[0.0, 0.0], [1.0, 0.1]], 'normalized': True},
+    'pan': {'strategy': 'stochastic', 'spread': 60.0},
+}
+
+# Un sotto-blocco valido per dimensione, senza chiavi speciali.
+_BLOCCO_SEMPLICE = {
+    'pitch': {'strategy': 'step', 'step': 1.0},
+    'onset_offset': {'strategy': 'linear', 'step': 0.1},
+    'pointer': {'strategy': 'linear', 'step': 0.1},
+    'pan': {'strategy': 'step', 'step': 10.0},
+}
+
+# Chiave speciale → (valore valido, la sola dimensione che la consuma).
+_CHIAVI_SPECIALI = {
+    'unit': ('semitones', 'pitch'),
+    'semitone_range': (3.0, 'pitch'),
+    'normalized': (True, 'pointer'),
+}
+
+# Ogni chiave speciale scritta in una dimensione che non e' la sua.
+_CHIAVE_FUORI_POSTO = [
+    (chiave, dimensione)
+    for chiave, dimensione in itertools.product(_CHIAVI_SPECIALI, _BLOCCO_SEMPLICE)
+    if dimensione != _CHIAVI_SPECIALI[chiave][1]
+]
+
+
+class TestVoicesWiring:
+
+    def test_il_blocco_voices_non_viene_mutato(self):
+        """Il wiring lavora su una copia di ogni sotto-blocco.
+
+        Se consumasse il dict (un `pop('strategy')` sull'originale), il
+        Generator si ritroverebbe in `stream_data_map` un blocco diverso da
+        quello scritto: fingerprint della cache spostato, e una seconda
+        costruzione dallo stesso dict che non trova piu' `strategy`.
+        """
+        voices = copy.deepcopy(_VOICES_OGNI_RAMO)
+        _build_stream_tm(voices, time_mode='normalized')
+        assert voices == _VOICES_OGNI_RAMO
+
+    @pytest.mark.parametrize('chiave,dimensione', _CHIAVE_FUORI_POSTO)
+    def test_le_chiavi_speciali_restano_della_propria_dimensione(self, chiave, dimensione):
+        """`unit` fuori dal pitch non e' una chiave di blocco, e cosi' via.
+
+        Arriva al costruttore della strategy come ogni altro kwarg, e il
+        costruttore la rifiuta. Il TypeError grezzo e' il comportamento di oggi,
+        non un contratto: quel che il test difende e' che la chiave **non venga
+        accettata in silenzio** da una dimensione che non la legge — cioe' che
+        la differenza del pitch o del pointer non sia stata generalizzata a
+        tutte e quattro dal collasso. Un `unit` su onset_offset ignorato senza
+        dire niente sarebbe il caso peggiore: uno YAML che sembra funzionare.
+        """
+        valore, _ = _CHIAVI_SPECIALI[chiave]
+        blocco = {**_BLOCCO_SEMPLICE[dimensione], chiave: valore}
+        with pytest.raises(TypeError, match=chiave):
+            _build_stream({'num_voices': 2, dimensione: blocco})
+
+    def test_le_dimensioni_si_valutano_in_ordine_fisso(self):
+        """pitch, onset_offset, pointer, pan: con piu' sotto-blocchi sbagliati
+        l'errore e' quello della dimensione che viene prima in quest'ordine.
+
+        L'ordine delle chiavi nello YAML non conta: il blocco qui e' scritto al
+        contrario apposta, cosi' che un ciclo sulle chiavi di `voices:` invece
+        che sulla tabella delle dimensioni dia l'errore sbagliato.
+        """
+        ordine = [
+            ('pitch', 'voice_pitch'),
+            ('onset_offset', 'voice_onset'),
+            ('pointer', 'voice_pointer'),
+            ('pan', 'voice_pan'),
+        ]
+        voices = {'num_voices': 2}
+        for dimensione, _ in reversed(ordine):
+            voices[dimensione] = {'strategy': 'inesistente'}
+
+        for dimensione, kind in ordine:
+            with pytest.raises(StrategyNotFoundError) as ei:
+                _build_stream(copy.deepcopy(voices))
+            assert ei.value.strategy_kind == kind
+            del voices[dimensione]
+
+    @pytest.mark.parametrize('dimensione,blocco,tipo,campo', [
+        ('pitch', {'strategy': 'range', 'semitone_range': 12.0},
+         InvalidStrategyConfigError, 'voices.pitch.semitone_range'),
+        ('pitch', {'strategy': 'chord', 'chord': 'maj', 'unit': 'cents'},
+         InvalidStrategyConfigError, 'voices.pitch.unit'),
+        ('pointer', {'strategy': 'linear', 'step': 0.1, 'normalized': 'si'},
+         InvalidFieldValueError, 'voices.pointer.normalized'),
+    ])
+    def test_gli_errori_delle_differenze_nominano_lo_stream(self, dimensione, blocco, tipo, campo):
+        with pytest.raises(tipo) as ei:
+            _build_stream({'num_voices': 2, dimensione: blocco}, stream_id='nominato')
+        assert ei.value.field == campo
+        assert ei.value.stream_id == 'nominato'
+
+    @pytest.mark.parametrize('voices', [
+        None,
+        {'num_voices': 2, 'onset_offset': {'strategy': 'linear', 'step': 0.1}},
+    ], ids=['senza-voices', 'senza-pitch-e-pointer'])
+    def test_senza_le_dimensioni_speciali_restano_i_default(self, voices):
+        """Senza il sotto-blocco che le scrive, le due chiavi di blocco valgono
+        il loro default: pointer in secondi, pitch in semitoni.
+
+        Il default va scritto anche quando la dimensione manca: `_create_grain`
+        legge `_voice_pointer_normalized` a ogni grano, e il `getattr` con cui
+        lo fa nasconderebbe un attributo mai inizializzato invece di segnalarlo.
+        """
+        s = _build_stream(voices)
+        assert s._voice_pointer_normalized is False
+        assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
+        assert s._voice_manager.pitch_unit.divisions == 12
