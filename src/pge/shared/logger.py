@@ -303,13 +303,25 @@ def log_strategy_registration(domain: str, name: str, strategy_class: type) -> N
     Args:
         domain: dominio del registry ('density', 'variation', 'voice_pan')
         name: chiave con cui la strategy e' stata registrata
-        strategy_class: la classe registrata (se ne logga il `__name__`)
+        strategy_class: il registrabile (se ne logga il `__name__`, o il
+                        nome del suo tipo se non ne ha)
     """
+    # L'etichetta si risolve qui, e senza pretenderla. `strategy_class.__name__`
+    # era un'espressione argomento, cioe' valutata avidamente -- pigra e' solo
+    # la formattazione `%s` -- quindi un registrabile chiamabile ma senza quel
+    # dunder (una `functools.partial`, un'istanza) moriva di `AttributeError`
+    # *dentro* una diagnostica, e con la diagnostica spenta ugualmente.
+    # `StrategyRegistry` dichiara che la base e' portata e non imposta: dalla
+    # #185 pitch, onset e pointer registrano passando da qui, dove prima
+    # assegnavano nel dizionario senza ispezionare niente, e un rifiuto non
+    # deve rientrare dalla riga che lo annuncia.
+    etichetta = (getattr(strategy_class, '__name__', None)
+                 or type(strategy_class).__name__)
     # Formattazione pigra: gli argomenti restano tali finche' un handler non
     # chiede il messaggio, e con la diagnostica spenta quel momento non arriva.
     get_diagnostic_logger().debug(
         "Registrata nuova strategia %s: %s -> %s",
-        domain, name, strategy_class.__name__,
+        domain, name, etichetta,
     )
 
 

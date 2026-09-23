@@ -252,6 +252,29 @@ class TestRegister:
         r.register('estranea', Estranea)
         assert r['estranea'] is Estranea
 
+    def test_register_accetta_un_registrabile_senza_dunder_name(self):
+        """Il rifiuto non deve rientrare dalla riga diagnostica.
+
+        Il test qui sopra misura la meta' dichiarata — nessun `issubclass` —
+        con una *classe*, che `__name__` ce l'ha. La meta' non misurata era
+        l'altra: `register` chiama `log_strategy_registration`, che legge
+        `strategy_class.__name__`, quindi un registrabile chiamabile ma senza
+        quell'attributo veniva rifiutato da una diagnostica.
+
+        Conta dalla #185 perche' i `register_*` di pitch, onset e pointer
+        prima assegnavano nel dizionario senza ispezionare niente: passando
+        da qui hanno ereditato il rifiuto insieme alla riga.
+        """
+        import functools
+
+        fabbrica = functools.partial(_Alfa, spread=1.0)
+        assert not hasattr(fabbrica, '__name__')
+
+        r = _registry()
+        r.register('pigra', fabbrica)
+        assert r['pigra'] is fabbrica
+        assert isinstance(r.create('pigra'), _Alfa)
+
 
 # =============================================================================
 # 5. SNAPSHOT E RIPRISTINO — IL GIRO CHE FANNO LE FIXTURE
