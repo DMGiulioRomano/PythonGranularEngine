@@ -620,6 +620,52 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **La riga diagnostica della registrazione pretendeva un `__name__`**
+  (issue #185, review della PR #276). `log_strategy_registration` legge
+  `strategy_class.__name__` come espressione argomento, cioè avidamente —
+  pigra è solo la formattazione `%s` — quindi un registrabile chiamabile ma
+  senza quel dunder (una `functools.partial`, un'istanza) moriva di
+  `AttributeError` *dentro* una diagnostica, e con la diagnostica spenta
+  ugualmente.
+
+  Fino alla #185 la cosa non si vedeva da pitch, onset e pointer, perché i
+  loro `register_*` assegnavano nel dizionario senza ispezionare niente:
+  passando da `StrategyRegistry.register` hanno ereditato il rifiuto insieme
+  alla riga. Ed è esattamente il rifiuto che la classe dichiara di non fare —
+  la `base` è portata, non imposta — solo che
+  `test_register_non_verifica_issubclass` lo misurava con una *classe*, che
+  `__name__` ce l'ha. L'etichetta si risolve ora senza pretenderla
+  (`__name__`, altrimenti il nome del tipo); il record porta sempre tre
+  argomenti, quindi la formattazione resta pigra.
+
+- **Nella facade di density era subordinato al lookup il solo `raise`**
+  (issue #185, review della PR #276). La validazione di `distribution` è
+  dentro il ramo del lookup per tenere il vincolo d'ordine che
+  `tests/strategies/test_registry_errors.py` pinna — con un nome non
+  registrato deve cadere `StrategyNotFoundError` — ma la *lettura*
+  `all_params.get('distribution')` stava davanti al gate. Un `all_params` che
+  non è una mappa alzava perciò `AttributeError`, fuori dalla gerarchia
+  `EngineError`: un traceback nudo dove la CLI si aspetta un errore di
+  configurazione, là dove prima della conversione cadeva
+  `StrategyNotFoundError`. Il nome non registrato è proprio il caso in cui
+  quella lettura non serve a nessuno. Lettura e validazione stanno ora in un
+  unico ramo `in DENSITY_STRATEGIES`, che è anche una copia in meno della
+  condizione di lookup nella facade.
+
+- **Due guardie della #185 erano soddisfatte dal vuoto** (review della
+  PR #276). `SEMITONE_LOCKED` era misurato con `isinstance(..., frozenset)` e
+  col contenimento nelle chiavi del registry: entrambe vere su un `frozenset()`
+  — l'insieme vuoto è sottoinsieme di tutto — quindi svuotarlo restava verde,
+  e `Stream._init_voice_manager` legge quell'insieme per *rifiutare*
+  `voices.pitch.unit` diverso da semitones (un `chord` con `unit: cents`
+  renderebbe gli intervalli reinterpretati, senza errore). Il contenimento è
+  ora nel verso giusto: una quarta strategy locked resta una decisione
+  legittima, che le tre se ne vadano no. `CHORD_INTERVALS` chiedeva
+  `all(isinstance(i, int) ...)`, vero su una lista vuota: `{'dom7': []}`
+  passava, e a valle sono zero offset, cioè tutte le voci sullo stesso pitch
+  — che la parità di PGE-ls non vedrebbe, perché confronta insiemi di chiavi.
+  Entrambe rimisurate mutando la costante: prima verdi, ora rosse.
+
 - **La guardia AST della CLI non esisteva sulla 3.9** (issue #257).
   La guardia sugli `except` di `cli.py` dichiarava `-> str | None` senza
   `from __future__ import annotations`: PEP 604 in una firma si valuta alla
