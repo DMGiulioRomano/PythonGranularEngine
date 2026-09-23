@@ -724,6 +724,21 @@ def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
         "SEMITONE_LOCKED nomina strategy che il registry non ha: "
         f"{sorted(SEMITONE_LOCKED - set(VOICE_PITCH_STRATEGIES))}"
     )
+    # Le due asserzioni qui sopra sono entrambe soddisfatte dal vuoto --
+    # `isinstance(frozenset(), frozenset)` e' vero e l'insieme vuoto e'
+    # sottoinsieme di tutto -- quindi da sole non vedono la regressione che
+    # conta: `Stream._init_voice_manager` legge questo insieme per *rifiutare*
+    # `voices.pitch.unit` diverso da semitones sulle strategy definite in
+    # semitoni, e svuotarlo fa cadere quel rifiuto in silenzio (un `chord` con
+    # `unit: cents` renderebbe gli intervalli reinterpretati, senza errore).
+    # Il verso giusto e' il contenimento: una quarta strategy locked e' una
+    # decisione legittima, che queste tre se ne vadano no.
+    assert {'chord', 'chord_progression', 'spectral'} <= SEMITONE_LOCKED, (
+        "SEMITONE_LOCKED ha perso strategy definite in semitoni: "
+        f"{sorted({'chord', 'chord_progression', 'spectral'} - SEMITONE_LOCKED)}. "
+        "Senza di loro Stream._init_voice_manager smette di rifiutare "
+        "`voices.pitch.unit` non-semitones su quelle strategy."
+    )
 
 
 def test_chord_intervals_resta_un_nome_di_modulo():
@@ -737,4 +752,13 @@ def test_chord_intervals_resta_un_nome_di_modulo():
     assert isinstance(CHORD_INTERVALS, dict) and CHORD_INTERVALS
     for nome, intervalli in CHORD_INTERVALS.items():
         assert isinstance(nome, str) and nome
+        # `all(...)` su una lista vuota e' vero, quindi il solo controllo di
+        # tipo lascia passare un accordo svuotato: quello arriva a
+        # `ChordPitchStrategy` e produce zero offset -- tutte le voci sullo
+        # stesso pitch, in silenzio -- e la parita' di PGE-ls confronta gli
+        # insiemi di chiavi, quindi non lo vedrebbe nemmeno lei.
+        assert intervalli, (
+            f"l'accordo '{nome}' non porta intervalli: a valle sono zero "
+            "offset, cioe' tutte le voci sullo stesso pitch senza errore"
+        )
         assert all(isinstance(i, int) for i in intervalli)
