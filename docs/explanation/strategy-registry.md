@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: f77df48
+last_synced_commit: dc97880
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -396,7 +396,8 @@ forte della prima:
 
 1. non sono contenuto del registry. `SEMITONE_LOCKED` è un'affermazione sulle
    *unità*, indicizzata per nome di strategy e letta da
-   `Stream._init_voice_manager`; `CHORD_INTERVALS` è il dominio di un kwarg.
+   `Stream._take_voice_pitch_keys` (il `take_block_keys` del pitch nel wiring
+   di `_init_voice_manager`, #186); `CHORD_INTERVALS` è il dominio di un kwarg.
    Attaccarle all'oggetto registry darebbe alla classe generica una superficie
    per dominio, cioè il caso speciale;
 2. sono già lette da chi non può seguirle. `CHORD_INTERVALS` la importa dal
@@ -404,7 +405,7 @@ forte della prima:
    il `diagnostic_provider.py` di quel repo la nomina anche lui, ma legge il
    proprio specchio in `granular_ls/voice_strategies.py`, quindi non è un
    secondo vincolo — è una copia a mano, e la copia non protesta.
-   `SEMITONE_LOCKED` non esce da qui: la legge `Stream._init_voice_manager`, e
+   `SEMITONE_LOCKED` non esce da qui: la legge `Stream._take_voice_pitch_keys`, e
    PGE-ls ne tiene un altro specchio (`SEMITONE_LOCKED_STRATEGIES`). Spostarle
    costa una CI rossa — altrove per la prima, qui per la seconda — in cambio di
    niente.
