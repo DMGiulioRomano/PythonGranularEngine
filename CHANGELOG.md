@@ -655,10 +655,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   importandolo per nome — e riceve il proprio dominio alla costruzione, così che
   nessun chiamante lo ripeta e `create()` non possa sbagliarlo.
 
-  Pan è il tracer bullet, non il primo di una conversione in blocco: **gli altri
-  otto registry sono ancora sulla forma vecchia** e funzionano. Lo scopo era
-  provare che la forma regge prima di replicarla, e la prova è che non è servito
-  nessun caso speciale per assorbire i due scarti di pan.
+  Pan è il tracer bullet, non il primo di una conversione in blocco: quando
+  questa voce è stata scritta gli altri otto registry erano ancora sulla forma
+  vecchia, e funzionavano. Lo scopo era provare che la forma regge prima di
+  replicarla, e la prova è che non è servito nessun caso speciale per assorbire
+  i due scarti di pan. **Cinque di quegli otto sono passati con la #185**, la
+  voce qui sotto, e non è servito un caso speciale nemmeno lì; i tre che
+  restano sono quelli che la #177 tiene fuori per ragioni loro.
 
   Un cambio di firma, dichiarato: il primo parametro di
   `VoicePanStrategyFactory.create` passa da `strategy_name` a `name`. Era
@@ -691,6 +694,189 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `distribution` resta sulla forma vecchia con la propria validazione
   `issubclass`, che è pinnata e che la forma generica non ha.
 
+- **Gli altri cinque registry passano al registry generico** (issue #185,
+  forma decisa in #177, provata su pan dalla #184). `VOICE_PITCH_STRATEGIES`,
+  `VOICE_ONSET_STRATEGIES`, `VOICE_POINTER_STRATEGIES`, `DENSITY_STRATEGIES` e
+  `VARIATION_STRATEGIES` sono `StrategyRegistry` col proprio dominio alla
+  costruzione; i `register_*` di modulo e le `Factory.create` restano dove
+  sono e delegano. La forma ha retto senza casi speciali anche qui, incluse le
+  due costruzioni che non sono `**kwargs`: variation costruisce senza
+  argomenti, density con due posizionali.
+
+  **Le firme convergono, ed è un criterio della issue, non un gusto.** Il
+  primo parametro si chiama `name` dappertutto — era `mode_name` e
+  `param_name` nelle registrazioni, `variation_mode` nel `create` di
+  variation, e ognuno di quei nomi diceva da dove viene il valore invece di
+  che cosa è: la chiave del registry — e il secondo `strategy_class`, che era
+  `cls` in pitch, onset e pointer. Nessuna chiamata si rompe: misurato, in
+  `src/` e in `tests/` non esiste una sola chiamata per parola chiave.
+
+  **Tre moduli acquistano la riga diagnostica che non avevano, due smettono di
+  scriverla a mano.** Registrare una strategy in pitch, onset o pointer non si
+  vedeva da nessuna parte: quelle tre `register_*` assegnavano nel dizionario e
+  basta, quindi la conferma non esisteva né su stdout né nel logger. Ora
+  passano da `StrategyRegistry.register` come le altre. Density e variation
+  perdono la propria chiamata a `log_strategy_registration`: la riga esce dal
+  registry, e il dominio è il `kind` del registry invece di un letterale
+  scritto accanto alla chiamata. Le etichette di dominio scritte a mano che la
+  #177 aveva censito — tre su nove registri — sono zero.
+
+  **La façade di density tiene la propria firma e la propria validazione, ma
+  la validazione ora è subordinata al lookup.** `create_density_strategy`
+  resta `(selected_param_name, param_obj, all_params)` con il proprio
+  `InvalidStrategyConfigError` se manca `distribution`, perché quello non è
+  lookup ma una regola su come si costruisce una strategy di density. Quando
+  però le due condizioni di fallimento sono vive insieme — nome non registrato
+  *e* `distribution` mancante — è l'ordine a decidere il tipo dell'eccezione, e
+  `tests/strategies/test_registry_errors.py` pretende `StrategyNotFoundError`.
+  Delegare il lookup tenendo la validazione davanti avrebbe cambiato quel tipo:
+  la validazione è perciò dentro il ramo `name in DENSITY_STRATEGIES`, e solo
+  la costruzione è delegata. Era un vincolo scritto in #177, non una scoperta
+  di qui.
+
+  **Il presidio nuovo è `tests/strategies/test_registry_convergenza.py`**, e
+  misura la convergenza invece di descriverla: che ogni mappa sia un
+  `StrategyRegistry` col `kind` e la `base` attesi (restando un `dict`, che è
+  la superficie su cui mezza suite fa snapshot e ripristino e da cui la parità
+  di PGE-ls legge le chiavi), che una registrazione produca **una** riga
+  diagnostica col dominio del registry — zero significa che non delega, due che
+  il modulo tiene anche la propria chiamata — e che nessun `create` ricostruisca
+  l'errore di lookup. Quest'ultima è una guardia sul sorgente perché il
+  comportamento non discrimina: un `create` che ricostruisce
+  `StrategyNotFoundError` a mano passa qualunque test sull'eccezione, ed è
+  esattamente la copia che la #177 ha misurato divergere. Sono **due** guardie,
+  e le due divisioni vanno in senso opposto: sulle cinque façade di solo lookup
+  il criterio è severo (nessun `raise`, di nessuna classe), su tutte e sei —
+  density inclusa, che una validazione sua ce l'ha — è il `raise
+  StrategyNotFoundError` a essere vietato per nome. La famiglia è
+  **derivata** dai sorgenti e non solo dichiarata, così che un asse nuovo nato
+  sulla forma vecchia sia rosso invece che invisibile; il limite della lettura
+  è dichiarato nel modulo (vede le mappe di *modulo*, non quelle che vivono
+  come attributo di classe — `DistributionFactory._registry`,
+  `InterpolationStrategyFactory._STRATEGY_MAP`).
+
+  `SEMITONE_LOCKED` e `CHORD_INTERVALS` non si muovono, come la #177 aveva
+  deciso, e adesso un test lo pretende: restano nomi di modulo in
+  `voice_pitch_strategy`, con `SEMITONE_LOCKED` allineato alle chiavi del
+  registry e non attaccato all'oggetto registry — che darebbe alla classe
+  generica una superficie per dominio, cioè il caso speciale. Nessun nome
+  esportato cambia, quindi il test di parità di PGE-ls, che importa quelle due
+  e le quattro mappe di voce, non vede niente di diverso.
+
+  **Due di quelle misure erano soddisfatte dal vuoto, e la revisione della PR
+  le ha misurate prima di ripararle** — nello stesso modo in cui questo
+  documento chiede che siano misurate le altre, per sabotaggio.
+  `create_uniforme=False` escludeva density da **tre** test invece che da uno:
+  il flag dichiara un'esenzione sulla firma, e la firma ne riguarda uno solo.
+  Misurato: rimettendo in `create_density_strategy` il `raise
+  StrategyNotFoundError` che questa voce ha tolto — la copia esatta che la #177
+  ha visto divergere — `make tests` restava interamente verde. La guardia sulla
+  costante attaccata al registry chiedeva `semitone_locked`, grafia minuscola
+  che la costante non ha in nessun punto dell'albero; misurato: scrivendo
+  `VOICE_PITCH_STRATEGIES.SEMITONE_LOCKED = SEMITONE_LOCKED`, cioè facendo
+  esattamente la mossa vietata, `tests/strategies/` e `tests/shared/`
+  restavano verdi. Adesso il confronto è sull'intera superficie d'istanza
+  contro quella di un registry appena costruito, per tutti e sei e senza
+  ipotizzare nessun nome — quindi vale anche per la costante che a qualcuno
+  verrà in mente domani.
+
+  **Un secondo giro di revisione ne ha trovate altre due, della stessa
+  famiglia — una misura più stretta di ciò che dichiara.** La convergenza
+  delle firme si fermava un livello sopra chi la esegue: le due guardie
+  leggevano le sei façade, e `StrategyRegistry.register` — il metodo a cui
+  tutte e sei delegano, e un punto di registrazione a pieno titolo per il
+  censimento di `tests/shared/test_stdout_contract.py` — teneva `cls` come
+  secondo parametro, cioè esattamente il nome da cui pitch, onset e pointer
+  sono stati convertiti. Si chiama `strategy_class` anche lì, e una guardia
+  nuova lo pretende; nessuna chiamata viva passava quei due argomenti per
+  parola chiave. E il censimento della famiglia confrontava due piani ma ne
+  misurava uno solo per intero: l'insieme dei *file* per tutti, l'elenco dei
+  *nomi* per i soli `CONVERTITI`. Misurato: appendendo `SONDA_STRATEGIES =
+  {...}` a `grain_clip_strategy.py` — un asse nuovo sulla forma vecchia,
+  esattamente il caso per cui il censimento esiste — nessun insieme si muoveva
+  e il test restava verde. `FUORI_DAL_GIRO` porta ora il nome della propria
+  mappa accanto alla ragione, e il controllo sui nomi vale su tutti i file
+  dichiarati.
+
+  **Un terzo giro ne ha trovata una della stessa famiglia, e sull'unico caso
+  scoperto.** La guardia sul sorgente che vieta di ricostruire
+  `StrategyNotFoundError` dentro un `create` leggeva il solo `ast.Name`,
+  cioè la grafia `raise StrategyNotFoundError(...)`. Con la grafia ad
+  attributo — `raise exc.StrategyNotFoundError(...)` dopo un `from pge.shared
+  import exceptions as exc`, che `tests/shared/test_engine_exceptions.py` già
+  usa — il nodo è un `ast.Attribute` e la guardia non vedeva niente. Misurato:
+  rimettendo in `create_density_strategy` il `raise` che questa voce ha tolto,
+  scritto così, `tests/strategies/` e `tests/shared/` restavano verdi. Il buco
+  cadeva proprio su density, l'unico dei sei che la guardia severa (nessun
+  `raise`, di nessuna classe) non può coprire perché una validazione sua ce
+  l'ha: sugli altri cinque la copia sarebbe stata presa comunque. Il criterio
+  è ora il nome finale, `attr` o `id`, e morde su entrambe le grafie.
+
+  **Un quarto giro ne ha trovata una sul campo che nessuno legge.** La `base`
+  di ciascuno dei sei registry era confrontata con `getattr(modulo,
+  caso.base)`, cioe' si chiedeva che il sorgente dicesse quel che dice la
+  tabella del test: due grafie dello stesso nome, non una misura di che cosa
+  quella classe sia. Nessuno chiedeva che la ABC dichiarata fosse vera del
+  contenuto del registry, e `base` non la legge nessun ramo di codice --
+  e' portata per la #265 e per la decisione sulla validazione di
+  `distribution` -- quindi un valore sbagliato e' inerte, cioe' invisibile
+  fino al giorno in cui ci si costruisce sopra. Misurato: cablando
+  `StrategyRegistry('voice_pointer', VoiceOnsetStrategy, ...)` e mettendo
+  `base='VoiceOnsetStrategy'` nella tabella -- le due grafie sbagliate
+  insieme, che e' la forma che prende la copia di un `Caso` dall'asse accanto
+  -- `make tests` restava interamente verde. Il contenuto di ogni registry e'
+  ora misurato contro la propria `base`. Non e' il rifiuto che
+  `StrategyRegistry.register` non deve fare: li' il divieto vale perche'
+  rifiutare una classe duck-typed sarebbe superficie pubblica nuova, qui non
+  si rifiuta niente e si misura quel che i sei registry gia' contengono.
+
+  Nello stesso giro, la guardia sulla superficie per dominio moriva con un
+  `TypeError` invece di rispondere, se un registry tornava un `dict` spoglio:
+  `vars()` di un `dict` non esiste. È la premessa di un'altra misura — che
+  quel caso lo dice già col proprio messaggio — quindi legge `__dict__` con un
+  default, e un `dict` spoglio non ha niente di attaccato, che è la risposta
+  giusta alla domanda di lì. Il censimento sabotato fa ora tre rossi nominati
+  invece di due più un errore.
+
+  **Un quinto giro ha trovato la stessa guardia del terzo, una grafia più in
+  là.** Quella che vieta di ricostruire `StrategyNotFoundError` dentro un
+  `create` cercava l'eccezione *dentro il `raise`*, quindi la grafia in due
+  tempi — `errore = StrategyNotFoundError(...)` e poi `raise errore` — le
+  sfuggiva: il `raise` nomina una variabile, la copia sta una riga sopra.
+  Misurato: scritto così in `create_density_strategy`, `tests/strategies/` e
+  `tests/shared/` restavano verdi, di nuovo sull'unico caso che la guardia
+  severa non copre. Il criterio è ora la *costruzione* (una `Call` il cui nome
+  finale è l'eccezione) oltre al `raise` della classe nuda, e le tre grafie —
+  diretta, ad attributo, in due tempi — fanno ciascuna un rosso su density.
+  Resta fuori, dichiarato nel modulo, un alias d'import.
+
+  Due misure di `docs/explanation/strategy-registry.md` erano infine più larghe
+  del misurato, e sono state ricontate: i registry che tacciono dopo #185 sono
+  **due** (`window` e `distribution`, che la `register` ce l'ha ma muta), non
+  uno — contarne uno faceva nove registri su otto e contraddiceva la sezione
+  «Il `print()`» due paragrafi più in là — e gli `strategy_kind` scritti a mano
+  dentro il modulo che #185 ha convertito sono **dieci**, non undici: gli altri
+  due `"voice_pitch"` stanno in `core/stream.py`, che questa issue non tocca.
+  Il totale di ventidue in `src/` era giusto.
+
+  Lo stesso documento è rimasto poi indietro sulle due correzioni che la
+  review ha portato *dopo* il suo ultimo riallineamento, pur avendone i file
+  fra le `sources`: diceva **quattro** i letterali di dominio che
+  `tests/shared/test_diagnostic_logger.py` passa all'helper, e sono cinque da
+  quando il caso della `functools.partial` ne ha aggiunto uno; e non diceva
+  né che la riga diagnostica non pretende più un `__name__` — che è la
+  promessa di «`base` è portato, non imposto» misurata su un registrabile che
+  non è una classe — né quale test pinna il «qualunque cosa contenga
+  `all_params`» della facade di density. Ricontato e scritto;
+  `add-voice-strategy` aveva lo stesso SHA fermo prima di un sorgente mosso,
+  senza niente da cambiare nel testo.
+
+  Restano fuori i tre di sempre, e per le ragioni loro: `WINDOW_STRATEGY_REGISTRY`
+  e `GRAIN_CLIP_STRATEGIES` sono la #265, `DistributionFactory` aspetta la
+  decisione sulla validazione — la sua `register` rifiuta una classe che non sia
+  sottoclasse di `DistributionStrategy`, e convertirla **toglierebbe** un
+  rifiuto pinnato da due test.
+
 - **Le registrazioni dinamiche di strategy non stampano piu' su stdout**
   (issue #187, primo scaglione della #178). `register_density_strategy`,
   `register_variation_strategy` e `register_voice_pan_strategy` passano dal
@@ -703,6 +889,52 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 
 ### Corretto
+
+- **La riga diagnostica della registrazione pretendeva un `__name__`**
+  (issue #185, review della PR #276). `log_strategy_registration` legge
+  `strategy_class.__name__` come espressione argomento, cioè avidamente —
+  pigra è solo la formattazione `%s` — quindi un registrabile chiamabile ma
+  senza quel dunder (una `functools.partial`, un'istanza) moriva di
+  `AttributeError` *dentro* una diagnostica, e con la diagnostica spenta
+  ugualmente.
+
+  Fino alla #185 la cosa non si vedeva da pitch, onset e pointer, perché i
+  loro `register_*` assegnavano nel dizionario senza ispezionare niente:
+  passando da `StrategyRegistry.register` hanno ereditato il rifiuto insieme
+  alla riga. Ed è esattamente il rifiuto che la classe dichiara di non fare —
+  la `base` è portata, non imposta — solo che
+  `test_register_non_verifica_issubclass` lo misurava con una *classe*, che
+  `__name__` ce l'ha. L'etichetta si risolve ora senza pretenderla
+  (`__name__`, altrimenti il nome del tipo); il record porta sempre tre
+  argomenti, quindi la formattazione resta pigra.
+
+- **Nella facade di density era subordinato al lookup il solo `raise`**
+  (issue #185, review della PR #276). La validazione di `distribution` è
+  dentro il ramo del lookup per tenere il vincolo d'ordine che
+  `tests/strategies/test_registry_errors.py` pinna — con un nome non
+  registrato deve cadere `StrategyNotFoundError` — ma la *lettura*
+  `all_params.get('distribution')` stava davanti al gate. Un `all_params` che
+  non è una mappa alzava perciò `AttributeError`, fuori dalla gerarchia
+  `EngineError`: un traceback nudo dove la CLI si aspetta un errore di
+  configurazione, là dove prima della conversione cadeva
+  `StrategyNotFoundError`. Il nome non registrato è proprio il caso in cui
+  quella lettura non serve a nessuno. Lettura e validazione stanno ora in un
+  unico ramo `in DENSITY_STRATEGIES`, che è anche una copia in meno della
+  condizione di lookup nella facade.
+
+- **Due guardie della #185 erano soddisfatte dal vuoto** (review della
+  PR #276). `SEMITONE_LOCKED` era misurato con `isinstance(..., frozenset)` e
+  col contenimento nelle chiavi del registry: entrambe vere su un `frozenset()`
+  — l'insieme vuoto è sottoinsieme di tutto — quindi svuotarlo restava verde,
+  e `Stream._init_voice_manager` legge quell'insieme per *rifiutare*
+  `voices.pitch.unit` diverso da semitones (un `chord` con `unit: cents`
+  renderebbe gli intervalli reinterpretati, senza errore). Il contenimento è
+  ora nel verso giusto: una quarta strategy locked resta una decisione
+  legittima, che le tre se ne vadano no. `CHORD_INTERVALS` chiedeva
+  `all(isinstance(i, int) ...)`, vero su una lista vuota: `{'dom7': []}`
+  passava, e a valle sono zero offset, cioè tutte le voci sullo stesso pitch
+  — che la parità di PGE-ls non vedrebbe, perché confronta insiemi di chiavi.
+  Entrambe rimisurate mutando la costante: prima verdi, ora rosse.
 
 - **La guardia AST della CLI non esisteva sulla 3.9** (issue #257).
   La guardia sugli `except` di `cli.py` dichiarava `-> str | None` senza

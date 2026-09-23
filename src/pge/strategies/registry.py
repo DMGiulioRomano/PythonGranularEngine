@@ -62,7 +62,7 @@ class StrategyRegistry(Dict[str, Type[S]]):
         self.kind = kind
         self.base = base
 
-    def register(self, name: str, cls: Type[S]) -> None:
+    def register(self, name: str, strategy_class: Type[S]) -> None:
         """
         Registra una strategy e lo annuncia al logger diagnostico.
 
@@ -70,12 +70,21 @@ class StrategyRegistry(Dict[str, Type[S]]):
         scritto accanto alla chiamata: e' cosi' che le etichette scritte a
         mano smettono di divergere.
 
-        `registry[name] = cls` resta una registrazione legale e muta — e' quel
-        che fanno le fixture per rimettere a posto lo stato — ma la riga
-        appartiene a questo punto d'ingresso esplicito.
+        `registry[name] = strategy_class` resta una registrazione legale e
+        muta — e' quel che fanno le fixture per rimettere a posto lo stato —
+        ma la riga appartiene a questo punto d'ingresso esplicito.
+
+        La firma e' quella dei `register_*` di modulo che delegano qui
+        (issue #185): `(name, strategy_class)`. Il secondo parametro si
+        chiamava `cls`, cioe' proprio il nome da cui pitch, onset e pointer
+        sono stati convertiti — misurata sulle sole facade, la convergenza
+        lasciava quel nome vivo nell'unico punto che le serve tutte e sei, e
+        per il censimento di `tests/shared/test_stdout_contract.py` questo e'
+        un punto di registrazione come loro. Nessuna chiamata viva lo passa
+        per parola chiave.
         """
-        self[name] = cls
-        log_strategy_registration(self.kind, name, cls)
+        self[name] = strategy_class
+        log_strategy_registration(self.kind, name, strategy_class)
 
     def create(self, name: str, *args, **kwargs) -> S:
         """

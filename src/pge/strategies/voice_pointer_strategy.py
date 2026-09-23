@@ -27,9 +27,10 @@ Design:
 - VoicePointerStrategy (ABC): interfaccia comune
 - LinearPointerStrategy: voce i = i × step (offset regolare)
 - StochasticPointerStrategy: offset fisso per voce (stabile entro un run)
-- VOICE_POINTER_STRATEGIES: registry globale {nome: classe}
-- register_voice_pointer_strategy(): estensibilità dinamica
-- VoicePointerStrategyFactory: factory con create() statico
+- VOICE_POINTER_STRATEGIES: registry globale {nome: classe}, `StrategyRegistry`
+  del dominio 'voice_pointer' (issue #185, forma decisa in #177)
+- register_voice_pointer_strategy(): estensibilità dinamica, delega al registry
+- VoicePointerStrategyFactory: factory con create() statico, delega al registry
 
 Coerente con: voice_pitch_strategy.py, voice_onset_strategy.py
 """
@@ -39,8 +40,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Type
 
 from pge.parameters.parameter import resolve_param, StrategyParam
-from pge.shared.exceptions import StrategyNotFoundError
 from pge.shared.seeding import voice_rng
+from pge.strategies.registry import StrategyRegistry
 
 
 # =============================================================================
@@ -141,21 +142,24 @@ class StochasticPointerStrategy(VoicePointerStrategy):
 # REGISTRY
 # =============================================================================
 
-VOICE_POINTER_STRATEGIES: Dict[str, Type[VoicePointerStrategy]] = {
+VOICE_POINTER_STRATEGIES = StrategyRegistry('voice_pointer', VoicePointerStrategy, {
     'linear':      LinearPointerStrategy,
     'stochastic':  StochasticPointerStrategy,
-}
+})
 
 
-def register_voice_pointer_strategy(name: str, cls: Type[VoicePointerStrategy]) -> None:
+def register_voice_pointer_strategy(
+    name: str,
+    strategy_class: Type[VoicePointerStrategy]
+) -> None:
     """
     Registra dinamicamente una nuova VoicePointerStrategy.
 
     Args:
         name: chiave stringa per il registry
-        cls: classe che implementa VoicePointerStrategy
+        strategy_class: classe che implementa VoicePointerStrategy
     """
-    VOICE_POINTER_STRATEGIES[name] = cls
+    VOICE_POINTER_STRATEGIES.register(name, strategy_class)
 
 
 # =============================================================================
@@ -184,12 +188,7 @@ class VoicePointerStrategyFactory:
             Istanza di VoicePointerStrategy
 
         Raises:
-            KeyError: se il nome non è nel registry
+            StrategyNotFoundError: se `name` non è nel registry, con
+                        l'elenco delle strategy disponibili
         """
-        if name not in VOICE_POINTER_STRATEGIES:
-            raise StrategyNotFoundError(
-                strategy_kind="voice_pointer",
-                name=name,
-                available=list(VOICE_POINTER_STRATEGIES.keys()),
-            )
-        return VOICE_POINTER_STRATEGIES[name](**kwargs)
+        return VOICE_POINTER_STRATEGIES.create(name, **kwargs)

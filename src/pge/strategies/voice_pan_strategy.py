@@ -18,10 +18,9 @@ Design (uniformato a voice_onset_strategy / voice_pointer_strategy / voice_pitch
 - StepPanStrategy: voce i → i × step gradi
 - VOICE_PAN_STRATEGIES: registry globale {nome: classe}, `StrategyRegistry`
   del dominio 'voice_pan' (issue #184 — primo modulo sulla forma generica
-  decisa in #177; gli altri otto registry sono ancora sulla forma vecchia —
-  cinque li converte la #185, `window_selection_strategy` e
-  `grain_clip_strategy` la #265, `distribution_strategy` dopo la decisione
-  sulla validazione)
+  decisa in #177, estesa agli altri cinque dalla #185; restano fuori
+  `window_selection_strategy` e `grain_clip_strategy`, che sono la #265, e
+  `distribution_strategy`, dopo la decisione sulla validazione)
 - register_voice_pan_strategy(): estensibilita' dinamica, delega al registry
 - VoicePanStrategyFactory: factory con create() statico, delega al registry
 
