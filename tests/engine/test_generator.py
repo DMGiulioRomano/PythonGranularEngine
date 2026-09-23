@@ -1859,6 +1859,145 @@ class TestGenerateScoreFilesPerStreamWithCache:
 
 
 # =============================================================================
+# 13. LA DIAGNOSTICA VA AL LOGGER (issue #188, secondo scaglione della #178)
+# =============================================================================
+
+class TestDiagnosticaAlLogger:
+    """Le due righe che la #178 ha classificato diagnostica lasciano stdout.
+
+    Sono la riga per stream di `_create_streams` e l'elenco degli stream da
+    scrivere di `generate_score_files_per_stream`: nessuno le parsa, nessuno le
+    legge come interfaccia, parlano della contabilita' interna del motore.
+    Vanno a `pge.diagnostics`, a livello DEBUG, mute finche' l'host non le
+    ascolta.
+
+    Ogni test guarda anche cio' che su stdout **resta**, e con l'uguaglianza
+    dell'intera lista di righe invece che con un `in`: spostare una riga e
+    toglierne un'altra per sbaglio sono lo stesso diff, e sul percorso del
+    cache manager quell'altra e' protocollo (`[CACHE] <id>: DIRTY|clean`, che
+    PGE-ui parsa carattere per carattere).
+    """
+
+    def _stream_data(self, *ids):
+        return [{'stream_id': sid, 'sample': 'a.wav', 'grain': {}}
+                for sid in ids]
+
+    def _crea(self, gen, stream_data):
+        """`_create_streams` con uno Stream finto per id, restituiti in ordine."""
+        creati = []
+
+        def fabbrica(data, seed=None, samples_dir=None):
+            s = make_mock_stream_for_generator(stream_id=data['stream_id'])
+            creati.append(s)
+            return s
+
+        with patch('pge.engine.generator.Stream', side_effect=fabbrica), \
+             patch.object(gen, '_register_stream_windows', return_value={}):
+            gen._create_streams(stream_data)
+        return creati
+
+    def _record_diagnostici(self, caplog):
+        from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
+        return [r for r in caplog.records if r.name == DIAGNOSTIC_LOGGER_NAME]
+
+    # --- _create_streams -----------------------------------------------------
+
+    def test_create_streams_lascia_su_stdout_solo_l_intestazione(
+            self, gen, capsys):
+        """`Creazione di N stream...` e' interfaccia e resta; la riga per
+        stream no. Il conteggio basta a chi guarda lo schermo: la conferma
+        per stream, coi grani veri invece di `grains=lazy`, la stampa la CLI
+        a render finito (#250)."""
+        self._crea(gen, self._stream_data('s1', 's2'))
+
+        assert capsys.readouterr().out.splitlines() == [
+            'Creazione di 2 stream...']
+
+    def test_create_streams_manda_un_record_per_stream(self, gen, caplog):
+        """Cambia il canale, non l'informazione: un record DEBUG per stream,
+        con l'id e lo stream stesso come argomenti."""
+        import logging
+        from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
+
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            creati = self._crea(gen, self._stream_data('s1', 's2'))
+
+        records = self._record_diagnostici(caplog)
+        assert [r.levelno for r in records] == [logging.DEBUG] * 2
+        assert [r.args for r in records] == [('s1', creati[0]),
+                                             ('s2', creati[1])]
+        assert [r.getMessage() for r in records] == [
+            "Stream 's1' creato: Stream(s1)",
+            "Stream 's2' creato: Stream(s2)",
+        ]
+
+    def test_il_repr_dello_stream_si_calcola_solo_se_qualcuno_ascolta(
+            self, gen, caplog):
+        """Formattazione pigra: con la diagnostica muta il repr non si chiede.
+
+        E' la ragione per cui gli argomenti viaggiano a parte (`%s`) invece di
+        entrare in una f-string: una riga per stream, su quaranta stream, deve
+        costare zero finche' nessuno la legge. Con la `print()` il repr si
+        costruiva comunque, per ogni stream e a ogni render.
+        """
+        import logging
+        from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
+
+        with caplog.at_level(logging.WARNING, logger=DIAGNOSTIC_LOGGER_NAME):
+            creati = self._crea(gen, self._stream_data('s1'))
+
+        creati[0].__str__.assert_not_called()
+        creati[0].__repr__.assert_not_called()
+
+    # --- generate_score_files_per_stream -------------------------------------
+
+    def _con_cache_reale(self, gen, tmp_path):
+        """Due stream, `s1` gia' in manifest (clean) e `s2` no (DIRTY).
+
+        Il cache manager e' quello vero, non un MagicMock: le righe di
+        protocollo le stampa lui, ed e' accanto a quelle che la riga
+        diagnostica viveva.
+        """
+        from pge.rendering.stream_cache_manager import StreamCacheManager
+
+        cm = StreamCacheManager(str(tmp_path / 'manifest.json'))
+        gen.streams = [make_mock_stream_for_generator(stream_id=sid)
+                       for sid in ('s1', 's2')]
+        gen.stream_data_map = {sid: {'stream_id': sid, 'onset': 0.0}
+                               for sid in ('s1', 's2')}
+        cm.save({'s1': cm.compute_fingerprint(gen.stream_data_map['s1'])})
+        return cm
+
+    def test_per_stream_con_cache_su_stdout_resta_il_protocollo(
+            self, gen, tmp_path, capsys):
+        """Su stdout le righe del cache manager, e solo quelle, intatte."""
+        cm = self._con_cache_reale(gen, tmp_path)
+
+        gen.generate_score_files_per_stream(
+            output_dir=str(tmp_path), cache_manager=cm)
+
+        assert capsys.readouterr().out.splitlines() == [
+            '[CACHE] s1: clean',
+            '[CACHE] s2: DIRTY',
+            '[CACHE] 1/2 stream da ricompilare',
+        ]
+
+    def test_per_stream_con_cache_manda_l_elenco_al_logger(
+            self, gen, tmp_path, caplog):
+        import logging
+        from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
+
+        cm = self._con_cache_reale(gen, tmp_path)
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            gen.generate_score_files_per_stream(
+                output_dir=str(tmp_path), cache_manager=cm)
+
+        records = self._record_diagnostici(caplog)
+        assert [r.args for r in records] == [(['s2'],)]
+        assert records[0].levelno == logging.DEBUG
+
+
+# =============================================================================
 # TEST samples_dir (Fase 2 refactor library/CLI)
 # =============================================================================
 

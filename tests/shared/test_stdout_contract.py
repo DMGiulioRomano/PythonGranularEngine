@@ -2,7 +2,8 @@
 # tests/shared/test_stdout_contract.py
 # =============================================================================
 r"""
-Il contratto di stdout, in forma eseguibile (issue #178, scaglione #187).
+Il contratto di stdout, in forma eseguibile (issue #178, scaglioni #187 e
+#188).
 
 PGE ha due canali diagnostici, e la #178 li ha separati per *destinatario*:
 
@@ -12,8 +13,9 @@ PGE ha due canali diagnostici, e la #178 li ha separati per *destinatario*:
   l'editor deriva `stream-start`/`stream-done`) e i path del blocco
   riassuntivo;
 - **diagnostica** — righe che nessuno parsa e nessuno legge come interfaccia.
-  Vanno al logger. Sono le registrazioni dinamiche di strategy: operazione da
-  sviluppatore che in una pipeline di rendering normale non compare mai.
+  Vanno al logger. Erano le registrazioni dinamiche di strategy (#187) e le
+  due righe di contabilita' del `Generator` (#188): dopo i due scaglioni
+  nessuna `print()` e' piu' diagnostica, e la sezione 4 lo pretende.
 
 Questa suite esiste perche' la classificazione era prosa, e la prosa non si
 accorge di essere stata contraddetta. Le due meta' falliscono in direzioni
@@ -323,11 +325,18 @@ def test_le_strategie_non_stampano(modulo):
 # questo e il censimento.
 #
 # La conclusione non cambia, e la ragione e' che i due non fanno la stessa
-# cosa: il censimento **censisce e non vieta**. `DIAGNOSTICA` e' una categoria
-# legale, quindi il rimedio che lo zittisce e' una riga in `CLASSIFICAZIONE`,
-# non la rimozione della `print()` — misurato: dichiarata quella voce, resta
-# rosso questo test e nient'altro. A **vietare** la riga sul settimo entry
-# point c'e' dunque ancora solo questa guardia. E' la stessa distinzione che
+# cosa: il censimento **censisce e non vieta**. Fino alla #188 `DIAGNOSTICA`
+# era una categoria legale, quindi il rimedio che lo zittiva era una riga in
+# `CLASSIFICAZIONE`, non la rimozione della `print()` — misurato: dichiarata
+# quella voce, restava rosso questo test e nient'altro.
+#
+# La #188 ha svuotato quella categoria e `test_nessuna_print_e_diagnostica` la
+# tiene vuota, quindi il conto e' cambiato — la conclusione no. Rimisurato
+# sulla `print()` rimessa in `register_window_strategy`: dichiarata
+# `DIAGNOSTICA` fa cadere questo test e quello; dichiarata `INTERFACCIA`, che
+# resta legale, questo e nient'altro. A **vietare** la riga sul settimo entry
+# point, in qualunque categoria la si metta, c'e' dunque ancora solo questa
+# guardia. E' la stessa distinzione che
 # `docs/explanation/strategy-registry.md` fa, nella sezione «Il `print()`»,
 # per `StrategyRegistry.register` e per `DistributionFactory.register`.
 #
@@ -704,7 +713,9 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
 #
 #   PROTOCOLLO   il parser di PGE-ui la legge. Resta su stdout, con quella
 #                forma esatta. Cambiarla e' superficie pubblica.
-#   DIAGNOSTICA  la legge chi sta estendendo il motore. Puo' andare al logger.
+#   DIAGNOSTICA  la legge chi sta estendendo il motore. Va al logger: dalla
+#                #188 nessuna `print()` ci sta piu', e
+#                `test_nessuna_print_e_diagnostica` la tiene vuota.
 #   INTERFACCIA  la legge a schermo chi ha lanciato il render. Resta su
 #                stdout, ma non e' protocollo: nessuno la parsa.
 #
@@ -805,12 +816,10 @@ CLASSIFICAZIONE = {
     ('cli.py', None):
         INTERFACCIA,
     # --- engine/generator.py ---
-    ('engine/generator.py', "  → Stream '{}': {}"):
-        DIAGNOSTICA,
+    # Le due righe DIAGNOSTICA di questo modulo (`  → Stream '{}': {}` e
+    # `[CACHE] Stream da scrivere: {}`) sono andate al logger con la #188.
     ('engine/generator.py', 'Creazione di {} stream...'):
         INTERFACCIA,
-    ('engine/generator.py', '[CACHE] Stream da scrivere: {}'):
-        DIAGNOSTICA,
     ('engine/generator.py', "[SEED] Nessun seed nello YAML: seed di sessione {}. Per riprodurre questo run aggiungi 'seed: {}' allo YAML."):
         INTERFACCIA,
     ('engine/generator.py', "⚠️  Warning: impossibile valutare '{}': {}"):
@@ -987,6 +996,33 @@ def test_le_righe_di_protocollo_sono_quelle_che_il_parser_legge():
             "delle due forme che PGE-ui parsa. Se non la legge nessuno, e' "
             "interfaccia o diagnostica."
         )
+
+
+def test_nessuna_print_e_diagnostica():
+    """Dalla #188 la categoria DIAGNOSTICA, per una `print()`, e' vuota.
+
+    Le issue di esecuzione della #178 l'hanno svuotata in due scaglioni: la
+    #187 le registrazioni di strategy, la #188 le due righe del `Generator`.
+    Da qui la categoria cambia natura. Finche' conteneva righe era un elenco
+    di lavoro da fare; vuota, una `print()` classificata diagnostica e' una
+    contraddizione — dichiara di non parlare a nessuno e intanto scrive sul
+    canale che PGE-ui parsa. Il suo posto e' `get_diagnostic_logger()`.
+
+    E' anche la meta' che mancava al censimento, che la sezione 2a descrive
+    come una guardia che **censisce e non vieta**: senza questo test una
+    `print()` di diagnostica nuova si metteva a tacere con una riga in
+    `CLASSIFICAZIONE`, cioe' dichiarandola tale. Adesso quella dichiarazione
+    e' essa stessa il rosso.
+    """
+    diagnostiche = [f"{modulo}: {forma!r}"
+                    for (modulo, forma), categoria in _classificazione_ordinata()
+                    if categoria == DIAGNOSTICA]
+
+    assert not diagnostiche, (
+        "print() classificate diagnostica: la diagnostica va a "
+        "`get_diagnostic_logger().debug(...)`, non su stdout (issue #188).\n  "
+        + "\n  ".join(diagnostiche)
+    )
 
 
 # =============================================================================

@@ -69,11 +69,15 @@ _NOT_LIBRARY = {'cli.py'}
 # prefisso e' identico a quello delle righe vive.
 #
 # L'elenco e' verificato, non trascritto: `test_le_esclusioni_sono_ancora_vere`
-# chiede che ognuna esista ancora e che ogni sua chiamata in `src/pge/` stia
-# dentro una funzione a sua volta esclusa -- il giorno che una diventa
-# raggiungibile l'esclusione e' sbagliata e il test lo dice.
+# chiede che ognuna si guadagni ancora il posto e che ogni sua chiamata in
+# `src/pge/` stia dentro una funzione a sua volta esclusa -- il giorno che una
+# diventa raggiungibile l'esclusione e' sbagliata e il test lo dice.
 _UNREACHABLE = {
-    # Generator.generate_score_files_per_stream: nessun chiamante in src/pge/
+    # Generator.generate_score_files_per_stream: nessun chiamante in src/pge/.
+    # Dalla #188 non stampa piu' -- la sua sola riga era diagnostica ed e'
+    # andata al logger -- ma resta: e' lei l'anello che rende irraggiungibile
+    # la successiva, e toglierla renderebbe raggiungibile, per questo elenco,
+    # un metodo che nessun render chiama.
     ('generator.py', 'generate_score_files_per_stream'),
     # StreamCacheManager.get_dirty_stream_dicts: chiamata solo dalla
     # precedente, quindi irraggiungibile per la stessa ragione.
@@ -370,21 +374,36 @@ class TestCensimento:
     def test_le_esclusioni_sono_ancora_vere(self):
         """`_UNREACHABLE` e' verificato, non trascritto.
 
-        Ogni esclusione deve (a) esistere ancora -- altrimenti descrive un
-        print che non c'e' piu' e resta li' a nascondere il prossimo -- e
-        (b) restare irraggiungibile, cioe' ogni sua chiamata in `src/pge/`
-        deve stare dentro una funzione a sua volta esclusa. Il giorno che una
-        diventa raggiungibile, l'esclusione e' sbagliata e va tolta.
+        Ogni esclusione deve (a) guadagnarsi ancora il posto -- altrimenti
+        descrive un print che non c'e' piu' e resta li' a nascondere il
+        prossimo -- e (b) restare irraggiungibile, cioe' ogni sua chiamata in
+        `src/pge/` deve stare dentro una funzione a sua volta esclusa. Il
+        giorno che una diventa raggiungibile, l'esclusione e' sbagliata e va
+        tolta.
+
+        Il posto se lo guadagna in due modi, e fino alla #188 ne serviva uno
+        solo: **stampa**, oppure **chiama un'esclusione che stampa**. Il
+        secondo e' l'anello della catena che (b) percorre.
+        `generate_score_files_per_stream` ha perso la sua `print()` -- era
+        diagnostica, ed e' andata al logger -- ma resta l'unica chiamante di
+        `get_dirty_stream_dicts`, che stampa ancora il protocollo: pretendere
+        che stampasse avrebbe chiesto di toglierla, e (b) avrebbe allora
+        dichiarato raggiungibile il cache manager. Una voce che non fa
+        nessuna delle due cose resta invece rossa, come prima.
         """
         vivi = {(mod, func)
                 for mod, func, _pref, _src in _library_prints(
                     skip_unreachable=False)}
         esclusi = {func for _mod, func in _UNREACHABLE}
+        stampano = {func for mod, func in _UNREACHABLE if (mod, func) in vivi}
         siti = _library_call_sites()
         for mod, func in sorted(_UNREACHABLE):
-            assert (mod, func) in vivi, (
+            chiamati = {chiamato for m, chiamante, chiamato in siti
+                        if m == mod and chiamante == func}
+            assert (mod, func) in vivi or chiamati & stampano, (
                 f"_UNREACHABLE elenca {mod}:{func}(), ma li' non c'e' piu' "
-                f"nessun print(): togli la voce")
+                f"nessun print() e non chiama nessuna esclusione che ne abbia "
+                f"uno: togli la voce")
             fuori = [(m, chiamante) for m, chiamante, chiamato in siti
                      if chiamato == func and chiamante not in esclusi]
             assert not fuori, (
@@ -482,8 +501,34 @@ class TestStdoutReale:
             lambda: api.load_generator(probe['yml'],
                                        samples_dir=probe['samples']))
         blob = '\n'.join(lines)
-        for atteso in ('[SEED]', '🔇', 'Creazione di', '→ Stream'):
+        for atteso in ('[SEED]', '🔇', 'Creazione di'):
             assert atteso in blob, f"manca la riga {atteso!r}: {lines}"
+
+    def test_la_riga_per_stream_va_al_logger(self, probe, caplog):
+        """`  → Stream '<id>': <repr>` era diagnostica, e dalla #188 non e'
+        piu' su stdout: chi incorpora la libreria la trova sul logger
+        `pge.diagnostics`, una per stream costruito, se lo ascolta.
+
+        Il censimento da solo non lo direbbe: una riga tolta dall'elenco e
+        rimasta su stdout la fa rossa la direzione runtime, ma una riga
+        sparita e basta — anche dal logger — no. Qui si guardano i due capi.
+        """
+        import logging
+        from pge import api
+        from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
+
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            _gen, lines = _capture(
+                lambda: api.load_generator(probe['yml'],
+                                           samples_dir=probe['samples']))
+
+        assert not [ln for ln in lines if 'Stream(' in ln], (
+            f"il repr degli stream e' ancora su stdout: {lines}")
+        per_stream = [r for r in caplog.records
+                      if r.name == DIAGNOSTIC_LOGGER_NAME
+                      and r.funcName == '_create_streams']
+        # s2 e' muted: non viene costruito, quindi non ha la sua riga.
+        assert [r.args[0] for r in per_stream] == ['s1'], per_stream
 
     def test_render_stampa_lo_stato_della_cache(self, probe):
         """`[CACHE] <id>: DIRTY|clean`, una riga per stream, dal renderer."""
