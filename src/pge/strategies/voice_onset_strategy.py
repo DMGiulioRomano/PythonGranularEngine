@@ -16,9 +16,10 @@ Design:
 - LinearOnsetStrategy: voce i = i × step
 - GeometricOnsetStrategy: spaziatura esponenziale step * base^(i-1)
 - StochasticOnsetStrategy: offset fisso per voce (stabile entro un run), in [0, max_offset]
-- VOICE_ONSET_STRATEGIES: registry globale {nome: classe}
-- register_voice_onset_strategy(): estensibilità dinamica
-- VoiceOnsetStrategyFactory: factory con create() statico
+- VOICE_ONSET_STRATEGIES: registry globale {nome: classe}, `StrategyRegistry`
+  del dominio 'voice_onset' (issue #185, forma decisa in #177)
+- register_voice_onset_strategy(): estensibilità dinamica, delega al registry
+- VoiceOnsetStrategyFactory: factory con create() statico, delega al registry
 
 Coerente con: voice_pitch_strategy.py, voice_pan_strategy.py
 """
@@ -28,8 +29,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Type
 
 from pge.parameters.parameter import resolve_param, StrategyParam
-from pge.shared.exceptions import StrategyNotFoundError
 from pge.shared.seeding import voice_rng
+from pge.strategies.registry import StrategyRegistry
 
 
 # =============================================================================
@@ -146,22 +147,25 @@ class StochasticOnsetStrategy(VoiceOnsetStrategy):
 # REGISTRY
 # =============================================================================
 
-VOICE_ONSET_STRATEGIES: Dict[str, Type[VoiceOnsetStrategy]] = {
+VOICE_ONSET_STRATEGIES = StrategyRegistry('voice_onset', VoiceOnsetStrategy, {
     'linear':      LinearOnsetStrategy,
     'geometric':   GeometricOnsetStrategy,
     'stochastic':  StochasticOnsetStrategy,
-}
+})
 
 
-def register_voice_onset_strategy(name: str, cls: Type[VoiceOnsetStrategy]) -> None:
+def register_voice_onset_strategy(
+    name: str,
+    strategy_class: Type[VoiceOnsetStrategy]
+) -> None:
     """
     Registra dinamicamente una nuova VoiceOnsetStrategy.
 
     Args:
         name: chiave stringa per il registry
-        cls: classe che implementa VoiceOnsetStrategy
+        strategy_class: classe che implementa VoiceOnsetStrategy
     """
-    VOICE_ONSET_STRATEGIES[name] = cls
+    VOICE_ONSET_STRATEGIES.register(name, strategy_class)
 
 
 # =============================================================================
@@ -191,12 +195,7 @@ class VoiceOnsetStrategyFactory:
             Istanza di VoiceOnsetStrategy
 
         Raises:
-            KeyError: se il nome non è nel registry
+            StrategyNotFoundError: se `name` non è nel registry, con
+                        l'elenco delle strategy disponibili
         """
-        if name not in VOICE_ONSET_STRATEGIES:
-            raise StrategyNotFoundError(
-                strategy_kind="voice_onset",
-                name=name,
-                available=list(VOICE_ONSET_STRATEGIES.keys()),
-            )
-        return VOICE_ONSET_STRATEGIES[name](**kwargs)
+        return VOICE_ONSET_STRATEGIES.create(name, **kwargs)

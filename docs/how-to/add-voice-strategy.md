@@ -38,12 +38,12 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
    inesistente. La mappa vive a livello di modulo, che e' dove i test la
    cercano e dove la parita' di PGE-ls la importa per nome.
 
-   Per **pan** la mappa e' un `StrategyRegistry` (issue #184, forma decisa in
-   #177): il valore si scrive uguale, ma la registrazione dinamica e la
-   costruzione passano per i metodi del registry invece che per codice
-   ripetuto nel modulo. Gli altri tre assi sono ancora sulla forma vecchia —
-   un `dict` di modulo — e ci restano fino a #185; da fuori le due forme si
-   usano allo stesso modo.
+   Le mappe dei quattro assi sono `StrategyRegistry` (issue #184 per pan,
+   #185 per pitch, onset e pointer; forma decisa in #177): il valore si scrive
+   uguale, ma la registrazione dinamica e la costruzione passano per i metodi
+   del registry invece che per codice ripetuto in ogni modulo. La firma e'
+   la stessa su tutti e quattro — `register_voice_<axis>_strategy(name,
+   strategy_class)` — e la mappa resta un `dict` a tutti gli effetti.
 4. I kwarg della strategy non chiedono wiring. `Stream._build_voice_strategy`
    (`src/pge/core/stream.py`) e' il passo unico delle quattro dimensioni
    (issue #186): passa ogni kwarg per `_parse_strategy_kwarg`, che rende

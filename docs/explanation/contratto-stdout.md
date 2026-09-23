@@ -8,9 +8,13 @@ sources:
   - src/pge/cli.py
   - src/pge/api.py
   - src/pge/engine/generator.py
+  - src/pge/strategies/registry.py
   - src/pge/strategies/strategy_registry.py
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/voice_pan_strategy.py
+  - src/pge/strategies/voice_pitch_strategy.py
+  - src/pge/strategies/voice_onset_strategy.py
+  - src/pge/strategies/voice_pointer_strategy.py
   - src/pge/controllers/window_selection_strategy.py
   - src/pge/rendering/numpy_audio_renderer.py
   - src/pge/rendering/csound_renderer.py
@@ -20,7 +24,7 @@ sources:
   - src/pge/rendering/score_visualizer.py
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
-last_synced_commit: 12a8649
+last_synced_commit: 8bffbbb
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -228,6 +232,15 @@ riga con la spunta verde; ora non stampa finche' l'host non accende il logging.
 E' il costo accettato dalla #187: la registrazione dinamica e' un'operazione da
 sviluppatore che in una pipeline di rendering normale non compare mai, e chi la
 sta facendo e' esattamente la persona in grado di alzare un livello di log.
+
+Dalla #185 quella riga ha **un solo chiamante**, `StrategyRegistry.register`, e
+il dominio che nomina e' il `kind` del registry invece di un letterale scritto
+accanto alla chiamata: e' la ragione per cui i sorgenti qui sopra includono ora
+anche `registry.py` e i tre moduli di voce (pitch, onset, pointer), che prima
+registravano assegnando nel dizionario e non emettevano niente. La riga non
+pretende un `__name__`: se il registrabile non ne ha, ne nomina il tipo — un
+rifiuto dentro una diagnostica sarebbe superficie pubblica scritta nel posto
+sbagliato.
 
 **Non c'e' una `configure_diagnostic_logger()`.** Sarebbe stata simmetrica alle
 due che esistono (clip ed engine), ma quelle configurano dei *file di

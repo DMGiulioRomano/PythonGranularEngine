@@ -5,7 +5,8 @@ status: stable
 tags: [strategy, variation, extension]
 sources:
   - src/pge/strategies/variation_registry.py
-last_synced_commit: 8c896d8
+  - src/pge/strategies/registry.py
+last_synced_commit: a849234
 entry_for: [add-variation-strategy]
 ---
 
@@ -24,7 +25,15 @@ Aggiungere un nuovo modo di variare i parametri grain nel tempo (es. perlin nois
 ## Passi
 
 1. Crea la classe in `src/pge/strategies/<nome>_variation.py` ed eredita `VariationStrategy`
-2. Registra in `src/pge/strategies/variation_registry.py` (`VariationFactory.REGISTRY`)
+2. Registra nella mappa di modulo di `src/pge/strategies/variation_registry.py`
+   — `VARIATION_STRATEGIES`, che dalla #185 è uno `StrategyRegistry` del
+   dominio `variation` (forma decisa in #177). A runtime si passa invece per
+   `register_variation_strategy(name, strategy_class)`, che è l'API di
+   estensione dinamica e annuncia la registrazione al logger `pge.diagnostics`.
+
+   La factory **non** ha un attributo `REGISTRY`, e non l'ha mai avuto: questo
+   passo diceva `VariationFactory.REGISTRY` e mandava a un nome inesistente.
+   La mappa vive a livello di modulo, che è dove i test la cercano.
 3. Usa in YAML: `variation_mode: 'nome_strategy'`
 4. Test determinismo (stesso `stream_id` → stessa sequenza) e invarianti
 
@@ -33,7 +42,7 @@ Aggiungere un nuovo modo di variare i parametri grain nel tempo (es. perlin nois
 | Path | Tipo |
 |------|------|
 | `src/pge/strategies/<nome>_variation.py` | nuovo file |
-| `src/pge/strategies/variation_registry.py` | aggiunta a REGISTRY |
+| `src/pge/strategies/variation_registry.py` | aggiunta a `VARIATION_STRATEGIES` |
 | `tests/strategies/test_<nome>_variation.py` | nuovi test |
 
 ## Test da aggiornare

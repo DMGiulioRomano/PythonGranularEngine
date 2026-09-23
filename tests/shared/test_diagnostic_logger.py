@@ -242,3 +242,37 @@ def test_log_strategy_registration_non_scrive_su_stdout(capsys):
     log_strategy_registration('density', 'fill_factor', _Strategia)
 
     assert capsys.readouterr().out == ""
+
+
+def test_log_strategy_registration_non_pretende_un_oggetto_con_dunder_name(caplog):
+    """La riga diagnostica non e' un rifiuto travestito.
+
+    `strategy_class.__name__` e' un'espressione argomento, quindi valutata
+    avidamente: pigra e' solo la formattazione `%s`. Un registrabile senza
+    `__name__` — una `functools.partial`, un'istanza chiamabile — moriva
+    percio' di `AttributeError` *dentro* la diagnostica, e con la diagnostica
+    spenta ugualmente.
+
+    Non e' un caso di laboratorio: `StrategyRegistry` dichiara che la `base`
+    e' portata e non imposta (`test_register_non_verifica_issubclass`), e
+    dalla #185 i `register_*` di pitch, onset e pointer passano da qui —
+    prima assegnavano nel dizionario senza ispezionare niente. Se la riga
+    pretende un `__name__`, il rifiuto che il registry dichiara di non fare
+    rientra dalla porta di servizio.
+    """
+    import functools
+
+    chiamabile = functools.partial(_Strategia)
+    assert not hasattr(chiamabile, '__name__')
+
+    with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+        log_strategy_registration('voice_pitch', 'pigra', chiamabile)
+
+    messaggi = [r.getMessage() for r in caplog.records
+                if r.name == DIAGNOSTIC_LOGGER_NAME]
+    assert len(messaggi) == 1
+    assert 'voice_pitch' in messaggi[0] and 'pigra' in messaggi[0]
+    assert 'partial' in messaggi[0], (
+        "senza `__name__` la riga deve comunque dire che cosa e' stato "
+        f"registrato: {messaggi[0]!r}"
+    )
