@@ -24,7 +24,8 @@ sources:
   - src/pge/rendering/score_visualizer.py
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
-last_synced_commit: 8bffbbb
+  - tests/engine/test_generator.py
+last_synced_commit: 36aedd7
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -159,37 +160,52 @@ descriptor non separa niente; separa la forma.
 
 ### La classificazione
 
-Sessantaquattro `print()` in `src/pge/`. La tabella completa vive in
+Sessantadue `print()` in `src/pge/` — erano sessantaquattro, e le due che
+mancano sono quelle che la #188 ha portato al logger. La tabella completa vive in
 `CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`), dove e' eseguibile;
 qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
 | `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 36 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
-| `engine/generator.py` | — | `  → Stream '<id>': <repr>`, `[CACHE] Stream da scrivere:` | `[SEED]`, `Creazione di N stream`, `⚡ SOLO MODE`, `🔇 N stream muted`, `⚠️ impossibile valutare` |
+| `engine/generator.py` | — | — (al logger dalla #188) | `[SEED]`, `Creazione di N stream`, `⚡ SOLO MODE`, `🔇 N stream muted`, `⚠️ impossibile valutare` |
 | `rendering/*_renderer.py` (3) | `[CACHE] <id>: <status>` | — | — |
 | `rendering/stream_cache_manager.py` | `[CACHE] <id>: <status>` | — | `[CACHE] N/M stream da ricompilare` |
 | `rendering/score_writer.py` | — | — | 4 (path del `.sco` e riepilogo) |
 | `rendering/score_visualizer.py` | — | — | 7 (avanzamento PDF/PNG, waveform illeggibile) |
 | `shared/logger.py` | — | — | `📝 Clip log file:`, `CLIP:` (su stderr) |
 
-La **diagnostica e' quasi vuota**, ed e' l'esito piu' istruttivo del
-censimento. Dopo che la #187 ha portato al logger le registrazioni di strategy,
-restano due sole righe che parlano della contabilita' interna: il `repr` per
-stream di `_create_streams` e l'elenco `[CACHE] Stream da scrivere:` — che sta
-per giunta nel ramo irraggiungibile. Tutto il resto dello stdout del motore e'
-**interfaccia**: parla del render di chi ha lanciato il comando. Non c'era una
-riserva di rumore da spostare al logger; c'era un canale mal dichiarato.
+La **diagnostica e' vuota**, ed e' l'esito piu' istruttivo del censimento.
+La #178 ne aveva trovate poche: dopo che la #187 aveva portato al logger le
+registrazioni di strategy, restavano due sole righe che parlavano della
+contabilita' interna — il `repr` per stream di `_create_streams` e l'elenco
+`[CACHE] Stream da scrivere:`, che stava per giunta nel ramo irraggiungibile.
+La #188 ha portato al logger anche quelle due. Tutto cio' che resta sullo
+stdout del motore e' **interfaccia** o protocollo: parla del render di chi ha
+lanciato il comando. Non c'era una riserva di rumore da spostare al logger;
+c'era un canale mal dichiarato.
+
+Vuota, la categoria cambia natura: per una `print()` e' una contraddizione —
+dichiara di non parlare a nessuno e intanto scrive sul canale che PGE-ui
+parsa — e `test_nessuna_print_e_diagnostica` la tiene vuota. La categoria
+resta nella tabella per nominare cio' che va al logger, non cio' che puo'
+stare su stdout.
 
 Due voci meritano una nota, perche' sono quelle su cui la classificazione e'
 una scelta e non una lettura:
 
 - `  → Stream '<id>': <repr>` — l'ho classificata diagnostica perche' il `repr`
   espone stato interno (`grains=lazy`), ed e' una riga per stream: su
-  quaranta stream e' un muro. Ma e' anche l'unica conferma visibile che uno
-  stream e' stato costruito, quindi spostarla **cambia cio' che l'utente
-  vede**: e' una decisione di prodotto, non un refactoring, e va presa con
-  l'utente nella issue di esecuzione.
+  quaranta stream e' un muro. Ma spostarla **cambia cio' che l'utente vede**,
+  quindi era una decisione di prodotto da prendere nella issue di esecuzione.
+  La #188 l'ha presa, e la ragione per cui il prezzo e' basso sta in una
+  premessa di questa nota che era gia' scaduta quando e' stata scritta: la
+  riga **non** era l'unica conferma per stream. Dalla #250 la CLI stampa a
+  render finito `  → <id>: N grani (M voci)` — o `grani non generati (cache)`
+  — per ogni stream, col numero vero al posto di `lazy`. A schermo resta
+  quindi `Creazione di N stream...` prima del render e una riga per stream
+  dopo; sparisce il `repr` a costruzione, che ne era il doppione meno
+  informato. Chi lo vuole lo trova su `pge.diagnostics`, a livello DEBUG.
 - `📝 Clip log file: <path>` — questo doc diceva che passa «a ogni render».
   Falso: `get_clip_logger()` e' lazy, e la riga esce al **primo clip**, una
   volta per configurazione. Non e' traffico di ogni rendering; e' l'annuncio
@@ -227,6 +243,17 @@ criterio. Tre condizioni, ognuna sufficiente:
 
 ## Trade-off
 
+**La riga per stream a costruzione non si vede piu' a schermo** (#188). Lo
+stesso costo della voce qui sotto, un giro piu' in la', e accettato per le
+ragioni della nota sopra: la conferma per stream c'e' ancora, a render finito
+e coi grani veri. Verificato sul bridge vero di PGE-ui (`server.py` contro
+questo motore, tre render: tutti DIRTY, tutti clean, uno misto) e poi
+sull'editor in un Chromium headless: gli eventi NDJSON sono identici a quelli
+di prima uno per uno, l'avanzamento per stream e i pallini fanno lo stesso
+percorso, e dal terminale dell'editor spariscono le sole righe
+`  → Stream '<id>': <repr>` — ogni altra riga e' identica, byte per byte, a
+parte il path temporaneo e il tempo trascorso.
+
 **La conferma di registrazione delle strategy e' muta.** Prima stampava una
 riga con la spunta verde; ora non stampa finche' l'host non accende il logging.
 E' il costo accettato dalla #187: la registrazione dinamica e' un'operazione da
@@ -248,19 +275,20 @@ rendering*, cioe' un prodotto del programma; questa avrebbe configurato il
 logging di chi importa `pge`, che non e' affare di `pge`.
 
 **La classificazione e' un test, non una prosa.** `test_stdout_contract.py`
-legge i sorgenti con `ast` e chiede sette cose: che la riga `[CACHE] <id>: ...`
+legge i sorgenti con `ast` e chiede otto cose: che la riga `[CACHE] <id>: ...`
 sia ancora un `print()` flushato nei quattro moduli che la emettono; che quei
 quattro siano **tutti** quelli che la emettono; che il blocco riassuntivo esca
 ancora indentato e col suffisso `__<id>` (e questo lo misura sull'output vero,
 facendo scrivere alla CLI il suo riepilogo — un `print()` letto con `ast` direbbe
 che la riga esiste, solo i byte dicono che esce indentata); che ogni `print()`
-di `src/pge/` abbia una categoria e ogni categoria una `print()`; che nessuna
+di `src/pge/` abbia una categoria e ogni categoria una `print()`; che
+nessuna di quelle categorie sia diagnostica (#188); che nessuna
 riga non-protocollo abbia forma di protocollo; e che nessun **messaggio di
 log** ce l'abbia, perche' stderr non e' un riparo. Le ultime due chiedono
 **entrambe** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova e
 un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
 chiudono nell'editor lo stream in volo, e guardare la sola `[CACHE]` li
-lasciava passare. La settima e' il **confine** delle due precedenti: quanto la
+lasciava passare. L'ottava e' il **confine** delle due precedenti: quanto la
 sagoma sia piu' stretta del parser, e perche' non si chiuda allargandola.
 
 **La tabella dice dove una riga sta, non dove dovrebbe andare.** Spostare
@@ -309,7 +337,11 @@ dice in prima persona, sopra `DIAGNOSTIC_LOGGER_NAME`.
 ## Implicazioni codice
 
 - **Aggiungi una riga diagnostica** → `get_diagnostic_logger().debug(...)`, con
-  formattazione `%s` pigra. Mai `print()`.
+  formattazione `%s` pigra: gli argomenti a parte, non in una f-string, cosi'
+  che con la diagnostica muta non si formatti niente — per la riga per stream
+  di `_create_streams` vuol dire non costruire quaranta `repr`. Mai `print()`:
+  una `print()` classificata `DIAGNOSTICA` e' rossa
+  (`test_nessuna_print_e_diagnostica`).
 - **Aggiungi una riga qualunque** → va classificata in `CLASSIFICAZIONE`
   (`tests/shared/test_stdout_contract.py`), o la suite e' rossa. E' il posto
   dove la #178 ha messo la risposta a «questa riga chi la legge».

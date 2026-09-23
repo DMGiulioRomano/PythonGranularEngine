@@ -64,14 +64,17 @@ Divisione delle policy (chi decide cosa):
   per chi la incorpora (issue #189). Nessuna funzione di `api.py` contiene
   un `print()`; i componenti che orchestra ne contengono, e scrivono su
   stdout mentre lavorano: `Generator` (`[SEED]`, `Creazione di N
-  stream...`, `  → Stream '<id>'`, `🔇 N stream muted`), i renderer
+  stream...`, `🔇 N stream muted`), i renderer
   (`[CACHE] <id>: DIRTY|clean`, solo con `cache_manifest_path`),
   `ScoreWriter` sul ramo Csound (`✓ Score generato`), `ScoreVisualizer` da
   `export_score_pdf` (`Analisi completata`, `Esportazione PDF`, ...) e il
   clip logger alla prima inizializzazione (`📝 Clip log file`). Il
   censimento completo, con chi emette cosa, sta nell'intestazione di
   `api.py`; `tests/test_api_stdout.py` lo verifica su output vero, in
-  entrambe le direzioni.
+  entrambe le direzioni. La riga per stream che `Generator` stampava a
+  costruzione (`  → Stream '<id>': <repr>`) non c'e' piu': era diagnostica,
+  e dalla #188 e' un record DEBUG sul logger `pge.diagnostics`, muto finche'
+  l'host non lo ascolta.
 - **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
   logger passano di là (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
   dall'avviso di migrazione `loop_unit` della #222, che parla proprio quando

@@ -887,6 +887,29 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   ha titolo per attraversarlo. La conferma non e' persa — e' muta finche'
   l'applicazione ospite non alza il livello di log, e allora esce su stderr.
 
+- **Le due righe diagnostiche del `Generator` passano al logger** (issue #188,
+  secondo e ultimo scaglione della #178). `  → Stream '<id>': <repr>`, una per
+  stream a costruzione, e `[CACHE] Stream da scrivere: [...]` del ramo per
+  stream con cache diventano record DEBUG su `pge.diagnostics`; la seconda
+  perde il tag `[CACHE]`, che e' lo spazio di nomi del protocollo e da cui la
+  riga restava fuori solo perche' dopo `Stream` veniva uno spazio invece dei
+  due punti. Gli argomenti viaggiano a parte, quindi con la diagnostica muta
+  il `repr` di ogni stream non si costruisce nemmeno.
+
+  Cosa cambia a schermo: non si vede piu' il `repr` a costruzione. La
+  conferma per stream resta, e piu' informata — dalla #250 la CLI stampa a
+  render finito `  → <id>: N grani (M voci)` al posto di `grains=lazy` — e
+  `Creazione di N stream...` resta dov'era. Protocollo e interfaccia non si
+  muovono di un carattere: `stream_cache_manager.py` non e' toccato, e le sue
+  due `print()` sono appunto una riga di protocollo e una di interfaccia.
+  Verificato sul bridge vero di PGE-ui e sull'editor in un Chromium headless,
+  tre render (tutti DIRTY, tutti clean, misto): stessi eventi NDJSON, stesso
+  avanzamento per stream, stessi pallini.
+
+  Con questo la categoria `DIAGNOSTICA` e' vuota per ogni `print()` di
+  `src/pge/`, e `test_nessuna_print_e_diagnostica` la tiene vuota: una
+  `print()` nuova non si mette piu' a tacere dichiarandola diagnostica.
+
 
 ### Corretto
 

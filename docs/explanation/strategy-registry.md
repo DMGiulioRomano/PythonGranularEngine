@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: f77df48
+last_synced_commit: 36aedd7
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -506,6 +506,13 @@ censimento tace e resta rosso il solo `test_register_logs_instead_of_printing`.
 È esattamente il suo scopo dichiarato — rendere deliberata ogni riga su stdout,
 non proibirla — ma vuol dire che a *chiudere* il buco non arriva: lo rende
 rumoroso, e il rumore si spegne con una riga.
+
+*(Dalla #188 quella riga non può più dire `DIAGNOSTICA`: `engine/generator.py`
+non ne ha più, la categoria è vuota per ogni `print()` e
+`test_nessuna_print_e_diagnostica` la tiene tale. Il conto cambia, la natura
+no: `INTERFACCIA` resta legale, e dichiarata così la stessa `print()` zittisce
+ancora il censimento — rimisurato su `register_window_strategy`, resta rossa la
+sola guardia per funzione.)*
 
 **Il che non salva la prescrizione: la rende più precisa.** La copertura
 comportamentale è *incidentale*. Vale finché almeno una fra pan, density e
