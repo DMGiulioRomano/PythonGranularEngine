@@ -677,10 +677,12 @@ def main():
         print(f"\n Rendering completato in {result.elapsed_seconds:.2f}s{jobs_note}")
 
         # Quanti grani per stream (issue #250). Il numero non puo' tornare nel
-        # `__repr__` di Stream, stampato a costruzione: li' i grani non
-        # esistono ancora (generazione lazy, #117) e leggerli li' genererebbe
-        # tutto in fase di stampa. Qui il render li ha gia' materializzati e
-        # api.render li ha contati; alla CLI resta solo la prosa.
+        # `__repr__` di Stream, che `_create_streams` passa a costruzione al
+        # diagnostic logger (#188): li' i grani non esistono ancora
+        # (generazione lazy, #117) e leggerli li' genererebbe tutto appena un
+        # handler formatta il record. Qui il render li ha gia' materializzati
+        # e api.render li ha contati; alla CLI resta solo la prosa. Dalla #188
+        # e' anche l'unica riga per stream che si vede a schermo.
         for stream_id, count in result.grain_counts.items():
             if count is None:
                 print(f"  → {stream_id}: grani non generati (cache)")

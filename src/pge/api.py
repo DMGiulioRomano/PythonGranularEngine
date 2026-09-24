@@ -78,10 +78,10 @@
 # sotto attraversano quel parser. A tenerle fuori dagli eventi e' la loro
 # forma, non il canale.
 #
-# Quando le issue di esecuzione porteranno qualcuna di queste righe al logger,
-# il censimento qui sopra va aggiornato: il test lo verifica in entrambe le
-# direzioni (nessuna riga fuori elenco, nessuna voce in elenco che nessuno
-# emette piu').
+# Se una di queste righe passa al logger -- come la #188 ha fatto con la riga
+# per stream -- il censimento qui sopra va aggiornato: il test lo verifica in
+# entrambe le direzioni (nessuna riga fuori elenco, nessuna voce in elenco che
+# nessuno emette piu').
 #
 # --- e stderr, che il censimento qui sopra non copre ---
 #

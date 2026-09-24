@@ -615,8 +615,10 @@ class TestLazyGrainGeneration:
     def test_repr_does_not_trigger_generation(self, stream_factory):
         """__repr__ NON deve materializzare i grani.
 
-        _create_streams stampa {stream} per ogni stream: se __repr__ leggesse la
-        property .voices, rigenererebbe tutti gli stream annullando il risparmio.
+        _create_streams passa {stream} al diagnostic logger per ogni stream
+        (#188): appena un handler formatta il record, un __repr__ che leggesse
+        la property .voices rigenererebbe tutti gli stream annullando il
+        risparmio.
         """
         s = stream_factory(duration=0.5, inter_onset=0.1)
 

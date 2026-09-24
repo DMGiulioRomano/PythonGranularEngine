@@ -916,7 +916,8 @@ def test_ogni_print_di_src_pge_e_classificato():
     dentro l'interfaccia di un altro repository, e niente glielo dice. Una
     voce che resta in tabella dopo che la riga se n'e' andata al logger
     trasforma la classificazione in un ricordo — ed e' esattamente cio' che
-    succedera' quando le issue di esecuzione cominceranno a spostarle.
+    e' successo quando le issue di esecuzione (#187, #188) hanno cominciato
+    a spostarle.
     """
     trovati = _print_censiti()
     dichiarati = set(CLASSIFICAZIONE)
@@ -925,8 +926,9 @@ def test_ogni_print_di_src_pge_e_classificato():
         "la classificazione di stdout non e' piu' allineata ai sorgenti.\n"
         f"  da classificare: {sorted(trovati - dichiarati)}\n"
         f"  non piu' emesse: {sorted(dichiarati - trovati)}\n"
-        "Ogni print() di src/pge/ va in CLASSIFICAZIONE come protocollo, "
-        "diagnostica o interfaccia: vedi issue #178 e "
+        "Ogni print() di src/pge/ va in CLASSIFICAZIONE come protocollo o "
+        "interfaccia; se e' diagnostica non e' una print() ma un "
+        "`get_diagnostic_logger().debug(...)` (#188): vedi issue #178 e "
         "docs/explanation/contratto-stdout.md."
     )
 
@@ -994,7 +996,7 @@ def test_le_righe_di_protocollo_sono_quelle_che_il_parser_legge():
         assert _ha_forma_di_protocollo(forma), (
             f"{modulo}: `{forma}` e' marcata protocollo ma non ha nessuna "
             "delle due forme che PGE-ui parsa. Se non la legge nessuno, e' "
-            "interfaccia o diagnostica."
+            "interfaccia, oppure diagnostica e allora va al logger (#188)."
         )
 
 

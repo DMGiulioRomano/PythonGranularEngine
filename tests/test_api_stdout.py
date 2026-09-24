@@ -17,9 +17,9 @@ Il censimento chiude in due direzioni, e servono entrambe:
   una di quelle che il censimento in `api.py` elenca. Un `print()` nuovo che
   arriva fino all'API senza passare dalla dichiarazione e' rosso.
 - **statico** -- ogni prefisso elencato deve esistere ancora come `print()`
-  dentro `src/pge/`. Quando #187/#188 porteranno quelle righe al logger,
-  l'elenco diventera' stale: qui diventa rosso, invece di restare a
-  descrivere un comportamento che non c'e' piu'.
+  dentro `src/pge/`. Quando una riga passa al logger -- la #188 l'ha fatto
+  con `  → Stream` -- l'elenco diventa stale: qui diventa rosso, invece di
+  restare a descrivere un comportamento che non c'e' piu'.
 
 La prima direzione da sola lascerebbe crescere l'elenco all'infinito; la
 seconda da sola non vedrebbe mai una riga nuova.
@@ -425,9 +425,9 @@ class TestCensimento:
         da tutti e tre i renderer, verde -- cioe' cieco proprio allo
         scenario qui sotto).
 
-        Rosso previsto quando #187/#188 porteranno una di queste righe al
-        logger. Non e' un falso allarme: e' la dichiarazione che va
-        aggiornata insieme al comportamento.
+        Rosso previsto quando una di queste righe passa al logger (con la
+        #188 e' successo a `  → Stream`). Non e' un falso allarme: e' la
+        dichiarazione che va aggiornata insieme al comportamento.
         """
         prints = _library_prints()
         for token in _census_tokens():

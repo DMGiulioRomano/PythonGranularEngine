@@ -4,7 +4,7 @@ type: how-to
 status: stable
 tags: [api, library, install, render]
 sources: [src/pge/api.py, pyproject.toml]
-last_synced_commit: 8c50e18
+last_synced_commit: 36aedd7
 entry_for: [renderizzare da Python, integrare PGE in un altro progetto]
 ---
 
@@ -50,14 +50,18 @@ passare dalla CLI né monkey-patchare i globali.
 
 3. Stdout: **la libreria non è silenziosa.** `pge.api` non stampa di suo,
    ma i componenti che orchestra sì, e chi incorpora se li ritrova sul
-   proprio stdout: `Generator` annuncia il seed di sessione (`[SEED] ...`),
-   quanti stream costruisce e uno per riga; i renderer scrivono `[CACHE]
+   proprio stdout: `Generator` annuncia il seed di sessione (`[SEED] ...`)
+   e quanti stream costruisce; i renderer scrivono `[CACHE]
    <id>: DIRTY|clean` quando c'è un `cache_manifest_path`;
    `export_score_pdf` fa parlare `ScoreVisualizer`. Il censimento completo,
    riga per riga e con chi la emette, sta nell'intestazione di
    `src/pge/api.py`. Fanno parte del contratto stdout della CLI (la riga
    `[CACHE]` la parsa PGE-ui per l'avanzamento per stream), quindi non
-   spariranno da sole.
+   spariranno da sole. La riga per stream costruito (`  → Stream '<id>':
+   <repr>`) invece non è più su stdout: dalla #188 è un record DEBUG sul
+   logger `pge.diagnostics`, muto finché l'applicazione non lo ascolta
+   (per esempio con `logging.basicConfig(level=logging.DEBUG)`). Il numero
+   di grani per stream è in `RenderResult.grain_counts`.
 
 4. Stderr: **`redirect_stdout` da solo non è silenzio.** Il censimento in
    `api.py` è di stdout; gli avvisi del clip logger passano da stderr, da

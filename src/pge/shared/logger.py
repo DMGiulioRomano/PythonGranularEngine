@@ -203,9 +203,15 @@ def get_engine_log_path() -> str | None:
 # Terzo logger, e con un compito diverso dagli altri due. Clip ed engine
 # raccontano cosa e' successo a un rendering; questo raccoglie le righe che la
 # classificazione della #178 ha marcato come *diagnostica*: nessuno le parsa,
-# nessuno le legge come interfaccia. Oggi sono le registrazioni dinamiche di
-# strategy, un'operazione da sviluppatore che non compare in una pipeline di
-# rendering normale.
+# nessuno le legge come interfaccia. Sono le registrazioni dinamiche di
+# strategy (#187), un'operazione da sviluppatore che non compare in una
+# pipeline di rendering normale, e dalla #188 le due righe di contabilita' del
+# `Generator` — una per stream costruito, e l'elenco degli stream da scrivere
+# del ramo per stream con cache. La prima invece compare in *ogni* rendering,
+# ed e' per lei che il punto 2 qui sotto conta davvero: con gli argomenti
+# passati a parte (`%s`, non una f-string) e il record che sotto WARNING non si
+# costruisce, su quaranta stream sono quaranta `repr` che nessuno calcola
+# finche' nessuno ascolta.
 #
 # Il motivo per cui non possono restare `print()` non e' l'ordine: stdout e' un
 # canale di *protocollo*. `render_pipeline.py` di PGE-ui legge le righe di
