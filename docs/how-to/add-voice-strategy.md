@@ -7,7 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
   - src/pge/core/stream.py
-last_synced_commit: dc97880
+last_synced_commit: 78dfaac
 entry_for: [add-voice-strategy]
 ---
 
@@ -50,14 +50,22 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
    envelope quelli che ne hanno la forma, e inietta `stream_id`/`seed` se la
    strategy si chiama `stochastic`.
 
-   `stream.py` va toccato solo in due casi, entrambi nel `take_block_keys`
-   della dimensione in `Stream._VOICE_AXES`: un kwarg con la forma di un
-   envelope che envelope non e' (come `progression` di `chord_progression`),
-   da sottrarre alla conversione; oppure una chiave di blocco, config della
-   dimensione e non della strategy (come `unit` del pitch o `normalized` del
-   pointer). Pitch e pointer un `take_block_keys` ce l'hanno gia'
-   (`_take_voice_pitch_keys`, `_take_voice_pointer_keys`); onset e pan no, e la
-   riga di tabella e' dove aggiungerlo.
+   `stream.py` va toccato in tre casi. I primi due stanno nel
+   `take_block_keys` della dimensione in `Stream._VOICE_AXES`: un kwarg con la
+   forma di un envelope che envelope non e' (come `progression` di
+   `chord_progression`), da sottrarre alla conversione; oppure una chiave di
+   blocco, config della dimensione e non della strategy (come `unit` del pitch
+   o `normalized` del pointer). Pitch e pointer un `take_block_keys` ce l'hanno
+   gia' (`_take_voice_pitch_keys`, `_take_voice_pointer_keys`); onset e pan
+   no, e la riga di tabella e' dove aggiungerlo.
+
+   Il terzo e' una strategy stocastica nuova. L'iniezione di `stream_id`
+   (che vale `rng_id`, #169) e `seed` in `_build_voice_strategy` e' decisa dal
+   nome, `name == 'stochastic'`, e quel nome e' gia' preso su tutti e quattro
+   gli assi: una seconda stocastica ne ha per forza un altro. Senza toccare
+   quella condizione il costruttore non riceve `stream_id` — un `TypeError`
+   se l'argomento e' obbligatorio, come nelle quattro esistenti, e se e'
+   opzionale la perdita silenziosa della riproducibilita' e di `rng_group`.
 
    Il passo scritto qui prima nominava `_build_<axis>_strategy`: quella
    funzione non e' mai esistita.
@@ -69,7 +77,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 |------|------|
 | `src/pge/strategies/voice_<axis>_<nome>.py` | nuovo file |
 | `src/pge/strategies/voice_<axis>_strategy.py` | aggiunta a `VOICE_<AXIS>_STRATEGIES` |
-| `src/pge/core/stream.py` | solo kwarg strutturali o chiavi di blocco (`take_block_keys`) |
+| `src/pge/core/stream.py` | solo kwarg strutturali o chiavi di blocco (`take_block_keys`), o una stocastica con un nome diverso da `stochastic` |
 | `tests/strategies/test_voice_<axis>_strategy.py` | nuovi test |
 
 ## Test da aggiornare

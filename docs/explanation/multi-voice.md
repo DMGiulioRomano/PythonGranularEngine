@@ -6,7 +6,7 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
-last_synced_commit: 189e7b1
+last_synced_commit: 78dfaac
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -594,9 +594,9 @@ _VOICE_AXES = (
 `_init_voice_manager` cicla sulla tabella e, per ogni dimensione presente,
 chiama `_build_voice_strategy` — il passo comune: copia del sotto-blocco (lo
 YAML letto resta quello scritto, perché la cache ne fa il fingerprint),
-`strategy` come nome, `stream_id` e `seed` iniettati se la strategy è
-`stochastic`, gli altri kwarg passati a `_parse_strategy_kwarg`, poi
-`Factory.create(name, **kwargs)`.
+`strategy` come nome, `stream_id` (che vale `rng_id`, #169) e `seed` iniettati
+se la strategy si chiama `stochastic`, gli altri kwarg passati a
+`_parse_strategy_kwarg`, poi `Factory.create(name, **kwargs)`.
 
 Quel che distingue davvero una dimensione sta nel suo `take_block_keys`, che
 toglie da `kw` ciò che il passo comune non deve vedere:
@@ -605,7 +605,7 @@ toglie da `kw` ciò che il passo comune non deve vedere:
 |---|---|---|
 | `pitch` | `semitone_range` → hard break (rinominato `pitch_range`) | `InvalidStrategyConfigError` |
 | `pitch` | `unit`, chiave di blocco; rifiutata ≠ semitones sulle `SEMITONE_LOCKED` | `VoiceManager(pitch_unit=…)` |
-| `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression`: forma di envelope senza esserlo, più `time_mode`/`duration` dello stream | alla strategy tali e quali |
+| `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression`: forma di envelope senza esserlo, più `time_mode`/`duration` dello stream se è `normalized` | alla strategy tali e quali |
 | `pointer` | `normalized`, chiave di blocco, solo bool | `Stream._voice_pointer_normalized` (letto da `_create_grain`) |
 
 `onset_offset` e `pan` non ne hanno: sono il passo comune e basta. Le chiavi di
@@ -844,7 +844,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer con `time` arg e envelope |
 | `tests/strategies/test_voice_pan_strategy.py` | Range, stochastic, step pan con `time` arg, voice-0 invariant, spread/step envelope |
 | `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager; `TestGenerateGrainsEnvelopePerGrain`: verifica valore esatto pitch_ratio per grain a `voice_cursors[vi]` |
-| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori (#186) |
+| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori, `rng_id` iniettato nelle stocastiche (#186) |
 
 **Esecuzione test multi-voice:**
 ```bash
