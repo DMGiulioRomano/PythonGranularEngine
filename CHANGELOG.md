@@ -663,6 +663,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   YAML invece che sulla tabella, generalizzare `unit` a tutte le dimensioni,
   perdere lo `stream_id` di un errore.
 
+  Una quinta sfuggiva anche a quella misura: l'identita' iniettata nelle
+  stocastiche e' `rng_id` (#169), non lo `stream_id`. Il kwarg si chiama
+  `stream_id`, e scriverci `self.stream_id` nel passo unico toglieva
+  `rng_group` alle voci di tutte e quattro le dimensioni con la suite verde:
+  senza `rng_group` le due identita' coincidono, e il test della #169 sulle
+  voci (`test_same_rng_group_shared_voice_draws`) non dichiarava `num_voices`,
+  quindi suonava solo la voce 0, che per invariante non pesca. Ora dichiara
+  tre voci, e `TestVoicesWiring` guarda il kwarg su tutte e quattro.
+
   La issue dava la #185 come prerequisito, perche' «senza il registry
   generico il collasso richiederebbe casi speciali». Non era cosi': il wiring
   parla con le Factory, e `create(name, **kwargs)` e' la stessa firma sulle

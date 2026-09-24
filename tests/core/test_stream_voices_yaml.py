@@ -1276,3 +1276,37 @@ class TestVoicesWiring:
         assert s._voice_pointer_normalized is False
         assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
         assert s._voice_manager.pitch_unit.divisions == 12
+
+    def test_le_stocastiche_ricevono_rng_id_non_stream_id(self):
+        """L'identita' iniettata nel kwarg `stream_id` e' `rng_id` (#169).
+
+        Il kwarg si chiama `stream_id`, e scriverci `self.stream_id` nel passo
+        comune e' lo sbaglio piu' a portata di mano: toglierebbe `rng_group`
+        a tutte e quattro le dimensioni in un colpo. Senza `rng_group` le due
+        identita' coincidono, ed e' per questo che le sezioni sopra non vedono
+        la differenza; qui il gruppo c'e', ed e' diverso dallo stream_id.
+        """
+        params = {
+            'stream_id': 'solista',
+            'rng_group': 'coro',
+            'onset': 0.0,
+            'duration': 10.0,
+            'sample': 'test.wav',
+            'voices': {
+                'num_voices': 3,
+                'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
+                'onset_offset': {'strategy': 'stochastic', 'max_offset': 0.2},
+                'pointer': {'strategy': 'stochastic', 'pointer_range': 0.1},
+                'pan': {'strategy': 'stochastic', 'spread': 60.0},
+            },
+        }
+        with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+            s = Stream(params)
+        vm = s._voice_manager
+        strategie = {
+            'pitch': vm._pitch_strategy,
+            'onset_offset': vm._onset_strategy,
+            'pointer': vm._pointer_strategy,
+            'pan': vm._pan_strategy,
+        }
+        assert {k: st.stream_id for k, st in strategie.items()} == dict.fromkeys(strategie, 'coro')
