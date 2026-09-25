@@ -7,6 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
   - src/pge/core/stream.py
+  - src/pge/shared/seeding.py
 last_synced_commit: cef5050
 entry_for: [add-voice-strategy]
 ---
@@ -78,7 +79,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 
    Il passo scritto qui prima nominava `_build_<axis>_strategy`: quella
    funzione non e' mai esistita.
-5. Test: `tests/strategies/test_voice_<axis>_strategy.py` con voice-0 invariant + envelope param + (per le stochastiche) determinismo dal `stream_id`
+5. Test: `tests/strategies/test_voice_<axis>_strategy.py` con voice-0 invariant + envelope param + (per le stochastiche) determinismo da `(seed, stream_id, voice_index)` via `voice_rng` — vedi sotto
 
 ## File toccati
 
@@ -91,7 +92,14 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 ## Test da aggiornare
 
 - Voice-0 invariant: `get_<axis>_offset(0, N, t) == 0.0` per ogni N, t (pitch: `get_pitch_factor(0, N, t, unit) == 1.0`)
-- Determinismo (per strategy stochastic): stesso `stream_id` → stesso risultato
+- Determinismo (per strategy stochastic): con un `seed`, il valore e' quello
+  di `voice_rng(seed, stream_id, voice_index)` (`src/pge/shared/seeding.py`,
+  sha256), quindi uguale fra processi; e `seed` diversi danno offset diversi.
+  Il modello sono le `TestStochastic<Axis>Seed` delle quattro suite esistenti.
+  Un test «stesso `stream_id` → stesso risultato» non basta: con `seed=None`
+  vale il fallback `hash()`, stabile dentro il processo, e quel test passa
+  anche su una strategy che scarta il `seed` — cioe' che non riproduce il
+  brano fuori dal run in cui e' stato ascoltato
 - Envelope param: se la strategy accetta envelope, test che il valore evolva nel tempo
 
 ## Verifica
