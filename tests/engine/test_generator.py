@@ -1984,6 +1984,11 @@ class TestDiagnosticaAlLogger:
 
     def test_per_stream_con_cache_manda_l_elenco_al_logger(
             self, gen, tmp_path, caplog):
+        """Il messaggio e' fissato per intero, come quello di
+        `_create_streams`: la riga ha perso il tag `[CACHE]` passando al
+        logger, e con i soli argomenti il tag poteva tornare senza che niente
+        diventasse rosso — sul logger non c'e' la sagoma del protocollo a
+        tradirlo, perche' dopo `Stream` viene uno spazio."""
         import logging
         from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
 
@@ -1995,6 +2000,8 @@ class TestDiagnosticaAlLogger:
         records = self._record_diagnostici(caplog)
         assert [r.args for r in records] == [(['s2'],)]
         assert records[0].levelno == logging.DEBUG
+        assert [r.getMessage() for r in records] == [
+            "Stream da scrivere (cache incrementale): ['s2']"]
 
 
 # =============================================================================
