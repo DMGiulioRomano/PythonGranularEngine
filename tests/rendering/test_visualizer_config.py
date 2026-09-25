@@ -318,3 +318,79 @@ class TestWaveformResolution:
             {'waveform_buckets': 800, 'waveform_downsample': 20}).as_dict()
         assert config['waveform_buckets'] == 800
         assert config['waveform_downsample'] == 20
+
+
+class TestWindowShapeThresholdIsALength:
+    """La soglia sotto cui il grano ripiega sulla freccia (issue #280).
+
+    Era `window_shape_min_px`, misurata in pixel alla `figure.dpi` di
+    rcParams: 100 di default, ma il PNG esce a 300 dpi, il PDF e' vettoriale
+    e gli esempi del paper salvano a 600. "3 px" non corrispondeva ai pixel di
+    nessun file esportato, e lo stesso YAML cambiava forma cambiando la dpi
+    dell'ambiente. La pagina e' dichiarata in millimetri (`page_size`,
+    `margins_mm`), e la soglia ora e' una lunghezza su quella pagina.
+    """
+
+    def test_the_default_is_the_old_threshold_as_a_length(self):
+        """3 px alla dpi di default di matplotlib: nell'ambiente di default le
+        forme restano quelle di prima."""
+        config = VisualizerConfig.from_overrides(None).as_dict()
+        assert config['window_shape_min_mm'] == pytest.approx(3 * 25.4 / 100)
+
+    def test_the_px_key_is_gone_from_the_resolved_config(self):
+        """Una sola grafia in uscita: chi legge viz.config trova la soglia in
+        mm, e non due chiavi che potrebbero dire cose diverse."""
+        config = VisualizerConfig.from_overrides(None).as_dict()
+        assert 'window_shape_min_px' not in config
+
+    def test_the_mm_key_is_accepted(self):
+        config = VisualizerConfig.from_overrides(
+            {'window_shape_min_mm': 2.0}).as_dict()
+        assert config['window_shape_min_mm'] == 2.0
+
+    def test_the_px_key_is_still_accepted_as_px_at_100_dpi(self):
+        """Retrocompatibilita': e' superficie pubblica (ScoreVisualizer,
+        api.export_score_pdf). Si converte alla dpi a cui era tarata, cosi' la
+        stessa config disegna le stesse forme di prima."""
+        with pytest.warns(FutureWarning):
+            config = VisualizerConfig.from_overrides(
+                {'window_shape_min_px': 50}).as_dict()
+        assert config['window_shape_min_mm'] == pytest.approx(50 * 25.4 / 100)
+        assert 'window_shape_min_px' not in config
+
+    def test_the_px_key_warns_naming_its_replacement(self):
+        with pytest.warns(FutureWarning, match='window_shape_min_mm'):
+            VisualizerConfig.from_overrides({'window_shape_min_px': 3})
+
+    def test_the_px_key_warns_with_a_class_a_consumer_sees(self):
+        """FutureWarning e non DeprecationWarning, come Stream.grains (#201):
+        Python filtra il secondo di default fuori da __main__, e lo vedrebbe
+        solo questo repo sotto pytest."""
+        import warnings
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.resetwarnings()
+            warnings.simplefilter('default')
+            warnings.filterwarnings('ignore', category=DeprecationWarning)
+            VisualizerConfig.from_overrides({'window_shape_min_px': 3})
+        assert [w for w in seen if issubclass(w.category, FutureWarning)]
+
+    def test_the_mm_key_does_not_warn(self, recwarn):
+        VisualizerConfig.from_overrides({'window_shape_min_mm': 2.0})
+        assert not [w for w in recwarn if w.category is FutureWarning]
+
+    def test_both_spellings_together_are_refused(self):
+        """Due grafie della stessa soglia: sceglierne una per priorita' vorrebbe
+        dire ignorare in silenzio l'altra."""
+        with pytest.raises(ValueError, match='window_shape_min_px') as exc:
+            VisualizerConfig.from_overrides(
+                {'window_shape_min_px': 3, 'window_shape_min_mm': 0.762})
+        assert 'window_shape_min_mm' in str(exc.value)
+
+    def test_the_caller_dict_is_not_rewritten(self):
+        """La traduzione lavora su una copia: il dict del chiamante esce com'era
+        entrato, e un secondo visualizer costruito con lo stesso dict riceve
+        la stessa config."""
+        overrides = {'window_shape_min_px': 3}
+        with pytest.warns(FutureWarning):
+            VisualizerConfig.from_overrides(overrides)
+        assert overrides == {'window_shape_min_px': 3}

@@ -975,6 +975,42 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **Con `grain_shape: window` la lente magnify disegnava solo frecce**
+  (issue #280). `_draw_grains_full` sceglie fra silhouette della finestra e
+  freccia misurando il grano in pixel sull'asse che riceve (fallback sotto
+  `window_shape_min_px`), ma `_draw_one_magnifier` lo chiamava prima di
+  impostare i limiti della lente: la misura avveniva sul default 0–1 s, dove un
+  grano di pochi ms è sub-pixel anche quando la lente lo mostra largo decine di
+  pixel. I limiti della lente si impostano ora prima della maschera del loop e
+  dei grani.
+
+  La MAP principale aveva lo stesso ordine, con l'errore nel verso opposto: su
+  una pagina da `page_duration` secondi la misura sul default 0–1 s gonfiava
+  ogni grano di quel fattore. Col default di 30 s il fallback scattava solo
+  sotto i ~2 ms, e i grani fra 2 e ~60 ms — sotto i 3 px sulla pagina — uscivano
+  come silhouette. Anche qui i limiti si impostano prima dei grani. **Le MAP in
+  `grain_shape: window` cambiano aspetto**: i grani sotto soglia sulla pagina
+  tornano frecce, come il fallback prometteva.
+
+  I test del fallback chiamavano `_draw_grains_full` con i limiti già
+  impostati, e per questo non vedevano l'ordine dei chiamanti.
+  `TestFallbackMeasuredOnFinishedFigure` passa da `render_page` e confronta
+  ogni poligono con la larghezza che il suo grano ha a figura finita.
+
+- **La soglia della silhouette contava pixel che nessun file esportato ha**
+  (issue #280, review della PR #281). `window_shape_min_px` si misurava in
+  pixel display, cioè alla `figure.dpi` di rcParams: 100 di default, mentre il
+  PNG esce a 300 dpi, il PDF è vettoriale e gli esempi del paper salvano a
+  600. «3 px» non corrispondeva a niente di ciò che si guarda, e lo stesso
+  YAML disegnava forme diverse cambiando la dpi dell'ambiente: a 300 dpi un
+  grano largo 0.36 mm sulla pagina contava più di 4 px e usciva come
+  silhouette. La soglia è ora una lunghezza sulla pagina,
+  **`window_shape_min_mm`**, coerente con `page_size` e `margins_mm`, e la
+  misura divide i pixel per la dpi della figura. Il default, 0.762 mm, è la
+  soglia storica di 3 px alla dpi a cui era tarata: nell'ambiente di default
+  le forme non cambiano. `TestFallbackMeasuredOnFinishedFigure` gira ora a 100
+  e a 300 dpi.
+
 - **La riga diagnostica della registrazione pretendeva un `__name__`**
   (issue #185, review della PR #276). `log_strategy_registration` legge
   `strategy_class.__name__` come espressione argomento, cioè avidamente —
@@ -1349,6 +1385,18 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `run_yaml`/`once_yaml`: `None` significa `refs/` per il caso di riferimento
   e "la directory degli sweep" per `_load`/`_render`, e la sentinella si
   risolve nel corpo di ciascuno invece di essere inoltrata tal quale.
+
+### Deprecato
+
+- **`window_shape_min_px`** della config di `ScoreVisualizer` (e quindi di
+  `api.export_score_pdf`), rimozione prevista nella prossima major (issue
+  #280). Il rimpiazzo è `window_shape_min_mm` (vedi `### Corretto`). Resta
+  accettata e si converte alla dpi a cui era tarata, 100 (1 px = 0.254 mm),
+  così la stessa config disegna le stesse forme di prima. Emette un
+  **`FutureWarning`** per la stessa ragione di `Stream.grains`: un
+  `DeprecationWarning` Python lo filtra di default fuori da `__main__`. Le due
+  chiavi insieme sono un `ValueError`: sceglierne una per priorità vorrebbe
+  dire ignorare l'altra in silenzio.
 
 ### Modificato
 

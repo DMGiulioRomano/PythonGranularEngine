@@ -89,7 +89,8 @@ from pge.rendering import magnifier_projection  # noqa: E402
 from pge.rendering import magnifier_targets  # noqa: E402
 from pge.rendering import page_layout  # noqa: E402
 from pge.rendering import waveform_peaks  # noqa: E402
-from pge.rendering.visualizer_config import VisualizerConfig  # noqa: E402
+from pge.rendering.visualizer_config import (  # noqa: E402
+    MM_PER_INCH, VisualizerConfig)
 
 
 class ScoreVisualizer:
@@ -568,6 +569,13 @@ class ScoreVisualizer:
             stream_pitch_varies = grain_visuals.has_pitch_variation(
                 [stream], page_start, page_end)
 
+            # Limiti prima dei grani: _draw_grains_full sceglie finestra o
+            # freccia misurando la larghezza del grano su ax_grain
+            # (_grain_width_mm), e sul default 0-1 s una pagina da 30 s
+            # gonfierebbe ogni grano di 30 volte (issue #280).
+            ax_grain.set_xlim(page_start, page_end)
+            ax_grain.set_ylim(-0.02, sample_duration+0.02)
+
             # Disegna grani, loop mask e label dello stream
             self._draw_loop_mask(ax_grain, stream, page_start, page_end, sample_duration)
             self._draw_grains_full(ax_grain, stream, sample_duration,
@@ -612,9 +620,7 @@ class ScoreVisualizer:
             ax_wave.axvline(x=0, color='gray', linewidth=0.5, alpha=0.5, linestyle=':')
             ax_wave.grid(True, alpha=0.2, linestyle=':', axis='y')
             
-            # Configura assi grani
-            ax_grain.set_xlim(page_start, page_end)
-            ax_grain.set_ylim(-0.02, sample_duration+0.02)
+            # Configura assi grani (limiti gia' impostati prima dei grani)
             ax_grain.set_ylabel("")  # label già nella waveform
             # L'asse del tempo del buffer e' descritto una sola volta, sulla
             # waveform a sinistra. Il subplot dei grani condivide lo stesso ylim
@@ -792,10 +798,14 @@ class ScoreVisualizer:
         lens_ax.add_patch(mpatches.Circle(
             (0.5, 0.5), 0.5, transform=lens_ax.transAxes,
             facecolor='white', edgecolor='none', zorder=0))
-        self._draw_loop_mask(lens_ax, stream, t0, t1, sample_dur)
-        self._draw_grains_full(lens_ax, stream, sample_dur, t0, t1, cents_range)
+        # Limiti prima dei grani: _draw_grains_full sceglie finestra o freccia
+        # misurando la larghezza del grano su lens_ax (_grain_width_mm), e sul
+        # default 0-1 s un grano di pochi ms risulta sotto soglia anche quando
+        # la lente finita lo mostra ben largo (issue #280).
         lens_ax.set_xlim(t0, t1)
         lens_ax.set_ylim(y0, y1)
+        self._draw_loop_mask(lens_ax, stream, t0, t1, sample_dur)
+        self._draw_grains_full(lens_ax, stream, sample_dur, t0, t1, cents_range)
         lens_ax.set_xticks([])
         lens_ax.set_yticks([])
         clip = mpatches.Circle((0.5, 0.5), 0.5, transform=lens_ax.transAxes)
@@ -975,17 +985,30 @@ class ScoreVisualizer:
         Delega a rendering.grain_visuals.window_name_map."""
         return grain_visuals.window_name_map(stream)
 
-    def _grain_page_width_px(self, ax, grain):
-        """Larghezza del grano sulla pagina in pixel display.
+    def _grain_width_mm(self, ax, grain):
+        """Larghezza del grano in millimetri sulla pagina, sull'asse ax che lo
+        disegna.
 
-        Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
-        in modo leggibile. Se la trasformazione non e' disponibile (axes non
-        ancora disegnato) ritorna +inf -> nessun fallback."""
+        Usata per il fallback adattivo: grani troppo stretti non mostrano la
+        finestra in modo leggibile. L'asse non e' sempre la pagina: nella lente
+        lo stesso grano e' largo zoom volte tanto, e la risposta cambia.
+
+        Millimetri e non pixel (issue #280): i pixel display valgono alla
+        figure.dpi di rcParams, che non e' la risoluzione di nessun file
+        esportato (PNG a 300 dpi, PDF vettoriale) e cambia da un ambiente
+        all'altro. Divisi per la dpi della figura danno la larghezza fisica,
+        che a qualsiasi risoluzione resta la stessa.
+
+        La misura usa i limiti che ax ha al momento della chiamata, quindi
+        vanno impostati prima. Un asse mai disegnato ha gia' una transData
+        valida: sul default 0-1 s restituisce un numero sbagliato senza
+        sollevare (issue #280). Il ramo +inf (nessun fallback) copre solo un
+        ax senza trasformazione utilizzabile."""
         try:
             t = ax.transData
             x0 = t.transform((grain.onset, 0.0))[0]
             x1 = t.transform((grain.onset + grain.duration, 0.0))[0]
-            return abs(x1 - x0)
+            return abs(x1 - x0) / ax.figure.dpi * MM_PER_INCH
         except Exception:
             return float('inf')
 
@@ -994,7 +1017,11 @@ class ScoreVisualizer:
         """Disegna grani con coordinate Y assolute nel sample.
 
         cents_range: range colore auto-zoomato del subplot (vedi
-        _compute_pitch_color_range); None = range fisso."""
+        _compute_pitch_color_range); None = range fisso.
+
+        Precondizione: ax ha gia' i limiti finali. Con grain_shape='window' la
+        scelta fra finestra e freccia misura il grano su quei limiti (vedi
+        _grain_width_mm)."""
         
         visible_grains = grain_visuals.visible_grains(
             stream, page_start, page_end)
@@ -1018,18 +1045,19 @@ class ScoreVisualizer:
         if window_mode:
             name_map = self._window_name_map(stream)
             resolution = self.config['window_shape_resolution']
-            min_px = self.config['window_shape_min_px']
+            min_mm = self.config['window_shape_min_mm']
             # name_map vuota (window_table_map assente) -> niente nomi da
             # risolvere: si ripiega interamente sulla freccia.
             if not name_map:
                 window_mode = False
 
         for grain in visible_grains:
-            # window_mode con grano abbastanza largo sulla pagina e finestra
-            # risolvibile -> silhouette della finestra; altrimenti freccia.
+            # window_mode con grano abbastanza largo su ax (pagina o lente) e
+            # finestra risolvibile -> silhouette della finestra; altrimenti
+            # freccia.
             use_window = (
                 window_mode
-                and self._grain_page_width_px(ax, grain) >= min_px
+                and self._grain_width_mm(ax, grain) >= min_mm
                 and grain.envelope_table in name_map
             )
             if use_window:

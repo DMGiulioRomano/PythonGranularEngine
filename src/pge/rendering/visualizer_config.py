@@ -25,6 +25,7 @@ sbagliato, che si vede al primo giro.
 """
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import (
@@ -34,6 +35,14 @@ from typing import Optional
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.rendering.envelope_extractor import (
     BW_ENVELOPE_COLOR, ENVELOPE_COLORS, ENVELOPE_STYLES)
+
+
+MM_PER_INCH = 25.4
+
+# La dpi a cui window_shape_min_px era tarata: la figure.dpi di default di
+# matplotlib, l'unica a cui "3 px" valeva quello che il nome diceva. Serve a
+# convertire la chiave deprecata e a derivare il default della nuova.
+LEGACY_PX_DPI = 100
 
 
 # =============================================================================
@@ -197,10 +206,15 @@ class VisualizerConfig:
     # normalizzata e' memoizzata per (nome, risoluzione): il costo per grano e'
     # solo una trasformazione affine dei vertici.
     window_shape_resolution: int = 32
-    # Sotto questa larghezza in pixel la finestra non sarebbe leggibile e il
-    # grano ripiega sulla freccia: e' il cap al costo vettoriale sugli score
-    # densi.
-    window_shape_min_px: float = 3
+    # Sotto questa larghezza sulla pagina, in millimetri, la finestra non
+    # sarebbe leggibile e il grano ripiega sulla freccia: e' il cap al costo
+    # vettoriale sugli score densi. Una lunghezza e non un numero di pixel,
+    # perche' la pagina e' dichiarata in mm (page_size) e i pixel dipendono
+    # dalla dpi: il PNG esce a 300 dpi, il PDF e' vettoriale. Il default e' la
+    # soglia storica di 3 px alla dpi a cui era tarata (issue #280).
+    # `window_shape_min_px` e' ancora accettata, deprecata: vedi
+    # _translate_window_shape_min_px.
+    window_shape_min_mm: float = 3 * MM_PER_INCH / LEGACY_PX_DPI
     # Che cosa misura l'ALTEZZA del grano sull'asse del buffer (issue #223).
     # 'duration' -> la durata, cioe' la porzione che il grano percorrerebbe a
     # velocita' 1 (comportamento storico); 'read_span' -> la porzione che
@@ -375,6 +389,8 @@ class VisualizerConfig:
                 "config di ScoreVisualizer deve essere un dizionario di "
                 f"chiavi note (o None); ricevuto {type(overrides).__name__}")
 
+        overrides = _translate_window_shape_min_px(overrides)
+
         by_name = {f.name: f for f in fields(cls)}
         unknown = sorted(set(overrides or {}) - set(by_name))
         if unknown:
@@ -419,6 +435,46 @@ class VisualizerConfig:
         all'altro.
         """
         return {f.name: _as_plain(getattr(self, f.name)) for f in fields(self)}
+
+
+def _translate_window_shape_min_px(overrides):
+    """La soglia della silhouette passata col nome vecchio, in millimetri.
+
+    `window_shape_min_px` contava pixel alla figure.dpi di rcParams, che non
+    sono i pixel di nessun file esportato (issue #280). E' superficie pubblica
+    (ScoreVisualizer, api.export_score_pdf), quindi resta accettata per un
+    ciclo e si converte alla dpi a cui era tarata: la stessa config disegna le
+    stesse forme di prima.
+
+    FutureWarning e non DeprecationWarning, come Stream.grains (#201): il
+    secondo Python lo filtra di default fuori da __main__, e lo vedrebbe solo
+    questo repo.
+
+    Le due grafie insieme si rifiutano: scegliere per priorita' vorrebbe dire
+    ignorarne una in silenzio. La traduzione lavora su una copia, il dict del
+    chiamante non si tocca.
+    """
+    if not overrides or 'window_shape_min_px' not in overrides:
+        return overrides
+    if 'window_shape_min_mm' in overrides:
+        raise ValueError(
+            "window_shape_min_px e window_shape_min_mm sono la stessa soglia: "
+            "passane una sola (window_shape_min_px e' deprecata)")
+    warnings.warn(
+        "window_shape_min_px e' deprecata (issue #280) e sara' rimossa nella "
+        "prossima major: contava pixel alla figure.dpi, che non sono quelli "
+        "del file esportato. Usa window_shape_min_mm, la larghezza sulla "
+        f"pagina; {LEGACY_PX_DPI} dpi di riferimento, 1 px = "
+        f"{MM_PER_INCH / LEGACY_PX_DPI} mm.",
+        FutureWarning,
+        # warn <- traduzione <- from_overrides <- ScoreVisualizer.__init__
+        # <- chi costruisce il visualizer.
+        stacklevel=4,
+    )
+    translated = dict(overrides)
+    px = translated.pop('window_shape_min_px')
+    translated['window_shape_min_mm'] = px * MM_PER_INCH / LEGACY_PX_DPI
+    return translated
 
 
 def _merge_group(group_name, default, overrides):
