@@ -988,8 +988,13 @@ class ScoreVisualizer:
         """Larghezza del grano sulla pagina in pixel display.
 
         Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
-        in modo leggibile. Se la trasformazione non e' disponibile (axes non
-        ancora disegnato) ritorna +inf -> nessun fallback."""
+        in modo leggibile.
+
+        La misura usa i limiti che ax ha al momento della chiamata, quindi
+        vanno impostati prima. Un asse mai disegnato ha gia' una transData
+        valida: sul default 0-1 s restituisce un numero sbagliato senza
+        sollevare (issue #280). Il ramo +inf (nessun fallback) copre solo un
+        ax senza trasformazione utilizzabile."""
         try:
             t = ax.transData
             x0 = t.transform((grain.onset, 0.0))[0]
@@ -1003,7 +1008,11 @@ class ScoreVisualizer:
         """Disegna grani con coordinate Y assolute nel sample.
 
         cents_range: range colore auto-zoomato del subplot (vedi
-        _compute_pitch_color_range); None = range fisso."""
+        _compute_pitch_color_range); None = range fisso.
+
+        Precondizione: ax ha gia' i limiti finali. Con grain_shape='window' la
+        scelta fra finestra e freccia misura il grano su quei limiti (vedi
+        _grain_page_width_px)."""
         
         visible_grains = grain_visuals.visible_grains(
             stream, page_start, page_end)
