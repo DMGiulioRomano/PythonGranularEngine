@@ -344,9 +344,17 @@ class TestFallbackMeasuredOnFinishedFigure:
         for path in paths:
             width = self._width_px(ax, path)
             # Premessa della scena: su questo asse tutti i grani stanno dalla
-            # stessa parte della soglia, e dalla parte attesa.
-            assert (width >= min_px) == (expected == 'window'), width
-            assert self._shape(path) == expected, width
+            # stessa parte della soglia, e dalla parte attesa. Il messaggio la
+            # nomina: senza, un cambio di layout e una regressione del
+            # fallback fallirebbero con lo stesso numero nudo.
+            assert (width >= min_px) == (expected == 'window'), (
+                f"premessa della scena violata: grano largo {width:.2f} px "
+                f"a figura finita, soglia {min_px} px, forma attesa "
+                f"{expected!r}. Va ritarata la scena, non il codice.")
+            assert self._shape(path) == expected, (
+                f"grano largo {width:.2f} px a figura finita (soglia "
+                f"{min_px} px) disegnato come {self._shape(path)!r}: la "
+                f"forma e' stata scelta su limiti diversi da quelli finali.")
 
     def test_lens_draws_window_for_grains_wide_in_the_lens(self):
         viz, fig = self._render()
