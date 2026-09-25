@@ -128,7 +128,7 @@ YAML 'voices:'
 Stream._init_voice_manager()
     ├─ per ogni riga di _VOICE_AXES presente nello YAML → _build_voice_strategy():
     │    ├─ take_block_keys della dimensione (solo pitch e pointer)
-    │    ├─ Auto-injection stream_id   (per riproducibilità stochastic)
+    │    ├─ Auto-injection stream_id (= rng_id, #169) e seed   (strategy `stochastic`: §6)
     │    ├─ _parse_strategy_kwarg(): envelope-like → Envelope (time_mode dello stream, #144), altrimenti invariato
     │    └─ Factory della dimensione   (VoicePitchStrategyFactory, ecc.)
     └─ VoiceManager(max_voices, strategy..., pitch_unit)  # ogni strategy possiede il proprio param (Union[float, Envelope])

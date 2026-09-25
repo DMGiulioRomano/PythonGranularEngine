@@ -152,7 +152,8 @@ class Stream:
                   PATHSAMPLES (comportamento legacy).
         """
         # Seed di riproducibilità: iniettato nelle strategy stocastiche in
-        # _init_voice_manager e in StreamConfig per gli RNG per-componente.
+        # _build_voice_strategy (il passo comune di _init_voice_manager, #186)
+        # e in StreamConfig per gli RNG per-componente.
         self.seed = seed
         # Directory sample iniettata: usata nei due call-site di
         # get_sample_duration (qui e in _init_stream_context).
