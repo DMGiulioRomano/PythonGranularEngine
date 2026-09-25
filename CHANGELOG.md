@@ -952,6 +952,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   pixel. I limiti della lente si impostano ora prima della maschera del loop e
   dei grani.
 
+  La MAP principale aveva lo stesso ordine, con l'errore nel verso opposto: su
+  una pagina da `page_duration` secondi la misura sul default 0–1 s gonfiava
+  ogni grano di quel fattore. Col default di 30 s il fallback scattava solo
+  sotto i ~2 ms, e i grani fra 2 e ~60 ms — sotto i 3 px sulla pagina — uscivano
+  come silhouette. Anche qui i limiti si impostano prima dei grani. **Le MAP in
+  `grain_shape: window` cambiano aspetto**: i grani sotto soglia sulla pagina
+  tornano frecce, come il fallback prometteva.
+
   I test del fallback chiamavano `_draw_grains_full` con i limiti già
   impostati, e per questo non vedevano l'ordine dei chiamanti.
   `TestFallbackMeasuredOnFinishedFigure` passa da `render_page` e confronta

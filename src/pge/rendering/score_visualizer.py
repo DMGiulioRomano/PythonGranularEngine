@@ -568,6 +568,13 @@ class ScoreVisualizer:
             stream_pitch_varies = grain_visuals.has_pitch_variation(
                 [stream], page_start, page_end)
 
+            # Limiti prima dei grani: _draw_grains_full sceglie finestra o
+            # freccia misurando il grano in pixel su ax_grain, e sul default
+            # 0-1 s una pagina da 30 s gonfierebbe ogni grano di 30 volte
+            # (issue #280).
+            ax_grain.set_xlim(page_start, page_end)
+            ax_grain.set_ylim(-0.02, sample_duration+0.02)
+
             # Disegna grani, loop mask e label dello stream
             self._draw_loop_mask(ax_grain, stream, page_start, page_end, sample_duration)
             self._draw_grains_full(ax_grain, stream, sample_duration,
@@ -612,9 +619,7 @@ class ScoreVisualizer:
             ax_wave.axvline(x=0, color='gray', linewidth=0.5, alpha=0.5, linestyle=':')
             ax_wave.grid(True, alpha=0.2, linestyle=':', axis='y')
             
-            # Configura assi grani
-            ax_grain.set_xlim(page_start, page_end)
-            ax_grain.set_ylim(-0.02, sample_duration+0.02)
+            # Configura assi grani (limiti gia' impostati prima dei grani)
             ax_grain.set_ylabel("")  # label già nella waveform
             # L'asse del tempo del buffer e' descritto una sola volta, sulla
             # waveform a sinistra. Il subplot dei grani condivide lo stesso ylim

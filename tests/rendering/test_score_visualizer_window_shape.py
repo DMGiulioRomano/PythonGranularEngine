@@ -354,3 +354,14 @@ class TestFallbackMeasuredOnFinishedFigure:
         assert len(lenses) == 1
         self._assert_shapes_follow_final_width(
             lenses[0], viz.config['window_shape_min_px'], 'window')
+
+    def test_map_falls_back_to_arrow_for_grains_narrow_on_the_page(self):
+        viz, fig = self._render()
+        maps = [ax for ax in fig.axes
+                if ax.get_label() != '<magnifier>'
+                and any(isinstance(c, PatchCollection) and c.get_zorder() == 2
+                        for c in ax.collections)]
+        assert len(maps) == 1
+        assert maps[0].get_xlim() == pytest.approx((0.0, self.PAGE))
+        self._assert_shapes_follow_final_width(
+            maps[0], viz.config['window_shape_min_px'], 'arrow')
