@@ -25,7 +25,7 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
   - tests/engine/test_generator.py
-last_synced_commit: c620088
+last_synced_commit: ade7c27
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
