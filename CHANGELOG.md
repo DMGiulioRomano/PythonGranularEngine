@@ -943,6 +943,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **Con `grain_shape: window` la lente magnify disegnava solo frecce**
+  (issue #280). `_draw_grains_full` sceglie fra silhouette della finestra e
+  freccia misurando il grano in pixel sull'asse che riceve (fallback sotto
+  `window_shape_min_px`), ma `_draw_one_magnifier` lo chiamava prima di
+  impostare i limiti della lente: la misura avveniva sul default 0–1 s, dove un
+  grano di pochi ms è sub-pixel anche quando la lente lo mostra largo decine di
+  pixel. I limiti della lente si impostano ora prima della maschera del loop e
+  dei grani.
+
+  I test del fallback chiamavano `_draw_grains_full` con i limiti già
+  impostati, e per questo non vedevano l'ordine dei chiamanti.
+  `TestFallbackMeasuredOnFinishedFigure` passa da `render_page` e confronta
+  ogni poligono con la larghezza che il suo grano ha a figura finita.
+
 - **La riga diagnostica della registrazione pretendeva un `__name__`**
   (issue #185, review della PR #276). `log_strategy_registration` legge
   `strategy_class.__name__` come espressione argomento, cioè avidamente —
