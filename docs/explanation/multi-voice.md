@@ -45,7 +45,8 @@ Vedi [Architettura](#2-architettura) per il modello completo, [Componenti princi
 ## Implicazioni codice
 
 - `src/pge/strategies/` — un file per strategy + factory per asse
-- `src/pge/core/stream.py` — `_init_voice_manager`, `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/pge/core/stream.py` — `_init_voice_manager`, che cicla su `_VOICE_AXES` con `_build_voice_strategy` (§4), `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/pge/shared/seeding.py` — `voice_rng`, l'RNG per-voce delle strategy stocastiche
 - `src/pge/controllers/voice_manager.py` — `VoiceManager`, `VoiceConfig`
 - Estensione: vedi [[add-voice-strategy]]
 - Errori specifici: `StrategyNotFoundError`, `InvalidStrategyConfigError` (vedi [[errors]])
@@ -334,15 +335,15 @@ maj7 [0,4,7,11] → min7 [0,3,7,10], 4 voci, voice_leading: nearest
 #### `StochasticPitchStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))
-direction(i) = Random(seed).uniform(-1.0, +1.0)   ← calcolato una volta, cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(-1.0, +1.0)   ← calcolato una volta, cached
 offset(i, t) = direction(i) × pitch_range(t)
 ```
 
-La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `pitch_range(t)` — può variare nel tempo se `pitch_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. Il seed combina lo `stream_id` (identità dello stream nel YAML) con l'indice di voce, garantendo:
+La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `pitch_range(t)` — può variare nel tempo se `pitch_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. L'RNG per-voce (`voice_rng`: sha256 se c'è un `seed`, altrimenti il fallback `hash()`) combina il `seed` con l'identità della sequenza e l'indice di voce. L'identità è il kwarg `stream_id`, che `Stream` valorizza con `rng_id` (#169): lo `stream_id` dello YAML, o il `rng_group` quando più stream condividono la sequenza. Ne segue:
 - voci diverse dello stesso stream → offset diversi
-- stream diversi → distribuzioni indipendenti
-- stesso YAML tra sessioni → stesso output audio
+- stream diversi → distribuzioni indipendenti, salvo un `rng_group` condiviso
+- stesso YAML e stesso `seed` → stesso output audio (senza `seed:` il Generator ne genera uno di sessione: vedi §6, Invarianti di design)
 
 Un dizionario `_cache` evita di ricalcolare il valore alla seconda chiamata.
 
@@ -421,8 +422,8 @@ Caso limite: `base=1` → tutte le voci non-zero hanno lo stesso offset (`step`)
 #### `StochasticOnsetStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))
-direction(i) = Random(seed).uniform(0.0, 1.0)   ← cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(0.0, 1.0)   ← cached
 offset(i, t) = direction(i) × max_offset(t)
 ```
 
@@ -493,8 +494,8 @@ step=-0.05, 3 voci → [0.0, -0.05, -0.10]
 #### `StochasticPointerStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))
-direction(i) = Random(seed).uniform(-1.0, +1.0)   ← cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(-1.0, +1.0)   ← cached
 offset(i, t) = direction(i) × pointer_range(t)
 ```
 
@@ -547,8 +548,8 @@ spread=60,  2 voci → [0, +30]
 #### `StochasticPanStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))   # o hashlib se seed esplicito
-direction(i) = Random(seed).uniform(-1.0, +1.0)     ← cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(-1.0, +1.0)     ← cached
 offset(i, t) = direction(i) × spread(t) / 2
 ```
 
