@@ -570,9 +570,9 @@ class ScoreVisualizer:
                 [stream], page_start, page_end)
 
             # Limiti prima dei grani: _draw_grains_full sceglie finestra o
-            # freccia misurando il grano in pixel su ax_grain, e sul default
-            # 0-1 s una pagina da 30 s gonfierebbe ogni grano di 30 volte
-            # (issue #280).
+            # freccia misurando la larghezza del grano su ax_grain
+            # (_grain_width_mm), e sul default 0-1 s una pagina da 30 s
+            # gonfierebbe ogni grano di 30 volte (issue #280).
             ax_grain.set_xlim(page_start, page_end)
             ax_grain.set_ylim(-0.02, sample_duration+0.02)
 
@@ -799,9 +799,9 @@ class ScoreVisualizer:
             (0.5, 0.5), 0.5, transform=lens_ax.transAxes,
             facecolor='white', edgecolor='none', zorder=0))
         # Limiti prima dei grani: _draw_grains_full sceglie finestra o freccia
-        # misurando il grano in pixel su lens_ax, e sul default 0-1 s un grano
-        # di pochi ms e' sub-pixel anche quando la lente lo mostra largo
-        # decine di pixel (issue #280).
+        # misurando la larghezza del grano su lens_ax (_grain_width_mm), e sul
+        # default 0-1 s un grano di pochi ms risulta sotto soglia anche quando
+        # la lente finita lo mostra ben largo (issue #280).
         lens_ax.set_xlim(t0, t1)
         lens_ax.set_ylim(y0, y1)
         self._draw_loop_mask(lens_ax, stream, t0, t1, sample_dur)
