@@ -498,12 +498,12 @@ Il primo la #187 l'ha lasciato accanto a quelli per `ast`: tre test
 `print()` nella classe generica passa di lì qualunque cartella la ospiti.
 
 Il secondo è il censimento della #266, e la sua copertura è di un altro tipo:
-non vieta la `print()`, **pretende che sia dichiarata**. `DIAGNOSTICA` è una
-categoria legale — `engine/generator.py` ne ha due — quindi il rimedio che
-riporta il verde è una riga in `CLASSIFICAZIONE`, non la rimozione della
-`print()`. Misurato: aggiunta quella voce per `shared/registry.py`, il
-censimento tace e resta rosso il solo `test_register_logs_instead_of_printing`.
-È esattamente il suo scopo dichiarato — rendere deliberata ogni riga su stdout,
+non vieta la `print()`, **pretende che sia dichiarata**. Fino alla #188
+`DIAGNOSTICA` era una categoria legale — `engine/generator.py` ne aveva due —
+quindi il rimedio che riportava il verde era una riga in `CLASSIFICAZIONE`, non
+la rimozione della `print()`. Misurato allora: aggiunta quella voce per
+`shared/registry.py`, il censimento taceva e restava rosso il solo
+`test_register_logs_instead_of_printing`. È esattamente il suo scopo dichiarato — rendere deliberata ogni riga su stdout,
 non proibirla — ma vuol dire che a *chiudere* il buco non arriva: lo rende
 rumoroso, e il rumore si spegne con una riga.
 

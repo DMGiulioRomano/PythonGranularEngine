@@ -683,8 +683,10 @@ def main():
         # handler formatta il record. Qui il render li ha gia' materializzati
         # e api.render li ha contati; alla CLI resta solo la prosa. Dalla #188
         # e' anche la sola riga per stream che esca in ogni modalita': le
-        # altre (`[CACHE] <id>: ...`, il path di ogni stem) chiedono --cache
-        # o --per-stream.
+        # altre (`[CACHE] <id>: ...`, il path di ogni stem) chiedono
+        # --per-stream, e la prima anche --cache -- in MIX il manifest c'e'
+        # (`[CACHE] Manifest:`), ma il renderer non lo consulta stream per
+        # stream.
         for stream_id, count in result.grain_counts.items():
             if count is None:
                 print(f"  → {stream_id}: grani non generati (cache)")
