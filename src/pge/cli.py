@@ -682,7 +682,9 @@ def main():
         # (generazione lazy, #117) e leggerli li' genererebbe tutto appena un
         # handler formatta il record. Qui il render li ha gia' materializzati
         # e api.render li ha contati; alla CLI resta solo la prosa. Dalla #188
-        # e' anche l'unica riga per stream che si vede a schermo.
+        # e' anche la sola riga per stream che esca in ogni modalita': le
+        # altre (`[CACHE] <id>: ...`, il path di ogni stem) chiedono --cache
+        # o --per-stream.
         for stream_id, count in result.grain_counts.items():
             if count is None:
                 print(f"  → {stream_id}: grani non generati (cache)")
