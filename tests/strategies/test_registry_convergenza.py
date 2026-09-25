@@ -726,7 +726,7 @@ def test_nessun_registry_porta_una_superficie_per_dominio(caso):
 def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
     """`SEMITONE_LOCKED` e' un'affermazione sulle unita', non contenuto.
 
-    La legge `Stream._init_voice_manager` importandola per nome, e resta un
+    La legge `Stream._take_voice_pitch_keys` importandola per nome, e resta un
     `frozenset` di chiavi del registry. Che non sia attaccata all'oggetto
     registry lo dice la guardia qui sopra, per tutti e sei e senza ipotizzare
     la grafia; qui restano le due cose che sono sue: il tipo, e
@@ -745,7 +745,7 @@ def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
     # Le due asserzioni qui sopra sono entrambe soddisfatte dal vuoto --
     # `isinstance(frozenset(), frozenset)` e' vero e l'insieme vuoto e'
     # sottoinsieme di tutto -- quindi da sole non vedono la regressione che
-    # conta: `Stream._init_voice_manager` legge questo insieme per *rifiutare*
+    # conta: `Stream._take_voice_pitch_keys` legge questo insieme per *rifiutare*
     # `voices.pitch.unit` diverso da semitones sulle strategy definite in
     # semitoni, e svuotarlo fa cadere quel rifiuto in silenzio (un `chord` con
     # `unit: cents` renderebbe gli intervalli reinterpretati, senza errore).

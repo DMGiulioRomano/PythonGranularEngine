@@ -922,7 +922,7 @@ class TestStrategyKwargsEnvelope:
 
 
 # =============================================================================
-# 11. Unità di misura del pitch (voices.pitch.unit)
+# 14. Unità di misura del pitch (voices.pitch.unit)
 # =============================================================================
 
 class TestVoicesPitchUnit:
@@ -1038,7 +1038,7 @@ class TestVoicesPitchUnitSemitoneLocked:
 
 
 # =============================================================================
-# 11. time_mode di stream ereditato dagli envelope delle strategy voce (issue #144)
+# 15. time_mode di stream ereditato dagli envelope delle strategy voce (issue #144)
 # =============================================================================
 
 def _build_stream_tm(voices_params, time_mode=None, duration=10.0, stream_id='s1'):
@@ -1130,7 +1130,7 @@ class TestVoiceStrategyTimeModeInheritance:
 
 
 # =============================================================================
-# 12. Il wiring delle quattro dimensioni (issue #186)
+# 16. Il wiring delle quattro dimensioni (issue #186)
 # =============================================================================
 #
 # Il collasso dei quattro blocchi di _init_voice_manager in un ciclo su una
@@ -1142,7 +1142,14 @@ class TestVoiceStrategyTimeModeInheritance:
 # - le chiavi speciali restano della propria dimensione: `unit` e
 #   `semitone_range` del pitch, `normalized` del pointer;
 # - le dimensioni si valutano in un ordine fisso, non in quello dello YAML;
-# - gli errori delle differenze nominano lo stream.
+# - gli errori che il wiring solleva sulle differenze nominano lo stream.
+#   Non tutti gli errori delle differenze: un `voices.pitch.unit` fuori
+#   vocabolario lo solleva `make_pitch_unit`, con `field='unit'` e senza
+#   stream_id, sul codice di prima come su questo. E' un difetto preesistente,
+#   che cambia la superficie degli errori: non e' materia di questa issue.
+#
+# Una quinta proprieta' sfuggiva anche a quelle quattro: le stocastiche
+# ricevono `rng_id` (#169), non lo stream_id (ultimo test della classe).
 
 import copy
 import itertools

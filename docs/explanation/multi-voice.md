@@ -605,7 +605,7 @@ toglie da `kw` ciò che il passo comune non deve vedere:
 |---|---|---|
 | `pitch` | `semitone_range` → hard break (rinominato `pitch_range`) | `InvalidStrategyConfigError` |
 | `pitch` | `unit`, chiave di blocco; rifiutata ≠ semitones sulle `SEMITONE_LOCKED` | `VoiceManager(pitch_unit=…)` |
-| `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression`: forma di envelope senza esserlo, più `time_mode`/`duration` dello stream se è `normalized` | alla strategy tali e quali |
+| `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression` (`progression` ha la forma di un envelope senza esserlo), più `time_mode`/`duration` dello stream se è `normalized` | alla strategy tali e quali |
 | `pointer` | `normalized`, chiave di blocco, solo bool | `Stream._voice_pointer_normalized` (letto da `_create_grain`) |
 
 `onset_offset` e `pan` non ne hanno: sono il passo comune e basta. Le chiavi di
