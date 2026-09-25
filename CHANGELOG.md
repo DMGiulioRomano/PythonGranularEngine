@@ -681,7 +681,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   parla con le Factory, e `create(name, **kwargs)` e' la stessa firma sulle
   quattro da prima della #184 — la chiamata in `Stream` era posizionale anche
   quando pan chiamava il parametro `strategy_name`. Le righe guadagnate sono
-  meno di quante la issue ne promettesse: il metodo scende da 169 a 78 righe,
+  meno di quante la issue ne promettesse: il metodo scende da 173 a 78 righe,
   ma la parte davvero duplicata era il passo comune — copia, nome, iniezione
   stocastica, conversione dei kwarg, `create` — e le differenze del pitch non
   si comprimono: si spostano in un metodo che le nomina.
