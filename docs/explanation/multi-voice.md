@@ -769,7 +769,7 @@ voices:
     strategy: stochastic
     pointer_range: 0.02
   pan:
-    strategy: linear
+    strategy: range
     spread: 60.0
 ```
 Risultato: 6 voci con leggere variazioni di pitch e posizione nel sample, distribuite nello spazio stereo.
@@ -783,8 +783,10 @@ voices:
   pointer:
     strategy: linear
     step: 0.1
+    normalized: true
 ```
-Risultato: 3 letture parallele del sample a distanza di 10% l'una dall'altra.
+Risultato: 3 letture parallele del sample a distanza di 10% l'una dall'altra. Senza
+`normalized: true` lo stesso `step: 0.1` vale 0,1 secondi (§3.5).
 
 ---
 
@@ -811,7 +813,7 @@ voices:
     strategy: linear
     step: [[0, 0.0], [30, 0.15]]
   pan:
-    strategy: linear
+    strategy: range
     spread: [[0, 0.0], [30, 120.0]]
 ```
 Risultato: tutte e tre le dimensioni si aprono in 30s — da cluster monofonico a ensemble distribuito.
