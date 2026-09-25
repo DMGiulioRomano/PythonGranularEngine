@@ -79,7 +79,7 @@ diventa un evento `log`, che l'editor stampa nel suo terminale senza leggerla:
 | Forma | Regex a valle | Evento |
 |---|---|---|
 | `[CACHE] <token-senza-spazi>: <resto>` | `_RE_CACHE_LINE` | `stream-start`, `stream-done` |
-| `    <path>__<id>.<aif\|aiff\|wav\|flac>` | `_RE_STEM_PATH` | `stream-done` dell'ultimo stream DIRTY |
+| `    <path>__<id>.<aif\|aiff\|wav\|flac>` | `_RE_STEM_PATH` | `stream-done` dello stream DIRTY che il path nomina |
 
 Verificato eseguendo, non leggendo: un render vero passato dentro
 `parse_render_line` produce eventi **solo** su quelle due. L'esito del render
@@ -111,11 +111,26 @@ nessuno debba deciderlo di nuovo. *(Questo doc chiamava quel metodo
 La seconda e' il **blocco riassuntivo** di `cli.py`, e fin qui non era
 nominata: sotto «Generazione completata! N file generati:» ogni path esce
 indentato di quattro spazi, e da li' `parse_render_line` ricava lo
-`stream-done` dell'**ultimo** stream DIRTY del giro — gli altri li chiude la
-riga `[CACHE]` successiva, l'ultimo non ha nessuna riga dopo di se'. Fino alla
-#178 non aveva nessuna guardia: togliendole l'indentazione la suite di PGE
-resta interamente verde e l'ultimo stem prende il pallino giallo dopo un render
-che ha fatto esattamente cio' che il pallino chiedeva.
+`stream-done` di **ogni** stream DIRTY del giro. `[CACHE] <id>: DIRTY` apre lo
+stream e lo lascia in attesa; a chiuderlo e' soltanto la riga di path che
+nomina il suo stem, confrontata sul nome intero `<basename>__<id>` (col solo
+suffisso `__<id>` quando la richiesta non passa il basename).
+
+Non e' sempre stato cosi', e la #178 ha scritto la versione precedente: il
+parser chiudeva ogni DIRTY sulla riga `[CACHE]` successiva e lasciava al
+riepilogo il solo ultimo. Ma il renderer numpy fa il triage di **tutti** gli
+stream prima di scriverne uno (`NumpyAudioRenderer.render_streams`, «Fase 1»),
+quindi le righe `[CACHE]` arrivano in blocco, e quella lettura dichiarava resi
+stem su cui il motore non aveva ancora scritto un campione — pallino verde su
+audio mai riscritto, se il render moriva dopo il triage. Il fix #151 di PGE-ui
+(`328fb31`) ha spostato tutta la chiusura sul riepilogo. Per questo contratto
+vuol dire che la seconda riga di protocollo pesa piu' della prima: senza
+l'indentazione, o col path spezzato, nessuno stream DIRTY si chiude.
+
+Fino alla #178 non aveva nessuna guardia: togliendole l'indentazione la suite
+di PGE restava interamente verde, e oggi **ogni** stem DIRTY prenderebbe il
+pallino giallo dopo un render che ha fatto esattamente cio' che il pallino
+chiedeva.
 
 ### La forma non dice l'intenzione
 

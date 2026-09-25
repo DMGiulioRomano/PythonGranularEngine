@@ -536,11 +536,15 @@ def test_la_registrazione_dinamica_non_stampa(relpath):
 # Le righe che PGE-ui trasforma in eventi sono **due**, non una, e fin qui
 # questo file ne sorvegliava una sola. L'altra e' il blocco riassuntivo di
 # `cli.py`: `print(f"    {path}")` sotto «Generazione completata! N file
-# generati:». Da li' `parse_render_line` ricava lo `stream-done` dell'ultimo
-# stream DIRTY del giro — gli altri li chiude la riga `[CACHE]` successiva,
-# l'ultimo non ha nessuna riga dopo di se'. Toglierle l'indentazione, o
-# spezzarla su piu' righe, lascia quell'unico stem col pallino giallo dopo un
-# render che ha fatto esattamente cio' che il pallino chiedeva.
+# generati:». Da li' `parse_render_line` ricava lo `stream-done` di ogni
+# stream DIRTY del giro: `[CACHE] <id>: DIRTY` lo mette in attesa, e lo chiude
+# soltanto la riga di path che nomina il suo stem. (Quando questo commento e'
+# stato scritto la chiudeva la `[CACHE]` successiva, e al riepilogo restava il
+# solo ultimo stream; il fix #151 di PGE-ui ha spostato tutta la chiusura qui,
+# perche' il renderer numpy fa il triage di tutti gli stream prima di scriverne
+# uno.) Toglierle l'indentazione, o spezzarla su piu' righe, lascia ogni stem
+# DIRTY col pallino giallo dopo un render che ha fatto esattamente cio' che il
+# pallino chiedeva.
 #
 # Misurato per sabotaggio: passando da `f"    {path}"` a `f"{path}"` la suite
 # di PGE restava interamente verde prima di questo test.
@@ -629,8 +633,8 @@ def _stem_paths_su_stdout(testo):
 def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
     """I path degli stem escono nella forma da cui PGE-ui ricava stream-done.
 
-    E' la seconda meta' del protocollo, e l'unica che chiude l'ultimo stream
-    DIRTY del giro.
+    E' la seconda meta' del protocollo, e l'unica che chiude uno stream
+    DIRTY: ognuno aspetta la riga di path del suo stem (fix #151 di PGE-ui).
     """
     api_mod = mocks['main'].api
     result = api_mod.RenderResult(
@@ -648,7 +652,7 @@ def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
     assert trovati == ['/out/PGE_test__streamA', '/out/PGE_test__stream-B.2'], (
         "il blocco riassuntivo non esce piu' nella forma che PGE-ui parsa "
         "(`    <path>__<id>.<ext>`). E' da li' che l'editor ricava lo "
-        "stream-done dell'ultimo stream DIRTY: vedi issue #178 e "
+        "stream-done di ogni stream DIRTY: vedi issue #178 e "
         "docs/explanation/contratto-stdout.md."
     )
 
@@ -656,20 +660,23 @@ def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
 def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
     """Il path deve finire per `__<id>`, che e' cio' che PGE-ui confronta.
 
-    `parse_render_line` non cattura l'id: chiede che il path finisca per
-    `"__" + <lo stream in corso>`. Un id troncato o normalizzato nel path — un
-    `.`/`-` sostituito, il basename accorciato — lascia il confronto senza
-    aggancio, e lo stream in volo non si chiude mai. E' lo stesso difetto che
-    la `\\w` nella regex a monte aveva gia' prodotto una volta.
+    `parse_render_line` non cattura l'id: confronta il nome del file con gli
+    stream DIRTY in attesa. Col basename che il bridge le passa pretende il
+    nome intero `<basename>__<id>`; senza, che finisca per `"__" + <id>`, e
+    fra piu' candidati vince il piu' lungo. Un id troncato o normalizzato nel
+    path — un `.`/`-` sostituito, il basename accorciato — lascia il confronto
+    senza aggancio, e quello stream non si chiude mai. E' lo stesso difetto
+    che la `\\w` nella regex a monte aveva gia' prodotto una volta.
 
     Il caso e' quello che il test qui sopra non copre, ed e' anche l'unico su
     cui il confronto per suffisso si distingue da uno per gruppo catturato:
     un **basename che contiene gia' `__`**. Li' non c'e' una posizione del
     separatore da indovinare — `_RE_STEM_PATH` cattura tutto fino
-    all'estensione e chi legge confronta la coda — e una `print()` che
-    provasse a "ripulire" il path lo romperebbe senza che nient'altro se ne
-    accorga. Senza questo caso l'asserzione era piu' debole di quella del test
-    precedente sugli stessi byte: non poteva fallire da sola.
+    all'estensione e chi legge confronta il nome intero, o la coda — e una
+    `print()` che provasse a "ripulire" il path lo romperebbe senza che
+    nient'altro se ne accorga. Senza questo caso l'asserzione era piu' debole
+    di quella del test precedente sugli stessi byte: non poteva fallire da
+    sola.
     """
     api_mod = mocks['main'].api
     result = api_mod.RenderResult(
@@ -689,8 +696,9 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
         "gia' `__` non gli da' nessun separatore da indovinare."
     )
     assert trovati[0].endswith('__stream-B.2'), (
-        "il path dello stem non finisce piu' per `__<id>`: PGE-ui confronta "
-        "proprio quel suffisso per chiudere lo stream in corso."
+        "il path dello stem non finisce piu' per `__<id>`: senza quel "
+        "suffisso PGE-ui non chiude lo stream DIRTY che il path nomina, "
+        "ne' col nome intero ne' con la sola coda."
     )
 
 
