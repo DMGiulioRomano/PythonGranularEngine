@@ -676,6 +676,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   quindi suonava solo la voce 0, che per invariante non pesca. Ora dichiara
   tre voci, e `TestVoicesWiring` guarda il kwarg su tutte e quattro.
 
+  Un'altra la suite non la vedeva: ogni ramo era provato da solo, in uno
+  stream con quella sola dimensione. Col passo unico, lo stesso codice gira
+  anche per le dimensioni valutate dopo, e il pan viene dopo il pointer: un
+  `_voice_pointer_normalized = False` scritto nel passo comune cancellava il
+  `normalized: true` appena letto, con la suite verde. Le voci avrebbero letto
+  l'offset in secondi invece che come frazione del sample. Adesso
+  `test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream` costruisce uno
+  stream che passa per tutti i rami insieme.
+
   La issue dava la #185 come prerequisito, perche' «senza il registry
   generico il collasso richiederebbe casi speciali». Non era cosi': il wiring
   parla con le Factory, e `create(name, **kwargs)` e' la stessa firma sulle

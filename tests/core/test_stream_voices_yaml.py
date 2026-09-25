@@ -1163,6 +1163,12 @@ class TestVoiceStrategyTimeModeInheritance:
 # La sesta la introduce la tabella stessa, e i blocchi copiati non potevano
 # violarla: gli hook `_take_voice_*_keys` sono metodi di Stream, e il wiring
 # deve raggiungerli come tali (`test_gli_hook_delle_dimensioni_passano_per_lo_stream`).
+#
+# Due ancora riguardano lo stato che il wiring scrive sullo Stream invece di
+# restituirlo, `_voice_pointer_normalized`: ha un default anche quando il
+# sotto-blocco manca (`test_senza_le_dimensioni_speciali_restano_i_default`), e
+# il valore letto dal pointer sopravvive alle dimensioni che passano dopo per
+# lo stesso passo comune (`test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream`).
 
 import copy
 import itertools
@@ -1224,6 +1230,32 @@ class TestVoicesWiring:
         voices = copy.deepcopy(_VOICES_OGNI_RAMO)
         _build_stream_tm(voices, time_mode='normalized')
         assert voices == _VOICES_OGNI_RAMO
+
+    def test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream(self):
+        """Ogni ramo del wiring lascia il suo effetto anche dopo che le
+        dimensioni successive sono passate per lo stesso passo comune.
+
+        Le sezioni sopra provano un ramo alla volta, in uno stream che ha solo
+        quella dimensione. Con quattro blocchi copiati bastava: ogni blocco
+        toccava solo il proprio stato. Col passo unico lo stesso codice gira
+        anche per le dimensioni che vengono dopo, e il pan viene dopo il
+        pointer: un `_voice_pointer_normalized = False` scritto nel passo
+        comune, come default per dimensione, cancellerebbe il `normalized:
+        true` appena letto. L'offset delle voci verrebbe letto in secondi
+        invece che come frazione del sample, senza nessun errore.
+        """
+        s = _build_stream_tm(copy.deepcopy(_VOICES_OGNI_RAMO), time_mode='normalized')
+        vm = s._voice_manager
+        # pointer: la chiave di blocco, e lo step envelope-like diventato Envelope
+        assert s._voice_pointer_normalized is True
+        assert isinstance(vm._pointer_strategy.step, Envelope)
+        # pitch: la chiave di blocco, e la progressione sottratta alla
+        # conversione e scalata sulla duration (time_mode iniettato)
+        assert isinstance(vm.pitch_unit, EdoUnit) and vm.pitch_unit.divisions == 12
+        assert vm._pitch_strategy._times == [0.0, 10.0]
+        # onset_offset e pan: l'iniezione stocastica
+        assert vm._onset_strategy.stream_id == 's1'
+        assert vm._pan_strategy.stream_id == 's1'
 
     @pytest.mark.parametrize('chiave,dimensione', _CHIAVE_FUORI_POSTO)
     def test_le_chiavi_speciali_restano_della_propria_dimensione(self, chiave, dimensione):

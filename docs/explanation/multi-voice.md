@@ -860,7 +860,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer con `time` arg e envelope |
 | `tests/strategies/test_voice_pan_strategy.py` | Range, stochastic, step pan con `time` arg, voice-0 invariant, spread/step envelope |
 | `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager; `TestGenerateGrainsEnvelopePerGrain`: verifica valore esatto pitch_ratio per grain a `voice_cursors[vi]` |
-| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori, `rng_id` iniettato nelle stocastiche (#186) |
+| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, effetti di ogni ramo che convivono nello stesso stream, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori, default delle chiavi di blocco senza il sotto-blocco, `rng_id` iniettato nelle stocastiche, hook risolti sull'istanza (#186) |
 
 **Esecuzione test multi-voice:**
 ```bash
