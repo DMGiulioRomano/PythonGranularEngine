@@ -442,7 +442,8 @@ class Stream:
         # `unit` è config del blocco, non kwarg della distribuzione: decide
         # come l'offset (numero puro) diventa ratio in _create_grain.
         unit_spec = kw.pop('unit', None)
-        # chord/spectral sono semitoni-locked: rifiuta unità ≠ semitones.
+        # chord/chord_progression/spectral sono semitoni-locked
+        # (SEMITONE_LOCKED): rifiuta unità ≠ semitones.
         if name in SEMITONE_LOCKED and unit_spec not in (None, 'semitones'):
             err = InvalidStrategyConfigError(
                 strategy_kind='voice_pitch',

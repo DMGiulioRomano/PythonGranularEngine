@@ -754,7 +754,7 @@ def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
     assert {'chord', 'chord_progression', 'spectral'} <= SEMITONE_LOCKED, (
         "SEMITONE_LOCKED ha perso strategy definite in semitoni: "
         f"{sorted({'chord', 'chord_progression', 'spectral'} - SEMITONE_LOCKED)}. "
-        "Senza di loro Stream._init_voice_manager smette di rifiutare "
+        "Senza di loro Stream._take_voice_pitch_keys smette di rifiutare "
         "`voices.pitch.unit` non-semitones su quelle strategy."
     )
 
