@@ -100,4 +100,9 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 make tests
 ```
 
-YAML con `voices: {num_voices: N, <axis>: {strategy: <nome>, ...}}` e ascolto del risultato.
+YAML con `voices: {num_voices: N, <chiave>: {strategy: <nome>, ...}}` e ascolto del risultato.
+`<chiave>` e' la chiave YAML della riga in `Stream._VOICE_AXES` (`pitch`,
+`onset_offset`, `pointer`, `pan`), non il nome dell'asse usato negli altri
+passi: per l'onset le due differiscono, e un `onset:` dentro `voices:` viene
+ignorato senza errore — la strategy non viene nemmeno costruita, e l'ascolto
+non ha niente da far sentire. `N` almeno 2: la voce 0 non riceve offset.
