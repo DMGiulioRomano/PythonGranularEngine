@@ -44,7 +44,7 @@ Vedi [Architettura](#2-architettura) per il modello completo, [Componenti princi
 
 ## Implicazioni codice
 
-- `src/pge/strategies/` — un file per strategy + factory per asse
+- `src/pge/strategies/` — un modulo per asse (`voice_<asse>_strategy.py`): ABC, strategy concrete, registry `VOICE_<ASSE>_STRATEGIES` e factory
 - `src/pge/core/stream.py` — `_init_voice_manager`, che cicla su `_VOICE_AXES` con `_build_voice_strategy` (§4), `_parse_strategy_kwarg` (envelope auto-detect)
 - `src/pge/shared/seeding.py` — `voice_rng`, l'RNG per-voce delle strategy stocastiche
 - `src/pge/controllers/voice_manager.py` — `VoiceManager`, `VoiceConfig`
@@ -129,7 +129,7 @@ Stream._init_voice_manager()
     ├─ per ogni riga di _VOICE_AXES presente nello YAML → _build_voice_strategy():
     │    ├─ take_block_keys della dimensione (solo pitch e pointer)
     │    ├─ Auto-injection stream_id   (per riproducibilità stochastic)
-    │    ├─ _parse_strategy_kwarg(): list/dict → Envelope, altrimenti invariato
+    │    ├─ _parse_strategy_kwarg(): envelope-like → Envelope (time_mode dello stream, #144), altrimenti invariato
     │    └─ Factory della dimensione   (VoicePitchStrategyFactory, ecc.)
     └─ VoiceManager(max_voices, strategy..., pitch_unit)  # ogni strategy possiede il proprio param (Union[float, Envelope])
 
@@ -708,8 +708,8 @@ voices:
 
 Tutti i parametri scalari (`step`, `pitch_range`, `pointer_range`, `max_offset`, `base`, `spread`) accettano:
 - `float` — valore costante per tutta la durata dello stream
-- lista di punti `[[t, v], ...]` — envelope lineare in secondi
-- dizionario `{points: [...], time_mode: normalized}` — envelope in coordinate 0.0–1.0 scalate su `stream.duration`
+- lista di punti `[[t, v], ...]` — envelope lineare nel `time_mode` dello stream (#144): secondi, oppure coordinate 0.0–1.0 scalate su `stream.duration` se lo stream dichiara `time_mode: normalized`
+- dizionario `{points: [...], time_mode: normalized}` — come la lista, ma il `time_mode` locale, se c'è, sovrascrive quello dello stream (`time_mode: absolute` resta in secondi anche su uno stream `normalized`)
 
 ### Esempi
 
