@@ -7,7 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
   - src/pge/controllers/voice_manager.py
-last_synced_commit: b818537
+last_synced_commit: 989d0f0
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -173,7 +173,7 @@ class VoiceManager:
 @dataclass(frozen=True)
 class VoiceConfig:
     pitch_factor:   float   # fattore di ratio (1.0 = identità)
-    pointer_offset: float   # normalizzato 0.0–1.0
+    pointer_offset: float   # secondi nel sample, o frazione se normalized: true
     pan_offset:     float   # gradi
     onset_offset:   float   # secondi
 ```
@@ -443,7 +443,7 @@ stream_id="pad", max_offset=0.1, 4 voci → es. [0.0, 0.073, 0.021, 0.089]
 class VoicePointerStrategy(ABC):
     @abstractmethod
     def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
-        """Offset normalizzato sulla posizione nel sample."""
+        """Offset raw da YAML sulla posizione nel sample (unità decisa da Stream)."""
 ```
 
 L'offset di pointer si somma in modo additivo con gli altri livelli di posizionamento nel sample:
@@ -454,7 +454,11 @@ pointer_finale = base_pointer(t)         # PointerController (loop, jitter, spee
                + grain_jitter(t)         # mod_range per-grano
 ```
 
-Il valore è normalizzato `0.0–1.0` dove `0.0` = inizio del sample, `1.0` = fine.
+La strategy restituisce il valore raw dello YAML senza interpretarne l'unità: la
+decide `Stream._create_grain` dalla chiave di blocco `voices.pointer.normalized`
+(§4). Default `false` = secondi nel sample; con `normalized: true` il valore è una
+frazione di `sample_dur_sec` (`0.0` = inizio del sample, `1.0` = fine), e lo
+scaling avviene in `Stream`, l'unico punto che conosce la durata del sample.
 
 ---
 
@@ -467,11 +471,11 @@ offset(i) = i × step(t)
 Crea N **teste di lettura equidistanti** nel sample. `step` accetta `float` o `Envelope`. Ogni voce legge da un punto diverso, sfasato di `step` rispetto alla precedente.
 
 ```
-step=0.1, 4 voci → [0.0, 0.1, 0.2, 0.3]
-                    voce 0 legge da 0%
-                    voce 1 legge da 10%
-                    voce 2 legge da 20%
-                    voce 3 legge da 30%
+step=0.1, normalized: true, 4 voci → [0.0, 0.1, 0.2, 0.3]
+                                     voce 0 legge da 0%
+                                     voce 1 legge da 10%
+                                     voce 2 legge da 20%
+                                     voce 3 legge da 30%
 ```
 
 `step` può essere negativo: le voci secondarie leggono *indietro* rispetto alla voce 0.
@@ -511,7 +515,7 @@ Con `range` piccolo (0.01–0.05) le voci rimangono nella stessa zona del sample
 ```python
 class VoicePanStrategy(ABC):
     @abstractmethod
-    def get_pan_offset(self, voice_index: int, num_voices: int, spread: float, time: float) -> float:
+    def get_pan_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """Offset in gradi rispetto al pan base dello stream."""
 ```
 
@@ -679,6 +683,7 @@ voices:
 
   pitch:
     strategy: <nome>          # step | range | chord | chord_progression | stochastic | spectral
+    unit: <unità>             # chiave di blocco, default semitones (§4)
     # parametri specifici della strategy
 
   onset_offset:
@@ -687,11 +692,12 @@ voices:
 
   pointer:
     strategy: <nome>          # linear | stochastic
+    normalized: <bool>        # chiave di blocco, default false = secondi (§4)
     # parametri specifici della strategy
 
   pan:
-    strategy: <nome>          # linear | additive | random
-    spread: <float|envelope>  # ampiezza distribuzione stereo in gradi
+    strategy: <nome>          # range | stochastic | step
+    # parametri specifici della strategy (spread per range/stochastic, step per step)
 ```
 
 Tutti i parametri scalari (`step`, `pitch_range`, `pointer_range`, `max_offset`, `base`, `spread`) accettano:
