@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: cf66b14
+last_synced_commit: d5d496e
 ---
 
 # Il registry generico delle strategy — la forma decisa
