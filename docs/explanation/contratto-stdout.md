@@ -25,7 +25,7 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
   - tests/engine/test_generator.py
-last_synced_commit: 36aedd7
+last_synced_commit: b9c9822
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -204,8 +204,12 @@ una scelta e non una lettura:
   render finito `  → <id>: N grani (M voci)` — o `grani non generati (cache)`
   — per ogni stream, col numero vero al posto di `lazy`. A schermo resta
   quindi `Creazione di N stream...` prima del render e una riga per stream
-  dopo; sparisce il `repr` a costruzione, che ne era il doppione meno
-  informato. Chi lo vuole lo trova su `pge.diagnostics`, a livello DEBUG.
+  dopo; sparisce il `repr` a costruzione. Doppione, pero', lo era solo sui
+  grani: portava anche `onset`, `dur` e `mode` (density o fill_factor), che
+  nessun'altra riga stampa. E `dur` e' la durata *risolta*: per uno stream
+  senza `duration` nello YAML (#205) era l'unico posto a schermo dove si
+  leggeva quanto dura. E' questo il prezzo vero della scelta, non il
+  `grains=lazy`. Chi lo vuole lo trova su `pge.diagnostics`, a livello DEBUG.
 - `📝 Clip log file: <path>` — questo doc diceva che passa «a ogni render».
   Falso: `get_clip_logger()` e' lazy, e la riga esce al **primo clip**, una
   volta per configurazione. Non e' traffico di ogni rendering; e' l'annuncio
@@ -246,7 +250,9 @@ criterio. Tre condizioni, ognuna sufficiente:
 **La riga per stream a costruzione non si vede piu' a schermo** (#188). Lo
 stesso costo della voce qui sotto, un giro piu' in la', e accettato per le
 ragioni della nota sopra: la conferma per stream c'e' ancora, a render finito
-e coi grani veri. Verificato sul bridge vero di PGE-ui (`server.py` contro
+e coi grani veri. Quello che dallo schermo se ne va davvero sono `onset`,
+durata risolta e modo di ogni stream, che il `repr` era il solo a stampare.
+Verificato sul bridge vero di PGE-ui (`server.py` contro
 questo motore, tre render: tutti DIRTY, tutti clean, uno misto) e poi
 sull'editor in un Chromium headless: gli eventi NDJSON sono identici a quelli
 di prima uno per uno, l'avanzamento per stream e i pallini fanno lo stesso

@@ -899,7 +899,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Cosa cambia a schermo: non si vede piu' il `repr` a costruzione. La
   conferma per stream resta, e piu' informata — dalla #250 la CLI stampa a
   render finito `  → <id>: N grani (M voci)` al posto di `grains=lazy` — e
-  `Creazione di N stream...` resta dov'era. Protocollo e interfaccia non si
+  `Creazione di N stream...` resta dov'era. Con il `repr` escono pero' dallo
+  schermo anche `onset`, `dur` e `mode` di ogni stream, che nessun'altra riga
+  stampa; `dur` e' la durata risolta, compresa quella implicita della #205.
+  Restano su `pge.diagnostics` a livello DEBUG. Protocollo e interfaccia non si
   muovono di un carattere: `stream_cache_manager.py` non e' toccato, e le sue
   due `print()` sono appunto una riga di protocollo e una di interfaccia.
   Verificato sul bridge vero di PGE-ui e sull'editor in un Chromium headless,
