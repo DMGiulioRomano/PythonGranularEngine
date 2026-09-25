@@ -548,14 +548,46 @@ class TestStdoutReale:
 
     def test_senza_manifest_non_c_e_riga_di_cache(self, probe):
         """`[CACHE]` e' condizionata a `cache_manifest_path`, e il
-        censimento lo dice: senza manifest quella riga non esiste."""
+        censimento lo dice: senza manifest quella riga non esiste.
+
+        Il render e' per stream, come nel test qui sopra, e deve esserlo:
+        nel mix la riga non esce nemmeno col manifest (test qui sotto), quindi
+        un render nel mix lasciava questo test verde anche con la guardia sul
+        manifest tolta dal renderer -- misurato: una `print()` aggiunta prima
+        di `if not self.cache_manager` in `_cache_skip` non lo faceva cadere.
+        """
         from pge import api
         gen, _ = _capture(
             lambda: api.load_generator(probe['yml'],
                                        samples_dir=probe['samples']))
+        out = str(probe['dir'] / 'stem.wav')
+        _res, lines = _capture(lambda: api.render(
+            gen, out, renderer='numpy', per_stream=True,
+            samples_dir=probe['samples']))
+
+        assert not [ln for ln in lines if ln.startswith('[CACHE]')], lines
+        assert not _undocumented(lines, _census_tokens()), (
+            f"righe non censite: {_undocumented(lines, _census_tokens())}")
+
+    def test_nel_mix_non_c_e_riga_di_cache_nemmeno_col_manifest(self, probe):
+        """La seconda condizione del censimento: `per_stream=True`.
+
+        Nel mix il renderer non consulta la cache stream per stream (il
+        controllo sta in `render_streams`/`render_single_stream`, non in
+        `render_merged_streams`), quindi il manifest da solo non basta a far
+        uscire `[CACHE] <id>: ...`. Il censimento in `api.py` lo dichiara: il
+        giorno che il mix cominciasse a stamparla la dichiarazione sarebbe
+        falsa, e questo test lo dice.
+        """
+        from pge import api
+        gen, _ = _capture(
+            lambda: api.load_generator(probe['yml'],
+                                       samples_dir=probe['samples']))
+        manifest = str(probe['dir'] / 'manifest.json')
         out = str(probe['dir'] / 'mix.wav')
         _res, lines = _capture(lambda: api.render(
-            gen, out, renderer='numpy', samples_dir=probe['samples']))
+            gen, out, renderer='numpy', per_stream=False,
+            samples_dir=probe['samples'], cache_manifest_path=manifest))
 
         assert not [ln for ln in lines if ln.startswith('[CACHE]')], lines
         assert not _undocumented(lines, _census_tokens()), (

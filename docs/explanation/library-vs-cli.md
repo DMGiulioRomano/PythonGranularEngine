@@ -65,7 +65,8 @@ Divisione delle policy (chi decide cosa):
   un `print()`; i componenti che orchestra ne contengono, e scrivono su
   stdout mentre lavorano: `Generator` (`[SEED]`, `Creazione di N
   stream...`, `🔇 N stream muted`), i renderer
-  (`[CACHE] <id>: DIRTY|clean`, solo con `cache_manifest_path`),
+  (`[CACHE] <id>: DIRTY|clean`, solo con `cache_manifest_path` e
+  `per_stream=True`),
   `ScoreWriter` sul ramo Csound (`✓ Score generato`), `ScoreVisualizer` da
   `export_score_pdf` (`Analisi completata`, `Esportazione PDF`, ...) e il
   clip logger alla prima inizializzazione (`📝 Clip log file`). Il

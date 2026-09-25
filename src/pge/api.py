@@ -31,8 +31,9 @@
 #     `Creazione di`        _create_streams, quanti stream sta costruendo
 #     `⚠️  Warning: impossibile valutare`  espressione matematica nello YAML
 #
-#   da render(), solo con `cache_manifest_path` (senza manifest non c'e'
-#   nessuna riga di cache):
+#   da render(), solo con `cache_manifest_path` e `per_stream=True` (senza
+#   manifest non c'e' nessuna riga di cache, e nel mix il renderer non
+#   consulta la cache stream per stream):
 #     `[CACHE]`             il renderer, DIRTY/clean per stream
 #
 #   da render(renderer='csound'), da ScoreWriter mentre scrive il .sco:
