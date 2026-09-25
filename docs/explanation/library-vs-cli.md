@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [api, cli, architecture, refactor]
 sources: [src/pge/api.py, src/pge/cli.py, src/main.py]
-last_synced_commit: 5285c17
+last_synced_commit: 807a737
 entry_for: [usare PGE come libreria, capire la divisione API/CLI]
 ---
 
@@ -102,7 +102,11 @@ Divisione delle policy (chi decide cosa):
   render, e chiamata da `render` invece che dalla CLI perché il momento non è
   una policy — leggere `voices` prima del render genererebbe i grani in fase
   di stampa (generazione lazy, #117). `RenderResult` porta il risultato, alla
-  CLI resta la prosa.
+  CLI resta la prosa. Dalla #188 quella prosa accosta al conteggio onset,
+  durata risolta e modo di ogni stream (`_stream_timing`), che la CLI legge
+  da `generator.streams` e non chiede all'API: sono attributi fissati a
+  costruzione, leggerli non tocca `voices`, e metterli a schermo è policy
+  della CLI — chi incorpora li ha già sugli `Stream`.
 - `import pge` è economico: i simboli pesanti (ScoreVisualizer →
   matplotlib) sono lazy via `__getattr__` di modulo (PEP 562).
 
