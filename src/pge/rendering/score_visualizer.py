@@ -985,10 +985,11 @@ class ScoreVisualizer:
         return grain_visuals.window_name_map(stream)
 
     def _grain_page_width_px(self, ax, grain):
-        """Larghezza del grano sulla pagina in pixel display.
+        """Larghezza del grano in pixel display sull'asse ax che lo disegna.
 
         Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
-        in modo leggibile.
+        in modo leggibile. L'asse non e' sempre la pagina: nella lente lo
+        stesso grano e' largo zoom volte tanto, e la risposta cambia.
 
         La misura usa i limiti che ax ha al momento della chiamata, quindi
         vanno impostati prima. Un asse mai disegnato ha gia' una transData
@@ -1043,8 +1044,9 @@ class ScoreVisualizer:
                 window_mode = False
 
         for grain in visible_grains:
-            # window_mode con grano abbastanza largo sulla pagina e finestra
-            # risolvibile -> silhouette della finestra; altrimenti freccia.
+            # window_mode con grano abbastanza largo su ax (pagina o lente) e
+            # finestra risolvibile -> silhouette della finestra; altrimenti
+            # freccia.
             use_window = (
                 window_mode
                 and self._grain_page_width_px(ax, grain) >= min_px
