@@ -589,10 +589,10 @@ quale Factory lo costruisce e in quale kwarg di `VoiceManager` finisce:
 ```python
 _VOICE_AXES = (
     _VoiceAxis('pitch',        VoicePitchStrategyFactory,   'pitch_strategy',
-               _take_voice_pitch_keys),
+               '_take_voice_pitch_keys'),
     _VoiceAxis('onset_offset', VoiceOnsetStrategyFactory,   'onset_strategy'),
     _VoiceAxis('pointer',      VoicePointerStrategyFactory, 'pointer_strategy',
-               _take_voice_pointer_keys),
+               '_take_voice_pointer_keys'),
     _VoiceAxis('pan',          VoicePanStrategyFactory,     'pan_strategy'),
 )
 ```
@@ -605,7 +605,10 @@ se la strategy si chiama `stochastic`, gli altri kwarg passati a
 `_parse_strategy_kwarg`, poi `Factory.create(name, **kwargs)`.
 
 Quel che distingue davvero una dimensione sta nel suo `take_block_keys`, che
-toglie da `kw` ciò che il passo comune non deve vedere:
+toglie da `kw` ciò che il passo comune non deve vedere. La riga ne porta il
+*nome* e `_build_voice_strategy` lo risolve sull'istanza (`getattr(self, …)`):
+una funzione catturata nel corpo della classe verrebbe chiamata scavalcando
+`self`, e un override o un `patch.object` su `Stream` non la raggiungerebbero.
 
 | dimensione | differenza | dove va |
 |---|---|---|

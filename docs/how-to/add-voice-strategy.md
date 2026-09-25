@@ -57,7 +57,9 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
    blocco, config della dimensione e non della strategy (come `unit` del pitch
    o `normalized` del pointer). Pitch e pointer un `take_block_keys` ce l'hanno
    gia' (`_take_voice_pitch_keys`, `_take_voice_pointer_keys`); onset e pan
-   no, e la riga di tabella e' dove aggiungerlo.
+   no: si scrive il metodo su `Stream` e se ne mette il *nome*, come stringa,
+   nella riga di tabella. `_build_voice_strategy` lo risolve sull'istanza,
+   quindi un override o un `patch.object` lo raggiungono.
 
    Il terzo e' una strategy stocastica nuova. L'iniezione di `stream_id`
    (che vale `rng_id`, #169) e `seed` in `_build_voice_strategy` e' decisa dal

@@ -650,7 +650,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `take_block_keys` della riga che le ha: per il pitch l'hard break di
   `semitone_range`, la chiave di blocco `unit` validata contro
   `SEMITONE_LOCKED`, i kwarg strutturali di `chord_progression`; per il
-  pointer la chiave di blocco `normalized`. Onset e pan non ne hanno.
+  pointer la chiave di blocco `normalized`. Onset e pan non ne hanno. La riga
+  porta il *nome* del metodo, non la funzione: una funzione catturata nel corpo
+  della classe veniva chiamata scavalcando l'istanza, e un `patch.object` su
+  `Stream` o l'override di una sottoclasse non la raggiungevano, senza errore
+  (`test_gli_hook_delle_dimensioni_passano_per_lo_stream`).
 
   Nessuna superficie si muove: stesse chiavi, stessi errori con lo stesso
   `stream_id`, stesso ordine di valutazione (pitch, onset_offset, pointer,

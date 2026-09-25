@@ -17,7 +17,7 @@ from __future__ import annotations
 import random
 import warnings
 from math import ceil, floor, log10
-from typing import Callable, List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 from pge.core.grain import Grain
 from pge.envelopes.envelope import Envelope, create_scaled_envelope, scale_raw_param_values
@@ -104,16 +104,20 @@ class _VoiceAxis:
                   stessa firma sulle quattro, qualunque registry ci sia dietro.
         slot:     kwarg di VoiceManager che riceve la strategy.
         take_block_keys: le differenze vere della dimensione, o None se non ne
-                  ha. `(stream, name, kw, config) -> (strutturali, per_manager)`:
+                  ha. E' il *nome* di un metodo di Stream
+                  `(name, kw, config) -> (strutturali, per_manager)`, che
                   toglie da `kw` cio' che il passo comune non deve vedere — le
                   chiavi di blocco, config della dimensione e non della
                   strategy, e i kwarg con la forma di un envelope che envelope
-                  non sono.
+                  non sono. Il nome e non la funzione: la tabella sta nel corpo
+                  della classe, e una funzione catturata li' verrebbe chiamata
+                  scavalcando l'istanza — un override o un `patch.object` su
+                  Stream non la raggiungerebbero.
     """
     yaml_key: str
     factory: type
     slot: str
-    take_block_keys: Optional[Callable[..., Tuple[dict, dict]]] = None
+    take_block_keys: Optional[str] = None
 
 
 class Stream:
@@ -407,7 +411,8 @@ class Stream:
         name = kw.pop('strategy')
         structural, for_manager = {}, {}
         if axis.take_block_keys is not None:
-            structural, for_manager = axis.take_block_keys(self, name, kw, config)
+            take = getattr(self, axis.take_block_keys)
+            structural, for_manager = take(name, kw, config)
         if name == 'stochastic':
             kw['stream_id'] = config.context.rng_id
             kw['seed'] = self.seed
@@ -497,10 +502,10 @@ class Stream:
     # e pan sono il passo comune e basta.
     _VOICE_AXES = (
         _VoiceAxis('pitch',        VoicePitchStrategyFactory,   'pitch_strategy',
-                   _take_voice_pitch_keys),
+                   '_take_voice_pitch_keys'),
         _VoiceAxis('onset_offset', VoiceOnsetStrategyFactory,   'onset_strategy'),
         _VoiceAxis('pointer',      VoicePointerStrategyFactory, 'pointer_strategy',
-                   _take_voice_pointer_keys),
+                   '_take_voice_pointer_keys'),
         _VoiceAxis('pan',          VoicePanStrategyFactory,     'pan_strategy'),
     )
 

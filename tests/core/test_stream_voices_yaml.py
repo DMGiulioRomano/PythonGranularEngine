@@ -1149,7 +1149,12 @@ class TestVoiceStrategyTimeModeInheritance:
 #   che cambia la superficie degli errori: non e' materia di questa issue.
 #
 # Una quinta proprieta' sfuggiva anche a quelle quattro: le stocastiche
-# ricevono `rng_id` (#169), non lo stream_id (ultimo test della classe).
+# ricevono `rng_id` (#169), non lo stream_id
+# (`test_le_stocastiche_ricevono_rng_id_non_stream_id`).
+#
+# La sesta la introduce la tabella stessa, e i blocchi copiati non potevano
+# violarla: gli hook `_take_voice_*_keys` sono metodi di Stream, e il wiring
+# deve raggiungerli come tali (`test_gli_hook_delle_dimensioni_passano_per_lo_stream`).
 
 import copy
 import itertools
@@ -1317,3 +1322,30 @@ class TestVoicesWiring:
             'pan': vm._pan_strategy,
         }
         assert {k: st.stream_id for k, st in strategie.items()} == dict.fromkeys(strategie, 'coro')
+
+    @pytest.mark.parametrize('metodo,voices', [
+        ('_take_voice_pitch_keys',
+         {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 1.0}}),
+        ('_take_voice_pointer_keys',
+         {'num_voices': 2, 'pointer': {'strategy': 'linear', 'step': 0.1}}),
+    ])
+    def test_gli_hook_delle_dimensioni_passano_per_lo_stream(self, metodo, voices):
+        """La riga di `_VOICE_AXES` nomina l'hook, non ne tiene la funzione.
+
+        Una tupla scritta nel corpo della classe cattura la funzione nel momento
+        in cui la classe viene definita, e il wiring la chiamerebbe scavalcando
+        l'istanza: un `patch.object(Stream, ...)` — idioma della suite, vedi
+        `tests/core/test_stream.py` — o l'override di una sottoclasse non
+        verrebbero mai raggiunti, senza che niente lo dica. Il metodo resterebbe
+        leggibile e patchabile, e non sarebbe piu' quello che gira.
+        """
+        originale = getattr(Stream, metodo)
+        chiamate = []
+
+        def spia(self, *args, **kwargs):
+            chiamate.append(self.stream_id)
+            return originale(self, *args, **kwargs)
+
+        with patch.object(Stream, metodo, spia):
+            _build_stream(voices, stream_id='spiato')
+        assert chiamate == ['spiato']
