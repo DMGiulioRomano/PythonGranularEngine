@@ -52,8 +52,10 @@ passare dalla CLI né monkey-patchare i globali.
    ma i componenti che orchestra sì, e chi incorpora se li ritrova sul
    proprio stdout: `Generator` annuncia il seed di sessione (`[SEED] ...`)
    e quanti stream costruisce; i renderer scrivono `[CACHE]
-   <id>: DIRTY|clean` quando c'è un `cache_manifest_path`;
-   `export_score_pdf` fa parlare `ScoreVisualizer`. Il censimento completo,
+   <id>: DIRTY|clean` quando c'è un `cache_manifest_path` e il render è
+   per stream (`per_stream=True`: nel mix la cache non si consulta stream
+   per stream, e la riga non esce); `export_score_pdf` fa parlare
+   `ScoreVisualizer`. Il censimento completo,
    riga per riga e con chi la emette, sta nell'intestazione di
    `src/pge/api.py`. Fanno parte del contratto stdout della CLI (la riga
    `[CACHE]` la parsa PGE-ui per l'avanzamento per stream), quindi non

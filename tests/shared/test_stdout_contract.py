@@ -728,9 +728,10 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
 #
 # **Cosa la tabella non decide.** Dice dove una riga *sta*, non dove dovrebbe
 # andare: spostare una INTERFACCIA al logger resta una scelta di prodotto —
-# cambia cio' che l'utente vede — e le issue di esecuzione la prendono una
-# riga alla volta. Quel che la tabella impedisce e' di spostarne una senza
-# accorgersi che era protocollo.
+# cambia cio' che l'utente vede — e va presa riga per riga, in una issue sua:
+# le issue di esecuzione della #178 (#187, #188) hanno spostato solo
+# diagnostica, e la #188 era l'ultima. Quel che la tabella impedisce e' di
+# spostarne una senza accorgersi che era protocollo.
 PROTOCOLLO = 'protocollo'
 DIAGNOSTICA = 'diagnostica'
 INTERFACCIA = 'interfaccia'
