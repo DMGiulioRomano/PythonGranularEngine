@@ -89,7 +89,8 @@ from pge.rendering import magnifier_projection  # noqa: E402
 from pge.rendering import magnifier_targets  # noqa: E402
 from pge.rendering import page_layout  # noqa: E402
 from pge.rendering import waveform_peaks  # noqa: E402
-from pge.rendering.visualizer_config import VisualizerConfig  # noqa: E402
+from pge.rendering.visualizer_config import (  # noqa: E402
+    MM_PER_INCH, VisualizerConfig)
 
 
 class ScoreVisualizer:
@@ -984,12 +985,19 @@ class ScoreVisualizer:
         Delega a rendering.grain_visuals.window_name_map."""
         return grain_visuals.window_name_map(stream)
 
-    def _grain_width_px(self, ax, grain):
-        """Larghezza del grano in pixel display sull'asse ax che lo disegna.
+    def _grain_width_mm(self, ax, grain):
+        """Larghezza del grano in millimetri sulla pagina, sull'asse ax che lo
+        disegna.
 
-        Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
-        in modo leggibile. L'asse non e' sempre la pagina: nella lente lo
-        stesso grano e' largo zoom volte tanto, e la risposta cambia.
+        Usata per il fallback adattivo: grani troppo stretti non mostrano la
+        finestra in modo leggibile. L'asse non e' sempre la pagina: nella lente
+        lo stesso grano e' largo zoom volte tanto, e la risposta cambia.
+
+        Millimetri e non pixel (issue #280): i pixel display valgono alla
+        figure.dpi di rcParams, che non e' la risoluzione di nessun file
+        esportato (PNG a 300 dpi, PDF vettoriale) e cambia da un ambiente
+        all'altro. Divisi per la dpi della figura danno la larghezza fisica,
+        che a qualsiasi risoluzione resta la stessa.
 
         La misura usa i limiti che ax ha al momento della chiamata, quindi
         vanno impostati prima. Un asse mai disegnato ha gia' una transData
@@ -1000,7 +1008,7 @@ class ScoreVisualizer:
             t = ax.transData
             x0 = t.transform((grain.onset, 0.0))[0]
             x1 = t.transform((grain.onset + grain.duration, 0.0))[0]
-            return abs(x1 - x0)
+            return abs(x1 - x0) / ax.figure.dpi * MM_PER_INCH
         except Exception:
             return float('inf')
 
@@ -1013,7 +1021,7 @@ class ScoreVisualizer:
 
         Precondizione: ax ha gia' i limiti finali. Con grain_shape='window' la
         scelta fra finestra e freccia misura il grano su quei limiti (vedi
-        _grain_width_px)."""
+        _grain_width_mm)."""
         
         visible_grains = grain_visuals.visible_grains(
             stream, page_start, page_end)
@@ -1037,7 +1045,7 @@ class ScoreVisualizer:
         if window_mode:
             name_map = self._window_name_map(stream)
             resolution = self.config['window_shape_resolution']
-            min_px = self.config['window_shape_min_px']
+            min_mm = self.config['window_shape_min_mm']
             # name_map vuota (window_table_map assente) -> niente nomi da
             # risolvere: si ripiega interamente sulla freccia.
             if not name_map:
@@ -1049,7 +1057,7 @@ class ScoreVisualizer:
             # freccia.
             use_window = (
                 window_mode
-                and self._grain_width_px(ax, grain) >= min_px
+                and self._grain_width_mm(ax, grain) >= min_mm
                 and grain.envelope_table in name_map
             )
             if use_window:

@@ -241,7 +241,7 @@ class TestAdaptiveFallback:
     def test_tiny_grain_falls_back_to_arrow(self):
         viz = make_viz(config={'grain_shape': 'window',
                                'window_shape_resolution': 32,
-                               'window_shape_min_px': 50})
+                               'window_shape_min_mm': 12.7})
         fig, ax = plt.subplots()
         ax.set_xlim(0, 600)   # 600s su pochi pollici -> grano 0.5s e' sub-pixel
         ax.set_ylim(0, 2)
@@ -260,8 +260,9 @@ class TestAdaptiveFallback:
 # =============================================================================
 
 class TestFallbackMeasuredOnFinishedFigure:
-    """La soglia window_shape_min_px parla dei pixel che il grano occupa
-    nella figura che si guarda, e quei pixel dipendono dai limiti dell'asse.
+    """La soglia window_shape_min_mm parla della larghezza che il grano ha
+    sulla pagina che si guarda, e quella larghezza dipende dai limiti
+    dell'asse.
 
     I test del GROUP 6 impostano xlim prima di chiamare _draw_grains_full, e
     per questo non vedono l'ordine dei chiamanti: se un asse disegna i grani
@@ -273,6 +274,12 @@ class TestFallbackMeasuredOnFinishedFigure:
     5 ms su una pagina da 5 s sono sotto soglia sulla MAP e ben sopra nella
     lente a zoom 8. Una forma decisa senza guardare l'asse finito sbaglia
     almeno uno dei due.
+
+    Ogni test gira a due figure.dpi. La larghezza in millimetri non ne
+    dipende, i pixel si': a 300 dpi un grano della MAP largo 0.36 mm occupa
+    oltre 4 px. Una soglia contata in pixel della figura cambierebbe forma
+    cambiando la dpi dell'ambiente, e non corrisponderebbe comunque ai pixel
+    del file esportato (PNG a 300 dpi, PDF vettoriale).
     """
 
     PAGE = 5.0
@@ -297,6 +304,11 @@ class TestFallbackMeasuredOnFinishedFigure:
                      'num_voices', 'scatter', 'pointer_speed'):
             delattr(s, name)
         return s
+
+    @pytest.fixture(params=[100, 300], ids=lambda dpi: f'{dpi}dpi')
+    def figure_dpi(self, request):
+        with matplotlib.rc_context({'figure.dpi': request.param}):
+            yield request.param
 
     def _render(self):
         gen = MagicMock()
@@ -331,40 +343,47 @@ class TestFallbackMeasuredOnFinishedFigure:
                              f"silhouette a risoluzione {self.RES}")
 
     @staticmethod
-    def _width_px(ax, path):
+    def _width_mm(ax, path):
         # Freccia e silhouette coprono entrambe [onset, onset + duration].
+        # I pixel display si riportano a millimetri con la dpi della figura:
+        # e' la larghezza sulla pagina, uguale a qualsiasi risoluzione.
         xs = path.vertices[:, 0]
         x0 = ax.transData.transform((xs.min(), 0.0))[0]
         x1 = ax.transData.transform((xs.max(), 0.0))[0]
-        return abs(x1 - x0)
+        return abs(x1 - x0) / ax.figure.dpi * 25.4
 
-    def _assert_shapes_follow_final_width(self, ax, min_px, expected):
+    def _assert_shapes_follow_final_width(self, ax, min_mm, expected):
         paths = self._grain_paths(ax)
         assert paths, 'nessun grano disegnato: la scena non prova niente'
         for path in paths:
-            width = self._width_px(ax, path)
+            width = self._width_mm(ax, path)
             # Premessa della scena: su questo asse tutti i grani stanno dalla
             # stessa parte della soglia, e dalla parte attesa. Il messaggio la
             # nomina: senza, un cambio di layout e una regressione del
             # fallback fallirebbero con lo stesso numero nudo.
-            assert (width >= min_px) == (expected == 'window'), (
-                f"premessa della scena violata: grano largo {width:.2f} px "
-                f"a figura finita, soglia {min_px} px, forma attesa "
+            assert (width >= min_mm) == (expected == 'window'), (
+                f"premessa della scena violata: grano largo {width:.3f} mm "
+                f"a figura finita, soglia {min_mm:.3f} mm, forma attesa "
                 f"{expected!r}. Va ritarata la scena, non il codice.")
             assert self._shape(path) == expected, (
-                f"grano largo {width:.2f} px a figura finita (soglia "
-                f"{min_px} px) disegnato come {self._shape(path)!r}: la "
-                f"forma e' stata scelta su limiti diversi da quelli finali.")
+                f"grano largo {width:.3f} mm a figura finita (soglia "
+                f"{min_mm:.3f} mm, figure.dpi {ax.figure.dpi}) disegnato "
+                f"come {self._shape(path)!r}: la forma e' stata scelta su "
+                f"limiti diversi da quelli finali, o contando pixel invece "
+                f"di millimetri.")
 
-    def test_lens_draws_window_for_grains_wide_in_the_lens(self):
+    def test_lens_draws_window_for_grains_wide_in_the_lens(self, figure_dpi):
         viz, fig = self._render()
+        assert fig.dpi == figure_dpi
         lenses = [ax for ax in fig.axes if ax.get_label() == '<magnifier>']
         assert len(lenses) == 1
         self._assert_shapes_follow_final_width(
-            lenses[0], viz.config['window_shape_min_px'], 'window')
+            lenses[0], viz.config['window_shape_min_mm'], 'window')
 
-    def test_map_falls_back_to_arrow_for_grains_narrow_on_the_page(self):
+    def test_map_falls_back_to_arrow_for_grains_narrow_on_the_page(
+            self, figure_dpi):
         viz, fig = self._render()
+        assert fig.dpi == figure_dpi
         maps = [ax for ax in fig.axes
                 if ax.get_label() != '<magnifier>'
                 and any(isinstance(c, PatchCollection) and c.get_zorder() == 2
@@ -372,4 +391,4 @@ class TestFallbackMeasuredOnFinishedFigure:
         assert len(maps) == 1
         assert maps[0].get_xlim() == pytest.approx((0.0, self.PAGE))
         self._assert_shapes_follow_final_width(
-            maps[0], viz.config['window_shape_min_px'], 'arrow')
+            maps[0], viz.config['window_shape_min_mm'], 'arrow')
