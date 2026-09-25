@@ -6,7 +6,8 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
-last_synced_commit: 78dfaac
+  - src/pge/controllers/voice_manager.py
+last_synced_commit: b818537
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -127,7 +128,7 @@ Stream._init_voice_manager()
     │    ├─ Auto-injection stream_id   (per riproducibilità stochastic)
     │    ├─ _parse_strategy_kwarg(): list/dict → Envelope, altrimenti invariato
     │    └─ Factory della dimensione   (VoicePitchStrategyFactory, ecc.)
-    └─ VoiceManager(max_voices, strategy...)  # ogni strategy possiede il proprio param (Union[float, Envelope])
+    └─ VoiceManager(max_voices, strategy..., pitch_unit)  # ogni strategy possiede il proprio param (Union[float, Envelope])
 
     ▼
 Stream.generate_grains()
@@ -153,7 +154,7 @@ class VoiceManager:
         onset_strategy:   Optional[VoiceOnsetStrategy]   = None,
         pointer_strategy: Optional[VoicePointerStrategy] = None,
         pan_strategy:     Optional[VoicePanStrategy]     = None,
-        pan_spread:       Union[float, Envelope] = 0.0,
+        pitch_unit:       Optional[PitchUnit]            = None,
     ): ...
 
     def get_voice_config(self, voice_index: int, time: float) -> VoiceConfig: ...
@@ -161,7 +162,8 @@ class VoiceManager:
 
 - Strategy `None` → offset `0.0` per tutte le voci
 - `VoiceConfig` è efimero: ricalcolato per ogni grain al `time` passato dal chiamante
-- `pan_spread` accetta `float` o `Envelope`; risolto con `resolve_param(pan_spread, time)` prima di passarlo alla pan strategy
+- `pitch_unit` è l'unica config di dimensione che `VoiceManager` riceve: la passa a `get_pitch_factor`, che trasforma l'offset in ratio. `None` vale `EdoUnit(12)` (semitoni). Il wiring la ricava dalla chiave `voices.pitch.unit` (§4)
+- Nessun parametro di spread: `spread` è un kwarg delle pan strategy (`range`, `stochastic`), che lo risolvono da sole al tempo del grain con `resolve_param`
 
 ---
 
@@ -213,7 +215,7 @@ La strategy non emette più un offset in semitoni: riceve la `PitchUnit` attiva 
 pitch_ratio *= voice_config.pitch_factor
 ```
 
-La geometria dell'equi-temperamento (`2^(v/12)` per `semitones`) vive dentro la `PitchUnit`, non più in `_create_grain`: con `unit: cents` la stessa posizione usa `2^(v/1200)`, con `unit: ratio` il valore è un moltiplicatore diretto, e così via. **Vincolo v1:** `chord` e `spectral` sono definiti intrinsecamente in semitoni e accettano solo `unit: semitones` (altre unità → `InvalidStrategyConfigError`).
+La geometria dell'equi-temperamento (`2^(v/12)` per `semitones`) vive dentro la `PitchUnit`, non più in `_create_grain`: con `unit: cents` la stessa posizione usa `2^(v/1200)`, con `unit: ratio` il valore è un moltiplicatore diretto, e così via. **Vincolo v1:** `chord`, `chord_progression` e `spectral` (`SEMITONE_LOCKED`) sono definiti intrinsecamente in semitoni e accettano solo `unit: semitones` (altre unità → `InvalidStrategyConfigError`).
 
 ---
 

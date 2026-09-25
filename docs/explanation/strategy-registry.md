@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: dc97880
+last_synced_commit: b818537
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -413,8 +413,10 @@ forte della prima:
 Resta vero che `SEMITONE_LOCKED` è un `frozenset` di nomi che deve restare
 allineato alle chiavi del registry, e che una strategy registrata dinamicamente non può
 dichiararsi semitone-locked. La cura sarebbe metadato sulla classe, non sul
-registry. Il wiring (#186) non l'ha presa, e l'ha resa più piccola: la lettura
-di `SEMITONE_LOCKED` ora sta in un punto solo, `Stream._take_voice_pitch_keys`,
+registry. Il wiring (#186) non l'ha presa, e non l'ha nemmeno resa più
+piccola: la lettura di `SEMITONE_LOCKED` era un punto solo già prima — un `if`
+dentro il blocco pitch di `_init_voice_manager` — e resta un punto solo. Il
+wiring l'ha spostata in un metodo che ha un nome, `Stream._take_voice_pitch_keys`,
 che è dove un attributo di classe andrebbe letto. Spostare la dichiarazione dai
 nomi alle classi resta però una decisione sulla superficie d'estensione
 ([[add-voice-strategy]]) e tocca `voice_pitch_strategy.py`: materiale per la
