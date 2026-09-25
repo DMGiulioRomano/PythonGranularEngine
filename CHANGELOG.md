@@ -642,6 +642,59 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
+- **Le quattro dimensioni di `voices:` sono una riga di tabella** (issue
+  #186). `Stream._init_voice_manager` costruiva le strategy di pitch,
+  onset_offset, pointer e pan con quattro blocchi copiati; ora c'e' un passo
+  solo, `_build_voice_strategy`, ripetuto su `Stream._VOICE_AXES` — chiave
+  YAML, Factory, kwarg di `VoiceManager` — e le differenze vere stanno nel
+  `take_block_keys` della riga che le ha: per il pitch l'hard break di
+  `semitone_range`, la chiave di blocco `unit` validata contro
+  `SEMITONE_LOCKED`, i kwarg strutturali di `chord_progression`; per il
+  pointer la chiave di blocco `normalized`. Onset e pan non ne hanno. La riga
+  porta il *nome* del metodo, non la funzione: una funzione catturata nel corpo
+  della classe veniva chiamata scavalcando l'istanza, e un `patch.object` su
+  `Stream` o l'override di una sottoclasse non la raggiungevano, senza errore
+  (`test_gli_hook_delle_dimensioni_passano_per_lo_stream`).
+
+  Nessuna superficie si muove: stesse chiavi, stessi errori con lo stesso
+  `stream_id`, stesso ordine di valutazione (pitch, onset_offset, pointer,
+  pan, qualunque sia l'ordine dello YAML), stesso nome del metodo — PGE-ls e
+  gl-ls citano `_init_voice_manager`. Quattro di queste proprieta' erano vere
+  per costruzione con i blocchi copiati e nessun test le diceva; ora le pinna
+  `TestVoicesWiring`, misurata sabotando il ciclo nei modi plausibili di
+  sbagliarlo: consumare il blocco originale invece di una copia (il Generator
+  tiene lo stesso dict e la cache ne fa il fingerprint), ciclare sulle chiavi
+  YAML invece che sulla tabella, generalizzare `unit` a tutte le dimensioni,
+  perdere lo `stream_id` di un errore.
+
+  Una quinta sfuggiva anche a quella misura: l'identita' iniettata nelle
+  stocastiche e' `rng_id` (#169), non lo `stream_id`. Il kwarg si chiama
+  `stream_id`, e scriverci `self.stream_id` nel passo unico toglieva
+  `rng_group` alle voci di tutte e quattro le dimensioni con la suite verde:
+  senza `rng_group` le due identita' coincidono, e il test della #169 sulle
+  voci (`test_same_rng_group_shared_voice_draws`) non dichiarava `num_voices`,
+  quindi suonava solo la voce 0, che per invariante non pesca. Ora dichiara
+  tre voci, e `TestVoicesWiring` guarda il kwarg su tutte e quattro.
+
+  Un'altra la suite non la vedeva: ogni ramo era provato da solo, in uno
+  stream con quella sola dimensione. Col passo unico, lo stesso codice gira
+  anche per le dimensioni valutate dopo, e il pan viene dopo il pointer: un
+  `_voice_pointer_normalized = False` scritto nel passo comune cancellava il
+  `normalized: true` appena letto, con la suite verde. Le voci avrebbero letto
+  l'offset in secondi invece che come frazione del sample. Adesso
+  `test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream` costruisce uno
+  stream che passa per tutti i rami insieme.
+
+  La issue dava la #185 come prerequisito, perche' «senza il registry
+  generico il collasso richiederebbe casi speciali». Non era cosi': il wiring
+  parla con le Factory, e `create(name, **kwargs)` e' la stessa firma sulle
+  quattro da prima della #184 — la chiamata in `Stream` era posizionale anche
+  quando pan chiamava il parametro `strategy_name`. Le righe guadagnate sono
+  meno di quante la issue ne promettesse: il metodo scende da 173 a 78 righe,
+  ma la parte davvero duplicata era il passo comune — copia, nome, iniezione
+  stocastica, conversione dei kwarg, `create` — e le differenze del pitch non
+  si comprimono: si spostano in un metodo che le nomina.
+
 - **`voice_pan_strategy` passa al registry generico** (issue #184, forma decisa
   in #177). Lo stesso schema — una mappa nome → classe, un punto di
   registrazione, una `Factory` il cui `create()` fa lookup e alza

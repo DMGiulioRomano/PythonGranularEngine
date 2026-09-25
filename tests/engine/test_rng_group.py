@@ -72,6 +72,10 @@ def _stream_dict(stream_id, rng_group=None, voices=False,
         d['range_always_active'] = True
     if voices:
         d['voices'] = {
+            # Senza num_voices suona solo la voce 0, che per invariante non
+            # pesca: il confronto dei grani passerebbe anche con le voci
+            # sganciate dal gruppo.
+            'num_voices': 3,
             'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
             'pan': {'strategy': 'stochastic', 'spread': 60.0},
         }
