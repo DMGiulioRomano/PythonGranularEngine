@@ -984,7 +984,7 @@ class ScoreVisualizer:
         Delega a rendering.grain_visuals.window_name_map."""
         return grain_visuals.window_name_map(stream)
 
-    def _grain_page_width_px(self, ax, grain):
+    def _grain_width_px(self, ax, grain):
         """Larghezza del grano in pixel display sull'asse ax che lo disegna.
 
         Usata per il fallback adattivo: grani sub-pixel non mostrano la finestra
@@ -1013,7 +1013,7 @@ class ScoreVisualizer:
 
         Precondizione: ax ha gia' i limiti finali. Con grain_shape='window' la
         scelta fra finestra e freccia misura il grano su quei limiti (vedi
-        _grain_page_width_px)."""
+        _grain_width_px)."""
         
         visible_grains = grain_visuals.visible_grains(
             stream, page_start, page_end)
@@ -1049,7 +1049,7 @@ class ScoreVisualizer:
             # freccia.
             use_window = (
                 window_mode
-                and self._grain_page_width_px(ax, grain) >= min_px
+                and self._grain_width_px(ax, grain) >= min_px
                 and grain.envelope_table in name_map
             )
             if use_window:
