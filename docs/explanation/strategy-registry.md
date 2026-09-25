@@ -503,9 +503,10 @@ non vieta la `print()`, **pretende che sia dichiarata**. Fino alla #188
 quindi il rimedio che riportava il verde era una riga in `CLASSIFICAZIONE`, non
 la rimozione della `print()`. Misurato allora: aggiunta quella voce per
 `shared/registry.py`, il censimento taceva e restava rosso il solo
-`test_register_logs_instead_of_printing`. È esattamente il suo scopo dichiarato — rendere deliberata ogni riga su stdout,
-non proibirla — ma vuol dire che a *chiudere* il buco non arriva: lo rende
-rumoroso, e il rumore si spegne con una riga.
+`test_register_logs_instead_of_printing`. È esattamente il suo scopo
+dichiarato — rendere deliberata ogni riga su stdout, non proibirla — ma vuol
+dire che a *chiudere* il buco non arriva: lo rende rumoroso, e il rumore si
+spegne con una riga.
 
 *(Dalla #188 quella riga non può più dire `DIAGNOSTICA`: `engine/generator.py`
 non ne ha più, la categoria è vuota per ogni `print()` e

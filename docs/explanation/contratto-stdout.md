@@ -161,9 +161,9 @@ descriptor non separa niente; separa la forma.
 ### La classificazione
 
 Sessantadue `print()` in `src/pge/` — erano sessantaquattro, e le due che
-mancano sono quelle che la #188 ha portato al logger. La tabella completa vive in
-`CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`), dove e' eseguibile;
-qui il riassunto per modulo:
+mancano sono quelle che la #188 ha portato al logger. La tabella completa vive
+in `CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`), dove e'
+eseguibile; qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
@@ -256,14 +256,13 @@ ragioni della nota sopra: la conferma per stream c'e' ancora, a render finito
 e coi grani veri. Quello che dallo schermo se ne va davvero sono `onset`,
 durata risolta e modo di ogni stream, che il `repr` era il solo a stampare, e
 da riga di comando non si recuperano: il logger che li riceve lo accende solo
-un host Python, perche' la CLI non ha un flag per farlo.
-Verificato sul bridge vero di PGE-ui (`server.py` contro
-questo motore, tre render: tutti DIRTY, tutti clean, uno misto) e poi
-sull'editor in un Chromium headless: gli eventi NDJSON sono identici a quelli
-di prima uno per uno, l'avanzamento per stream e i pallini fanno lo stesso
-percorso, e dal terminale dell'editor spariscono le sole righe
-`  → Stream '<id>': <repr>` — ogni altra riga e' identica, byte per byte, a
-parte il path temporaneo e il tempo trascorso.
+un host Python, perche' la CLI non ha un flag per farlo. Verificato sul bridge
+vero di PGE-ui (`server.py` contro questo motore, tre render: tutti DIRTY,
+tutti clean, uno misto) e poi sull'editor in un Chromium headless: gli eventi
+NDJSON sono identici a quelli di prima uno per uno, l'avanzamento per stream e
+i pallini fanno lo stesso percorso, e dal terminale dell'editor spariscono le
+sole righe `  → Stream '<id>': <repr>` — ogni altra riga e' identica, byte per
+byte, a parte il path temporaneo e il tempo trascorso.
 
 **La conferma di registrazione delle strategy e' muta.** Prima stampava una
 riga con la spunta verde; ora non stampa finche' l'host non accende il logging.

@@ -209,9 +209,10 @@ def get_engine_log_path() -> str | None:
 # `Generator` — una per stream costruito, e l'elenco degli stream da scrivere
 # del ramo per stream con cache. La prima invece compare in *ogni* rendering,
 # ed e' per lei che il punto 2 qui sotto conta davvero: con gli argomenti
-# passati a parte (`%s`, non una f-string) e il record che sotto WARNING non si
-# costruisce, su quaranta stream sono quaranta `repr` che nessuno calcola
-# finche' nessuno ascolta.
+# passati a parte (`%s`, non una f-string) e il record che non si costruisce
+# finche' il livello effettivo resta sopra DEBUG (il WARNING di default del
+# root), su quaranta stream sono quaranta `repr` che nessuno calcola finche'
+# nessuno ascolta.
 #
 # Il motivo per cui non possono restare `print()` non e' l'ordine: stdout e' un
 # canale di *protocollo*. `render_pipeline.py` di PGE-ui legge le righe di

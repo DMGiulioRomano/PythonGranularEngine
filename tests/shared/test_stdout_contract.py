@@ -336,9 +336,9 @@ def test_le_strategie_non_stampano(modulo):
 # `DIAGNOSTICA` fa cadere questo test e quello; dichiarata `INTERFACCIA`, che
 # resta legale, questo e nient'altro. A **vietare** la riga sul settimo entry
 # point, in qualunque categoria la si metta, c'e' dunque ancora solo questa
-# guardia. E' la stessa distinzione che
-# `docs/explanation/strategy-registry.md` fa, nella sezione «Il `print()`»,
-# per `StrategyRegistry.register` e per `DistributionFactory.register`.
+# guardia. E' la stessa distinzione che `docs/explanation/strategy-registry.md`
+# fa, nella sezione «Il `print()`», per `StrategyRegistry.register` e per
+# `DistributionFactory.register`.
 #
 # La lista e' dichiarata *e* derivata, come quella degli emettitori: la
 # dichiarazione dice cosa si sorveglia, il confronto coi sorgenti impedisce che
