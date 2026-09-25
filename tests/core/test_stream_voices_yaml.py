@@ -31,13 +31,21 @@ Organizzazione:
   1.  Default senza voices
   2.  num_voices
   3.  pitch strategy
+  3b. chord_progression — progression non interpretata come envelope
   4.  onset_offset strategy
   5.  pointer strategy
   6.  pan strategy + spread
   7.  strategy stochastiche — stream_id auto-iniettato
+  7b. seed propagato alle strategy stocastiche
   8.  Blocco voices parziale
   9.  Strategie invalide → errore
   10. Integrazione end-to-end: VoiceManager usato in generate_grains
+  11. num_voices come Envelope
+  12. scatter
+  13. kwarg delle strategy come Envelope
+  14. unità del pitch (voices.pitch.unit)
+  15. time_mode dello stream ereditato dagli envelope delle strategy
+  16. il wiring delle quattro dimensioni (issue #186)
 """
 
 import pytest
