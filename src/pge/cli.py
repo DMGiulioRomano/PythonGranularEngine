@@ -202,6 +202,21 @@ def _parse_jobs(argv):
     return value
 
 
+def _stream_timing(stream) -> str:
+    """Onset, durata risolta e modo di densita' di uno stream, per la riga di
+    fine render (#188).
+
+    Prima li stampava il `repr` di `_create_streams` a costruzione, che dalla
+    #188 va al diagnostic logger; qui tornano a schermo accanto al conteggio
+    dei grani. Sono attributi risolti a costruzione -- la durata anche quando
+    e' implicita (#205) -- quindi leggerli non tocca `.voices` e non genera
+    niente, nemmeno su uno stream saltato dalla cache (#117). `:g` e non il
+    valore cosi' com'e': `0.1 + 0.2` esce `0.3`, non `0.30000000000000004`.
+    """
+    mode = "fill_factor" if stream.fill_factor is not None else "density"
+    return f"onset {stream.onset:g}s · dur {stream.duration:g}s · {mode}"
+
+
 # Valori di --grain-height, e il modo di grain_visuals a cui corrispondono.
 # Sulla CLI il valore composto si scrive col trattino, come i flag; nella
 # config del visualizer resta snake_case, come ogni altra chiave. Un dict e non
@@ -686,15 +701,20 @@ def main():
         # altre (`[CACHE] <id>: ...`, il path di ogni stem) chiedono
         # --per-stream, e la prima anche --cache -- in MIX il manifest c'e'
         # (`[CACHE] Manifest:`), ma il renderer non lo consulta stream per
-        # stream.
+        # stream. Per questo porta anche onset, durata risolta e modo
+        # (`_stream_timing`), che il `repr` a costruzione era il solo a
+        # stampare. `grain_counts` e' costruito su `generator.streams`
+        # (`api.collect_grain_counts`), quindi ogni id ha il suo stream.
+        streams_by_id = {s.stream_id: s for s in generator.streams}
         for stream_id, count in result.grain_counts.items():
+            timing = _stream_timing(streams_by_id[stream_id])
             if count is None:
-                print(f"  → {stream_id}: grani non generati (cache)")
+                print(f"  → {stream_id}: grani non generati (cache) · {timing}")
             else:
                 grani = "grano" if count.grains == 1 else "grani"
                 voci = "voce" if count.voices == 1 else "voci"
                 print(f"  → {stream_id}: {count.grains} {grani} "
-                      f"({count.voices} {voci})")
+                      f"({count.voices} {voci}) · {timing}")
 
         print(f"\n Generazione completata! {len(generated)} file generati:")
         for path in generated:

@@ -748,9 +748,11 @@ CLASSIFICAZIONE = {
         PROTOCOLLO,
     ('cli.py', '  Dettagli:     {}'):
         INTERFACCIA,
-    ('cli.py', '  → {}: grani non generati (cache)'):
+    # La coda ` · {}` e' `_stream_timing` (onset, durata risolta, modo): dalla
+    # #188 e' qui, a render finito, che quei tre valori arrivano a schermo.
+    ('cli.py', '  → {}: grani non generati (cache) · {}'):
         INTERFACCIA,
-    ('cli.py', '  → {}: {} {} ({} {})'):
+    ('cli.py', '  → {}: {} {} ({} {}) · {}'):
         INTERFACCIA,
     ('cli.py', ' Errore: {}'):
         INTERFACCIA,
