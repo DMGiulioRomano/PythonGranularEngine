@@ -902,7 +902,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `Creazione di N stream...` resta dov'era. Con il `repr` escono pero' dallo
   schermo anche `onset`, `dur` e `mode` di ogni stream, che nessun'altra riga
   stampa; `dur` e' la durata risolta, compresa quella implicita della #205.
-  Restano su `pge.diagnostics` a livello DEBUG. Protocollo e interfaccia non si
+  Restano su `pge.diagnostics` a livello DEBUG, ma solo per chi chiama il
+  motore da Python: la CLI non accende quel logger e non ha un flag per
+  farlo. Protocollo e interfaccia non si
   muovono di un carattere: `stream_cache_manager.py` non e' toccato, e le sue
   due `print()` sono appunto una riga di protocollo e una di interfaccia.
   Verificato sul bridge vero di PGE-ui e sull'editor in un Chromium headless,

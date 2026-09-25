@@ -83,12 +83,16 @@ Divisione delle policy (chi decide cosa):
   punto — un censimento di stdout letto come inventario completo rifà
   l'errore della #189 un piano sotto.
 - Quelle righe restano perché fanno parte del contratto stdout della CLI, e
-  una almeno è interfaccia vera: `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
-  (`render_pipeline.py`) per gli eventi NDJSON `stream-start`/`stream-done`,
-  cioè per l'avanzamento per stream che l'editor mostra durante un render.
-  Delle altre non risulta nessun consumatore — accertarlo è la issue #178,
-  portarle al logger le #187/#188. Quando succederà, il censimento in
-  `api.py` va aggiornato insieme al codice, ed è il test a chiederlo.
+  la #178 ha accertato il ruolo di ognuna. `[CACHE] <id>: DIRTY|clean` è
+  **protocollo**: la parsa PGE-ui (`render_pipeline.py`) per gli eventi
+  NDJSON `stream-start`/`stream-done`, cioè per l'avanzamento per stream che
+  l'editor mostra durante un render. Le altre sono **interfaccia CLI**:
+  nessuno le parsa, ma le legge a schermo chi ha lanciato il render. Al
+  logger sono andate solo le diagnostiche — le registrazioni di strategy con
+  la #187, le due righe di `Generator` con la #188 — e spostarne un'altra è
+  una scelta di prodotto, non un refactoring. Se succede, il censimento in
+  `api.py` va aggiornato insieme al codice, ed è il test a chiederlo; la
+  classificazione riga per riga sta in [[contratto-stdout]].
 - Il GC della cache è una funzione separata (`collect_cache_orphans`)
   perché la CLI deve stamparne l'esito PRIMA del render (ordine stdout);
   `render_file` lo esegue da sé col default `run_cache_gc=True`.

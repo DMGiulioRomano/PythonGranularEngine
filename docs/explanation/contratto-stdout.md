@@ -209,7 +209,10 @@ una scelta e non una lettura:
   nessun'altra riga stampa. E `dur` e' la durata *risolta*: per uno stream
   senza `duration` nello YAML (#205) era l'unico posto a schermo dove si
   leggeva quanto dura. E' questo il prezzo vero della scelta, non il
-  `grains=lazy`. Chi lo vuole lo trova su `pge.diagnostics`, a livello DEBUG.
+  `grains=lazy`. Chi lo vuole lo trova su `pge.diagnostics`, a livello DEBUG
+  — ma solo da Python: la CLI configura i logger di clip ed engine, non
+  questo, e non ha un flag per accenderlo, quindi chi lancia `pge` da
+  terminale quei tre valori non li legge piu' da nessuna parte.
 - `📝 Clip log file: <path>` — questo doc diceva che passa «a ogni render».
   Falso: `get_clip_logger()` e' lazy, e la riga esce al **primo clip**, una
   volta per configurazione. Non e' traffico di ogni rendering; e' l'annuncio
@@ -251,7 +254,9 @@ criterio. Tre condizioni, ognuna sufficiente:
 stesso costo della voce qui sotto, un giro piu' in la', e accettato per le
 ragioni della nota sopra: la conferma per stream c'e' ancora, a render finito
 e coi grani veri. Quello che dallo schermo se ne va davvero sono `onset`,
-durata risolta e modo di ogni stream, che il `repr` era il solo a stampare.
+durata risolta e modo di ogni stream, che il `repr` era il solo a stampare, e
+da riga di comando non si recuperano: il logger che li riceve lo accende solo
+un host Python, perche' la CLI non ha un flag per farlo.
 Verificato sul bridge vero di PGE-ui (`server.py` contro
 questo motore, tre render: tutti DIRTY, tutti clean, uno misto) e poi
 sull'editor in un Chromium headless: gli eventi NDJSON sono identici a quelli
