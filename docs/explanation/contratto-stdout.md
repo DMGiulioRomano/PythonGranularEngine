@@ -292,8 +292,9 @@ quattro siano **tutti** quelli che la emettono; che il blocco riassuntivo esca
 ancora indentato e col suffisso `__<id>` (e questo lo misura sull'output vero,
 facendo scrivere alla CLI il suo riepilogo — un `print()` letto con `ast` direbbe
 che la riga esiste, solo i byte dicono che esce indentata); che ogni `print()`
-di `src/pge/` abbia una categoria e ogni categoria una `print()`; che
-nessuna di quelle categorie sia diagnostica (#188); che nessuna
+di `src/pge/` abbia una categoria e ogni voce della tabella una `print()`
+(non ogni categoria: dalla #188 `DIAGNOSTICA` non ne ha); che nessuna di
+quelle voci sia diagnostica (#188); che nessuna
 riga non-protocollo abbia forma di protocollo; e che nessun **messaggio di
 log** ce l'abbia, perche' stderr non e' un riparo. Le ultime due chiedono
 **entrambe** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova e

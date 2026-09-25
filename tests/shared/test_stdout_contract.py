@@ -908,16 +908,19 @@ def _print_censiti():
 
 
 def test_ogni_print_di_src_pge_e_classificato():
-    """Nessuna `print()` senza categoria, nessuna categoria senza `print()`.
+    """Nessuna `print()` senza categoria, nessuna voce senza `print()`.
 
     Le due direzioni servono entrambe, come per le liste della #187. Una
     `print()` nuova che nessuno classifica e' il modo in cui il canale e'
     tornato ambiguo la prima volta: chi la scrive non sa che sta scrivendo
     dentro l'interfaccia di un altro repository, e niente glielo dice. Una
     voce che resta in tabella dopo che la riga se n'e' andata al logger
-    trasforma la classificazione in un ricordo — ed e' esattamente cio' che
-    e' successo quando le issue di esecuzione (#187, #188) hanno cominciato
-    a spostarle.
+    trasforma la classificazione in un ricordo — ed e' il rischio che le
+    issue di esecuzione (#187, #188) correvano spostandole: e' questo test a
+    obbligare a togliere la voce insieme alla riga.
+
+    "Voce", non "categoria": dalla #188 `DIAGNOSTICA` non ha nessuna
+    `print()`, e deve restare cosi' (`test_nessuna_print_e_diagnostica`).
     """
     trovati = _print_censiti()
     dichiarati = set(CLASSIFICAZIONE)
