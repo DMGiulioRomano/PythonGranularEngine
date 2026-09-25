@@ -31,13 +31,21 @@ Organizzazione:
   1.  Default senza voices
   2.  num_voices
   3.  pitch strategy
+  3b. chord_progression — progression non interpretata come envelope
   4.  onset_offset strategy
   5.  pointer strategy
   6.  pan strategy + spread
   7.  strategy stochastiche — stream_id auto-iniettato
+  7b. seed propagato alle strategy stocastiche
   8.  Blocco voices parziale
   9.  Strategie invalide → errore
   10. Integrazione end-to-end: VoiceManager usato in generate_grains
+  11. num_voices come Envelope
+  12. scatter
+  13. kwarg delle strategy come Envelope
+  14. unità del pitch (voices.pitch.unit)
+  15. time_mode dello stream ereditato dagli envelope delle strategy
+  16. il wiring delle quattro dimensioni (issue #186)
 """
 
 import pytest
@@ -922,7 +930,7 @@ class TestStrategyKwargsEnvelope:
 
 
 # =============================================================================
-# 11. Unità di misura del pitch (voices.pitch.unit)
+# 14. Unità di misura del pitch (voices.pitch.unit)
 # =============================================================================
 
 class TestVoicesPitchUnit:
@@ -1038,7 +1046,7 @@ class TestVoicesPitchUnitSemitoneLocked:
 
 
 # =============================================================================
-# 11. time_mode di stream ereditato dagli envelope delle strategy voce (issue #144)
+# 15. time_mode di stream ereditato dagli envelope delle strategy voce (issue #144)
 # =============================================================================
 
 def _build_stream_tm(voices_params, time_mode=None, duration=10.0, stream_id='s1'):
@@ -1127,3 +1135,257 @@ class TestVoiceStrategyTimeModeInheritance:
         assert isinstance(step_env, Envelope)
         assert resolve_param(step_env, 2.0) == pytest.approx(0.0)
         assert resolve_param(step_env, 8.0) == pytest.approx(1.0)
+
+
+# =============================================================================
+# 16. Il wiring delle quattro dimensioni (issue #186)
+# =============================================================================
+#
+# Il collasso dei quattro blocchi di _init_voice_manager in un ciclo su una
+# tabella puo' rompere quattro cose che le sezioni sopra non pinnavano, perche'
+# con quattro blocchi copiati erano vere per costruzione:
+#
+# - il blocco `voices:` e' letto, non consumato: il Generator tiene lo stesso
+#   dict in `stream_data_map` e la cache ne fa il fingerprint;
+# - le chiavi speciali restano della propria dimensione: `unit` e
+#   `semitone_range` del pitch, `normalized` del pointer;
+# - le dimensioni si valutano in un ordine fisso, non in quello dello YAML;
+# - gli errori che il wiring solleva sulle differenze nominano lo stream.
+#   Non tutti gli errori delle differenze: un `voices.pitch.unit` fuori
+#   vocabolario lo solleva `make_pitch_unit`, con `field='unit'` e senza
+#   stream_id, sul codice di prima come su questo. E' un difetto preesistente,
+#   che cambia la superficie degli errori: non e' materia di questa issue.
+#
+# Una quinta proprieta' sfuggiva anche a quelle quattro: le stocastiche
+# ricevono `rng_id` (#169), non lo stream_id
+# (`test_le_stocastiche_ricevono_rng_id_non_stream_id`).
+#
+# La sesta la introduce la tabella stessa, e i blocchi copiati non potevano
+# violarla: gli hook `_take_voice_*_keys` sono metodi di Stream, e il wiring
+# deve raggiungerli come tali (`test_gli_hook_delle_dimensioni_passano_per_lo_stream`).
+#
+# Due ancora riguardano lo stato che il wiring scrive sullo Stream invece di
+# restituirlo, `_voice_pointer_normalized`: ha un default anche quando il
+# sotto-blocco manca (`test_senza_le_dimensioni_speciali_restano_i_default`), e
+# il valore letto dal pointer sopravvive alle dimensioni che passano dopo per
+# lo stesso passo comune (`test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream`).
+
+import copy
+import itertools
+
+from pge.shared.exceptions import InvalidFieldValueError, StrategyNotFoundError
+
+
+# Un blocco che passa per ogni ramo del wiring nello stesso Stream: le due
+# chiavi di blocco (unit, normalized), i kwarg strutturali di
+# chord_progression piu' il time_mode che le viene iniettato, l'iniezione
+# stocastica, un kwarg envelope-like.
+_VOICES_OGNI_RAMO = {
+    'num_voices': 3,
+    'pitch': {
+        'strategy': 'chord_progression',
+        'progression': [[0.0, 'maj7'], [1.0, 'min7']],
+        'interp': 'linear',
+        'voice_leading': 'positional',
+        'unit': 'semitones',
+    },
+    'onset_offset': {'strategy': 'stochastic', 'max_offset': 0.2},
+    'pointer': {'strategy': 'linear', 'step': [[0.0, 0.0], [1.0, 0.1]], 'normalized': True},
+    'pan': {'strategy': 'stochastic', 'spread': 60.0},
+}
+
+# Un sotto-blocco valido per dimensione, senza chiavi speciali.
+_BLOCCO_SEMPLICE = {
+    'pitch': {'strategy': 'step', 'step': 1.0},
+    'onset_offset': {'strategy': 'linear', 'step': 0.1},
+    'pointer': {'strategy': 'linear', 'step': 0.1},
+    'pan': {'strategy': 'step', 'step': 10.0},
+}
+
+# Chiave speciale → (valore valido, la sola dimensione che la consuma).
+_CHIAVI_SPECIALI = {
+    'unit': ('semitones', 'pitch'),
+    'semitone_range': (3.0, 'pitch'),
+    'normalized': (True, 'pointer'),
+}
+
+# Ogni chiave speciale scritta in una dimensione che non e' la sua.
+_CHIAVE_FUORI_POSTO = [
+    (chiave, dimensione)
+    for chiave, dimensione in itertools.product(_CHIAVI_SPECIALI, _BLOCCO_SEMPLICE)
+    if dimensione != _CHIAVI_SPECIALI[chiave][1]
+]
+
+
+class TestVoicesWiring:
+
+    def test_il_blocco_voices_non_viene_mutato(self):
+        """Il wiring lavora su una copia di ogni sotto-blocco.
+
+        Se consumasse il dict (un `pop('strategy')` sull'originale), il
+        Generator si ritroverebbe in `stream_data_map` un blocco diverso da
+        quello scritto: fingerprint della cache spostato, e una seconda
+        costruzione dallo stesso dict che non trova piu' `strategy`.
+        """
+        voices = copy.deepcopy(_VOICES_OGNI_RAMO)
+        _build_stream_tm(voices, time_mode='normalized')
+        assert voices == _VOICES_OGNI_RAMO
+
+    def test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream(self):
+        """Ogni ramo del wiring lascia il suo effetto anche dopo che le
+        dimensioni successive sono passate per lo stesso passo comune.
+
+        Le sezioni sopra provano un ramo alla volta, in uno stream che ha solo
+        quella dimensione. Con quattro blocchi copiati bastava: ogni blocco
+        toccava solo il proprio stato. Col passo unico lo stesso codice gira
+        anche per le dimensioni che vengono dopo, e il pan viene dopo il
+        pointer: un `_voice_pointer_normalized = False` scritto nel passo
+        comune, come default per dimensione, cancellerebbe il `normalized:
+        true` appena letto. L'offset delle voci verrebbe letto in secondi
+        invece che come frazione del sample, senza nessun errore.
+        """
+        s = _build_stream_tm(copy.deepcopy(_VOICES_OGNI_RAMO), time_mode='normalized')
+        vm = s._voice_manager
+        # pointer: la chiave di blocco, e lo step envelope-like diventato Envelope
+        assert s._voice_pointer_normalized is True
+        assert isinstance(vm._pointer_strategy.step, Envelope)
+        # pitch: la chiave di blocco, e la progressione sottratta alla
+        # conversione e scalata sulla duration (time_mode iniettato)
+        assert isinstance(vm.pitch_unit, EdoUnit) and vm.pitch_unit.divisions == 12
+        assert vm._pitch_strategy._times == [0.0, 10.0]
+        # onset_offset e pan: l'iniezione stocastica
+        assert vm._onset_strategy.stream_id == 's1'
+        assert vm._pan_strategy.stream_id == 's1'
+
+    @pytest.mark.parametrize('chiave,dimensione', _CHIAVE_FUORI_POSTO)
+    def test_le_chiavi_speciali_restano_della_propria_dimensione(self, chiave, dimensione):
+        """`unit` fuori dal pitch non e' una chiave di blocco, e cosi' via.
+
+        Arriva al costruttore della strategy come ogni altro kwarg, e il
+        costruttore la rifiuta. Il TypeError grezzo e' il comportamento di oggi,
+        non un contratto: quel che il test difende e' che la chiave **non venga
+        accettata in silenzio** da una dimensione che non la legge — cioe' che
+        la differenza del pitch o del pointer non sia stata generalizzata a
+        tutte e quattro dal collasso. Un `unit` su onset_offset ignorato senza
+        dire niente sarebbe il caso peggiore: uno YAML che sembra funzionare.
+        """
+        valore, _ = _CHIAVI_SPECIALI[chiave]
+        blocco = {**_BLOCCO_SEMPLICE[dimensione], chiave: valore}
+        with pytest.raises(TypeError, match=chiave):
+            _build_stream({'num_voices': 2, dimensione: blocco})
+
+    def test_le_dimensioni_si_valutano_in_ordine_fisso(self):
+        """pitch, onset_offset, pointer, pan: con piu' sotto-blocchi sbagliati
+        l'errore e' quello della dimensione che viene prima in quest'ordine.
+
+        L'ordine delle chiavi nello YAML non conta: il blocco qui e' scritto al
+        contrario apposta, cosi' che un ciclo sulle chiavi di `voices:` invece
+        che sulla tabella delle dimensioni dia l'errore sbagliato.
+        """
+        ordine = [
+            ('pitch', 'voice_pitch'),
+            ('onset_offset', 'voice_onset'),
+            ('pointer', 'voice_pointer'),
+            ('pan', 'voice_pan'),
+        ]
+        voices = {'num_voices': 2}
+        for dimensione, _ in reversed(ordine):
+            voices[dimensione] = {'strategy': 'inesistente'}
+
+        for dimensione, kind in ordine:
+            with pytest.raises(StrategyNotFoundError) as ei:
+                _build_stream(copy.deepcopy(voices))
+            assert ei.value.strategy_kind == kind
+            del voices[dimensione]
+
+    @pytest.mark.parametrize('dimensione,blocco,tipo,campo', [
+        ('pitch', {'strategy': 'range', 'semitone_range': 12.0},
+         InvalidStrategyConfigError, 'voices.pitch.semitone_range'),
+        ('pitch', {'strategy': 'chord', 'chord': 'maj', 'unit': 'cents'},
+         InvalidStrategyConfigError, 'voices.pitch.unit'),
+        ('pointer', {'strategy': 'linear', 'step': 0.1, 'normalized': 'si'},
+         InvalidFieldValueError, 'voices.pointer.normalized'),
+    ])
+    def test_gli_errori_delle_differenze_nominano_lo_stream(self, dimensione, blocco, tipo, campo):
+        with pytest.raises(tipo) as ei:
+            _build_stream({'num_voices': 2, dimensione: blocco}, stream_id='nominato')
+        assert ei.value.field == campo
+        assert ei.value.stream_id == 'nominato'
+
+    @pytest.mark.parametrize('voices', [
+        None,
+        {'num_voices': 2, 'onset_offset': {'strategy': 'linear', 'step': 0.1}},
+    ], ids=['senza-voices', 'senza-pitch-e-pointer'])
+    def test_senza_le_dimensioni_speciali_restano_i_default(self, voices):
+        """Senza il sotto-blocco che le scrive, le due chiavi di blocco valgono
+        il loro default: pointer in secondi, pitch in semitoni.
+
+        Il default va scritto anche quando la dimensione manca: `_create_grain`
+        legge `_voice_pointer_normalized` a ogni grano, e il `getattr` con cui
+        lo fa nasconderebbe un attributo mai inizializzato invece di segnalarlo.
+        """
+        s = _build_stream(voices)
+        assert s._voice_pointer_normalized is False
+        assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
+        assert s._voice_manager.pitch_unit.divisions == 12
+
+    def test_le_stocastiche_ricevono_rng_id_non_stream_id(self):
+        """L'identita' iniettata nel kwarg `stream_id` e' `rng_id` (#169).
+
+        Il kwarg si chiama `stream_id`, e scriverci `self.stream_id` nel passo
+        comune e' lo sbaglio piu' a portata di mano: toglierebbe `rng_group`
+        a tutte e quattro le dimensioni in un colpo. Senza `rng_group` le due
+        identita' coincidono, ed e' per questo che le sezioni sopra non vedono
+        la differenza; qui il gruppo c'e', ed e' diverso dallo stream_id.
+        """
+        params = {
+            'stream_id': 'solista',
+            'rng_group': 'coro',
+            'onset': 0.0,
+            'duration': 10.0,
+            'sample': 'test.wav',
+            'voices': {
+                'num_voices': 3,
+                'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
+                'onset_offset': {'strategy': 'stochastic', 'max_offset': 0.2},
+                'pointer': {'strategy': 'stochastic', 'pointer_range': 0.1},
+                'pan': {'strategy': 'stochastic', 'spread': 60.0},
+            },
+        }
+        with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
+            s = Stream(params)
+        vm = s._voice_manager
+        strategie = {
+            'pitch': vm._pitch_strategy,
+            'onset_offset': vm._onset_strategy,
+            'pointer': vm._pointer_strategy,
+            'pan': vm._pan_strategy,
+        }
+        assert {k: st.stream_id for k, st in strategie.items()} == dict.fromkeys(strategie, 'coro')
+
+    @pytest.mark.parametrize('metodo,voices', [
+        ('_take_voice_pitch_keys',
+         {'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 1.0}}),
+        ('_take_voice_pointer_keys',
+         {'num_voices': 2, 'pointer': {'strategy': 'linear', 'step': 0.1}}),
+    ])
+    def test_gli_hook_delle_dimensioni_passano_per_lo_stream(self, metodo, voices):
+        """La riga di `_VOICE_AXES` nomina l'hook, non ne tiene la funzione.
+
+        Una tupla scritta nel corpo della classe cattura la funzione nel momento
+        in cui la classe viene definita, e il wiring la chiamerebbe scavalcando
+        l'istanza: un `patch.object(Stream, ...)` — idioma della suite, vedi
+        `tests/core/test_stream.py` — o l'override di una sottoclasse non
+        verrebbero mai raggiunti, senza che niente lo dica. Il metodo resterebbe
+        leggibile e patchabile, e non sarebbe piu' quello che gira.
+        """
+        originale = getattr(Stream, metodo)
+        chiamate = []
+
+        def spia(self, *args, **kwargs):
+            chiamate.append(self.stream_id)
+            return originale(self, *args, **kwargs)
+
+        with patch.object(Stream, metodo, spia):
+            _build_stream(voices, stream_id='spiato')
+        assert chiamate == ['spiato']

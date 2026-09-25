@@ -6,7 +6,10 @@ tags: [voices, strategy, dmx-1000, granular]
 sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
-last_synced_commit: 8a8029c
+  - src/pge/controllers/voice_manager.py
+  - src/pge/shared/seeding.py
+  - src/pge/engine/generator.py
+last_synced_commit: cef5050
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -37,13 +40,14 @@ Vedi [Architettura](#2-architettura) per il modello completo, [Componenti princi
 | Quattro ABC separate (per asse) | Una `VoiceStrategy` unica | Ortogonalità → ogni asse evolve indipendentemente; combinazioni gratis |
 | `VoiceManager` per stream | Stream contiene direttamente voce_i | Decoupling: lifecycle voci ≠ lifecycle stream; precompute facile |
 | Strategy parameters come envelope | Solo scalari | Pattern compositivi tempo-varying (cluster→spread) senza re-design API |
-| Determinismo da `stream_id` (stocastiche) | Random globale | Riproducibilità: stessa composizione → stesso suono |
+| Determinismo da `rng_id` e `seed` (stocastiche) | Random globale | Riproducibilità: stessa composizione → stesso suono |
 
 ## Implicazioni codice
 
-- `src/pge/strategies/` — un file per strategy + factory per asse
-- `src/pge/core/stream.py` — `_init_voice_manager`, `_parse_strategy_kwarg` (envelope auto-detect)
-- `src/pge/core/voice_manager.py` — `VoiceManager`, `VoiceConfig`
+- `src/pge/strategies/` — un modulo per asse (`voice_<asse>_strategy.py`): ABC, strategy concrete, registry `VOICE_<ASSE>_STRATEGIES` e factory
+- `src/pge/core/stream.py` — `_init_voice_manager`, che cicla su `_VOICE_AXES` con `_build_voice_strategy` (§4), `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/pge/shared/seeding.py` — `voice_rng`, l'RNG per-voce delle strategy stocastiche
+- `src/pge/controllers/voice_manager.py` — `VoiceManager`, `VoiceConfig`
 - Estensione: vedi [[add-voice-strategy]]
 - Errori specifici: `StrategyNotFoundError`, `InvalidStrategyConfigError` (vedi [[errors]])
 
@@ -80,9 +84,9 @@ Il sistema multi-voice consente a ogni `Stream` di generare grani su **N voci pa
 
 | Dimensione | Unità | Effetto audio |
 |---|---|---|
-| **Pitch** | semitoni | Trasposizione per voce |
+| **Pitch** | unità di `voices.pitch.unit` (default semitoni) | Trasposizione per voce |
 | **Onset** | secondi | Ritardo temporale |
-| **Pointer** | normalizzato 0–1 | Posizione nel sample sorgente |
+| **Pointer** | secondi nel sample (frazione 0–1 con `normalized: true`) | Posizione nel sample sorgente |
 | **Pan** | gradi | Posizione stereo |
 
 La voce `0` è sempre il **riferimento immutabile** (tutti gli offset a zero). Le voci successive ricevono gli offset calcolati dalla strategy corrispondente.
@@ -122,10 +126,12 @@ YAML 'voices:'
     │
     ▼
 Stream._init_voice_manager()
-    ├─ _parse_strategy_kwarg(): list/dict → Envelope, altrimenti float
-    ├─ Factory per ogni strategy  (VoicePitchStrategyFactory, ecc.)
-    ├─ Auto-injection stream_id   (per riproducibilità stochastic)
-    └─ VoiceManager(max_voices, strategy...)  # ogni strategy possiede il proprio param (Union[float, Envelope])
+    ├─ per ogni riga di _VOICE_AXES presente nello YAML → _build_voice_strategy():
+    │    ├─ take_block_keys della dimensione (solo pitch e pointer)
+    │    ├─ Auto-injection stream_id (= rng_id, #169) e seed   (strategy `stochastic`: §6)
+    │    ├─ _parse_strategy_kwarg(): envelope-like → Envelope (time_mode dello stream, #144), altrimenti invariato
+    │    └─ Factory della dimensione   (VoicePitchStrategyFactory, ecc.)
+    └─ VoiceManager(max_voices, strategy..., pitch_unit)  # ogni strategy possiede il proprio param (Union[float, Envelope])
 
     ▼
 Stream.generate_grains()
@@ -151,7 +157,7 @@ class VoiceManager:
         onset_strategy:   Optional[VoiceOnsetStrategy]   = None,
         pointer_strategy: Optional[VoicePointerStrategy] = None,
         pan_strategy:     Optional[VoicePanStrategy]     = None,
-        pan_spread:       Union[float, Envelope] = 0.0,
+        pitch_unit:       Optional[PitchUnit]            = None,
     ): ...
 
     def get_voice_config(self, voice_index: int, time: float) -> VoiceConfig: ...
@@ -159,7 +165,8 @@ class VoiceManager:
 
 - Strategy `None` → offset `0.0` per tutte le voci
 - `VoiceConfig` è efimero: ricalcolato per ogni grain al `time` passato dal chiamante
-- `pan_spread` accetta `float` o `Envelope`; risolto con `resolve_param(pan_spread, time)` prima di passarlo alla pan strategy
+- `pitch_unit` è l'unica config di dimensione che `VoiceManager` riceve: la passa a `get_pitch_factor`, che trasforma l'offset in ratio. `None` vale `EdoUnit(12)` (semitoni). Il wiring la ricava dalla chiave `voices.pitch.unit` (§4)
+- Nessun parametro di spread: `spread` è un kwarg delle pan strategy (`range`, `stochastic`), che lo risolvono da sole al tempo del grain con `resolve_param`
 
 ---
 
@@ -169,7 +176,7 @@ class VoiceManager:
 @dataclass(frozen=True)
 class VoiceConfig:
     pitch_factor:   float   # fattore di ratio (1.0 = identità)
-    pointer_offset: float   # normalizzato 0.0–1.0
+    pointer_offset: float   # secondi nel sample, o frazione se normalized: true
     pan_offset:     float   # gradi
     onset_offset:   float   # secondi
 ```
@@ -211,7 +218,7 @@ La strategy non emette più un offset in semitoni: riceve la `PitchUnit` attiva 
 pitch_ratio *= voice_config.pitch_factor
 ```
 
-La geometria dell'equi-temperamento (`2^(v/12)` per `semitones`) vive dentro la `PitchUnit`, non più in `_create_grain`: con `unit: cents` la stessa posizione usa `2^(v/1200)`, con `unit: ratio` il valore è un moltiplicatore diretto, e così via. **Vincolo v1:** `chord` e `spectral` sono definiti intrinsecamente in semitoni e accettano solo `unit: semitones` (altre unità → `InvalidStrategyConfigError`).
+La geometria dell'equi-temperamento (`2^(v/12)` per `semitones`) vive dentro la `PitchUnit`, non più in `_create_grain`: con `unit: cents` la stessa posizione usa `2^(v/1200)`, con `unit: ratio` il valore è un moltiplicatore diretto, e così via. **Vincolo v1:** `chord`, `chord_progression` e `spectral` (`SEMITONE_LOCKED`) sono definiti intrinsecamente in semitoni e accettano solo `unit: semitones` (altre unità → `InvalidStrategyConfigError`).
 
 ---
 
@@ -328,15 +335,15 @@ maj7 [0,4,7,11] → min7 [0,3,7,10], 4 voci, voice_leading: nearest
 #### `StochasticPitchStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))
-direction(i) = Random(seed).uniform(-1.0, +1.0)   ← calcolato una volta, cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(-1.0, +1.0)   ← calcolato una volta, cached
 offset(i, t) = direction(i) × pitch_range(t)
 ```
 
-La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `pitch_range(t)` — può variare nel tempo se `pitch_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. Il seed combina lo `stream_id` (identità dello stream nel YAML) con l'indice di voce, garantendo:
+La **direzione** per voce è fissa (seeded, cached); la **magnitudine** è `pitch_range(t)` — può variare nel tempo se `pitch_range` è un `Envelope`. Questo garantisce che ogni voce non cambi mai segno durante lo stream. L'RNG per-voce (`voice_rng`: sha256 se c'è un `seed`, altrimenti il fallback `hash()`) combina il `seed` con l'identità della sequenza e l'indice di voce. L'identità è il kwarg `stream_id`, che `Stream` valorizza con `rng_id` (#169): lo `stream_id` dello YAML, o il `rng_group` quando più stream condividono la sequenza. Ne segue:
 - voci diverse dello stesso stream → offset diversi
-- stream diversi → distribuzioni indipendenti
-- stesso YAML tra sessioni → stesso output audio
+- stream diversi → distribuzioni indipendenti, salvo un `rng_group` condiviso
+- stesso YAML e stesso `seed` → stesso output audio (senza `seed:` il Generator ne genera uno di sessione: vedi §6, Invarianti di design)
 
 Un dizionario `_cache` evita di ricalcolare il valore alla seconda chiamata.
 
@@ -415,8 +422,8 @@ Caso limite: `base=1` → tutte le voci non-zero hanno lo stesso offset (`step`)
 #### `StochasticOnsetStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))
-direction(i) = Random(seed).uniform(0.0, 1.0)   ← cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(0.0, 1.0)   ← cached
 offset(i, t) = direction(i) × max_offset(t)
 ```
 
@@ -439,7 +446,7 @@ stream_id="pad", max_offset=0.1, 4 voci → es. [0.0, 0.073, 0.021, 0.089]
 class VoicePointerStrategy(ABC):
     @abstractmethod
     def get_pointer_offset(self, voice_index: int, num_voices: int, time: float) -> float:
-        """Offset normalizzato sulla posizione nel sample."""
+        """Offset raw da YAML sulla posizione nel sample (unità decisa da Stream)."""
 ```
 
 L'offset di pointer si somma in modo additivo con gli altri livelli di posizionamento nel sample:
@@ -450,7 +457,11 @@ pointer_finale = base_pointer(t)         # PointerController (loop, jitter, spee
                + grain_jitter(t)         # mod_range per-grano
 ```
 
-Il valore è normalizzato `0.0–1.0` dove `0.0` = inizio del sample, `1.0` = fine.
+La strategy restituisce il valore raw dello YAML senza interpretarne l'unità: la
+decide `Stream._create_grain` dalla chiave di blocco `voices.pointer.normalized`
+(§4). Default `false` = secondi nel sample; con `normalized: true` il valore è una
+frazione di `sample_dur_sec` (`0.0` = inizio del sample, `1.0` = fine), e lo
+scaling avviene in `Stream`, l'unico punto che conosce la durata del sample.
 
 ---
 
@@ -463,11 +474,11 @@ offset(i) = i × step(t)
 Crea N **teste di lettura equidistanti** nel sample. `step` accetta `float` o `Envelope`. Ogni voce legge da un punto diverso, sfasato di `step` rispetto alla precedente.
 
 ```
-step=0.1, 4 voci → [0.0, 0.1, 0.2, 0.3]
-                    voce 0 legge da 0%
-                    voce 1 legge da 10%
-                    voce 2 legge da 20%
-                    voce 3 legge da 30%
+step=0.1, normalized: true, 4 voci → [0.0, 0.1, 0.2, 0.3]
+                                     voce 0 legge da 0%
+                                     voce 1 legge da 10%
+                                     voce 2 legge da 20%
+                                     voce 3 legge da 30%
 ```
 
 `step` può essere negativo: le voci secondarie leggono *indietro* rispetto alla voce 0.
@@ -483,8 +494,8 @@ step=-0.05, 3 voci → [0.0, -0.05, -0.10]
 #### `StochasticPointerStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))
-direction(i) = Random(seed).uniform(-1.0, +1.0)   ← cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(-1.0, +1.0)   ← cached
 offset(i, t) = direction(i) × pointer_range(t)
 ```
 
@@ -507,7 +518,7 @@ Con `range` piccolo (0.01–0.05) le voci rimangono nella stessa zona del sample
 ```python
 class VoicePanStrategy(ABC):
     @abstractmethod
-    def get_pan_offset(self, voice_index: int, num_voices: int, spread: float, time: float) -> float:
+    def get_pan_offset(self, voice_index: int, num_voices: int, time: float) -> float:
         """Offset in gradi rispetto al pan base dello stream."""
 ```
 
@@ -537,8 +548,8 @@ spread=60,  2 voci → [0, +30]
 #### `StochasticPanStrategy`
 
 ```
-seed         = hash(stream_id + str(voice_index))   # o hashlib se seed esplicito
-direction(i) = Random(seed).uniform(-1.0, +1.0)     ← cached
+rng          = voice_rng(seed, stream_id, voice_index)   # stream_id = rng_id
+direction(i) = rng.uniform(-1.0, +1.0)     ← cached
 offset(i, t) = direction(i) × spread(t) / 2
 ```
 
@@ -573,35 +584,53 @@ step=15, 4 voci → [0, 15, 30, 45]
 
 ### Parsing YAML → `_init_voice_manager()`
 
-`src/pge/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`:
+`src/pge/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`.
+Le quattro dimensioni non sono quattro blocchi di codice ma quattro righe di
+una tabella (issue #186). Ogni riga dice dove sta il sotto-blocco nello YAML,
+quale Factory lo costruisce e in quale kwarg di `VoiceManager` finisce:
 
 ```python
-def _init_voice_manager(self, params: dict) -> None:
-    v = params.get('voices', {})
-    if not v:
-        self._voice_manager = VoiceManager(max_voices=1)
-        return
-
-    # num_voices è un Parameter (scalare o envelope). max_voices = ceil del picco
-    # dei breakpoint (o dello scalare): così la voce di confine frazionaria (fade)
-    # ha sempre uno slot.
-    max_voices = ceil(max_value_of(self._num_voices))
-
-    # Per le strategie stochastiche, stream_id viene auto-iniettato
-    # per garantire riproducibilità tra sessioni con lo stesso YAML
-    pitch_strategy   = _build_pitch_strategy(v, self.stream_id)
-    onset_strategy   = _build_onset_strategy(v, self.stream_id)
-    pointer_strategy = _build_pointer_strategy(v, self.stream_id)
-    pan_strategy     = _build_pan_strategy(v, self.stream_id)
-
-    self._voice_manager = VoiceManager(
-        max_voices       = max_voices,
-        pitch_strategy   = pitch_strategy,
-        onset_strategy   = onset_strategy,
-        pointer_strategy = pointer_strategy,
-        pan_strategy     = pan_strategy,
-    )
+_VOICE_AXES = (
+    _VoiceAxis('pitch',        VoicePitchStrategyFactory,   'pitch_strategy',
+               '_take_voice_pitch_keys'),
+    _VoiceAxis('onset_offset', VoiceOnsetStrategyFactory,   'onset_strategy'),
+    _VoiceAxis('pointer',      VoicePointerStrategyFactory, 'pointer_strategy',
+               '_take_voice_pointer_keys'),
+    _VoiceAxis('pan',          VoicePanStrategyFactory,     'pan_strategy'),
+)
 ```
+
+`_init_voice_manager` cicla sulla tabella e, per ogni dimensione presente,
+chiama `_build_voice_strategy` — il passo comune: copia del sotto-blocco (lo
+YAML letto resta quello scritto, perché la cache ne fa il fingerprint),
+`strategy` come nome, `stream_id` (che vale `rng_id`, #169) e `seed` iniettati
+se la strategy si chiama `stochastic`, gli altri kwarg passati a
+`_parse_strategy_kwarg`, poi `Factory.create(name, **kwargs)`.
+
+Quel che distingue davvero una dimensione sta nel suo `take_block_keys`, che
+toglie da `kw` ciò che il passo comune non deve vedere. La riga ne porta il
+*nome* e `_build_voice_strategy` lo risolve sull'istanza (`getattr(self, …)`):
+una funzione catturata nel corpo della classe verrebbe chiamata scavalcando
+`self`, e un override o un `patch.object` su `Stream` non la raggiungerebbero.
+
+| dimensione | differenza | dove va |
+|---|---|---|
+| `pitch` | `semitone_range` → hard break (rinominato `pitch_range`) | `InvalidStrategyConfigError` |
+| `pitch` | `unit`, chiave di blocco; rifiutata ≠ semitones sulle `SEMITONE_LOCKED` | `VoiceManager(pitch_unit=…)` |
+| `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression` (`progression` ha la forma di un envelope senza esserlo), più `time_mode`/`duration` dello stream se è `normalized` | alla strategy tali e quali |
+| `pointer` | `normalized`, chiave di blocco, solo bool | `Stream._voice_pointer_normalized` (letto da `_create_grain`) |
+
+`onset_offset` e `pan` non ne hanno: sono il passo comune e basta. Le chiavi di
+blocco restano della propria dimensione — un `unit` sotto `pan` arriva al
+costruttore della strategy come un kwarg qualunque, e lì viene rifiutato (oggi
+con un `TypeError` grezzo, non con un errore di configurazione).
+
+Il ciclo è sulla tabella e non sulle chiavi di `voices:`: le dimensioni si
+valutano sempre nell'ordine pitch, onset_offset, pointer, pan, e con più
+sotto-blocchi sbagliati l'errore è quello della prima, qualunque sia l'ordine
+in cui lo YAML le scrive. `max_voices` è il `ceil` del picco di `num_voices`
+(scalare o breakpoint), così la voce di confine frazionaria (fade) ha sempre
+uno slot.
 
 ### Output di `generate_grains()`
 
@@ -660,6 +689,7 @@ voices:
 
   pitch:
     strategy: <nome>          # step | range | chord | chord_progression | stochastic | spectral
+    unit: <unità>             # chiave di blocco, default semitones (§4)
     # parametri specifici della strategy
 
   onset_offset:
@@ -668,17 +698,18 @@ voices:
 
   pointer:
     strategy: <nome>          # linear | stochastic
+    normalized: <bool>        # chiave di blocco, default false = secondi (§4)
     # parametri specifici della strategy
 
   pan:
-    strategy: <nome>          # linear | additive | random
-    spread: <float|envelope>  # ampiezza distribuzione stereo in gradi
+    strategy: <nome>          # range | stochastic | step
+    # parametri specifici della strategy (spread per range/stochastic, step per step)
 ```
 
 Tutti i parametri scalari (`step`, `pitch_range`, `pointer_range`, `max_offset`, `base`, `spread`) accettano:
 - `float` — valore costante per tutta la durata dello stream
-- lista di punti `[[t, v], ...]` — envelope lineare in secondi
-- dizionario `{points: [...], time_mode: normalized}` — envelope in coordinate 0.0–1.0 scalate su `stream.duration`
+- lista di punti `[[t, v], ...]` — envelope lineare nel `time_mode` dello stream (#144): secondi, oppure coordinate 0.0–1.0 scalate su `stream.duration` se lo stream dichiara `time_mode: normalized`
+- dizionario `{points: [...], time_mode: normalized}` — come la lista, ma il `time_mode` locale, se c'è, sovrascrive quello dello stream (`time_mode: absolute` resta in secondi anche su uno stream `normalized`)
 
 ### Esempi
 
@@ -738,7 +769,7 @@ voices:
     strategy: stochastic
     pointer_range: 0.02
   pan:
-    strategy: linear
+    strategy: range
     spread: 60.0
 ```
 Risultato: 6 voci con leggere variazioni di pitch e posizione nel sample, distribuite nello spazio stereo.
@@ -752,8 +783,10 @@ voices:
   pointer:
     strategy: linear
     step: 0.1
+    normalized: true
 ```
-Risultato: 3 letture parallele del sample a distanza di 10% l'una dall'altra.
+Risultato: 3 letture parallele del sample a distanza di 10% l'una dall'altra. Senza
+`normalized: true` lo stesso `step: 0.1` vale 0,1 secondi (§3.5).
 
 ---
 
@@ -780,7 +813,7 @@ voices:
     strategy: linear
     step: [[0, 0.0], [30, 0.15]]
   pan:
-    strategy: linear
+    strategy: range
     spread: [[0, 0.0], [30, 120.0]]
 ```
 Risultato: tutte e tre le dimensioni si aprono in 30s — da cluster monofonico a ensemble distribuito.
@@ -809,7 +842,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | Onset offset ≥ 0 | Le voci secondarie non precedono mai la voce 0 |
 | Valutazione per-grain | `get_voice_config(voice_index, t)` riceve `voice_cursors[voice_index]` — tempo reale della voce |
 | Direzione stochastic fissa | Per le strategy stochastiche la direzione per-voce è calcolata una volta (seeded cache); solo la magnitudine varia con l'envelope |
-| Riproducibilità stochastic | Seed = `hash(stream_id + voice_index)` → stesso YAML → stesso output |
+| Riproducibilità stochastic | RNG per-voce da `voice_rng(seed, rng_id, voice_index)`, sha256 → stesso YAML e stesso `seed` → stesso output. Senza `seed:` nello YAML il Generator ne genera uno di sessione e lo logga; il fallback `hash()`, non riproducibile fra processi, resta solo per uno `Stream` costruito con `seed=None` |
 | Pitch moltiplicativo | `pitch_ratio *= pitch_factor` (fattore materializzato dalla `PitchUnit`) → compatibile con ratio audio standard |
 | Fade frazionario voci | La parte decimale di `num_voices` interpolato attenua la voce di confine (`volume += 20·log10(frac)`); `step` con breakpoint interi → on/off netto come prima |
 | Backward compatibility | `voices` è l'unica fonte di verità; `stream.grains` resta leggibile come vista derivata ma è deprecata (#201). Config scalari esistenti e `step` con breakpoint interi invariati |
@@ -827,7 +860,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer con `time` arg e envelope |
 | `tests/strategies/test_voice_pan_strategy.py` | Range, stochastic, step pan con `time` arg, voice-0 invariant, spread/step envelope |
 | `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager; `TestGenerateGrainsEnvelopePerGrain`: verifica valore esatto pitch_ratio per grain a `voice_cursors[vi]` |
-| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized` |
+| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, effetti di ogni ramo che convivono nello stesso stream, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori, default delle chiavi di blocco senza il sotto-blocco, `rng_id` iniettato nelle stocastiche, hook risolti sull'istanza (#186) |
 
 **Esecuzione test multi-voice:**
 ```bash
