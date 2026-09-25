@@ -1274,7 +1274,10 @@ class TestReaperExport:
 
     def test_reaper_write_receives_streams(self, mocks):
         """write() riceve generator.streams come primo argomento."""
-        streams = [MagicMock(), MagicMock()]
+        # onset/duration/fill_factor numerici come su uno Stream vero: la
+        # riga di fine render li formatta (#188), e un MagicMock non regge `:g`.
+        streams = [MagicMock(onset=0.0, duration=1.0, fill_factor=None),
+                   MagicMock(onset=0.0, duration=1.0, fill_factor=None)]
         mocks['generator_instance'].streams = streams
 
         writer = self._run_with_reaper_mock(
@@ -1289,7 +1292,9 @@ class TestReaperExport:
         from unittest.mock import MagicMock
         generated = ['/out/s1.aif', '/out/s2.aif']
         # Allinea streams e generated: STEMS mode (1 aif per stream)
-        mocks['generator_instance'].streams = [MagicMock(), MagicMock()]
+        mocks['generator_instance'].streams = [
+            MagicMock(onset=0.0, duration=1.0, fill_factor=None),
+            MagicMock(onset=0.0, duration=1.0, fill_factor=None)]
         writer = self._run_with_reaper_mock(
             mocks,
             ['main.py', 'configs/PGE_test.yml', 'out.aif', '--reaper'],
@@ -1416,6 +1421,10 @@ class TestGrainJsonOnlyGeneratedStreams:
         s = MagicMock()
         s.stream_id = stream_id
         s.generated = generated
+        # Come su uno Stream vero: la riga di fine render li formatta (#188).
+        s.onset = 0.0
+        s.duration = 1.0
+        s.fill_factor = None
         return s
 
     def test_grain_json_written_only_for_generated_streams(self, mocks):
@@ -1471,8 +1480,8 @@ class TestGrainCountLog:
     `RenderResult.grain_counts`.
     """
 
-    def _stream(self, stream_id, voices=None):
-        return LazyStreamDouble(stream_id, voices)
+    def _stream(self, stream_id, voices=None, **attrs):
+        return LazyStreamDouble(stream_id, voices, **attrs)
 
     def _grains(self, n):
         return fake_grains(n)
@@ -1521,6 +1530,49 @@ class TestGrainCountLog:
         self._run(mocks, [])
         out = capsys.readouterr().out
         assert 'grani' not in out
+
+    # --- onset, durata risolta e modo (#188) ---------------------------------
+    # Il `repr` che `_create_streams` stampava a costruzione era l'unico
+    # posto a schermo con onset, durata e modo di ogni stream; dalla #188 va
+    # al diagnostic logger, che la CLI non accende. Tornano qui, a valle del
+    # render: la durata e' quella *risolta*, cioe' anche quella implicita di
+    # uno stream senza `duration` nello YAML (#205). Le asserzioni sono
+    # sull'intera riga, non con `in`: con un prefisso la coda poteva sparire
+    # o sporcarsi senza che niente diventasse rosso.
+
+    def test_riga_intera_di_uno_stream_generato(self, mocks, capsys):
+        self._run(mocks, [self._stream(
+            's1', [self._grains(3), self._grains(2)],
+            onset=0.0, duration=4.2)])
+        assert ('  → s1: 5 grani (2 voci) · onset 0s · dur 4.2s · density'
+                in capsys.readouterr().out.splitlines())
+
+    def test_saltato_dalla_cache_dice_comunque_onset_durata_e_modo(
+            self, mocks, capsys):
+        """Onset, durata e modo sono risolti a costruzione: si leggono anche
+        dove i grani non ci sono, senza toccare `.voices` (il double
+        esplode se lo si legge, #117)."""
+        self._run(mocks, [self._stream(
+            's_clean', onset=12.345, duration=3)])
+        assert ('  → s_clean: grani non generati (cache) · onset 12.345s '
+                '· dur 3s · density'
+                in capsys.readouterr().out.splitlines())
+
+    def test_modo_fill_factor(self, mocks, capsys):
+        self._run(mocks, [self._stream(
+            's1', [self._grains(1)], onset=1.5, duration=2.0,
+            fill_factor=2.0)])
+        assert ('  → s1: 1 grano (1 voce) · onset 1.5s · dur 2s '
+                '· fill_factor'
+                in capsys.readouterr().out.splitlines())
+
+    def test_i_numeri_escono_senza_artefatti_di_float(self, mocks, capsys):
+        """`0.1 + 0.2` e' `0.30000000000000004`: a schermo va `0.3`, non la
+        coda binaria che il vecchio `repr` stampava cosi' com'era."""
+        self._run(mocks, [self._stream(
+            's1', [self._grains(2)], onset=0.1 + 0.2, duration=0.1 * 3)])
+        assert ('  → s1: 2 grani (1 voce) · onset 0.3s · dur 0.3s · density'
+                in capsys.readouterr().out.splitlines())
 
 
 # =============================================================================

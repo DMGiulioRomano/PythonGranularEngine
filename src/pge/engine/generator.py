@@ -24,6 +24,7 @@ from pge.shared.exceptions import (
     ConfigError, ConfigFileNotFoundError, SampleNotFoundError,
     config_parse_error, config_read_error,
 )
+from pge.shared.logger import get_diagnostic_logger
 from pge.shared.seeding import session_seed
 
 class Generator:
@@ -259,7 +260,15 @@ class Generator:
             )
             dirty_ids = {d['stream_id'] for d in dirty_dicts}
             streams_to_write = [s for s in self.streams if s.stream_id in dirty_ids]
-            print(f"[CACHE] Stream da scrivere: {[s.stream_id for s in streams_to_write]}", flush=True)
+            # Diagnostica, non protocollo (#178, #188): ripete in un elenco
+            # cio' che `get_dirty_stream_dicts` ha appena detto stream per
+            # stream. Senza il tag `[CACHE]`: quel prefisso e' lo spazio di
+            # nomi del protocollo, e questa riga ne restava fuori solo perche'
+            # dopo `Stream` viene uno spazio invece dei due punti.
+            get_diagnostic_logger().debug(
+                "Stream da scrivere (cache incrementale): %s",
+                [s.stream_id for s in streams_to_write],
+            )
         else:
             streams_to_write = self.streams
             dirty_dicts = None
@@ -298,15 +307,12 @@ class Generator:
             stream_data_list: lista dizionari parametri stream da YAML
         """        
         print(f"Creazione di {len(stream_data_list)} stream...")
-        
+        log = get_diagnostic_logger()
+
         for stream_data in stream_data_list:
             # 1. Crea stream
-            #import json
-            #print(f"[DEBUG] PRIMA Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
-
             stream = Stream(stream_data, seed=self.seed,
                             samples_dir=self.samples_dir)
-            #print(f"[DEBUG] DOPO  Stream({stream_data.get('stream_id')}): {json.dumps(stream_data, default=str)[:200]}", flush=True)
             self.stream_data_map[stream_data['stream_id']] = stream_data
             # 2. Registra ftable sample
             stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
@@ -322,7 +328,11 @@ class Generator:
             # leggere .voices, non generano mai i grani. Tabelle e costruzione
             # Stream restano invece eager (numerazione FtableManager).
             self.streams.append(stream)
-            print(f"  → Stream '{stream.stream_id}': {stream}")
+            # Diagnostica, non interfaccia (#178, #188): il repr espone stato
+            # interno (`grains=lazy`) e la conferma per stream, coi grani veri,
+            # la stampa la CLI a render finito (#250). Argomenti a parte e non
+            # f-string: con la diagnostica muta il repr non si costruisce.
+            log.debug("Stream '%s' creato: %s", stream.stream_id, stream)
     
     def _filter_solo_mute(self, stream_data_list: list) -> list:
         """

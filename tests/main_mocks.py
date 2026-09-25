@@ -230,12 +230,21 @@ class LazyStreamDouble:
     lettura e non solo il suo esito: uno stream che nasce non materializzato
     e viene materializzato dal render finto distingue un conteggio fatto
     dopo `engine.render` da uno fatto prima.
+
+    `onset`, `duration` e `fill_factor` sono gli attributi che uno Stream vero
+    risolve a costruzione, e che la riga di fine render della CLI legge
+    accanto al conteggio (#188): leggerli non tocca `.voices`, e il double lo
+    dimostra perche' `.voices` qui esplode.
     """
 
-    def __init__(self, stream_id, voices=None):
+    def __init__(self, stream_id, voices=None, *, onset=0.0, duration=1.0,
+                 fill_factor=None):
         self.stream_id = stream_id
         self.generated = voices is not None
         self._voices = voices
+        self.onset = onset
+        self.duration = duration
+        self.fill_factor = fill_factor
 
     def materialize(self, voices):
         """Come fa il renderer: legge i grani e da quel momento `generated`

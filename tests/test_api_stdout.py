@@ -17,9 +17,9 @@ Il censimento chiude in due direzioni, e servono entrambe:
   una di quelle che il censimento in `api.py` elenca. Un `print()` nuovo che
   arriva fino all'API senza passare dalla dichiarazione e' rosso.
 - **statico** -- ogni prefisso elencato deve esistere ancora come `print()`
-  dentro `src/pge/`. Quando #187/#188 porteranno quelle righe al logger,
-  l'elenco diventera' stale: qui diventa rosso, invece di restare a
-  descrivere un comportamento che non c'e' piu'.
+  dentro `src/pge/`. Quando una riga passa al logger -- la #188 l'ha fatto
+  con `  → Stream` -- l'elenco diventa stale: qui diventa rosso, invece di
+  restare a descrivere un comportamento che non c'e' piu'.
 
 La prima direzione da sola lascerebbe crescere l'elenco all'infinito; la
 seconda da sola non vedrebbe mai una riga nuova.
@@ -69,11 +69,15 @@ _NOT_LIBRARY = {'cli.py'}
 # prefisso e' identico a quello delle righe vive.
 #
 # L'elenco e' verificato, non trascritto: `test_le_esclusioni_sono_ancora_vere`
-# chiede che ognuna esista ancora e che ogni sua chiamata in `src/pge/` stia
-# dentro una funzione a sua volta esclusa -- il giorno che una diventa
-# raggiungibile l'esclusione e' sbagliata e il test lo dice.
+# chiede che ognuna si guadagni ancora il posto e che ogni sua chiamata in
+# `src/pge/` stia dentro una funzione a sua volta esclusa -- il giorno che una
+# diventa raggiungibile l'esclusione e' sbagliata e il test lo dice.
 _UNREACHABLE = {
-    # Generator.generate_score_files_per_stream: nessun chiamante in src/pge/
+    # Generator.generate_score_files_per_stream: nessun chiamante in src/pge/.
+    # Dalla #188 non stampa piu' -- la sua sola riga era diagnostica ed e'
+    # andata al logger -- ma resta: e' lei l'anello che rende irraggiungibile
+    # la successiva, e toglierla renderebbe raggiungibile, per questo elenco,
+    # un metodo che nessun render chiama.
     ('generator.py', 'generate_score_files_per_stream'),
     # StreamCacheManager.get_dirty_stream_dicts: chiamata solo dalla
     # precedente, quindi irraggiungibile per la stessa ragione.
@@ -370,21 +374,36 @@ class TestCensimento:
     def test_le_esclusioni_sono_ancora_vere(self):
         """`_UNREACHABLE` e' verificato, non trascritto.
 
-        Ogni esclusione deve (a) esistere ancora -- altrimenti descrive un
-        print che non c'e' piu' e resta li' a nascondere il prossimo -- e
-        (b) restare irraggiungibile, cioe' ogni sua chiamata in `src/pge/`
-        deve stare dentro una funzione a sua volta esclusa. Il giorno che una
-        diventa raggiungibile, l'esclusione e' sbagliata e va tolta.
+        Ogni esclusione deve (a) guadagnarsi ancora il posto -- altrimenti
+        descrive un print che non c'e' piu' e resta li' a nascondere il
+        prossimo -- e (b) restare irraggiungibile, cioe' ogni sua chiamata in
+        `src/pge/` deve stare dentro una funzione a sua volta esclusa. Il
+        giorno che una diventa raggiungibile, l'esclusione e' sbagliata e va
+        tolta.
+
+        Il posto se lo guadagna in due modi, e fino alla #188 ne serviva uno
+        solo: **stampa**, oppure **chiama un'esclusione che stampa**. Il
+        secondo e' l'anello della catena che (b) percorre.
+        `generate_score_files_per_stream` ha perso la sua `print()` -- era
+        diagnostica, ed e' andata al logger -- ma resta l'unica chiamante di
+        `get_dirty_stream_dicts`, che stampa ancora il protocollo: pretendere
+        che stampasse avrebbe chiesto di toglierla, e (b) avrebbe allora
+        dichiarato raggiungibile il cache manager. Una voce che non fa
+        nessuna delle due cose resta invece rossa, come prima.
         """
         vivi = {(mod, func)
                 for mod, func, _pref, _src in _library_prints(
                     skip_unreachable=False)}
         esclusi = {func for _mod, func in _UNREACHABLE}
+        stampano = {func for mod, func in _UNREACHABLE if (mod, func) in vivi}
         siti = _library_call_sites()
         for mod, func in sorted(_UNREACHABLE):
-            assert (mod, func) in vivi, (
+            chiamati = {chiamato for m, chiamante, chiamato in siti
+                        if m == mod and chiamante == func}
+            assert (mod, func) in vivi or chiamati & stampano, (
                 f"_UNREACHABLE elenca {mod}:{func}(), ma li' non c'e' piu' "
-                f"nessun print(): togli la voce")
+                f"nessun print() e non chiama nessuna esclusione che ne abbia "
+                f"uno: togli la voce")
             fuori = [(m, chiamante) for m, chiamante, chiamato in siti
                      if chiamato == func and chiamante not in esclusi]
             assert not fuori, (
@@ -406,9 +425,9 @@ class TestCensimento:
         da tutti e tre i renderer, verde -- cioe' cieco proprio allo
         scenario qui sotto).
 
-        Rosso previsto quando #187/#188 porteranno una di queste righe al
-        logger. Non e' un falso allarme: e' la dichiarazione che va
-        aggiornata insieme al comportamento.
+        Rosso previsto quando una di queste righe passa al logger (con la
+        #188 e' successo a `  → Stream`). Non e' un falso allarme: e' la
+        dichiarazione che va aggiornata insieme al comportamento.
         """
         prints = _library_prints()
         for token in _census_tokens():
@@ -482,8 +501,34 @@ class TestStdoutReale:
             lambda: api.load_generator(probe['yml'],
                                        samples_dir=probe['samples']))
         blob = '\n'.join(lines)
-        for atteso in ('[SEED]', '🔇', 'Creazione di', '→ Stream'):
+        for atteso in ('[SEED]', '🔇', 'Creazione di'):
             assert atteso in blob, f"manca la riga {atteso!r}: {lines}"
+
+    def test_la_riga_per_stream_va_al_logger(self, probe, caplog):
+        """`  → Stream '<id>': <repr>` era diagnostica, e dalla #188 non e'
+        piu' su stdout: chi incorpora la libreria la trova sul logger
+        `pge.diagnostics`, una per stream costruito, se lo ascolta.
+
+        Il censimento da solo non lo direbbe: una riga tolta dall'elenco e
+        rimasta su stdout la fa rossa la direzione runtime, ma una riga
+        sparita e basta — anche dal logger — no. Qui si guardano i due capi.
+        """
+        import logging
+        from pge import api
+        from pge.shared.logger import DIAGNOSTIC_LOGGER_NAME
+
+        with caplog.at_level(logging.DEBUG, logger=DIAGNOSTIC_LOGGER_NAME):
+            _gen, lines = _capture(
+                lambda: api.load_generator(probe['yml'],
+                                           samples_dir=probe['samples']))
+
+        assert not [ln for ln in lines if 'Stream(' in ln], (
+            f"il repr degli stream e' ancora su stdout: {lines}")
+        per_stream = [r for r in caplog.records
+                      if r.name == DIAGNOSTIC_LOGGER_NAME
+                      and r.funcName == '_create_streams']
+        # s2 e' muted: non viene costruito, quindi non ha la sua riga.
+        assert [r.args[0] for r in per_stream] == ['s1'], per_stream
 
     def test_render_stampa_lo_stato_della_cache(self, probe):
         """`[CACHE] <id>: DIRTY|clean`, una riga per stream, dal renderer."""
@@ -503,14 +548,46 @@ class TestStdoutReale:
 
     def test_senza_manifest_non_c_e_riga_di_cache(self, probe):
         """`[CACHE]` e' condizionata a `cache_manifest_path`, e il
-        censimento lo dice: senza manifest quella riga non esiste."""
+        censimento lo dice: senza manifest quella riga non esiste.
+
+        Il render e' per stream, come nel test qui sopra, e deve esserlo:
+        nel mix la riga non esce nemmeno col manifest (test qui sotto), quindi
+        un render nel mix lasciava questo test verde anche con la guardia sul
+        manifest tolta dal renderer -- misurato: una `print()` aggiunta prima
+        di `if not self.cache_manager` in `_cache_skip` non lo faceva cadere.
+        """
         from pge import api
         gen, _ = _capture(
             lambda: api.load_generator(probe['yml'],
                                        samples_dir=probe['samples']))
+        out = str(probe['dir'] / 'stem.wav')
+        _res, lines = _capture(lambda: api.render(
+            gen, out, renderer='numpy', per_stream=True,
+            samples_dir=probe['samples']))
+
+        assert not [ln for ln in lines if ln.startswith('[CACHE]')], lines
+        assert not _undocumented(lines, _census_tokens()), (
+            f"righe non censite: {_undocumented(lines, _census_tokens())}")
+
+    def test_nel_mix_non_c_e_riga_di_cache_nemmeno_col_manifest(self, probe):
+        """La seconda condizione del censimento: `per_stream=True`.
+
+        Nel mix il renderer non consulta la cache stream per stream (il
+        controllo sta in `render_streams`/`render_single_stream`, non in
+        `render_merged_streams`), quindi il manifest da solo non basta a far
+        uscire `[CACHE] <id>: ...`. Il censimento in `api.py` lo dichiara: il
+        giorno che il mix cominciasse a stamparla la dichiarazione sarebbe
+        falsa, e questo test lo dice.
+        """
+        from pge import api
+        gen, _ = _capture(
+            lambda: api.load_generator(probe['yml'],
+                                       samples_dir=probe['samples']))
+        manifest = str(probe['dir'] / 'manifest.json')
         out = str(probe['dir'] / 'mix.wav')
         _res, lines = _capture(lambda: api.render(
-            gen, out, renderer='numpy', samples_dir=probe['samples']))
+            gen, out, renderer='numpy', per_stream=False,
+            samples_dir=probe['samples'], cache_manifest_path=manifest))
 
         assert not [ln for ln in lines if ln.startswith('[CACHE]')], lines
         assert not _undocumented(lines, _census_tokens()), (

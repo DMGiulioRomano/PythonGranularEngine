@@ -4,7 +4,7 @@ type: explanation
 status: stable
 tags: [api, cli, architecture, refactor]
 sources: [src/pge/api.py, src/pge/cli.py, src/main.py]
-last_synced_commit: 5285c17
+last_synced_commit: 807a737
 entry_for: [usare PGE come libreria, capire la divisione API/CLI]
 ---
 
@@ -64,14 +64,18 @@ Divisione delle policy (chi decide cosa):
   per chi la incorpora (issue #189). Nessuna funzione di `api.py` contiene
   un `print()`; i componenti che orchestra ne contengono, e scrivono su
   stdout mentre lavorano: `Generator` (`[SEED]`, `Creazione di N
-  stream...`, `  → Stream '<id>'`, `🔇 N stream muted`), i renderer
-  (`[CACHE] <id>: DIRTY|clean`, solo con `cache_manifest_path`),
+  stream...`, `🔇 N stream muted`), i renderer
+  (`[CACHE] <id>: DIRTY|clean`, solo con `cache_manifest_path` e
+  `per_stream=True`),
   `ScoreWriter` sul ramo Csound (`✓ Score generato`), `ScoreVisualizer` da
   `export_score_pdf` (`Analisi completata`, `Esportazione PDF`, ...) e il
   clip logger alla prima inizializzazione (`📝 Clip log file`). Il
   censimento completo, con chi emette cosa, sta nell'intestazione di
   `api.py`; `tests/test_api_stdout.py` lo verifica su output vero, in
-  entrambe le direzioni.
+  entrambe le direzioni. La riga per stream che `Generator` stampava a
+  costruzione (`  → Stream '<id>': <repr>`) non c'e' piu': era diagnostica,
+  e dalla #188 e' un record DEBUG sul logger `pge.diagnostics`, muto finche'
+  l'host non lo ascolta.
 - **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
   logger passano di là (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
   dall'avviso di migrazione `loop_unit` della #222, che parla proprio quando
@@ -80,12 +84,16 @@ Divisione delle policy (chi decide cosa):
   punto — un censimento di stdout letto come inventario completo rifà
   l'errore della #189 un piano sotto.
 - Quelle righe restano perché fanno parte del contratto stdout della CLI, e
-  una almeno è interfaccia vera: `[CACHE] <id>: DIRTY|clean` la parsa PGE-ui
-  (`render_pipeline.py`) per gli eventi NDJSON `stream-start`/`stream-done`,
-  cioè per l'avanzamento per stream che l'editor mostra durante un render.
-  Delle altre non risulta nessun consumatore — accertarlo è la issue #178,
-  portarle al logger le #187/#188. Quando succederà, il censimento in
-  `api.py` va aggiornato insieme al codice, ed è il test a chiederlo.
+  la #178 ha accertato il ruolo di ognuna. `[CACHE] <id>: DIRTY|clean` è
+  **protocollo**: la parsa PGE-ui (`render_pipeline.py`) per gli eventi
+  NDJSON `stream-start`/`stream-done`, cioè per l'avanzamento per stream che
+  l'editor mostra durante un render. Le altre sono **interfaccia CLI**:
+  nessuno le parsa, ma le legge a schermo chi ha lanciato il render. Al
+  logger sono andate solo le diagnostiche — le registrazioni di strategy con
+  la #187, le due righe di `Generator` con la #188 — e spostarne un'altra è
+  una scelta di prodotto, non un refactoring. Se succede, il censimento in
+  `api.py` va aggiornato insieme al codice, ed è il test a chiederlo; la
+  classificazione riga per riga sta in [[contratto-stdout]].
 - Il GC della cache è una funzione separata (`collect_cache_orphans`)
   perché la CLI deve stamparne l'esito PRIMA del render (ordine stdout);
   `render_file` lo esegue da sé col default `run_cache_gc=True`.
@@ -94,7 +102,11 @@ Divisione delle policy (chi decide cosa):
   render, e chiamata da `render` invece che dalla CLI perché il momento non è
   una policy — leggere `voices` prima del render genererebbe i grani in fase
   di stampa (generazione lazy, #117). `RenderResult` porta il risultato, alla
-  CLI resta la prosa.
+  CLI resta la prosa. Dalla #188 quella prosa accosta al conteggio onset,
+  durata risolta e modo di ogni stream (`_stream_timing`), che la CLI legge
+  da `generator.streams` e non chiede all'API: sono attributi fissati a
+  costruzione, leggerli non tocca `voices`, e metterli a schermo è policy
+  della CLI — chi incorpora li ha già sugli `Stream`.
 - `import pge` è economico: i simboli pesanti (ScoreVisualizer →
   matplotlib) sono lazy via `__getattr__` di modulo (PEP 562).
 

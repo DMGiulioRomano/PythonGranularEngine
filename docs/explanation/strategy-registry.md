@@ -32,7 +32,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: cef5050
+last_synced_commit: 95a83b7
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -505,14 +505,22 @@ Il primo la #187 l'ha lasciato accanto a quelli per `ast`: tre test
 `print()` nella classe generica passa di lì qualunque cartella la ospiti.
 
 Il secondo è il censimento della #266, e la sua copertura è di un altro tipo:
-non vieta la `print()`, **pretende che sia dichiarata**. `DIAGNOSTICA` è una
-categoria legale — `engine/generator.py` ne ha due — quindi il rimedio che
-riporta il verde è una riga in `CLASSIFICAZIONE`, non la rimozione della
-`print()`. Misurato: aggiunta quella voce per `shared/registry.py`, il
-censimento tace e resta rosso il solo `test_register_logs_instead_of_printing`.
-È esattamente il suo scopo dichiarato — rendere deliberata ogni riga su stdout,
-non proibirla — ma vuol dire che a *chiudere* il buco non arriva: lo rende
-rumoroso, e il rumore si spegne con una riga.
+non vieta la `print()`, **pretende che sia dichiarata**. Fino alla #188
+`DIAGNOSTICA` era una categoria legale — `engine/generator.py` ne aveva due —
+quindi il rimedio che riportava il verde era una riga in `CLASSIFICAZIONE`, non
+la rimozione della `print()`. Misurato allora: aggiunta quella voce per
+`shared/registry.py`, il censimento taceva e restava rosso il solo
+`test_register_logs_instead_of_printing`. È esattamente il suo scopo
+dichiarato — rendere deliberata ogni riga su stdout, non proibirla — ma vuol
+dire che a *chiudere* il buco non arriva: lo rende rumoroso, e il rumore si
+spegne con una riga.
+
+*(Dalla #188 quella riga non può più dire `DIAGNOSTICA`: `engine/generator.py`
+non ne ha più, la categoria è vuota per ogni `print()` e
+`test_nessuna_print_e_diagnostica` la tiene tale. Il conto cambia, la natura
+no: `INTERFACCIA` resta legale, e dichiarata così la stessa `print()` zittisce
+ancora il censimento — rimisurato su `register_window_strategy`, resta rossa la
+sola guardia per funzione.)*
 
 **Il che non salva la prescrizione: la rende più precisa.** La copertura
 comportamentale è *incidentale*. Vale finché almeno una fra pan, density e

@@ -24,7 +24,8 @@ sources:
   - src/pge/rendering/score_visualizer.py
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
-last_synced_commit: 8bffbbb
+  - tests/engine/test_generator.py
+last_synced_commit: 95a83b7
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -78,7 +79,7 @@ diventa un evento `log`, che l'editor stampa nel suo terminale senza leggerla:
 | Forma | Regex a valle | Evento |
 |---|---|---|
 | `[CACHE] <token-senza-spazi>: <resto>` | `_RE_CACHE_LINE` | `stream-start`, `stream-done` |
-| `    <path>__<id>.<aif\|aiff\|wav\|flac>` | `_RE_STEM_PATH` | `stream-done` dell'ultimo stream DIRTY |
+| `    <path>__<id>.<aif\|aiff\|wav\|flac>` | `_RE_STEM_PATH` | `stream-done` dello stream DIRTY che il path nomina |
 
 Verificato eseguendo, non leggendo: un render vero passato dentro
 `parse_render_line` produce eventi **solo** su quelle due. L'esito del render
@@ -110,11 +111,26 @@ nessuno debba deciderlo di nuovo. *(Questo doc chiamava quel metodo
 La seconda e' il **blocco riassuntivo** di `cli.py`, e fin qui non era
 nominata: sotto «Generazione completata! N file generati:» ogni path esce
 indentato di quattro spazi, e da li' `parse_render_line` ricava lo
-`stream-done` dell'**ultimo** stream DIRTY del giro — gli altri li chiude la
-riga `[CACHE]` successiva, l'ultimo non ha nessuna riga dopo di se'. Fino alla
-#178 non aveva nessuna guardia: togliendole l'indentazione la suite di PGE
-resta interamente verde e l'ultimo stem prende il pallino giallo dopo un render
-che ha fatto esattamente cio' che il pallino chiedeva.
+`stream-done` di **ogni** stream DIRTY del giro. `[CACHE] <id>: DIRTY` apre lo
+stream e lo lascia in attesa; a chiuderlo e' soltanto la riga di path che
+nomina il suo stem, confrontata sul nome intero `<basename>__<id>` (col solo
+suffisso `__<id>` quando la richiesta non passa il basename).
+
+Non e' sempre stato cosi', e la #178 ha scritto la versione precedente: il
+parser chiudeva ogni DIRTY sulla riga `[CACHE]` successiva e lasciava al
+riepilogo il solo ultimo. Ma il renderer numpy fa il triage di **tutti** gli
+stream prima di scriverne uno (`NumpyAudioRenderer.render_streams`, «Fase 1»),
+quindi le righe `[CACHE]` arrivano in blocco, e quella lettura dichiarava resi
+stem su cui il motore non aveva ancora scritto un campione — pallino verde su
+audio mai riscritto, se il render moriva dopo il triage. Il fix #151 di PGE-ui
+(`328fb31`) ha spostato tutta la chiusura sul riepilogo. Per questo contratto
+vuol dire che la seconda riga di protocollo pesa piu' della prima: senza
+l'indentazione, o col path spezzato, nessuno stream DIRTY si chiude.
+
+Fino alla #178 non aveva nessuna guardia: togliendole l'indentazione la suite
+di PGE restava interamente verde, e oggi **ogni** stem DIRTY prenderebbe il
+pallino giallo dopo un render che ha fatto esattamente cio' che il pallino
+chiedeva.
 
 ### La forma non dice l'intenzione
 
@@ -159,37 +175,62 @@ descriptor non separa niente; separa la forma.
 
 ### La classificazione
 
-Sessantaquattro `print()` in `src/pge/`. La tabella completa vive in
-`CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`), dove e' eseguibile;
-qui il riassunto per modulo:
+Sessantadue `print()` in `src/pge/` — erano sessantaquattro, e le due che
+mancano sono quelle che la #188 ha portato al logger. La tabella completa vive
+in `CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`), dove e'
+eseguibile; qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
 | `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 36 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
-| `engine/generator.py` | — | `  → Stream '<id>': <repr>`, `[CACHE] Stream da scrivere:` | `[SEED]`, `Creazione di N stream`, `⚡ SOLO MODE`, `🔇 N stream muted`, `⚠️ impossibile valutare` |
+| `engine/generator.py` | — | — (al logger dalla #188) | `[SEED]`, `Creazione di N stream`, `⚡ SOLO MODE`, `🔇 N stream muted`, `⚠️ impossibile valutare` |
 | `rendering/*_renderer.py` (3) | `[CACHE] <id>: <status>` | — | — |
 | `rendering/stream_cache_manager.py` | `[CACHE] <id>: <status>` | — | `[CACHE] N/M stream da ricompilare` |
 | `rendering/score_writer.py` | — | — | 4 (path del `.sco` e riepilogo) |
 | `rendering/score_visualizer.py` | — | — | 7 (avanzamento PDF/PNG, waveform illeggibile) |
 | `shared/logger.py` | — | — | `📝 Clip log file:`, `CLIP:` (su stderr) |
 
-La **diagnostica e' quasi vuota**, ed e' l'esito piu' istruttivo del
-censimento. Dopo che la #187 ha portato al logger le registrazioni di strategy,
-restano due sole righe che parlano della contabilita' interna: il `repr` per
-stream di `_create_streams` e l'elenco `[CACHE] Stream da scrivere:` — che sta
-per giunta nel ramo irraggiungibile. Tutto il resto dello stdout del motore e'
-**interfaccia**: parla del render di chi ha lanciato il comando. Non c'era una
-riserva di rumore da spostare al logger; c'era un canale mal dichiarato.
+La **diagnostica e' vuota**, ed e' l'esito piu' istruttivo del censimento.
+La #178 ne aveva trovate poche: dopo che la #187 aveva portato al logger le
+registrazioni di strategy, restavano due sole righe che parlavano della
+contabilita' interna — il `repr` per stream di `_create_streams` e l'elenco
+`[CACHE] Stream da scrivere:`, che stava per giunta nel ramo irraggiungibile.
+La #188 ha portato al logger anche quelle due. Tutto cio' che resta sullo
+stdout del motore e' **interfaccia** o protocollo: parla del render di chi ha
+lanciato il comando. Non c'era una riserva di rumore da spostare al logger;
+c'era un canale mal dichiarato.
+
+Vuota, la categoria cambia natura: per una `print()` e' una contraddizione —
+dichiara di non parlare a nessuno e intanto scrive sul canale che PGE-ui
+parsa — e `test_nessuna_print_e_diagnostica` la tiene vuota. La categoria
+resta nella tabella per nominare cio' che va al logger, non cio' che puo'
+stare su stdout.
 
 Due voci meritano una nota, perche' sono quelle su cui la classificazione e'
 una scelta e non una lettura:
 
 - `  → Stream '<id>': <repr>` — l'ho classificata diagnostica perche' il `repr`
   espone stato interno (`grains=lazy`), ed e' una riga per stream: su
-  quaranta stream e' un muro. Ma e' anche l'unica conferma visibile che uno
-  stream e' stato costruito, quindi spostarla **cambia cio' che l'utente
-  vede**: e' una decisione di prodotto, non un refactoring, e va presa con
-  l'utente nella issue di esecuzione.
+  quaranta stream e' un muro. Ma spostarla **cambia cio' che l'utente vede**,
+  quindi era una decisione di prodotto da prendere nella issue di esecuzione.
+  La #188 l'ha presa, e la ragione per cui il prezzo e' basso sta in una
+  premessa di questa nota che era gia' scaduta quando e' stata scritta: la
+  riga **non** era l'unica conferma per stream. Dalla #250 la CLI stampa a
+  render finito `  → <id>: N grani (M voci)` — o `grani non generati (cache)`
+  — per ogni stream, col numero vero al posto di `lazy`. A schermo resta
+  quindi `Creazione di N stream...` prima del render e una riga per stream
+  dopo; sparisce il `repr` a costruzione. Doppione, pero', lo era solo sui
+  grani: portava anche `onset`, `dur` e `mode` (density o fill_factor), che
+  nessun'altra riga stampa. E `dur` e' la durata *risolta*: per uno stream
+  senza `duration` nello YAML (#205) era l'unico posto a schermo dove si
+  leggeva quanto dura. Era questo il prezzo vero della scelta, non il
+  `grains=lazy`, e la #188 non l'ha pagato: i tre valori sono passati alla
+  riga di fine render, che ora e' `  → <id>: N grani (M voci) · onset 0s ·
+  dur 4.2s · density` (`_stream_timing` in `cli.py`). Li' la durata e' gia'
+  risolta e si legge anche sugli stream saltati dalla cache, perche' sono
+  attributi fissati a costruzione e leggerli non tocca `.voices`. Il `repr`
+  intero resta su `pge.diagnostics`, a livello DEBUG, per chi incorpora il
+  motore da Python.
 - `📝 Clip log file: <path>` — questo doc diceva che passa «a ogni render».
   Falso: `get_clip_logger()` e' lazy, e la riga esce al **primo clip**, una
   volta per configurazione. Non e' traffico di ogni rendering; e' l'annuncio
@@ -227,6 +268,24 @@ criterio. Tre condizioni, ognuna sufficiente:
 
 ## Trade-off
 
+**La riga per stream a costruzione non si vede piu' a schermo** (#188). Lo
+stesso costo della voce qui sotto, un giro piu' in la', e accettato per le
+ragioni della nota sopra: la conferma per stream c'e' ancora, a render finito
+e coi grani veri. `onset`, durata risolta e modo di ogni stream, che il `repr`
+era il solo a stampare, non se ne vanno: li porta quella stessa riga. Cambia
+il momento — prima del render i valori non si vedono piu', dopo si' — e con
+lui cio' che dice un render che muore a meta': se il motore cade dentro il
+render, la durata risolta non e' arrivata a schermo. Verificato sul bridge
+vero di PGE-ui (`server.py` contro questo motore, tre render: tutti DIRTY,
+tutti clean, uno misto) e poi sull'editor in un Chromium headless: gli eventi
+NDJSON sono identici a quelli di prima uno per uno, l'avanzamento per stream e
+i pallini fanno lo stesso percorso, e dal terminale dell'editor spariscono le
+sole righe `  → Stream '<id>': <repr>` — ogni altra riga e' identica, byte per
+byte, a parte il path temporaneo e il tempo trascorso. Quella misura precede la
+coda ` · onset … · dur … · <modo>` della riga di fine render, che da allora e'
+l'unica altra differenza; passata per `parse_render_line` di PGE-ui, nel mix e
+per stream con cache DIRTY e clean, produce soli eventi `log`.
+
 **La conferma di registrazione delle strategy e' muta.** Prima stampava una
 riga con la spunta verde; ora non stampa finche' l'host non accende il logging.
 E' il costo accettato dalla #187: la registrazione dinamica e' un'operazione da
@@ -248,19 +307,21 @@ rendering*, cioe' un prodotto del programma; questa avrebbe configurato il
 logging di chi importa `pge`, che non e' affare di `pge`.
 
 **La classificazione e' un test, non una prosa.** `test_stdout_contract.py`
-legge i sorgenti con `ast` e chiede sette cose: che la riga `[CACHE] <id>: ...`
+legge i sorgenti con `ast` e chiede otto cose: che la riga `[CACHE] <id>: ...`
 sia ancora un `print()` flushato nei quattro moduli che la emettono; che quei
 quattro siano **tutti** quelli che la emettono; che il blocco riassuntivo esca
 ancora indentato e col suffisso `__<id>` (e questo lo misura sull'output vero,
 facendo scrivere alla CLI il suo riepilogo — un `print()` letto con `ast` direbbe
 che la riga esiste, solo i byte dicono che esce indentata); che ogni `print()`
-di `src/pge/` abbia una categoria e ogni categoria una `print()`; che nessuna
+di `src/pge/` abbia una categoria e ogni voce della tabella una `print()`
+(non ogni categoria: dalla #188 `DIAGNOSTICA` non ne ha); che nessuna di
+quelle voci sia diagnostica (#188); che nessuna
 riga non-protocollo abbia forma di protocollo; e che nessun **messaggio di
 log** ce l'abbia, perche' stderr non e' un riparo. Le ultime due chiedono
 **entrambe** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova e
 un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
 chiudono nell'editor lo stream in volo, e guardare la sola `[CACHE]` li
-lasciava passare. La settima e' il **confine** delle due precedenti: quanto la
+lasciava passare. L'ottava e' il **confine** delle due precedenti: quanto la
 sagoma sia piu' stretta del parser, e perche' non si chiuda allargandola.
 
 **La tabella dice dove una riga sta, non dove dovrebbe andare.** Spostare
@@ -309,7 +370,11 @@ dice in prima persona, sopra `DIAGNOSTIC_LOGGER_NAME`.
 ## Implicazioni codice
 
 - **Aggiungi una riga diagnostica** → `get_diagnostic_logger().debug(...)`, con
-  formattazione `%s` pigra. Mai `print()`.
+  formattazione `%s` pigra: gli argomenti a parte, non in una f-string, cosi'
+  che con la diagnostica muta non si formatti niente — per la riga per stream
+  di `_create_streams` vuol dire non costruire quaranta `repr`. Mai `print()`:
+  una `print()` classificata `DIAGNOSTICA` e' rossa
+  (`test_nessuna_print_e_diagnostica`).
 - **Aggiungi una riga qualunque** → va classificata in `CLASSIFICAZIONE`
   (`tests/shared/test_stdout_contract.py`), o la suite e' rossa. E' il posto
   dove la #178 ha messo la risposta a «questa riga chi la legge».

@@ -1104,8 +1104,9 @@ class Stream:
 
     def __repr__(self) -> str:
         mode = "fill_factor" if self.fill_factor is not None else "density"
-        # NON innescare la generazione lazy: _create_streams stampa {stream} per
-        # ogni stream; leggere la property .grains rigenererebbe tutto.
+        # NON innescare la generazione lazy: _create_streams passa {stream} al
+        # diagnostic logger per ogni stream (#188) -- formattato solo se un
+        # handler lo chiede, ma allora leggere .grains rigenererebbe tutto.
         # Il conteggio viene da _voices: leggerlo dal vecchio campo _grains
         # faceva mentire il repr su ogni stream con le voci iniettate (#201).
         # Il 'lazy' qui non e' una mancanza: il numero vero lo dice il log a

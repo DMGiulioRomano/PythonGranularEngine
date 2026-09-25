@@ -29,11 +29,11 @@
 #     `🔇`                  _filter_solo_mute, quanti stream sono muted
 #     `⚡ SOLO MODE`        _filter_solo_mute, in modalita' solo
 #     `Creazione di`        _create_streams, quanti stream sta costruendo
-#     `  → Stream`          _create_streams, una riga per stream
 #     `⚠️  Warning: impossibile valutare`  espressione matematica nello YAML
 #
-#   da render(), solo con `cache_manifest_path` (senza manifest non c'e'
-#   nessuna riga di cache):
+#   da render(), solo con `cache_manifest_path` e `per_stream=True` (senza
+#   manifest non c'e' nessuna riga di cache, e nel mix il renderer non
+#   consulta la cache stream per stream):
 #     `[CACHE]`             il renderer, DIRTY/clean per stream
 #
 #   da render(renderer='csound'), da ScoreWriter mentre scrive il .sco:
@@ -64,21 +64,25 @@
 #   (render_pipeline.py, _RE_CACHE_LINE) per costruirne gli eventi NDJSON
 #   `stream-start`/`stream-done`. Spostarla al logger rompe l'avanzamento per
 #   stream nell'editor dell'altro repo;
-# - `  → Stream '<id>': <repr>` e' **diagnostica** -- l'unica di questo
-#   elenco;
 # - tutte le altre sono **interfaccia CLI**: nessuno le parsa, ma le legge a
 #   schermo chi ha lanciato il render, quindi spostarle e' una scelta di
 #   prodotto e non un refactoring.
+#
+# Diagnostica, in questo elenco, non ce n'e' piu'. L'ultima era la riga per
+# stream di `_create_streams` (`  → Stream '<id>': <repr>`), che la #188 ha
+# portato al logger `pge.diagnostics` (DEBUG, muto finche' l'host non lo
+# ascolta): chi incorpora e la vuole la trova li', una per stream costruito.
+# Il conteggio vero dei grani, per stream, e' in `RenderResult.grain_counts`.
 #
 # Attenzione a una cosa che non si vede da qui: PGE-ui unisce stderr a stdout
 # (`stderr=subprocess.STDOUT`), quindi anche le righe di stderr elencate piu'
 # sotto attraversano quel parser. A tenerle fuori dagli eventi e' la loro
 # forma, non il canale.
 #
-# Quando le issue di esecuzione porteranno qualcuna di queste righe al logger,
-# il censimento qui sopra va aggiornato: il test lo verifica in entrambe le
-# direzioni (nessuna riga fuori elenco, nessuna voce in elenco che nessuno
-# emette piu').
+# Se una di queste righe passa al logger -- come la #188 ha fatto con la riga
+# per stream -- il censimento qui sopra va aggiornato: il test lo verifica in
+# entrambe le direzioni (nessuna riga fuori elenco, nessuna voce in elenco che
+# nessuno emette piu').
 #
 # --- e stderr, che il censimento qui sopra non copre ---
 #
@@ -467,7 +471,8 @@ def collect_grain_counts(
     tocca `.voices`, che e' lazy (#117): leggerla li' rigenererebbe in fase di
     stampa esattamente i grani che la cache aveva fatto risparmiare -- ed e'
     il motivo per cui il conteggio non puo' tornare nel `__repr__` di Stream,
-    che `Generator._create_streams` stampa a costruzione.
+    che `Generator._create_streams` passa al diagnostic logger a
+    costruzione (#188).
 
     Stesso schema di export_grain_json, stesso punto della pipeline. Ogni
     stream compare nella mappa: `None` per chi non e' materializzato, cosi'

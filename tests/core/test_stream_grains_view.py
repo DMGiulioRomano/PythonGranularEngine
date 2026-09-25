@@ -155,7 +155,8 @@ class TestRepr:
         assert 'grains=3' in repr(s)
 
     def test_non_innesca_la_generazione_lazy(self, stream):
-        """Vincolo #117: _create_streams stampa ogni stream appena creato."""
+        """Vincolo #117: _create_streams passa ogni stream appena creato al
+        diagnostic logger (#188), che lo formatta appena un handler ascolta."""
         s = stream
 
         assert 'grains=lazy' in repr(s)

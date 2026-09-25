@@ -2,7 +2,8 @@
 # tests/shared/test_stdout_contract.py
 # =============================================================================
 r"""
-Il contratto di stdout, in forma eseguibile (issue #178, scaglione #187).
+Il contratto di stdout, in forma eseguibile (issue #178, scaglioni #187 e
+#188).
 
 PGE ha due canali diagnostici, e la #178 li ha separati per *destinatario*:
 
@@ -12,8 +13,9 @@ PGE ha due canali diagnostici, e la #178 li ha separati per *destinatario*:
   l'editor deriva `stream-start`/`stream-done`) e i path del blocco
   riassuntivo;
 - **diagnostica** — righe che nessuno parsa e nessuno legge come interfaccia.
-  Vanno al logger. Sono le registrazioni dinamiche di strategy: operazione da
-  sviluppatore che in una pipeline di rendering normale non compare mai.
+  Vanno al logger. Erano le registrazioni dinamiche di strategy (#187) e le
+  due righe di contabilita' del `Generator` (#188): dopo i due scaglioni
+  nessuna `print()` e' piu' diagnostica, e la sezione 4 lo pretende.
 
 Questa suite esiste perche' la classificazione era prosa, e la prosa non si
 accorge di essere stata contraddetta. Le due meta' falliscono in direzioni
@@ -323,13 +325,20 @@ def test_le_strategie_non_stampano(modulo):
 # questo e il censimento.
 #
 # La conclusione non cambia, e la ragione e' che i due non fanno la stessa
-# cosa: il censimento **censisce e non vieta**. `DIAGNOSTICA` e' una categoria
-# legale, quindi il rimedio che lo zittisce e' una riga in `CLASSIFICAZIONE`,
-# non la rimozione della `print()` — misurato: dichiarata quella voce, resta
-# rosso questo test e nient'altro. A **vietare** la riga sul settimo entry
-# point c'e' dunque ancora solo questa guardia. E' la stessa distinzione che
-# `docs/explanation/strategy-registry.md` fa, nella sezione «Il `print()`»,
-# per `StrategyRegistry.register` e per `DistributionFactory.register`.
+# cosa: il censimento **censisce e non vieta**. Fino alla #188 `DIAGNOSTICA`
+# era una categoria legale, quindi il rimedio che lo zittiva era una riga in
+# `CLASSIFICAZIONE`, non la rimozione della `print()` — misurato: dichiarata
+# quella voce, restava rosso questo test e nient'altro.
+#
+# La #188 ha svuotato quella categoria e `test_nessuna_print_e_diagnostica` la
+# tiene vuota, quindi il conto e' cambiato — la conclusione no. Rimisurato
+# sulla `print()` rimessa in `register_window_strategy`: dichiarata
+# `DIAGNOSTICA` fa cadere questo test e quello; dichiarata `INTERFACCIA`, che
+# resta legale, questo e nient'altro. A **vietare** la riga sul settimo entry
+# point, in qualunque categoria la si metta, c'e' dunque ancora solo questa
+# guardia. E' la stessa distinzione che `docs/explanation/strategy-registry.md`
+# fa, nella sezione «Il `print()`», per `StrategyRegistry.register` e per
+# `DistributionFactory.register`.
 #
 # La lista e' dichiarata *e* derivata, come quella degli emettitori: la
 # dichiarazione dice cosa si sorveglia, il confronto coi sorgenti impedisce che
@@ -527,11 +536,15 @@ def test_la_registrazione_dinamica_non_stampa(relpath):
 # Le righe che PGE-ui trasforma in eventi sono **due**, non una, e fin qui
 # questo file ne sorvegliava una sola. L'altra e' il blocco riassuntivo di
 # `cli.py`: `print(f"    {path}")` sotto «Generazione completata! N file
-# generati:». Da li' `parse_render_line` ricava lo `stream-done` dell'ultimo
-# stream DIRTY del giro — gli altri li chiude la riga `[CACHE]` successiva,
-# l'ultimo non ha nessuna riga dopo di se'. Toglierle l'indentazione, o
-# spezzarla su piu' righe, lascia quell'unico stem col pallino giallo dopo un
-# render che ha fatto esattamente cio' che il pallino chiedeva.
+# generati:». Da li' `parse_render_line` ricava lo `stream-done` di ogni
+# stream DIRTY del giro: `[CACHE] <id>: DIRTY` lo mette in attesa, e lo chiude
+# soltanto la riga di path che nomina il suo stem. (Quando questo commento e'
+# stato scritto la chiudeva la `[CACHE]` successiva, e al riepilogo restava il
+# solo ultimo stream; il fix #151 di PGE-ui ha spostato tutta la chiusura qui,
+# perche' il renderer numpy fa il triage di tutti gli stream prima di scriverne
+# uno.) Toglierle l'indentazione, o spezzarla su piu' righe, lascia ogni stem
+# DIRTY col pallino giallo dopo un render che ha fatto esattamente cio' che il
+# pallino chiedeva.
 #
 # Misurato per sabotaggio: passando da `f"    {path}"` a `f"{path}"` la suite
 # di PGE restava interamente verde prima di questo test.
@@ -620,8 +633,8 @@ def _stem_paths_su_stdout(testo):
 def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
     """I path degli stem escono nella forma da cui PGE-ui ricava stream-done.
 
-    E' la seconda meta' del protocollo, e l'unica che chiude l'ultimo stream
-    DIRTY del giro.
+    E' la seconda meta' del protocollo, e l'unica che chiude uno stream
+    DIRTY: ognuno aspetta la riga di path del suo stem (fix #151 di PGE-ui).
     """
     api_mod = mocks['main'].api
     result = api_mod.RenderResult(
@@ -639,7 +652,7 @@ def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
     assert trovati == ['/out/PGE_test__streamA', '/out/PGE_test__stream-B.2'], (
         "il blocco riassuntivo non esce piu' nella forma che PGE-ui parsa "
         "(`    <path>__<id>.<ext>`). E' da li' che l'editor ricava lo "
-        "stream-done dell'ultimo stream DIRTY: vedi issue #178 e "
+        "stream-done di ogni stream DIRTY: vedi issue #178 e "
         "docs/explanation/contratto-stdout.md."
     )
 
@@ -647,20 +660,23 @@ def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
 def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
     """Il path deve finire per `__<id>`, che e' cio' che PGE-ui confronta.
 
-    `parse_render_line` non cattura l'id: chiede che il path finisca per
-    `"__" + <lo stream in corso>`. Un id troncato o normalizzato nel path — un
-    `.`/`-` sostituito, il basename accorciato — lascia il confronto senza
-    aggancio, e lo stream in volo non si chiude mai. E' lo stesso difetto che
-    la `\\w` nella regex a monte aveva gia' prodotto una volta.
+    `parse_render_line` non cattura l'id: confronta il nome del file con gli
+    stream DIRTY in attesa. Col basename che il bridge le passa pretende il
+    nome intero `<basename>__<id>`; senza, che finisca per `"__" + <id>`, e
+    fra piu' candidati vince il piu' lungo. Un id troncato o normalizzato nel
+    path — un `.`/`-` sostituito, il basename accorciato — lascia il confronto
+    senza aggancio, e quello stream non si chiude mai. E' lo stesso difetto
+    che la `\\w` nella regex a monte aveva gia' prodotto una volta.
 
     Il caso e' quello che il test qui sopra non copre, ed e' anche l'unico su
     cui il confronto per suffisso si distingue da uno per gruppo catturato:
     un **basename che contiene gia' `__`**. Li' non c'e' una posizione del
     separatore da indovinare — `_RE_STEM_PATH` cattura tutto fino
-    all'estensione e chi legge confronta la coda — e una `print()` che
-    provasse a "ripulire" il path lo romperebbe senza che nient'altro se ne
-    accorga. Senza questo caso l'asserzione era piu' debole di quella del test
-    precedente sugli stessi byte: non poteva fallire da sola.
+    all'estensione e chi legge confronta il nome intero, o la coda — e una
+    `print()` che provasse a "ripulire" il path lo romperebbe senza che
+    nient'altro se ne accorga. Senza questo caso l'asserzione era piu' debole
+    di quella del test precedente sugli stessi byte: non poteva fallire da
+    sola.
     """
     api_mod = mocks['main'].api
     result = api_mod.RenderResult(
@@ -680,8 +696,9 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
         "gia' `__` non gli da' nessun separatore da indovinare."
     )
     assert trovati[0].endswith('__stream-B.2'), (
-        "il path dello stem non finisce piu' per `__<id>`: PGE-ui confronta "
-        "proprio quel suffisso per chiudere lo stream in corso."
+        "il path dello stem non finisce piu' per `__<id>`: senza quel "
+        "suffisso PGE-ui non chiude lo stream DIRTY che il path nomina, "
+        "ne' col nome intero ne' con la sola coda."
     )
 
 
@@ -704,7 +721,9 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
 #
 #   PROTOCOLLO   il parser di PGE-ui la legge. Resta su stdout, con quella
 #                forma esatta. Cambiarla e' superficie pubblica.
-#   DIAGNOSTICA  la legge chi sta estendendo il motore. Puo' andare al logger.
+#   DIAGNOSTICA  la legge chi sta estendendo il motore. Va al logger: dalla
+#                #188 nessuna `print()` ci sta piu', e
+#                `test_nessuna_print_e_diagnostica` la tiene vuota.
 #   INTERFACCIA  la legge a schermo chi ha lanciato il render. Resta su
 #                stdout, ma non e' protocollo: nessuno la parsa.
 #
@@ -717,9 +736,10 @@ def test_lo_stream_done_si_aggancia_al_suffisso_dell_id(mocks, capsys):
 #
 # **Cosa la tabella non decide.** Dice dove una riga *sta*, non dove dovrebbe
 # andare: spostare una INTERFACCIA al logger resta una scelta di prodotto —
-# cambia cio' che l'utente vede — e le issue di esecuzione la prendono una
-# riga alla volta. Quel che la tabella impedisce e' di spostarne una senza
-# accorgersi che era protocollo.
+# cambia cio' che l'utente vede — e va presa riga per riga, in una issue sua:
+# le issue di esecuzione della #178 (#187, #188) hanno spostato solo
+# diagnostica, e la #188 era l'ultima. Quel che la tabella impedisce e' di
+# spostarne una senza accorgersi che era protocollo.
 PROTOCOLLO = 'protocollo'
 DIAGNOSTICA = 'diagnostica'
 INTERFACCIA = 'interfaccia'
@@ -736,9 +756,11 @@ CLASSIFICAZIONE = {
         PROTOCOLLO,
     ('cli.py', '  Dettagli:     {}'):
         INTERFACCIA,
-    ('cli.py', '  → {}: grani non generati (cache)'):
+    # La coda ` · {}` e' `_stream_timing` (onset, durata risolta, modo): dalla
+    # #188 e' qui, a render finito, che quei tre valori arrivano a schermo.
+    ('cli.py', '  → {}: grani non generati (cache) · {}'):
         INTERFACCIA,
-    ('cli.py', '  → {}: {} {} ({} {})'):
+    ('cli.py', '  → {}: {} {} ({} {}) · {}'):
         INTERFACCIA,
     ('cli.py', ' Errore: {}'):
         INTERFACCIA,
@@ -805,12 +827,10 @@ CLASSIFICAZIONE = {
     ('cli.py', None):
         INTERFACCIA,
     # --- engine/generator.py ---
-    ('engine/generator.py', "  → Stream '{}': {}"):
-        DIAGNOSTICA,
+    # Le due righe DIAGNOSTICA di questo modulo (`  → Stream '{}': {}` e
+    # `[CACHE] Stream da scrivere: {}`) sono andate al logger con la #188.
     ('engine/generator.py', 'Creazione di {} stream...'):
         INTERFACCIA,
-    ('engine/generator.py', '[CACHE] Stream da scrivere: {}'):
-        DIAGNOSTICA,
     ('engine/generator.py', "[SEED] Nessun seed nello YAML: seed di sessione {}. Per riprodurre questo run aggiungi 'seed: {}' allo YAML."):
         INTERFACCIA,
     ('engine/generator.py', "⚠️  Warning: impossibile valutare '{}': {}"):
@@ -899,15 +919,19 @@ def _print_censiti():
 
 
 def test_ogni_print_di_src_pge_e_classificato():
-    """Nessuna `print()` senza categoria, nessuna categoria senza `print()`.
+    """Nessuna `print()` senza categoria, nessuna voce senza `print()`.
 
     Le due direzioni servono entrambe, come per le liste della #187. Una
     `print()` nuova che nessuno classifica e' il modo in cui il canale e'
     tornato ambiguo la prima volta: chi la scrive non sa che sta scrivendo
     dentro l'interfaccia di un altro repository, e niente glielo dice. Una
     voce che resta in tabella dopo che la riga se n'e' andata al logger
-    trasforma la classificazione in un ricordo — ed e' esattamente cio' che
-    succedera' quando le issue di esecuzione cominceranno a spostarle.
+    trasforma la classificazione in un ricordo — ed e' il rischio che le
+    issue di esecuzione (#187, #188) correvano spostandole: e' questo test a
+    obbligare a togliere la voce insieme alla riga.
+
+    "Voce", non "categoria": dalla #188 `DIAGNOSTICA` non ha nessuna
+    `print()`, e deve restare cosi' (`test_nessuna_print_e_diagnostica`).
     """
     trovati = _print_censiti()
     dichiarati = set(CLASSIFICAZIONE)
@@ -916,8 +940,9 @@ def test_ogni_print_di_src_pge_e_classificato():
         "la classificazione di stdout non e' piu' allineata ai sorgenti.\n"
         f"  da classificare: {sorted(trovati - dichiarati)}\n"
         f"  non piu' emesse: {sorted(dichiarati - trovati)}\n"
-        "Ogni print() di src/pge/ va in CLASSIFICAZIONE come protocollo, "
-        "diagnostica o interfaccia: vedi issue #178 e "
+        "Ogni print() di src/pge/ va in CLASSIFICAZIONE come protocollo o "
+        "interfaccia; se e' diagnostica non e' una print() ma un "
+        "`get_diagnostic_logger().debug(...)` (#188): vedi issue #178 e "
         "docs/explanation/contratto-stdout.md."
     )
 
@@ -985,8 +1010,35 @@ def test_le_righe_di_protocollo_sono_quelle_che_il_parser_legge():
         assert _ha_forma_di_protocollo(forma), (
             f"{modulo}: `{forma}` e' marcata protocollo ma non ha nessuna "
             "delle due forme che PGE-ui parsa. Se non la legge nessuno, e' "
-            "interfaccia o diagnostica."
+            "interfaccia, oppure diagnostica e allora va al logger (#188)."
         )
+
+
+def test_nessuna_print_e_diagnostica():
+    """Dalla #188 la categoria DIAGNOSTICA, per una `print()`, e' vuota.
+
+    Le issue di esecuzione della #178 l'hanno svuotata in due scaglioni: la
+    #187 le registrazioni di strategy, la #188 le due righe del `Generator`.
+    Da qui la categoria cambia natura. Finche' conteneva righe era un elenco
+    di lavoro da fare; vuota, una `print()` classificata diagnostica e' una
+    contraddizione — dichiara di non parlare a nessuno e intanto scrive sul
+    canale che PGE-ui parsa. Il suo posto e' `get_diagnostic_logger()`.
+
+    E' anche la meta' che mancava al censimento, che la sezione 2a descrive
+    come una guardia che **censisce e non vieta**: senza questo test una
+    `print()` di diagnostica nuova si metteva a tacere con una riga in
+    `CLASSIFICAZIONE`, cioe' dichiarandola tale. Adesso quella dichiarazione
+    e' essa stessa il rosso.
+    """
+    diagnostiche = [f"{modulo}: {forma!r}"
+                    for (modulo, forma), categoria in _classificazione_ordinata()
+                    if categoria == DIAGNOSTICA]
+
+    assert not diagnostiche, (
+        "print() classificate diagnostica: la diagnostica va a "
+        "`get_diagnostic_logger().debug(...)`, non su stdout (issue #188).\n  "
+        + "\n  ".join(diagnostiche)
+    )
 
 
 # =============================================================================

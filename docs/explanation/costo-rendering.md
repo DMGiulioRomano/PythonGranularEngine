@@ -8,7 +8,7 @@ sources:
   - src/pge/core/stream.py
   - utils/bench_cost.py
   - utils/make_test_samples.py
-last_synced_commit: be716c9
+last_synced_commit: d133166
 ---
 
 # Costo del rendering — PythonGranularEngine
@@ -106,8 +106,10 @@ default.
 **Lazy contro eager.** La property lazy non fa risparmiare lavoro — end-to-end i
 due regimi coincidono entro il rumore — serve a non pagare la generazione quando
 uno `Stream` viene istanziato ma non renderizzato. È il motivo per cui
-`Stream.__repr__` conta da `_voices` invece che dalla property: stampare gli
-stream appena creati, altrimenti, li genererebbe tutti. Quel `grains=lazy` non
+`Stream.__repr__` conta da `_voices` invece che dalla property: scrivere gli
+stream appena creati nella riga diagnostica di `_create_streams` (un record
+DEBUG dalla #188, che il repr lo costruisce solo se qualcuno ascolta),
+altrimenti, li genererebbe tutti. Quel `grains=lazy` non
 è però una rinuncia al numero: il conteggio vero torna **a valle del render**,
 dove i grani ci sono già, in `RenderResult.grain_counts` — la mappa che
 `api.collect_grain_counts` riempie leggendo `voices` solo sugli stream con
