@@ -30,7 +30,11 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 2. Implementa `get_<axis>_offset(voice_index, num_voices, time)` per onset,
    pointer e pan; per il pitch `get_pitch_factor(voice_index, num_voices,
    time, unit)`, che materializza la posizione con la `PitchUnit` attiva
-   (`unit.materialize` / `unit.to_ratio`) e restituisce un fattore di ratio
+   (`unit.materialize` / `unit.to_ratio`) e restituisce un fattore di ratio.
+   Sul pan serve anche la property `name`, che `VoicePanStrategy` dichiara
+   astratta (le altre tre ABC no): senza, la registrazione passa e la classe
+   cade al primo `create` con un `TypeError` — cioe' alla costruzione dello
+   stream che la usa
 3. Registra nella mappa di modulo dell'asse — `VOICE_<AXIS>_STRATEGIES`, che
    sta accanto alle classi in `voice_<axis>_strategy.py`. A runtime si passa
    invece per `register_voice_<axis>_strategy(nome, Classe)`, che e' l'API di
@@ -80,8 +84,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 
 | Path | Tipo |
 |------|------|
-| `src/pge/strategies/voice_<axis>_<nome>.py` | nuovo file |
-| `src/pge/strategies/voice_<axis>_strategy.py` | aggiunta a `VOICE_<AXIS>_STRATEGIES` |
+| `src/pge/strategies/voice_<axis>_strategy.py` | nuova classe, accanto alle altre dell'asse, e sua voce in `VOICE_<AXIS>_STRATEGIES` |
 | `src/pge/core/stream.py` | solo kwarg strutturali o chiavi di blocco (`take_block_keys`), o una stocastica con un nome diverso da `stochastic` |
 | `tests/strategies/test_voice_<axis>_strategy.py` | nuovi test |
 
