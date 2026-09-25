@@ -952,17 +952,21 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Cosa cambia a schermo: non si vede piu' il `repr` a costruzione. La
   conferma per stream resta, e piu' informata — dalla #250 la CLI stampa a
   render finito `  → <id>: N grani (M voci)` al posto di `grains=lazy` — e
-  `Creazione di N stream...` resta dov'era. Con il `repr` escono pero' dallo
-  schermo anche `onset`, `dur` e `mode` di ogni stream, che nessun'altra riga
-  stampa; `dur` e' la durata risolta, compresa quella implicita della #205.
-  Restano su `pge.diagnostics` a livello DEBUG, ma solo per chi chiama il
-  motore da Python: la CLI non accende quel logger e non ha un flag per
-  farlo. Protocollo e interfaccia non si muovono di un carattere:
-  `stream_cache_manager.py` non e' toccato, e le sue due `print()` sono
-  appunto una riga di protocollo e una di interfaccia.
-  Verificato sul bridge vero di PGE-ui e sull'editor in un Chromium headless,
-  tre render (tutti DIRTY, tutti clean, misto): stessi eventi NDJSON, stesso
-  avanzamento per stream, stessi pallini.
+  `Creazione di N stream...` resta dov'era. Il `repr` era pero' l'unica riga
+  con `onset`, `dur` e `mode` di ogni stream, e `dur` e' la durata risolta,
+  compresa quella implicita della #205: i tre valori passano percio' alla
+  riga di fine render, che diventa `  → <id>: N grani (M voci) · onset 0s ·
+  dur 4.2s · density` (o `grani non generati (cache) · onset …`). Si leggono
+  anche sugli stream saltati dalla cache, senza generarne i grani: sono
+  attributi risolti a costruzione. Il `repr` intero resta su
+  `pge.diagnostics` a livello DEBUG, per chi incorpora il motore da Python.
+  Il protocollo non si muove di un carattere: `stream_cache_manager.py` non
+  e' toccato, e le sue due `print()` sono appunto una riga di protocollo e
+  una di interfaccia. Verificato sul bridge vero di PGE-ui e sull'editor in un
+  Chromium headless, tre render (tutti DIRTY, tutti clean, misto): stessi
+  eventi NDJSON, stesso avanzamento per stream, stessi pallini; la riga di
+  fine render con la coda nuova, passata per `parse_render_line`, produce
+  soli eventi `log`.
 
   Con questo la categoria `DIAGNOSTICA` e' vuota per ogni `print()` di
   `src/pge/`, e `test_nessuna_print_e_diagnostica` la tiene vuota: una

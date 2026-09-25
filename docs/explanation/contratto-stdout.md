@@ -208,11 +208,14 @@ una scelta e non una lettura:
   grani: portava anche `onset`, `dur` e `mode` (density o fill_factor), che
   nessun'altra riga stampa. E `dur` e' la durata *risolta*: per uno stream
   senza `duration` nello YAML (#205) era l'unico posto a schermo dove si
-  leggeva quanto dura. E' questo il prezzo vero della scelta, non il
-  `grains=lazy`. Chi lo vuole lo trova su `pge.diagnostics`, a livello DEBUG
-  — ma solo da Python: la CLI configura i logger di clip ed engine, non
-  questo, e non ha un flag per accenderlo, quindi chi lancia `pge` da
-  terminale quei tre valori non li legge piu' da nessuna parte.
+  leggeva quanto dura. Era questo il prezzo vero della scelta, non il
+  `grains=lazy`, e la #188 non l'ha pagato: i tre valori sono passati alla
+  riga di fine render, che ora e' `  → <id>: N grani (M voci) · onset 0s ·
+  dur 4.2s · density` (`_stream_timing` in `cli.py`). Li' la durata e' gia'
+  risolta e si legge anche sugli stream saltati dalla cache, perche' sono
+  attributi fissati a costruzione e leggerli non tocca `.voices`. Il `repr`
+  intero resta su `pge.diagnostics`, a livello DEBUG, per chi incorpora il
+  motore da Python.
 - `📝 Clip log file: <path>` — questo doc diceva che passa «a ogni render».
   Falso: `get_clip_logger()` e' lazy, e la riga esce al **primo clip**, una
   volta per configurazione. Non e' traffico di ogni rendering; e' l'annuncio
@@ -253,16 +256,20 @@ criterio. Tre condizioni, ognuna sufficiente:
 **La riga per stream a costruzione non si vede piu' a schermo** (#188). Lo
 stesso costo della voce qui sotto, un giro piu' in la', e accettato per le
 ragioni della nota sopra: la conferma per stream c'e' ancora, a render finito
-e coi grani veri. Quello che dallo schermo se ne va davvero sono `onset`,
-durata risolta e modo di ogni stream, che il `repr` era il solo a stampare, e
-da riga di comando non si recuperano: il logger che li riceve lo accende solo
-un host Python, perche' la CLI non ha un flag per farlo. Verificato sul bridge
+e coi grani veri. `onset`, durata risolta e modo di ogni stream, che il `repr`
+era il solo a stampare, non se ne vanno: li porta quella stessa riga. Cambia
+il momento — prima del render i valori non si vedono piu', dopo si' — e con
+lui cio' che dice un render che muore a meta': se il motore cade dentro il
+render, la durata risolta non e' arrivata a schermo. Verificato sul bridge
 vero di PGE-ui (`server.py` contro questo motore, tre render: tutti DIRTY,
 tutti clean, uno misto) e poi sull'editor in un Chromium headless: gli eventi
 NDJSON sono identici a quelli di prima uno per uno, l'avanzamento per stream e
 i pallini fanno lo stesso percorso, e dal terminale dell'editor spariscono le
 sole righe `  → Stream '<id>': <repr>` — ogni altra riga e' identica, byte per
-byte, a parte il path temporaneo e il tempo trascorso.
+byte, a parte il path temporaneo e il tempo trascorso. Quella misura precede la
+coda ` · onset … · dur … · <modo>` della riga di fine render, che da allora e'
+l'unica altra differenza; passata per `parse_render_line` di PGE-ui, nel mix e
+per stream con cache DIRTY e clean, produce soli eventi `log`.
 
 **La conferma di registrazione delle strategy e' muta.** Prima stampava una
 riga con la spunta verde; ora non stampa finche' l'host non accende il logging.
