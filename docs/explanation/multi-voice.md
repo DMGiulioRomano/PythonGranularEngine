@@ -7,7 +7,9 @@ sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
   - src/pge/controllers/voice_manager.py
-last_synced_commit: 989d0f0
+  - src/pge/shared/seeding.py
+  - src/pge/engine/generator.py
+last_synced_commit: cef5050
 ---
 
 # Sistema Multi-Voice — PythonGranularEngine
@@ -38,13 +40,13 @@ Vedi [Architettura](#2-architettura) per il modello completo, [Componenti princi
 | Quattro ABC separate (per asse) | Una `VoiceStrategy` unica | Ortogonalità → ogni asse evolve indipendentemente; combinazioni gratis |
 | `VoiceManager` per stream | Stream contiene direttamente voce_i | Decoupling: lifecycle voci ≠ lifecycle stream; precompute facile |
 | Strategy parameters come envelope | Solo scalari | Pattern compositivi tempo-varying (cluster→spread) senza re-design API |
-| Determinismo da `stream_id` (stocastiche) | Random globale | Riproducibilità: stessa composizione → stesso suono |
+| Determinismo da `rng_id` e `seed` (stocastiche) | Random globale | Riproducibilità: stessa composizione → stesso suono |
 
 ## Implicazioni codice
 
 - `src/pge/strategies/` — un file per strategy + factory per asse
 - `src/pge/core/stream.py` — `_init_voice_manager`, `_parse_strategy_kwarg` (envelope auto-detect)
-- `src/pge/core/voice_manager.py` — `VoiceManager`, `VoiceConfig`
+- `src/pge/controllers/voice_manager.py` — `VoiceManager`, `VoiceConfig`
 - Estensione: vedi [[add-voice-strategy]]
 - Errori specifici: `StrategyNotFoundError`, `InvalidStrategyConfigError` (vedi [[errors]])
 
@@ -81,9 +83,9 @@ Il sistema multi-voice consente a ogni `Stream` di generare grani su **N voci pa
 
 | Dimensione | Unità | Effetto audio |
 |---|---|---|
-| **Pitch** | semitoni | Trasposizione per voce |
+| **Pitch** | unità di `voices.pitch.unit` (default semitoni) | Trasposizione per voce |
 | **Onset** | secondi | Ritardo temporale |
-| **Pointer** | normalizzato 0–1 | Posizione nel sample sorgente |
+| **Pointer** | secondi nel sample (frazione 0–1 con `normalized: true`) | Posizione nel sample sorgente |
 | **Pan** | gradi | Posizione stereo |
 
 La voce `0` è sempre il **riferimento immutabile** (tutti gli offset a zero). Le voci successive ricevono gli offset calcolati dalla strategy corrispondente.
@@ -837,7 +839,7 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 | Onset offset ≥ 0 | Le voci secondarie non precedono mai la voce 0 |
 | Valutazione per-grain | `get_voice_config(voice_index, t)` riceve `voice_cursors[voice_index]` — tempo reale della voce |
 | Direzione stochastic fissa | Per le strategy stochastiche la direzione per-voce è calcolata una volta (seeded cache); solo la magnitudine varia con l'envelope |
-| Riproducibilità stochastic | Seed = `hash(stream_id + voice_index)` → stesso YAML → stesso output |
+| Riproducibilità stochastic | RNG per-voce da `voice_rng(seed, rng_id, voice_index)`, sha256 → stesso YAML e stesso `seed` → stesso output. Senza `seed:` nello YAML il Generator ne genera uno di sessione e lo logga; il fallback `hash()`, non riproducibile fra processi, resta solo per uno `Stream` costruito con `seed=None` |
 | Pitch moltiplicativo | `pitch_ratio *= pitch_factor` (fattore materializzato dalla `PitchUnit`) → compatibile con ratio audio standard |
 | Fade frazionario voci | La parte decimale di `num_voices` interpolato attenua la voce di confine (`volume += 20·log10(frac)`); `step` con breakpoint interi → on/off netto come prima |
 | Backward compatibility | `voices` è l'unica fonte di verità; `stream.grains` resta leggibile come vista derivata ma è deprecata (#201). Config scalari esistenti e `step` con breakpoint interi invariati |

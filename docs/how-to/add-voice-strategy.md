@@ -7,7 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
   - src/pge/core/stream.py
-last_synced_commit: 989d0f0
+last_synced_commit: cef5050
 entry_for: [add-voice-strategy]
 ---
 
@@ -22,12 +22,15 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 - Lettura [[multi-voice]] § invarianti
 - Identifica l'asse: `pitch | onset | pointer | pan`
 - Conosci l'ABC corrispondente: `VoicePitchStrategy`, `VoiceOnsetStrategy`, `VoicePointerStrategy`, `VoicePanStrategy`
-- Invariante: `voice_index == 0` deve sempre ritornare `0.0`. Per onset: offset `>= 0`.
+- Invariante: `voice_index == 0` deve sempre ritornare `0.0` — `1.0` sul pitch, che restituisce un fattore di ratio e non un offset. Per onset: offset `>= 0`.
 
 ## Passi
 
 1. Sottoclasse l'ABC giusta in `src/pge/strategies/`
-2. Implementa `get_<axis>_offset(voice_index, num_voices, time)`
+2. Implementa `get_<axis>_offset(voice_index, num_voices, time)` per onset,
+   pointer e pan; per il pitch `get_pitch_factor(voice_index, num_voices,
+   time, unit)`, che materializza la posizione con la `PitchUnit` attiva
+   (`unit.materialize` / `unit.to_ratio`) e restituisce un fattore di ratio
 3. Registra nella mappa di modulo dell'asse — `VOICE_<AXIS>_STRATEGIES`, che
    sta accanto alle classi in `voice_<axis>_strategy.py`. A runtime si passa
    invece per `register_voice_<axis>_strategy(nome, Classe)`, che e' l'API di
@@ -84,7 +87,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 
 ## Test da aggiornare
 
-- Voice-0 invariant: `get_<axis>_offset(0, N, t) == 0.0` per ogni N, t
+- Voice-0 invariant: `get_<axis>_offset(0, N, t) == 0.0` per ogni N, t (pitch: `get_pitch_factor(0, N, t, unit) == 1.0`)
 - Determinismo (per strategy stochastic): stesso `stream_id` → stesso risultato
 - Envelope param: se la strategy accetta envelope, test che il valore evolva nel tempo
 
