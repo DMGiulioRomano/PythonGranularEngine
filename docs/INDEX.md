@@ -23,6 +23,7 @@
 | [parameter-curve](explanation/parameter-curve.md) | stable | parameters, envelopes, architecture, refactor |
 | [score-visualizer-layout](explanation/score-visualizer-layout.md) | stable | rendering, visualizer, architecture, refactor, matplotlib |
 | [strategy-registry](explanation/strategy-registry.md) | stable | strategy, registry, refactor, estensibilita, architecture |
+| [stream-decomposition](explanation/stream-decomposition.md) | stable | stream, architecture, refactor, decisione |
 | [supercollider-backend](explanation/supercollider-backend.md) | stable | renderer, supercollider, nrt, osc, architecture |
 
 ## How-to
@@ -53,7 +54,9 @@
 | add-window-function | add-window-function |
 | build-flags | cli |
 | capire la divisione API/CLI | library-vs-cli |
+| capire perché voices ha un controller e la generazione no | stream-decomposition |
 | cli-flags | cli |
+| decidere se spostare codice fuori da Stream | stream-decomposition |
 | envelope-syntax | yaml |
 | error-handling | errors |
 | export-sonic-visualiser | sonic-visualiser |
