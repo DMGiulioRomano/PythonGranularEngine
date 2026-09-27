@@ -1368,8 +1368,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `viz.config['window_shape_min_px']` riceve `KeyError`, e una scrittura su
   quella chiave dopo la costruzione non ha effetto. Una sola grafia in uscita
   è la scelta: due chiavi della stessa soglia potrebbero dire cose diverse.
-  Emette un
-  **`FutureWarning`** per la stessa ragione di `Stream.grains`: un
+  Emette un **`FutureWarning`** per la stessa ragione di `Stream.grains`: un
   `DeprecationWarning` Python lo filtra di default fuori da `__main__`. Il
   warning nomina la riga del chiamante da qualunque porta entri la chiave:
   uno `stacklevel` fisso, contato per `ScoreVisualizer`, attraverso
