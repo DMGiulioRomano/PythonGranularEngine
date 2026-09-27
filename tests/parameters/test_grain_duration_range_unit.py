@@ -172,3 +172,42 @@ class TestDominio:
         with pytest.raises(ParameterBoundError):
             _grain_duration({'duration': 0.5, 'duration_range': oltre,
                              'duration_range_unit': RANGE_UNIT_RELATIVE})
+
+
+class TestLetturaSlegata:
+    """`_range_unit_from_spec` non legge di `self` altro che `_config`.
+
+    Non e' una scelta di stile, e' un contratto con un consumatore che questa
+    suite altrimenti non vede: la parita' di PGE-ls
+    (`tests/test_pge_parity.py`, la banda relativa) chiama il metodo slegato,
+    con un `self` che porta il solo `_config`, per percorrere la catena vera
+    dell'orchestratore senza importare `stream.py` — e con lui numpy. #211 ci
+    aveva infilato un secondo attributo, e la sola rottura era rossa in un
+    altro repository.
+    """
+
+    def _slegato(self, grain):
+        from types import SimpleNamespace
+
+        spec = get_parameter_spec('grain_duration')
+        config = _orchestrator()._config
+        range_val = grain.get('duration_range')
+        return ParameterOrchestrator._range_unit_from_spec(
+            SimpleNamespace(_config=config), spec, {'grain': grain}, range_val)
+
+    def test_legge_l_unita(self):
+        assert self._slegato({'duration': 0.5, 'duration_range': 0.5,
+                              'duration_range_unit': RANGE_UNIT_RELATIVE}
+                             ) == RANGE_UNIT_RELATIVE
+
+    def test_rifiuta_la_grafia_ignota(self):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            self._slegato({'duration': 0.5, 'duration_range': 0.5,
+                           'duration_range_unit': 'relativo'})
+        assert exc.value.field == 'grain.duration_range_unit'
+
+    def test_rifiuta_il_range_mancante(self):
+        with pytest.raises(MissingFieldError) as exc:
+            self._slegato({'duration': 0.5,
+                           'duration_range_unit': RANGE_UNIT_RELATIVE})
+        assert exc.value.fields == ['grain.duration_range']

@@ -168,18 +168,21 @@ class ParameterOrchestrator:
         if raw is _KEY_ABSENT:
             return RANGE_UNIT_DEFAULT
 
+        # I path qui sotto restano quelli dello spec, senza `_yaml_field`: il
+        # prefisso di blocco (issue #211) serve al pointer, i cui spec non hanno
+        # un `range_unit_path`. E questo metodo non deve leggere di `self` altro
+        # che `_config`: la parita' di PGE-ls lo chiama slegato, con un `self`
+        # che porta quello solo, per non importare `stream.py` (e numpy).
         try:
-            unit = validate_range_unit(
-                raw, field=self._yaml_field(spec.range_unit_path))
+            unit = validate_range_unit(raw, field=spec.range_unit_path)
         except ConfigError as err:
             err.stream_id = self._config.context.stream_id
             raise
 
         if range_unit_is_relative(unit) and range_val is None:
             err = MissingFieldError(
-                field=self._yaml_field(spec.range_path),
-                hint=(f"con {self._yaml_field(spec.range_unit_path)}: {unit} "
-                      "la banda va "
+                field=spec.range_path,
+                hint=(f"con {spec.range_unit_path}: {unit} la banda va "
                       "dichiarata esplicitamente come frazione del valore "
                       "base (senza, varrebbe il jitter implicito, che e' "
                       "assoluto)."),
