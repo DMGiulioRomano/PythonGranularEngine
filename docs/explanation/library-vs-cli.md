@@ -77,12 +77,11 @@ Divisione delle policy (chi decide cosa):
   e dalla #188 e' un record DEBUG sul logger `pge.diagnostics`, muto finche'
   l'host non lo ascolta.
 - **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
-  logger passano di là (`⚠️  CLIP: ...` dall'handler console, `CLIP: ...`
-  dall'avviso di migrazione `loop_unit` della #222, che parla proprio quando
-  quella console è spenta), quindi `redirect_stdout` da solo non è silenzio:
-  per chi incorpora servono entrambe le redirezioni. Dirlo fa parte del
-  punto — un censimento di stdout letto come inventario completo rifà
-  l'errore della #189 un piano sotto.
+  logger passano di là (`⚠️  CLIP: ...` dall'handler console), quindi
+  `redirect_stdout` da solo non è silenzio: per chi incorpora servono
+  entrambe le redirezioni, o la console del clip logger spenta. Dirlo fa
+  parte del punto — un censimento di stdout letto come inventario completo
+  rifà l'errore della #189 un piano sotto.
 - Quelle righe restano perché fanno parte del contratto stdout della CLI, e
   la #178 ha accertato il ruolo di ognuna. `[CACHE] <id>: DIRTY|clean` è
   **protocollo**: la parsa PGE-ui (`render_pipeline.py`) per gli eventi

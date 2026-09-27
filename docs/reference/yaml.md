@@ -2232,10 +2232,10 @@ sollevava nulla: wrappava modularmente e rendeva un suono diverso da quello
 scritto.
 
 **Migrazione:** per riavere il comportamento precedente basta scrivere
-`loop_unit: normalized` nel blocco pointer. Per una release il motore lo dice
-da sé — con `time_mode: normalized`, nessun `loop_unit` e almeno una posizione
-diversa da zero, emette un warning `[LOOP_UNIT]` che nomina le chiavi
-interessate.
+`loop_unit: normalized` nel blocco pointer. Dalla v9.0.0 alla v9.1.0 il motore
+lo diceva da sé, con un warning `[LOOP_UNIT]` che nominava le chiavi
+interessate; passata quella release l'avviso è stato tolto (issue #242), e il
+default `seconds` non viene più annunciato.
 
 #### 10.2 `deviation_probability` come envelope
 

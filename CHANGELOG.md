@@ -8,6 +8,29 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Rimosso
+
+- **L'avviso di migrazione di `loop_unit`** (issue #242). Dalla v9.0.0 alla
+  v9.1.0 uno stream con `time_mode: normalized`, nessun `loop_unit` e almeno
+  una posizione diversa da zero riceveva il warning `[LOOP_UNIT]`: #222 aveva
+  tolto l'ereditarietà `loop_unit`←`time_mode`, e quei numeri, prima scalati
+  per `sample_dur_sec`, venivano letti in secondi. L'avviso era transitorio per
+  costruzione (`# ponytail:` nel sorgente) e la release che lo portava è
+  passata: il default `seconds` non viene più annunciato.
+
+  Vanno via `PointerController._warn_loop_unit_migration`, il suo filtro
+  `_rescaling_would_change` e `log_loop_unit_migration_warning` in
+  `shared/logger.py`, compresa la stampa `CLIP: ...` su stderr che parlava
+  proprio a console del clip logger spenta. Per chi incorpora il motore,
+  `configure_clip_logger(console_enabled=False)` torna a essere silenzio anche
+  su stderr. Restano invariati il vocabolario (`seconds` / `absolute` /
+  `normalized`), l'errore sull'unità sconosciuta e il default `seconds`.
+
+  La superficie YAML non cambia. PGE-ls, PGE-ui, gl-ls e granulation-studies
+  tengono ognuno uno specchio di `_rescaling_would_change` per la propria
+  versione dell'avviso: nessuno importa i simboli rimossi, quindi nessuna CI
+  diventa rossa, ma quegli specchi non rispecchiano più niente.
+
 ---
 
 ## [v9.1.0] — "Quiet Stdout" — 2026-09-27

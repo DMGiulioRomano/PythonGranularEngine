@@ -68,10 +68,7 @@ passare dalla CLI né monkey-patchare i globali.
 4. Stderr: **`redirect_stdout` da solo non è silenzio.** Il censimento in
    `api.py` è di stdout; gli avvisi del clip logger passano da stderr, da
    qualunque percorso che costruisca envelope — `⚠️  CLIP: ...`
-   dall'handler console (attivo di default) e `CLIP: ...` dall'avviso di
-   migrazione `loop_unit` (#222), che stampa proprio *quando* la console del
-   clip logger è spenta. Spegnere la console non zittisce quell'ultimo: lo
-   sposta.
+   dall'handler console, attivo di default.
 
    Chiudere entrambi i canali vuole entrambe le redirezioni, e la
    `redirect_stderr` va entrata **prima** che il clip logger si costruisca:

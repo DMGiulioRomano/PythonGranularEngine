@@ -448,20 +448,29 @@ class TestCensimento:
         `✓ Score generato`, che sta sul ramo csound e a runtime non e'
         esercitato da nessuno: per lui la statica e' l'unica guardia).
 
-        Il caso vero e' misurato, non inventato: `log_loop_unit_migration_warning`
-        e' l'unico `print()` di `src/pge/` con un `file=`, scrive su stderr, ed
-        e' proprio uno dei due writer che l'intestazione di `api.py` nomina
-        **fuori** censimento -- deve stare fuori anche dal bacino delle prove.
+        Il caso vero su cui era misurato non c'e' piu': era
+        `log_loop_unit_migration_warning`, l'unico `print()` di `src/pge/` con
+        un `file=`, e se n'e' andato con l'avviso di migrazione (#242). Una
+        prova sul sorgente reale resterebbe verde senza guardare niente, quindi
+        il filtro si interroga direttamente, sulle forme che deve distinguere.
         L'altra meta' dell'asserzione tiene il filtro dall'essere troppo largo:
         un predicato che scartasse tutto renderebbe questo test verde e la
         direzione statica un no-op.
         """
-        pool = _library_prints(skip_unreachable=False)
-        assert ('logger.py', 'log_loop_unit_migration_warning') not in {
-            (mod, func) for mod, func, _pref, _src in pool}, (
+        def su_stdout(src):
+            return _va_su_stdout(ast.parse(src).body[0].value)
+
+        assert su_stdout("print('x')")
+        assert su_stdout("print('x', file=sys.stdout)")
+        assert not su_stdout("print('x', file=sys.stderr)"), (
             "un print con file=sys.stderr conta come prova che una voce del "
             "censimento e' ancora su stdout: il censimento e' di stdout, "
             "quella prova non lo e' (vedi _va_su_stdout)")
+        assert not su_stdout("print('x', file=f)"), (
+            "un canale che non si sa leggere e' stato dato per stdout: "
+            "l'incertezza va nella direzione sicura (vedi _va_su_stdout)")
+
+        pool = _library_prints(skip_unreachable=False)
         assert ('generator.py', 'create_elements') in {
             (mod, func) for mod, func, _pref, _src in pool}, (
             "il filtro su stdout ha scartato anche i print senza file=: "
