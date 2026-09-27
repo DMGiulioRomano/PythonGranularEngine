@@ -1174,35 +1174,44 @@ class TestIndiciFormatoCompatto:
         due lati, e nessuno lo osserva finche' non si muove il layout.
 
         Qui il layout si muove davvero: `n_reps` e `end_time` si scambiano di
-        posto nelle costanti, e i due lati devono seguire lo scambio. Chi
-        avesse una copia propria degli indici resterebbe sul layout vecchio —
-        dove nella lista permutata c'e' comunque qualcosa di plausibile, che e'
-        il motivo per cui il guasto sarebbe silenzioso.
+        posto nelle costanti, e la validazione deve seguire lo scambio. Da #211
+        i guard di forma stanno nel builder, accanto all'espansione: il
+        validatore di quegli slot non e' piu' un secondo lettore da tenere
+        allineato, e' la stessa funzione — e l'hint dice quale slot ha letto.
 
         `is_compact_format` non e' toccata di proposito: e' lei a *definire* il
-        layout per posizione, quindi le due funzioni si chiamano dirette, come
-        fa il builder dopo che il riconoscimento e' gia' avvenuto.
+        layout per posizione, quindi l'espansione si chiama diretta, come fa il
+        builder dopo che il riconoscimento e' gia' avvenuto.
         """
-        from pge.parameters import read_direction
-
         monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_END_TIME', 2)
         monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_N_REPS', 1)
 
         # Lista scritta nel layout permutato: n_reps allo slot 1, end_time al 2.
         permutato = [[[0, -1], [100, 1]], 3, 1.0, 'step']
 
-        # Lato che espande: tre cicli su un pattern a due punti, fine a 1.0.
+        # Tre cicli su un pattern a due punti, fine a 1.0.
         espanso = EnvelopeBuilder._expand_compact_format(permutato)
         assert len(espanso) == 6
         assert espanso[-1][0] == pytest.approx(1.0)
 
-        # Lato che valida: accetta lo stesso corpo.
-        read_direction._check_compact(permutato)
-
         # E rifiuta `n_reps` dove le costanti dicono che sta ora. Un validatore
         # fermo al layout vecchio rifiuterebbe anche lui, ma come `end_time`:
-        # e' l'hint a dire quale dei due slot ha davvero letto.
+        # e' il campo di ripiego a dire quale dei due slot ha davvero letto.
         rotto = [[[0, -1], [100, 1]], 0, 1.0, 'step']
         with pytest.raises(InvalidFieldValueError) as exc_info:
-            read_direction._check_compact(rotto)
-        assert exc_info.value.hint == read_direction._REPS_ARITY_HINT
+            EnvelopeBuilder._expand_compact_format(rotto)
+        assert exc_info.value.field == 'envelope.compact.n_reps'
+
+    def test_read_direction_legge_l_interp_dallo_slot(self, monkeypatch):
+        """L'altro lettore del layout, dopo #211: `read_direction` percorre
+        ancora il compatto per i guard di dominio, e l'interp lo legge dalla
+        costante. Con l'interp spostato allo slot 4 un lettore fermo al 3
+        vedrebbe `None` e lascerebbe passare il `linear` che la chiave vieta."""
+        from pge.parameters import read_direction
+
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_INTERP', 4)
+
+        compatto = [[[0, -1], [100, 1]], 1.0, 2, None, 'linear']
+        with pytest.raises(InvalidFieldValueError) as exc_info:
+            read_direction._check_compact(compatto)
+        assert exc_info.value.value == 'linear'
