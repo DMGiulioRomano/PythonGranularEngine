@@ -1,5 +1,7 @@
 # PythonGranularEngine
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22175430.svg)](https://doi.org/10.5281/zenodo.22175430)
+
 A compositional environment for granular synthesis on sampled sound. The system takes a high-level YAML configuration and produces audio output and a graphic score through a fully automated pipeline.
 
 Three components form the environment:
