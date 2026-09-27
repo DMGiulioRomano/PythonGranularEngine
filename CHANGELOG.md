@@ -8,6 +8,27 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Aggiunto
+
+- **`docs/explanation/stream-decomposition.md`** — la decisione sulla
+  decomposizione di `Stream` (issue #190): decisione, non esecuzione. Rimisurato
+  dopo #183 e #186, `stream.py` ha 1117 righe ma 510 di codice: e' cresciuto in
+  prosa (+186) piu' che in codice (+57), e i due blocchi non hanno tolto peso al
+  wiring — #183 ha toccato quattro righe, #186 ha tolto la duplicazione di
+  `voices` (122 -> 115 righe di codice), non il peso. La decomposizione nei
+  cinque mestieri non serve; ne serve una cucitura, il blocco `voices:` al suo
+  controller come gli altri quattro blocchi (#284), scelta con un criterio
+  scritto — un confine vale se e' stretto: il wiring di `voices` legge dallo
+  `Stream` tre valori che stanno gia' in `config`, la generazione ne legge
+  venti. La vista di lettura resta property (lo stadio 3 del plan del
+  2026-08-03 non si fa), la normalizzazione resta con chi possiede i parametri
+  che scala, la generazione resta nello `Stream`. Quel che la misura ha trovato
+  e nessuna decomposizione avrebbe tolto sta in due issue: il costruttore
+  aggirato da 150 test, con tre cicatrici in produzione e l'header del sample
+  letto due volte (#283), e i residui della superficie di lettura, fra cui
+  `Stream.grains`, che nella 9.1.0 avverte ancora di una rimozione «in 9.0.0»
+  (#285).
+
 ---
 
 ## [v9.1.0] — "Quiet Stdout" — 2026-09-27
