@@ -176,8 +176,12 @@ class GateFactory:
         gia' il proprio campo e il proprio hint, e riavvolgerli qui li
         renderebbe meno precisi, non piu'.
         """
+        field = GateFactory._field_name(param_key)
         try:
-            envelope = create_scaled_envelope(raw_value, duration, time_mode)
+            # Il campo va al builder (issue #211): i suoi errori di forma
+            # nominano gia' la chiave, e risalgono intatti dal ramo qui sotto.
+            envelope = create_scaled_envelope(
+                raw_value, duration, time_mode, field=field)
         except EngineError:
             raise
         except Exception as exc:
@@ -186,7 +190,7 @@ class GateFactory:
             # che arriva dal builder, e va letta prima di buttarla via. Col
             # tipo davanti, perche' da solo un KeyError e' la chiave nuda.
             raise InvalidFieldValueError(
-                field=GateFactory._field_name(param_key),
+                field=field,
                 value=raw_value,
                 hint=f"{_ENVELOPE_HINT} Causa: {type(exc).__name__}: {exc}",
             ) from exc

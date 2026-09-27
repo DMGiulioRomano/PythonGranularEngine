@@ -23,9 +23,13 @@ class Envelope:
     Supporta nuovo formato compatto per cicli ripetuti.
     """
     
-    def __init__(self, breakpoints):
+    def __init__(self, breakpoints, field: str | None = None):
         """
         Args:
+            field: il nome YAML della chiave che l'envelope descrive, passato
+                al builder perche' gli errori di forma lo nominino (issue #211).
+                Chi costruisce un envelope da uno YAML lo passa; chi lo
+                costruisce da punti calcolati puo' ometterlo.
             breakpoints:
                 - Lista di [time, value] / [time, value, type]
                 - Nuovo formato compatto: [[[x%, y], ...], total_time, n_reps, interp?]
@@ -74,7 +78,7 @@ class Envelope:
             raise ValueError(f"Formato envelope non valido: {breakpoints}")
         
         # ESPANDI formato compatto usando Builder
-        expanded_points = EnvelopeBuilder.parse(raw_points)
+        expanded_points = EnvelopeBuilder.parse(raw_points, field=field)
         
         # Crea strategy usando Factory
         self.strategy = InterpolationStrategyFactory.create(self.type)
@@ -514,15 +518,18 @@ def scale_raw_param_values(value, scale_factor: float):
 def create_scaled_envelope(
     raw_data: Union[List, Dict],
     duration: float,
-    time_mode: str = 'absolute'
+    time_mode: str = 'absolute',
+    field: str | None = None,
     ) -> Envelope:
     """
     Factory helper per creare Envelope con scaling TEMPORALE (X axis).
     Sostituisce la vecchia logica integrandosi con EnvelopeBuilder.
-    code Code
 
     Se time_mode='normalized', moltiplica i tempi [t, v] per 'duration'.
     Nota: I formati compatti (che usano total_time esplicito) NON vengono scalati.
+
+    `field` e' il nome YAML della chiave, per gli errori di forma del builder
+    (issue #211): vedi `Envelope`.
     """
     from pge.envelopes.envelope_builder import EnvelopeBuilder
 
@@ -533,16 +540,19 @@ def create_scaled_envelope(
         
         if local_unit == 'normalized':
             scaled_points = _scale_time_recursive(points, duration)
-            return Envelope({'type': raw_data.get('type', 'linear'), 'points': scaled_points})
-        return Envelope(raw_data)
+            return Envelope(
+                {'type': raw_data.get('type', 'linear'), 'points': scaled_points},
+                field=field,
+            )
+        return Envelope(raw_data, field=field)
 
     # 2. Gestione LIST
     # Se il modo globale è normalized, scaliamo solo i breakpoint semplici
     if time_mode == 'normalized':
         scaled_points = _scale_time_recursive(raw_data, duration)
-        return Envelope(scaled_points)
+        return Envelope(scaled_points, field=field)
 
-    return Envelope(raw_data)
+    return Envelope(raw_data, field=field)
 
 def _scale_group_points_time(group_points: List, factor: float) -> List:
     """Scala i tempi dei punti di un BP group, preservando i type per-punto."""
@@ -566,12 +576,22 @@ def _scale_time_recursive(points: List, factor: float) -> List:
     """
     from pge.envelopes.envelope_builder import EnvelopeBuilder
 
+    def _scale_compact(compact):
+        # Scala l'end_time solo se e' un numero. `is_compact_format` lascia
+        # passare `true` (bool e' sottoclasse di int) e `True * factor` e' un
+        # float legittimo: la scala cancellerebbe l'errore prima che il
+        # builder lo veda, e il guard sul `bool` varrebbe solo sui tempi
+        # assoluti (issue #211). Cio' che non e' un numero resta com'e', e lo
+        # rifiuta il builder.
+        scaled_compact = list(compact)
+        end_time = compact[EnvelopeBuilder.COMPACT_END_TIME]
+        if isinstance(end_time, (int, float)) and not isinstance(end_time, bool):
+            scaled_compact[EnvelopeBuilder.COMPACT_END_TIME] = end_time * factor
+        return scaled_compact
+
     # CASO 1: L'intera lista è un formato compatto
     if EnvelopeBuilder.is_compact_format(points):
-        # NUOVO: Scala il total_time (elemento [1])
-        scaled_compact = list(points)
-        scaled_compact[1] = points[1] * factor
-        return scaled_compact
+        return _scale_compact(points)
 
     # CASO 1b: L'intera lista è un BP group diretto [points, interp]
     if EnvelopeBuilder.is_bp_group(points):
@@ -581,9 +601,7 @@ def _scale_time_recursive(points: List, factor: float) -> List:
     scaled = []
     for item in points:
         if EnvelopeBuilder.is_compact_format(item):
-            scaled_compact = list(item)
-            scaled_compact[1] = item[1] * factor
-            scaled.append(scaled_compact)
+            scaled.append(_scale_compact(item))
         elif EnvelopeBuilder.is_bp_group(item):
             # BP group: scala i tempi dei punti, preserva interp e type per-punto.
             # Va controllato prima del branch [t, v]: un gruppo è anch'esso

@@ -51,7 +51,7 @@ class PitchController:
         self._orchestrator = ParameterOrchestrator(config=config)
         self._config = config
 
-        unit, value_raw = self._select_unit(params)
+        unit, value_raw, value_field = self._select_unit(params)
         self._unit = unit
         self._active_param = self._orchestrator.create_pitch_parameter(
             name=f'pitch_{unit.name}',
@@ -59,6 +59,8 @@ class PitchController:
             range_raw=params.get('range'),
             bounds=unit.value_bounds(),
             deviation_probability_key='pitch',
+            value_field=value_field,
+            range_field='pitch.range',
         )
         # RNG dedicato al detune implicito (issue #154, componente 'detune').
         # Identità = rng_id (issue #169): stream_id, o rng_group se condiviso.
@@ -77,7 +79,9 @@ class PitchController:
 
     def _select_unit(self, params: dict):
         """
-        Individua l'unità dal blocco pitch e il valore grezzo associato.
+        Individua l'unità dal blocco pitch, il valore grezzo associato e il
+        path YAML da cui viene (issue #211: lo nominano gli errori di forma di
+        un envelope; None quando il valore non e' scritto da nessuna parte).
 
         - `pitch:` vuoto (None) o non-mapping (lista, scalare) →
           InvalidFieldValueError: niente silent default a ratio 1.0, niente
@@ -141,10 +145,11 @@ class PitchController:
             )
         if key is None:
             unit = make_pitch_unit('semitones')
-            return unit, unit.identity_value()
+            return unit, unit.identity_value(), None
         if key == 'edo':
-            return self._build_edo(params)
-        return make_pitch_unit(key), params[key]
+            # Con edo il valore sta a fianco della chiave, non dentro.
+            return (*self._build_edo(params), 'pitch.value')
+        return make_pitch_unit(key), params[key], f'pitch.{key}'
 
     def _build_edo(self, params):
         """pitch: {edo: N, value: X} — N divisioni per ottava, valore a fianco."""

@@ -562,42 +562,53 @@ class TestEdgeCases:
 # =============================================================================
 
 class TestValidationErrors:
-    """Test validazione e errori."""
+    """Test validazione e errori.
+
+    Da #211 sono `InvalidFieldValueError` (che eredita `ValueError`): chiamato
+    senza `field`, il builder nomina la sotto-posizione dentro l'envelope. La
+    copertura dei guard per esteso sta in `test_guard_di_forma.py`.
+    """
     
     def test_error_zero_n_reps(self):
         """Errore con n_reps = 0."""
         compact = [[[0, 0], [100, 1]], 0.4, 0]
         
-        with pytest.raises(ValueError, match="n_reps deve essere >= 1"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             EnvelopeBuilder._expand_compact_format(compact)
+        assert exc.value.field == 'envelope.compact.n_reps'
+        assert exc.value.value == 0
     
     def test_error_negative_n_reps(self):
         """Errore con n_reps negativo."""
         compact = [[[0, 0], [100, 1]], 0.4, -5]
         
-        with pytest.raises(ValueError, match="n_reps deve essere >= 1"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             EnvelopeBuilder._expand_compact_format(compact)
+        assert exc.value.value == -5
         
     def test_error_zero_total_time(self):
         """Errore con end_time = time_offset."""
         compact = [[[0, 0], [100, 1]], 0.0, 4]
         
-        with pytest.raises(ValueError, match="end_time .* deve essere > time_offset"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             EnvelopeBuilder._expand_compact_format(compact, time_offset=0.0)
+        assert exc.value.field == 'envelope.compact.end_time'
 
     def test_error_negative_total_time(self):
         """Errore con end_time negativo."""
         compact = [[[0, 0], [100, 1]], -0.5, 4]
         
-        with pytest.raises(ValueError, match="end_time .* deve essere > time_offset"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             EnvelopeBuilder._expand_compact_format(compact, time_offset=0.0)
+        assert exc.value.value == -0.5
 
     def test_error_empty_pattern(self):
         """Errore con pattern vuoto."""
         compact = [[], 0.4, 4]
         
-        with pytest.raises(ValueError, match="pattern_points non può essere vuoto"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             EnvelopeBuilder._expand_compact_format(compact)
+        assert exc.value.field == 'envelope.compact.pattern'
     
     def test_error_malformed_pattern_points(self):
         """Errore con pattern points malformati."""
@@ -760,22 +771,25 @@ class TestRobustnessMalformedInput:
     """Test robustezza con input malformati."""
         
     def test_negative_percentages(self):
-        """Percentuali negative (dovrebbe funzionare, ma tempi strani)."""
+        """Percentuali negative: rifiutate (issue #211).
+
+        Fissavano il silenzio — «non dovrebbe crashare, ma produce tempi
+        strani»: un breakpoint a tempo negativo, reso senza dire niente. La x
+        del pattern e' una percentuale del ciclo e sta in [0, 100]."""
         compact = [[[-50, 0], [100, 1]], 0.4, 2]
         
-        # Non dovrebbe crashare, ma produce tempi strani
-        expanded = EnvelopeBuilder._expand_compact_format(compact)
-        
-        # Almeno deve produrre output
-        assert len(expanded) > 0
+        with pytest.raises(InvalidFieldValueError) as exc:
+            EnvelopeBuilder._expand_compact_format(compact)
+        assert exc.value.value == -50
     
     def test_percentages_over_100(self):
-        """Percentuali > 100 (estrapolazione)."""
+        """Percentuali > 100: rifiutate (issue #211). Il ciclo successivo
+        cominciava prima che questo fosse finito, in silenzio."""
         compact = [[[0, 0], [200, 1]], 0.4, 2]
         
-        # Non dovrebbe crashare
-        expanded = EnvelopeBuilder._expand_compact_format(compact)
-        assert len(expanded) == 4  # 2*2 + 1
+        with pytest.raises(InvalidFieldValueError) as exc:
+            EnvelopeBuilder._expand_compact_format(compact)
+        assert exc.value.value == 200
     
     def test_float_n_reps_rejected(self):
         """n_reps float rifiutato da is_compact_format."""

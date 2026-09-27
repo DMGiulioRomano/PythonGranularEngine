@@ -96,12 +96,15 @@ class TestScrittureVuote:
 class TestCorpiMalformati:
     """Le tre righe di #209: da `AlwaysGate` silenzioso a errore esplicito."""
 
-    @pytest.mark.parametrize("corpo", [
-        {'punti': [[0, 50]]},   # dict senza `points`: KeyError nel builder
-        ['x'],                  # lista di non-breakpoint
-        [],                     # lista vuota
+    @pytest.mark.parametrize("corpo, valore_atteso", [
+        # dict senza `points`: KeyError nel builder
+        ({'punti': [[0, 50]]}, {'punti': [[0, 50]]}),
+        # lista di non-breakpoint: da #211 la rifiuta il builder, che col
+        # campo passato nomina l'elemento che cade, non l'intero corpo
+        (['x'], 'x'),
+        ([], []),               # lista vuota
     ])
-    def test_envelope_malformato_alza_errore(self, corpo):
+    def test_envelope_malformato_alza_errore(self, corpo, valore_atteso):
         """Un envelope che non si costruisce e' un errore di scrittura.
 
         Prima di #209 questi tre corpi tornavano `AlwaysGate` e loggavano:
@@ -111,5 +114,5 @@ class TestCorpiMalformati:
             _gate({'read_direction': corpo})
 
         assert exc.value.field == 'deviation_probability.read_direction'
-        assert exc.value.value == corpo
+        assert exc.value.value == valore_atteso
         assert exc.value.hint

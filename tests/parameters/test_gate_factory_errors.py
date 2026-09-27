@@ -44,19 +44,22 @@ def _create_gate(raw_value):
     )
 
 
-@pytest.mark.parametrize("raw_value", [
+@pytest.mark.parametrize("raw_value, valore_atteso", [
     # Supera `_is_envelope_like`: prima di #209 arrivava a
     # `create_scaled_envelope` senza rete e ne risaliva il ValueError nudo.
-    {'points': []},
-    {'type': 'linear', 'points': []},
+    ({'points': []}, {'points': []}),
+    ({'type': 'linear', 'points': []}, {'type': 'linear', 'points': []}),
     # Non lo supera: prima di #209 finiva nel ramo con `except Exception`,
     # che tornava AlwaysGate e loggava. Piu' l'errore era grossolano, meno il
     # sistema lo segnalava.
-    [],
-    ['x'],
-    {'punti': [[0, 50]]},
+    ([], []),
+    # Da #211 l'elemento sconosciuto lo rifiuta il builder, che riceve il
+    # campo e nomina l'elemento che cade invece dell'intero corpo.
+    (['x'], 'x'),
+    ({'punti': [[0, 50]]}, {'punti': [[0, 50]]}),
 ])
-def test_envelope_malformato_alza_invalid_field_value_error(raw_value):
+def test_envelope_malformato_alza_invalid_field_value_error(raw_value,
+                                                           valore_atteso):
     """I due percorsi verso l'envelope rispondono uguale (issue #209).
 
     La forma dell'errore non dipende piu' da quanto il corpo somigliasse a un
@@ -70,7 +73,7 @@ def test_envelope_malformato_alza_invalid_field_value_error(raw_value):
     err = exc_info.value
     assert isinstance(err, ConfigError)
     assert err.field == 'deviation_probability.volume'
-    assert err.value == raw_value
+    assert err.value == valore_atteso
     assert err.hint
 
 

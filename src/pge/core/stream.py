@@ -28,6 +28,7 @@ from pge.controllers.density_controller import DensityController
 from pge.shared.constants import SECONDS_PER_MILLISECOND
 from pge.shared.utils import get_sample_duration
 from pge.shared.exceptions import (
+    ConfigError,
     InvalidFieldValueError,
     InvalidStrategyConfigError,
     MissingFieldError,
@@ -71,13 +72,17 @@ _GRAIN_DURATION_UNIT_LABELS = {
 }
 
 
-def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute'):
+def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute',
+                          field: Optional[str] = None):
     """Converte kwarg YAML strategy: str/int passthrough, envelope-like → Envelope.
 
     Gli envelope-like ereditano il `time_mode` dello stream (issue #144),
     esattamente come gli envelope diretti via GranularParser. In forma dict il
     `time_mode` locale sovrascrive quello dello stream; in forma compatta (lista)
     si applica il time_mode dello stream.
+
+    `field` e' il path YAML del kwarg (`voices.pan.step`), che gli errori di
+    forma dell'envelope nominano (issue #211).
     """
     if isinstance(value, (str, int, float)):
         return value
@@ -87,8 +92,8 @@ def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absol
         else:
             tm = stream_time_mode
         if tm == 'normalized':
-            return create_scaled_envelope(value, duration, 'normalized')
-        return Envelope(value)
+            return create_scaled_envelope(value, duration, 'normalized', field=field)
+        return Envelope(value, field=field)
     return value
 
 
@@ -374,7 +379,8 @@ class Stream:
         raw_num_voices = v.get('num_voices', 1)
 
         # Parsa num_voices come Parameter (supporta Envelope time-varying, incluso formato dict).
-        self._num_voices = parser.parse_parameter('num_voices', raw_num_voices)
+        self._num_voices = parser.parse_parameter(
+            'num_voices', raw_num_voices, value_field='voices.num_voices')
 
         # Estrae max_voices per pre-computare tutti i VoiceConfig all'init.
         # Se num_voices è un Envelope, max_voices = picco dei breakpoints.
@@ -383,7 +389,8 @@ class Stream:
             max_voices = ceil(max(bp[1] for bp in param_val.breakpoints))
         else:
             max_voices = ceil(param_val)
-        self._scatter = parser.parse_parameter('scatter', v.get('scatter', 0.0))
+        self._scatter = parser.parse_parameter(
+            'scatter', v.get('scatter', 0.0), value_field='voices.scatter')
 
         # Il ciclo e' sulla tabella, non sulle chiavi di `voices:`: l'ordine
         # delle dimensioni — e quindi quale errore arriva per primo quando
@@ -417,7 +424,20 @@ class Stream:
         if name == 'stochastic':
             kw['stream_id'] = config.context.rng_id
             kw['seed'] = self.seed
-        kw = {k: _parse_strategy_kwarg(val, self.duration, config.time_mode) for k, val in kw.items()}
+        # Gli errori di forma di un kwarg envelope nascono nel builder, dove lo
+        # stream non si conosce: vanno attribuiti qui, come fa il parser coi
+        # propri (issue #211).
+        try:
+            kw = {
+                k: _parse_strategy_kwarg(
+                    val, self.duration, config.time_mode,
+                    field=f'voices.{axis.yaml_key}.{k}',
+                )
+                for k, val in kw.items()
+            }
+        except ConfigError as err:
+            err.stream_id = self.stream_id
+            raise
         kw.update(structural)
         return axis.factory.create(name, **kw), for_manager
 
