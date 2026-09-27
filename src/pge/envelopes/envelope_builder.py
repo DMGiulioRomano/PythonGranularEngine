@@ -13,6 +13,7 @@ MODIFICHE PRINCIPALI:
 """
 from __future__ import annotations
 
+import math
 from typing import List, Union, Tuple, Optional
 
 from pge.shared.exceptions import InvalidFieldValueError
@@ -36,22 +37,19 @@ def _is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+# Gli hint seguono la forma: l'elemento di una lista, il BP group, poi il
+# formato compatto slot per slot.
+
+_ELEMENT_HINT = (
+    "un elemento di un envelope e' un breakpoint [t, v] o [t, v, type] con t "
+    "e v numeri (anche nella forma {t, v, type}), un BP group "
+    "[[punti], interp] o un formato compatto [pattern, end_time, n_reps, ...]."
+)
+
 _GROUP_ARITY_HINT = (
     "un BP group richiede almeno 2 punti: con meno non ha segmenti interni, "
     "quindi non c'e' nessuna zona a cui applicare l'interpolazione del gruppo. "
     "Un punto isolato si scrive come breakpoint nudo [t, v]."
-)
-
-_END_TIME_TYPE_HINT = (
-    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
-    "blocco finisce: un numero (`true` non e' `1`)."
-)
-
-_END_TIME_OFFSET_HINT = (
-    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
-    "blocco finisce, non la sua durata, e deve superare quello in cui comincia: "
-    "qui {inizio}. Nella forma diretta il blocco comincia a 0; in una lista "
-    "mista comincia dall'ultimo breakpoint scritto prima di lui."
 )
 
 _PATTERN_EMPTY_HINT = (
@@ -79,6 +77,25 @@ _PATTERN_ORDER_HINT = (
     "va bene: e' la discontinuita'."
 )
 
+_END_TIME_TYPE_HINT = (
+    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
+    "blocco finisce: un numero finito (`true` non e' `1`, `.inf` e `.nan` non "
+    "sono istanti)."
+)
+
+_END_TIME_OFFSET_HINT = (
+    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
+    "blocco finisce, non la sua durata, e deve superare quello in cui comincia: "
+    "qui {inizio}. Nella forma diretta il blocco comincia a 0; in una lista "
+    "mista comincia dall'ultimo breakpoint scritto prima di lui."
+)
+
+_REPS_HINT = (
+    "il terzo elemento del formato compatto e' il numero di ripetizioni del "
+    "pattern: un intero >= 1 (`true` non e' `1`). Con zero o meno cicli non "
+    "c'e' nessun breakpoint da generare."
+)
+
 _DIST_NAME_HINT = (
     "il quinto elemento del formato compatto e' la distribuzione temporale "
     "dei cicli, e ne esiste un elenco chiuso: {disponibili}. Si scrive come "
@@ -95,18 +112,6 @@ _DIST_PARAM_HINT = (
 _DIST_TIPO_IMPLICITO = (
     " Senza la chiave `type` la distribuzione e' `linear`, che non prende "
     "parametri: se ne volevi un'altra, dichiarane il nome."
-)
-
-_ELEMENT_HINT = (
-    "un elemento di un envelope e' un breakpoint [t, v] o [t, v, type] con t "
-    "e v numeri (anche nella forma {t, v, type}), un BP group "
-    "[[punti], interp] o un formato compatto [pattern, end_time, n_reps, ...]."
-)
-
-_REPS_HINT = (
-    "il terzo elemento del formato compatto e' il numero di ripetizioni del "
-    "pattern: un intero >= 1 (`true` non e' `1`). Con zero o meno cicli non "
-    "c'e' nessun breakpoint da generare."
 )
 
 
@@ -539,7 +544,9 @@ class EnvelopeBuilder:
         
         # Il segno non ha un guard a parte: l'offset non e' mai negativo, quindi
         # `end_time <= 0` e' gia' `end_time <= time_offset`.
-        if not _is_number(end_time):
+        # Finito, oltre che numero: ogni confronto con `nan` e' falso, quindi
+        # passerebbe il guard qui sotto e si espanderebbe in breakpoint `nan`.
+        if not _is_number(end_time) or not math.isfinite(end_time):
             raise InvalidFieldValueError(
                 field=cls._field(field, "compact.end_time"),
                 value=end_time,

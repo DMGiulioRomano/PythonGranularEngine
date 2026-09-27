@@ -18,8 +18,8 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   campo né stream, con un messaggio che PGE-ls non può attribuire — oppure si
   rendeva in silenzio. Nessuno di quei guard sapeva qualcosa del verso di
   lettura: sono vincoli della forma, e salgono in `EnvelopeBuilder`, che ogni
-  chiave attraversa. Arità del BP group (almeno 2 punti); `end_time` numero e
-  oltre l'istante di partenza; `n_reps` intero `>= 1`; pattern non vuoto, punti
+  chiave attraversa. Arità del BP group (almeno 2 punti); `end_time` numero finito
+  e oltre l'istante di partenza; `n_reps` intero `>= 1`; pattern non vuoto, punti
   piatti, `x` in `[0, 100]` e non decrescente; distribuzione temporale col nome
   nel registro e parametri costruibili; elemento non riconosciuto in una lista.
   Tutti alzano `InvalidFieldValueError`.

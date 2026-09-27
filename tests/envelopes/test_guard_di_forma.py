@@ -132,6 +132,17 @@ class TestIstanteFinale:
         assert err.value == 0.4
         assert '0.5' in err.hint
 
+    @pytest.mark.parametrize("end_time", [float('inf'), float('nan')])
+    def test_non_finito(self, end_time):
+        """`.inf` e `.nan` sono numeri per Python ma non un istante. `nan`
+        passerebbe il confronto con l'offset — ogni confronto con `nan` e'
+        falso — e si espanderebbe in breakpoint `nan`; `inf` in cicli di
+        durata infinita."""
+        err = _rifiuta([[[0, 1], [50, 2]], end_time, 2])
+
+        assert err.field == CAMPO
+        assert err.value is end_time
+
     def test_positivo_resta_valido(self):
         assert EnvelopeBuilder.parse([[[0, 1], [50, 2]], 0.001, 2], field=CAMPO)
 

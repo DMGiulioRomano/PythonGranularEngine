@@ -1988,7 +1988,8 @@ risaliva come `ValueError` nudo o si rendeva in silenzio.
 - `n_reps` non intero o `< 1` → errore. Il booleano è escluso: `true` supera il
   riconoscimento della forma (in Python `bool` è un `int`) e renderebbe un
   ciclo senza dire niente.
-- `end_time` non numero (booleano compreso) o `<= time_offset` → errore.
+- `end_time` non numero (booleano compreso), non finito (`.inf`, `.nan`) o
+  `<= time_offset` → errore.
   `time_offset` è 0 nella forma diretta e l'ultimo breakpoint precedente in una
   lista mista. Con `time_mode: normalized` il controllo sul tipo vale prima
   della scala (§3.3): un `true` non diventa la durata dello stream.
