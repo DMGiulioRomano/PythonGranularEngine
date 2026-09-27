@@ -438,7 +438,7 @@ class TestCensimento:
                 f"aggiorna l'elenco")
 
 
-    def test_la_prova_di_una_voce_dev_essere_su_stdout(self):
+    def test_la_prova_di_una_voce_dev_essere_su_stdout(self, tmp_path):
         """Chi scrive su stderr non tiene in vita una voce del censimento.
 
         Il buco che questo chiude e' quello del `  - ` e del `[CACHE]`
@@ -453,6 +453,13 @@ class TestCensimento:
         un `file=`, e se n'e' andato con l'avviso di migrazione (#242). Una
         prova sul sorgente reale resterebbe verde senza guardare niente, quindi
         il filtro si interroga direttamente, sulle forme che deve distinguere.
+
+        Quel caso provava pero' due cose, e il predicato e' solo la prima: la
+        seconda e' che `_iter_prints` lo **applichi**, perche' e' li' che il
+        bacino delle prove si forma. Un predicato giusto che nessuno chiama
+        lascia verde tutto il resto del file (misurato: togliere la chiamata da
+        `_iter_prints` non faceva rosso niente). Per questo il filtro si
+        interroga anche la' dove agisce, su un modulo scritto apposta.
         L'altra meta' dell'asserzione tiene il filtro dall'essere troppo largo:
         un predicato che scartasse tutto renderebbe questo test verde e la
         direzione statica un no-op.
@@ -469,6 +476,20 @@ class TestCensimento:
         assert not su_stdout("print('x', file=f)"), (
             "un canale che non si sa leggere e' stato dato per stdout: "
             "l'incertezza va nella direzione sicura (vedi _va_su_stdout)")
+
+        modulo = tmp_path / 'modulo.py'
+        modulo.write_text(
+            "import sys\n"
+            "def su_stderr():\n"
+            "    print('x', file=sys.stderr)\n"
+            "def su_stdout():\n"
+            "    print('x')\n",
+            encoding='utf-8')
+        assert [func for func, _node in _iter_prints(str(modulo))] == [
+            'su_stdout'], (
+            "_iter_prints ha raccolto un print con file=sys.stderr: il "
+            "predicato c'e' ma il bacino delle prove non lo applica "
+            "(vedi _va_su_stdout)")
 
         pool = _library_prints(skip_unreachable=False)
         assert ('generator.py', 'create_elements') in {

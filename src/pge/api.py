@@ -98,9 +98,8 @@
 # logging.StreamHandler() cattura sys.stderr alla costruzione, non alla
 # scrittura) oppure configure_clip_logger(console_enabled=False). E
 # configure_clip_logger / configure_engine_logger vanno chiamate PRIMA di
-# load_generator --
-# altrimenti il primo Stream inizializza il clip logger coi default di
-# modulo, che scrivono in ./logs (docs/how-to/use-as-library.md).
+# load_generator -- altrimenti il primo Stream inizializza il clip logger coi
+# default di modulo, che scrivono in ./logs (docs/how-to/use-as-library.md).
 #
 # Divisione delle policy: l'API sceglie default deterministici e senza
 # dipendenze esterne (jobs=1, renderer='numpy', path manifest esplicito);
