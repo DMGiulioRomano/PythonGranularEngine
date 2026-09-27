@@ -25,6 +25,7 @@ sbagliato, che si vede al primo giro.
 """
 from __future__ import annotations
 
+import sys
 import warnings
 from collections.abc import Mapping
 from copy import deepcopy
@@ -467,14 +468,33 @@ def _translate_window_shape_min_px(overrides):
         f"pagina; {LEGACY_PX_DPI} dpi di riferimento, 1 px = "
         f"{MM_PER_INCH / LEGACY_PX_DPI} mm.",
         FutureWarning,
-        # warn <- traduzione <- from_overrides <- ScoreVisualizer.__init__
-        # <- chi costruisce il visualizer.
-        stacklevel=4,
+        stacklevel=_stacklevel_outside_pge(),
     )
     translated = dict(overrides)
     px = translated.pop('window_shape_min_px')
     translated['window_shape_min_mm'] = px * MM_PER_INCH / LEGACY_PX_DPI
     return translated
+
+
+def _stacklevel_outside_pge():
+    """Lo stacklevel che attribuisce il warning al primo frame fuori da pge.
+
+    Il warning deve nominare la riga da cambiare, e quella riga sta nel codice
+    di chi usa l'engine. Un numero fisso vale per un percorso solo: la chiave
+    entra da VisualizerConfig.from_overrides, da ScoreVisualizer e da
+    api.export_score_pdf, a tre profondita' diverse, e contato per il secondo
+    il warning del terzo indicava pge/api.py (review della PR #281). Si
+    risale quindi finche' il modulo del frame e' pge.
+
+    Da chiamare direttamente dalla funzione che emette: stacklevel=1 e' lei.
+    """
+    frame = sys._getframe(1)
+    level = 1
+    while frame is not None and (
+            frame.f_globals.get('__name__', '') + '.').startswith('pge.'):
+        frame = frame.f_back
+        level += 1
+    return level
 
 
 def _merge_group(group_name, default, overrides):

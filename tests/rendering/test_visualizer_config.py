@@ -374,6 +374,39 @@ class TestWindowShapeThresholdIsALength:
             VisualizerConfig.from_overrides({'window_shape_min_px': 3})
         assert [w for w in seen if issubclass(w.category, FutureWarning)]
 
+    @pytest.mark.parametrize('entry', ['from_overrides', 'ScoreVisualizer',
+                                       'export_score_pdf'])
+    def test_the_px_key_warning_points_at_the_callers_line(self, entry):
+        """Il warning nomina la riga da cambiare, da qualunque porta entri la
+        chiave. Uno stacklevel fisso vale per un percorso solo: contato per
+        ScoreVisualizer, attraverso api.export_score_pdf -- che il CHANGELOG
+        nomina come superficie deprecata -- indicava pge/api.py, cioe' codice
+        che il consumatore non puo' cambiare."""
+        import warnings
+        from unittest.mock import MagicMock, patch
+
+        from pge import api
+        from pge.rendering.score_visualizer import ScoreVisualizer
+
+        gen = MagicMock()
+        gen.streams = []
+        old = {'window_shape_min_px': 3}
+        calls = {
+            'from_overrides': lambda: VisualizerConfig.from_overrides(old),
+            'ScoreVisualizer': lambda: ScoreVisualizer(gen, config=old),
+            'export_score_pdf': lambda: api.export_score_pdf(
+                gen, 'unused.pdf', config=old),
+        }
+        with warnings.catch_warnings(record=True) as seen, \
+                patch.object(ScoreVisualizer, 'export_pdf'):
+            warnings.simplefilter('always')
+            calls[entry]()
+        future = [w for w in seen if issubclass(w.category, FutureWarning)]
+        assert len(future) == 1
+        assert future[0].filename == __file__, (
+            f"warning attribuito a {future[0].filename}:{future[0].lineno}, "
+            f"non alla riga che ha passato la chiave")
+
     def test_the_mm_key_does_not_warn(self, recwarn):
         VisualizerConfig.from_overrides({'window_shape_min_mm': 2.0})
         assert not [w for w in recwarn if w.category is FutureWarning]

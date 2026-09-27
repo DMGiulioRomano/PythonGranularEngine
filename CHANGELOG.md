@@ -1362,9 +1362,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   accettata e si converte alla dpi a cui era tarata, 100 (1 px = 0.254 mm),
   così la stessa config disegna le stesse forme di prima. Emette un
   **`FutureWarning`** per la stessa ragione di `Stream.grains`: un
-  `DeprecationWarning` Python lo filtra di default fuori da `__main__`. Le due
-  chiavi insieme sono un `ValueError`: sceglierne una per priorità vorrebbe
-  dire ignorare l'altra in silenzio.
+  `DeprecationWarning` Python lo filtra di default fuori da `__main__`. Il
+  warning nomina la riga del chiamante da qualunque porta entri la chiave:
+  uno `stacklevel` fisso, contato per `ScoreVisualizer`, attraverso
+  `api.export_score_pdf` indicava `pge/api.py`. Le due chiavi insieme sono un
+  `ValueError`: sceglierne una per priorità vorrebbe dire ignorare l'altra in
+  silenzio.
 
 ### Modificato
 
