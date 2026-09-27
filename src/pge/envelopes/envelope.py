@@ -84,13 +84,14 @@ class Envelope:
         self.strategy = InterpolationStrategyFactory.create(self.type)
         
         # Parse segmenti → List[NormalSegment]
-        self.segments = self._parse_segments(expanded_points)
+        self.segments = self._parse_segments(expanded_points, field=field)
         
         # Valida
         if not self.segments:
             raise ValueError("Envelope deve contenere almeno un breakpoint.")
     
-    def _parse_segments(self, breakpoints: list) -> List[Segment]:
+    def _parse_segments(self, breakpoints: list,
+                        field: str | None = None) -> List[Segment]:
         """
         Parsa lista di breakpoints in List[NormalSegment].
 
@@ -129,8 +130,11 @@ class Envelope:
                     )
                 if item[2] not in _EB.VALID_INTERP_TYPES:
                     from pge.shared.exceptions import InvalidFieldValueError
+                    # Il campo e' quello passato dall'alto (issue #211), come
+                    # per i guard di forma del builder; senza, la
+                    # sotto-posizione.
                     raise InvalidFieldValueError(
-                        field="envelope.point.type",
+                        field=field if field is not None else "envelope.point.type",
                         value=item[2],
                         hint=f"Tipi validi: {', '.join(_EB.VALID_INTERP_TYPES)}",
                     )

@@ -98,6 +98,11 @@ def _corpi(y, interp):
         'x_oltre_cento': [[[0, y], [150, y]], 1.0, 2],
         'x_indietro': [[[100, y], [0, y]], 1.0, 2],
         'distribuzione_ignota': [[[0, y], [100, y]], 1.0, 2, interp, 'banana'],
+        # Non e' un guard del builder ma di `Envelope._parse_segments`, che
+        # alzava gia' InvalidFieldValueError su un campo cablato
+        # (`envelope.point.type`): lo stesso campo passato dall'alto vale
+        # anche li'.
+        'interp_per_punto_ignoto': [[0, y, 'banana'], [1.0, y]],
     }
 
 

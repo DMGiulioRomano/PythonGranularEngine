@@ -42,9 +42,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   delle finestre (`grain.envelope.curve`). Chi costruisce un envelope da punti
   calcolati non lo passa, e l'errore nomina la sotto-posizione
   (`envelope.compact.n_reps`, `envelope.group.points`, …): resta comunque un
-  `InvalidFieldValueError`. `envelope.group.interp`, l'unico campo cablato che
-  esisteva, è rimasto il ripiego dell'interp di un gruppo; col campo passato
-  nomina la chiave come gli altri. Il `value` di un elemento non riconosciuto
+  `InvalidFieldValueError`. I due campi cablati che esistevano già,
+  `envelope.group.interp` (interp di un gruppo) ed `envelope.point.type`
+  (interp per-punto, in `Envelope`), restano il ripiego; col campo passato
+  nominano la chiave come gli altri. Il `value` di un elemento non riconosciuto
   è l'elemento, non l'intero corpo.
 
   La scala `time_mode: normalized` non converte più un `end_time` che non è
