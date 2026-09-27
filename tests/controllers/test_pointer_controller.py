@@ -2902,4 +2902,7 @@ class TestLoopUnitAxesCoexist:
         pointer = PointerController({'start': 0.6}, config)
 
         assert pointer.start == pytest.approx(0.6)
-        assert '[LOOP_UNIT]' not in capsys.readouterr().err
+        # Silenzio vuol dire stderr vuoto, non "senza [LOOP_UNIT]": cercare
+        # il tag lascerebbe passare lo stesso avviso con un'altra etichetta.
+        err = capsys.readouterr().err
+        assert err == '', err
