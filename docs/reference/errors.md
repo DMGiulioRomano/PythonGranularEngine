@@ -5,6 +5,7 @@ status: stable
 tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
+  - src/pge/envelopes/envelope_builder.py
   - src/pge/cli.py
   - src/pge/engine/generator.py
   - src/pge/rendering/csound_renderer.py
@@ -345,9 +346,21 @@ mentre risalgono lo stack:
 | Layer                                       | Arricchisce             |
 |---------------------------------------------|-------------------------|
 | Raise site (parser/strategy/registry)       | dato locale (param, value, available, ...) |
+| Chi conosce la chiave YAML → `EnvelopeBuilder` | `field=` passato **in discesa** (issue #211) |
 | Parser/Stream/Controller chiamante          | `err.stream_id`         |
 | `Generator.create_elements`                 | `err.config_file`       |
 | `main._handle_engine_error`                 | path engine log         |
+
+Il campo di un errore di forma dell'envelope è l'unico dato che non si
+aggiunge risalendo ma si passa scendendo: `EnvelopeBuilder` non conosce il nome
+YAML della chiave che sta costruendo, e lo riceve da chi lo conosce
+(`field=` su `EnvelopeBuilder.parse`, `Envelope`, `create_scaled_envelope`).
+L'orchestratore lo prende dallo spec del parametro (`yaml_path`, `range_path`,
+col prefisso del blocco per il pointer), il gate di `deviation_probability`
+dalla propria chiave, pitch, voices e curve delle finestre dal punto in cui
+leggono lo YAML. Senza campo l'errore nomina la sotto-posizione dentro
+l'envelope (`envelope.compact.n_reps`, `envelope.group.points`, …): è tutto ciò
+che il builder sa da solo, e resta comunque un `InvalidFieldValueError`.
 
 **Esempio: `WindowController.parse_window_list`**
 
@@ -521,6 +534,31 @@ streams:
   Stream:       s1
   Config:       configs/PGE_test.yml
 ```
+
+### Envelope malformato (forma)
+```yaml
+streams:
+  s1:
+    density: [[[0, 5], [150, 50]], 10.0, 4]    # x del pattern oltre 100
+```
+```
+[ERRORE] Valore invalido per 'density'
+  Trovato:      150
+  Hint:         la prima coordinata di un punto del pattern e' una percentuale del ciclo e sta in [0, 100]. Fuori da li' il ciclo sfonda i propri confini: sopra 100 il ciclo successivo comincia prima che questo sia finito, sotto 0 esce un breakpoint a tempo negativo.
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+I guard di forma vivono in `EnvelopeBuilder` e valgono per **ogni** chiave che
+accetta un envelope (issue #211): arità del BP group, `end_time` e `n_reps` del
+formato compatto (il `bool` escluso: `true` non è `1`), pattern non vuoto con
+la `x` numerica, in `[0, 100]` e non decrescente, distribuzione temporale col
+nome nel registro e parametri costruibili, elemento non riconosciuto in una
+lista. Il `Valore invalido per` nomina la chiave come è scritta nel file; dove
+cade *dentro* l'envelope lo dice l'hint. Fino a #211 li applicava solo
+`grain.read_direction`, e lo stesso corpo sotto un'altra chiave risaliva come
+`ValueError` nudo — o, per `n_reps: true` e `x` fuori range, si rendeva in
+silenzio.
 
 ### Strategia non trovata
 ```yaml

@@ -1630,7 +1630,8 @@ Regole:
   verticale, stessa regola dei loop block §7.3). Nessuna traslazione senza
   collisione.
 - `interp` non in `{linear, cubic, step}` → `InvalidFieldValueError`.
-- Gruppo con meno di 2 punti → `ValueError` (zona senza segmenti interni).
+- Gruppo con meno di 2 punti → `InvalidFieldValueError` (zona senza segmenti
+  interni), che nomina la chiave su cui il gruppo è scritto (issue #211).
 
 Disambiguazione: il BP group e' l'unica lista a 2 elementi con `elem[0]`
 lista di punti ed `elem[1]` stringa. Un breakpoint `[t, v]` ha `elem[0]`
@@ -1702,6 +1703,9 @@ documentato nella sezione 10.
 
 Quando `time_mode: normalized` è attivo, anche `end_time` di un formato compatto
 viene scalato per `duration`. Vedere `_scale_time_recursive` in `envelope.py`.
+Si scala solo un `end_time` che è un numero: `true * 30` farebbe `30.0`, un
+valore legittimo, e la scala cancellerebbe l'errore (§5.5) prima che il builder
+lo veda (issue #211).
 
 ```yaml
 duration: 30.0
@@ -1830,7 +1834,7 @@ Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 | Posizione | Nome             | Tipo                       | Obbligatorio | Significato |
 |-----------|------------------|----------------------------|--------------|-------------|
 | 0         | `pattern_points` | lista di `[x%, y]` o `[x%, y, type]` | sì | pattern del ciclo, `x` in `[0, 100]`. Pattern points possono essere 3-tuple (vedi §2.6) |
-| 1         | `end_time`       | numero                     | sì           | **tempo assoluto finale** del blocco compatto |
+| 1         | `end_time`       | numero (non booleano)      | sì           | **tempo assoluto finale** del blocco compatto |
 | 2         | `n_reps`         | intero `>= 1`              | sì           | numero di ripetizioni |
 | 3         | `interp_type`    | str                        | no           | `'linear'` / `'cubic'` / `'step'`. Fa da default per i segmenti interni e per il gap inter-ciclo |
 | 4         | `time_dist`      | str o dict                 | no           | distribuzione delle durate dei cicli |
@@ -1904,9 +1908,13 @@ Conseguenze:
   rimanenti `20%` di `cycle_duration` mantengono per **hold** l'ultimo valore
   del pattern, fino al primo punto del ciclo successivo. Crea un gap costante
   intenzionale tra ripetizioni.
-- `x_finale > 100` → il punto cade **oltre** la fine del ciclo, sovrapponendosi
-  al ciclo successivo. Nessun guard: comportamento indefinito, ordine temporale
-  dei breakpoint può rompersi. Da evitare.
+- `x_finale > 100` → **errore** (`InvalidFieldValueError`, issue #211): il
+  punto cadrebbe oltre la fine del ciclo, sovrapponendosi al successivo. Fino
+  a #211 non c'era guard e l'envelope si rendeva in silenzio con l'ordine
+  temporale dei breakpoint rotto. Stessa sorte per una `x` negativa (un
+  breakpoint a tempo negativo) e per `x` che tornano indietro
+  (`[[100, a], [0, b]]`): il ciclo si percorre in avanti una volta sola. Una
+  `x` ripetuta resta valida — è la discontinuità.
 
 ```yaml
 # pattern continuo: nessun gap tra cicli
@@ -1970,9 +1978,27 @@ strettamente crescenti.
 
 #### 5.5 Validazioni
 
-- `n_reps < 1` → `ValueError` ("n_reps deve essere >= 1")
-- `end_time <= time_offset` → `ValueError`
-- `pattern_points` vuoto → `ValueError`
+Tutte alzano `InvalidFieldValueError` col nome della chiave su cui il compatto
+è scritto (`density`, `grain.duration`, `deviation_probability.volume`, …) e lo
+stream; dove cade dentro il blocco lo dice l'hint. Vivono in `EnvelopeBuilder`
+e valgono per ogni chiave che accetta un envelope (issue #211) — prima le
+applicava solo `grain.read_direction`, e sotto le altre chiavi lo stesso corpo
+risaliva come `ValueError` nudo o si rendeva in silenzio.
+
+- `n_reps` non intero o `< 1` → errore. Il booleano è escluso: `true` supera il
+  riconoscimento della forma (in Python `bool` è un `int`) e renderebbe un
+  ciclo senza dire niente.
+- `end_time` non numero (booleano compreso) o `<= time_offset` → errore.
+  `time_offset` è 0 nella forma diretta e l'ultimo breakpoint precedente in una
+  lista mista. Con `time_mode: normalized` il controllo sul tipo vale prima
+  della scala (§3.3): un `true` non diventa la durata dello stream.
+- `pattern_points` vuoto → errore.
+- punto del pattern non piatto (una macro-forma annidata) o con `x` non
+  numerica → errore; `x` fuori da `[0, 100]` o che torna indietro → errore
+  (§5.3.1).
+- `time_dist` con un nome fuori dal registro (§6) o con parametri che la
+  distribuzione non accetta → errore. I vincoli sui parametri li applica il
+  costruttore di ciascuna distribuzione.
 
 ---
 

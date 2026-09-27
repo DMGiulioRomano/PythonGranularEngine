@@ -8,6 +8,54 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+### Cambiato
+
+- **I guard di forma degli envelope valgono per ogni chiave** (issue #211).
+  Fino a oggi li applicava solo `grain.read_direction`, al proprio valore
+  grezzo: lo stesso corpo malformato scritto sotto `density`,
+  `grain.duration`, `pointer.speed_ratio` o `deviation_probability.<chiave>`
+  risaliva come `ValueError` nudo — fuori dalla gerarchia `EngineError`, senza
+  campo né stream, con un messaggio che PGE-ls non può attribuire — oppure si
+  rendeva in silenzio. Nessuno di quei guard sapeva qualcosa del verso di
+  lettura: sono vincoli della forma, e salgono in `EnvelopeBuilder`, che ogni
+  chiave attraversa. Arità del BP group (almeno 2 punti); `end_time` numero e
+  oltre l'istante di partenza; `n_reps` intero `>= 1`; pattern non vuoto, punti
+  piatti, `x` in `[0, 100]` e non decrescente; distribuzione temporale col nome
+  nel registro e parametri costruibili; elemento non riconosciuto in una lista.
+  Tutti alzano `InvalidFieldValueError`.
+
+  **Due corpi che oggi si rendono smettono di farlo**, ed è il punto: `n_reps:
+  true` (in Python `bool` è un `int`, e `range(True)` rendeva un ciclo) e le
+  `x` del pattern fuori da `[0, 100]` o all'indietro (breakpoint a tempo
+  negativo, cicli che si sovrappongono, tempi che si invertono). Lo stesso per
+  `end_time: true`, che valeva `1.0`. Nessuno dei config del repository, né
+  dei YAML nei test e nella documentazione, usa una di queste scritture.
+
+  Il builder non conosce il nome YAML della chiave che sta costruendo: il
+  campo gli arriva **dall'alto** (`field=` su `EnvelopeBuilder.parse`,
+  `Envelope`, `create_scaled_envelope`). Lo passano l'orchestratore — dallo
+  spec, `yaml_path` e `range_path`, con il prefisso del blocco per il
+  `PointerController`, che riceve il solo `pointer:` e i cui spec hanno path
+  relativi — il gate di `deviation_probability`, il pitch (la chiave
+  dell'unità scelta, o `pitch.value` con `edo`), `voices.num_voices`,
+  `voices.scatter`, i kwarg delle strategy (`voices.pan.step`, …) e la curva
+  delle finestre (`grain.envelope.curve`). Chi costruisce un envelope da punti
+  calcolati non lo passa, e l'errore nomina la sotto-posizione
+  (`envelope.compact.n_reps`, `envelope.group.points`, …): resta comunque un
+  `InvalidFieldValueError`. `envelope.group.interp`, l'unico campo cablato che
+  esisteva, è rimasto il ripiego dell'interp di un gruppo; col campo passato
+  nomina la chiave come gli altri. Il `value` di un elemento non riconosciuto
+  è l'elemento, non l'intero corpo.
+
+  La scala `time_mode: normalized` non converte più un `end_time` che non è
+  un numero: `True * durata` era un float legittimo, e il guard sul booleano
+  avrebbe valso solo sui tempi assoluti.
+
+  `read_direction.py` tiene i soli guard di dominio — interp `step`, valori in
+  `{-1, +1}` — e perde ~130 righe di delega. Per quella chiave l'errore resta
+  lo stesso, ma arriva dal builder: `normalize_read_direction` da solo non
+  rifiuta più un corpo malformato nella forma, lo Stream sì.
+
 ---
 
 ## [v9.1.0] — "Quiet Stdout" — 2026-09-27
