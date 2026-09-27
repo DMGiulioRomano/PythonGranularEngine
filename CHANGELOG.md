@@ -8,6 +8,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ## [Non rilasciato]
 
+---
+
+## [v9.1.0] — "Quiet Stdout" — 2026-09-27
+
 ### Aggiunto
 
 - **`grain.duration_range` può essere una frazione della durata del grano**
