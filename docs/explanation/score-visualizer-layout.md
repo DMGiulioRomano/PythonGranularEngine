@@ -199,6 +199,27 @@ l'auto-zoom del micro-detune serve — sui pochi cent di differenza che la mappa
 divergente esiste per rendere visibili. Fra "nessuna scala dove servirebbe" e
 "scala più larga del contenuto" si è scelto il secondo.
 
+**I limiti dell'asse precedono i grani** (#280). Con `grain_shape: window` la
+scelta fra silhouette e freccia si prende grano per grano, misurandone la
+larghezza sull'asse che lo riceve (`_grain_width_mm`), e la misura legge i
+limiti che l'asse ha *in quel momento*. Un asse appena creato ha già una
+`transData` valida sul default 0–1 s, quindi misurare prima di `set_xlim` non
+solleva: dà un numero sbagliato. La lente sbagliava in un verso: un grano di
+pochi ms, sub-pixel su 0–1 s, ripiegava sulla freccia anche dove la lente lo
+mostrava largo decine di pixel. La MAP sbagliava nell'altro: su una pagina da
+30 s ogni grano risultava 30 volte più largo. `render_page` e
+`_draw_one_magnifier` impostano quindi i limiti prima di `_draw_loop_mask` e
+`_draw_grains_full`, e per la seconda è una precondizione dichiarata.
+
+La soglia è una lunghezza sulla pagina, `window_shape_min_mm`, per la stessa
+ragione per cui la pagina è dichiarata in millimetri. I pixel display valgono
+alla `figure.dpi` di rcParams, che non è la risoluzione di nessun file
+esportato (PNG a 300 dpi, PDF vettoriale) e cambia da un ambiente all'altro. Il
+default, 0.762 mm, è la vecchia soglia di 3 px alla dpi di default di
+matplotlib. `window_shape_min_px` resta accettata in ingresso fino alla
+prossima major, con un `FutureWarning`; la config risolta (`viz.config`) porta
+solo `window_shape_min_mm`.
+
 ### I dati dichiarati
 
 Due dataclass frozen sostituiscono i dict:
