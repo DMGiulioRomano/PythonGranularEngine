@@ -332,8 +332,8 @@ class TestWindowShapeThresholdIsALength:
     """
 
     def test_the_default_is_the_old_threshold_as_a_length(self):
-        """3 px alla dpi di default di matplotlib: nell'ambiente di default le
-        forme restano quelle di prima."""
+        """3 px alla dpi di default di matplotlib: a figure.dpi 100 il
+        passaggio ai millimetri non sposta la soglia."""
         config = VisualizerConfig.from_overrides(None).as_dict()
         assert config['window_shape_min_mm'] == pytest.approx(3 * 25.4 / 100)
 
@@ -350,8 +350,8 @@ class TestWindowShapeThresholdIsALength:
 
     def test_the_px_key_is_still_accepted_as_px_at_100_dpi(self):
         """Retrocompatibilita': e' superficie pubblica (ScoreVisualizer,
-        api.export_score_pdf). Si converte alla dpi a cui era tarata, cosi' la
-        stessa config disegna le stesse forme di prima."""
+        api.export_score_pdf). Si converte alla dpi a cui era tarata, cosi' a
+        figure.dpi 100 la soglia resta quella di prima."""
         with pytest.warns(FutureWarning):
             config = VisualizerConfig.from_overrides(
                 {'window_shape_min_px': 50}).as_dict()

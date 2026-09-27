@@ -443,9 +443,10 @@ def _translate_window_shape_min_px(overrides):
 
     `window_shape_min_px` contava pixel alla figure.dpi di rcParams, che non
     sono i pixel di nessun file esportato (issue #280). E' superficie pubblica
-    (ScoreVisualizer, api.export_score_pdf), quindi resta accettata per un
-    ciclo e si converte alla dpi a cui era tarata: la stessa config disegna le
-    stesse forme di prima.
+    (ScoreVisualizer, api.export_score_pdf), quindi resta accettata in
+    ingresso per un ciclo e si converte alla dpi a cui era tarata: a
+    figure.dpi 100 la soglia resta quella di prima. In uscita no: la config
+    risolta (viz.config) porta solo window_shape_min_mm.
 
     FutureWarning e non DeprecationWarning, come Stream.grains (#201): il
     secondo Python lo filtra di default fuori da __main__, e lo vedrebbe solo

@@ -216,8 +216,9 @@ ragione per cui la pagina è dichiarata in millimetri. I pixel display valgono
 alla `figure.dpi` di rcParams, che non è la risoluzione di nessun file
 esportato (PNG a 300 dpi, PDF vettoriale) e cambia da un ambiente all'altro. Il
 default, 0.762 mm, è la vecchia soglia di 3 px alla dpi di default di
-matplotlib. `window_shape_min_px` resta accettata fino alla prossima major, con
-un `FutureWarning`.
+matplotlib. `window_shape_min_px` resta accettata in ingresso fino alla
+prossima major, con un `FutureWarning`; la config risolta (`viz.config`) porta
+solo `window_shape_min_mm`.
 
 ### I dati dichiarati
 

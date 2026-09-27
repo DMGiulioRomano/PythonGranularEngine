@@ -975,9 +975,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   silhouette. La soglia è ora una lunghezza sulla pagina,
   **`window_shape_min_mm`**, coerente con `page_size` e `margins_mm`, e la
   misura divide i pixel per la dpi della figura. Il default, 0.762 mm, è la
-  soglia storica di 3 px alla dpi a cui era tarata: nell'ambiente di default
-  le forme non cambiano. `TestFallbackMeasuredOnFinishedFigure` gira ora a 100
-  e a 300 dpi.
+  soglia storica di 3 px alla dpi a cui era tarata: a `figure.dpi` 100 il
+  passaggio ai millimetri non sposta nessuna forma (a spostarle è la
+  correzione della MAP, sopra). `TestFallbackMeasuredOnFinishedFigure` gira
+  ora a 100 e a 300 dpi.
 
 - **La riga diagnostica della registrazione pretendeva un `__name__`**
   (issue #185, review della PR #276). `log_strategy_registration` legge
@@ -1359,8 +1360,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 - **`window_shape_min_px`** della config di `ScoreVisualizer` (e quindi di
   `api.export_score_pdf`), rimozione prevista nella prossima major (issue
   #280). Il rimpiazzo è `window_shape_min_mm` (vedi `### Corretto`). Resta
-  accettata e si converte alla dpi a cui era tarata, 100 (1 px = 0.254 mm),
-  così la stessa config disegna le stesse forme di prima. Emette un
+  accettata in ingresso e si converte alla dpi a cui era tarata, 100 (1 px =
+  0.254 mm), così la soglia resta quella di prima a `figure.dpi` 100; a
+  un'altra dpi, e sulla MAP per la correzione dell'ordine dei limiti, le forme
+  cambiano comunque. **In uscita la chiave non c'è più**: `viz.config` porta
+  solo `window_shape_min_mm`, quindi chi leggeva
+  `viz.config['window_shape_min_px']` riceve `KeyError`, e una scrittura su
+  quella chiave dopo la costruzione non ha effetto. Una sola grafia in uscita
+  è la scelta: due chiavi della stessa soglia potrebbero dire cose diverse.
+  Emette un
   **`FutureWarning`** per la stessa ragione di `Stream.grains`: un
   `DeprecationWarning` Python lo filtra di default fuori da `__main__`. Il
   warning nomina la riga del chiamante da qualunque porta entri la chiave:
