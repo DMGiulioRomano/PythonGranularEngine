@@ -70,7 +70,10 @@ passare dalla CLI né monkey-patchare i globali.
    qualunque percorso che costruisca envelope — `⚠️  CLIP: ...`
    dall'handler console, attivo di default.
 
-   Chiudere entrambi i canali vuole entrambe le redirezioni, e la
+   Chiudere entrambi i canali vuole entrambe le redirezioni, oppure la
+   `redirect_stdout` con la console del clip logger spenta
+   (`configure_clip_logger(console_enabled=False)`, passo 5): dalla #242
+   non c'è più un avviso che parli proprio a console spenta. La
    `redirect_stderr` va entrata **prima** che il clip logger si costruisca:
    `logging.StreamHandler()` cattura `sys.stderr` alla costruzione, non alla
    scrittura, quindi un handler già vivo continua a scrivere sullo stderr
