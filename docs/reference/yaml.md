@@ -1705,7 +1705,11 @@ Quando `time_mode: normalized` è attivo, anche `end_time` di un formato compatt
 viene scalato per `duration`. Vedere `_scale_time_recursive` in `envelope.py`.
 Si scala solo un `end_time` che è un numero: `true * 30` farebbe `30.0`, un
 valore legittimo, e la scala cancellerebbe l'errore (§5.5) prima che il builder
-lo veda (issue #211).
+lo veda (issue #211). Lo stesso per i breakpoint di una lista: se ne scala il
+tempo solo se il builder li accetterà (`[t, v]`, `[t, v, type]`, `{t, v,
+type?}` con `t` e `v` numeri), e il resto gli arriva com'è scritto — un
+`[true, v]` non diventa un breakpoint a `t = durata`, e l'errore riporta
+l'elemento come sta nel file.
 
 ```yaml
 duration: 30.0
@@ -2228,9 +2232,9 @@ pointer:
 Internamente `PointerController._pre_normalize_loop_params` usa
 `Envelope._scale_raw_values_y` per moltiplicare ogni Y dei breakpoint per
 `sample_dur_sec` prima di costruire l'`Envelope`. Funziona anche su formati
-compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo una `y`
-che è un numero: ciò che non lo è resta com'è, e lo rifiuta il builder
-nominando la chiave (§5.5, issue #211).
+compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo un punto
+o un breakpoint che il builder accetterà (§3.3): ciò che non lo è resta com'è,
+e lo rifiuta il builder nominando la chiave (§5.5, issue #211).
 
 ### Differenza chiave da `time_mode`
 

@@ -74,10 +74,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   La scala `time_mode: normalized` non converte più un `end_time` che non è
   un numero: `True * durata` era un float legittimo, e il guard sul booleano
-  avrebbe valso solo sui tempi assoluti. Per la stessa ragione la scala delle
-  `y` (`grain.duration_unit`, `loop_unit: normalized`) moltiplica solo una `y`
-  che è un numero: una stringa, una lista o una macro-forma nel pattern
-  risalivano da lì come `TypeError` nudo prima che il builder le vedesse.
+  avrebbe valso solo sui tempi assoluti. La regola vale per ogni elemento che
+  una scala tocca: i tempi dei breakpoint sotto `time_mode: normalized` e le
+  `y` sotto `grain.duration_unit` e `loop_unit: normalized` si scalano solo in
+  un elemento che il builder accetterà (`EnvelopeBuilder.is_breakpoint`,
+  `is_pattern_point`), e il resto gli arriva com'è scritto. Prima una stringa,
+  una lista o una macro-forma nel pattern risalivano da lì come `TypeError`
+  nudo; sotto `normalized` anche `{t: 'x', v}` e un marcatore `[[t, v], 'x']`,
+  mentre `[true, v]` e `{t: true, v}` diventavano breakpoint legittimi e si
+  rendevano. E dove la scala non esplodeva, l'errore riportava l'elemento con
+  l'altra coordinata già scalata.
 
   `read_direction.py` tiene i soli guard di dominio — interp `step`, valori in
   `{-1, +1}` — e perde ~130 righe di delega. Per quella chiave l'errore resta
