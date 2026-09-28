@@ -96,10 +96,12 @@ Quattro letture:
    ad avere insieme il dizionario grezzo e lo `stream_id` prima che i
    `Parameter` esistano.
 4. **Rispetto al resto del motore**, `stream.py` è il secondo modulo per righe
-   di codice, dopo `score_visualizer.py` (868); `pointer_controller.py` ne ha
-   338. «Il più connesso» è vero del fan-out — importa una ventina di moduli,
-   che è il mestiere di chi compone uno stream — mentre in `src/` lo importano
-   due moduli, `generator` e `score_writer`.
+   di codice, dopo `score_visualizer.py` (868); `pointer_controller.py`, il più
+   grande dei controller, ne ha 318 (338 al `9d28726`: #242 gli ha poi tolto
+   l'avviso di migrazione di `loop_unit`). «Il più connesso» è vero del
+   fan-out — importa una ventina di moduli, che è il mestiere di chi compone
+   uno stream — mentre in `src/` lo importano due moduli, `generator` e
+   `score_writer`.
 
 ---
 
@@ -261,8 +263,12 @@ e `_GRAIN_DURATION_UNIT_LABELS` da `core/stream.py` per AST, esegue il metodo,
 e **salta** se non trova il file o il metodo. Uno spostamento non la renderebbe
 rossa, la renderebbe muta. #269 §C, l'inventario di quel che PGE-ls legge del
 motore per percorso, è di prima (PGE-ls `6010b03`): di questo file registra
-solo `GRAIN_DURATION_UNITS`, e l'estrazione del metodo non c'è. Non è un veto:
-è un lavoro da coordinare, con una issue su PGE-ls prima dello spostamento.
+`GRAIN_DURATION_UNITS` per AST «più una regex sul sorgente», e quella regex
+pretendeva nel file il ciclo `for key in ('duration', 'duration_range')` del
+metodo, cosicché uno spostamento l'avrebbe resa rossa. L'estrazione che l'ha
+sostituita (PGE-ls `d30dac4`) ha cambiato il modo di fallire, e #269 non lo
+registra. Non è un veto: è un lavoro da coordinare, con una issue su PGE-ls
+prima dello spostamento.
 
 ### Domanda 3 — la generazione è separabile dallo stato che la produce?
 
@@ -304,8 +310,9 @@ cambiano indirizzo ([[multi-voice]], [[strategy-registry]],
 [[add-voice-strategy]], la reference [[yaml]] e
 [[make-parameter-envelope-aware]]: quest'ultimo nomina
 `Stream._parse_strategy_kwarg`, e #284 non lo elenca); commenti in PGE-ls e
-gl-ls che nominano `_init_voice_manager` di `stream.py` invecchiano — nessun
-vincolo funzionale, nessuno dei tre repo a valle importa o estrae il wiring. In
+gl-ls che nominano il wiring di `voices` in `stream.py` (`_init_voice_manager`,
+`_parse_strategy_kwarg`) invecchiano — nessun vincolo funzionale, nessuno dei
+tre repo a valle importa o estrae il wiring. In
 cambio: circa 110 righe di codice nette in meno sullo `Stream`, più di un
 quinto del modulo; l'unico blocco letto per conto d'altri
 rientra nel modello degli altri quattro, e `_voice_pointer_normalized` smette
