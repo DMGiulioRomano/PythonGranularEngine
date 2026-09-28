@@ -241,11 +241,14 @@ La separazione che conta `read_direction` l'ha già fatta: la regola sta in
 del grano la regola sono 37 righe di codice con un solo lettore.
 
 Spostarla avrebbe anche un costo fuori da qui, con il modo di fallire peggiore.
-La suite di parità di PGE-ls estrae `Stream._pre_normalize_grain_params`,
-`GRAIN_DURATION_UNITS` e `_GRAIN_DURATION_UNIT_LABELS` da `core/stream.py` per
-AST, esegue il metodo, e **salta** se il file o il nome non ci sono (#269, §C).
-Uno spostamento non la renderebbe rossa, la renderebbe muta. Non è un veto: è
-un lavoro da coordinare, con una issue su PGE-ls prima dello spostamento.
+La suite di parità di PGE-ls (`tests/test_pge_parity.py`, letta al commit
+`91266b9`) estrae `Stream._pre_normalize_grain_params`, `GRAIN_DURATION_UNITS`
+e `_GRAIN_DURATION_UNIT_LABELS` da `core/stream.py` per AST, esegue il metodo,
+e **salta** se non trova il file o il metodo. Uno spostamento non la renderebbe
+rossa, la renderebbe muta. #269 §C, l'inventario di quel che PGE-ls legge del
+motore per percorso, è di prima (PGE-ls `6010b03`): di questo file registra
+solo `GRAIN_DURATION_UNITS`, e l'estrazione del metodo non c'è. Non è un veto:
+è un lavoro da coordinare, con una issue su PGE-ls prima dello spostamento.
 
 ### Domanda 3 — la generazione è separabile dallo stato che la produce?
 
@@ -344,8 +347,9 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
 Lo stadio 3 dello stesso plan — dare un nome al read-model — è deciso qui, e la
 decisione è di non farlo.
 
-Prima di toccare `stream.py`, oltre a `/impact-analysis`: #269 §C elenca cosa
-PGE-ls legge di questo file per percorso, e gl-ls tiene uno specchio di
+Prima di toccare `stream.py`, oltre a `/impact-analysis`: cosa PGE-ls legge di
+questo file per percorso va riletto sul suo `tests/test_pge_parity.py`, non su
+#269 §C, che è rimasto indietro (domanda 2); e gl-ls tiene uno specchio di
 `_pre_normalize_grain_params` (`diagnostics._UNIT_SCALED`) che diverge in
 silenzio se la regola cambia.
 
