@@ -2884,7 +2884,8 @@ class TestLoopUnitAxesCoexist:
         assert pointer.loop_start.get_value(20.0) == pytest.approx(6.0)
         assert pointer.loop_dur.get_value(0.0) == pytest.approx(1.0)
 
-    def test_time_mode_normalized_alone_is_silent(self, monkeypatch, capsys):
+    def test_time_mode_normalized_alone_is_silent(self, monkeypatch, capsys,
+                                                  caplog):
         """Il default `seconds` non annuncia piu' niente (issue #242).
 
         Dalla v9.0.0 alla v9.1.0 questo stream riceveva l'avviso di migrazione
@@ -2893,16 +2894,27 @@ class TestLoopUnitAxesCoexist:
         portava, `seconds` e' il default e basta, e lo stream si legge in
         silenzio.
         """
+        import logging
         import pge.shared.logger as logger_module
         monkeypatch.setattr(logger_module, '_clip_logger', None)
         monkeypatch.setattr(logger_module, '_clip_logger_initialized', True)
 
         config = _real_config(time_mode='normalized',
                               sample_dur_sec=8.0, duration=20.0)
-        pointer = PointerController({'start': 0.6}, config)
+        with caplog.at_level(logging.WARNING):
+            pointer = PointerController({'start': 0.6}, config)
 
         assert pointer.start == pytest.approx(0.6)
         # Silenzio vuol dire stderr vuoto, non "senza [LOOP_UNIT]": cercare
         # il tag lascerebbe passare lo stesso avviso con un'altra etichetta.
         err = capsys.readouterr().err
         assert err == '', err
+        # E stderr vuoto, sotto pytest, non basta: il plugin di logging
+        # appende un handler al root, quindi un avviso tornato come
+        # `logger.warning(...)` qui non arriva a stderr, mentre fuori dai
+        # test finisce a `logging.lastResort`, cioe' proprio su stderr
+        # (TestStderr in tests/test_api_stdout.py lo misura in un processo
+        # vero). Misurato: senza questa riga quel ritorno restava verde.
+        avvisi = [r.getMessage() for r in caplog.records
+                  if r.levelno >= logging.WARNING]
+        assert avvisi == [], avvisi
