@@ -195,3 +195,70 @@ def test_la_forma_sopravvive_alla_scala_delle_y(build, campo, difetto):
     assert exc.value.field == campo
     assert exc.value.stream_id == STREAM_ID
     assert exc.value.value == punto
+
+
+# Le due scale che precedono il builder, con l'asse che scalano: `time_mode:
+# normalized` moltiplica i tempi per la durata dello stream
+# (`_scale_time_recursive`), `grain.duration_unit` e `pointer.loop_unit` i
+# valori (`scale_raw_param_values`). Ogni riga: la chiave, il corpo sotto la
+# scala, una y legale per la chiave.
+SCALE = {
+    'tempo-density': (
+        'density', lambda c: {'time_mode': 'normalized', 'density': c}, 10),
+    'tempo-deviation_probability': (
+        'deviation_probability',
+        lambda c: {'time_mode': 'normalized', 'deviation_probability': c}, 50),
+    'valore-grain.duration': (
+        'grain.duration',
+        lambda c: {'grain': {'duration_unit': 'milliseconds', 'duration': c}},
+        50),
+    'valore-pointer.loop_dur': (
+        'pointer.loop_dur',
+        lambda c: {'pointer': {'loop_unit': 'normalized', 'loop_start': 0.1,
+                               'loop_dur': c}},
+        0.5),
+}
+
+
+def _breakpoint_malformati(y):
+    """Breakpoint di una lista con un difetto, e il `value` che l'errore deve
+    riportare: l'elemento com'e' scritto, non con l'altra coordinata scalata.
+    E' la regola che `parse` si da' da solo (`scritto`), e una scala che
+    moltiplica prima la aggira."""
+    return {
+        't_booleano': [True, y],
+        't_booleano_dict': {'t': True, 'v': y},
+        't_stringa_dict': {'t': 'x', 'v': y},
+        'marcatore': [[0, y], 'marker'],
+        'v_booleana_dict': {'t': 0.5, 'v': True},
+        'v_stringa_dict': {'t': 0.5, 'v': 'a'},
+    }
+
+
+CASI_SCALATI = [
+    pytest.param(ingresso, difetto, id=f'{ingresso}-{difetto}')
+    for ingresso in SCALE
+    for difetto in _breakpoint_malformati(0)
+]
+
+
+@pytest.mark.parametrize("ingresso, difetto", CASI_SCALATI)
+def test_la_scala_tocca_solo_cio_che_il_builder_accetta(build, ingresso, difetto):
+    """La regola di `_scale_compact` e di `_scale_y`, estesa all'elemento: una
+    scala tocca un breakpoint solo se il builder lo accettera', e il resto gli
+    arriva com'e' scritto. Sotto `normalized` i tempi si moltiplicavano a
+    prescindere: `[true, v]` e `{t: true, v}` diventavano breakpoint legittimi
+    e si rendevano, `{t: 'x', v}` e un marcatore `[[t, v], 'x']` risalivano
+    come TypeError nudo. E dove la scala non esplodeva, il `value` dell'errore
+    portava l'altra coordinata gia' scalata, cioe' un elemento che nel file
+    non c'e'."""
+    campo, scrivi, y = SCALE[ingresso]
+    elemento = _breakpoint_malformati(y)[difetto]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(scrivi([[0, y], elemento, [1.0, y]]))
+
+    assert exc.value.field == campo
+    assert exc.value.stream_id == STREAM_ID
+    # `repr`, non `==`: `True == 1`, e `{'t': True} == {'t': 1.0}`.
+    assert repr(exc.value.value) == repr(elemento)

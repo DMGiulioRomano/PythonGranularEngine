@@ -239,11 +239,9 @@ class EnvelopeBuilder:
             # sotto non e' quello che l'utente ritrova nel file.
             scritto = item
             # Normalizza dict per-punto {t, v, type?} in lista
-            if isinstance(item, dict) and 't' in item and 'v' in item:
-                if 'type' in item:
-                    item = [item['t'], item['v'], item['type']]
-                else:
-                    item = [item['t'], item['v']]
+            come_lista = cls.dict_as_list(item)
+            if come_lista is not None:
+                item = come_lista
             if cls.is_compact_format(item):
                 # Espandi formato compatto CON OFFSET
                 compact_expanded = cls._expand_compact_format(
@@ -262,12 +260,7 @@ class EnvelopeBuilder:
                 expanded.extend(group_expanded)
                 current_time = max(current_time, group_expanded[-1][0])
             else:
-                if cls.is_3tuple_breakpoint(item):
-                    expanded.append(item)
-                    current_time = max(current_time, item[0])
-                elif (isinstance(item, list) and len(item) == 2
-                      and isinstance(item[0], (int, float)) and not isinstance(item[0], bool)
-                      and isinstance(item[1], (int, float)) and not isinstance(item[1], bool)):
+                if cls.is_breakpoint(item):
                     expanded.append(item)
                     current_time = max(current_time, item[0])
                 else:
@@ -305,6 +298,48 @@ class EnvelopeBuilder:
         if not isinstance(item[2], str):
             return False
         return True
+
+    @classmethod
+    def is_breakpoint(cls, item) -> bool:
+        """Rileva se item e' un breakpoint nudo che `parse` accetta cosi'
+        com'e': `[t, v]` con t e v numeri (bool escluso), o la 3-tuple
+        `[t, v, type]` di `is_3tuple_breakpoint`. La forma dict ci arriva
+        attraverso `dict_as_list`.
+
+        E' la regola del builder, e non solo sua: le scale (`time_mode:
+        normalized`, le unita' dei valori) toccano un elemento solo se il
+        builder lo accettera', e gli lasciano il resto com'e' scritto perche'
+        sia lui a rifiutarlo (issue #211).
+        """
+        if cls.is_3tuple_breakpoint(item):
+            return True
+        return (isinstance(item, list) and len(item) == 2
+                and _is_number(item[0]) and _is_number(item[1]))
+
+    @staticmethod
+    def dict_as_list(item) -> Optional[list]:
+        """Il breakpoint per-punto in forma dict `{t, v, type?}` come lista
+        (`[t, v]` o `[t, v, type]`), o None se item non e' un dict con `t` e
+        `v`. Che la lista sia un breakpoint valido lo dice `is_breakpoint`."""
+        if not (isinstance(item, dict) and 't' in item and 'v' in item):
+            return None
+        if 'type' in item:
+            return [item['t'], item['v'], item['type']]
+        return [item['t'], item['v']]
+
+    @classmethod
+    def is_pattern_point(cls, point) -> bool:
+        """Rileva se point e' un punto piatto del pattern di un compatto:
+        `[x%, y]` o `[x%, y, type]`, x e y numeri (bool escluso), type una
+        stringa o `None` (l'interp al default). `is_compact_format` i punti li
+        guarda solo in lunghezza: questo e' il resto della loro forma, per il
+        guard (`_check_pattern_point`) e per le scale, come `is_breakpoint`.
+        """
+        if not isinstance(point, list) or len(point) not in (2, 3):
+            return False
+        if not _is_number(point[0]) or not _is_number(point[1]):
+            return False
+        return len(point) == 2 or point[2] is None or isinstance(point[2], str)
 
     @classmethod
     def is_bp_group(cls, item) -> bool:
@@ -698,7 +733,8 @@ class EnvelopeBuilder:
 
         Piatto e' la forma di un breakpoint nudo, la stessa che `parse` chiede
         a un `[t, v]` / `[t, v, type]`: x e y numeri, e il terzo elemento, se
-        c'e', il nome di un'interpolazione (`None` lo lascia al default).
+        c'e', il nome di un'interpolazione (`None` lo lascia al default). La
+        regola e' `is_pattern_point`, che leggono anche le scale.
         Guardare la sola x lasciava la y all'espansione, che la copia senza
         leggerla: una stringa o una lista risalivano come TypeError nudo
         dall'interpolazione, e `true` si rendeva come `1`. Che il nome sia uno
@@ -710,15 +746,13 @@ class EnvelopeBuilder:
                 Una x ripetuta e' ammessa: e' la discontinuita'.
             field: la chiave YAML da nominare negli errori (vedi `parse`).
         """
-        x = point[0]
-        seg_type = point[2] if len(point) == 3 else None
-        if (not _is_number(x) or not _is_number(point[1])
-                or not (seg_type is None or isinstance(seg_type, str))):
+        if not cls.is_pattern_point(point):
             raise InvalidFieldValueError(
                 field=cls._field(field, "compact.pattern"),
                 value=point,
                 hint=_PATTERN_POINT_HINT,
             )
+        x = point[0]
         if not 0 <= x <= 100:
             raise InvalidFieldValueError(
                 field=cls._field(field, "compact.pattern"),

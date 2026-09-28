@@ -423,23 +423,16 @@ class Envelope:
         from pge.envelopes.envelope_builder import EnvelopeBuilder
         import copy
         
-        def _is_num(x):
-            # Un breakpoint [t, v] e' fatto di numeri. Senza questa condizione
-            # il ramo qui sotto prende anche liste a due elementi che
-            # breakpoint non sono — `[{t, v}, {t, v}]`, cioe' un BP group con i
-            # punti scritti in forma dict — e moltiplica un dict per un float.
-            # Quella forma il costruttore la rifiuta gia' nominando l'elemento:
-            # il compito qui e' arrivarci, non esplodere prima (issue #234).
-            return isinstance(x, (int, float)) and not isinstance(x, bool)
-
-        def _scale_y(v):
-            # Si scala solo una y che e' un numero, per la ragione per cui
-            # `_scale_compact` scala solo un `end_time` numerico (issue #211):
-            # una stringa o una lista per un float sono un TypeError nudo, che
-            # risale prima che il builder veda il corpo, e `True * fattore` e'
-            # un float legittimo, che cancellerebbe l'errore. Cio' che non e'
-            # un numero resta com'e', e lo rifiuta il builder nominando il campo.
-            return v * scale_factor if _is_num(v) else v
+        # Si scala un elemento solo se il builder lo accettera'
+        # (`is_breakpoint`, `is_pattern_point`), per la ragione per cui
+        # `_scale_compact` scala solo un `end_time` numerico (issue #211): il
+        # resto arriva al builder com'e' scritto, e lui lo rifiuta nominando
+        # il campo e l'elemento. Moltiplicarlo prima era un TypeError nudo su
+        # una stringa, una lista o un dict — `[{t, v}, {t, v}]` e' una lista a
+        # due elementi (issue #234) — o cancellava l'errore, perche' `True *
+        # fattore` e' un float legittimo; e dove non esplodeva, l'errore
+        # riportava un elemento con l'altra coordinata gia' scalata, che nel
+        # file non c'e'.
 
         def _scale_points_y(points):
             # Una lista di breakpoint [t, v] o [t, v, interp]: l'interp
@@ -449,8 +442,13 @@ class Envelope:
             # la lunghezza cablata a 2 buttava via il terzo elemento a ogni
             # render sotto un'unita' non-seconds (issue #234). I punti del
             # pattern `is_compact_format` li guarda solo in lunghezza: la y puo'
-            # non essere un numero, e il "punto" puo' essere un BP group.
-            return [[p[0], _scale_y(p[1]), *p[2:]] for p in points]
+            # non essere un numero, e il "punto" puo' essere un BP group. Quelli
+            # di un gruppo passano sempre: `is_bp_group` li vuole gia' numerici.
+            return [
+                [p[0], p[1] * scale_factor, *p[2:]]
+                if EnvelopeBuilder.is_pattern_point(p) else p
+                for p in points
+            ]
 
         def _scale_group_y(group):
             return [_scale_points_y(group[0]), group[1]]
@@ -469,14 +467,13 @@ class Envelope:
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
                     # è una lista a 2 elementi.
                     scaled.append(_scale_group_y(item))
-                elif (isinstance(item, list) and len(item) == 2
-                      and _is_num(item[0]) and _is_num(item[1])):
-                    scaled.append([item[0], item[1] * scale_factor])
-                elif EnvelopeBuilder.is_3tuple_breakpoint(item):
-                    scaled.append([item[0], item[1] * scale_factor, item[2]])
-                elif isinstance(item, dict) and 't' in item and 'v' in item:
+                elif EnvelopeBuilder.is_breakpoint(item):
+                    # [t, v] o [t, v, type]
+                    scaled.append([item[0], item[1] * scale_factor, *item[2:]])
+                elif EnvelopeBuilder.is_breakpoint(
+                        EnvelopeBuilder.dict_as_list(item)):
                     scaled_dict = dict(item)
-                    scaled_dict['v'] = _scale_y(item['v'])
+                    scaled_dict['v'] = item['v'] * scale_factor
                     scaled.append(scaled_dict)
                 else:
                     scaled.append(item)
@@ -622,19 +619,19 @@ def _scale_time_recursive(points: List, factor: float) -> List:
             # Va controllato prima del branch [t, v]: un gruppo è anch'esso
             # una lista a 2 elementi.
             scaled.append([_scale_group_points_time(item[0], factor), item[1]])
-        elif isinstance(item, list) and len(item) == 2:
-            # Standard breakpoint: [t, v] -> [t * factor, v]
-            scaled.append([item[0] * factor, item[1]])
-        elif EnvelopeBuilder.is_3tuple_breakpoint(item):
-            # 3-tuple breakpoint: [t, v, type] -> [t * factor, v, type]
-            scaled.append([item[0] * factor, item[1], item[2]])
-        elif isinstance(item, dict) and 't' in item and 'v' in item:
+        elif EnvelopeBuilder.is_breakpoint(item):
+            # [t, v] -> [t * factor, v], [t, v, type] -> [t * factor, v, type]
+            scaled.append([item[0] * factor, *item[1:]])
+        elif EnvelopeBuilder.is_breakpoint(EnvelopeBuilder.dict_as_list(item)):
             # Dict per-punto {t, v, type?}: scala t
             scaled_dict = dict(item)
             scaled_dict['t'] = item['t'] * factor
             scaled.append(scaled_dict)
         else:
-
+            # Cio' che il builder non accettera' resta com'e' scritto, e lo
+            # rifiuta lui nominandolo: scalato, `[true, v]` diventava un
+            # breakpoint legittimo e un marcatore `[[t, v], 'x']` un TypeError
+            # nudo (issue #211, la regola di `_scale_compact`).
             scaled.append(item)
     
     return scaled
