@@ -2819,91 +2819,6 @@ class TestLoopUnitVocabulary:
         assert result['loop_dur'] == pytest.approx(0.8)
 
 
-class TestLoopUnitMigrationWarning:
-    """L'avviso di migrazione parla solo a chi cambia davvero.
-
-    `# ponytail:` nel sorgente: si toglie dopo una release, insieme a questa
-    classe. Rimozione tracciata dalla issue #242.
-    """
-
-    def _warn_calls(self, mock_config, params):
-        # L'orchestratore e' mockato: se il dict grezzo dichiara un loop, il
-        # Parameter corrispondente deve esistere o `has_loop` trova None.
-        real = _build_real_params(
-            start=0.0,
-            loop_start=1.0 if 'loop_start' in params else None,
-            loop_dur=1.0 if 'loop_dur' in params else None,
-        )
-        with patch('pge.controllers.pointer_controller'
-                   '.log_loop_unit_migration_warning') as warn:
-            _make_pointer(mock_config, real, params)
-        return warn.call_args_list
-
-    def test_warns_when_the_reading_changes(self, mock_config):
-        mock_config.time_mode = 'normalized'
-        mock_config.context.sample_dur_sec = 8.0
-
-        calls = self._warn_calls(mock_config, {'start': 0.6})
-
-        assert len(calls) == 1
-        assert calls[0].kwargs['stream_id'] == 'test_stream'
-        assert calls[0].kwargs['keys'] == ['start']
-
-    def test_warns_on_loop_params_too(self, mock_config):
-        mock_config.time_mode = 'normalized'
-
-        calls = self._warn_calls(mock_config,
-                                 {'loop_start': 0.25, 'loop_dur': 0.1})
-
-        assert len(calls) == 1
-        assert calls[0].kwargs['keys'] == ['loop_start', 'loop_dur']
-
-    def test_silent_on_zero(self, mock_config):
-        """Uno zero resta zero sotto qualunque fattore di scala.
-
-        Non e' un dettaglio: `start: 0` e' la forma piu' comune nel corpus dei
-        config (`PGE_cim` ×5, `PGE_test` ×4, `PGE_cubic_smoothstep_demo` ×2).
-        Avvisarli sarebbe undici righe di rumore attorno ai tre casi veri.
-        """
-        mock_config.time_mode = 'normalized'
-
-        assert self._warn_calls(mock_config, {'start': 0}) == []
-        assert self._warn_calls(mock_config, {'start': 0.0}) == []
-
-    def test_silent_when_loop_unit_is_declared(self, mock_config):
-        """Chi ha gia' dichiarato l'unita' non ha niente da migrare."""
-        mock_config.time_mode = 'normalized'
-
-        assert self._warn_calls(
-            mock_config, {'start': 0.6, 'loop_unit': 'normalized'}) == []
-        assert self._warn_calls(
-            mock_config, {'start': 0.6, 'loop_unit': 'seconds'}) == []
-
-    def test_silent_on_absolute_streams(self, mock_config):
-        """`time_mode: absolute` non ereditava niente: nulla cambia."""
-        mock_config.time_mode = 'absolute'
-
-        assert self._warn_calls(mock_config, {'start': 0.6}) == []
-
-    def test_silent_on_what_the_conversion_never_touched(self, mock_config):
-        """`scale_raw_param_values` lascia passare invariato quel che non e'
-        ne' un numero ne' un envelope: una stringa non si muoveva nemmeno
-        prima, quindi non ha niente da migrare."""
-        mock_config.time_mode = 'normalized'
-
-        assert self._warn_calls(mock_config, {'start': '0.6'}) == []
-
-    def test_warns_on_envelope_values(self, mock_config):
-        """Un envelope veniva scalato punto per punto: cambia anche lui."""
-        mock_config.time_mode = 'normalized'
-
-        calls = self._warn_calls(
-            mock_config, {'loop_start': [[0, 0.25], [1, 0.75]]})
-
-        assert len(calls) == 1
-        assert calls[0].kwargs['keys'] == ['loop_start']
-
-
 class TestLoopUnitAxesCoexist:
     """Il test che conta: i due assi restano indipendenti.
 
@@ -2968,3 +2883,38 @@ class TestLoopUnitAxesCoexist:
         assert pointer.loop_start.get_value(0.0) == pytest.approx(2.0)
         assert pointer.loop_start.get_value(20.0) == pytest.approx(6.0)
         assert pointer.loop_dur.get_value(0.0) == pytest.approx(1.0)
+
+    def test_time_mode_normalized_alone_is_silent(self, monkeypatch, capsys,
+                                                  caplog):
+        """Il default `seconds` non annuncia piu' niente (issue #242).
+
+        Dalla v9.0.0 alla v9.1.0 questo stream riceveva l'avviso di migrazione
+        `[LOOP_UNIT]`, e lo riceveva su stderr proprio a clip logger spento:
+        era il caso che non si poteva zittire. Passata la release che lo
+        portava, `seconds` e' il default e basta, e lo stream si legge in
+        silenzio.
+        """
+        import logging
+        import pge.shared.logger as logger_module
+        monkeypatch.setattr(logger_module, '_clip_logger', None)
+        monkeypatch.setattr(logger_module, '_clip_logger_initialized', True)
+
+        config = _real_config(time_mode='normalized',
+                              sample_dur_sec=8.0, duration=20.0)
+        with caplog.at_level(logging.WARNING):
+            pointer = PointerController({'start': 0.6}, config)
+
+        assert pointer.start == pytest.approx(0.6)
+        # Silenzio vuol dire stderr vuoto, non "senza [LOOP_UNIT]": cercare
+        # il tag lascerebbe passare lo stesso avviso con un'altra etichetta.
+        err = capsys.readouterr().err
+        assert err == '', err
+        # E stderr vuoto, sotto pytest, non basta: il plugin di logging
+        # appende un handler al root, quindi un avviso tornato come
+        # `logger.warning(...)` qui non arriva a stderr, mentre fuori dai
+        # test finisce a `logging.lastResort`, cioe' proprio su stderr
+        # (TestStderr in tests/test_api_stdout.py lo misura in un processo
+        # vero). Misurato: senza questa riga quel ritorno restava verde.
+        avvisi = [r.getMessage() for r in caplog.records
+                  if r.levelno >= logging.WARNING]
+        assert avvisi == [], avvisi

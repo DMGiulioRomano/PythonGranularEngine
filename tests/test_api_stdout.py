@@ -438,7 +438,7 @@ class TestCensimento:
                 f"aggiorna l'elenco")
 
 
-    def test_la_prova_di_una_voce_dev_essere_su_stdout(self):
+    def test_la_prova_di_una_voce_dev_essere_su_stdout(self, tmp_path):
         """Chi scrive su stderr non tiene in vita una voce del censimento.
 
         Il buco che questo chiude e' quello del `  - ` e del `[CACHE]`
@@ -448,20 +448,50 @@ class TestCensimento:
         `✓ Score generato`, che sta sul ramo csound e a runtime non e'
         esercitato da nessuno: per lui la statica e' l'unica guardia).
 
-        Il caso vero e' misurato, non inventato: `log_loop_unit_migration_warning`
-        e' l'unico `print()` di `src/pge/` con un `file=`, scrive su stderr, ed
-        e' proprio uno dei due writer che l'intestazione di `api.py` nomina
-        **fuori** censimento -- deve stare fuori anche dal bacino delle prove.
+        Il caso vero su cui era misurato non c'e' piu': era
+        `log_loop_unit_migration_warning`, l'unico `print()` di `src/pge/` con
+        un `file=`, e se n'e' andato con l'avviso di migrazione (#242). Una
+        prova sul sorgente reale resterebbe verde senza guardare niente, quindi
+        il filtro si interroga direttamente, sulle forme che deve distinguere.
+
+        Quel caso provava pero' due cose, e il predicato e' solo la prima: la
+        seconda e' che `_iter_prints` lo **applichi**, perche' e' li' che il
+        bacino delle prove si forma. Un predicato giusto che nessuno chiama
+        lascia verde tutto il resto del file (misurato: togliere la chiamata da
+        `_iter_prints` non faceva rosso niente). Per questo il filtro si
+        interroga anche la' dove agisce, su un modulo scritto apposta.
         L'altra meta' dell'asserzione tiene il filtro dall'essere troppo largo:
         un predicato che scartasse tutto renderebbe questo test verde e la
         direzione statica un no-op.
         """
-        pool = _library_prints(skip_unreachable=False)
-        assert ('logger.py', 'log_loop_unit_migration_warning') not in {
-            (mod, func) for mod, func, _pref, _src in pool}, (
+        def su_stdout(src):
+            return _va_su_stdout(ast.parse(src).body[0].value)
+
+        assert su_stdout("print('x')")
+        assert su_stdout("print('x', file=sys.stdout)")
+        assert not su_stdout("print('x', file=sys.stderr)"), (
             "un print con file=sys.stderr conta come prova che una voce del "
             "censimento e' ancora su stdout: il censimento e' di stdout, "
             "quella prova non lo e' (vedi _va_su_stdout)")
+        assert not su_stdout("print('x', file=f)"), (
+            "un canale che non si sa leggere e' stato dato per stdout: "
+            "l'incertezza va nella direzione sicura (vedi _va_su_stdout)")
+
+        modulo = tmp_path / 'modulo.py'
+        modulo.write_text(
+            "import sys\n"
+            "def su_stderr():\n"
+            "    print('x', file=sys.stderr)\n"
+            "def su_stdout():\n"
+            "    print('x')\n",
+            encoding='utf-8')
+        assert [func for func, _node in _iter_prints(str(modulo))] == [
+            'su_stdout'], (
+            "_iter_prints ha raccolto un print con file=sys.stderr: il "
+            "predicato c'e' ma il bacino delle prove non lo applica "
+            "(vedi _va_su_stdout)")
+
+        pool = _library_prints(skip_unreachable=False)
         assert ('generator.py', 'create_elements') in {
             (mod, func) for mod, func, _pref, _src in pool}, (
             "il filtro su stdout ha scartato anche i print senza file=: "
@@ -695,3 +725,50 @@ class TestStderr:
             "l'intestazione di api.py censisce stdout senza dire che stderr "
             "esiste: redirect_stdout si legge allora come 'silenzio', e non "
             "lo e' (issue #189)")
+
+    def test_la_console_del_clip_logger_spenta_non_e_silenzio(self, tmp_path):
+        """Spegnere la console zittisce il clip logger, non stderr.
+
+        Con la #242 se n'e' andato l'avviso che parlava proprio a console
+        spenta, ed e' facile rileggerlo come "console spenta = stderr muto":
+        la prima stesura della #242 lo scriveva in quattro posti. Non e' vero. Un
+        record WARNING di un logger che non ha handler in tutta la gerarchia
+        finisce a `logging.lastResort`, che scrive su stderr; il caso vero e'
+        `Envelope` con un `type` sull'ultimo breakpoint, e ci si arriva da
+        YAML.
+
+        Serve un processo vero: sotto pytest il plugin di logging appende un
+        handler al root, `lastResort` non scatta e stderr resterebbe vuoto
+        per una ragione che fuori dai test non c'e'.
+        """
+        import subprocess
+        import sys
+
+        codice = (
+            "from pge.shared import logger as clip\n"
+            "clip.configure_clip_logger(enabled=False, console_enabled=False,"
+            " file_enabled=False)\n"
+            "from pge.envelopes.envelope import Envelope\n"
+            "Envelope([[0, 0], [1, 1, 'step']])\n"
+        )
+        env = dict(os.environ, PYTHONPATH=os.path.dirname(SRC_PGE))
+        proc = subprocess.run([sys.executable, '-c', codice], cwd=tmp_path,
+                              env=env, capture_output=True, text=True,
+                              timeout=120)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == '', proc.stdout
+        assert 'ultimo punto ignorato' in proc.stderr, (
+            "con la console del clip logger spenta stderr e' diventato muto: "
+            "se il warning di Envelope e' passato altrove, l'intestazione di "
+            f"api.py va riscritta di conseguenza. stderr={proc.stderr!r}")
+
+        header = []
+        for line in open(API_PATH, encoding='utf-8'):
+            if not line.startswith('#'):
+                break
+            header.append(line)
+        header = ''.join(header)
+        assert 'lastResort' in header, (
+            "l'intestazione di api.py elenca su stderr il solo clip logger: "
+            "letta cosi', configure_clip_logger(console_enabled=False) "
+            "sembra silenzio, e il warning di Envelope lo smentisce")

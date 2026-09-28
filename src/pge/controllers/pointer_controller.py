@@ -21,7 +21,6 @@ from pge.shared.logger import (
     log_loop_drift_warning,
     log_loop_dynamic_mode,
     log_loop_init,
-    log_loop_unit_migration_warning,
 )
 from pge.shared.exceptions import InvalidFieldValueError
 
@@ -37,26 +36,6 @@ LOOP_UNITS = ('seconds', 'absolute', 'normalized')
 # queste benche' loop non sia: e' una posizione nel sample come loop_start,
 # stesso dominio e stessa unita' (reference §10.1).
 _LOOP_UNIT_SCOPE = ('start', 'loop_start', 'loop_end', 'loop_dur')
-
-
-def _rescaling_would_change(value) -> bool:
-    """True se la conversione a secondi muoverebbe `value`.
-
-    Serve solo all'avviso di migrazione di #222, e per essere utile deve essere
-    lo specchio di cio' che `scale_raw_param_values` tocca davvero: numeri ed
-    envelope-like, e nient'altro. Due esclusioni, per due motivi diversi:
-
-    - uno zero e' zero sotto qualunque fattore di scala, quindi non ha niente
-      da migrare (ed e' la forma piu' comune nel corpus dei config);
-    - quel che la conversione lascia passare invariato — una stringa, per dire
-      — non si muoveva nemmeno prima.
-    """
-    if value is None or isinstance(value, bool):
-        return False
-    if isinstance(value, (int, float)):
-        return value != 0
-    return Envelope.is_envelope_like(value)
-
 
 
 class PointerController:
@@ -259,7 +238,6 @@ class PointerController:
             return {}
 
         if 'loop_unit' not in params:
-            self._warn_loop_unit_migration(params)
             return params  # default 'seconds': valori gia' in secondi assoluti
 
         loop_unit = params['loop_unit']
@@ -288,37 +266,6 @@ class PointerController:
                 scaled[key] = self._scale_value(scaled[key], scale)
 
         return scaled
-
-    # ponytail: si toglie dopo una release, quando il vecchio comportamento
-    # di loop_unit non e' piu' memoria viva di nessuno. Il conto lo tiene la
-    # issue #242, che elenca tutto cio' che va via insieme a questo metodo:
-    # il marcatore da solo non lo greperebbe nessuno.
-    def _warn_loop_unit_migration(self, params: dict) -> None:
-        """Avvisa gli stream a cui #222 cambia il significato dei numeri.
-
-        Prima di #222 un `loop_unit` mancante ereditava da `time_mode`: su uno
-        stream `normalized` queste posizioni venivano scalate per
-        `sample_dur_sec`. Ora non piu'.
-
-        Avvisa solo chi cambia davvero: uno zero resta zero sotto qualunque
-        fattore di scala, e `start: 0` e' la forma piu' comune nel corpus dei
-        config — senza il filtro sarebbero undici avvisi su stream in cui non
-        si muove un campione, con i tre casi veri in mezzo al rumore.
-        """
-        if self._config.time_mode != 'normalized':
-            return
-
-        affected = [key for key in _LOOP_UNIT_SCOPE
-                    if _rescaling_would_change(params.get(key))]
-        if not affected:
-            return
-
-        log_loop_unit_migration_warning(
-            stream_id=self._config.context.stream_id,
-            keys=affected,
-            sample_dur_sec=self._sample_dur_sec,
-        )
-
 
     def _scale_value(self, value, scale: float):
             """

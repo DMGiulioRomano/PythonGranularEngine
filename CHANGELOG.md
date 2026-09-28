@@ -57,6 +57,35 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lo stesso, ma arriva dal builder: `normalize_read_direction` da solo non
   rifiuta più un corpo malformato nella forma, lo Stream sì.
 
+### Rimosso
+
+- **L'avviso di migrazione di `loop_unit`** (issue #242). Dalla v9.0.0 alla
+  v9.1.0 uno stream con `time_mode: normalized`, nessun `loop_unit` e almeno
+  una posizione diversa da zero riceveva il warning `[LOOP_UNIT]`: #222 aveva
+  tolto l'ereditarietà `loop_unit`←`time_mode`, e quei numeri, prima scalati
+  per `sample_dur_sec`, venivano letti in secondi. L'avviso era transitorio per
+  costruzione (`# ponytail:` nel sorgente) e la release che lo portava è
+  passata: il default `seconds` non viene più annunciato.
+
+  Vanno via `PointerController._warn_loop_unit_migration`, il suo filtro
+  `_rescaling_would_change` e `log_loop_unit_migration_warning` in
+  `shared/logger.py`, compresa la stampa `CLIP: ...` su stderr che parlava
+  proprio a console del clip logger spenta. Per chi incorpora il motore,
+  `configure_clip_logger(console_enabled=False)` torna a zittire il clip
+  logger anche su stderr; stderr non diventa per questo silenzioso (restano
+  i record WARNING che `logging` manda a `lastResort` e i `FutureWarning`
+  delle API deprecate), e il silenzio resta `redirect_stderr`. Restano
+  invariati il vocabolario (`seconds` / `absolute` / `normalized`), l'errore
+  sull'unità sconosciuta e il default `seconds`.
+
+  La superficie YAML non cambia, e nessun repo a valle importa i simboli
+  rimossi, quindi nessuna CI diventa rossa. PGE-ls e PGE-ui tengono uno
+  specchio di `_rescaling_would_change` per la propria versione dell'avviso,
+  marcata ponytail con rimando alla #242: quegli specchi non rispecchiano più
+  niente. gl-ls e granulation-studies lo usano per una diagnostica propria,
+  che resta vera perché l'engine continua a leggere quei numeri in secondi:
+  lì diventa stantio solo il rimando all'avviso del motore.
+
 ---
 
 ## [v9.1.0] — "Quiet Stdout" — 2026-09-27

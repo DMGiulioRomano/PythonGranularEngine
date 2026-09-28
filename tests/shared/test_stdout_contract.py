@@ -878,8 +878,6 @@ CLASSIFICAZIONE = {
     ('rendering/supercollider_renderer.py', '[CACHE] {}: {}'):
         PROTOCOLLO,
     # --- shared/logger.py ---
-    ('shared/logger.py', 'CLIP: {}'):
-        INTERFACCIA,
     ('shared/logger.py', '📝 Clip log file: {}'):
         INTERFACCIA,
 }
