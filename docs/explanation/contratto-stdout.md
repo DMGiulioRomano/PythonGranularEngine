@@ -391,8 +391,11 @@ dice in prima persona, sopra `DIAGNOSTIC_LOGGER_NAME`.
 - **Cambi il formato di una riga di protocollo** → e' un cambio di superficie
   pubblica: serve l'analisi d'impatto su PGE-ui e PGE-ls prima, non dopo.
 - **Vuoi zittire la libreria** → `contextlib.redirect_stdout` non basta: serve
-  anche `redirect_stderr`, oppure `configure_clip_logger(console_enabled=False)`.
-  Il censimento in testa a `api.py` elenca riga per riga cosa esce e da dove.
+  anche `redirect_stderr`, entrata prima che il clip logger si costruisca.
+  `configure_clip_logger(console_enabled=False)` non la sostituisce: zittisce
+  il clip logger, non stderr, dove restano i record WARNING che `logging` manda
+  a `lastResort` e i `FutureWarning` delle API deprecate. Il censimento in
+  testa a `api.py` elenca riga per riga cosa esce e da dove.
 
 ## Vedi anche
 
