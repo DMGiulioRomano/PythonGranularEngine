@@ -432,14 +432,25 @@ class Envelope:
             # il compito qui e' arrivarci, non esplodere prima (issue #234).
             return isinstance(x, (int, float)) and not isinstance(x, bool)
 
+        def _scale_y(v):
+            # Si scala solo una y che e' un numero, per la ragione per cui
+            # `_scale_compact` scala solo un `end_time` numerico (issue #211):
+            # una stringa o una lista per un float sono un TypeError nudo, che
+            # risale prima che il builder veda il corpo, e `True * fattore` e'
+            # un float legittimo, che cancellerebbe l'errore. Cio' che non e'
+            # un numero resta com'e', e lo rifiuta il builder nominando il campo.
+            return v * scale_factor if _is_num(v) else v
+
         def _scale_points_y(points):
             # Una lista di breakpoint [t, v] o [t, v, interp]: l'interp
             # per-punto va conservato. La usano il pattern del compatto e i
             # punti del BP group, che scalano la stessa cosa allo stesso modo —
             # tenerne tre copie e' come e' nato il difetto del compatto, dove
             # la lunghezza cablata a 2 buttava via il terzo elemento a ogni
-            # render sotto un'unita' non-seconds (issue #234).
-            return [[p[0], p[1] * scale_factor, *p[2:]] for p in points]
+            # render sotto un'unita' non-seconds (issue #234). I punti del
+            # pattern `is_compact_format` li guarda solo in lunghezza: la y puo'
+            # non essere un numero, e il "punto" puo' essere un BP group.
+            return [[p[0], _scale_y(p[1]), *p[2:]] for p in points]
 
         def _scale_group_y(group):
             return [_scale_points_y(group[0]), group[1]]
@@ -465,7 +476,7 @@ class Envelope:
                     scaled.append([item[0], item[1] * scale_factor, item[2]])
                 elif isinstance(item, dict) and 't' in item and 'v' in item:
                     scaled_dict = dict(item)
-                    scaled_dict['v'] = item['v'] * scale_factor
+                    scaled_dict['v'] = _scale_y(item['v'])
                     scaled.append(scaled_dict)
                 else:
                     scaled.append(item)

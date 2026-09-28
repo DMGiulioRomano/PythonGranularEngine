@@ -551,14 +551,15 @@ streams:
 
 I guard di forma vivono in `EnvelopeBuilder` e valgono per **ogni** chiave che
 accetta un envelope (issue #211): arità del BP group, `end_time` e `n_reps` del
-formato compatto (il `bool` escluso: `true` non è `1`), pattern non vuoto con
-la `x` numerica, in `[0, 100]` e non decrescente, distribuzione temporale col
-nome nel registro e parametri costruibili, elemento non riconosciuto in una
-lista. Il `Valore invalido per` nomina la chiave come è scritta nel file; dove
+formato compatto (il `bool` escluso: `true` non è `1`), pattern non vuoto di
+punti piatti (`x` e `y` numeri) con la `x` in `[0, 100]` e non decrescente,
+distribuzione temporale col nome nel registro e parametri costruibili, elemento
+non riconosciuto in una lista. Il `Valore invalido per` nomina la chiave come è
+scritta nel file; dove
 cade *dentro* l'envelope lo dice l'hint. Fino a #211 li applicava solo
 `grain.read_direction`, e lo stesso corpo sotto un'altra chiave risaliva come
-`ValueError` nudo — o, per `n_reps: true` e `x` fuori range, si rendeva in
-silenzio.
+`ValueError` o `TypeError` nudo — o, per `n_reps: true`, `x` fuori range e
+`y: true` nel pattern, si rendeva in silenzio.
 
 ### Strategia non trovata
 ```yaml

@@ -1994,9 +1994,12 @@ risaliva come `ValueError` nudo o si rendeva in silenzio.
   lista mista. Con `time_mode: normalized` il controllo sul tipo vale prima
   della scala (§3.3): un `true` non diventa la durata dello stream.
 - `pattern_points` vuoto → errore.
-- punto del pattern non piatto (una macro-forma annidata) o con `x` non
-  numerica → errore; `x` fuori da `[0, 100]` o che torna indietro → errore
-  (§5.3.1).
+- punto del pattern non piatto → errore. Piatto è la forma di un breakpoint
+  nudo: `x` e `y` numeri (il booleano no: `true` non è `1`) e il terzo
+  elemento, se c'è, il nome di un'interpolazione; una macro-forma annidata non
+  lo è. Le scale delle `y` (`grain.duration_unit`, `loop_unit: normalized`,
+  §10.1) non convertono una `y` che non è un numero, per la stessa ragione di
+  §3.3. `x` fuori da `[0, 100]` o che torna indietro → errore (§5.3.1).
 - `time_dist` con un nome fuori dal registro (§6) o con parametri che la
   distribuzione non accetta → errore. I vincoli sui parametri li applica il
   costruttore di ciascuna distribuzione.
@@ -2225,7 +2228,9 @@ pointer:
 Internamente `PointerController._pre_normalize_loop_params` usa
 `Envelope._scale_raw_values_y` per moltiplicare ogni Y dei breakpoint per
 `sample_dur_sec` prima di costruire l'`Envelope`. Funziona anche su formati
-compatti: il pattern `[x%, y]` viene scalato sul valore.
+compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo una `y`
+che è un numero: ciò che non lo è resta com'è, e lo rifiuta il builder
+nominando la chiave (§5.5, issue #211).
 
 ### Differenza chiave da `time_mode`
 

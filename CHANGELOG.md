@@ -20,16 +20,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lettura: sono vincoli della forma, e salgono in `EnvelopeBuilder`, che ogni
   chiave attraversa. Arità del BP group (almeno 2 punti); `end_time` numero finito
   e oltre l'istante di partenza; `n_reps` intero `>= 1`; pattern non vuoto, punti
-  piatti, `x` in `[0, 100]` e non decrescente; distribuzione temporale col nome
-  nel registro e parametri costruibili; elemento non riconosciuto in una lista.
-  Tutti alzano `InvalidFieldValueError`.
+  piatti (`x` e `y` numeri, il terzo elemento il nome di un'interpolazione), `x`
+  in `[0, 100]` e non decrescente; distribuzione temporale col nome nel registro
+  e parametri costruibili; elemento non riconosciuto in una lista. Tutti alzano
+  `InvalidFieldValueError`.
 
   **Due corpi che oggi si rendono smettono di farlo**, ed è il punto: `n_reps:
   true` (in Python `bool` è un `int`, e `range(True)` rendeva un ciclo) e le
   `x` del pattern fuori da `[0, 100]` o all'indietro (breakpoint a tempo
   negativo, cicli che si sovrappongono, tempi che si invertono). Lo stesso per
-  `end_time: true`, che valeva `1.0`. Nessuno dei config del repository, né
-  dei YAML nei test e nella documentazione, usa una di queste scritture.
+  `end_time: true`, che valeva `1.0`, e per una `y` del pattern `true`, che
+  valeva `1` mentre in un breakpoint nudo `[t, true]` il builder la rifiutava
+  già. Nessuno dei config del repository, né dei YAML nei test e nella
+  documentazione, usa una di queste scritture.
 
   Il builder non conosce il nome YAML della chiave che sta costruendo: il
   campo gli arriva **dall'alto** (`field=` su `EnvelopeBuilder.parse`,
@@ -50,7 +53,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   La scala `time_mode: normalized` non converte più un `end_time` che non è
   un numero: `True * durata` era un float legittimo, e il guard sul booleano
-  avrebbe valso solo sui tempi assoluti.
+  avrebbe valso solo sui tempi assoluti. Per la stessa ragione la scala delle
+  `y` (`grain.duration_unit`, `loop_unit: normalized`) moltiplica solo una `y`
+  che è un numero: una stringa, una lista o una macro-forma nel pattern
+  risalivano da lì come `TypeError` nudo prima che il builder le vedesse.
 
   `read_direction.py` tiene i soli guard di dominio — interp `step`, valori in
   `{-1, +1}` — e perde ~130 righe di delega. Per quella chiave l'errore resta

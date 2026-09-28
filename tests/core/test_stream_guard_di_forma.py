@@ -97,6 +97,8 @@ def _corpi(y, interp):
         'end_time_booleano': [[[0, y], [100, y]], True, 2],
         'x_oltre_cento': [[[0, y], [150, y]], 1.0, 2],
         'x_indietro': [[[100, y], [0, y]], 1.0, 2],
+        'y_non_numerica': [[[0, 'a'], [100, y]], 1.0, 2],
+        'y_booleana': [[[0, True], [100, y]], 1.0, 2],
         'distribuzione_ignota': [[[0, y], [100, y]], 1.0, 2, interp, 'banana'],
         # Non e' un guard del builder ma di `Envelope._parse_segments`, che
         # alzava gia' InvalidFieldValueError su un campo cablato
@@ -147,3 +149,49 @@ def test_il_booleano_sopravvive_alla_scala_normalized(build, campo):
 
     assert exc.value.field == campo
     assert exc.value.value is True
+
+
+# La scala delle y avviene prima del builder, come quella del tempo: un'unita'
+# che non e' quella dello YAML moltiplica ogni y del corpo per un fattore.
+# Ogni riga: la chiave, il corpo sotto la sua unita' non di default, una y
+# legale in quell'unita'.
+SCALE_DELLE_Y = {
+    'grain.duration': (
+        lambda c: {'grain': {'duration': c, 'duration_unit': 'milliseconds'}},
+        50),
+    'pointer.loop_start': (
+        lambda c: {'pointer': {'loop_unit': 'normalized', 'loop_start': c,
+                               'loop_dur': 0.2}},
+        0.5),
+}
+
+
+def _punti_non_piatti(y):
+    """Il punto malformato e il corpo che lo porta."""
+    gruppo = [[[0, y], [50, y]], 'linear']
+    return {
+        'macro_forma_nel_pattern': (gruppo, [[gruppo, [100, y]], 1.0, 2]),
+        'y_non_numerica': ([0, 'a'], [[[0, 'a'], [100, y]], 1.0, 2]),
+        'y_booleana': ([0, True], [[[0, True], [100, y]], 1.0, 2]),
+        'dict_v_non_numerica': (
+            {'t': 0, 'v': 'a'}, [{'t': 0, 'v': 'a'}, [1.0, y]]),
+    }
+
+
+@pytest.mark.parametrize("difetto", list(_punti_non_piatti(0)))
+@pytest.mark.parametrize("campo", list(SCALE_DELLE_Y))
+def test_la_forma_sopravvive_alla_scala_delle_y(build, campo, difetto):
+    """Stessa trappola della scala `normalized` sull'`end_time`: la scala delle
+    y non deve moltiplicare cio' che non e' un numero. Una stringa o una lista
+    per un float sono un TypeError nudo, che risale prima che il builder veda
+    il corpo e ne nomini il campo; `True * 0.001` e' un float legittimo, e il
+    guard sul `bool` varrebbe solo nell'unita' di default."""
+    scrivi, y = SCALE_DELLE_Y[campo]
+    punto, corpo = _punti_non_piatti(y)[difetto]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(scrivi(corpo))
+
+    assert exc.value.field == campo
+    assert exc.value.stream_id == STREAM_ID
+    assert exc.value.value == punto

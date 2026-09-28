@@ -59,8 +59,9 @@ _PATTERN_EMPTY_HINT = (
 
 _PATTERN_POINT_HINT = (
     "un punto del pattern del formato compatto e' piatto: [x%, y] o "
-    "[x%, y, type], con x un numero. Le macro-forme (BP group, formato "
-    "compatto) non si annidano dentro un pattern."
+    "[x%, y, type], con x e y numeri (`true` non e' `1`) e type il nome di "
+    "un'interpolazione. Le macro-forme (BP group, formato compatto) non si "
+    "annidano dentro un pattern."
 )
 
 _PATTERN_X_HINT = (
@@ -695,6 +696,14 @@ class EnvelopeBuilder:
         3), e un BP group e' lungo 2: senza il primo guard ci si infila, e
         l'espansione fa `x_pct / 100.0` su una lista.
 
+        Piatto e' la forma di un breakpoint nudo, la stessa che `parse` chiede
+        a un `[t, v]` / `[t, v, type]`: x e y numeri, e il terzo elemento, se
+        c'e', il nome di un'interpolazione (`None` lo lascia al default).
+        Guardare la sola x lasciava la y all'espansione, che la copia senza
+        leggerla: una stringa o una lista risalivano come TypeError nudo
+        dall'interpolazione, e `true` si rendeva come `1`. Che il nome sia uno
+        dei tipi validi lo dice `Envelope._parse_segments`, col campo.
+
         Args:
             point: il punto da controllare.
             precedente: la x del punto che lo precede, o `None` se e' il primo.
@@ -702,7 +711,9 @@ class EnvelopeBuilder:
             field: la chiave YAML da nominare negli errori (vedi `parse`).
         """
         x = point[0]
-        if not _is_number(x):
+        seg_type = point[2] if len(point) == 3 else None
+        if (not _is_number(x) or not _is_number(point[1])
+                or not (seg_type is None or isinstance(seg_type, str))):
             raise InvalidFieldValueError(
                 field=cls._field(field, "compact.pattern"),
                 value=point,

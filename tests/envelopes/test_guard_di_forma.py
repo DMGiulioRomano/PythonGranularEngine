@@ -177,6 +177,22 @@ class TestPattern:
 
         assert err.value == [True, 1]
 
+    @pytest.mark.parametrize("punto", [
+        [0, 'a'], [0, [1, 2]], [0, None], [0, True], [0, 1, 5],
+    ], ids=['y_stringa', 'y_lista', 'y_null', 'y_booleana', 'type_numero'])
+    def test_punto_che_non_e_piatto(self, punto):
+        """Piatto vuol dire la forma di un breakpoint nudo: x e y numeri, e un
+        eventuale terzo elemento che nomina un'interpolazione. La y
+        l'espansione la copia senza leggerla, quindi una stringa o una lista
+        risalivano dall'interpolazione come TypeError nudo, e un `type` numero
+        come ValueError. `true` si rendeva come `1`, mentre in un `[t, v]` nudo
+        il builder lo rifiuta gia': `true` non e' `1` nemmeno qui."""
+        err = _rifiuta([[punto, [100, 2]], 2.0, 2])
+
+        assert err.field == CAMPO
+        assert err.value == punto
+        assert 'piatto' in err.hint
+
     @pytest.mark.parametrize("x", [150, -10, 100.5])
     def test_x_fuori_da_zero_cento(self, x):
         """La x e' una percentuale del ciclo. Fuori da `[0, 100]` il ciclo

@@ -527,6 +527,14 @@ PARITY_CORPUS = [
     [[[0, 0.05, 'cubic'], [50, 0.1]], 1, 4],
     [[{'t': 0, 'v': 0.05}, {'t': 50, 'v': 0.1}], 1, 4],
     [[], 0.4, 4],
+    # punti del pattern che non sono piatti: il riconoscimento del compatto
+    # guarda solo la loro lunghezza, e la y non e' un numero (issue #211)
+    [[[[[0, 0.05], [1, 0.1]], 'cubic'], [100, 0.1]], 1, 4],
+    [[[0, 'a'], [100, 0.1]], 1, 4],
+    [[[[0, [0.05]], [100, 0.1]], 1, 4]],
+    # breakpoint dict con la v che non e' un numero
+    [{'t': 0, 'v': 'a'}, {'t': 1, 'v': 0.1}],
+    {'type': 'linear', 'points': [{'t': 0, 'v': [0.05]}, [1, 0.1]]},
     # forma tipata
     {'type': 'linear', 'points': [[0, 0.05], [1, 0.1]]},
     {'type': 'linear', 'points': [{'t': 0, 'v': 0.05}, {'t': 1, 'v': 0.1}]},
