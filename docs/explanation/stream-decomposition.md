@@ -176,7 +176,19 @@ Le invarianti che la suite di #186 pinna traslocano con il codice — il blocco
 letto e non consumato, l'ordine della tabella, le chiavi di blocco della loro
 dimensione, `rng_id` alle stocastiche, gli errori che nominano lo stream, gli
 hook raggiunti come metodi dell'istanza che esegue il wiring — e sono elencate
-in #284 come criterio di accettazione.
+in #284 come criterio di accettazione. La suite ne pinna altre due, e #284 non
+le elenca, benché riguardino proprio uno degli attributi che il trasloco toglie
+dallo `Stream`, `_voice_pointer_normalized`: il default `False` c'è anche senza
+il blocco `voices:` o senza il sotto-blocco `pointer:`
+(`test_senza_le_dimensioni_speciali_restano_i_default`), e il `normalized:
+true` letto dal pointer sopravvive alla dimensione che passa dopo di lui per lo
+stesso passo comune
+(`test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream`).
+La prima è la più esposta: oggi il default lo scrive `_init_voice_manager`
+prima di sapere se il blocco c'è, perché `_create_grain` lo legge a ogni
+grano; il controller deve portarlo anche nel ramo senza `voices:`, che oggi
+esce in anticipo con i soli default di `num_voices`, `scatter` e del
+`VoiceManager`.
 
 **`SEMITONE_LOCKED` non è materia di questa decisione.** [[strategy-registry]]
 la lasciava in sospeso «per la decomposizione di `Stream` (#190) o per una
