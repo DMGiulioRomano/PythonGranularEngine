@@ -420,7 +420,10 @@ wiring l'ha spostata in un metodo che ha un nome, `Stream._take_voice_pitch_keys
 che è dove un attributo di classe andrebbe letto. Spostare la dichiarazione dai
 nomi alle classi resta però una decisione sulla superficie d'estensione
 ([[add-voice-strategy]]) e tocca `voice_pitch_strategy.py`: materiale per la
-decomposizione di `Stream` (#190) o per una issue sua, non per qui.
+decomposizione di `Stream` (#190) o per una issue sua, non per qui. #190 ha
+scelto la seconda, e non adesso: il `frozenset` trasloca com'è insieme al
+wiring di `voices` (#284), e la forma di classe aspetta il primo caso che la
+chieda ([[stream-decomposition]]).
 
 ### Il `print()` (domanda 4)
 

@@ -187,6 +187,11 @@ Da fare insieme: `get_sample_duration` è chiamata **due volte** per stream, in
 `__init__` e di nuovo in `_init_stream_context`. Due letture di header per
 stream, per lo stesso file.
 
+> **Esito (2026-09-27, #190).** Tracciato in #283, rimisurato: i siti sono 21
+> e i test che ne dipendono 150, perché due dei siti sono factory
+> (`stream_factory`, `_make_stream`); le cicatrici in produzione sono tre, non
+> una. Vedi `docs/explanation/stream-decomposition.md`.
+
 ### Stadio 3 — il read-model prende un nome
 
 Le quindici property di pass-through di `Stream` la cui docstring dice «Espone X
@@ -197,6 +202,12 @@ per attributo in `src/`: il loro unico lettore è il `getattr` per nome di
 
 Darle un nome — un'interfaccia dichiarata fra il lato composizione e il lato
 lettura — è il lavoro grosso, e va discusso prima di essere scritto.
+
+> **Esito (2026-09-27, #190): non si fa.** Il catalogo di `_curve_sources()` e
+> la guardia dello stadio 1 sono già la dichiarazione che serviva; un
+> read-model con un nome sarebbe una seconda lista da tenere allineata, senza
+> un secondo implementatore. Restano da pulire i residui della superficie
+> (#285). Motivazione in `docs/explanation/stream-decomposition.md`.
 
 ---
 
