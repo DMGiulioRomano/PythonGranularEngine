@@ -725,3 +725,50 @@ class TestStderr:
             "l'intestazione di api.py censisce stdout senza dire che stderr "
             "esiste: redirect_stdout si legge allora come 'silenzio', e non "
             "lo e' (issue #189)")
+
+    def test_la_console_del_clip_logger_spenta_non_e_silenzio(self, tmp_path):
+        """Spegnere la console zittisce il clip logger, non stderr.
+
+        Con la #242 se n'e' andato l'avviso che parlava proprio a console
+        spenta, ed e' facile rileggerlo come "console spenta = stderr muto":
+        la prima stesura della #242 lo scriveva in quattro posti. Non e' vero. Un
+        record WARNING di un logger che non ha handler in tutta la gerarchia
+        finisce a `logging.lastResort`, che scrive su stderr; il caso vero e'
+        `Envelope` con un `type` sull'ultimo breakpoint, e ci si arriva da
+        YAML.
+
+        Serve un processo vero: sotto pytest il plugin di logging appende un
+        handler al root, `lastResort` non scatta e stderr resterebbe vuoto
+        per una ragione che fuori dai test non c'e'.
+        """
+        import subprocess
+        import sys
+
+        codice = (
+            "from pge.shared import logger as clip\n"
+            "clip.configure_clip_logger(enabled=False, console_enabled=False,"
+            " file_enabled=False)\n"
+            "from pge.envelopes.envelope import Envelope\n"
+            "Envelope([[0, 0], [1, 1, 'step']])\n"
+        )
+        env = dict(os.environ, PYTHONPATH=os.path.dirname(SRC_PGE))
+        proc = subprocess.run([sys.executable, '-c', codice], cwd=tmp_path,
+                              env=env, capture_output=True, text=True,
+                              timeout=120)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == '', proc.stdout
+        assert 'ultimo punto ignorato' in proc.stderr, (
+            "con la console del clip logger spenta stderr e' diventato muto: "
+            "se il warning di Envelope e' passato altrove, l'intestazione di "
+            f"api.py va riscritta di conseguenza. stderr={proc.stderr!r}")
+
+        header = []
+        for line in open(API_PATH, encoding='utf-8'):
+            if not line.startswith('#'):
+                break
+            header.append(line)
+        header = ''.join(header)
+        assert 'lastResort' in header, (
+            "l'intestazione di api.py elenca su stderr il solo clip logger: "
+            "letta cosi', configure_clip_logger(console_enabled=False) "
+            "sembra silenzio, e il warning di Envelope lo smentisce")
