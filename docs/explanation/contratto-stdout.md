@@ -175,10 +175,11 @@ descriptor non separa niente; separa la forma.
 
 ### La classificazione
 
-Sessantadue `print()` in `src/pge/` — erano sessantaquattro, e le due che
-mancano sono quelle che la #188 ha portato al logger. La tabella completa vive
-in `CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`), dove e'
-eseguibile; qui il riassunto per modulo:
+Sessantuno `print()` in `src/pge/` — erano sessantaquattro: due la #188 le ha
+portate al logger, la terza era l'avviso di migrazione di `loop_unit` su
+stderr, tolto dalla #242 una volta passata la release che lo portava. La
+tabella completa vive in `CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`),
+dove e' eseguibile; qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
@@ -188,7 +189,7 @@ eseguibile; qui il riassunto per modulo:
 | `rendering/stream_cache_manager.py` | `[CACHE] <id>: <status>` | — | `[CACHE] N/M stream da ricompilare` |
 | `rendering/score_writer.py` | — | — | 4 (path del `.sco` e riepilogo) |
 | `rendering/score_visualizer.py` | — | — | 7 (avanzamento PDF/PNG, waveform illeggibile) |
-| `shared/logger.py` | — | — | `📝 Clip log file:`, `CLIP:` (su stderr) |
+| `shared/logger.py` | — | — | `📝 Clip log file:` |
 
 La **diagnostica e' vuota**, ed e' l'esito piu' istruttivo del censimento.
 La #178 ne aveva trovate poche: dopo che la #187 aveva portato al logger le
@@ -390,8 +391,11 @@ dice in prima persona, sopra `DIAGNOSTIC_LOGGER_NAME`.
 - **Cambi il formato di una riga di protocollo** → e' un cambio di superficie
   pubblica: serve l'analisi d'impatto su PGE-ui e PGE-ls prima, non dopo.
 - **Vuoi zittire la libreria** → `contextlib.redirect_stdout` non basta: serve
-  anche `redirect_stderr`, oppure `configure_clip_logger(console_enabled=False)`.
-  Il censimento in testa a `api.py` elenca riga per riga cosa esce e da dove.
+  anche `redirect_stderr`, entrata prima che il clip logger si costruisca.
+  `configure_clip_logger(console_enabled=False)` non la sostituisce: zittisce
+  il clip logger, non stderr, dove restano i record WARNING che `logging` manda
+  a `lastResort` e i `FutureWarning` delle API deprecate. Il censimento in
+  testa a `api.py` elenca riga per riga cosa esce e da dove.
 
 ## Vedi anche
 
