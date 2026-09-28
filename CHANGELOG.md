@@ -22,14 +22,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `_rescaling_would_change` e `log_loop_unit_migration_warning` in
   `shared/logger.py`, compresa la stampa `CLIP: ...` su stderr che parlava
   proprio a console del clip logger spenta. Per chi incorpora il motore,
-  `configure_clip_logger(console_enabled=False)` torna a essere silenzio anche
-  su stderr. Restano invariati il vocabolario (`seconds` / `absolute` /
-  `normalized`), l'errore sull'unità sconosciuta e il default `seconds`.
+  `configure_clip_logger(console_enabled=False)` torna a zittire il clip
+  logger anche su stderr; stderr non diventa per questo silenzioso (restano
+  i record WARNING che `logging` manda a `lastResort` e i `FutureWarning`
+  delle API deprecate), e il silenzio resta `redirect_stderr`. Restano
+  invariati il vocabolario (`seconds` / `absolute` / `normalized`), l'errore
+  sull'unità sconosciuta e il default `seconds`.
 
-  La superficie YAML non cambia. PGE-ls, PGE-ui, gl-ls e granulation-studies
-  tengono ognuno uno specchio di `_rescaling_would_change` per la propria
-  versione dell'avviso: nessuno importa i simboli rimossi, quindi nessuna CI
-  diventa rossa, ma quegli specchi non rispecchiano più niente.
+  La superficie YAML non cambia, e nessun repo a valle importa i simboli
+  rimossi, quindi nessuna CI diventa rossa. PGE-ls e PGE-ui tengono uno
+  specchio di `_rescaling_would_change` per la propria versione dell'avviso,
+  marcata ponytail con rimando alla #242: quegli specchi non rispecchiano più
+  niente. gl-ls e granulation-studies lo usano per una diagnostica propria,
+  che resta vera perché l'engine continua a leggere quei numeri in secondi:
+  lì diventa stantio solo il rimando all'avviso del motore.
 
 ---
 

@@ -77,9 +77,11 @@ Divisione delle policy (chi decide cosa):
   e dalla #188 e' un record DEBUG sul logger `pge.diagnostics`, muto finche'
   l'host non lo ascolta.
 - **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
-  logger passano di là (`⚠️  CLIP: ...` dall'handler console), quindi
-  `redirect_stdout` da solo non è silenzio: per chi incorpora servono
-  entrambe le redirezioni, o la console del clip logger spenta. Dirlo fa
+  logger passano di là (`⚠️  CLIP: ...` dall'handler console), e con loro i
+  record WARNING dei logger senza handler (`logging.lastResort`) e i
+  `FutureWarning` delle API deprecate, quindi `redirect_stdout` da solo non
+  è silenzio: per chi incorpora servono entrambe le redirezioni. La console
+  del clip logger spenta zittisce il clip logger, non stderr. Dirlo fa
   parte del punto — un censimento di stdout letto come inventario completo
   rifà l'errore della #189 un piano sotto.
 - Quelle righe restano perché fanno parte del contratto stdout della CLI, e

@@ -66,15 +66,19 @@ passare dalla CLI né monkey-patchare i globali.
    di grani per stream è in `RenderResult.grain_counts`.
 
 4. Stderr: **`redirect_stdout` da solo non è silenzio.** Il censimento in
-   `api.py` è di stdout; gli avvisi del clip logger passano da stderr, da
-   qualunque percorso che costruisca envelope — `⚠️  CLIP: ...`
-   dall'handler console, attivo di default.
+   `api.py` è di stdout; su stderr scrivono gli avvisi del clip logger, da
+   qualunque percorso che costruisca envelope (`⚠️  CLIP: ...`
+   dall'handler console, attivo di default), i record WARNING dei logger
+   senza handler, che `logging` manda a `lastResort` finché l'applicazione
+   non configura il logging (oggi `Envelope`, per un `type` scritto
+   sull'ultimo breakpoint), e i `FutureWarning` delle API deprecate
+   (`Stream.grains`, `window_shape_min_px`).
 
-   Chiudere entrambi i canali vuole entrambe le redirezioni, oppure la
-   `redirect_stdout` con la console del clip logger spenta
-   (`configure_clip_logger(console_enabled=False)`, passo 5): dalla #242
-   non c'è più un avviso che parli proprio a console spenta. La
-   `redirect_stderr` va entrata **prima** che il clip logger si costruisca:
+   Chiudere entrambi i canali vuole entrambe le redirezioni. Spegnere la
+   console del clip logger (`configure_clip_logger(console_enabled=False)`,
+   passo 5) zittisce il clip logger, non stderr: dalla #242 non c'è più un
+   avviso che parli proprio a console spenta, ma le altre due voci restano.
+   La `redirect_stderr` va entrata **prima** che il clip logger si costruisca:
    `logging.StreamHandler()` cattura `sys.stderr` alla costruzione, non alla
    scrittura, quindi un handler già vivo continua a scrivere sullo stderr
    vero.
