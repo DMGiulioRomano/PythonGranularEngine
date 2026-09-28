@@ -86,11 +86,12 @@ Quattro letture:
    differenze con un nome — che era quel che la sua issue chiedeva, non il
    peso. «#186 riduce `_init_voice_manager` a un ciclo» è vero della forma, non
    della misura.
-3. **La crescita viene dalle feature, e tutta dal lato dello YAML.** +31 righe
-   di validazione (#207, la coppia `reverse` / `read_direction` e
-   `_normalize_read_direction`; #267, la banda relativa), +17 fra `grains`
-   (#201) e `__repr__` (#250), +6 di vista (#199, `effective_density_curve`).
-   Ogni chiave nuova del blocco `grain:` atterra qui perché `Stream` è l'unico
+3. **La crescita viene dalle feature, e da due lati.** Dal lato dello YAML +31
+   righe di validazione (#207, la coppia `reverse` / `read_direction` e
+   `_normalize_read_direction`; #267, la banda relativa); dal lato della
+   lettura +23: +17 fra `grains` (#201) e `__repr__` (#250), +6 di vista (#199,
+   `effective_density_curve`). Il primo è quello che continuerà a crescere:
+   ogni chiave nuova del blocco `grain:` atterra qui perché `Stream` è l'unico
    ad avere insieme il dizionario grezzo e lo `stream_id` prima che i
    `Parameter` esistano.
 4. **Rispetto al resto del motore**, `stream.py` è il secondo modulo per righe
@@ -212,8 +213,9 @@ Tenerle property ha una condizione: che la superficie sia quella letta, niente
 di più. Oggi non lo è — due property senza lettori, un attributo
 `envelope_table_num` che nessuno assegna né legge, e `grains`, la cui rimozione
 era promessa per la 9.0.0 e che nella 9.1.0 avverte ancora «sara' rimossa in
-PGE 9.0.0». Quello è #285. Stesso posto per l'ultima lettura silenziosa fuori
-dal catalogo, il `getattr(stream, 'pitch_unit', None)` della partitura.
+PGE 9.0.0». Quello è #285. Stesso posto per le due letture silenziose rimaste
+fuori dal catalogo: il `getattr(stream, 'pitch_unit', None)` della partitura e
+il `getattr(stream, 'window_table_map', None)` di `grain_visuals`.
 
 ### Domanda 2 — la normalizzazione delle unità è un passo a monte?
 
@@ -280,12 +282,15 @@ nessuno.
 
 **Cosa costa la cucitura di `voices:`.** Sposta codice appena rivisto in #186
 (chiusa il 2026-09-25); il bersaglio di
-`patch.object(Stream, '_take_voice_*_keys')` passa al controller; quattro doc
-cambiano indirizzo; commenti in PGE-ls e gl-ls che nominano
-`_init_voice_manager` di `stream.py` invecchiano — nessun vincolo funzionale,
-nessuno dei tre repo a valle importa o estrae il wiring. In cambio: circa 110
-righe di codice nette in meno sullo `Stream`, più di un quinto del modulo;
-l'unico blocco letto per conto d'altri
+`patch.object(Stream, '_take_voice_*_keys')` passa al controller; cinque doc
+cambiano indirizzo ([[multi-voice]], [[strategy-registry]],
+[[add-voice-strategy]], la reference [[yaml]] e
+[[make-parameter-envelope-aware]]: quest'ultimo nomina
+`Stream._parse_strategy_kwarg`, e #284 non lo elenca); commenti in PGE-ls e
+gl-ls che nominano `_init_voice_manager` di `stream.py` invecchiano — nessun
+vincolo funzionale, nessuno dei tre repo a valle importa o estrae il wiring. In
+cambio: circa 110 righe di codice nette in meno sullo `Stream`, più di un
+quinto del modulo; l'unico blocco letto per conto d'altri
 rientra nel modello degli altri quattro, e `_voice_pointer_normalized` smette
 di essere stato scritto sullo `Stream` e riletto con un `getattr`.
 
@@ -320,7 +325,11 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
   `object.__new__(Stream)` nei test (21 siti, da cui dipendono 150 test); via le
   cicatrici che quei test hanno lasciato in produzione (`getattr(self,
   'samples_dir', None)`, il ripiego su `OverflowMarginClipStrategy` in
-  `generate_grains`, `getattr(self, '_voice_pointer_normalized', False)`); una
+  `generate_grains`, `getattr(self, '_voice_pointer_normalized', False)`) e,
+  nel ramo plurale di `_check_required_context_fields`, la ragione
+  «raggiungibili da chi chiama questo metodo bypassando `__init__`» — #283 la
+  conta come quarta cicatrice, ma il ramo come codice resta, per il prossimo
+  campo di contesto senza default; una
   sola lettura dell'header del sample per stream — oggi due, perché lo `Stream`
   ri-deriva dal dizionario i campi dello `StreamContext` che ha appena
   costruito; `window_table_map` dichiarato in `__init__`. È lo stadio 2 del plan
