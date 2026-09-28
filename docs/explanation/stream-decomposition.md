@@ -89,8 +89,9 @@ Quattro letture:
 3. **La crescita viene dalle feature, e da due lati.** Dal lato dello YAML +31
    righe di validazione (#207, la coppia `reverse` / `read_direction` e
    `_normalize_read_direction`; #267, la banda relativa); dal lato della
-   lettura +23: +17 fra `grains` (#201) e `__repr__` (#250), +6 di vista (#199,
-   `effective_density_curve`). Il primo è quello che continuerà a crescere:
+   lettura +23: +17 da #201 (`grains`, e la riga di `__repr__` che conta i
+   grani da `_voices`), +6 di vista (#199, `effective_density_curve`). Il
+   primo è quello che continuerà a crescere:
    ogni chiave nuova del blocco `grain:` atterra qui perché `Stream` è l'unico
    ad avere insieme il dizionario grezzo e lo `stream_id` prima che i
    `Parameter` esistano.
@@ -211,7 +212,8 @@ Le sedici property, per lettore:
 
 Tenerle property ha una condizione: che la superficie sia quella letta, niente
 di più. Oggi non lo è — due property senza lettori, un attributo
-`envelope_table_num` che nessuno assegna né legge, e `grains`, la cui rimozione
+`envelope_table_num` che `__init__` mette a `None` e che poi nessuno assegna né
+legge, e `grains`, la cui rimozione
 era promessa per la 9.0.0 e che nella 9.1.0 avverte ancora «sara' rimossa in
 PGE 9.0.0». Quello è #285. Stesso posto per le due letture silenziose rimaste
 fuori dal catalogo: il `getattr(stream, 'pitch_unit', None)` della partitura e
