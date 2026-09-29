@@ -130,6 +130,8 @@ class GranularParser:
         prob_raw: Any = None,
         bounds_override: Any = None,
         range_unit: Any = None,
+        value_field: Optional[str] = None,
+        range_field: Optional[str] = None,
     ) -> Parameter:
         """
         Metodo Factory principale. Crea un oggetto Parameter pronto all'uso.
@@ -145,6 +147,11 @@ class GranularParser:
             range_unit: unità del `_range` dichiarato (issue #267): 'absolute'
                 (default, la larghezza è il numero scritto) o 'relative' (il
                 numero è una frazione del valore base). None → default.
+            value_field, range_field: i path YAML da cui vengono valore e range
+                (`grain.duration`, `grain.duration_range`), per gli errori di
+                forma di un envelope (issue #211). Il parser conosce solo il
+                nome del parametro (`grain_duration`), che non e' come si
+                scrive nel file: il path lo passa chi lo YAML lo legge.
 
         Returns:
             Un'istanza configurata di Parameter.
@@ -167,8 +174,8 @@ class GranularParser:
 
         # 2. Converte i dati grezzi in formati utilizzabili (float o Envelope)
         # Qui avviene la normalizzazione temporale se necessaria
-        clean_value = self._parse_input(value_raw, f"{name}.value")
-        clean_range = self._parse_input(range_raw, f"{name}.range")
+        clean_value = self._parse_input(value_raw, f"{name}.value", value_field)
+        clean_range = self._parse_input(range_raw, f"{name}.range", range_field)
         clean_prob = self._parse_input(prob_raw, f"{name}.probability")
 
 
@@ -224,10 +231,18 @@ class GranularParser:
     # INTERNAL HELPER METHODS
     # =========================================================================
 
-    def _parse_input(self, raw_data: Any, context_info: str) -> Optional[ParamInput]:
+    def _parse_input(
+        self,
+        raw_data: Any,
+        context_info: str,
+        field: Optional[str] = None,
+    ) -> Optional[ParamInput]:
         """
         Analizza un input grezzo e restituisce float, Envelope o None.
         Gestisce la logica di scaling temporale per gli Envelope.
+
+        `field` e' il path YAML dell'input, che gli errori di forma
+        dell'envelope nominano (issue #211); None se il chiamante non lo sa.
         """
         # Caso 0: Dato mancante
         if raw_data is None:
@@ -244,7 +259,7 @@ class GranularParser:
             # conosce, e vanno attribuiti qui come ogni altro errore del parser.
             try:
                 return create_scaled_envelope(
-                    raw_data, self.duration, self.time_mode
+                    raw_data, self.duration, self.time_mode, field=field
                 )
             except ConfigError as err:
                 err.stream_id = self.stream_id

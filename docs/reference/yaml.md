@@ -1630,7 +1630,8 @@ Regole:
   verticale, stessa regola dei loop block §7.3). Nessuna traslazione senza
   collisione.
 - `interp` non in `{linear, cubic, step}` → `InvalidFieldValueError`.
-- Gruppo con meno di 2 punti → `ValueError` (zona senza segmenti interni).
+- Gruppo con meno di 2 punti → `InvalidFieldValueError` (zona senza segmenti
+  interni), che nomina la chiave su cui il gruppo è scritto (issue #211).
 
 Disambiguazione: il BP group e' l'unica lista a 2 elementi con `elem[0]`
 lista di punti ed `elem[1]` stringa. Un breakpoint `[t, v]` ha `elem[0]`
@@ -1702,6 +1703,15 @@ documentato nella sezione 10.
 
 Quando `time_mode: normalized` è attivo, anche `end_time` di un formato compatto
 viene scalato per `duration`. Vedere `_scale_time_recursive` in `envelope.py`.
+Si scala solo un `end_time` che è un numero: `true * 30` farebbe `30.0`, un
+valore legittimo, e la scala cancellerebbe l'errore (§5.5) prima che il builder
+lo veda (issue #211). Lo stesso per i breakpoint di una lista: se ne scala il
+tempo solo se il builder li accetterà (`[t, v]`, `[t, v, type]`, `{t, v,
+type?}` con `t` e `v` numeri), e il resto gli arriva com'è scritto — un
+`[true, v]` non diventa un breakpoint a `t = durata`, e l'errore riporta
+l'elemento come sta nel file. Anche un BP group si scala solo se il builder lo
+espanderà (interp valido, almeno 2 punti): l'errore di arità riporta i punti
+del gruppo come sono scritti, non moltiplicati per la durata.
 
 ```yaml
 duration: 30.0
@@ -1830,7 +1840,7 @@ Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 | Posizione | Nome             | Tipo                       | Obbligatorio | Significato |
 |-----------|------------------|----------------------------|--------------|-------------|
 | 0         | `pattern_points` | lista di `[x%, y]` o `[x%, y, type]` | sì | pattern del ciclo, `x` in `[0, 100]`. Pattern points possono essere 3-tuple (vedi §2.6) |
-| 1         | `end_time`       | numero                     | sì           | **tempo assoluto finale** del blocco compatto |
+| 1         | `end_time`       | numero finito (non booleano) | sì         | **tempo assoluto finale** del blocco compatto |
 | 2         | `n_reps`         | intero `>= 1`              | sì           | numero di ripetizioni |
 | 3         | `interp_type`    | str                        | no           | `'linear'` / `'cubic'` / `'step'`. Fa da default per i segmenti interni e per il gap inter-ciclo |
 | 4         | `time_dist`      | str o dict                 | no           | distribuzione delle durate dei cicli |
@@ -1904,9 +1914,13 @@ Conseguenze:
   rimanenti `20%` di `cycle_duration` mantengono per **hold** l'ultimo valore
   del pattern, fino al primo punto del ciclo successivo. Crea un gap costante
   intenzionale tra ripetizioni.
-- `x_finale > 100` → il punto cade **oltre** la fine del ciclo, sovrapponendosi
-  al ciclo successivo. Nessun guard: comportamento indefinito, ordine temporale
-  dei breakpoint può rompersi. Da evitare.
+- `x_finale > 100` → **errore** (`InvalidFieldValueError`, issue #211): il
+  punto cadrebbe oltre la fine del ciclo, sovrapponendosi al successivo. Fino
+  a #211 non c'era guard e l'envelope si rendeva in silenzio con l'ordine
+  temporale dei breakpoint rotto. Stessa sorte per una `x` negativa (un
+  breakpoint a tempo negativo) e per `x` che tornano indietro
+  (`[[100, a], [0, b]]`): il ciclo si percorre in avanti una volta sola. Una
+  `x` ripetuta resta valida — è la discontinuità.
 
 ```yaml
 # pattern continuo: nessun gap tra cicli
@@ -1970,9 +1984,34 @@ strettamente crescenti.
 
 #### 5.5 Validazioni
 
-- `n_reps < 1` → `ValueError` ("n_reps deve essere >= 1")
-- `end_time <= time_offset` → `ValueError`
-- `pattern_points` vuoto → `ValueError`
+Tutte alzano `InvalidFieldValueError` col nome della chiave su cui il compatto
+è scritto (`density`, `grain.duration`, `deviation_probability.volume`, …) e lo
+stream; dove cade dentro il blocco lo dice l'hint. Vivono in `EnvelopeBuilder`
+e valgono per ogni chiave che accetta un envelope (issue #211) — prima le
+applicava solo `grain.read_direction`, e sotto le altre chiavi lo stesso corpo
+risaliva come `ValueError` nudo o si rendeva in silenzio.
+
+- `n_reps` non intero o `< 1` → errore. Il booleano è escluso: `true` supera il
+  riconoscimento della forma (in Python `bool` è un `int`) e renderebbe un
+  ciclo senza dire niente.
+- `end_time` non numero (booleano compreso), non finito (`.inf`, `.nan`) o
+  `<= time_offset` → errore.
+  `time_offset` è 0 nella forma diretta e l'ultimo breakpoint precedente in una
+  lista mista. Con `time_mode: normalized` il controllo sul tipo vale prima
+  della scala (§3.3): un `true` non diventa la durata dello stream. Il
+  confronto con `time_offset` invece vale dopo, perché l'offset in una lista
+  mista è accumulato da elementi già scalati: l'errore riporta allora i due
+  istanti in secondi, e l'hint lo dice.
+- `pattern_points` vuoto → errore.
+- punto del pattern non piatto → errore. Piatto è la forma di un breakpoint
+  nudo: `x` e `y` numeri (il booleano no: `true` non è `1`) e il terzo
+  elemento, se c'è, il nome di un'interpolazione; una macro-forma annidata non
+  lo è. Le scale delle `y` (`grain.duration_unit`, `loop_unit: normalized`,
+  §10.1) non convertono una `y` che non è un numero, per la stessa ragione di
+  §3.3. `x` fuori da `[0, 100]` o che torna indietro → errore (§5.3.1).
+- `time_dist` con un nome fuori dal registro (§6) o con parametri che la
+  distribuzione non accetta → errore. I vincoli sui parametri li applica il
+  costruttore di ciascuna distribuzione.
 
 ---
 
@@ -2049,7 +2088,9 @@ volume: [[[0, -12], [50, 0], [100, -12]], 30, 10, 'cubic', {type: power, exponen
 - `geometric.ratio <= 0` → `ValueError`
 - `power.exponent` non numerico → `InvalidFieldValueError`
 
-Tutti scattano alla costruzione della distribuzione; `power` era l'unico a non
+Tutti scattano alla costruzione della distribuzione. Da uno YAML risalgono come
+`InvalidFieldValueError` sulla chiave dell'envelope (§5.5, issue #211), con
+l'eccezione della distribuzione nel `__cause__`. `power` era l'unico a non
 validare il proprio parametro, e falliva più tardi con un `TypeError` dentro
 `calculate_distribution`. Il controllo su `exponent` è sul **tipo** (non è un
 numero) e non sui bound: qualunque reale è un esponente legittimo.
@@ -2196,7 +2237,9 @@ pointer:
 Internamente `PointerController._pre_normalize_loop_params` usa
 `Envelope._scale_raw_values_y` per moltiplicare ogni Y dei breakpoint per
 `sample_dur_sec` prima di costruire l'`Envelope`. Funziona anche su formati
-compatti: il pattern `[x%, y]` viene scalato sul valore.
+compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo un punto,
+un breakpoint o un BP group che il builder accetterà (§3.3): ciò che non lo è
+resta com'è, e lo rifiuta il builder nominando la chiave (§5.5, issue #211).
 
 ### Differenza chiave da `time_mode`
 
@@ -2340,31 +2383,17 @@ che devono stare in `{-1, +1}`. La validazione è a parse-time e precede il
 clamp dei bounds, così `read_direction: 0.5` produce un errore sul dominio a
 due valori invece di passare silenziosamente il clamp `[-1, 1]`.
 
-Su questa chiave un gruppo di condizioni che altrove risalgono come
-`ValueError` nudo (vedi [§5](#5-formato-compatto-cicli-ripetuti)) — o non
-risalgono affatto — sono invece `InvalidFieldValueError`, quindi portano il
-campo `grain.read_direction` e lo `stream_id`:
-
-| Condizione | Altrove |
-|---|---|
-| BP group con meno di 2 punti | `ValueError` |
-| `pattern_points` vuoto | `ValueError` |
-| `n_reps < 1`, e `n_reps: true` | `ValueError` / accettato in silenzio |
-| `end_time <= 0`, e `end_time: true` | `ValueError` / accettato in silenzio |
-| `x` del pattern fuori da `[0, 100]`, o che torna indietro | accettato in silenzio |
-| punto del pattern non piatto | `TypeError` |
-| breakpoint `{t, v}` con `t` non numerico | `ValueError` |
-| distribuzione temporale: nome ignoto o parametri non validi | `ValueError` / `AttributeError` |
-
-I nomi validi della distribuzione temporale sono quelli di
-[§6.2](#62-distribuzioni-disponibili); i vincoli sui loro parametri restano di
-`TimeDistributionFactory`, che li applica costruendola.
-
-Resta al builder, e quindi `ValueError`, la sola condizione che dipende da
-quanto il builder ha già percorso: `end_time <= time_offset`, dove
-`time_offset` è l'istante accumulato dagli elementi che precedono il ciclo in
-una lista mista. Qui se ne verifica il segno — decidibile, perché quell'istante
-non è mai negativo — non il confronto.
+Di suo questa chiave aggiunge solo i due guard di **dominio** — interp `step`
+e valori in `{-1, +1}` — e li applica per primi: un corpo che li viola entrambi
+riceve l'errore sul dominio. I guard sulla **forma** — arità del BP group,
+`end_time` e `n_reps` del compatto, pattern, distribuzione temporale, elemento
+non riconosciuto — non sono suoi: stanno in `EnvelopeBuilder` e valgono per
+ogni chiave (vedi [§5.5](#55-validazioni)). Anche qui alzano
+`InvalidFieldValueError` con il campo `grain.read_direction` e lo `stream_id`,
+compreso `end_time <= time_offset` nella lista mista. Fino a #211 esistevano
+solo per questa chiave, applicati da `read_direction.py` al valore grezzo, e lo
+stesso corpo sotto un'altra chiave risaliva come `ValueError` nudo o si rendeva
+in silenzio.
 
 #### 10.6 `num_voices` come envelope
 

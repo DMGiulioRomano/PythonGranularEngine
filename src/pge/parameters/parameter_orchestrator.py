@@ -44,9 +44,25 @@ class ParameterOrchestrator:
     Orchestratore: collega GranularParser e GateFactory senza accoppiarli.
     """
 
-    def __init__(self, config: StreamConfig):
+    def __init__(self, config: StreamConfig, yaml_prefix: Optional[str] = None):
+        """
+        Args:
+            config: StreamConfig dello stream.
+            yaml_prefix: il blocco YAML da cui viene il dict che si passera' a
+                `create_all_parameters`, se non e' la radice dello stream
+                (`'pointer'` per il PointerController). I path degli spec sono
+                relativi a quel dict: serve per nominarli per intero negli
+                errori, dove l'utente li cerca nel file (issue #211).
+        """
         self._parser = GranularParser(config)
         self._config = config
+        self._yaml_prefix = yaml_prefix
+
+    def _yaml_field(self, path: Optional[str]) -> Optional[str]:
+        """Il path YAML completo di uno spec, per l'errore che lo nomina."""
+        if path is None or self._yaml_prefix is None:
+            return path
+        return f"{self._yaml_prefix}.{path}"
 
 
     def create_all_parameters(
@@ -108,6 +124,10 @@ class ParameterOrchestrator:
             value_raw=value,
             range_raw=range_val,
             range_unit=self._range_unit_from_spec(spec, yaml_data, range_val),
+            # I path YAML, per gli errori di forma dell'envelope (issue #211):
+            # qui si sa dove sta il dato, il parser sa solo il nome.
+            value_field=self._yaml_field(spec.yaml_path),
+            range_field=self._yaml_field(spec.range_path),
         )
 
     def _range_unit_from_spec(
@@ -148,6 +168,11 @@ class ParameterOrchestrator:
         if raw is _KEY_ABSENT:
             return RANGE_UNIT_DEFAULT
 
+        # I path qui sotto restano quelli dello spec, senza `_yaml_field`: il
+        # prefisso di blocco (issue #211) serve al pointer, i cui spec non hanno
+        # un `range_unit_path`. E questo metodo non deve leggere di `self` altro
+        # che `_config`: la parita' di PGE-ls lo chiama slegato, con un `self`
+        # che porta quello solo, per non importare `stream.py` (e numpy).
         try:
             unit = validate_range_unit(raw, field=spec.range_unit_path)
         except ConfigError as err:
@@ -238,19 +263,25 @@ class ParameterOrchestrator:
         range_raw,
         bounds,
         deviation_probability_key: str = 'pitch',
+        value_field: Optional[str] = None,
+        range_field: Optional[str] = None,
     ) -> Parameter:
         """
         Crea il Parameter del pitch con bounds dall'unità + ProbabilityGate.
 
         Il pitch è unit-driven: i bounds derivano dalla PitchUnit, non dallo
         schema. Replica la pipeline di create_parameter_with_gate (range +
-        deviation_probability) ma con bounds espliciti.
+        deviation_probability) ma con bounds espliciti. Per la stessa ragione i
+        path YAML (issue #211) non vengono da uno spec: li passa chi ha scelto
+        l'unita', l'unico a sapere sotto quale chiave stava il valore.
         """
         param = self._parser.parse_parameter(
             name=name,
             value_raw=value_raw,
             range_raw=range_raw,
             bounds_override=bounds,
+            value_field=value_field,
+            range_field=range_field,
         )
         gate = self._create_gate(
             param_key=deviation_probability_key,

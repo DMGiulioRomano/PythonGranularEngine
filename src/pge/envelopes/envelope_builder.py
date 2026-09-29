@@ -13,7 +13,109 @@ MODIFICHE PRINCIPALI:
 """
 from __future__ import annotations
 
+import math
 from typing import List, Union, Tuple, Optional
+
+from pge.shared.exceptions import InvalidFieldValueError
+
+
+# I guard di forma (issue #211). Vivono qui e non nelle singole chiavi perche'
+# non sanno niente del parametro che l'envelope descrive: dicono quanti punti
+# servono a una zona, fin dove arriva un ciclo, come si scrive una
+# distribuzione. Prima esistevano solo per `grain.read_direction`, e lo stesso
+# corpo sotto qualunque altra chiave risaliva come ValueError nudo — fuori
+# dalla gerarchia EngineError, senza campo e senza stream_id — o si rendeva in
+# silenzio.
+#
+# Il campo non e' il loro: il builder non conosce il nome YAML della chiave che
+# sta costruendo, e lo riceve da chi lo conosce (`field=`). Per questo gli hint
+# nominano la sotto-posizione ("il terzo elemento del formato compatto"): il
+# campo dice DOVE nel file, l'hint dice DOVE nell'envelope.
+
+def _is_number(value) -> bool:
+    """Numero vero: `bool` e' sottoclasse di `int`, ma `true` non e' `1`."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+# Gli hint seguono la forma: l'elemento di una lista, il BP group, poi il
+# formato compatto slot per slot.
+
+_ELEMENT_HINT = (
+    "un elemento di un envelope e' un breakpoint [t, v] o [t, v, type] con t "
+    "e v numeri (anche nella forma {t, v, type}), un BP group "
+    "[[punti], interp] o un formato compatto [pattern, end_time, n_reps, ...]."
+)
+
+_GROUP_ARITY_HINT = (
+    "un BP group richiede almeno 2 punti: con meno non ha segmenti interni, "
+    "quindi non c'e' nessuna zona a cui applicare l'interpolazione del gruppo. "
+    "Un punto isolato si scrive come breakpoint nudo [t, v]."
+)
+
+_PATTERN_EMPTY_HINT = (
+    "il primo elemento del formato compatto e' il pattern del ciclo, e non "
+    "puo' essere vuoto: senza punti non c'e' niente da ripetere."
+)
+
+_PATTERN_POINT_HINT = (
+    "un punto del pattern del formato compatto e' piatto: [x%, y] o "
+    "[x%, y, type], con x e y numeri (`true` non e' `1`) e type il nome di "
+    "un'interpolazione. Le macro-forme (BP group, formato compatto) non si "
+    "annidano dentro un pattern."
+)
+
+_PATTERN_X_HINT = (
+    "la prima coordinata di un punto del pattern e' una percentuale del ciclo "
+    "e sta in [0, 100]. Fuori da li' il ciclo sfonda i propri confini: sopra "
+    "100 il ciclo successivo comincia prima che questo sia finito, sotto 0 "
+    "esce un breakpoint a tempo negativo."
+)
+
+_PATTERN_ORDER_HINT = (
+    "le percentuali del pattern non possono tornare indietro: il ciclo si "
+    "percorre in avanti una volta sola, e con tempi che si invertono "
+    "l'envelope non rende il pattern scritto. Una percentuale ripetuta invece "
+    "va bene: e' la discontinuita'."
+)
+
+_END_TIME_TYPE_HINT = (
+    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
+    "blocco finisce: un numero finito (`true` non e' `1`, `.inf` e `.nan` non "
+    "sono istanti)."
+)
+
+_END_TIME_OFFSET_HINT = (
+    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
+    "blocco finisce, non la sua durata, e deve superare quello in cui comincia: "
+    "qui {inizio}. Nella forma diretta il blocco comincia a 0; in una lista "
+    "mista comincia dall'ultimo breakpoint scritto prima di lui. Con "
+    "`time_mode: normalized` i due istanti sono in secondi, gia' moltiplicati "
+    "per la durata dello stream: il confronto si fa dopo la scala."
+)
+
+_REPS_HINT = (
+    "il terzo elemento del formato compatto e' il numero di ripetizioni del "
+    "pattern: un intero >= 1 (`true` non e' `1`). Con zero o meno cicli non "
+    "c'e' nessun breakpoint da generare."
+)
+
+_DIST_NAME_HINT = (
+    "il quinto elemento del formato compatto e' la distribuzione temporale "
+    "dei cicli, e ne esiste un elenco chiuso: {disponibili}. Si scrive come "
+    "nome ('exponential') o come dict con i suoi parametri "
+    "({{type: geometric, ratio: 1.5}}); omettendola i cicli durano uguale."
+)
+
+_DIST_PARAM_HINT = (
+    "i parametri della distribuzione temporale '{nome}' non sono validi.{nota} "
+    "I vincoli sui parametri di ciascuna distribuzione sono documentati con "
+    "lei (docs/reference/yaml.md, distribuzioni temporali nei cicli)."
+)
+
+_DIST_TIPO_IMPLICITO = (
+    " Senza la chiave `type` la distribuzione e' `linear`, che non prende "
+    "parametri: se ne volevi un'altra, dichiarane il nome."
+)
 
 
 class EnvelopeBuilder:
@@ -73,13 +175,19 @@ class EnvelopeBuilder:
 
 
     @classmethod
-    def parse(cls, raw_points: list) -> list:
+    def parse(cls, raw_points: list, field: Optional[str] = None) -> list:
         """
         Parsa lista mista di formati, espandendo formato compatto.
         
         Calcola automaticamente l'offset temporale per parti compatte in formato misto.
         
         Args:
+            field: il nome YAML della chiave che l'envelope descrive
+                (`density`, `grain.duration`, ...), cioe' il campo che ogni
+                `InvalidFieldValueError` di forma nominera' (issue #211). Il
+                builder non ha modo di saperlo da se': lo passa chi lo sa. Senza,
+                l'errore nomina la sotto-posizione dentro l'envelope
+                (`envelope.group.points`, `envelope.compact.n_reps`, ...).
             raw_points:
                 - [[[x%, y], ...], end_time, n_reps, interp?] (formato compatto diretto)
                 - [[[t, v], ...], interp] (BP group diretto, issue #64)
@@ -101,14 +209,16 @@ class EnvelopeBuilder:
             >>> EnvelopeBuilder.parse([[0, 10], [0.3, 10], [[[0, 30], [100, 50]], 1.3, 5]])
             [[0, 10], [0.3, 10], [0.3, 30], [0.5, 50], [0.500001, 30], ...]
             
-            # Legacy passa invariato
+            # Un elemento che non e' nessuna delle forme sopra e' un errore
+            # (issue #211): senza `field`, nomina la sotto-posizione
             >>> EnvelopeBuilder.parse([[0, 0], [1, 10], 'cycle'])
-            [[0, 0], [1, 10], 'cycle']
+            InvalidFieldValueError: field='envelope.point', value='cycle'
         """
         # FIX 1: Controlla PRIMA se raw_points STESSO è un formato compatto
         if cls.is_compact_format(raw_points):
             # Formato compatto diretto: offset = 0
-            expanded = cls._expand_compact_format(raw_points, time_offset=0.0)
+            expanded = cls._expand_compact_format(
+                raw_points, time_offset=0.0, field=field)
 
             # Log risultato finale
             cls._log_final_envelope(raw_points, expanded)
@@ -117,7 +227,7 @@ class EnvelopeBuilder:
 
         # BP group diretto [points, interp] (issue #64), simmetrico al compatto
         if cls.is_bp_group(raw_points):
-            expanded = cls._expand_bp_group(raw_points)
+            expanded = cls._expand_bp_group(raw_points, field=field)
 
             cls._log_final_envelope(raw_points, expanded)
 
@@ -128,15 +238,17 @@ class EnvelopeBuilder:
         current_time = 0.0  # Traccia tempo corrente per offset
         
         for item in raw_points:
+            # L'elemento come scritto, per l'errore: il dict normalizzato qui
+            # sotto non e' quello che l'utente ritrova nel file.
+            scritto = item
             # Normalizza dict per-punto {t, v, type?} in lista
-            if isinstance(item, dict) and 't' in item and 'v' in item:
-                if 'type' in item:
-                    item = [item['t'], item['v'], item['type']]
-                else:
-                    item = [item['t'], item['v']]
+            come_lista = cls.dict_as_list(item)
+            if come_lista is not None:
+                item = come_lista
             if cls.is_compact_format(item):
                 # Espandi formato compatto CON OFFSET
-                compact_expanded = cls._expand_compact_format(item, time_offset=current_time)
+                compact_expanded = cls._expand_compact_format(
+                    item, time_offset=current_time, field=field)
                 expanded.extend(compact_expanded)
 
                 # Aggiorna tempo corrente (ultimo breakpoint espanso)
@@ -145,23 +257,20 @@ class EnvelopeBuilder:
             elif cls.is_bp_group(item):
                 # Espandi BP group [points, interp] in 3-tuple (issue #64)
                 group_expanded = cls._expand_bp_group(
-                    item, current_time=current_time, has_preceding=bool(expanded)
+                    item, current_time=current_time,
+                    has_preceding=bool(expanded), field=field,
                 )
                 expanded.extend(group_expanded)
                 current_time = max(current_time, group_expanded[-1][0])
             else:
-                if cls.is_3tuple_breakpoint(item):
-                    expanded.append(item)
-                    current_time = max(current_time, item[0])
-                elif (isinstance(item, list) and len(item) == 2
-                      and isinstance(item[0], (int, float)) and not isinstance(item[0], bool)
-                      and isinstance(item[1], (int, float)) and not isinstance(item[1], bool)):
+                if cls.is_breakpoint(item):
                     expanded.append(item)
                     current_time = max(current_time, item[0])
                 else:
-                    raise ValueError(
-                        f"Elemento non valido nel formato envelope: {item!r}. "
-                        "Atteso [time, value] o [time, value, type]."
+                    raise InvalidFieldValueError(
+                        field=cls._field(field, "point"),
+                        value=scritto,
+                        hint=_ELEMENT_HINT,
                     )
         
         # Log risultato finale
@@ -192,6 +301,48 @@ class EnvelopeBuilder:
         if not isinstance(item[2], str):
             return False
         return True
+
+    @classmethod
+    def is_breakpoint(cls, item) -> bool:
+        """Rileva se item e' un breakpoint nudo che `parse` accetta cosi'
+        com'e': `[t, v]` con t e v numeri (bool escluso), o la 3-tuple
+        `[t, v, type]` di `is_3tuple_breakpoint`. La forma dict ci arriva
+        attraverso `dict_as_list`.
+
+        E' la regola del builder, e non solo sua: le scale (`time_mode:
+        normalized`, le unita' dei valori) toccano un elemento solo se il
+        builder lo accettera', e gli lasciano il resto com'e' scritto perche'
+        sia lui a rifiutarlo (issue #211).
+        """
+        if cls.is_3tuple_breakpoint(item):
+            return True
+        return (isinstance(item, list) and len(item) == 2
+                and _is_number(item[0]) and _is_number(item[1]))
+
+    @staticmethod
+    def dict_as_list(item) -> Optional[list]:
+        """Il breakpoint per-punto in forma dict `{t, v, type?}` come lista
+        (`[t, v]` o `[t, v, type]`), o None se item non e' un dict con `t` e
+        `v`. Che la lista sia un breakpoint valido lo dice `is_breakpoint`."""
+        if not (isinstance(item, dict) and 't' in item and 'v' in item):
+            return None
+        if 'type' in item:
+            return [item['t'], item['v'], item['type']]
+        return [item['t'], item['v']]
+
+    @classmethod
+    def is_pattern_point(cls, point) -> bool:
+        """Rileva se point e' un punto piatto del pattern di un compatto:
+        `[x%, y]` o `[x%, y, type]`, x e y numeri (bool escluso), type una
+        stringa o `None` (l'interp al default). `is_compact_format` i punti li
+        guarda solo in lunghezza: questo e' il resto della loro forma, per il
+        guard (`_check_pattern_point`) e per le scale, come `is_breakpoint`.
+        """
+        if not isinstance(point, list) or len(point) not in (2, 3):
+            return False
+        if not _is_number(point[0]) or not _is_number(point[1]):
+            return False
+        return len(point) == 2 or point[2] is None or isinstance(point[2], str)
 
     @classmethod
     def is_bp_group(cls, item) -> bool:
@@ -238,8 +389,31 @@ class EnvelopeBuilder:
         return True
 
     @classmethod
+    def accepts_bp_group(cls, item) -> bool:
+        """Rileva se item e' un BP group che `_expand_bp_group` espandera':
+        la forma di `is_bp_group` piu' le due condizioni che li' sono errori,
+        l'interp nel registro e almeno 2 punti.
+
+        E' la regola delle scale per il gruppo, come `is_breakpoint` per il
+        breakpoint (issue #211): un gruppo che il builder rifiutera' gli arriva
+        com'e' scritto, perche' l'errore di arita' riporta i suoi punti, e
+        scalati non sarebbero quelli del file.
+        """
+        return (cls.is_bp_group(item)
+                and item[1] in cls.VALID_INTERP_TYPES
+                and len(item[0]) >= 2)
+
+    @staticmethod
+    def _field(field: Optional[str], posizione: str) -> str:
+        """Il campo dell'errore: la chiave YAML se il chiamante l'ha passata,
+        altrimenti la sotto-posizione dentro l'envelope, che e' tutto cio' che
+        il builder sa da solo."""
+        return field if field is not None else f"envelope.{posizione}"
+
+    @classmethod
     def _expand_bp_group(cls, group: list, current_time: float = 0.0,
-                         has_preceding: bool = False) -> list:
+                         has_preceding: bool = False,
+                         field: Optional[str] = None) -> list:
         """
         Espande un BP group [points, interp] in breakpoint 3-tuple.
 
@@ -258,6 +432,7 @@ class EnvelopeBuilder:
             group: [points, interp] con interp in VALID_INTERP_TYPES
             current_time: tempo dell'ultimo breakpoint precedente
             has_preceding: True se la zona segue altri breakpoint
+            field: la chiave YAML da nominare negli errori (vedi `parse`)
 
         Returns:
             Lista di breakpoint [t, v] / [t, v, type]
@@ -265,17 +440,17 @@ class EnvelopeBuilder:
         points, interp = group
 
         if interp not in cls.VALID_INTERP_TYPES:
-            from pge.shared.exceptions import InvalidFieldValueError
             raise InvalidFieldValueError(
-                field="envelope.group.interp",
+                field=cls._field(field, "group.interp"),
                 value=interp,
                 hint=f"Tipi validi: {', '.join(cls.VALID_INTERP_TYPES)}",
             )
 
         if len(points) < 2:
-            raise ValueError(
-                f"BP group richiede almeno 2 punti, ricevuti: {len(points)}. "
-                "Una zona con meno di 2 punti non ha segmenti interni."
+            raise InvalidFieldValueError(
+                field=cls._field(field, "group.points"),
+                value=points,
+                hint=_GROUP_ARITY_HINT,
             )
 
         expanded = []
@@ -360,7 +535,8 @@ class EnvelopeBuilder:
         return True
         
     @classmethod
-    def _expand_compact_format(cls, compact: list, time_offset: float = 0.0) -> list:
+    def _expand_compact_format(cls, compact: list, time_offset: float = 0.0,
+                               field: Optional[str] = None) -> list:
         """
         Espande formato compatto in breakpoints assoluti con discontinuità.
         Usa TimeDistributionFactory per distribuire cicli nel tempo.
@@ -373,6 +549,7 @@ class EnvelopeBuilder:
         Args:
             compact: [[[x%, y], ...], end_time, n_reps, interp?, time_dist?]
             time_offset: Tempo di inizio (da ultimo breakpoint precedente)
+            field: la chiave YAML da nominare negli errori (vedi `parse`)
             
         Returns:
             Lista di breakpoints [t, v] con tempi strettamente crescenti
@@ -389,9 +566,6 @@ class EnvelopeBuilder:
             ... )
             [[0.3, 30], [0.45, 50], ...] # cicli accelerano
         """
-        # Import TimeDistributionFactory
-        from pge.envelopes.time_distribution import TimeDistributionFactory
-        
         # Parse input
         # Precondizione: `compact` ha gia' passato `is_compact_format`, che
         # ammette da 3 a 6 elementi. I tre `len(compact) > SLOT` qui sotto
@@ -412,22 +586,49 @@ class EnvelopeBuilder:
             wrap = False
         
         # Valida
-        if n_reps < 1:
-            raise ValueError(f"n_reps deve essere >= 1, ricevuto: {n_reps}")
+        # Il `bool` va escluso a mano: `is_compact_format` lo lascia passare
+        # per sottoclasse di `int`, e `True < 1` e' falso — senza questo
+        # `range(True)` rende un ciclo in silenzio.
+        if not _is_number(n_reps) or n_reps < 1:
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.n_reps"),
+                value=n_reps,
+                hint=_REPS_HINT,
+            )
         
+        # Il segno non ha un guard a parte: l'offset non e' mai negativo, quindi
+        # `end_time <= 0` e' gia' `end_time <= time_offset`.
+        # Finito, oltre che numero: ogni confronto con `nan` e' falso, quindi
+        # passerebbe il guard qui sotto e si espanderebbe in breakpoint `nan`.
+        if not _is_number(end_time) or not math.isfinite(end_time):
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.end_time"),
+                value=end_time,
+                hint=_END_TIME_TYPE_HINT,
+            )
         if end_time <= time_offset:
-            raise ValueError(
-                f"end_time ({end_time}) deve essere > time_offset ({time_offset})"
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.end_time"),
+                value=end_time,
+                hint=_END_TIME_OFFSET_HINT.format(inizio=time_offset),
             )
         
         if not pattern_points_pct:
-            raise ValueError("pattern_points non può essere vuoto")
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.pattern"),
+                value=pattern_points_pct,
+                hint=_PATTERN_EMPTY_HINT,
+            )
+        precedente = None
+        for point in pattern_points_pct:
+            cls._check_pattern_point(point, precedente, field)
+            precedente = point[0]
         
         # CALCOLA durata totale dall'offset
         total_duration = end_time - time_offset
         
         # CREA strategia di distribuzione temporale
-        distributor = TimeDistributionFactory.create(time_dist_spec)
+        distributor = cls._time_distribution(time_dist_spec, field)
         
         # OTTIENI distribuzione cicli (tempi relativi a time_offset=0)
         relative_cycle_starts, cycle_durations = distributor.calculate_distribution(
@@ -486,6 +687,102 @@ class EnvelopeBuilder:
 
         return expanded
 
+
+    @classmethod
+    def _time_distribution(cls, spec, field: Optional[str]):
+        """La distribuzione temporale del ciclo, o l'errore che nomina il campo.
+
+        Due passaggi, per due ragioni diverse:
+
+        1. **Il nome si legge dal registro.** E' la stessa lista che il factory
+           consulta, e leggerla qui evita che `{type: 5}` arrivi a `.lower()` e
+           risalga come AttributeError — e che `{type: null}`, che il factory
+           non sa leggere, faccia lo stesso. In cambio l'hint elenca i nomi
+           validi, che e' l'errore piu' frequente.
+        2. **I parametri li valida il costruttore**, costruendo. Sono vincoli
+           delle singole distribuzioni e replicarli qui sarebbe codice
+           destinato a divergere.
+
+        Il catch e' stretto a ValueError/TypeError — i due modi in cui il
+        registro dice "questo dato non va", `EngineError` compresi (ereditano
+        ValueError): un `ParameterBoundError` nomina `rate`, un
+        `InvalidFieldValueError` nomina `power.exponent`, e nessuna delle due e'
+        una chiave dello YAML. `MemoryError` e ogni guasto che non parla dello
+        YAML restano visibili per quello che sono. L'hint non riversa
+        `str(exc)`: una parte di quelle stringhe la genera CPython
+        (`... got an unexpected keyword argument`), quindi cambia fra versioni,
+        e PGE-ls i messaggi li parsa. La causa resta nel `__cause__`.
+        """
+        from pge.envelopes.time_distribution import TimeDistributionFactory
+
+        if spec is None:
+            return TimeDistributionFactory.create(None)
+
+        disponibili = TimeDistributionFactory.list_available()
+        nome = spec.get('type', 'linear') if isinstance(spec, dict) else spec
+        if not isinstance(nome, str) or nome.lower() not in disponibili:
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.time_dist"),
+                value=spec,
+                hint=_DIST_NAME_HINT.format(disponibili=', '.join(disponibili)),
+            )
+
+        try:
+            return TimeDistributionFactory.create(spec)
+        except (ValueError, TypeError) as exc:
+            senza_tipo = isinstance(spec, dict) and 'type' not in spec
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.time_dist"),
+                value=spec,
+                hint=_DIST_PARAM_HINT.format(
+                    nome=nome,
+                    nota=_DIST_TIPO_IMPLICITO if senza_tipo else '',
+                ),
+            ) from exc
+
+    @classmethod
+    def _check_pattern_point(cls, point: list, precedente,
+                             field: Optional[str]) -> None:
+        """Un punto del pattern: piatto, con la x in `[0, 100]` e non indietro.
+
+        La forma del punto `is_compact_format` la guarda solo in lunghezza (2 o
+        3), e un BP group e' lungo 2: senza il primo guard ci si infila, e
+        l'espansione fa `x_pct / 100.0` su una lista.
+
+        Piatto e' la forma di un breakpoint nudo, la stessa che `parse` chiede
+        a un `[t, v]` / `[t, v, type]`: x e y numeri, e il terzo elemento, se
+        c'e', il nome di un'interpolazione (`None` lo lascia al default). La
+        regola e' `is_pattern_point`, che leggono anche le scale.
+        Guardare la sola x lasciava la y all'espansione, che la copia senza
+        leggerla: una stringa o una lista risalivano come TypeError nudo
+        dall'interpolazione, e `true` si rendeva come `1`. Che il nome sia uno
+        dei tipi validi lo dice `Envelope._parse_segments`, col campo.
+
+        Args:
+            point: il punto da controllare.
+            precedente: la x del punto che lo precede, o `None` se e' il primo.
+                Una x ripetuta e' ammessa: e' la discontinuita'.
+            field: la chiave YAML da nominare negli errori (vedi `parse`).
+        """
+        if not cls.is_pattern_point(point):
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.pattern"),
+                value=point,
+                hint=_PATTERN_POINT_HINT,
+            )
+        x = point[0]
+        if not 0 <= x <= 100:
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.pattern"),
+                value=x,
+                hint=_PATTERN_X_HINT,
+            )
+        if precedente is not None and x < precedente:
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.pattern"),
+                value=x,
+                hint=_PATTERN_ORDER_HINT,
+            )
 
     @classmethod
     def _log_compact_transformation(

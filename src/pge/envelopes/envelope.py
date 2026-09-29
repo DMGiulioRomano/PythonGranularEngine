@@ -23,9 +23,13 @@ class Envelope:
     Supporta nuovo formato compatto per cicli ripetuti.
     """
     
-    def __init__(self, breakpoints):
+    def __init__(self, breakpoints, field: str | None = None):
         """
         Args:
+            field: il nome YAML della chiave che l'envelope descrive, passato
+                al builder perche' gli errori di forma lo nominino (issue #211).
+                Chi costruisce un envelope da uno YAML lo passa; chi lo
+                costruisce da punti calcolati puo' ometterlo.
             breakpoints:
                 - Lista di [time, value] / [time, value, type]
                 - Nuovo formato compatto: [[[x%, y], ...], total_time, n_reps, interp?]
@@ -74,19 +78,20 @@ class Envelope:
             raise ValueError(f"Formato envelope non valido: {breakpoints}")
         
         # ESPANDI formato compatto usando Builder
-        expanded_points = EnvelopeBuilder.parse(raw_points)
+        expanded_points = EnvelopeBuilder.parse(raw_points, field=field)
         
         # Crea strategy usando Factory
         self.strategy = InterpolationStrategyFactory.create(self.type)
         
         # Parse segmenti → List[NormalSegment]
-        self.segments = self._parse_segments(expanded_points)
+        self.segments = self._parse_segments(expanded_points, field=field)
         
         # Valida
         if not self.segments:
             raise ValueError("Envelope deve contenere almeno un breakpoint.")
     
-    def _parse_segments(self, breakpoints: list) -> List[Segment]:
+    def _parse_segments(self, breakpoints: list,
+                        field: str | None = None) -> List[Segment]:
         """
         Parsa lista di breakpoints in List[NormalSegment].
 
@@ -125,8 +130,11 @@ class Envelope:
                     )
                 if item[2] not in _EB.VALID_INTERP_TYPES:
                     from pge.shared.exceptions import InvalidFieldValueError
+                    # Il campo e' quello passato dall'alto (issue #211), come
+                    # per i guard di forma del builder; senza, la
+                    # sotto-posizione.
                     raise InvalidFieldValueError(
-                        field="envelope.point.type",
+                        field=field if field is not None else "envelope.point.type",
                         value=item[2],
                         hint=f"Tipi validi: {', '.join(_EB.VALID_INTERP_TYPES)}",
                     )
@@ -415,14 +423,16 @@ class Envelope:
         from pge.envelopes.envelope_builder import EnvelopeBuilder
         import copy
         
-        def _is_num(x):
-            # Un breakpoint [t, v] e' fatto di numeri. Senza questa condizione
-            # il ramo qui sotto prende anche liste a due elementi che
-            # breakpoint non sono — `[{t, v}, {t, v}]`, cioe' un BP group con i
-            # punti scritti in forma dict — e moltiplica un dict per un float.
-            # Quella forma il costruttore la rifiuta gia' nominando l'elemento:
-            # il compito qui e' arrivarci, non esplodere prima (issue #234).
-            return isinstance(x, (int, float)) and not isinstance(x, bool)
+        # Si scala un elemento solo se il builder lo accettera'
+        # (`is_breakpoint`, `is_pattern_point`), per la ragione per cui
+        # `_scale_compact` scala solo un `end_time` numerico (issue #211): il
+        # resto arriva al builder com'e' scritto, e lui lo rifiuta nominando
+        # il campo e l'elemento. Moltiplicarlo prima era un TypeError nudo su
+        # una stringa, una lista o un dict — `[{t, v}, {t, v}]` e' una lista a
+        # due elementi (issue #234) — o cancellava l'errore, perche' `True *
+        # fattore` e' un float legittimo; e dove non esplodeva, l'errore
+        # riportava un elemento con l'altra coordinata gia' scalata, che nel
+        # file non c'e'.
 
         def _scale_points_y(points):
             # Una lista di breakpoint [t, v] o [t, v, interp]: l'interp
@@ -430,10 +440,21 @@ class Envelope:
             # punti del BP group, che scalano la stessa cosa allo stesso modo —
             # tenerne tre copie e' come e' nato il difetto del compatto, dove
             # la lunghezza cablata a 2 buttava via il terzo elemento a ogni
-            # render sotto un'unita' non-seconds (issue #234).
-            return [[p[0], p[1] * scale_factor, *p[2:]] for p in points]
+            # render sotto un'unita' non-seconds (issue #234). I punti del
+            # pattern `is_compact_format` li guarda solo in lunghezza: la y puo'
+            # non essere un numero, e il "punto" puo' essere un BP group. Quelli
+            # di un gruppo passano sempre: `is_bp_group` li vuole gia' numerici.
+            return [
+                [p[0], p[1] * scale_factor, *p[2:]]
+                if EnvelopeBuilder.is_pattern_point(p) else p
+                for p in points
+            ]
 
         def _scale_group_y(group):
+            # Un gruppo che il builder rifiutera' resta com'e' scritto: il suo
+            # errore di arita' riporta i punti (`accepts_bp_group`).
+            if not EnvelopeBuilder.accepts_bp_group(group):
+                return group
             return [_scale_points_y(group[0]), group[1]]
 
         def _scale_list_y(points_list):
@@ -450,12 +471,11 @@ class Envelope:
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
                     # è una lista a 2 elementi.
                     scaled.append(_scale_group_y(item))
-                elif (isinstance(item, list) and len(item) == 2
-                      and _is_num(item[0]) and _is_num(item[1])):
-                    scaled.append([item[0], item[1] * scale_factor])
-                elif EnvelopeBuilder.is_3tuple_breakpoint(item):
-                    scaled.append([item[0], item[1] * scale_factor, item[2]])
-                elif isinstance(item, dict) and 't' in item and 'v' in item:
+                elif EnvelopeBuilder.is_breakpoint(item):
+                    # [t, v] o [t, v, type]
+                    scaled.append([item[0], item[1] * scale_factor, *item[2:]])
+                elif EnvelopeBuilder.is_breakpoint(
+                        EnvelopeBuilder.dict_as_list(item)):
                     scaled_dict = dict(item)
                     scaled_dict['v'] = item['v'] * scale_factor
                     scaled.append(scaled_dict)
@@ -514,15 +534,20 @@ def scale_raw_param_values(value, scale_factor: float):
 def create_scaled_envelope(
     raw_data: Union[List, Dict],
     duration: float,
-    time_mode: str = 'absolute'
+    time_mode: str = 'absolute',
+    field: str | None = None,
     ) -> Envelope:
     """
     Factory helper per creare Envelope con scaling TEMPORALE (X axis).
     Sostituisce la vecchia logica integrandosi con EnvelopeBuilder.
-    code Code
 
-    Se time_mode='normalized', moltiplica i tempi [t, v] per 'duration'.
-    Nota: I formati compatti (che usano total_time esplicito) NON vengono scalati.
+    Se time_mode='normalized', moltiplica i tempi [t, v] per 'duration'. Di un
+    formato compatto scala l'`end_time` (le x del pattern sono percentuali del
+    ciclo), e solo se e' un numero; di ogni altro elemento, solo se il builder
+    lo accettera' (`_scale_time_recursive`, issue #211).
+
+    `field` e' il nome YAML della chiave, per gli errori di forma del builder
+    (issue #211): vedi `Envelope`.
     """
     from pge.envelopes.envelope_builder import EnvelopeBuilder
 
@@ -533,16 +558,19 @@ def create_scaled_envelope(
         
         if local_unit == 'normalized':
             scaled_points = _scale_time_recursive(points, duration)
-            return Envelope({'type': raw_data.get('type', 'linear'), 'points': scaled_points})
-        return Envelope(raw_data)
+            return Envelope(
+                {'type': raw_data.get('type', 'linear'), 'points': scaled_points},
+                field=field,
+            )
+        return Envelope(raw_data, field=field)
 
     # 2. Gestione LIST
     # Se il modo globale è normalized, scaliamo solo i breakpoint semplici
     if time_mode == 'normalized':
         scaled_points = _scale_time_recursive(raw_data, duration)
-        return Envelope(scaled_points)
+        return Envelope(scaled_points, field=field)
 
-    return Envelope(raw_data)
+    return Envelope(raw_data, field=field)
 
 def _scale_group_points_time(group_points: List, factor: float) -> List:
     """Scala i tempi dei punti di un BP group, preservando i type per-punto."""
@@ -566,42 +594,58 @@ def _scale_time_recursive(points: List, factor: float) -> List:
     """
     from pge.envelopes.envelope_builder import EnvelopeBuilder
 
+    def _scale_compact(compact):
+        # Scala l'end_time solo se e' un numero. `is_compact_format` lascia
+        # passare `true` (bool e' sottoclasse di int) e `True * factor` e' un
+        # float legittimo: la scala cancellerebbe l'errore prima che il
+        # builder lo veda, e il guard sul `bool` varrebbe solo sui tempi
+        # assoluti (issue #211). Cio' che non e' un numero resta com'e', e lo
+        # rifiuta il builder.
+        scaled_compact = list(compact)
+        end_time = compact[EnvelopeBuilder.COMPACT_END_TIME]
+        if isinstance(end_time, (int, float)) and not isinstance(end_time, bool):
+            scaled_compact[EnvelopeBuilder.COMPACT_END_TIME] = end_time * factor
+        return scaled_compact
+
+    def _scale_group(group):
+        # Stessa regola per il BP group (`accepts_bp_group`): uno che il
+        # builder rifiutera' resta com'e' scritto, perche' il suo errore di
+        # arita' riporta i punti del file e non quelli scalati.
+        if not EnvelopeBuilder.accepts_bp_group(group):
+            return group
+        return [_scale_group_points_time(group[0], factor), group[1]]
+
     # CASO 1: L'intera lista è un formato compatto
     if EnvelopeBuilder.is_compact_format(points):
-        # NUOVO: Scala il total_time (elemento [1])
-        scaled_compact = list(points)
-        scaled_compact[1] = points[1] * factor
-        return scaled_compact
+        return _scale_compact(points)
 
     # CASO 1b: L'intera lista è un BP group diretto [points, interp]
     if EnvelopeBuilder.is_bp_group(points):
-        return [_scale_group_points_time(points[0], factor), points[1]]
+        return _scale_group(points)
 
     # CASO 2: Lista di elementi misti
     scaled = []
     for item in points:
         if EnvelopeBuilder.is_compact_format(item):
-            scaled_compact = list(item)
-            scaled_compact[1] = item[1] * factor
-            scaled.append(scaled_compact)
+            scaled.append(_scale_compact(item))
         elif EnvelopeBuilder.is_bp_group(item):
             # BP group: scala i tempi dei punti, preserva interp e type per-punto.
             # Va controllato prima del branch [t, v]: un gruppo è anch'esso
             # una lista a 2 elementi.
-            scaled.append([_scale_group_points_time(item[0], factor), item[1]])
-        elif isinstance(item, list) and len(item) == 2:
-            # Standard breakpoint: [t, v] -> [t * factor, v]
-            scaled.append([item[0] * factor, item[1]])
-        elif EnvelopeBuilder.is_3tuple_breakpoint(item):
-            # 3-tuple breakpoint: [t, v, type] -> [t * factor, v, type]
-            scaled.append([item[0] * factor, item[1], item[2]])
-        elif isinstance(item, dict) and 't' in item and 'v' in item:
+            scaled.append(_scale_group(item))
+        elif EnvelopeBuilder.is_breakpoint(item):
+            # [t, v] -> [t * factor, v], [t, v, type] -> [t * factor, v, type]
+            scaled.append([item[0] * factor, *item[1:]])
+        elif EnvelopeBuilder.is_breakpoint(EnvelopeBuilder.dict_as_list(item)):
             # Dict per-punto {t, v, type?}: scala t
             scaled_dict = dict(item)
             scaled_dict['t'] = item['t'] * factor
             scaled.append(scaled_dict)
         else:
-
+            # Cio' che il builder non accettera' resta com'e' scritto, e lo
+            # rifiuta lui nominandolo: scalato, `[true, v]` diventava un
+            # breakpoint legittimo e un marcatore `[[t, v], 'x']` un TypeError
+            # nudo (issue #211, la regola di `_scale_compact`).
             scaled.append(item)
     
     return scaled

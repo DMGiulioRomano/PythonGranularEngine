@@ -19,9 +19,16 @@ Organizzazione:
 2. Envelope in forma di lista di breakpoint
 3. Interpolazione: step implicito, step esplicito, tutto il resto errore
 4. Dominio dei valori
-5. Guard di arita': quello che passa di qui arriva vivo al builder
+5. La forma del corpo non e' piu' affare di questo modulo (issue #211)
 6. La stessa grammatica ai due ingressi (lista nuda e dict {points})
 7. Forme non riconosciute
+
+I guard di forma — arita' dei gruppi, `end_time`, `n_reps`, pattern,
+distribuzione temporale — stavano qui fino a #211 e sono saliti in
+`EnvelopeBuilder`, che li applica a ogni chiave. Per questa chiave la risposta
+e' rimasta la stessa, e la fissa `tests/core/test_stream_read_direction.py`
+(`TestNienteValueErrorNudo`), attraverso lo Stream: e' li' che l'errore la
+ottiene, non piu' in `normalize_read_direction`.
 """
 
 import pytest
@@ -29,8 +36,6 @@ import pytest
 from pge.parameters.read_direction import (
     READ_DIRECTION_FIELD,
     READ_DIRECTION_VALUES,
-    _FORM_HINT,
-    _REPS_ARITY_HINT,
     normalize_read_direction,
 )
 from pge.shared.exceptions import InvalidFieldValueError
@@ -223,185 +228,62 @@ class TestDominio:
 
 
 # =============================================================================
-# 5. QUELLO CHE PASSA DI QUI ARRIVA VIVO AL BUILDER
+# 5. LA FORMA NON E' PIU' AFFARE DI QUESTO MODULO (issue #211)
 # =============================================================================
 
-class TestGuardDiArita:
-    """Un corpo che il validatore accetta non deve esplodere nel builder.
+class TestLaFormaEDelBuilder:
+    """`normalize_read_direction` giudica il dominio — interp e valori — e
+    lascia la forma al builder, che la giudica per ogni chiave.
 
-    `normalize_read_direction` dichiara di sollevare `InvalidFieldValueError`,
-    che porta il campo e a cui `Stream` attribuisce lo stream_id. Un `ValueError`
-    nudo che risale da `EnvelopeBuilder` esce dalla gerarchia `EngineError`:
-    l'utente perde la riga di contesto e PGE-ls perde il messaggio che parsa.
-
-    Sono guard di **arità**, non una seconda validazione del builder: dicono
-    quanti elementi servono perché la forma sia quella dichiarata, non se i
-    valori hanno senso. L'unica eccezione è la distribuzione temporale, che
-    non si controlla ma si delega al suo factory (vedi `_check_time_dist`).
-
-    L'invariante non è chiuso, e non lo si dichiari tale: restano fuori le
-    condizioni che dipendono da quanto il builder ha già percorso — `end_time`
-    contro l'offset accumulato — e una distribuzione che validi i propri
-    parametri solo quando la si usa (oggi `power`). Sono pinnate a Stream in
-    `TestNienteValueErrorNudo`, che copre ciò che è davvero coperto.
+    Non e' un buco: il corpo arriva comunque a `EnvelopeBuilder` attraverso
+    l'orchestratore, che gli passa il campo, e li' cade con lo stesso
+    `InvalidFieldValueError` su `grain.read_direction`
+    (`tests/core/test_stream_read_direction.py`). Quello che questi test
+    fissano e' che il modulo non ne tenga una seconda copia — era l'isola che
+    #211 ha chiuso.
     """
 
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_bp_group_con_un_solo_punto(self, ingresso):
-        """Una zona con meno di 2 punti non ha segmenti interni: e' la stessa
-        condizione che il builder verifica, sollevata dove ha un campo."""
-        corpo = [[[0, 1]], 'step']
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
+    @pytest.mark.parametrize("corpo", [
+        pytest.param([[[0, 1]], 'step'], id='bp_group_un_punto'),
+        pytest.param([[[0, 1], [100, -1]], 2.0, 0], id='zero_ripetizioni'),
+        pytest.param([[[0, 1], [100, -1]], 2.0, True],
+                     id='ripetizioni_booleane'),
+        pytest.param([[[0, 1], [50, -1]], True, 2], id='end_time_booleano'),
+        pytest.param([[], 2.0, 2], id='pattern_vuoto'),
+        pytest.param([[[0, 1], [150, -1]], 2.0, 2], id='x_oltre_cento'),
+        pytest.param([[[100, 1], [0, -1]], 2.0, 2], id='x_indietro'),
+        pytest.param([[[0, 1], [100, -1]], 2.0, 2, 'step', 'banana'],
+                     id='distribuzione_ignota'),
+    ])
+    def test_la_forma_passa_al_builder(self, corpo):
+        assert normalize_read_direction(corpo)['points'] is corpo
 
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.field == READ_DIRECTION_FIELD
-        assert '2 punti' in exc.value.hint
+    def test_un_gruppo_senza_punti_non_e_una_forma_sconosciuta(self):
+        """Un gruppo senza punti e' un gruppo con troppo pochi punti: l'hint
+        giusto e' quello del builder, non il `_FORM_HINT` di una lista vuota."""
+        corpo = [[], 'step']
+        assert normalize_read_direction(corpo)['points'] is corpo
 
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_compatto_con_zero_ripetizioni(self, ingresso):
-        corpo = [[[0, 1], [100, -1]], 2.0, 0]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value == 0
-
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_compatto_con_ripetizioni_negative(self, ingresso):
-        corpo = [[[0, 1], [100, -1]], 2.0, -3]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value == -3
-
-    def test_una_ripetizione_resta_valida(self):
-        """Il guard e' `>= 1`, non `> 1`: un ciclo solo e' legittimo."""
-        corpo = [[[0, 1], [100, -1]], 2.0, 1]
-        assert normalize_read_direction({'points': corpo})['points'] is corpo
-
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_end_time_booleano_rifiutato(self, ingresso):
-        """Stessa coercizione `bool` -> `int` già vietata su `n_reps`: `true`
-        passa il riconoscimento della forma e il builder lo usa come `1.0`.
-        Verificato che non è innocuo — `[[[0,1],[50,-1]], true, 2]` rende le
-        stesse transizioni di `end_time: 1.0` e diverse da `2.0`, in
-        silenzio."""
-        corpo = [[[0, 1], [50, -1]], True, 2]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value is True
-
-    @pytest.mark.parametrize("end_time", [0, -1.5])
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_end_time_non_positivo_rifiutato(self, ingresso, end_time):
-        """`end_time` deve superare l'istante da cui il ciclo parte, e quello
-        non è mai negativo: `end_time <= 0` è quindi decidibile qui, senza
-        conoscere l'offset accumulato."""
-        corpo = [[[0, 1], [50, -1]], end_time, 2]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value == end_time
-
-    def test_end_time_positivo_resta_valido(self):
-        """Il guard è sul segno, non sul confronto con l'offset: quello resta
-        al builder."""
-        corpo = [[[0, 1], [50, -1]], 0.001, 2]
-        assert normalize_read_direction({'points': corpo})['points'] is corpo
-
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_ripetizioni_booleane_rifiutate(self, ingresso):
-        """`isinstance(True, int)` è vero, quindi `true` supera il
-        riconoscimento della forma e poi `True < 1` è falso: il guard non
-        scatta e `range(True)` rende un ciclo, in silenzio. È la stessa
-        politica per cui `true` non è `+1` in nessun altro punto del modulo —
-        e `false` era già rifiutato, per il valore, non per il tipo."""
-        corpo = [[[0, 1], [100, -1]], 2.0, True]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value is True
-        assert exc.value.hint == _REPS_ARITY_HINT
-
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_macro_forma_dentro_il_pattern_di_un_ciclo(self, ingresso):
-        """`is_compact_format` guarda solo la lunghezza dei punti del pattern
-        (2 o 3), e un BP group e' lungo 2: passa quel filtro e arriva al
-        builder, che sul primo elemento fa `x_pct / 100.0` e solleva un
-        TypeError nudo. Qui il punto del pattern deve essere piatto."""
+    def test_una_macro_forma_nel_pattern_non_si_legge_come_valore(self):
+        """Da un BP group infilato nel pattern il "y" sarebbe la stringa del
+        suo interp: il modulo non lo legge, e non dice che `'step'` non e' un
+        verso. Il punto lo rifiuta il builder, nominandolo."""
         corpo = [[[[[0, 1], [50, -1]], 'step']], 2.0, 2]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
+        assert normalize_read_direction(corpo)['points'] is corpo
 
+    @pytest.mark.parametrize("corpo, valore", [
+        pytest.param([[[0, 1]], 'linear'], 'linear', id='gruppo'),
+        pytest.param([[[0, 0], [150, 1]], 2.0, 2], 0, id='compatto'),
+    ])
+    def test_il_dominio_resta_qui_anche_sulle_forme_malformate(
+            self, corpo, valore):
+        """Il dominio si giudica prima della forma: un gruppo a un punto con
+        interp `linear`, un pattern oltre 100 con un valore 0, cadono qui per
+        quello che questa chiave non ammette."""
         with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        # Il valore dice QUALE elemento e' caduto: il gruppo annidato, non la
-        # lista che lo contiene. Se un domani `is_compact_format` si
-        # stringesse e il corpo finisse su `_check_item`, cadrebbe `corpo[0]`
-        # e questa asserzione lo direbbe.
-        assert exc.value.value == corpo[0][0]
-        assert exc.value.hint == _FORM_HINT
-
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_punto_del_pattern_senza_interp_dichiarato(self, ingresso):
-        """`[x%, y, None]` e' un punto piatto con l'interp lasciato al default,
-        non una forma annidata: passa, e il builder lo espande in un
-        breakpoint a due elementi. Il guard sul pattern pretende che il primo
-        elemento sia un numero, non che il punto abbia due soli elementi."""
-        corpo = [[[0, 1], [50, 1, None], [100, -1]], 2.0, 2]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        assert normalize_read_direction(raw)['points'] is corpo
-
-    def test_pattern_vuoto_rifiutato(self):
-        with pytest.raises(InvalidFieldValueError):
-            normalize_read_direction({'points': [[], 2.0, 2]})
-
-    @pytest.mark.parametrize("x", [150, -10, 100.5])
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_x_del_pattern_fuori_da_zero_cento(self, ingresso, x):
-        """La x di un punto del pattern è una **percentuale del ciclo**, e il
-        vincolo `[0, 100]` è dichiarato nel docstring di `EnvelopeBuilder` ma
-        non applicato da nessuno. Fuori da lì il ciclo sfonda i propri
-        confini: con `x = 150` il ciclo dopo comincia prima che questo sia
-        finito, con `x = -10` esce un breakpoint a tempo negativo."""
-        corpo = [[[0, 1], [x, -1]], 2.0, 2]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value == x
-
-    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
-    def test_x_del_pattern_che_tornano_indietro(self, ingresso):
-        """Le x possono stare in `[0, 100]` e ciononostante tornare indietro:
-        `[[100, 1], [0, -1]]` espande in `[[1.0, 1], [0.0, -1]]`, tempi
-        all'indietro. L'envelope a `step` legge l'ultimo valore scritto e il
-        `+1` dichiarato non compare in nessun grano — la regola 2 del modulo
-        violata dal modulo."""
-        corpo = [[[100, 1], [0, -1]], 2.0, 2]
-        raw = {'points': corpo} if ingresso == 'dict' else corpo
-
-        with pytest.raises(InvalidFieldValueError) as exc:
-            normalize_read_direction(raw)
-        assert exc.value.value == 0
-
-    def test_x_ripetuta_resta_valida(self):
-        """Una x ripetuta è una discontinuità voluta, non un errore: il
-        vincolo è non-decrescente, non strettamente crescente."""
-        corpo = [[[0, 1], [50, 1], [50, -1], [100, -1]], 2.0, 2]
-        assert normalize_read_direction({'points': corpo})['points'] is corpo
-
-    @pytest.mark.parametrize("x", [0, 100, 0.0, 100.0])
-    def test_estremi_del_pattern_ammessi(self, x):
-        """`0` e `100` sono i confini del ciclo, non valori fuori."""
-        corpo = [[[x, 1], [100, -1]], 2.0, 2]
-        assert normalize_read_direction({'points': corpo})['points'] is corpo
+            normalize_read_direction(corpo)
+        assert exc.value.field == READ_DIRECTION_FIELD
+        assert exc.value.value == valore
 
 
 # =============================================================================

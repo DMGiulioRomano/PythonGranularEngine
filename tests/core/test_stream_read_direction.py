@@ -405,7 +405,51 @@ class TestNienteValueErrorNudo:
     L'osservabile e' il tipo di cio' che risale dal costruttore: dentro la
     gerarchia `EngineError` (campo, hint, stream_id) oppure fuori, dove
     l'utente perde la riga di contesto e PGE-ls perde il messaggio che parsa.
+
+    Da #211 i guard di forma non stanno piu' in `read_direction.py` ma in
+    `EnvelopeBuilder`, e valgono per ogni chiave: qui si fissa che per questa
+    chiave la risposta e' rimasta la stessa — stesso tipo, stesso campo,
+    stesso stream — nei due ingressi, lista nuda e `{points: ...}`. Il campo
+    arriva al builder dall'orchestratore, attraverso il dict `step` in cui
+    `normalize_read_direction` avvolge il valore: e' quel percorso che questi
+    casi presidiano, non le forme, che hanno la loro copertura con il builder.
     """
+
+    @pytest.mark.parametrize("corpo, valore", [
+        pytest.param([[[0, 1]], 'step'], [[0, 1]], id='bp_group_un_punto'),
+        pytest.param([[[0, 1], [100, -1]], 2.0, 0], 0, id='zero_ripetizioni'),
+        pytest.param([[[0, 1], [100, -1]], 2.0, -3], -3,
+                     id='ripetizioni_negative'),
+        pytest.param([[[0, 1], [100, -1]], 2.0, True], True,
+                     id='ripetizioni_booleane'),
+        pytest.param([[[0, 1], [50, -1]], True, 2], True,
+                     id='end_time_booleano'),
+        pytest.param([[[0, 1], [50, -1]], 0, 2], 0, id='end_time_zero'),
+        pytest.param([[[0, 1], [50, -1]], -1.5, 2], -1.5,
+                     id='end_time_negativo'),
+        pytest.param([[], 2.0, 2], [], id='pattern_vuoto'),
+        pytest.param([[[[[0, 1], [50, -1]], 'step']], 2.0, 2],
+                     [[[0, 1], [50, -1]], 'step'],
+                     id='macro_forma_nel_pattern'),
+        pytest.param([[[0, 1], [150, -1]], 2.0, 2], 150, id='x_oltre_cento'),
+        pytest.param([[[-10, 1], [100, -1]], 2.0, 2], -10, id='x_negativa'),
+        pytest.param([[[0, 1], [100.5, -1]], 2.0, 2], 100.5,
+                     id='x_appena_oltre'),
+        pytest.param([[[100, 1], [0, -1]], 2.0, 2], 0, id='x_indietro'),
+    ])
+    @pytest.mark.parametrize("ingresso", ['dict', 'lista'])
+    def test_guard_di_forma(self, build, ingresso, corpo, valore):
+        raw = {'points': corpo} if ingresso == 'dict' else corpo
+
+        with pytest.raises(InvalidFieldValueError) as exc:
+            build(grain={'read_direction': raw})
+
+        assert exc.value.field == 'grain.read_direction'
+        assert exc.value.stream_id == 'test_stream'
+        assert exc.value.value == valore
+        # `True == 1`: senza il tipo il caso booleano passerebbe anche se a
+        # cadere fosse un altro slot che vale 1.
+        assert type(exc.value.value) is type(valore)
 
     @pytest.mark.parametrize("dist", [
         'bogus',                                   # nome ignoto, stringa

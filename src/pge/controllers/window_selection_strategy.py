@@ -21,9 +21,28 @@ from typing import List, Optional, Tuple
 from pge.shared.probability_gate import ProbabilityGate
 from pge.shared.logger import log_window_curve_warning
 from pge.shared.exceptions import (
+    ConfigError,
     InvalidStrategyConfigError,
     StrategyNotFoundError,
 )
+
+# Il path YAML della curva, lo stesso per multistate e transition.
+CURVE_FIELD = 'grain.envelope.curve'
+
+
+def _curve_envelope(curve_data, stream_id: str):
+    """La curva di multistate/transition come Envelope.
+
+    Gli errori di forma nascono nel builder, che ne riceve il campo ma non
+    conosce lo stream (issue #211): l'attribuzione tocca a chi lo conosce.
+    """
+    from pge.envelopes.envelope import Envelope
+
+    try:
+        return Envelope(curve_data, field=CURVE_FIELD)
+    except ConfigError as err:
+        err.stream_id = stream_id
+        raise
 
 
 def _validate_curve_range(curve, duration: float, time_mode: Optional[str],
@@ -348,8 +367,6 @@ class WindowStrategyFactory:
         Returns:
             Istanza di WindowSelectionStrategy appropriata
         """
-        from pge.envelopes.envelope import Envelope
-
         duration  = config.context.duration
         time_mode = config.time_mode
         stream_id = config.context.stream_id
@@ -361,7 +378,7 @@ class WindowStrategyFactory:
             return WindowStrategyFactory.create(
                 'multistate',
                 states=[(float(v), w) for v, w in raw_states],
-                curve=Envelope(curve_data),
+                curve=_curve_envelope(curve_data, stream_id),
                 duration=duration,
                 time_mode=time_mode,
                 stream_id=stream_id,
@@ -375,7 +392,7 @@ class WindowStrategyFactory:
                 'transition',
                 from_window=windows[0],
                 to_window=windows[1],
-                curve=Envelope(curve_data),
+                curve=_curve_envelope(curve_data, stream_id),
                 duration=duration,
                 time_mode=time_mode,
                 stream_id=stream_id,

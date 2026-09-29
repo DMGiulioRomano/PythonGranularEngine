@@ -76,7 +76,10 @@ class PointerController:
         """
         self._config = config
         self._sample_dur_sec = config.context.sample_dur_sec 
-        self._orchestrator = ParameterOrchestrator(config=config)
+        # Il controller riceve il solo blocco `pointer`, e gli spec ne leggono
+        # i path relativi: il prefisso li rende quelli che l'utente ha scritto.
+        self._orchestrator = ParameterOrchestrator(
+            config=config, yaml_prefix='pointer')
         self._init_params(params)
         self._init_loop_state()
     

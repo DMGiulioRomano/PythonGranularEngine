@@ -27,19 +27,21 @@ come errore esplicito e mai come correzione silenziosa:
    accettare una scrittura e renderizzarne un'altra; `0` poi non ha un segno e
    non ha una risposta non arbitraria.
 
-A queste si aggiungono alcuni **guard** sulle macro-forme: quanti punti ha un
-gruppo, quanti cicli e fino a quando dura un formato compatto, dove cadono le
-percentuali del suo pattern, e la costruzione anticipata della distribuzione
-temporale. Non sono una seconda validazione del builder: sono li' perche' quelle
-stesse condizioni, lasciate al builder, risalgono come `ValueError` nudi — fuori
-dalla gerarchia `EngineError`, senza campo e senza stream_id — o non risalgono
-affatto e si renderizzano in silenzio.
+Sono gli unici guard del modulo, perche' sono gli unici che sanno qualcosa del
+verso di lettura. Quelli sulla **forma** — quanti punti ha un gruppo, quanti
+cicli e fino a quando dura un formato compatto, dove cadono le percentuali del
+suo pattern, se la distribuzione temporale si costruisce — vivevano qui fino a
+#211, e solo qui: lo stesso corpo sotto qualunque altra chiave risaliva come
+`ValueError` nudo o si rendeva in silenzio. Stanno in `EnvelopeBuilder`, che li
+applica a ogni chiave e nomina il campo che gli passa l'orchestratore; per
+questa chiave l'errore resta quello di prima — `InvalidFieldValueError` su
+`grain.read_direction`, con lo stream — ma arriva dal builder, dopo i guard di
+dominio di questo modulo.
 
-La copertura non e' totale e non va dichiarata tale. Resta al builder l'unica
-condizione che dipende da quanto ha gia' percorso: `end_time` contro l'istante
-in cui il ciclo comincia, che in una lista mista e' l'offset accumulato dagli
-elementi precedenti. Qui se ne verifica il segno, che e' decidibile perche'
-quell'istante non e' mai negativo, non il confronto.
+Del corpo questo modulo percorre quanto serve a trovare gli interp e i valori:
+riconosce gli elementi di una lista e rifiuta quelli che non sa leggere, ma di
+un punto del pattern di un ciclo non giudica la forma (vedi
+`_check_pattern_point`).
 
 La normalizzazione avvolge il valore in `{'type': 'step', 'points': <raw>}`.
 Il wrapping preserva la semantica temporale: `create_scaled_envelope` sul dict
@@ -51,7 +53,6 @@ from __future__ import annotations
 from typing import Any, Union
 
 from pge.envelopes.envelope_builder import EnvelopeBuilder
-from pge.envelopes.time_distribution import TimeDistributionFactory
 from pge.shared.exceptions import InvalidFieldValueError
 
 # Il nome della chiave nello YAML: identita' del campo in ogni errore.
@@ -82,62 +83,6 @@ _FORM_HINT = (
     "grain.read_direction accetta uno scalare (-1 o +1) oppure un envelope "
     "nelle forme note: lista di breakpoint [[t, v], ...], dict "
     "{points: [...]}, BP group o formato compatto."
-)
-
-# Guard di arita'. Sollevati qui e non lasciati al builder perche' di la'
-# risalgono come ValueError nudi, fuori dalla gerarchia EngineError: senza
-# campo, senza stream_id, e con un messaggio che PGE-ls non puo' attribuire.
-
-_GROUP_ARITY_HINT = (
-    "un BP group di grain.read_direction richiede almeno 2 punti: con meno "
-    "non ha segmenti interni, quindi non c'e' nessuna zona a cui applicare "
-    "l'interpolazione. Per un verso costante basta lo scalare (-1 o +1)."
-)
-
-_REPS_ARITY_HINT = (
-    "il numero di ripetizioni del formato compatto e' un intero >= 1: con "
-    "zero o meno cicli non c'e' nessun breakpoint da generare."
-)
-
-_END_TIME_HINT = (
-    "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
-    "ciclo finisce, e deve superare quello in cui comincia: dev'essere un "
-    "numero positivo (`true` non e' `1`). Che superi davvero l'istante di "
-    "partenza lo verifica il builder, l'unico a conoscere l'offset accumulato "
-    "dagli elementi che precedono in una lista mista."
-)
-
-_PATTERN_X_HINT = (
-    "la prima coordinata di un punto del pattern e' una percentuale del ciclo "
-    "e sta in [0, 100]. Fuori da li' il ciclo sfonda i propri confini: sopra "
-    "100 il ciclo successivo comincia prima che questo sia finito, sotto 0 "
-    "esce un breakpoint a tempo negativo."
-)
-
-_PATTERN_ORDER_HINT = (
-    "le percentuali del pattern non possono tornare indietro: il ciclo si "
-    "percorre in avanti una volta sola. Con tempi che si invertono l'envelope "
-    "a 'step' legge l'ultimo valore scritto, e il verso dichiarato prima non "
-    "comparirebbe in nessun grano. Una percentuale ripetuta invece va bene: "
-    "e' la discontinuita'."
-)
-
-_DIST_NAME_HINT = (
-    "il quinto elemento del formato compatto e' la distribuzione temporale "
-    "dei cicli, e ne esiste un elenco chiuso: {disponibili}. Si scrive come "
-    "nome ('exponential') o come dict con i suoi parametri "
-    "({{type: geometric, ratio: 1.5}}); omettendola i cicli durano uguale."
-)
-
-_DIST_PARAM_HINT = (
-    "i parametri della distribuzione '{nome}' non sono validi.{nota} Il verso "
-    "di lettura non ha una distribuzione propria: e' quella dell'envelope, e i "
-    "vincoli sui suoi parametri sono documentati con lei."
-)
-
-_DIST_TIPO_IMPLICITO = (
-    " Senza la chiave `type` la distribuzione e' `linear`, che non prende "
-    "parametri: se ne volevi un'altra, dichiarane il nome."
 )
 
 
@@ -194,9 +139,10 @@ def _check_envelope_body(body: Any) -> None:
       annidamento fa fallire il riconoscimento e il valore non arriva mai a
       chiamarsi gruppo;
     - dentro il pattern di un ciclo no: `is_compact_format` filtra i punti
-      sulla sola lunghezza (2 o 3), e un BP group e' lungo 2. Li' il rifiuto lo
-      fa `_check_pattern_point`, altrimenti il valore passa di qui e muore nel
-      builder con un TypeError nudo.
+      sulla sola lunghezza (2 o 3), e un BP group e' lungo 2. Li' il rifiuto e'
+      del builder, che la forma del pattern la giudica per ogni chiave (issue
+      #211): `_check_pattern_point` si limita a non leggere un y da un punto
+      che non e' piatto.
     """
     if EnvelopeBuilder.is_compact_format(body):
         _check_compact(body)
@@ -236,8 +182,11 @@ def _check_item(item: Any) -> None:
 
     if isinstance(item, dict) and 't' in item and 'v' in item:
         # Il tempo si pretende numerico come nella forma lista: e' la stessa
-        # grandezza scritta in un altro modo, e senza questo il valore va a
-        # morire nel builder con un ValueError nudo.
+        # grandezza scritta in un altro modo, e un `[t, v]` con la t non
+        # numerica qui sotto non verrebbe riconosciuto come breakpoint. Il
+        # builder lo rifiuterebbe comunque (da #211 nominando il campo): il
+        # rifiuto sta qui perche' qui si riconoscono gli elementi, per
+        # leggerne il valore.
         if not _is_number(item['t']):
             _reject(item, _FORM_HINT)
         _check_interp(item.get('type'))
@@ -252,135 +201,56 @@ def _check_item(item: Any) -> None:
 
 
 def _check_bp_group(group: list) -> None:
-    """BP group (issue #64): `[points, interp]`, interp della macrozona."""
+    """BP group (issue #64): `[points, interp]`, interp della macrozona.
+
+    Che `points` sia una lista di breakpoint piatti lo garantisce gia'
+    `is_bp_group`, che qui e' sempre passato; quanti debbano essere lo dice il
+    builder (issue #211). Per questo i punti si percorrono uno a uno invece che
+    con `_check_points`, che una lista vuota la rifiuterebbe come forma
+    sconosciuta: un gruppo senza punti e' un gruppo con troppo pochi punti, e
+    l'hint giusto e' quello del builder.
+    """
     points, interp = group
     _check_interp(interp)
-    # Solo l'arita': che `points` sia una lista di breakpoint piatti lo
-    # garantisce gia' `is_bp_group`, che qui e' sempre passato.
-    if len(points) < 2:
-        _reject(points, _GROUP_ARITY_HINT)
-    _check_points(points)
+    for item in points:
+        _check_item(item)
 
 
 def _check_compact(compact: list) -> None:
     """Formato compatto: l'interp e' il quarto elemento, i valori stanno nel
-    pattern. Di `end_time` si verifica il segno, che e' decidibile qui, non il
-    confronto con l'istante di partenza (vedi `_END_TIME_HINT`).
+    pattern. Il resto dello slot — `end_time`, `n_reps`, la distribuzione
+    temporale, la forma del pattern — e' forma, e lo giudica il builder per
+    ogni chiave (issue #211).
 
     Gli slot si leggono dalle costanti di `EnvelopeBuilder` (issue #213): il
-    layout della tupla e' suo, e questo modulo lo valida, non lo ridefinisce.
-    Con una copia propria degli indici, un giorno che il `time_dist_spec`
-    cambiasse posizione questa funzione avrebbe continuato a controllare lo
-    slot vecchio — in silenzio, perche' li' dentro ci sarebbe stato comunque
-    qualcosa di plausibile."""
+    layout della tupla e' suo, e questo modulo lo percorre, non lo ridefinisce.
+    Con una copia propria degli indici, un giorno che l'interp cambiasse
+    posizione questa funzione avrebbe continuato a controllare lo slot vecchio
+    — in silenzio, perche' li' dentro ci sarebbe stato comunque qualcosa di
+    plausibile."""
     pattern = compact[EnvelopeBuilder.COMPACT_PATTERN]
-    end_time = compact[EnvelopeBuilder.COMPACT_END_TIME]
-    n_reps = compact[EnvelopeBuilder.COMPACT_N_REPS]
     interp = (compact[EnvelopeBuilder.COMPACT_INTERP]
               if len(compact) > EnvelopeBuilder.COMPACT_INTERP else None)
     _check_interp(interp)
-    # `end_time` deve superare l'istante da cui il ciclo parte, che non e' mai
-    # negativo: il segno e' quindi decidibile qui, il confronto no. E il
-    # `bool` va escluso a mano per la stessa ragione di `n_reps`.
-    if not _is_number(end_time) or end_time <= 0:
-        _reject(end_time, _END_TIME_HINT)
-    # Solo la natura di `n_reps`: che sia un `int` lo garantisce gia'
-    # `is_compact_format`. Resta fuori il solo `bool`, che li' passa per
-    # sottoclasse e qui no, per la stessa ragione per cui `true` non e' `+1`:
-    # senza questo `True < 1` e' falso, il guard non scatta e `range(True)`
-    # rende un ciclo in silenzio.
-    if not _is_number(n_reps) or n_reps < 1:
-        _reject(n_reps, _REPS_ARITY_HINT)
-    if not pattern:
-        _reject(pattern, _FORM_HINT)
-    precedente = None
     for point in pattern:
-        _check_pattern_point(point, precedente)
-        precedente = point[0]
-    # Solo se dichiarata: senza questo, ogni elemento compatto costruirebbe e
-    # butterebbe via una LinearDistribution per non dire niente.
-    if len(compact) > EnvelopeBuilder.COMPACT_TIME_DIST:
-        _check_time_dist(compact[EnvelopeBuilder.COMPACT_TIME_DIST])
+        _check_pattern_point(point)
 
 
-def _check_time_dist(spec: Any) -> None:
-    """La distribuzione temporale del ciclo: la valida il factory, costruendola.
-
-    Qui non c'e' niente da decidere — il verso di lettura non ha una
-    distribuzione propria, e' quella dell'envelope. Ma `is_compact_format`
-    accetta in quella posizione qualunque `str` o `dict`, e cio' che ne esce
-    fallisce dentro `TimeDistributionFactory` con errori che non portano ne'
-    il campo ne' lo stream_id — `ParameterBoundError` compreso, che sta nella
-    gerarchia ma nomina il proprio bound, non questa chiave.
-
-    Due passaggi, per due ragioni diverse:
-
-    1. **Il nome si legge dal registro.** Non e' duplicazione: e' la stessa
-       lista che il factory consulta, e leggerla qui evita che `{'type': 5}`
-       arrivi a `spec.get('type').lower()` e risalga come `AttributeError`.
-       In cambio l'hint puo' elencare i nomi validi, che e' l'errore piu'
-       frequente.
-    2. **I parametri li valida il costruttore**, costruendo. Quelli sono
-       vincoli delle singole distribuzioni e replicarli qui sarebbe codice
-       destinato a divergere; i costruttori sono puri (validano e assegnano),
-       quindi il costo e' un oggetto buttato via.
-
-    Il catch e' stretto a `ValueError`/`TypeError` — i due modi in cui il
-    registro dice "questo dato non va" — cosi' `MemoryError`, `RecursionError`
-    e ogni altro guasto che non parla dello YAML restano visibili per quello
-    che sono. E l'hint non riversa `str(exc)`: quelle stringhe sono in parte
-    generate da CPython (`LinearDistribution() takes no arguments`), quindi
-    instabili fra versioni, e PGE-ls le parsa.
-    """
-    disponibili = TimeDistributionFactory.list_available()
-    nome = spec.get('type', 'linear') if isinstance(spec, dict) else spec
-    if nome is None:
-        nome = 'linear'
-    if not isinstance(nome, str) or nome.lower() not in disponibili:
-        _reject(spec, _DIST_NAME_HINT.format(disponibili=', '.join(disponibili)))
-
-    try:
-        TimeDistributionFactory.create(spec)
-    except (ValueError, TypeError):
-        # `EngineError` eredita da `ValueError`, quindi il ramo copre anche
-        # `ParameterBoundError`: e' voluto. Quello nomina 'rate', non questa
-        # chiave, e Stream attribuisce lo stream_id al solo
-        # InvalidFieldValueError — cosi' tutte le famiglie rispondono uguale.
-        senza_tipo = isinstance(spec, dict) and 'type' not in spec
-        _reject(spec, _DIST_PARAM_HINT.format(
-            nome=nome,
-            nota=_DIST_TIPO_IMPLICITO if senza_tipo else '',
-        ))
-
-
-def _check_pattern_point(point: list, precedente: Any = None) -> None:
-    """Un punto del pattern di un ciclo: `[x%, y]` o `[x%, y, type]`, piatto.
+def _check_pattern_point(point: list) -> None:
+    """Un punto del pattern di un ciclo: `[x%, y]` o `[x%, y, type]`.
 
     Non passa da `_check_item` perche' li' le macro-forme sono ammesse, e qui
-    non lo sono: `is_compact_format` filtra i punti del pattern sulla sola
-    lunghezza (2 o 3) e un BP group e' lungo 2, quindi ci si infila: il builder
-    poi fa `x_pct / 100.0` sul primo elemento e solleva un TypeError nudo.
-
-    La `x` e' una percentuale del ciclo e deve percorrerlo in avanti una volta
-    sola. Fuori da `[0, 100]` il ciclo sfonda i propri confini — con `150` il
-    ciclo successivo comincia prima che questo sia finito, con `-10` esce un
-    breakpoint a tempo negativo; tornando indietro (`[[100, v], [0, w]]`, con
-    entrambe le x in range) i tempi si invertono e con `step` il valore
-    dichiarato per primo non compare in nessun grano. Sono i due modi in cui
-    la regola 2 del modulo — non renderizzare qualcosa di diverso da cio' che
-    e' scritto — verrebbe violata dal modulo stesso.
-
-    Args:
-        point: il punto da controllare.
-        precedente: la `x` del punto che lo precede nel pattern, o `None` se
-            e' il primo. Una `x` ripetuta e' ammessa: e' la discontinuita'.
+    non lo sono. Ma la forma del punto non e' affare di questo modulo: la x —
+    che sia un numero, in `[0, 100]`, non all'indietro — la giudica il builder
+    per ogni chiave (issue #211). Qui si leggono interp e y, e solo da un punto
+    la cui x e' un numero: da un BP group infilato nel pattern (`is_compact_format`
+    filtra i punti sulla sola lunghezza, e un gruppo e' lungo 2) il "y" sarebbe
+    la stringa del suo interp, e l'errore direbbe che `'step'` non e' un verso
+    invece di dire che quello non e' un punto. Un punto cosi' non passa
+    comunque: arriva al builder, che lo rifiuta nominandolo.
     """
     if not _is_number(point[0]):
-        _reject(point, _FORM_HINT)
-    if not 0 <= point[0] <= 100:
-        _reject(point[0], _PATTERN_X_HINT)
-    if precedente is not None and point[0] < precedente:
-        _reject(point[0], _PATTERN_ORDER_HINT)
+        return
     if len(point) == 3:
         _check_interp(point[2])
     _check_direction_value(point[1])

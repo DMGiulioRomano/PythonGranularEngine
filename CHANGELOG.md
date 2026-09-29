@@ -29,6 +29,72 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `Stream.grains`, che nella 9.1.0 avverte ancora di una rimozione «in 9.0.0»
   (#285).
 
+### Cambiato
+
+- **I guard di forma degli envelope valgono per ogni chiave** (issue #211).
+  Fino a oggi li applicava solo `grain.read_direction`, al proprio valore
+  grezzo: lo stesso corpo malformato scritto sotto `density`,
+  `grain.duration`, `pointer.speed_ratio` o `deviation_probability.<chiave>`
+  risaliva come `ValueError` nudo — fuori dalla gerarchia `EngineError`, senza
+  campo né stream, con un messaggio che PGE-ls non può attribuire — oppure si
+  rendeva in silenzio. Nessuno di quei guard sapeva qualcosa del verso di
+  lettura: sono vincoli della forma, e salgono in `EnvelopeBuilder`, che ogni
+  chiave attraversa. Arità del BP group (almeno 2 punti); `end_time` numero finito
+  e oltre l'istante di partenza; `n_reps` intero `>= 1`; pattern non vuoto, punti
+  piatti (`x` e `y` numeri, il terzo elemento il nome di un'interpolazione), `x`
+  in `[0, 100]` e non decrescente; distribuzione temporale col nome nel registro
+  e parametri costruibili; elemento non riconosciuto in una lista. Tutti alzano
+  `InvalidFieldValueError`.
+
+  **Due corpi che oggi si rendono smettono di farlo**, ed è il punto: `n_reps:
+  true` (in Python `bool` è un `int`, e `range(True)` rendeva un ciclo) e le
+  `x` del pattern fuori da `[0, 100]` o all'indietro (breakpoint a tempo
+  negativo, cicli che si sovrappongono, tempi che si invertono). Lo stesso per
+  `end_time: true`, che valeva `1.0`, e per una `y` del pattern `true`, che
+  valeva `1` mentre in un breakpoint nudo `[t, true]` il builder la rifiutava
+  già. Nessuno dei config del repository, né dei YAML nei test e nella
+  documentazione, usa una di queste scritture.
+
+  Il builder non conosce il nome YAML della chiave che sta costruendo: il
+  campo gli arriva **dall'alto** (`field=` su `EnvelopeBuilder.parse`,
+  `Envelope`, `create_scaled_envelope`). Lo passano l'orchestratore — dallo
+  spec, `yaml_path` e `range_path`, con il prefisso del blocco per il
+  `PointerController`, che riceve il solo `pointer:` e i cui spec hanno path
+  relativi — il gate di `deviation_probability`, il pitch (la chiave
+  dell'unità scelta, o `pitch.value` con `edo`), `voices.num_voices`,
+  `voices.scatter`, i kwarg delle strategy (`voices.pan.step`, …) e la curva
+  delle finestre (`grain.envelope.curve`). Chi costruisce un envelope da punti
+  calcolati non lo passa, e l'errore nomina la sotto-posizione
+  (`envelope.compact.n_reps`, `envelope.group.points`, …): resta comunque un
+  `InvalidFieldValueError`. I due campi cablati che esistevano già,
+  `envelope.group.interp` (interp di un gruppo) ed `envelope.point.type`
+  (interp per-punto, in `Envelope`), restano il ripiego; col campo passato
+  nominano la chiave come gli altri. Il `value` di un elemento non riconosciuto
+  è l'elemento, non l'intero corpo.
+
+  La scala `time_mode: normalized` non converte più un `end_time` che non è
+  un numero: `True * durata` era un float legittimo, e il guard sul booleano
+  avrebbe valso solo sui tempi assoluti. La regola vale per ogni elemento che
+  una scala tocca: i tempi dei breakpoint sotto `time_mode: normalized` e le
+  `y` sotto `grain.duration_unit` e `loop_unit: normalized` si scalano solo in
+  un elemento che il builder accetterà (`EnvelopeBuilder.is_breakpoint`,
+  `is_pattern_point`, `accepts_bp_group`), e il resto gli arriva com'è
+  scritto. Prima una stringa,
+  una lista o una macro-forma nel pattern risalivano da lì come `TypeError`
+  nudo; sotto `normalized` anche `{t: 'x', v}` e un marcatore `[[t, v], 'x']`,
+  mentre `[true, v]` e `{t: true, v}` diventavano breakpoint legittimi e si
+  rendevano. E dove la scala non esplodeva, l'errore riportava l'elemento con
+  l'altra coordinata già scalata — anche i punti di un BP group con meno di 2
+  punti, sotto entrambe le scale. Resta scalato un solo dato, `end_time`
+  contro l'istante di partenza sotto `time_mode: normalized`: in una lista
+  mista quell'istante è accumulato da elementi già scalati, quindi il
+  confronto si fa in secondi, e l'hint lo dice.
+
+  `read_direction.py` tiene i soli guard di dominio — interp `step`, valori in
+  `{-1, +1}` — e perde ~130 righe di delega. Per quella chiave l'errore resta
+  lo stesso, ma arriva dal builder: `normalize_read_direction` da solo non
+  rifiuta più un corpo malformato nella forma, lo Stream sì.
+
 ### Rimosso
 
 - **L'avviso di migrazione di `loop_unit`** (issue #242). Dalla v9.0.0 alla
