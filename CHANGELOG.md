@@ -78,12 +78,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   una scala tocca: i tempi dei breakpoint sotto `time_mode: normalized` e le
   `y` sotto `grain.duration_unit` e `loop_unit: normalized` si scalano solo in
   un elemento che il builder accetterà (`EnvelopeBuilder.is_breakpoint`,
-  `is_pattern_point`), e il resto gli arriva com'è scritto. Prima una stringa,
+  `is_pattern_point`, `accepts_bp_group`), e il resto gli arriva com'è
+  scritto. Prima una stringa,
   una lista o una macro-forma nel pattern risalivano da lì come `TypeError`
   nudo; sotto `normalized` anche `{t: 'x', v}` e un marcatore `[[t, v], 'x']`,
   mentre `[true, v]` e `{t: true, v}` diventavano breakpoint legittimi e si
   rendevano. E dove la scala non esplodeva, l'errore riportava l'elemento con
-  l'altra coordinata già scalata.
+  l'altra coordinata già scalata — anche i punti di un BP group con meno di 2
+  punti, sotto entrambe le scale. Resta scalato un solo dato, `end_time`
+  contro l'istante di partenza sotto `time_mode: normalized`: in una lista
+  mista quell'istante è accumulato da elementi già scalati, quindi il
+  confronto si fa in secondi, e l'hint lo dice.
 
   `read_direction.py` tiene i soli guard di dominio — interp `step`, valori in
   `{-1, +1}` — e perde ~130 righe di delega. Per quella chiave l'errore resta

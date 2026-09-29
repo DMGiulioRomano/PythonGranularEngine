@@ -88,7 +88,9 @@ _END_TIME_OFFSET_HINT = (
     "il secondo elemento del formato compatto e' l'istante assoluto in cui il "
     "blocco finisce, non la sua durata, e deve superare quello in cui comincia: "
     "qui {inizio}. Nella forma diretta il blocco comincia a 0; in una lista "
-    "mista comincia dall'ultimo breakpoint scritto prima di lui."
+    "mista comincia dall'ultimo breakpoint scritto prima di lui. Con "
+    "`time_mode: normalized` i due istanti sono in secondi, gia' moltiplicati "
+    "per la durata dello stream: il confronto si fa dopo la scala."
 )
 
 _REPS_HINT = (
@@ -384,6 +386,21 @@ class EnvelopeBuilder:
                 return False
 
         return True
+
+    @classmethod
+    def accepts_bp_group(cls, item) -> bool:
+        """Rileva se item e' un BP group che `_expand_bp_group` espandera':
+        la forma di `is_bp_group` piu' le due condizioni che li' sono errori,
+        l'interp nel registro e almeno 2 punti.
+
+        E' la regola delle scale per il gruppo, come `is_breakpoint` per il
+        breakpoint (issue #211): un gruppo che il builder rifiutera' gli arriva
+        com'e' scritto, perche' l'errore di arita' riporta i suoi punti, e
+        scalati non sarebbero quelli del file.
+        """
+        return (cls.is_bp_group(item)
+                and item[1] in cls.VALID_INTERP_TYPES
+                and len(item[0]) >= 2)
 
     @staticmethod
     def _field(field: Optional[str], posizione: str) -> str:

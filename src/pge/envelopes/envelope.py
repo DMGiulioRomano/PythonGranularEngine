@@ -451,6 +451,10 @@ class Envelope:
             ]
 
         def _scale_group_y(group):
+            # Un gruppo che il builder rifiutera' resta com'e' scritto: il suo
+            # errore di arita' riporta i punti (`accepts_bp_group`).
+            if not EnvelopeBuilder.accepts_bp_group(group):
+                return group
             return [_scale_points_y(group[0]), group[1]]
 
         def _scale_list_y(points_list):
@@ -601,13 +605,21 @@ def _scale_time_recursive(points: List, factor: float) -> List:
             scaled_compact[EnvelopeBuilder.COMPACT_END_TIME] = end_time * factor
         return scaled_compact
 
+    def _scale_group(group):
+        # Stessa regola per il BP group (`accepts_bp_group`): uno che il
+        # builder rifiutera' resta com'e' scritto, perche' il suo errore di
+        # arita' riporta i punti del file e non quelli scalati.
+        if not EnvelopeBuilder.accepts_bp_group(group):
+            return group
+        return [_scale_group_points_time(group[0], factor), group[1]]
+
     # CASO 1: L'intera lista è un formato compatto
     if EnvelopeBuilder.is_compact_format(points):
         return _scale_compact(points)
 
     # CASO 1b: L'intera lista è un BP group diretto [points, interp]
     if EnvelopeBuilder.is_bp_group(points):
-        return [_scale_group_points_time(points[0], factor), points[1]]
+        return _scale_group(points)
 
     # CASO 2: Lista di elementi misti
     scaled = []
@@ -618,7 +630,7 @@ def _scale_time_recursive(points: List, factor: float) -> List:
             # BP group: scala i tempi dei punti, preserva interp e type per-punto.
             # Va controllato prima del branch [t, v]: un gruppo è anch'esso
             # una lista a 2 elementi.
-            scaled.append([_scale_group_points_time(item[0], factor), item[1]])
+            scaled.append(_scale_group(item))
         elif EnvelopeBuilder.is_breakpoint(item):
             # [t, v] -> [t * factor, v], [t, v, type] -> [t * factor, v, type]
             scaled.append([item[0] * factor, *item[1:]])

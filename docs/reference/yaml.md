@@ -1709,7 +1709,9 @@ lo veda (issue #211). Lo stesso per i breakpoint di una lista: se ne scala il
 tempo solo se il builder li accetterà (`[t, v]`, `[t, v, type]`, `{t, v,
 type?}` con `t` e `v` numeri), e il resto gli arriva com'è scritto — un
 `[true, v]` non diventa un breakpoint a `t = durata`, e l'errore riporta
-l'elemento come sta nel file.
+l'elemento come sta nel file. Anche un BP group si scala solo se il builder lo
+espanderà (interp valido, almeno 2 punti): l'errore di arità riporta i punti
+del gruppo come sono scritti, non moltiplicati per la durata.
 
 ```yaml
 duration: 30.0
@@ -1996,7 +1998,10 @@ risaliva come `ValueError` nudo o si rendeva in silenzio.
   `<= time_offset` → errore.
   `time_offset` è 0 nella forma diretta e l'ultimo breakpoint precedente in una
   lista mista. Con `time_mode: normalized` il controllo sul tipo vale prima
-  della scala (§3.3): un `true` non diventa la durata dello stream.
+  della scala (§3.3): un `true` non diventa la durata dello stream. Il
+  confronto con `time_offset` invece vale dopo, perché l'offset in una lista
+  mista è accumulato da elementi già scalati: l'errore riporta allora i due
+  istanti in secondi, e l'hint lo dice.
 - `pattern_points` vuoto → errore.
 - punto del pattern non piatto → errore. Piatto è la forma di un breakpoint
   nudo: `x` e `y` numeri (il booleano no: `true` non è `1`) e il terzo
@@ -2232,9 +2237,9 @@ pointer:
 Internamente `PointerController._pre_normalize_loop_params` usa
 `Envelope._scale_raw_values_y` per moltiplicare ogni Y dei breakpoint per
 `sample_dur_sec` prima di costruire l'`Envelope`. Funziona anche su formati
-compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo un punto
-o un breakpoint che il builder accetterà (§3.3): ciò che non lo è resta com'è,
-e lo rifiuta il builder nominando la chiave (§5.5, issue #211).
+compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo un punto,
+un breakpoint o un BP group che il builder accetterà (§3.3): ciò che non lo è
+resta com'è, e lo rifiuta il builder nominando la chiave (§5.5, issue #211).
 
 ### Differenza chiave da `time_mode`
 

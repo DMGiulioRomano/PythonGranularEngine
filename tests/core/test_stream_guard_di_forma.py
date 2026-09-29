@@ -262,3 +262,51 @@ def test_la_scala_tocca_solo_cio_che_il_builder_accetta(build, ingresso, difetto
     assert exc.value.stream_id == STREAM_ID
     # `repr`, non `==`: `True == 1`, e `{'t': True} == {'t': 1.0}`.
     assert repr(exc.value.value) == repr(elemento)
+
+
+def _gruppi_rifiutati(y):
+    """Un BP group che il builder rifiutera' per arita', nelle due forme, e i
+    punti come sono scritti: sono il `value` del suo errore."""
+    punti = [[0.5, y]]
+    gruppo = [punti, 'linear']
+    return {
+        'diretto': (gruppo, punti),
+        'in_lista': ([[0, y], gruppo, [1.0, y]], punti),
+    }
+
+
+@pytest.mark.parametrize("forma", list(_gruppi_rifiutati(0)))
+@pytest.mark.parametrize("ingresso", list(SCALE))
+def test_la_scala_non_tocca_il_gruppo_che_il_builder_rifiuta(build, ingresso, forma):
+    """La stessa regola per il BP group: l'errore di arita' riporta i punti del
+    gruppo, e una scala che li moltiplicava prima faceva dire all'errore
+    `[[1.0, 10]]` dove nel file c'e' `[[0.5, 10]]` (tempi sotto `normalized`),
+    o `[[0.5, 0.05]]` dove c'e' `[[0.5, 50]]` (valori sotto
+    `duration_unit: milliseconds`). Un gruppo con meno di 2 punti il builder
+    lo rifiuta comunque: la scala non ha niente da preparargli."""
+    campo, scrivi, y = SCALE[ingresso]
+    corpo, punti = _gruppi_rifiutati(y)[forma]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(scrivi(corpo))
+
+    assert exc.value.field == campo
+    assert exc.value.stream_id == STREAM_ID
+    assert repr(exc.value.value) == repr(punti)
+
+
+def test_end_time_sotto_normalized_dice_l_unita(build):
+    """`end_time` contro l'istante di partenza e' l'unico confronto che non si
+    puo' fare sul valore scritto: in una lista mista la partenza e' l'offset
+    accumulato dagli elementi che precedono, e il builder li riceve gia'
+    scalati. Con `time_mode: normalized` l'errore riporta quindi i due istanti
+    in secondi — `0.6` e `1.0` su una durata di 2 s, dove nel file ci sono
+    `0.3` e `0.5` — e l'hint deve dirlo, o sembrano numeri che il file non ha.
+    """
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build({'time_mode': 'normalized',
+               'density': [[0, 10], [0.5, 10], [[[0, 1], [100, 2]], 0.3, 2]]})
+
+    assert exc.value.field == 'density'
+    assert exc.value.value == pytest.approx(0.6)
+    assert 'time_mode: normalized' in exc.value.hint
