@@ -209,9 +209,10 @@ class EnvelopeBuilder:
             >>> EnvelopeBuilder.parse([[0, 10], [0.3, 10], [[[0, 30], [100, 50]], 1.3, 5]])
             [[0, 10], [0.3, 10], [0.3, 30], [0.5, 50], [0.500001, 30], ...]
             
-            # Legacy passa invariato
+            # Un elemento che non e' nessuna delle forme sopra e' un errore
+            # (issue #211): senza `field`, nomina la sotto-posizione
             >>> EnvelopeBuilder.parse([[0, 0], [1, 10], 'cycle'])
-            [[0, 0], [1, 10], 'cycle']
+            InvalidFieldValueError: field='envelope.point', value='cycle'
         """
         # FIX 1: Controlla PRIMA se raw_points STESSO è un formato compatto
         if cls.is_compact_format(raw_points):

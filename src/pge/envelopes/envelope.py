@@ -541,8 +541,10 @@ def create_scaled_envelope(
     Factory helper per creare Envelope con scaling TEMPORALE (X axis).
     Sostituisce la vecchia logica integrandosi con EnvelopeBuilder.
 
-    Se time_mode='normalized', moltiplica i tempi [t, v] per 'duration'.
-    Nota: I formati compatti (che usano total_time esplicito) NON vengono scalati.
+    Se time_mode='normalized', moltiplica i tempi [t, v] per 'duration'. Di un
+    formato compatto scala l'`end_time` (le x del pattern sono percentuali del
+    ciclo), e solo se e' un numero; di ogni altro elemento, solo se il builder
+    lo accettera' (`_scale_time_recursive`, issue #211).
 
     `field` e' il nome YAML della chiave, per gli errori di forma del builder
     (issue #211): vedi `Envelope`.

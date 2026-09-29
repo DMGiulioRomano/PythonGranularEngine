@@ -1840,7 +1840,7 @@ Sintassi per generare N ripetizioni di un pattern espresso in percentuale.
 | Posizione | Nome             | Tipo                       | Obbligatorio | Significato |
 |-----------|------------------|----------------------------|--------------|-------------|
 | 0         | `pattern_points` | lista di `[x%, y]` o `[x%, y, type]` | sì | pattern del ciclo, `x` in `[0, 100]`. Pattern points possono essere 3-tuple (vedi §2.6) |
-| 1         | `end_time`       | numero (non booleano)      | sì           | **tempo assoluto finale** del blocco compatto |
+| 1         | `end_time`       | numero finito (non booleano) | sì         | **tempo assoluto finale** del blocco compatto |
 | 2         | `n_reps`         | intero `>= 1`              | sì           | numero di ripetizioni |
 | 3         | `interp_type`    | str                        | no           | `'linear'` / `'cubic'` / `'step'`. Fa da default per i segmenti interni e per il gap inter-ciclo |
 | 4         | `time_dist`      | str o dict                 | no           | distribuzione delle durate dei cicli |
