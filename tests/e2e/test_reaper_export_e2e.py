@@ -111,6 +111,9 @@ def _make_build(tmp_path, stems: bool, extra_flags=None):
         f'SFDIR={sfdir}',
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
+        # In MIX il render scrive la sua depfile in $(GENDIR) (issue #290):
+        # nel tmp_path, non nella `generated/` del repo.
+        f'GENDIR={tmp_path / "generated"}',
     ]
 
     if extra_flags:

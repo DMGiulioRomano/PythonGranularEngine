@@ -54,7 +54,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Spostare uno stream dal master a un file non lo marca dirty (il dict
   risolto e' lo stesso), e modificare il file importato marca dirty solo quello
   stream: lo misura `TestStreamFile` in `tests/e2e/test_cache_e2e.py` con
-  csound via `make`. Uno stream importato suona come nel laboratorio solo con
+  csound via `make`. In MIX (`STEMS=false`), dove la regola di make dipendeva
+  dal solo master e modificare uno stream importato lasciava l'audio di prima,
+  la vede make: il nuovo flag `--depfile FILE` scrive una depfile di make
+  (master e file importati, `Generator.source_files`, alla `gcc -MD -MP`), le
+  ricette MIX di `make/build.mk` la passano in `$(GENDIR)` e il Makefile la
+  include. Uno stream importato suona come nel laboratorio solo con
   lo stesso seed e lo stesso id: `docs/reference/yaml.md`, «Stream come file».
 
 - **`docs/explanation/stream-decomposition.md`** — la decisione sulla

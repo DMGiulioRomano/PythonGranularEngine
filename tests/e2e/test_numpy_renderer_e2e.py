@@ -9,6 +9,8 @@ Scenari:
 1. TestNumpyStems      - STEMS=true: un .aif per stream, naming corretto
 2. TestNumpyMix        - STEMS=false: un .aif unico con tutti gli stream
 3. TestNumpyStemsCache - STEMS=true CACHE=true: dirty/clean incrementale
+5. TestNumpyMixStreamFile - STEMS=false con `file:` (#290): la depfile fa
+                            vedere a make i file importati
 
 Requisiti:
   - sox nel PATH (per audio trimming)
@@ -159,6 +161,10 @@ def _make_build_mix(tmp_path, jobs=None):
     sfdir  = tmp_path / "output"
     logdir = tmp_path / "logs"
     ymldir = tmp_path / "configs"
+    # Le depfile (issue #290) stanno in $(GENDIR): in tmp_path anche lei,
+    # o ogni run lascerebbe nella `generated/` del repo una depfile con i
+    # path di una cartella che non esiste piu'.
+    gendir = tmp_path / "generated"
 
     for d in (sfdir, logdir, ymldir):
         d.mkdir(exist_ok=True)
@@ -176,6 +182,7 @@ def _make_build_mix(tmp_path, jobs=None):
         f'SFDIR={sfdir}',
         f'LOGDIR={logdir}',
         f'YMLDIR={ymldir}',
+        f'GENDIR={gendir}',
     ]
     if jobs is not None:
         cmd.append(f'JOBS={jobs}')
@@ -602,3 +609,104 @@ class TestNumpyLogDir:
             f"log engine non in LOGDIR:\n{output}"
         assert _repo_engine_log_stamp() == before, \
             "la build ha scritto nella logs/ della root del repo"
+
+
+# =============================================================================
+# 5. MIX + STREAM COME FILE (issue #290): la depfile
+# =============================================================================
+#
+# In MIX la regola e' `$(SFDIR)/%.aif: $(YMLDIR)/%.yml`: make conosceva solo
+# il master, e modificare soltanto lo stream importato lasciava il mix di
+# prima con un «nothing to be done». Il motore scrive con `--depfile` i file
+# che ha letto, e build.mk include le depfile: il master e ogni file
+# importato sono prerequisiti del mix.
+#
+# I tempi si spostano all'indietro con os.utime invece di aspettare: e' il
+# confronto di mtime che make fa, e nessun file finisce nel futuro (dove
+# resterebbe piu' recente del mix anche dopo il render).
+
+_YAML_MASTER_IMPORTA = """\
+streams:
+  - file: streams/s1.yml
+    onset: 0.0
+  - stream_id: "s2"
+    onset: 1.0
+    duration: 1.0
+    sample: "pino.wav"
+"""
+
+_YAML_S1_IMPORTATO = """\
+seed: 7
+streams:
+  - stream_id: "stream1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+"""
+
+
+@pytest.mark.e2e
+class TestNumpyMixStreamFile:
+    """STEMS=false: il mix dipende anche dai file importati con `file:`."""
+
+    def _prima_build(self, tmp_path):
+        _write_yaml(tmp_path, _YAML_MASTER_IMPORTA)
+        streams_dir = tmp_path / "configs" / "streams"
+        streams_dir.mkdir(parents=True, exist_ok=True)
+        (streams_dir / "s1.yml").write_text(_YAML_S1_IMPORTATO)
+        result, output = _make_build_mix(tmp_path)
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        return tmp_path / "output" / "e2e_numpy_test.aif"
+
+    @staticmethod
+    def _indietro(path, secondi):
+        t = os.path.getmtime(path) - secondi
+        os.utime(path, (t, t))
+
+    def test_la_depfile_nomina_il_file_importato(self, tmp_path):
+        mix = self._prima_build(tmp_path)
+
+        depfile = tmp_path / "generated" / "e2e_numpy_test.aif.d"
+        assert depfile.exists(), "build.mk non passa --depfile"
+        testo = depfile.read_text(encoding="utf-8")
+        assert f"{mix}: " in testo
+        assert str(tmp_path / "configs" / "streams" / "s1.yml") in testo
+
+    def test_senza_modifiche_make_non_rifa_il_mix(self, tmp_path):
+        """L'altra meta': la depfile non deve far rendere a ogni make."""
+        self._prima_build(tmp_path)
+
+        r2, output2 = _make_build_mix(tmp_path)
+
+        assert r2.returncode == 0, f"make fallito:\n{output2}"
+        assert "main.py" not in output2, (
+            f"make ha rifatto un mix aggiornato:\n{output2}")
+
+    def test_modificare_il_file_importato_rifa_il_mix(self, tmp_path):
+        mix = self._prima_build(tmp_path)
+        # Il mix e il master indietro, il file importato no: e' come se
+        # fosse stato modificato dopo il render.
+        self._indietro(tmp_path / "configs" / "e2e_numpy_test.yml", 200)
+        self._indietro(mix, 100)
+        prima = os.path.getmtime(mix)
+
+        r2, output2 = _make_build_mix(tmp_path)
+
+        assert r2.returncode == 0, f"make fallito:\n{output2}"
+        assert "main.py" in output2, (
+            f"make non ha visto il file importato:\n{output2}")
+        assert os.path.getmtime(mix) > prima
+
+    def test_un_file_importato_sparito_rifa_il_render(self, tmp_path):
+        """La regola vuota della depfile (la `-MP` di gcc): make non si
+        ferma con «No rule to make target», rifa' il render, e il messaggio
+        e' quello del motore, che nomina il file e chi lo importa."""
+        self._prima_build(tmp_path)
+        (tmp_path / "configs" / "streams" / "s1.yml").unlink()
+
+        r2, output2 = _make_build_mix(tmp_path)
+
+        assert r2.returncode != 0
+        assert "No rule to make target" not in output2, output2
+        assert "File di configurazione non trovato" in output2, output2
+        assert "Importato da:" in output2, output2

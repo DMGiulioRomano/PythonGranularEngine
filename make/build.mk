@@ -288,6 +288,21 @@ else
 # Con RENDERER=csound: regole identiche all'originale (YAML→SCO, SCO→AIF).
 # =============================================================================
 
+# Le depfile dei render (issue #290). Con lo stream come file un brano dipende
+# dal master e da ogni file che il master importa con `file:`, e la regola qui
+# sotto conosce solo il primo: modificare soltanto uno stream importato
+# lasciava l'audio di prima con un «nothing to be done». Il motore, che sa
+# quali file ha letto, li scrive con `--depfile` -- una per target, in
+# $(GENDIR) accanto agli altri intermedi -- e qui si includono: e' il
+# `-MD -MP` di gcc. Il trattino perche' al primo render non ce ne sono.
+#
+# Solo in questo ramo: in STEMS il target e' phony, il motore gira a ogni
+# make e la cache per stream fa il resto. Una depfile rimasta da un target
+# che non si sta costruendo aggiunge prerequisiti a lui e a nessun altro, e
+# `make clean` le toglie con il resto di $(GENDIR).
+-include $(wildcard $(GENDIR)/*.d)
+DEPFILE_FLAG = --depfile $(GENDIR)/$(notdir $@).d
+
 ifneq ($(RENDERER), csound)
 
 # --- Normale + renderer senza flag propri (numpy, supercollider) ---
@@ -303,7 +318,7 @@ endif
 
 # YAML → AIF (Python, una sola fase)
 $(SFDIR)/%$(FORMAT_EXT): $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
-	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer $(RENDERER) $(PYFLAGS)
+	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer $(RENDERER) $(PYFLAGS) $(DEPFILE_FLAG)
 	$(autopen_single)
 
 else
@@ -325,7 +340,7 @@ endif
 
 # YAML → AIF (Python, una sola fase: Python invoca csound internamente)
 $(SFDIR)/%$(FORMAT_EXT): $(YMLDIR)/%.yml $(PYTHON_SOURCES) | $(SFDIR) $(LOGDIR) venv-setup
-	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer csound $(CSOUND_FLAGS) $(PYFLAGS)
+	$(PYTHON_VENV) $(INCDIR)/main.py $< $@ --renderer csound $(CSOUND_FLAGS) $(PYFLAGS) $(DEPFILE_FLAG)
 	$(autopen_single)
 
 endif

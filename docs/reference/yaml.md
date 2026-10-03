@@ -6,6 +6,7 @@ tags: [yaml, syntax, parameters, envelopes]
 sources:
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
+  - src/pge/export/depfile_writer.py
   - src/pge/core/stream.py
   - src/pge/controllers/
   - src/pge/parameters/
@@ -399,6 +400,13 @@ orfano. `Generator.stream_origins` conserva, per id effettivo, la voce del
 master che ha importato ogni stream (`StreamFileOrigin`: master, posizione,
 `file:` come scritto, path risolto): dopo la risoluzione è la sola traccia di
 dove lo stream è scritto.
+
+Fuori dalla cache, a vedere il file importato deve essere **make**. In MIX
+(`STEMS=false`) la regola che rende il brano dipende dal master, e
+modificare soltanto uno stream importato non rifaceva l'audio. Le ricette MIX
+di `make/build.mk` passano `--depfile`: il motore scrive in `$(GENDIR)` le
+dipendenze del render — `Generator.source_files`, il master e i file
+importati — e il Makefile le include. Vedi [[cli]], `--depfile`.
 
 ### Identità del suono
 
