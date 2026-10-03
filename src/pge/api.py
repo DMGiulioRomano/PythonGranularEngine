@@ -715,6 +715,23 @@ def export_sv(
     return output_path
 
 
+def export_depfile(
+    generator,
+    target: str,
+    output_path: str,
+) -> str:
+    """Scrive la depfile di make del render (issue #290); ritorna output_path.
+
+    `target` dipende da `generator.source_files`: il master e ogni file che
+    importa con `file:`. `target` e' il file che la regola di make produce,
+    scritto come make lo nomina (il `$@` della regola). Va chiamata dopo
+    `load_yaml`, che e' dove i file importati si conoscono.
+    """
+    from pge.export.depfile_writer import write_depfile
+
+    return write_depfile(output_path, target, generator.source_files)
+
+
 def export_grain_json(
     generator,
     output_dir: str,

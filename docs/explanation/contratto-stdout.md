@@ -175,18 +175,18 @@ descriptor non separa niente; separa la forma.
 
 ### La classificazione
 
-Sessantadue `print()` in `src/pge/` — erano sessantaquattro: due la #188 le ha
+Sessantatre `print()` in `src/pge/` — erano sessantaquattro: due la #188 le ha
 portate al logger, la terza era l'avviso di migrazione di `loop_unit` su
 stderr, tolto dalla #242 una volta passata la release che lo portava; la #290
-ne ha aggiunta una, di nuovo su stderr: l'avviso sul seed di uno stream
-importato con `file:`. Il censimento guarda la forma e non il canale, perche'
-la regola vale su ogni canale. La
+ne ha aggiunte due: l'avviso sul seed di uno stream importato con `file:`, di
+nuovo su stderr, e l'errore di `--depfile` senza valore. Il censimento guarda
+la forma e non il canale, perche' la regola vale su ogni canale. La
 tabella completa vive in `CLASSIFICAZIONE` (`tests/shared/test_stdout_contract.py`),
 dove e' eseguibile; qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
-| `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 36 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
+| `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 37 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
 | `engine/generator.py` | — | — (al logger dalla #188) | `[SEED]` (due: il seed di sessione su stdout, il seed di un file importato su stderr), `Creazione di N stream`, `⚡ SOLO MODE`, `🔇 N stream muted`, `⚠️ impossibile valutare` |
 | `rendering/*_renderer.py` (3) | `[CACHE] <id>: <status>` | — | — |
 | `rendering/stream_cache_manager.py` | `[CACHE] <id>: <status>` | — | `[CACHE] N/M stream da ricompilare` |

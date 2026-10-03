@@ -143,6 +143,24 @@ class Generator:
         self._warn_imported_seeds(importati)
         return self.data
 
+    @property
+    def source_files(self) -> List[str]:
+        """I file YAML da cui il brano e' letto, cioe' le dipendenze di un
+        render: il master, poi ogni file importato con `file:` (issue #290),
+        in ordine di master e una volta sola anche se importato due volte.
+
+        E' cio' che `--depfile` scrive per make: la regola che rende un brano
+        conosce solo il master, e senza questa lista modificare soltanto uno
+        stream importato non rifaceva l'audio. Prima di `load_yaml` e' il solo
+        master. Gli stream in mute ci sono: il loro file resta una parte del
+        brano, e smutarli si fa nel master.
+        """
+        files = [self.yaml_path]
+        for origine in self.stream_origins.values():
+            if origine.path not in files:
+                files.append(origine.path)
+        return files
+
     def _warn_imported_seeds(self, importati):
         """Regola 6 della #290: il seed di un file importato e' ignorato, ma
         non in silenzio.

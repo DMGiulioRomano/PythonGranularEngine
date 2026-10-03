@@ -710,6 +710,40 @@ def test_il_generator_sa_da_dove_viene_ogni_stream_importato(brano):
         master=master, index=1, file='streams/risacca.yml', path=importato)}
 
 
+def test_source_files_e_il_master_piu_i_file_importati(brano):
+    """`source_files`: i file da cui il brano e' letto, cioe' le dipendenze
+    di un render. Il master per primo, poi i file importati in ordine di
+    master, ognuno una volta sola anche se importato due volte. Gli stream
+    in mute ci sono: il file c'e' lo stesso, e smutarli si fa nel master."""
+    brano.scrivi('streams/risacca.yml', _documento_del_laboratorio())
+    brano.scrivi('streams/onda.yml', _documento_del_laboratorio())
+    master = brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/risacca.yml'},
+        {'stream_id': 'altro', 'sample': SAMPLE},
+        {'file': 'streams/onda.yml', 'mute': True},
+        {'file': 'streams/risacca.yml', 'stream_id': 'eco'},
+    ]})
+    gen = brano.generator()
+    gen.load_yaml()
+
+    cartella = str(brano.root)
+    assert gen.source_files == [
+        master,
+        f'{cartella}/streams/risacca.yml',
+        f'{cartella}/streams/onda.yml',
+    ]
+
+
+def test_source_files_senza_file_importati_e_il_solo_master(brano):
+    master = brano.scrivi('brano.yml', {'streams': [
+        {'stream_id': 'altro', 'sample': SAMPLE}]})
+    gen = brano.generator()
+
+    assert gen.source_files == [master], "prima di load_yaml"
+    gen.load_yaml()
+    assert gen.source_files == [master]
+
+
 def test_stream_origins_e_per_id_effettivo(brano):
     """La chiave e' l'id dello stream creato, cioe' dopo il math eval.
 
