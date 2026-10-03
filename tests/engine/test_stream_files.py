@@ -472,6 +472,33 @@ def test_l_id_effettivo_e_quello_dello_stem(brano):
     assert err.stream_id == '1'
 
 
+def test_l_id_effettivo_e_quello_dopo_le_espressioni_matematiche(brano):
+    """`01.yml` e `1.yml` danno lo stesso stem, `brano__1`.
+
+    Il math eval converte in numero ogni stringa che lo sembra, e l'id di
+    default e' una stringa (il nome del file): `'01'` diventa `1`, come
+    `'1'`. Confrontati prima del math eval i due id erano diversi, e i due
+    stream si sovrascrivevano lo stem senza errore.
+    """
+    for nome in ('1', '01'):
+        brano.scrivi(f'streams/{nome}.yml', _documento_del_laboratorio())
+    master = brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/1.yml'},
+        {'file': 'streams/01.yml', 'onset': 2.0},
+    ]})
+
+    from pge.shared.exceptions import StreamFileDuplicateIdError
+    with pytest.raises(StreamFileDuplicateIdError) as exc:
+        brano.generator().load_yaml()
+
+    err = exc.value
+    assert err.stream_id == '1'
+    assert err.config_file == master
+    messaggio = err.user_message()
+    assert 'streams[0] (file: streams/1.yml)' in messaggio
+    assert 'streams[1] (file: streams/01.yml)' in messaggio
+
+
 def test_lo_stesso_file_con_due_id_e_due_stream(brano):
     """Importare due volte lo stesso file e' legittimo: due realizzazioni."""
     brano.scrivi('streams/risacca.yml', _documento_del_laboratorio())
@@ -681,6 +708,35 @@ def test_il_generator_sa_da_dove_viene_ogni_stream_importato(brano):
 
     assert _gen.stream_origins == {'risacca': StreamFileOrigin(
         master=master, index=1, file='streams/risacca.yml', path=importato)}
+
+
+def test_stream_origins_e_per_id_effettivo(brano):
+    """La chiave e' l'id dello stream creato, cioe' dopo il math eval.
+
+    Un file `01.yml` importato senza `stream_id` da' lo stream `1`: con la
+    chiave scritta prima del math eval (`'01'`) `stream_origins` nominava uno
+    stream che non c'e', e l'errore del suo contenuto tornava a nominare il
+    master.
+    """
+    from pge.shared.exceptions import SampleNotFoundError
+
+    importato = brano.scrivi('streams/01.yml', _documento_del_laboratorio(
+        stream={**STREAM_DEL_LABORATORIO, 'sample': 'assente.wav'}))
+    master = brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/01.yml'},
+    ]})
+    gen = brano.generator()
+    data = gen.load_yaml()
+
+    assert [s['stream_id'] for s in data['streams']] == [1]
+    assert gen.stream_origins == {'1': StreamFileOrigin(
+        master=master, index=0, file='streams/01.yml', path=importato)}
+
+    with pytest.raises(SampleNotFoundError) as exc:
+        gen.create_elements()
+
+    assert exc.value.config_file == importato
+    assert f"Importato da: {master}, streams[0]" in exc.value.user_message()
 
 
 # =============================================================================

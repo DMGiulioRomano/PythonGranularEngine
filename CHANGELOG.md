@@ -36,7 +36,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `duration` dello stream viene dal file. Un `seed` del file diverso da quello
   del master produce un avviso su stderr (`[SEED] Il file importato ...`) e il
   render procede col seed del master. Due stream con lo stesso `stream_id`
-  effettivo, se almeno uno viene da `file:`, sono un errore.
+  effettivo, se almeno uno viene da `file:`, sono un errore; l'id effettivo
+  e' quello dopo le espressioni matematiche, quindi `1.yml` e `01.yml`
+  importati senza `stream_id` collidono (sono entrambi lo stream `1`).
 
   Errori nuovi, sotto `ConfigError`: `StreamFileError` e le sue quattro
   sottoclassi (`StreamFileKeyError`, `StreamFileCountError`,

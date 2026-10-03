@@ -54,10 +54,10 @@ class StreamFileOrigin(NamedTuple):
 class ImportedStream(NamedTuple):
     """Uno stream che il master ha importato, dopo la risoluzione."""
 
-    #: la voce del master che lo nomina
+    #: la voce del master che lo nomina. Lo stream risolto sta alla stessa
+    #: posizione (`origin.index`) nella lista `streams:` restituita: la
+    #: risoluzione sostituisce le voci una per una, senza toglierne.
     origin: StreamFileOrigin
-    #: lo `stream_id` effettivo, come stringa: quello dello stem e della cache
-    stream_id: str
     #: il `seed` top-level del file importato, grezzo (None se assente). Il
     #: render non lo usa -- il brano ha un seed solo, il suo -- ma chi carica
     #: lo confronta con quello del master: se differiscono lo stream non
@@ -80,6 +80,10 @@ def resolve_stream_files(data, master_path, read):
         `(documento, importati)`: il documento con le voci `file:` sostituite
         dallo stream che importano -- identico, se non ce ne sono -- e un
         `ImportedStream` per ogni voce risolta, in ordine di master.
+
+    Gli id duplicati (regola 7) non si controllano qui: l'id effettivo e'
+    quello dopo le espressioni matematiche, che valgono dopo la risoluzione.
+    Li controlla `origins_by_id`, sul documento valutato.
     """
     if not isinstance(data, dict) or not isinstance(data.get('streams'), list):
         return data, []
@@ -87,7 +91,6 @@ def resolve_stream_files(data, master_path, read):
     cartella = os.path.dirname(master_path)
     risolti = []
     importati = []
-    file_per_indice = {}
     for indice, voce in enumerate(data['streams']):
         if not (isinstance(voce, dict) and 'file' in voce):
             risolti.append(voce)
@@ -102,7 +105,6 @@ def resolve_stream_files(data, master_path, read):
         origine = StreamFileOrigin(
             master=master_path, index=indice, file=voce['file'],
             path=os.path.join(cartella, voce['file']))
-        file_per_indice[indice] = voce['file']
         # Regola 4: prima di leggere il file. L'errore sta nel master, e il
         # master si corregge anche se il file non c'e'.
         estranee = [k for k in voce
@@ -131,11 +133,28 @@ def resolve_stream_files(data, master_path, read):
                 os.path.basename(voce['file']))[0]
         risolti.append({**piazzamento, **risolto})
         importati.append(ImportedStream(
-            origin=origine, stream_id=str(piazzamento['stream_id']),
-            seed=importato.get('seed')))
+            origin=origine, seed=importato.get('seed')))
 
-    _rifiuta_id_duplicati(master_path, risolti, file_per_indice)
     return {**data, 'streams': risolti}, importati
+
+
+def origins_by_id(master_path, streams, importati):
+    """`Generator.stream_origins`: id effettivo -> voce del master.
+
+    Da chiamare sulla lista `streams:` *dopo* le espressioni matematiche,
+    perche' l'id effettivo -- il nome dello stem, la chiave della cache, lo
+    `stream_id` dello `Stream` -- e' quello valutato: il math eval converte
+    in numero ogni stringa che lo sembra, e un file `01.yml` importato senza
+    `stream_id` e' lo stream `1`. Confrontati prima, `01.yml` e `1.yml`
+    passavano la regola 7 e si sovrascrivevano lo stem.
+
+    Raises:
+        StreamFileDuplicateIdError: regola 7.
+    """
+    file_per_indice = {i.origin.index: i.origin.file for i in importati}
+    _rifiuta_id_duplicati(master_path, streams, file_per_indice)
+    return {str(streams[i.origin.index]['stream_id']): i.origin
+            for i in importati}
 
 
 def _stream_unico(documento, origine):
@@ -173,8 +192,9 @@ def _stream_unico(documento, origine):
 def _rifiuta_id_duplicati(master_path, streams, file_per_indice):
     """Regola 7: un id effettivo condiviso da due voci, se una e' `file:`.
 
-    L'id effettivo e' la stringa: e' cosi' che diventa il nome dello stem e
-    la chiave del manifest della cache, quindi `1` e `'1'` collidono. Le voci
+    L'id effettivo e' la stringa dell'id valutato (vedi `origins_by_id`): e'
+    cosi' che diventa il nome dello stem e la chiave del manifest della
+    cache, quindi `1` e `'1'` collidono, e cosi' `'01'`. Le voci
     che non sono mapping, o che non dichiarano un id, non partecipano: il loro
     errore e' di un altro, e arriva dallo `Stream`.
     """

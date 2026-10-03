@@ -27,7 +27,9 @@ from pge.shared.exceptions import (
 )
 from pge.shared.logger import get_diagnostic_logger
 from pge.shared.seeding import session_seed
-from pge.engine.stream_files import StreamFileOrigin, resolve_stream_files
+from pge.engine.stream_files import (
+    StreamFileOrigin, origins_by_id, resolve_stream_files,
+)
 
 class Generator:
     """
@@ -132,7 +134,12 @@ class Generator:
         # seed viene derivato in create_elements, non qui).
         self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
         self.seed_is_session = False
-        self.stream_origins = {i.stream_id: i.origin for i in importati}
+        # Dopo il math eval, non dentro la risoluzione: l'id effettivo e'
+        # quello valutato (`'01'` e' lo stream `1`), e la regola 7 e la
+        # chiave di `stream_origins` devono essere quelle dello stem.
+        self.stream_origins = (
+            origins_by_id(self.yaml_path, self.data['streams'], importati)
+            if importati else {})
         self._warn_imported_seeds(importati)
         return self.data
 
