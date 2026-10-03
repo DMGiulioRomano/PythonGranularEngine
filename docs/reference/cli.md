@@ -11,7 +11,8 @@ sources:
   - src/pge/rendering/csound_renderer.py
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
-last_synced_commit: e94eaf1
+  - src/pge/export/depfile_writer.py
+last_synced_commit: 2d4594c
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -77,6 +78,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
 | `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log di **tutto** il run, con qualunque renderer: logfile di Csound, log degli errori engine (`<basename>_engine.log`, quello che la riga `Dettagli:` indica) e log dei clip. È la cartella che `make setup` crea e `make clean` svuota come `LOGDIR`. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
+| `--depfile FILE` | — | — (lo passano le regole MIX di `make/build.mk`) | depfile di make del render (issue #290): il target — l'output, scritto come lo si è passato — dipende dal master e da ogni file che il master importa con `file:` (`Generator.source_files`), con una regola vuota per ogni file importato (la `-MP` di gcc: un file sparito rifà il render invece di fermare make). Scritta subito dopo il caricamento dello YAML, quindi anche da un render che muore più avanti; per sostituzione, mai a metà. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
 | `--incdir DIR` | `src` | — | include dir per Csound |
 | `--ssdir DIR` | `--samples-dir`, altrimenti `refs` | — | sample search dir di Csound (variabile d'ambiente SSDIR). Vince su `--samples-dir` quando è esplicito; **non basta da solo** (vedi Bounds) |
@@ -131,6 +133,17 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   modalità in cui quel file non è temporaneo. È anche quello che dice il
   messaggio d'errore, che altrimenti offrirebbe un `Comando:` da rieseguire
   nominando uno score che non c'è più (vedi [[errors]]).
+- **Le depfile valgono in MIX (`STEMS=false`), non in STEMS.** In MIX la
+  regola è `$(SFDIR)/%.aif: $(YMLDIR)/%.yml`, e make conosce il master e
+  nient'altro: con lo stream come file (`file:`, issue #290) modificare
+  soltanto uno stream importato lasciava l'audio di prima con un «nothing to
+  be done». Le due ricette MIX passano `--depfile $(GENDIR)/<target>.d`
+  (`$(notdir $@)`, una per target) e il ramo include
+  `$(wildcard $(GENDIR)/*.d)`, come un progetto C fa con `gcc -MD -MP`. In
+  STEMS il target è phony: il motore gira a ogni `make` e la cache per
+  stream decide cosa rifare, quindi la depfile non serve. Una depfile rimasta
+  da un altro target gli aggiunge prerequisiti e non tocca nessun altro;
+  `make clean` le toglie con il resto di `$(GENDIR)`.
 - **`--log-dir` non è un flag csound**, benché sia stato a lungo scritto in
   mezzo a loro: vale con qualunque renderer, perché i due log che scrive la
   fase di caricamento (errori engine e clip) esistono prima che si scelga un
@@ -243,12 +256,13 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   wrappa (`read_indices % n_source`), quindi lì la figura tace su una
   porzione che l'audio contiene (vedi issue #223, punto 2).
 - Le flag con valore leggono il token successivo in `sys.argv`; se manca,
-  la flag viene ignorata senza errore. **Due eccezioni: `--samples-dir` e
-  `--log-dir`**, che con il valore mancante stampano un messaggio ed escono
-  con 1. Il silenzio costa poco sugli altri flag, mentre qui ricadrebbe
-  rispettivamente su `./refs/` e su `logs` — cioè proprio le directory da
-  cui i due flag servono ad andarsene — e il fallimento somiglierebbe al
-  successo. Per `--log-dir` la deroga è arrivata con la issue #251: finché
+  la flag viene ignorata senza errore. **Tre eccezioni: `--samples-dir`,
+  `--log-dir` e `--depfile`**, che con il valore mancante stampano un
+  messaggio ed escono con 1. Il silenzio costa poco sugli altri flag, mentre
+  qui ricadrebbe rispettivamente su `./refs/` e su `logs` — cioè proprio le
+  directory da cui i due flag servono ad andarsene — e, per `--depfile`, su
+  un render senza depfile, cioè su un make che continua a non vedere i file
+  importati: in tutti e tre i casi il fallimento somiglierebbe al successo. Per `--log-dir` la deroga è arrivata con la issue #251: finché
   spostava solo il logfile di Csound il silenzio era innocuo, da quando
   governa anche il log degli errori engine manda a cercare quel log dove
   non è (la riga `Dettagli:` nomina la directory di default, non quella
@@ -279,6 +293,11 @@ python src/main.py brano.yml output/brano.wav \
   --renderer numpy --format wav --samples-dir /media/wavs
 python src/main.py brano.yml output/brano.aif \
   --renderer csound --samples-dir /media/wavs   # alimenta anche SSDIR
+
+# Mix con le dipendenze per make: il master e i file importati con `file:`
+# (e' cio' che fanno le regole MIX di make/build.mk)
+python src/main.py configs/brano.yml output/brano.aif \
+  --renderer numpy --depfile generated/brano.aif.d
 
 # Debug csound: conserva gli .sco intermedi
 python src/main.py configs/brano.yml --renderer csound --keep-sco --sco-dir generated

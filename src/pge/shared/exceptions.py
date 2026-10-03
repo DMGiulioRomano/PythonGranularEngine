@@ -69,6 +69,21 @@ except ImportError:  # PyYAML non installato: vedi sopra
 _INDENTO_VALORE = ' ' * 16
 
 
+def _righe_importato_da(origin) -> list[str]:
+    """`Importato da:`, se l'errore sta in un file importato (issue #290).
+
+    `origin` e' la voce `file:` del master che ha importato il file
+    (`pge.engine.stream_files.StreamFileOrigin`, letta per campi: importarla
+    da qui sarebbe un ciclo). `None` per un errore del master, o di un YAML
+    che nessuno importa, e allora la riga non c'e'. Una funzione e non un
+    metodo perche' la dicono due rami della gerarchia, `ConfigError` e
+    `SampleNotFoundError`.
+    """
+    if origin is None:
+        return []
+    return [f"  Importato da: {origin.master}, {origin.entry}"]
+
+
 class EngineError(Exception):
     """Base per errori dell'pge.engine. Sottoclassi forniscono user_message()."""
 
@@ -82,6 +97,9 @@ class SampleNotFoundError(EngineError):
         self.search_path = search_path
         self.stream_id: str | None = None
         self.config_file: str | None = None
+        # Come su ConfigError (issue #290): la voce `file:` del master, se il
+        # sample e' nominato da uno stream importato.
+        self.imported_by = None
         super().__init__(f"Sample non trovato: '{filename}' in {search_path}")
 
     def user_message(self) -> str:
@@ -93,6 +111,7 @@ class SampleNotFoundError(EngineError):
             lines.append(f"  Stream:       {self.stream_id}")
         if self.config_file:
             lines.append(f"  Config:       {self.config_file}")
+        lines.extend(_righe_importato_da(self.imported_by))
         return "\n".join(lines)
 
 
@@ -107,6 +126,12 @@ class ConfigError(EngineError, ValueError):
     def __init__(self, message: str):
         self.stream_id: str | None = None
         self.config_file: str | None = None
+        # Lo stream come file (issue #290): la voce `file:` del master che ha
+        # importato il file nominato da `config_file`, quando l'errore sta in
+        # un file importato. `None` per un errore del master, o di un YAML
+        # che nessuno importa. Arricchito da chi risolve l'import, come
+        # `stream_id` e `config_file` da chi li conosce.
+        self.imported_by = None
         # `Exception.__init__` esplicito, non `super()`: le sottoclassi della
         # #257 mescolano un builtin, e alcuni builtin hanno un `__init__`
         # proprio che sta *dopo* ConfigError nell'MRO e intercetterebbe il
@@ -125,7 +150,18 @@ class ConfigError(EngineError, ValueError):
             lines.append(f"  Stream:       {self.stream_id}")
         if self.config_file:
             lines.append(f"  Config:       {self.config_file}")
+        lines.extend(self._import_lines())
         return lines
+
+    def _import_lines(self) -> list[str]:
+        """`Importato da:`, se l'errore sta in un file importato (#290).
+
+        A parte da `_context_lines()` perche' le tre classi della #257 quella
+        non la chiamano -- il file e' il soggetto del head -- ma questa riga
+        la devono dire lo stesso: «File di configurazione non trovato» su un
+        file importato non dice chi lo stava cercando.
+        """
+        return _righe_importato_da(self.imported_by)
 
 
 class ConfigFileNotFoundError(ConfigError, FileNotFoundError):
@@ -200,6 +236,7 @@ class ConfigFileNotFoundError(ConfigError, FileNotFoundError):
         lines = [f"[ERRORE] File di configurazione non trovato: '{self.path}'"]
         if self.resolved_path != self.path:
             lines.append(f"  Path cercato: {self.resolved_path}")
+        lines.extend(self._import_lines())
         return "\n".join(lines)
 
 
@@ -272,6 +309,7 @@ class ConfigParseError(ConfigError, _YamlError):
         prima, *seguito = [r.strip() for r in dettaglio.splitlines()] or ['']
         lines.append(f"  Dettaglio:    {prima}")
         lines.extend(f"{_INDENTO_VALORE}{riga}" for riga in seguito if riga)
+        lines.extend(self._import_lines())
         return "\n".join(lines)
 
 
@@ -335,6 +373,7 @@ class ConfigReadError(ConfigError, OSError):
         lines = [f"[ERRORE] File di configurazione non leggibile: '{self.path}'"]
         dettaglio = self.strerror or str(self.cause)
         lines.append(f"  Dettaglio:    {dettaglio}")
+        lines.extend(self._import_lines())
         return "\n".join(lines)
 
 
@@ -923,3 +962,197 @@ class CsoundNotFoundError(_BinaryNotFoundError):
     """
 
     tool = "Csound"
+
+
+# =============================================================================
+# Lo stream come file (issue #290)
+# =============================================================================
+#
+# Una voce `- file: <path>` di `streams:` importa uno stream scritto in un altro
+# documento. Il guasto sta sempre fra due file, il master e quello importato, e
+# ogni messaggio di questa famiglia li nomina entrambi con una regola sola: la
+# testa o la riga `Config:` nomina il file in cui l'errore e' *scritto*, l'altra
+# riga nomina l'altro file. Una chiave estranea accanto a `file:` sta nel
+# master, quindi `Config:` e' il master e `Voce:` nomina la voce e il file che
+# importa; uno stream che manca sta nel file importato, quindi la testa e' quel
+# file e `Importato da:` nomina il master e la voce.
+#
+# Le classi non conoscono la forma della voce: la ricevono come `origin`
+# (`pge.engine.stream_files.StreamFileOrigin`) e ne leggono i campi. Importarla
+# da qui sarebbe un ciclo, e questo modulo sta sotto quasi ogni altro.
+
+
+def _voce_file(origin) -> str:
+    """`streams[1] (file: streams/risacca.yml)`: la voce del master, con
+    il `file:` come e' scritto, che e' come l'utente lo cerca."""
+    return f"{origin.entry} (file: {origin.file})"
+
+
+class StreamFileError(ConfigError):
+    """Una voce `file:` del master che non si risolve (issue #290).
+
+    Base della famiglia: chi vuole sapere solo «e' un problema di import»
+    cattura questa.
+    """
+
+
+class StreamFileKeyError(StreamFileError):
+    """Accanto a `file:` c'e' una chiave che non e' di piazzamento.
+
+    Ogni chiave ha una sola casa: il master tiene il piazzamento
+    (`stream_id`, `onset`, `mute`, `solo`), il file tutto il resto. Un
+    `density` accanto a `file:` non e' un override -- e' la stessa chiave in
+    due case, e una delle due mente.
+    """
+
+    def __init__(self, origin, keys, allowed):
+        self.origin = origin
+        self.keys: list[str] = list(keys)
+        self.allowed: tuple[str, ...] = tuple(allowed)
+        super().__init__(self._head())
+        self.config_file = origin.master
+
+    def _head(self) -> str:
+        nomi = ", ".join(f"'{k}'" for k in self.keys)
+        if len(self.keys) == 1:
+            return f"Chiave non ammessa accanto a 'file:': {nomi}"
+        return f"Chiavi non ammesse accanto a 'file:': {nomi}"
+
+    def user_message(self) -> str:
+        ammesse = ", ".join(self.allowed)
+        lines = [
+            f"[ERRORE] {self._head()}",
+            f"  Voce:         {_voce_file(self.origin)}",
+            f"  Hint:         accanto a 'file:' il master tiene solo il "
+            f"piazzamento dello stream ({ammesse}). Il resto ha casa nel file "
+            f"importato: scrivilo li'.",
+        ]
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
+class _ImportedStreamFileError(StreamFileError):
+    """Base degli errori scritti nel file importato, non nel master.
+
+    La testa nomina il file importato e `Importato da:` il master: e' la
+    meta' della regola della famiglia che va dall'altra parte rispetto a
+    `StreamFileKeyError`. `config_file` e' il file importato, come per le
+    classi della #257, cosi' chi interroga l'eccezione trova il file da
+    aprire nello stesso campo in cui lo trova per ogni altro errore.
+    """
+
+    def __init__(self, origin, message: str):
+        super().__init__(message)
+        self.origin = origin
+        self.path = origin.path
+        self.config_file = origin.path
+        self.imported_by = origin
+
+    def _head(self) -> str:
+        raise NotImplementedError
+
+    def _detail_lines(self) -> list[str]:
+        raise NotImplementedError
+
+    def user_message(self) -> str:
+        lines = [f"[ERRORE] {self._head()}"]
+        lines.extend(self._detail_lines())
+        lines.extend(self._import_lines())
+        return "\n".join(lines)
+
+
+class StreamFileCountError(_ImportedStreamFileError):
+    """Il file importato non porta esattamente uno stream.
+
+    Uno stream come file e' un documento con **uno** stream: con due non si
+    saprebbe quale il master stia piazzando, con zero non c'e' niente da
+    piazzare. Ogni forma che non e' «una lista `streams:` con un mapping
+    dentro» e' questo errore, e `found` dice quale forma e' stata letta.
+    """
+
+    def __init__(self, origin, found: str):
+        self.found = found
+        super().__init__(origin, self._head_for(origin))
+
+    @staticmethod
+    def _head_for(origin) -> str:
+        return (f"Il file importato deve contenere un solo stream: "
+                f"'{origin.path}'")
+
+    def _head(self) -> str:
+        return self._head_for(self.origin)
+
+    def _detail_lines(self) -> list[str]:
+        return [
+            f"  Trovati:      {self.found}",
+            "  Hint:         uno stream come file e' un documento con una "
+            "lista 'streams:' di un solo stream. Per importarne piu' d'uno: "
+            "un file per stream, e una voce 'file:' per file nel master.",
+        ]
+
+
+class StreamFileChainError(_ImportedStreamFileError):
+    """Lo stream del file importato e' a sua volta una voce `file:`.
+
+    Niente catene, e quindi niente cicli: lo stream di un file importato e'
+    scritto per intero, e nessuno deve inseguire un `file:` per tre cartelle
+    per sapere che cosa suona.
+    """
+
+    def __init__(self, origin, chained):
+        self.chained = chained
+        super().__init__(origin, self._head_for(origin))
+
+    @staticmethod
+    def _head_for(origin) -> str:
+        return (f"Il file importato usa a sua volta 'file:': "
+                f"'{origin.path}'")
+
+    def _head(self) -> str:
+        return self._head_for(self.origin)
+
+    def _detail_lines(self) -> list[str]:
+        return [
+            f"  Trovato:      file: {self.chained}",
+            f"  Hint:         niente catene: lo stream di un file importato "
+            f"e' scritto per intero. Importa '{self.chained}' direttamente "
+            f"dal master, oppure copia qui il suo stream.",
+        ]
+
+
+class StreamFileDuplicateIdError(StreamFileError):
+    """Due voci del master con lo stesso `stream_id`, e almeno una e' `file:`.
+
+    Lo `stream_id` e' il nome dello stem e la chiave della cache: due stream
+    che lo condividono si sovrascrivono lo stem a vicenda. Con `file:` succede
+    senza che nessuno scriva due volte lo stesso id -- basta importare due
+    volte lo stesso file -- ed e' per questo che il controllo nasce con
+    l'import. I duplicati fra stream scritti nel master restano fuori, come
+    prima.
+
+    `entries` sono le voci in collisione, `(indice, file)` in ordine di
+    master, con `file` a `None` per una voce scritta nel master. L'id e'
+    quello *effettivo*, cioe' come stringa: `1` e `'1'` sono lo stesso stem.
+    """
+
+    def __init__(self, master: str, stream_id: str, entries):
+        self.entries: list[tuple[int, str | None]] = list(entries)
+        super().__init__(f"stream_id duplicato: '{stream_id}'")
+        self.stream_id = stream_id
+        self.config_file = master
+
+    def user_message(self) -> str:
+        voci = [f"streams[{indice}]" if file is None
+                else f"streams[{indice}] (file: {file})"
+                for indice, file in self.entries]
+        lines = [f"[ERRORE] stream_id duplicato: '{self.stream_id}'",
+                 f"  Voci:         {voci[0]}"]
+        lines.extend(f"{_INDENTO_VALORE}{voce}" for voce in voci[1:])
+        lines.append(
+            "  Hint:         lo stream_id e' il nome dello stem e la chiave "
+            "della cache, quindi due stream non possono condividerlo. Senza "
+            "'stream_id' una voce 'file:' prende il nome del file: scrivine "
+            "uno diverso accanto a 'file:'.")
+        # Niente riga `Stream:`: l'id e' gia' il soggetto del head.
+        lines.append(f"  Config:       {self.config_file}")
+        return "\n".join(lines)

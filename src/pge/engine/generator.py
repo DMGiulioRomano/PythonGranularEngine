@@ -14,6 +14,7 @@ from __future__ import annotations
 import yaml
 import re
 import math
+import sys
 from typing import List, Dict, Any
 
 from pge.core.stream import Stream
@@ -26,6 +27,9 @@ from pge.shared.exceptions import (
 )
 from pge.shared.logger import get_diagnostic_logger
 from pge.shared.seeding import session_seed
+from pge.engine.stream_files import (
+    StreamFileOrigin, origins_by_id, resolve_stream_files,
+)
 
 class Generator:
     """
@@ -44,8 +48,11 @@ class Generator:
 
     Attributes:
         yaml_path: path file configurazione YAML
-        data: dati YAML preprocessati
+        data: dati YAML preprocessati, con le voci `file:` gia' risolte
         streams: lista Stream creati
+        stream_origins: per ogni stream importato con `file:` (issue #290),
+            id effettivo -> `StreamFileOrigin`, la voce del master che lo
+            importa
         ftable_manager: gestore function tables
         score_writer: scrittore file score
     """
@@ -74,6 +81,12 @@ class Generator:
         self.ftable_manager = FtableManager(start_num=1)
         self.score_writer = ScoreWriter(self.ftable_manager)
         self.stream_data_map: Dict[str, dict] = {}
+        # Lo stream come file (issue #290): per ogni stream importato con
+        # `file:`, la voce del master che lo nomina, per id effettivo. Lo
+        # stream risolto non porta piu' `file:`: questa e' la sola traccia di
+        # dove sia scritto, per gli errori del suo contenuto e per chi
+        # incorpora il motore. Popolato da load_yaml.
+        self.stream_origins: Dict[str, StreamFileOrigin] = {}
     # =========================================================================
     # PUBLIC API
     # =========================================================================
@@ -81,8 +94,10 @@ class Generator:
     def load_yaml(self) -> dict:
         """
         Carica e preprocessa il file YAML.
-        
-        Valuta espressioni matematiche nelle stringhe (e.g., "(pi)", "(10/2)").
+
+        Risolve le voci `file:` di `streams:` (issue #290, vedi
+        `pge.engine.stream_files`), poi valuta le espressioni matematiche
+        nelle stringhe (e.g., "(pi)", "(10/2)"), su master e stream importati.
         
         Returns:
             dict: dati YAML preprocessati
@@ -98,6 +113,105 @@ class Generator:
             ConfigReadError: se il file c'è ma il sistema operativo non lo
                 apre — una directory al posto del file, permessi negati.
                 Eredita anche OSError, per la stessa ragione.
+
+            I tre valgono anche per un file importato con `file:` (#290),
+            con `imported_by` valorizzato: e' lo stesso guasto. In piu',
+            per le voci `file:`: StreamFileKeyError, StreamFileCountError,
+            StreamFileChainError, StreamFileDuplicateIdError (tutte
+            StreamFileError, quindi ConfigError) e InvalidFieldValueError su
+            un `file:` che non e' un path.
+        """
+        raw_data = self._read_document(self.yaml_path)
+        # Lo stream come file (issue #290): le voci `file:` di `streams:` si
+        # risolvono qui, prima di tutto il resto -- espressioni matematiche
+        # comprese, che valgono sullo stream importato come su quello scritto
+        # nel master. Da qui in poi `data` e' una lista di stream come prima.
+        raw_data, importati = resolve_stream_files(
+            raw_data, self.yaml_path, self._read_document)
+
+        self.data = self._eval_math_expressions(raw_data)
+        # Seed top-level opzionale (issue #81): None se assente (il session
+        # seed viene derivato in create_elements, non qui).
+        self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
+        self.seed_is_session = False
+        # Dopo il math eval, non dentro la risoluzione: l'id effettivo e'
+        # quello valutato (`'01'` e' lo stream `1`), e la regola 7 e la
+        # chiave di `stream_origins` devono essere quelle dello stem.
+        self.stream_origins = (
+            origins_by_id(self.yaml_path, self.data['streams'], importati)
+            if importati else {})
+        self._warn_imported_seeds(importati)
+        return self.data
+
+    @property
+    def source_files(self) -> List[str]:
+        """I file YAML da cui il brano e' letto, cioe' le dipendenze di un
+        render: il master, poi ogni file importato con `file:` (issue #290),
+        in ordine di master e una volta sola anche se importato due volte.
+
+        E' cio' che `--depfile` scrive per make: la regola che rende un brano
+        conosce solo il master, e senza questa lista modificare soltanto uno
+        stream importato non rifaceva l'audio. Prima di `load_yaml` e' il solo
+        master. Gli stream in mute ci sono: il loro file resta una parte del
+        brano, e smutarli si fa nel master.
+        """
+        files = [self.yaml_path]
+        for origine in self.stream_origins.values():
+            if origine.path not in files:
+                files.append(origine.path)
+        return files
+
+    def _warn_imported_seeds(self, importati):
+        """Regola 6 della #290: il seed di un file importato e' ignorato, ma
+        non in silenzio.
+
+        Il brano ha un seed solo, quello del master, e lo stream importato si
+        rende con quello. Se il file ne dichiara un altro, lo stream non suona
+        come quando il file si rende da solo: non e' un errore, ma chi ascolta
+        il brano deve sapere perche'.
+
+        Il confronto e' quello della derivazione degli RNG, che scrive il seed
+        in una stringa (`f"{seed}:{stream_id}:..."`) dopo le espressioni
+        matematiche: per questo sta qui, dopo `_eval_math_expressions`, e
+        confronta stringhe. `(1000 + 441)` e `'1441'` sono 1441, e un avviso
+        che dicesse il contrario sarebbe falso.
+
+        Su stderr e non su stdout: e' un avviso, e PGE-ui (#162) separa i due
+        canali. La forma resta comunque fuori dal protocollo -- la regola del
+        motore vale su ogni canale (`tests/shared/test_stdout_contract.py`).
+        """
+        for importato in importati:
+            if importato.seed is None:
+                continue
+            seed_file = self._eval_math_expressions(importato.seed)
+            if self.seed is not None and str(seed_file) == str(self.seed):
+                continue
+            origine = importato.origin
+            if self.seed is None:
+                seed_master = "non ne dichiara uno (seed di sessione)"
+            else:
+                seed_master = f"ha seed {self.seed}"
+            print(
+                f"[SEED] Il file importato '{origine.path}' "
+                f"({origine.entry} di '{origine.master}') ha seed "
+                f"{seed_file}, il master {seed_master}: lo stream si rende "
+                f"col seed del master, quindi non suona come quando il file "
+                f"si rende da solo.",
+                file=sys.stderr, flush=True,
+            )
+    
+    def _read_document(self, path: str):
+        """Un documento YAML di configurazione, letto e parsato.
+
+        E' la lettura del master e di ogni file che il master importa con
+        `file:` (issue #290): un file importato che non si legge ha gli
+        stessi tipi d'errore del master che non si legge, perche' e' lo
+        stesso guasto. Ogni chiamata ha il proprio `try`, stretto attorno al
+        proprio `open()`: e' il vincolo scritto qui sotto, e vale per file.
+
+        Raises:
+            ConfigFileNotFoundError, ConfigParseError, ConfigReadError: i
+                tipi che `load_yaml` dichiara, riferiti a `path`.
         """
         # Il try avvolge il solo caricamento dello YAML, e questo e' un
         # vincolo, non una comodita': ogni altro `open()` che finisse qui
@@ -119,17 +233,17 @@ class Generator:
             # diagnosi possibili. Su cp1252, che ogni byte lo decodifica, non
             # c'e' nemmeno l'errore: i valori stringa arrivano storpiati in
             # silenzio.
-            with open(self.yaml_path, 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 raw_data = yaml.safe_load(f)
         except FileNotFoundError as err:
-            raise ConfigFileNotFoundError(self.yaml_path) from err
+            raise ConfigFileNotFoundError(path) from err
         except yaml.YAMLError as err:
             # Le factory, non il costruttore: la sottoclasse restituita eredita
             # anche il tipo *concreto* della causa, cosi' un
             # `isinstance(e, yaml.MarkedYAMLError)` o un
             # `except IsADirectoryError` scritti a valle continuano a
             # funzionare come quando `load_yaml` lasciava salire il builtin.
-            raise config_parse_error(self.yaml_path, err) from err
+            raise config_parse_error(path, err) from err
         except UnicodeDecodeError as err:
             # Il terzo modo in cui un file di config non si legge. `open()` e'
             # in modalita' testo e su UTF-8, quindi la decodifica la fa Python
@@ -138,7 +252,7 @@ class Generator:
             # aperto in binario sarebbe stato PyYAML a rifiutarlo, con un
             # `yaml.reader.ReaderError` -- cioe' un `yaml.YAMLError`. Stesso
             # guasto, stesso tipo.
-            raise config_parse_error(self.yaml_path, err) from err
+            raise config_parse_error(path, err) from err
         except OSError as err:
             # E tutti gli altri: `IsADirectoryError` (`pge configs/ out.wav`,
             # il typo che la tab-completion fabbrica da sola),
@@ -148,15 +262,9 @@ class Generator:
             # dal ramo generico della CLI, cioe' l'enumerazione dei modi in
             # cui un file di config non si legge era incompleta proprio sul
             # caso piu' probabile.
-            raise config_read_error(self.yaml_path, err) from err
+            raise config_read_error(path, err) from err
+        return raw_data
 
-        self.data = self._eval_math_expressions(raw_data)
-        # Seed top-level opzionale (issue #81): None se assente (il session
-        # seed viene derivato in create_elements, non qui).
-        self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
-        self.seed_is_session = False
-        return self.data
-    
     def create_elements(self) -> List[Stream]:
         """
         Crea Stream dai dati YAML.
@@ -195,7 +303,11 @@ class Generator:
         try:
             self._create_streams(filtered_streams)
         except (SampleNotFoundError, ConfigError) as err:
-            err.config_file = self.yaml_path
+            # Solo se nessuno l'ha gia' scritto: l'errore di uno stream
+            # importato porta il file importato, che `_create_streams` ci ha
+            # messo perche' e' li' che il valore sbagliato sta scritto (#290).
+            if err.config_file is None:
+                err.config_file = self.yaml_path
             raise
 
         return self.streams
@@ -310,29 +422,47 @@ class Generator:
         log = get_diagnostic_logger()
 
         for stream_data in stream_data_list:
-            # 1. Crea stream
-            stream = Stream(stream_data, seed=self.seed,
-                            samples_dir=self.samples_dir)
-            self.stream_data_map[stream_data['stream_id']] = stream_data
-            # 2. Registra ftable sample
-            stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
-            
-            # 3. Pre-registra tutte le finestre possibili
-            # CHIAMATA QUI ↓
-            stream.window_table_map = self._register_stream_windows(stream_data)
-
-            # 4. Generazione grani LAZY (issue #117): NON si chiama qui
-            # generate_grains(). I grani si materializzano al primo accesso a
-            # stream.voices/.grains (renderer dirty, visualizer, export). Gli
-            # stream cache-clean, che il renderer salta su is_dirty prima di
-            # leggere .voices, non generano mai i grani. Tabelle e costruzione
-            # Stream restano invece eager (numerazione FtableManager).
+            try:
+                stream = self._create_stream(stream_data)
+            except (SampleNotFoundError, ConfigError) as err:
+                # Uno stream importato con `file:` (issue #290): il valore
+                # sbagliato sta nel file importato, non nel master, e la riga
+                # `Config:` deve mandare li'. Il master resta nominato, in
+                # `Importato da:`.
+                stream_id = stream_data.get('stream_id')
+                origine = (None if stream_id is None
+                           else self.stream_origins.get(str(stream_id)))
+                if origine is not None:
+                    err.config_file = origine.path
+                    err.imported_by = origine
+                raise
             self.streams.append(stream)
             # Diagnostica, non interfaccia (#178, #188): il repr espone stato
             # interno (`grains=lazy`) e la conferma per stream, coi grani veri,
             # la stampa la CLI a render finito (#250). Argomenti a parte e non
             # f-string: con la diagnostica muta il repr non si costruisce.
             log.debug("Stream '%s' creato: %s", stream.stream_id, stream)
+
+    def _create_stream(self, stream_data: dict) -> Stream:
+        """Uno stream, con le sue tabelle registrate (vedi _create_streams)."""
+        # 1. Crea stream
+        stream = Stream(stream_data, seed=self.seed,
+                        samples_dir=self.samples_dir)
+        self.stream_data_map[stream_data['stream_id']] = stream_data
+        # 2. Registra ftable sample
+        stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
+        
+        # 3. Pre-registra tutte le finestre possibili
+        # CHIAMATA QUI ↓
+        stream.window_table_map = self._register_stream_windows(stream_data)
+
+        # 4. Generazione grani LAZY (issue #117): NON si chiama qui
+        # generate_grains(). I grani si materializzano al primo accesso a
+        # stream.voices/.grains (renderer dirty, visualizer, export). Gli
+        # stream cache-clean, che il renderer salta su is_dirty prima di
+        # leggere .voices, non generano mai i grani. Tabelle e costruzione
+        # Stream restano invece eager (numerazione FtableManager).
+        return stream
     
     def _filter_solo_mute(self, stream_data_list: list) -> list:
         """

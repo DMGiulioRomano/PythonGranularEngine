@@ -768,6 +768,8 @@ CLASSIFICAZIONE = {
         INTERFACCIA,
     ('cli.py', '--jobs deve essere >= 1, ricevuto: {}. Usa 1 per il rendering sequenziale.'):
         INTERFACCIA,
+    ('cli.py', '--depfile richiede un file. Esempio: --depfile generated/brano.aif.d'):
+        INTERFACCIA,
     ('cli.py', "--jobs non valido: '{}'. Usa un intero >= 1 oppure 'auto'."):
         INTERFACCIA,
     ('cli.py', '--log-dir richiede una directory. Esempio: --log-dir /percorso/ai/log'):
@@ -814,7 +816,7 @@ CLASSIFICAZIONE = {
         INTERFACCIA,
     ('cli.py', 'Sonic Visualiser session: {}'):
         INTERFACCIA,
-    ('cli.py', 'Uso: python main.py <file.yml> [output.aif] [--visualize] [--show-static] [--show-voice-offsets] [--plot-envelopes nomi,csv] [--magnify] [--magnify-at SPEC] [--page-duration SECONDI] [--grain-height duration|read-span] [--bw] [--per-stream] [--renderer csound|numpy|supercollider] [--jobs N|auto] [--format aiff|wav|flac] [--samples-dir DIR] [--log-dir DIR] [--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] [--message-level N] [--keep-sco] [--sco-dir DIR] [--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] [--sc-block-size N] [--sc-max-nodes N] [--keep-osc] [--osc-dir DIR] [--cache] [--cache-dir DIR] [--reaper] [--reaper-path FILE] [--grain-json] [--export-sv] [--sv-path FILE] [--sv-layout multi|single]'):
+    ('cli.py', 'Uso: python main.py <file.yml> [output.aif] [--visualize] [--show-static] [--show-voice-offsets] [--plot-envelopes nomi,csv] [--magnify] [--magnify-at SPEC] [--page-duration SECONDI] [--grain-height duration|read-span] [--bw] [--per-stream] [--renderer csound|numpy|supercollider] [--jobs N|auto] [--format aiff|wav|flac] [--samples-dir DIR] [--log-dir DIR] [--depfile FILE] [--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] [--message-level N] [--keep-sco] [--sco-dir DIR] [--sc-synthdef-source PATH] [--sc-synthdef-dir DIR] [--sc-block-size N] [--sc-max-nodes N] [--keep-osc] [--osc-dir DIR] [--cache] [--cache-dir DIR] [--reaper] [--reaper-path FILE] [--grain-json] [--export-sv] [--sv-path FILE] [--sv-layout multi|single]'):
         INTERFACCIA,
     ('cli.py', '[CACHE] GC: rimossi {} stream orfani: {}'):
         PROTOCOLLO,
@@ -830,6 +832,11 @@ CLASSIFICAZIONE = {
     # Le due righe DIAGNOSTICA di questo modulo (`  → Stream '{}': {}` e
     # `[CACHE] Stream da scrivere: {}`) sono andate al logger con la #188.
     ('engine/generator.py', 'Creazione di {} stream...'):
+        INTERFACCIA,
+    # Su stderr (#290), come il `CLIP:` che la #242 ha tolto: il censimento
+    # guarda la forma, non il canale, perche' la regola del motore vale su
+    # ogni canale. Parla a chi ha lanciato il render del suono del suo brano.
+    ('engine/generator.py', "[SEED] Il file importato '{}' ({} di '{}') ha seed {}, il master {}: lo stream si rende col seed del master, quindi non suona come quando il file si rende da solo."):
         INTERFACCIA,
     ('engine/generator.py', "[SEED] Nessun seed nello YAML: seed di sessione {}. Per riprodurre questo run aggiungi 'seed: {}' allo YAML."):
         INTERFACCIA,

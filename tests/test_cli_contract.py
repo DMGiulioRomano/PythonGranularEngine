@@ -35,7 +35,7 @@ USAGE = (
     "[--renderer csound|numpy|supercollider] "
     "[--jobs N|auto] "
     "[--format aiff|wav|flac] "
-    "[--samples-dir DIR] [--log-dir DIR] "
+    "[--samples-dir DIR] [--log-dir DIR] [--depfile FILE] "
     "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
     "[--message-level N] "
     "[--keep-sco] [--sco-dir DIR] "

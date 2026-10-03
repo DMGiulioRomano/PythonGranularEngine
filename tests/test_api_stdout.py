@@ -677,6 +677,9 @@ class TestStdoutReale:
                                    str(probe['dir'] / 'p.sv'))),
             ('export_grain_json',
              lambda: api.export_grain_json(gen, str(probe['dir']), 'p')),
+            ('export_depfile',
+             lambda: api.export_depfile(gen, audio,
+                                        str(probe['dir'] / 'p.wav.d'))),
         )
         for nome, fn in casi:
             _r, lines = _capture(fn)

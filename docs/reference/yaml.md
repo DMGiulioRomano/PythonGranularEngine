@@ -5,6 +5,8 @@ status: stable
 tags: [yaml, syntax, parameters, envelopes]
 sources:
   - src/pge/engine/generator.py
+  - src/pge/engine/stream_files.py
+  - src/pge/export/depfile_writer.py
   - src/pge/core/stream.py
   - src/pge/controllers/
   - src/pge/parameters/
@@ -13,7 +15,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 92712ef
+last_synced_commit: f69f137
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -44,6 +46,9 @@ Sezioni rilevanti in questo doc:
   assente = origine della timeline
 - [Durata dello Stream](#durata-dello-stream-duration-opzionale) — `duration` opzionale,
   assente = durata del sample
+- [Stream come file](#stream-come-file-file) — `- file: <path>` in `streams:`
+  importa uno stream scritto in un altro documento; il master ne tiene il
+  piazzamento
 - [Configurazione Processo (StreamConfig)](#configurazione-processo-streamconfig)
 - [La banda dei `_range`](#la-banda-dei-_range-distribution_mode-e-range_anchor) —
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`), unità
@@ -66,6 +71,7 @@ Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [En
 - `src/pge/parameters/parameter_definitions.py`, `src/pge/parameters/parameter_schema.py` — bounds e schema
 - `src/pge/shared/distribution_strategy.py` — banda dei `_range`: distribuzioni e `range_anchor`
 - `src/pge/envelopes/` — sintassi envelope
+- `src/pge/engine/stream_files.py` — `file:` negli stream del master (issue #290)
 - Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
 ---
@@ -131,6 +137,11 @@ Conseguenze della derivazione per-componente:
 
 `seed: 0` è un valore valido e distinto da assente. Sono accettati interi (anche
 negativi) e stringhe.
+
+In un brano che importa stream con `file:` il seed è **uno solo, quello del
+master**: il `seed` del file importato è ignorato, con un avviso su stderr se
+differisce. Vedi [Stream come file](#stream-come-file-file) e la sua
+[identità del suono](#identità-del-suono).
 
 **Breaking (issue #154):** i render con `seed:` fissato prodotti col vecchio
 schema (`random.seed` globale, issue #81) NON sono riproducibili dopo il
@@ -308,6 +319,114 @@ durata risolta: senza `duration`, copre l'intero sample.
 solo:   # solo gli stream con questo flag vengono renderizzati
 mute:   # stream ignorato (a meno che non sia attivo solo mode)
 ```
+
+---
+
+## Stream come file (`file:`)
+
+Issue #290. Una voce della lista `streams:` può essere un **riferimento a un
+altro documento YAML** invece di uno stream scritto per intero. Il documento
+importato è un documento a sé — tipicamente quello del laboratorio, che si apre
+e si rende anche da solo — e il documento del brano, il **master**, ne decide
+soltanto il piazzamento.
+
+```yaml
+# brano.yml — il master
+seed: 1441
+streams:
+  - file: streams/risacca.yml   # un documento del laboratorio
+    onset: 12.5
+    mute: true
+  - stream_id: stream2          # gli stream scritti nel master restano validi
+    sample: pino.wav
+```
+
+```yaml
+# streams/risacca.yml — si rende anche da solo
+seed: 1441
+duration: 30
+bpm: 60
+streams:
+  - stream_id: risacca
+    onset: 0
+    duration: 30
+    sample: mare.wav
+    density: 40
+```
+
+### Le regole
+
+| # | Regola |
+|---|--------|
+| 1 | `file:` si risolve in `Generator.load_yaml`, **prima di tutto il resto**, espressioni matematiche comprese. Da lì in poi il motore vede una lista di stream come prima: cache, fingerprint e solo/mute lavorano sullo stream già risolto. |
+| 2 | Il path è **relativo alla cartella del master**, non alla directory da cui si lancia. Un path assoluto vale com'è. |
+| 3 | Il file importato contiene **un solo stream**: una lista `streams:` con un mapping dentro. Un `file:` dentro il file importato è un errore: niente catene, quindi niente cicli. |
+| 4 | **Ogni chiave ha una sola casa.** Accanto a `file:` il master tiene solo il piazzamento: `stream_id`, `onset`, `mute`, `solo`. Qualunque altra chiave è un errore (`StreamFileKeyError`) che nomina il master, la voce e la chiave. Il default di `stream_id` è il nome del file senza estensione (`risacca`); `stream_id: null` vale come assente. |
+| 5 | Del file importato si legge **lo stream**, e il `seed` top-level solo per l'avviso della regola 6. Si ignorano gli altri top-level (`duration`, `bpm`, `seed`, e ogni altro) e le chiavi di piazzamento dentro lo stream: il laboratorio scrive `onset: 0` e il proprio `stream_id` perché il file si renda da solo, ma nel brano decide il master. Tutto il resto viene dal file, compresa la `duration` dello stream. |
+| 6 | Se il file importato dichiara un `seed` diverso da quello del master, il render procede col seed del master e il motore scrive un **avviso su stderr** (`[SEED] Il file importato ...`) con il file, la voce, il seed del file e quello del master. Un master senza `seed` usa un seed di sessione, che non è quello del file: l'avviso parla anche lì. |
+| 7 | Due stream con lo stesso `stream_id` **effettivo**, se almeno uno viene da `file:`, sono un errore (`StreamFileDuplicateIdError`) che li nomina tutti. L'id effettivo è quello dello stem: l'id dopo le espressioni matematiche, come stringa — `1`, `'1'` e `'01'` sono lo stesso stem, e così due file `1.yml` e `01.yml` importati senza `stream_id` (il math eval converte in numero ogni stringa che lo sembra). I duplicati fra stream scritti nel master restano fuori, come prima. |
+| 8 | Gli errori stanno nella gerarchia `EngineError` e nominano **sia il master sia il file importato**: file mancante, illeggibile, malformato, senza stream o con più di uno. Vedi [[errors]], sezione «Lo stream come file». |
+
+Il confronto dei seed della regola 6 è quello della derivazione degli RNG, che
+scrive il seed in una stringa dopo le espressioni matematiche: `seed:
+(1000 + 441)` e `seed: '1441'` sono `1441`, e non producono un avviso.
+
+Il `sample` di uno stream importato si cerca come quello di ogni altro stream
+(`--samples-dir`, default `refs/`), **non** relativo al file importato: il path
+di `file:` dice dove sta il documento, non dove stanno i suoi sample.
+
+### Lo stream risolto
+
+Per il master dell'esempio, `load_yaml` vede:
+
+```yaml
+streams:
+  - stream_id: risacca      # dal nome del file: il master non ne scrive uno
+    onset: 12.5             # dal master; l'onset: 0 del file e' ignorato
+    mute: true              # dal master
+    duration: 30            # dallo stream del file; la duration top-level no
+    sample: mare.wav
+    density: 40
+  - stream_id: stream2
+    sample: pino.wav
+```
+
+È lo stesso dict dello stream scritto per intero nel master, e la cache lo
+tratta come tale: il fingerprint è quello del dict risolto, quindi **spostare
+uno stream dal master a un file non lo marca dirty**, e modificare il file
+importato marca dirty quello stream e nessun altro. Il GC della cache legge gli
+id dal documento risolto, quindi non scambia uno stream importato per un
+orfano. `Generator.stream_origins` conserva, per id effettivo, la voce del
+master che ha importato ogni stream (`StreamFileOrigin`: master, posizione,
+`file:` come scritto, path risolto): dopo la risoluzione è la sola traccia di
+dove lo stream è scritto.
+
+Fuori dalla cache, a vedere il file importato deve essere **make**. In MIX
+(`STEMS=false`) la regola che rende il brano dipende dal master, e
+modificare soltanto uno stream importato non rifaceva l'audio. Le ricette MIX
+di `make/build.mk` passano `--depfile`: il motore scrive in `$(GENDIR)` le
+dipendenze del render — `Generator.source_files`, il master e i file
+importati — e il Makefile le include. Vedi [[cli]], `--depfile`.
+
+### Identità del suono
+
+L'RNG di ogni componente è derivato da `(seed, rng_group o stream_id,
+componente)` — vedi [Seed](#seed-riproducibilità). Il file non aggiunge niente a
+nessuno dei tre, quindi:
+
+- uno stream importato **suona come nel laboratorio solo con lo stesso seed e
+  lo stesso id**: lo stesso `seed` nel master e nel file, e lo stesso
+  `stream_id` effettivo;
+- uno `stream_id` diverso dà **un'altra realizzazione** dello stesso stream, e
+  questo è accettato. Succede di default quando il laboratorio scrive uno
+  `stream_id` diverso dal nome del file: il master che non ne scrive uno usa
+  `risacca`, non lo `stream1` del laboratorio. Chi vuole la realizzazione del
+  laboratorio scrive quell'id accanto a `file:`, oppure dichiara nel file un
+  `rng_group`, che sostituisce lo `stream_id` nella derivazione e quindi non
+  dipende da come il master chiama lo stream;
+- importare **due volte lo stesso file** con due `stream_id` dà due
+  realizzazioni distinte dello stesso stream — senza `stream_id` è un errore
+  (regola 7), perché i due stem avrebbero lo stesso nome.
 
 ---
 
@@ -2478,6 +2597,10 @@ Per chi volesse ispezionare il pipeline interno, l'ordine di trasformazione di
 un envelope dal YAML al runtime è:
 
 1. **YAML loader**: `yaml.safe_load`
+   - **Stream come file** (#290): `resolve_stream_files` sostituisce ogni voce
+     `file:` di `streams:` con lo stream che importa, letto con lo stesso
+     loader. È prima del math eval, quindi le espressioni dello stream
+     importato si valutano al passo 2 come quelle del master.
 2. **Math eval**: `Generator._eval_math_expressions` valuta `(pi)`, `(10/3)`, ecc.
 3. **Detection**: `Envelope.is_envelope_like` decide se è un envelope o scalare.
 4. **Time scaling**: `create_scaled_envelope` applica `time_mode` (se normalized).
