@@ -27,7 +27,7 @@ from pge.shared.exceptions import (
 )
 from pge.shared.logger import get_diagnostic_logger
 from pge.shared.seeding import session_seed
-from pge.engine.stream_files import resolve_stream_files
+from pge.engine.stream_files import StreamFileOrigin, resolve_stream_files
 
 class Generator:
     """
@@ -76,6 +76,12 @@ class Generator:
         self.ftable_manager = FtableManager(start_num=1)
         self.score_writer = ScoreWriter(self.ftable_manager)
         self.stream_data_map: Dict[str, dict] = {}
+        # Lo stream come file (issue #290): per ogni stream importato con
+        # `file:`, la voce del master che lo nomina, per id effettivo. Lo
+        # stream risolto non porta piu' `file:`: questa e' la sola traccia di
+        # dove sia scritto, per gli errori del suo contenuto e per chi
+        # incorpora il motore. Popolato da load_yaml.
+        self.stream_origins: Dict[str, StreamFileOrigin] = {}
     # =========================================================================
     # PUBLIC API
     # =========================================================================
@@ -114,6 +120,7 @@ class Generator:
         # seed viene derivato in create_elements, non qui).
         self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
         self.seed_is_session = False
+        self.stream_origins = {i.stream_id: i.origin for i in importati}
         self._warn_imported_seeds(importati)
         return self.data
 
@@ -259,7 +266,11 @@ class Generator:
         try:
             self._create_streams(filtered_streams)
         except (SampleNotFoundError, ConfigError) as err:
-            err.config_file = self.yaml_path
+            # Solo se nessuno l'ha gia' scritto: l'errore di uno stream
+            # importato porta il file importato, che `_create_streams` ci ha
+            # messo perche' e' li' che il valore sbagliato sta scritto (#290).
+            if err.config_file is None:
+                err.config_file = self.yaml_path
             raise
 
         return self.streams
@@ -374,29 +385,47 @@ class Generator:
         log = get_diagnostic_logger()
 
         for stream_data in stream_data_list:
-            # 1. Crea stream
-            stream = Stream(stream_data, seed=self.seed,
-                            samples_dir=self.samples_dir)
-            self.stream_data_map[stream_data['stream_id']] = stream_data
-            # 2. Registra ftable sample
-            stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
-            
-            # 3. Pre-registra tutte le finestre possibili
-            # CHIAMATA QUI ↓
-            stream.window_table_map = self._register_stream_windows(stream_data)
-
-            # 4. Generazione grani LAZY (issue #117): NON si chiama qui
-            # generate_grains(). I grani si materializzano al primo accesso a
-            # stream.voices/.grains (renderer dirty, visualizer, export). Gli
-            # stream cache-clean, che il renderer salta su is_dirty prima di
-            # leggere .voices, non generano mai i grani. Tabelle e costruzione
-            # Stream restano invece eager (numerazione FtableManager).
+            try:
+                stream = self._create_stream(stream_data)
+            except (SampleNotFoundError, ConfigError) as err:
+                # Uno stream importato con `file:` (issue #290): il valore
+                # sbagliato sta nel file importato, non nel master, e la riga
+                # `Config:` deve mandare li'. Il master resta nominato, in
+                # `Importato da:`.
+                stream_id = stream_data.get('stream_id')
+                origine = (None if stream_id is None
+                           else self.stream_origins.get(str(stream_id)))
+                if origine is not None:
+                    err.config_file = origine.path
+                    err.imported_by = origine
+                raise
             self.streams.append(stream)
             # Diagnostica, non interfaccia (#178, #188): il repr espone stato
             # interno (`grains=lazy`) e la conferma per stream, coi grani veri,
             # la stampa la CLI a render finito (#250). Argomenti a parte e non
             # f-string: con la diagnostica muta il repr non si costruisce.
             log.debug("Stream '%s' creato: %s", stream.stream_id, stream)
+
+    def _create_stream(self, stream_data: dict) -> Stream:
+        """Uno stream, con le sue tabelle registrate (vedi _create_streams)."""
+        # 1. Crea stream
+        stream = Stream(stream_data, seed=self.seed,
+                        samples_dir=self.samples_dir)
+        self.stream_data_map[stream_data['stream_id']] = stream_data
+        # 2. Registra ftable sample
+        stream.sample_table_num = self.ftable_manager.register_sample(stream.sample)
+        
+        # 3. Pre-registra tutte le finestre possibili
+        # CHIAMATA QUI ↓
+        stream.window_table_map = self._register_stream_windows(stream_data)
+
+        # 4. Generazione grani LAZY (issue #117): NON si chiama qui
+        # generate_grains(). I grani si materializzano al primo accesso a
+        # stream.voices/.grains (renderer dirty, visualizer, export). Gli
+        # stream cache-clean, che il renderer salta su is_dirty prima di
+        # leggere .voices, non generano mai i grani. Tabelle e costruzione
+        # Stream restano invece eager (numerazione FtableManager).
+        return stream
     
     def _filter_solo_mute(self, stream_data_list: list) -> list:
         """

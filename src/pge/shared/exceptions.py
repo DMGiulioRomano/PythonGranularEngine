@@ -69,6 +69,21 @@ except ImportError:  # PyYAML non installato: vedi sopra
 _INDENTO_VALORE = ' ' * 16
 
 
+def _righe_importato_da(origin) -> list[str]:
+    """`Importato da:`, se l'errore sta in un file importato (issue #290).
+
+    `origin` e' la voce `file:` del master che ha importato il file
+    (`pge.engine.stream_files.StreamFileOrigin`, letta per campi: importarla
+    da qui sarebbe un ciclo). `None` per un errore del master, o di un YAML
+    che nessuno importa, e allora la riga non c'e'. Una funzione e non un
+    metodo perche' la dicono due rami della gerarchia, `ConfigError` e
+    `SampleNotFoundError`.
+    """
+    if origin is None:
+        return []
+    return [f"  Importato da: {origin.master}, {origin.entry}"]
+
+
 class EngineError(Exception):
     """Base per errori dell'pge.engine. Sottoclassi forniscono user_message()."""
 
@@ -82,6 +97,9 @@ class SampleNotFoundError(EngineError):
         self.search_path = search_path
         self.stream_id: str | None = None
         self.config_file: str | None = None
+        # Come su ConfigError (issue #290): la voce `file:` del master, se il
+        # sample e' nominato da uno stream importato.
+        self.imported_by = None
         super().__init__(f"Sample non trovato: '{filename}' in {search_path}")
 
     def user_message(self) -> str:
@@ -93,6 +111,7 @@ class SampleNotFoundError(EngineError):
             lines.append(f"  Stream:       {self.stream_id}")
         if self.config_file:
             lines.append(f"  Config:       {self.config_file}")
+        lines.extend(_righe_importato_da(self.imported_by))
         return "\n".join(lines)
 
 
@@ -142,10 +161,7 @@ class ConfigError(EngineError, ValueError):
         la devono dire lo stesso: «File di configurazione non trovato» su un
         file importato non dice chi lo stava cercando.
         """
-        if self.imported_by is None:
-            return []
-        origin = self.imported_by
-        return [f"  Importato da: {origin.master}, {origin.entry}"]
+        return _righe_importato_da(self.imported_by)
 
 
 class ConfigFileNotFoundError(ConfigError, FileNotFoundError):

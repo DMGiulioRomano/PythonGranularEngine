@@ -596,3 +596,88 @@ def test_nessun_avviso_se_il_seed_e_lo_stesso(
     _gen, _out, err = _carica(brano, seed_master, seed_file, capsys)
 
     assert err == ''
+
+
+# =============================================================================
+# Gli errori del contenuto: `Config:` e' il file in cui il valore e' scritto
+# =============================================================================
+# `create_elements` scrive in `config_file` il master su ogni errore che sale
+# dalla costruzione degli stream. Per uno stream importato quella riga mandava
+# a cercare il valore sbagliato nel file che non lo contiene: il sample, la
+# densita', il campo mancante stanno nel file importato.
+
+def _crea(brano, stream):
+    importato = brano.scrivi('streams/risacca.yml',
+                             _documento_del_laboratorio(stream=stream))
+    master = brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'stream_id': 'altro', 'sample': SAMPLE, 'duration': 0.5},
+        {'file': 'streams/risacca.yml', 'onset': 2.0},
+    ]})
+    gen = brano.generator()
+    gen.load_yaml()
+    return gen, master, importato
+
+
+def test_un_sample_mancante_nel_file_importato_nomina_il_file(brano):
+    from pge.shared.exceptions import SampleNotFoundError
+
+    gen, master, importato = _crea(
+        brano, {**STREAM_DEL_LABORATORIO, 'sample': 'assente.wav'})
+
+    with pytest.raises(SampleNotFoundError) as exc:
+        gen.create_elements()
+
+    err = exc.value
+    assert err.stream_id == 'risacca'
+    assert err.config_file == importato
+    assert err.imported_by.master == master
+    messaggio = err.user_message()
+    assert f"Config:       {importato}" in messaggio
+    assert f"Importato da: {master}, streams[1]" in messaggio
+
+
+def test_un_campo_mancante_nel_file_importato_nomina_il_file(brano):
+    from pge.shared.exceptions import MissingFieldError
+
+    gen, master, importato = _crea(
+        brano, {**STREAM_DEL_LABORATORIO, 'sample': None})
+
+    with pytest.raises(MissingFieldError) as exc:
+        gen.create_elements()
+
+    err = exc.value
+    assert err.config_file == importato
+    assert f"Importato da: {master}, streams[1]" in err.user_message()
+
+
+def test_un_errore_di_uno_stream_del_master_nomina_il_master(brano):
+    """La meta' che non deve cambiare: lo stream scritto nel master."""
+    from pge.shared.exceptions import SampleNotFoundError
+
+    brano.scrivi('streams/risacca.yml', _documento_del_laboratorio())
+    master = brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/risacca.yml'},
+        {'stream_id': 'altro', 'sample': 'assente.wav'},
+    ]})
+    gen = brano.generator()
+    gen.load_yaml()
+
+    with pytest.raises(SampleNotFoundError) as exc:
+        gen.create_elements()
+
+    assert exc.value.config_file == master
+    assert exc.value.imported_by is None
+    assert 'Importato da' not in exc.value.user_message()
+
+
+def test_il_generator_sa_da_dove_viene_ogni_stream_importato(brano):
+    """`stream_origins`: id effettivo -> la voce del master che lo importa.
+
+    E' la superficie per chi incorpora il motore (l'editor, un language
+    server): lo stream risolto non porta piu' `file:`, e questa e' la sola
+    traccia di dove stia scritto.
+    """
+    _gen, master, importato = _crea(brano, STREAM_DEL_LABORATORIO)
+
+    assert _gen.stream_origins == {'risacca': StreamFileOrigin(
+        master=master, index=1, file='streams/risacca.yml', path=importato)}

@@ -1820,3 +1820,129 @@ def test_il_pickle_non_annida_il_messaggio():
 
     assert rifatto.args == err.args
     assert str(rifatto).count('File di configurazione non trovato') == 1
+
+
+# =============================================================================
+# Issue #290 — lo stream come file: la famiglia StreamFileError e la riga
+# `Importato da:`
+# =============================================================================
+#
+# Il comportamento (quando ciascuna sale, da quale YAML) sta in
+# `tests/engine/test_stream_files.py`. Qui la forma: la gerarchia, e il
+# contratto della Sez. 2 di `docs/reference/errors.md` -- una riga, un campo --
+# su ogni messaggio della famiglia.
+
+def _origine(index=1):
+    from pge.engine.stream_files import StreamFileOrigin
+    return StreamFileOrigin(master='configs/brano.yml', index=index,
+                            file='streams/risacca.yml',
+                            path='configs/streams/risacca.yml')
+
+
+def _errori_della_famiglia():
+    from pge.shared.exceptions import (
+        StreamFileChainError, StreamFileCountError,
+        StreamFileDuplicateIdError, StreamFileKeyError,
+    )
+    return [
+        StreamFileKeyError(_origine(), ['density', 'pan'],
+                           ('stream_id', 'onset', 'mute', 'solo')),
+        StreamFileCountError(_origine(), '2 stream'),
+        StreamFileChainError(_origine(), 'altro.yml'),
+        StreamFileDuplicateIdError('configs/brano.yml', 'risacca',
+                                   [(0, 'streams/risacca.yml'), (2, None)]),
+    ]
+
+
+@pytest.mark.parametrize('err', _errori_della_famiglia(),
+                         ids=lambda e: type(e).__name__)
+def test_la_famiglia_stream_file_sta_sotto_config_error(err):
+    from pge.shared.exceptions import (
+        ConfigError, EngineError, StreamFileError,
+    )
+    assert isinstance(err, StreamFileError)
+    assert isinstance(err, ConfigError)
+    assert isinstance(err, EngineError)
+    assert isinstance(err, ValueError)
+
+
+@pytest.mark.parametrize('err', _errori_della_famiglia(),
+                         ids=lambda e: type(e).__name__)
+def test_ogni_messaggio_della_famiglia_nomina_i_due_file(err):
+    """Il master e il file importato, sempre: e' la regola 8 della #290.
+
+    E una riga, un campo (Sez. 2 di errors.md): un valore che va a capo si
+    incolonna sotto il valore, mai a sinistra.
+    """
+    import re
+
+    righe = err.user_message().split('\n')
+
+    assert righe[0].startswith('[ERRORE] ')
+    testo = '\n'.join(righe)
+    assert 'configs/brano.yml' in testo
+    assert 'streams/risacca.yml' in testo
+    for riga in righe[1:]:
+        assert (re.match(r'^  \S[^:]*: +\S', riga)
+                or riga.startswith(' ' * 16)), (
+            f"riga senza nome di campo e non incolonnata: {riga!r}")
+
+
+def test_chiavi_estranee_al_plurale():
+    from pge.shared.exceptions import StreamFileKeyError
+
+    err = StreamFileKeyError(_origine(), ['density', 'pan'], ('onset',))
+
+    assert "Chiavi non ammesse accanto a 'file:': 'density', 'pan'" in (
+        err.user_message())
+
+
+def test_importato_da_e_assente_finche_nessuno_importa():
+    from pge.shared.exceptions import (
+        ConfigFileNotFoundError, MissingFieldError, SampleNotFoundError,
+    )
+    for err in (ConfigFileNotFoundError('x.yml'),
+                MissingFieldError('sample'),
+                SampleNotFoundError('x.wav', './refs/')):
+        assert err.imported_by is None
+        assert 'Importato da' not in err.user_message()
+
+
+def test_importato_da_compare_su_ogni_ramo_della_gerarchia():
+    """Le classi #257 non chiamano `_context_lines()`, `SampleNotFoundError`
+    non e' un `ConfigError`: la riga deve esserci lo stesso, su ognuna."""
+    from pge.shared.exceptions import (
+        ConfigFileNotFoundError, MissingFieldError, SampleNotFoundError,
+        config_parse_error, config_read_error,
+    )
+    import yaml
+
+    errori = [
+        ConfigFileNotFoundError('configs/streams/risacca.yml'),
+        config_parse_error('configs/streams/risacca.yml',
+                           yaml.YAMLError('rotto')),
+        config_read_error('configs/streams/risacca.yml',
+                          IsADirectoryError(21, 'Is a directory')),
+        MissingFieldError('sample'),
+        SampleNotFoundError('x.wav', './refs/'),
+    ]
+    for err in errori:
+        err.imported_by = _origine(index=3)
+        assert 'Importato da: configs/brano.yml, streams[3]' in (
+            err.user_message()), type(err).__name__
+
+
+def test_importato_da_sopravvive_al_pickle():
+    """Le classi #257 sono picklabili (`__reduce__` con lo stato): la riga
+    nuova viaggia nello stato, come ogni altro attributo arricchito."""
+    import pickle
+
+    from pge.shared.exceptions import ConfigFileNotFoundError
+
+    err = ConfigFileNotFoundError('configs/streams/risacca.yml')
+    err.imported_by = _origine()
+
+    copia = pickle.loads(pickle.dumps(err))
+
+    assert copia.imported_by == err.imported_by
+    assert copia.user_message() == err.user_message()
