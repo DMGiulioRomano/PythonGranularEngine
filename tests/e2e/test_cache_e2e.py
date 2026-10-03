@@ -10,6 +10,8 @@ Scenari:
 2. TestIncrementalBuild  - build invariata: tutti clean, file .aif non riscritti
 3. TestPartialRebuild    - modifica parziale YAML: solo stream modificato è DIRTY
 4. TestGarbageCollection - stream rimosso dal YAML: .aif orfano e entry manifest rimossi
+5. TestStreamFile        - stream importato con `file:` (#290): modificare il
+                           file importato marca dirty solo quello stream
 
 Requisiti:
   - csound, sox, make nel PATH
@@ -390,3 +392,107 @@ class TestGarbageCollection:
 
         assert (tmp_path / "output" / "e2e_test__s1.aif").exists(), \
             "s1.aif cancellato per errore dalla GC"
+
+
+# =============================================================================
+# 5. STREAM COME FILE (issue #290)
+# =============================================================================
+#
+# Il master importa `s1` da un documento a se' (`- file: streams/s1.yml`) e
+# scrive `s2` per intero. La cache lavora sullo stream gia' risolto, quindi
+# il file importato e' una parte del brano come le altre: cambiarlo rifa' il
+# suo stem e nient'altro, e il GC -- che legge gli id dal documento risolto --
+# non scambia lo stream importato per un orfano.
+
+_YAML_MASTER_IMPORTA = """\
+streams:
+  - file: streams/s1.yml
+    onset: 0.0
+  - stream_id: "s2"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+"""
+
+# Un documento del laboratorio: si rende anche da solo, quindi porta i suoi
+# top-level, `onset: 0` e il proprio `stream_id`. Nel brano decide il master.
+_YAML_S1_IMPORTATO = """\
+seed: 7
+duration: 1.0
+bpm: 60
+streams:
+  - stream_id: "stream1"
+    onset: 0.0
+    duration: 1.0
+    sample: "pino.wav"
+"""
+
+
+def _write_imported(tmp_path, content: str):
+    """Il file importato, relativo alla cartella del master (`configs/`)."""
+    streams_dir = tmp_path / "configs" / "streams"
+    streams_dir.mkdir(parents=True, exist_ok=True)
+    (streams_dir / "s1.yml").write_text(content)
+
+
+@pytest.mark.e2e
+class TestStreamFile:
+    """`file:` negli stream del master, sotto `STEMS=true CACHE=true`."""
+
+    def _prima_build(self, tmp_path):
+        _write_yaml(tmp_path, _YAML_MASTER_IMPORTA)
+        _write_imported(tmp_path, _YAML_S1_IMPORTATO)
+        result, output = _make_build(tmp_path)
+        assert result.returncode == 0, f"make fallito:\n{output}"
+        return output
+
+    def test_lo_stream_importato_ha_il_suo_stem(self, tmp_path):
+        """L'id e' il nome del file, non lo `stream_id` del laboratorio."""
+        output = self._prima_build(tmp_path)
+
+        assert "[CACHE] s1: DIRTY" in output
+        assert "[CACHE] s2: DIRTY" in output
+        assert (tmp_path / "output" / "e2e_test__s1.aif").exists()
+        assert not (tmp_path / "output" / "e2e_test__stream1.aif").exists()
+
+    def test_modificare_il_file_importato_marca_dirty_solo_quello_stream(
+            self, tmp_path):
+        self._prima_build(tmp_path)
+        manifest_prima = _load_manifest(tmp_path)
+
+        _write_imported(tmp_path, _YAML_S1_IMPORTATO.replace(
+            "    duration: 1.0", "    duration: 1.5"))
+        r2, output2 = _make_build(tmp_path)
+        assert r2.returncode == 0, f"make fallito:\n{output2}"
+        manifest_dopo = _load_manifest(tmp_path)
+
+        assert "[CACHE] s1: DIRTY" in output2
+        assert "[CACHE] s2: clean" in output2
+        assert manifest_prima["s1"] != manifest_dopo["s1"]
+        assert manifest_prima["s2"] == manifest_dopo["s2"]
+
+    def test_i_top_level_del_file_importato_non_toccano_la_cache(
+            self, tmp_path):
+        """`seed`, `duration`, `bpm` top-level del file sono ignorati: non
+        sono nello stream risolto, quindi nemmeno nel suo fingerprint."""
+        self._prima_build(tmp_path)
+
+        _write_imported(tmp_path, _YAML_S1_IMPORTATO
+                        .replace("seed: 7", "seed: 8")
+                        .replace("bpm: 60", "bpm: 90"))
+        r2, output2 = _make_build(tmp_path)
+        assert r2.returncode == 0, f"make fallito:\n{output2}"
+
+        assert "[CACHE] s1: clean" in output2
+        assert "[CACHE] s2: clean" in output2
+
+    def test_il_gc_non_scambia_lo_stream_importato_per_un_orfano(
+            self, tmp_path):
+        self._prima_build(tmp_path)
+
+        r2, output2 = _make_build(tmp_path)
+        assert r2.returncode == 0, f"make fallito:\n{output2}"
+
+        assert "[CACHE] GC:" not in output2
+        assert "s1" in _load_manifest(tmp_path)
+        assert (tmp_path / "output" / "e2e_test__s1.aif").exists()

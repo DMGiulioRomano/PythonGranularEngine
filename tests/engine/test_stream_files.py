@@ -681,3 +681,76 @@ def test_il_generator_sa_da_dove_viene_ogni_stream_importato(brano):
 
     assert _gen.stream_origins == {'risacca': StreamFileOrigin(
         master=master, index=1, file='streams/risacca.yml', path=importato)}
+
+
+# =============================================================================
+# La cache lavora sullo stream risolto (regola 1)
+# =============================================================================
+# Il gemello in-process dell'e2e `TestStreamFile` (tests/e2e/test_cache_e2e.py,
+# che passa da `make` con csound): qui il renderer e' numpy e vero, cosi' gira
+# in `make tests` senza binari esterni. La regola e' la stessa per i tre
+# backend, perche' sta nel fingerprint del dict risolto, non nel renderer.
+
+def _rendi_con_cache(brano, capsys):
+    """Un render STEMS con cache; ritorna `{stream_id: 'DIRTY'|'clean'}`."""
+    from pge import api
+
+    gen = api.load_generator(str(brano.root / 'brano.yml'),
+                             samples_dir=brano.samples_dir)
+    api.render(gen, str(brano.root / 'out' / 'brano.wav'),
+               renderer='numpy', per_stream=True,
+               samples_dir=brano.samples_dir,
+               cache_manifest_path=str(brano.root / 'cache' / 'brano.json'))
+    out = capsys.readouterr().out
+    stati = dict(_FORMA_CACHE.match(r).groups() for r in out.splitlines()
+                 if _FORMA_CACHE.match(r))
+    return stati
+
+
+def _brano_con_cache(brano, stream_importato):
+    (brano.root / 'out').mkdir(exist_ok=True)
+    brano.scrivi('streams/risacca.yml',
+                 _documento_del_laboratorio(stream=stream_importato))
+    brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/risacca.yml', 'onset': 0.5},
+        {'stream_id': 'fermo', 'sample': SAMPLE, 'duration': 0.5,
+         'density': 10},
+    ]})
+
+
+def test_modificare_il_file_importato_marca_dirty_solo_quello_stream(
+        brano, capsys):
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO)
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'DIRTY'}
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'clean', 'fermo': 'clean'}
+
+    _brano_con_cache(brano, {**STREAM_DEL_LABORATORIO, 'density': 40})
+
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'clean'}
+    # E il GC, che legge gli id dal documento risolto, non l'ha preso per un
+    # orfano: lo stem e' ancora li'.
+    assert list((brano.root / 'out').glob('brano__risacca.*'))
+
+
+def test_spostare_uno_stream_in_un_file_non_invalida_la_cache(brano, capsys):
+    """Lo stream risolto e' lo stesso dict dello stream scritto nel master.
+
+    Stesso id, stesso piazzamento, stesso contenuto: stesso fingerprint. Chi
+    estrae uno stream del brano in un file del laboratorio non paga un
+    re-render per averlo fatto.
+    """
+    (brano.root / 'out').mkdir(exist_ok=True)
+    inline = {k: v for k, v in STREAM_DEL_LABORATORIO.items()
+              if k != 'onset'}
+    brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {**inline, 'onset': 0.5}]})
+    assert _rendi_con_cache(brano, capsys) == {'risacca': 'DIRTY'}
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO)
+    brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/risacca.yml', 'onset': 0.5}]})
+
+    assert _rendi_con_cache(brano, capsys) == {'risacca': 'clean'}
