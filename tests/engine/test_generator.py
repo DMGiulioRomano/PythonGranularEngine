@@ -510,21 +510,25 @@ class TestLoadYaml:
         girare ovunque: su macOS CPython impone UTF-8 al locale C, quindi il
         gemello qui sotto salta proprio sulla macchina di sviluppo. Questa
         parla su ogni piattaforma.
+
+        Legge l'intero modulo e non il solo corpo di `load_yaml`: dalla #290
+        la lettura sta in `_read_document`, che apre anche ogni file che il
+        master importa con `file:`, e un file importato e' YAML quanto il
+        master. Ancorata a `load_yaml`, la guardia diventava rossa su un
+        `open()` spostato e taceva sul secondo.
         """
         import ast
         import inspect
-        import textwrap
 
         from pge.engine import generator as modulo
 
-        albero = ast.parse(textwrap.dedent(
-            inspect.getsource(modulo.Generator.load_yaml)))
+        albero = ast.parse(inspect.getsource(modulo))
         aperture = [n for n in ast.walk(albero)
                     if isinstance(n, ast.Call)
                     and isinstance(n.func, ast.Name) and n.func.id == 'open']
 
-        assert aperture, ("load_yaml non chiama piu' open(): la guardia sotto "
-                          "non misura piu' niente")
+        assert aperture, ("generator.py non chiama piu' open(): la guardia "
+                          "sotto non misura piu' niente")
         for chiamata in aperture:
             argomenti = {k.arg: k.value for k in chiamata.keywords}
             assert 'encoding' in argomenti, (

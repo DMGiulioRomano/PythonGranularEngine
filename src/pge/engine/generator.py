@@ -26,6 +26,7 @@ from pge.shared.exceptions import (
 )
 from pge.shared.logger import get_diagnostic_logger
 from pge.shared.seeding import session_seed
+from pge.engine.stream_files import resolve_stream_files
 
 class Generator:
     """
@@ -99,6 +100,34 @@ class Generator:
                 apre — una directory al posto del file, permessi negati.
                 Eredita anche OSError, per la stessa ragione.
         """
+        raw_data = self._read_document(self.yaml_path)
+        # Lo stream come file (issue #290): le voci `file:` di `streams:` si
+        # risolvono qui, prima di tutto il resto -- espressioni matematiche
+        # comprese, che valgono sullo stream importato come su quello scritto
+        # nel master. Da qui in poi `data` e' una lista di stream come prima.
+        raw_data = resolve_stream_files(
+            raw_data, self.yaml_path, self._read_document)
+
+        self.data = self._eval_math_expressions(raw_data)
+        # Seed top-level opzionale (issue #81): None se assente (il session
+        # seed viene derivato in create_elements, non qui).
+        self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
+        self.seed_is_session = False
+        return self.data
+    
+    def _read_document(self, path: str):
+        """Un documento YAML di configurazione, letto e parsato.
+
+        E' la lettura del master e di ogni file che il master importa con
+        `file:` (issue #290): un file importato che non si legge ha gli
+        stessi tipi d'errore del master che non si legge, perche' e' lo
+        stesso guasto. Ogni chiamata ha il proprio `try`, stretto attorno al
+        proprio `open()`: e' il vincolo scritto qui sotto, e vale per file.
+
+        Raises:
+            ConfigFileNotFoundError, ConfigParseError, ConfigReadError: i
+                tipi che `load_yaml` dichiara, riferiti a `path`.
+        """
         # Il try avvolge il solo caricamento dello YAML, e questo e' un
         # vincolo, non una comodita': ogni altro `open()` che finisse qui
         # dentro uscirebbe travestito da configurazione mancante o
@@ -119,17 +148,17 @@ class Generator:
             # diagnosi possibili. Su cp1252, che ogni byte lo decodifica, non
             # c'e' nemmeno l'errore: i valori stringa arrivano storpiati in
             # silenzio.
-            with open(self.yaml_path, 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 raw_data = yaml.safe_load(f)
         except FileNotFoundError as err:
-            raise ConfigFileNotFoundError(self.yaml_path) from err
+            raise ConfigFileNotFoundError(path) from err
         except yaml.YAMLError as err:
             # Le factory, non il costruttore: la sottoclasse restituita eredita
             # anche il tipo *concreto* della causa, cosi' un
             # `isinstance(e, yaml.MarkedYAMLError)` o un
             # `except IsADirectoryError` scritti a valle continuano a
             # funzionare come quando `load_yaml` lasciava salire il builtin.
-            raise config_parse_error(self.yaml_path, err) from err
+            raise config_parse_error(path, err) from err
         except UnicodeDecodeError as err:
             # Il terzo modo in cui un file di config non si legge. `open()` e'
             # in modalita' testo e su UTF-8, quindi la decodifica la fa Python
@@ -138,7 +167,7 @@ class Generator:
             # aperto in binario sarebbe stato PyYAML a rifiutarlo, con un
             # `yaml.reader.ReaderError` -- cioe' un `yaml.YAMLError`. Stesso
             # guasto, stesso tipo.
-            raise config_parse_error(self.yaml_path, err) from err
+            raise config_parse_error(path, err) from err
         except OSError as err:
             # E tutti gli altri: `IsADirectoryError` (`pge configs/ out.wav`,
             # il typo che la tab-completion fabbrica da sola),
@@ -148,15 +177,9 @@ class Generator:
             # dal ramo generico della CLI, cioe' l'enumerazione dei modi in
             # cui un file di config non si legge era incompleta proprio sul
             # caso piu' probabile.
-            raise config_read_error(self.yaml_path, err) from err
+            raise config_read_error(path, err) from err
+        return raw_data
 
-        self.data = self._eval_math_expressions(raw_data)
-        # Seed top-level opzionale (issue #81): None se assente (il session
-        # seed viene derivato in create_elements, non qui).
-        self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
-        self.seed_is_session = False
-        return self.data
-    
     def create_elements(self) -> List[Stream]:
         """
         Crea Stream dai dati YAML.
