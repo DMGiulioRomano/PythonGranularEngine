@@ -46,8 +46,11 @@ class Generator:
 
     Attributes:
         yaml_path: path file configurazione YAML
-        data: dati YAML preprocessati
+        data: dati YAML preprocessati, con le voci `file:` gia' risolte
         streams: lista Stream creati
+        stream_origins: per ogni stream importato con `file:` (issue #290),
+            id effettivo -> `StreamFileOrigin`, la voce del master che lo
+            importa
         ftable_manager: gestore function tables
         score_writer: scrittore file score
     """
@@ -89,8 +92,10 @@ class Generator:
     def load_yaml(self) -> dict:
         """
         Carica e preprocessa il file YAML.
-        
-        Valuta espressioni matematiche nelle stringhe (e.g., "(pi)", "(10/2)").
+
+        Risolve le voci `file:` di `streams:` (issue #290, vedi
+        `pge.engine.stream_files`), poi valuta le espressioni matematiche
+        nelle stringhe (e.g., "(pi)", "(10/2)"), su master e stream importati.
         
         Returns:
             dict: dati YAML preprocessati
@@ -106,6 +111,13 @@ class Generator:
             ConfigReadError: se il file c'è ma il sistema operativo non lo
                 apre — una directory al posto del file, permessi negati.
                 Eredita anche OSError, per la stessa ragione.
+
+            I tre valgono anche per un file importato con `file:` (#290),
+            con `imported_by` valorizzato: e' lo stesso guasto. In piu',
+            per le voci `file:`: StreamFileKeyError, StreamFileCountError,
+            StreamFileChainError, StreamFileDuplicateIdError (tutte
+            StreamFileError, quindi ConfigError) e InvalidFieldValueError su
+            un `file:` che non e' un path.
         """
         raw_data = self._read_document(self.yaml_path)
         # Lo stream come file (issue #290): le voci `file:` di `streams:` si

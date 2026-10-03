@@ -19,8 +19,8 @@ import os
 from typing import NamedTuple
 
 from pge.shared.exceptions import (
-    ConfigError, InvalidFieldValueError, StreamFileChainError, StreamFileCountError,
-    StreamFileDuplicateIdError, StreamFileKeyError,
+    ConfigError, InvalidFieldValueError, StreamFileChainError,
+    StreamFileCountError, StreamFileDuplicateIdError, StreamFileKeyError,
 )
 
 
