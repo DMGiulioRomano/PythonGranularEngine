@@ -97,6 +97,10 @@
 #                       sull'ultimo breakpoint (raggiungibile da YAML)
 #     FutureWarning     le API deprecate che l'host chiama (Stream.grains,
 #                       window_shape_min_px), dal modulo warnings
+#     `[SEED] Il file importato ...`  load_yaml / load_generator, quando un
+#                       file importato con `file:` dichiara un seed diverso da
+#                       quello del master (issue #290): lo stream si rende col
+#                       seed del master
 #
 # Chi incorpora e ha bisogno di silenzio: contextlib.redirect_stdout NON
 # basta -- copre l'elenco qui sopra e nient'altro. Serve anche

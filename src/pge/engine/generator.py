@@ -14,6 +14,7 @@ from __future__ import annotations
 import yaml
 import re
 import math
+import sys
 from typing import List, Dict, Any
 
 from pge.core.stream import Stream
@@ -105,7 +106,7 @@ class Generator:
         # risolvono qui, prima di tutto il resto -- espressioni matematiche
         # comprese, che valgono sullo stream importato come su quello scritto
         # nel master. Da qui in poi `data` e' una lista di stream come prima.
-        raw_data = resolve_stream_files(
+        raw_data, importati = resolve_stream_files(
             raw_data, self.yaml_path, self._read_document)
 
         self.data = self._eval_math_expressions(raw_data)
@@ -113,7 +114,47 @@ class Generator:
         # seed viene derivato in create_elements, non qui).
         self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
         self.seed_is_session = False
+        self._warn_imported_seeds(importati)
         return self.data
+
+    def _warn_imported_seeds(self, importati):
+        """Regola 6 della #290: il seed di un file importato e' ignorato, ma
+        non in silenzio.
+
+        Il brano ha un seed solo, quello del master, e lo stream importato si
+        rende con quello. Se il file ne dichiara un altro, lo stream non suona
+        come quando il file si rende da solo: non e' un errore, ma chi ascolta
+        il brano deve sapere perche'.
+
+        Il confronto e' quello della derivazione degli RNG, che scrive il seed
+        in una stringa (`f"{seed}:{stream_id}:..."`) dopo le espressioni
+        matematiche: per questo sta qui, dopo `_eval_math_expressions`, e
+        confronta stringhe. `(1000 + 441)` e `'1441'` sono 1441, e un avviso
+        che dicesse il contrario sarebbe falso.
+
+        Su stderr e non su stdout: e' un avviso, e PGE-ui (#162) separa i due
+        canali. La forma resta comunque fuori dal protocollo -- la regola del
+        motore vale su ogni canale (`tests/shared/test_stdout_contract.py`).
+        """
+        for importato in importati:
+            if importato.seed is None:
+                continue
+            seed_file = self._eval_math_expressions(importato.seed)
+            if self.seed is not None and str(seed_file) == str(self.seed):
+                continue
+            origine = importato.origin
+            if self.seed is None:
+                seed_master = "non ne dichiara uno (seed di sessione)"
+            else:
+                seed_master = f"ha seed {self.seed}"
+            print(
+                f"[SEED] Il file importato '{origine.path}' "
+                f"({origine.entry} di '{origine.master}') ha seed "
+                f"{seed_file}, il master {seed_master}: lo stream si rende "
+                f"col seed del master, quindi non suona come quando il file "
+                f"si rende da solo.",
+                file=sys.stderr, flush=True,
+            )
     
     def _read_document(self, path: str):
         """Un documento YAML di configurazione, letto e parsato.

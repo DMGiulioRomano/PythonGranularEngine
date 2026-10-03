@@ -51,6 +51,20 @@ class StreamFileOrigin(NamedTuple):
         return f"streams[{self.index}]"
 
 
+class ImportedStream(NamedTuple):
+    """Uno stream che il master ha importato, dopo la risoluzione."""
+
+    #: la voce del master che lo nomina
+    origin: StreamFileOrigin
+    #: lo `stream_id` effettivo, come stringa: quello dello stem e della cache
+    stream_id: str
+    #: il `seed` top-level del file importato, grezzo (None se assente). Il
+    #: render non lo usa -- il brano ha un seed solo, il suo -- ma chi carica
+    #: lo confronta con quello del master: se differiscono lo stream non
+    #: suona come quando il file si rende da solo (regola 6).
+    seed: object
+
+
 def resolve_stream_files(data, master_path, read):
     """La lista `streams:` del master con ogni voce `file:` risolta.
 
@@ -63,14 +77,16 @@ def resolve_stream_files(data, master_path, read):
             gli stessi tipi d'errore del master che non si legge.
 
     Returns:
-        Il documento con le voci `file:` sostituite dallo stream che importano.
-        Un documento senza voci `file:` torna identico.
+        `(documento, importati)`: il documento con le voci `file:` sostituite
+        dallo stream che importano -- identico, se non ce ne sono -- e un
+        `ImportedStream` per ogni voce risolta, in ordine di master.
     """
     if not isinstance(data, dict) or not isinstance(data.get('streams'), list):
-        return data
+        return data, []
 
     cartella = os.path.dirname(master_path)
     risolti = []
+    importati = []
     file_per_indice = {}
     for indice, voce in enumerate(data['streams']):
         if not (isinstance(voce, dict) and 'file' in voce):
@@ -114,9 +130,12 @@ def resolve_stream_files(data, master_path, read):
             piazzamento['stream_id'] = os.path.splitext(
                 os.path.basename(voce['file']))[0]
         risolti.append({**piazzamento, **risolto})
+        importati.append(ImportedStream(
+            origin=origine, stream_id=str(piazzamento['stream_id']),
+            seed=importato.get('seed')))
 
     _rifiuta_id_duplicati(master_path, risolti, file_per_indice)
-    return {**data, 'streams': risolti}
+    return {**data, 'streams': risolti}, importati
 
 
 def _stream_unico(documento, origine):

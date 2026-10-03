@@ -10,6 +10,8 @@ risolto. Per questo i test passano tutti dall'interfaccia pubblica
 dalla funzione di risoluzione: e' il comportamento del master che conta, non
 come ci si arriva.
 """
+import re
+
 import numpy as np
 import pytest
 import soundfile as sf
@@ -520,3 +522,77 @@ def test_un_file_che_non_e_un_path_e_un_valore_invalido(brano, valore):
     assert err.field == 'streams[1].file'
     assert err.config_file == master
     assert master in err.user_message()
+
+
+# =============================================================================
+# Regola 6 — il seed del file importato e' ignorato, ma non in silenzio
+# =============================================================================
+# Lo stream importato suona come nel laboratorio solo con lo stesso seed e lo
+# stesso id. Se i seed differiscono il render procede col seed del master --
+# il brano ne ha uno solo -- e il motore lo dice su stderr: non e' un errore,
+# e' un suono diverso da quello che il file da solo fa sentire.
+
+# Le due forme che il parser di PGE-ui legge come protocollo
+# (`tests/shared/test_stdout_contract.py`): l'avviso non deve averne nessuna,
+# su nessun canale.
+_FORMA_CACHE = re.compile(r"^\[CACHE\]\s+(\S+):\s+(.+)$")
+_FORMA_PATH = re.compile(r"^\s+(.+__.+)\.(?:aif|aiff|wav|flac)\s*$",
+                         re.IGNORECASE)
+
+
+def _carica(brano, seed_master, seed_file, capsys):
+    top = {} if seed_file is None else {'seed': seed_file}
+    doc = _documento_del_laboratorio()
+    doc.pop('seed')
+    doc.update(top)
+    brano.scrivi('streams/risacca.yml', doc)
+    master = {'streams': [{'file': 'streams/risacca.yml'}]}
+    if seed_master is not None:
+        master['seed'] = seed_master
+    brano.scrivi('brano.yml', master)
+    gen = brano.generator()
+    gen.load_yaml()
+    out, err = capsys.readouterr()
+    return gen, out, err
+
+
+def test_un_seed_diverso_nel_file_e_un_avviso_su_stderr(brano, capsys):
+    gen, out, err = _carica(brano, 1441, 7, capsys)
+
+    assert gen.seed == 1441
+    righe = [r for r in err.splitlines() if r.strip()]
+    assert len(righe) == 1, err
+    (riga,) = righe
+    assert 'streams/risacca.yml' in riga
+    assert 'brano.yml' in riga
+    assert ' 7' in riga and '1441' in riga
+    assert '[SEED]' not in out, "l'avviso e' finito su stdout"
+    assert not _FORMA_CACHE.match(riga) and not _FORMA_PATH.match(riga)
+
+
+def test_il_master_senza_seed_e_un_seed_diverso(brano, capsys):
+    """Senza `seed:` il master usa un seed di sessione: non e' quello del file."""
+    gen, _out, err = _carica(brano, None, 7, capsys)
+
+    assert gen.seed is None
+    assert 'streams/risacca.yml' in err
+    assert 'seed di sessione' in err
+
+
+@pytest.mark.parametrize('seed_master,seed_file', [
+    (1441, 1441),
+    (1441, None),
+    (1441, '(1000 + 441)'),
+    (1441, '1441'),
+], ids=['uguale', 'file-senza-seed', 'espressione', 'stringa'])
+def test_nessun_avviso_se_il_seed_e_lo_stesso(
+        brano, capsys, seed_master, seed_file):
+    """Lo stesso seed e' quello che deriva gli stessi RNG.
+
+    La derivazione scrive il seed in una stringa (`f"{seed}:{stream_id}:..."`)
+    dopo le espressioni matematiche: `(1000 + 441)` e `'1441'` sono 1441, e
+    l'avviso non deve dire che il suono cambia quando non cambia.
+    """
+    _gen, _out, err = _carica(brano, seed_master, seed_file, capsys)
+
+    assert err == ''

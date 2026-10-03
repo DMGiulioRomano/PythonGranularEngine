@@ -831,6 +831,11 @@ CLASSIFICAZIONE = {
     # `[CACHE] Stream da scrivere: {}`) sono andate al logger con la #188.
     ('engine/generator.py', 'Creazione di {} stream...'):
         INTERFACCIA,
+    # Su stderr (#290), come il `CLIP:` che la #242 ha tolto: il censimento
+    # guarda la forma, non il canale, perche' la regola del motore vale su
+    # ogni canale. Parla a chi ha lanciato il render del suono del suo brano.
+    ('engine/generator.py', "[SEED] Il file importato '{}' ({} di '{}') ha seed {}, il master {}: lo stream si rende col seed del master, quindi non suona come quando il file si rende da solo."):
+        INTERFACCIA,
     ('engine/generator.py', "[SEED] Nessun seed nello YAML: seed di sessione {}. Per riprodurre questo run aggiungi 'seed: {}' allo YAML."):
         INTERFACCIA,
     ('engine/generator.py', "⚠️  Warning: impossibile valutare '{}': {}"):
