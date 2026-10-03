@@ -1013,3 +1013,130 @@ class StreamFileKeyError(StreamFileError):
         ]
         lines.extend(self._context_lines())
         return "\n".join(lines)
+
+
+class _ImportedStreamFileError(StreamFileError):
+    """Base degli errori scritti nel file importato, non nel master.
+
+    La testa nomina il file importato e `Importato da:` il master: e' la
+    meta' della regola della famiglia che va dall'altra parte rispetto a
+    `StreamFileKeyError`. `config_file` e' il file importato, come per le
+    classi della #257, cosi' chi interroga l'eccezione trova il file da
+    aprire nello stesso campo in cui lo trova per ogni altro errore.
+    """
+
+    def __init__(self, origin, message: str):
+        super().__init__(message)
+        self.origin = origin
+        self.path = origin.path
+        self.config_file = origin.path
+        self.imported_by = origin
+
+    def _head(self) -> str:
+        raise NotImplementedError
+
+    def _detail_lines(self) -> list[str]:
+        raise NotImplementedError
+
+    def user_message(self) -> str:
+        lines = [f"[ERRORE] {self._head()}"]
+        lines.extend(self._detail_lines())
+        lines.extend(self._import_lines())
+        return "\n".join(lines)
+
+
+class StreamFileCountError(_ImportedStreamFileError):
+    """Il file importato non porta esattamente uno stream.
+
+    Uno stream come file e' un documento con **uno** stream: con due non si
+    saprebbe quale il master stia piazzando, con zero non c'e' niente da
+    piazzare. Ogni forma che non e' «una lista `streams:` con un mapping
+    dentro» e' questo errore, e `found` dice quale forma e' stata letta.
+    """
+
+    def __init__(self, origin, found: str):
+        self.found = found
+        super().__init__(origin, self._head_for(origin))
+
+    @staticmethod
+    def _head_for(origin) -> str:
+        return (f"Il file importato deve contenere un solo stream: "
+                f"'{origin.path}'")
+
+    def _head(self) -> str:
+        return self._head_for(self.origin)
+
+    def _detail_lines(self) -> list[str]:
+        return [
+            f"  Trovati:      {self.found}",
+            "  Hint:         uno stream come file e' un documento con una "
+            "lista 'streams:' di un solo stream. Per importarne piu' d'uno: "
+            "un file per stream, e una voce 'file:' per file nel master.",
+        ]
+
+
+class StreamFileChainError(_ImportedStreamFileError):
+    """Lo stream del file importato e' a sua volta una voce `file:`.
+
+    Niente catene, e quindi niente cicli: lo stream di un file importato e'
+    scritto per intero, e nessuno deve inseguire un `file:` per tre cartelle
+    per sapere che cosa suona.
+    """
+
+    def __init__(self, origin, chained):
+        self.chained = chained
+        super().__init__(origin, self._head_for(origin))
+
+    @staticmethod
+    def _head_for(origin) -> str:
+        return (f"Il file importato usa a sua volta 'file:': "
+                f"'{origin.path}'")
+
+    def _head(self) -> str:
+        return self._head_for(self.origin)
+
+    def _detail_lines(self) -> list[str]:
+        return [
+            f"  Trovato:      file: {self.chained}",
+            f"  Hint:         niente catene: lo stream di un file importato "
+            f"e' scritto per intero. Importa '{self.chained}' direttamente "
+            f"dal master, oppure copia qui il suo stream.",
+        ]
+
+
+class StreamFileDuplicateIdError(StreamFileError):
+    """Due voci del master con lo stesso `stream_id`, e almeno una e' `file:`.
+
+    Lo `stream_id` e' il nome dello stem e la chiave della cache: due stream
+    che lo condividono si sovrascrivono lo stem a vicenda. Con `file:` succede
+    senza che nessuno scriva due volte lo stesso id -- basta importare due
+    volte lo stesso file -- ed e' per questo che il controllo nasce con
+    l'import. I duplicati fra stream scritti nel master restano fuori, come
+    prima.
+
+    `entries` sono le voci in collisione, `(indice, file)` in ordine di
+    master, con `file` a `None` per una voce scritta nel master. L'id e'
+    quello *effettivo*, cioe' come stringa: `1` e `'1'` sono lo stesso stem.
+    """
+
+    def __init__(self, master: str, stream_id: str, entries):
+        self.entries: list[tuple[int, str | None]] = list(entries)
+        super().__init__(f"stream_id duplicato: '{stream_id}'")
+        self.stream_id = stream_id
+        self.config_file = master
+
+    def user_message(self) -> str:
+        voci = [f"streams[{indice}]" if file is None
+                else f"streams[{indice}] (file: {file})"
+                for indice, file in self.entries]
+        lines = [f"[ERRORE] stream_id duplicato: '{self.stream_id}'",
+                 f"  Voci:         {voci[0]}"]
+        lines.extend(f"{_INDENTO_VALORE}{voce}" for voce in voci[1:])
+        lines.append(
+            "  Hint:         lo stream_id e' il nome dello stem e la chiave "
+            "della cache, quindi due stream non possono condividerlo. Senza "
+            "'stream_id' una voce 'file:' prende il nome del file: scrivine "
+            "uno diverso accanto a 'file:'.")
+        # Niente riga `Stream:`: l'id e' gia' il soggetto del head.
+        lines.append(f"  Config:       {self.config_file}")
+        return "\n".join(lines)

@@ -341,3 +341,182 @@ def test_il_master_mancante_non_si_dichiara_importato(brano):
 
     assert exc.value.imported_by is None
     assert 'Importato da' not in exc.value.user_message()
+
+
+# =============================================================================
+# Regola 3 — un file importato porta un solo stream, e niente catene
+# =============================================================================
+
+@pytest.mark.parametrize('contenuto,trovati', [
+    ('', 'nessuno stream'),
+    ('seed: 1441\nduration: 1.5\n', 'nessuno stream'),
+    ('streams: []\n', 'nessuno stream'),
+    (yaml.safe_dump({'streams': [STREAM_DEL_LABORATORIO,
+                                 STREAM_DEL_LABORATORIO]}), '2 stream'),
+    ('streams:\n  risacca: {sample: tono.wav}\n',
+     "'streams' non e' una lista"),
+    ('streams:\n  - risacca\n', "una voce che non e' uno stream"),
+    ('- stream_id: risacca\n  sample: tono.wav\n',
+     "il documento non e' una mappa"),
+], ids=['vuoto', 'senza-streams', 'lista-vuota', 'due-stream',
+        'streams-mappa', 'voce-stringa', 'documento-lista'])
+def test_il_file_importato_deve_portare_un_solo_stream(
+        brano, contenuto, trovati):
+    """Uno stream come file e' un documento con **uno** stream.
+
+    Con due non si saprebbe quale dei due il master stia piazzando, e con
+    zero non c'e' niente da piazzare. Ogni forma che non e' «una lista
+    `streams:` con un mapping dentro» e' lo stesso errore, e la riga
+    `Trovati:` dice quale forma il motore ha letto.
+    """
+    from pge.shared.exceptions import StreamFileCountError, StreamFileError
+
+    importato = brano.scrivi('streams/risacca.yml', contenuto)
+    master = _master_che_importa(brano)
+
+    with pytest.raises(StreamFileCountError) as exc:
+        brano.generator().load_yaml()
+
+    err = exc.value
+    assert isinstance(err, StreamFileError)
+    assert trovati in err.user_message()
+    assert err.config_file == importato
+    _nomina_master_e_file(err, master, 'streams/risacca.yml')
+
+
+def test_un_file_dentro_un_file_importato_e_un_errore(brano):
+    """Niente catene: lo stream di un file importato e' scritto per intero.
+
+    Senza catene non ci sono cicli, e nessuno deve inseguire un `file:` per
+    tre cartelle per sapere che cosa suona.
+    """
+    from pge.shared.exceptions import StreamFileChainError
+
+    brano.scrivi('streams/altro.yml', _documento_del_laboratorio())
+    importato = brano.scrivi('streams/risacca.yml', {
+        'streams': [{'file': 'altro.yml', 'onset': 0}]})
+    master = _master_che_importa(brano)
+
+    with pytest.raises(StreamFileChainError) as exc:
+        brano.generator().load_yaml()
+
+    err = exc.value
+    assert err.config_file == importato
+    assert 'altro.yml' in err.user_message()
+    _nomina_master_e_file(err, master, 'streams/risacca.yml')
+
+
+def test_un_master_che_importa_se_stesso_e_una_catena(brano):
+    """Il ciclo piu' corto possibile si ferma alla regola delle catene."""
+    from pge.shared.exceptions import StreamFileChainError
+
+    brano.scrivi('brano.yml', {'streams': [{'file': 'brano.yml'}]})
+
+    with pytest.raises(StreamFileChainError):
+        brano.generator().load_yaml()
+
+
+# =============================================================================
+# Regola 7 — due stream con lo stesso id, se almeno uno viene da `file:`
+# =============================================================================
+# Lo `stream_id` e' il nome dello stem e la chiave della cache: due stream che
+# lo condividono si sovrascrivono lo stem a vicenda. Con `file:` succede senza
+# che nessuno scriva due volte lo stesso id -- basta importare lo stesso file
+# due volte -- ed e' per questo che il controllo nasce qui.
+
+def _errore_di_duplicato(brano, voci):
+    from pge.shared.exceptions import StreamFileDuplicateIdError
+
+    brano.scrivi('streams/risacca.yml', _documento_del_laboratorio())
+    master = brano.scrivi('brano.yml', {'seed': 1441, 'streams': voci})
+    with pytest.raises(StreamFileDuplicateIdError) as exc:
+        brano.generator().load_yaml()
+    return master, exc.value
+
+
+def test_lo_stesso_file_importato_due_volte_senza_id_e_un_errore(brano):
+    master, err = _errore_di_duplicato(brano, [
+        {'file': 'streams/risacca.yml', 'onset': 0},
+        {'file': 'streams/risacca.yml', 'onset': 8},
+    ])
+
+    assert err.stream_id == 'risacca'
+    assert err.config_file == master
+    messaggio = err.user_message()
+    assert "'risacca'" in messaggio
+    assert 'streams[0] (file: streams/risacca.yml)' in messaggio
+    assert 'streams[1] (file: streams/risacca.yml)' in messaggio
+    assert master in messaggio
+
+
+def test_un_id_importato_che_collide_con_uno_scritto_nel_master(brano):
+    master, err = _errore_di_duplicato(brano, [
+        {'stream_id': 'risacca', 'sample': SAMPLE},
+        {'file': 'streams/risacca.yml'},
+    ])
+
+    messaggio = err.user_message()
+    assert 'streams[0]' in messaggio
+    assert 'streams[1] (file: streams/risacca.yml)' in messaggio
+
+
+def test_l_id_effettivo_e_quello_dello_stem(brano):
+    """`1` e `'1'` sono lo stesso stem: `brano__1.wav`."""
+    _master, err = _errore_di_duplicato(brano, [
+        {'stream_id': 1, 'sample': SAMPLE},
+        {'file': 'streams/risacca.yml', 'stream_id': '1'},
+    ])
+
+    assert err.stream_id == '1'
+
+
+def test_lo_stesso_file_con_due_id_e_due_stream(brano):
+    """Importare due volte lo stesso file e' legittimo: due realizzazioni."""
+    brano.scrivi('streams/risacca.yml', _documento_del_laboratorio())
+    brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+        {'file': 'streams/risacca.yml'},
+        {'file': 'streams/risacca.yml', 'stream_id': 'risacca_eco',
+         'onset': 0.5},
+    ]})
+
+    gen = brano.generator()
+    ids = [s['stream_id'] for s in gen.load_yaml()['streams']]
+
+    assert ids == ['risacca', 'risacca_eco']
+
+
+def test_i_duplicati_fra_stream_scritti_nel_master_restano_fuori(brano):
+    """Fuori scope (regola 7): oggi non si controllano, e non qui."""
+    brano.scrivi('brano.yml', {'streams': [
+        {'stream_id': 'doppio', 'sample': SAMPLE},
+        {'stream_id': 'doppio', 'sample': SAMPLE},
+    ]})
+
+    data = brano.generator().load_yaml()
+
+    assert [s['stream_id'] for s in data['streams']] == ['doppio', 'doppio']
+
+
+@pytest.mark.parametrize('valore', [42, None, '', ['a.yml']],
+                         ids=['numero', 'null', 'vuoto', 'lista'])
+def test_un_file_che_non_e_un_path_e_un_valore_invalido(brano, valore):
+    """`file:` vuole il path di un documento: il resto e' un valore invalido.
+
+    Senza il controllo un numero o una lista uscivano come `TypeError` da
+    `os.path.join`, fuori dalla gerarchia `EngineError`; e una stringa vuota
+    finiva a leggere la cartella del master.
+    """
+    from pge.shared.exceptions import InvalidFieldValueError
+
+    master = brano.scrivi('brano.yml', {'streams': [
+        {'stream_id': 'altro', 'sample': SAMPLE},
+        {'file': valore, 'onset': 1.0},
+    ]})
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        brano.generator().load_yaml()
+
+    err = exc.value
+    assert err.field == 'streams[1].file'
+    assert err.config_file == master
+    assert master in err.user_message()
