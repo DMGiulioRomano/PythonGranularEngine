@@ -56,7 +56,19 @@ _INTESTAZIONE = ("# Dipendenze del render, scritte da `--depfile` "
 #: backslash e' N backslash e il carattere letterale, quindi i backslash del
 #: nome che lo precedono si raddoppiano. Davanti a ogni altro carattere make
 #: lo lascia com'e', e si lascia com'e' anche qui.
-_DA_SCAPPARE = ('#', ' ', '\t', ':', '|')
+#:
+#: E i tre caratteri glob, che gcc non scappa: make espande i target e i
+#: prerequisiti come la shell, quindi un nome nudo che li contiene nomina i
+#: file che gli *somigliano*. `risacca [v2].yml` e' una classe di caratteri
+#: che non trova il file che si chiama cosi': con un `risacca 2.yml` accanto
+#: la dipendenza diventa lui, e modificare il file vero lascia l'audio di
+#: prima -- in silenzio, cioe' il guasto che la depfile esiste per chiudere.
+#: `*` e `?` trovano anche se stessi, e nudi costano il contrario: un render
+#: rifatto per un file che con lo stream non c'entra. Col backslash il glob
+#: trova quel file e basta; se il file non c'e', make tiene la parola come
+#: e' scritta, in testa alla regola vuota della `-MP` come fra i
+#: prerequisiti, quindi le due grafie si riconoscono ancora (misurato).
+_DA_SCAPPARE = ('#', ' ', '\t', ':', '|', '*', '?', '[')
 
 #: Caratteri che make non sa leggere in una lista di file in *nessuna*
 #: posizione: il backslash non li salva, quindi una depfile che li contenesse
@@ -103,9 +115,10 @@ def _scrivibile_come_target(path: str) -> bool:
 def _scappa(path: str, target: bool) -> str:
     """Un path come make lo legge in una lista di file.
 
-    `$` raddoppiato, e dietro un backslash `#`, lo spazio, il tab, `:` e `|`,
-    con i backslash del nome che li precedono raddoppiati (vedi
-    `_DA_SCAPPARE`): e' la grafia di gcc, verificata contro GNU make
+    `$` raddoppiato, e dietro un backslash `#`, lo spazio, il tab, `:`, `|`
+    e i caratteri glob `*`, `?`, `[`, con i backslash del nome che li
+    precedono raddoppiati (vedi `_DA_SCAPPARE`): e' la grafia di gcc, piu' i
+    glob che gcc lascia nudi, verificata contro GNU make
     (`tests/export/test_depfile_writer.py`, che fa leggere ogni grafia a un
     make vero). `%` solo in posizione di target, dove fa di una regola una
     regola a pattern; fra i prerequisiti e' letterale, e `\\%` lo resterebbe

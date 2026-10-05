@@ -12,7 +12,7 @@ sources:
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
   - src/pge/export/depfile_writer.py
-last_synced_commit: 93d82c1
+last_synced_commit: 49f3834
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -149,8 +149,9 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   non costa il render che l'ha scritta: ferma ogni `make` successivo, `make
   clean` compreso — cioè il comando con cui se ne uscirebbe — e resta solo
   cancellarla a mano. `depfile_writer` scappa perciò tutto ciò che make sa
-  leggere col backslash (`#`, lo spazio, il tab, `:`, `|`, più `$` raddoppiato
-  e `%` in posizione di target), raddoppiando i backslash del nome che
+  leggere col backslash (`#`, lo spazio, il tab, `:`, `|`, i caratteri glob
+  `*`, `?` e `[`, più `$` raddoppiato e `%` in posizione di target),
+  raddoppiando i backslash del nome che
   precedono uno di quei caratteri — la regola di make: un carattere dietro
   2N+1 backslash è N backslash e il carattere letterale, quindi `q\#r.yml`
   scritto `q\\#r.yml` riaprirebbe il commento — e rifiuta il resto con un
@@ -162,6 +163,16 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   con uno di quei tre perde la propria regola vuota della `-MP` e tiene la
   dipendenza, che fra i prerequisiti si scrive: l'aggiunta costa l'aggiunta,
   non tutta la depfile.
+- **Un nome con caratteri glob nomina quel file, non quelli che gli
+  somigliano.** Make espande i target e i prerequisiti come la shell, e gcc
+  quei caratteri non li scappa: nudo, `risacca [v2].yml` è una classe di
+  caratteri che non trova il file che si chiama così, e con un
+  `risacca 2.yml` accanto la dipendenza diventa lui — modificare il file vero
+  lascia l'audio di prima, in silenzio. `*` e `?` trovano anche se stessi, e
+  nudi rifanno il render per un file che con lo stream non c'entra. Col
+  backslash il glob trova quel file e basta; se il file non c'è, make tiene
+  la parola com'è scritta sia in testa alla regola vuota della `-MP` sia fra
+  i prerequisiti, quindi un file sparito rifà ancora il render.
 - **`--log-dir` non è un flag csound**, benché sia stato a lungo scritto in
   mezzo a loro: vale con qualunque renderer, perché i due log che scrive la
   fase di caricamento (errori engine e clip) esistono prima che si scelga un

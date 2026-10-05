@@ -62,7 +62,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   include. Un nome di file che make non sa leggere e' un errore del render e
   non una depfile rotta: inclusa da ogni `make`, una riga illeggibile
   fermerebbe ogni `make` successivo (`make clean` compreso) invece del render
-  che l'ha scritta. Uno stream importato suona come nel laboratorio solo con
+  che l'ha scritta. I caratteri glob (`*`, `?`, `[`) si scappano come gli
+  altri: nudi, make espande il nome nei file che gli somigliano, e un
+  `risacca [v2].yml` accanto a un `risacca 2.yml` dava la dipendenza
+  all'altro file. Uno stream importato suona come nel laboratorio solo con
   lo stesso seed e lo stesso id: `docs/reference/yaml.md`, «Stream come file».
 
 - **`docs/explanation/stream-decomposition.md`** — la decisione sulla

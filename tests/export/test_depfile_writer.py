@@ -88,10 +88,19 @@ def test_un_file_importato_due_volte_compare_una_volta():
     ('streams/q\\#r.yml', 'streams/q\\\\\\#r.yml'),
     ('streams/s\\:t.yml', 'streams/s\\\\\\:t.yml'),
     ('streams/u\\\\:v.yml', 'streams/u\\\\\\\\\\:v.yml'),
+    # I caratteri glob: make espande i target e i prerequisiti come la
+    # shell, quindi nudi nominano i file che *somigliano* al nome. Col
+    # backslash nominano quel file, e il backslash del nome davanti a loro si
+    # raddoppia come davanti agli altri.
+    ('streams/w*x.yml', r'streams/w\*x.yml'),
+    ('streams/y?z.yml', r'streams/y\?z.yml'),
+    ('streams/risacca [v2].yml', r'streams/risacca\ \[v2].yml'),
+    ('streams/b\\[c].yml', 'streams/b\\\\\\[c].yml'),
 ], ids=['spazio', 'cancelletto', 'dollaro', 'percento', 'due_punti', 'pipe',
         'tab', 'uguale', 'backslash', 'backslash_spazio',
         'backslash_cancelletto', 'backslash_due_punti',
-        'due_backslash_due_punti'])
+        'due_backslash_due_punti', 'asterisco', 'punto_interrogativo',
+        'parentesi_quadra', 'backslash_parentesi_quadra'])
 def test_escaping_dei_prerequisiti(path, atteso):
     testo = make_depfile('out.aif', ['m.yml', path])
 
@@ -107,6 +116,17 @@ def test_il_percento_si_scappa_solo_dove_e_un_target():
 
     righe = [r for r in testo.splitlines() if r and not r.startswith('#')]
     assert righe == [r'out/p\%q.aif: m.yml e%f.yml', r'e\%f.yml:']
+
+
+def test_i_caratteri_glob_si_scappano_anche_in_posizione_di_target():
+    """Make espande i caratteri glob anche nei target: `out/m[1].aif:`
+    nudo, con un `out/m1.aif` sul disco, darebbe i prerequisiti a lui. Vale
+    per il target della depfile e per le regole vuote della `-MP`."""
+    testo = make_depfile('out/m[1].aif', ['m.yml', 'a*b.yml', 'c?d.yml'])
+
+    righe = [r for r in testo.splitlines() if r and not r.startswith('#')]
+    assert righe == [r'out/m\[1].aif: m.yml a\*b.yml c\?d.yml',
+                     r'a\*b.yml:', r'c\?d.yml:']
 
 
 def test_un_backslash_davanti_al_percento_del_target_si_raddoppia():
@@ -273,6 +293,100 @@ def test_un_file_importato_sparito_non_ferma_make(progetto, nome):
     assert progetto.make_q() == 1, (
         "un file importato sparito deve rifare il render (2 = make si e' "
         "fermato con «No rule to make target»)")
+
+
+#: Un nome con caratteri glob, e un file che il glob nudo troverebbe al suo
+#: posto. Il primo e' il caso che costa l'audio: `[v2]` e' una classe di
+#: caratteri, non trova il file che si chiama cosi', e make ripiega su
+#: `risacca 2.yml` -- la dipendenza vera sparisce, in silenzio. `*` e `?`
+#: trovano anche se stessi, quindi il loro guasto e' l'opposto: un render
+#: rifatto per un file che con lo stream non c'entra.
+_NOMI_GLOB = [
+    ('risacca [v2].yml', 'risacca 2.yml'),
+    ('a*b.yml', 'axb.yml'),
+    ('c?d.yml', 'cxd.yml'),
+    # Il backslash del nome: nudo, make lo legge come l'escape del `[`, e il
+    # glob trova `q[x].yml`.
+    ('q\\[x].yml', 'q[x].yml'),
+]
+_ID_GLOB = ['parentesi_quadra', 'asterisco', 'punto_interrogativo',
+            'backslash_parentesi_quadra']
+
+
+@pytest.mark.parametrize('nome, somigliante', _NOMI_GLOB, ids=_ID_GLOB)
+def test_un_nome_con_caratteri_glob_nomina_quel_file(progetto, nome,
+                                                     somigliante):
+    """Make espande i caratteri glob nei target e nei prerequisiti come la
+    shell: nudo, `risacca [v2].yml` nomina `risacca 2.yml`, e modificare il
+    file vero lascia l'audio di prima -- il guasto che la depfile esiste per
+    chiudere."""
+    progetto.scrivi('m.yml')
+    importato = progetto.scrivi(nome)
+    altro = progetto.scrivi(somigliante)
+    write_depfile(str(progetto.root / 'dep.d'), 'out/m.aif',
+                  ['src/m.yml', f'src/{nome}'])
+    aif = progetto.build()
+
+    assert progetto.make_q() == 0, "appena costruito, make lo rifarebbe"
+
+    _nel_futuro(altro, aif)
+
+    assert progetto.make_q() == 0, (
+        f"'{somigliante}' non e' una dipendenza del render: make l'ha "
+        f"trovato espandendo '{nome}' come un glob")
+
+    _nel_futuro(importato, altro)
+
+    assert progetto.make_q() == 1, (
+        f"make non vede il file importato '{nome}': l'ha espanso come un "
+        f"glob")
+
+
+@pytest.mark.parametrize('nome, somigliante', _NOMI_GLOB, ids=_ID_GLOB)
+def test_un_file_glob_sparito_rifa_il_render(progetto, nome, somigliante):
+    """Sparito il file vero, il glob nudo trova l'altro -- piu' vecchio del
+    render -- e make dice che e' tutto aggiornato, invece di rifare il render
+    e lasciare che sia il motore a dire che il file manca."""
+    progetto.scrivi('m.yml')
+    importato = progetto.scrivi(nome)
+    progetto.scrivi(somigliante)
+    write_depfile(str(progetto.root / 'dep.d'), 'out/m.aif',
+                  ['src/m.yml', f'src/{nome}'])
+    progetto.build()
+
+    importato.unlink()
+
+    assert progetto.make_q() == 1, (
+        "un file importato sparito deve rifare il render, non far trovare a "
+        "make un file che gli somiglia")
+
+
+def test_un_target_con_caratteri_glob_e_quel_target(progetto):
+    """Anche il target si espande: `out/m[1].aif:` nudo, con un
+    `out/m1.aif` sul disco, da' le dipendenze a lui, e il render vero non
+    vede il file importato."""
+    progetto.scrivi('m[1].yml')
+    importato = progetto.scrivi('a.yml')
+    write_depfile(str(progetto.root / 'dep.d'), 'out/m[1].aif',
+                  ['src/m[1].yml', 'src/a.yml'])
+
+    def make(*args):
+        return subprocess.run(['make', *args, 'out/m[1].aif'],
+                              cwd=progetto.root, capture_output=True,
+                              text=True).returncode
+
+    assert make() == 0
+    altro = progetto.root / 'out' / 'm1.aif'
+    altro.write_bytes(b'')
+    aif = progetto.root / 'out' / 'm[1].aif'
+    _nel_futuro(altro, aif)
+
+    assert make('-q') == 0, "appena costruito, make lo rifarebbe"
+
+    _nel_futuro(importato, altro)
+
+    assert make('-q') == 1, (
+        "make ha dato le dipendenze di 'out/m[1].aif' a 'out/m1.aif'")
 
 
 # =============================================================================
