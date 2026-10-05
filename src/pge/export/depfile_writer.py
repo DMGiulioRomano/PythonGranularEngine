@@ -28,6 +28,7 @@ l'errore giusto e' quello di make.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from typing import List, Sequence
 
@@ -46,6 +47,15 @@ _INTESTAZIONE = ("# Dipendenze del render, scritte da `--depfile` "
 #: prerequisiti: in posizione di target due dei tre non si scrivono affatto
 #: (`_VIETATI_IN_TARGET`). (Il `:` di una lettera di unita' Windows non si
 #: scappa cosi', ma le ricette di `make/build.mk` girano su macOS e Linux.)
+#:
+#: Il backslash del nome, che e' legale come gli altri, conta solo davanti a
+#: uno di questi: li' make lo legge come la propria escape, e un nome come
+#: `q\#r.yml` scritto `q\\#r.yml` riapre il commento che il backslash
+#: doveva chiudere (misurato: «missing separator»; con `:` «multiple target
+#: patterns»). Vale la regola di make e di gcc: un carattere dietro 2N+1
+#: backslash e' N backslash e il carattere letterale, quindi i backslash del
+#: nome che lo precedono si raddoppiano. Davanti a ogni altro carattere make
+#: lo lascia com'e', e si lascia com'e' anche qui.
 _DA_SCAPPARE = ('#', ' ', '\t', ':', '|')
 
 #: Caratteri che make non sa leggere in una lista di file in *nessuna*
@@ -93,8 +103,9 @@ def _scrivibile_come_target(path: str) -> bool:
 def _scappa(path: str, target: bool) -> str:
     """Un path come make lo legge in una lista di file.
 
-    `$` raddoppiato, e dietro un backslash `#`, lo spazio, il tab, `:` e `|`:
-    e' la grafia di gcc, verificata contro GNU make
+    `$` raddoppiato, e dietro un backslash `#`, lo spazio, il tab, `:` e `|`,
+    con i backslash del nome che li precedono raddoppiati (vedi
+    `_DA_SCAPPARE`): e' la grafia di gcc, verificata contro GNU make
     (`tests/export/test_depfile_writer.py`, che fa leggere ogni grafia a un
     make vero). `%` solo in posizione di target, dove fa di una regola una
     regola a pattern; fra i prerequisiti e' letterale, e `\\%` lo resterebbe
@@ -103,13 +114,22 @@ def _scappa(path: str, target: bool) -> str:
     Raises:
         ValueError: se il path porta un carattere che make non sa leggere --
             `_IRRAPPRESENTABILI` in ogni posizione, `_VIETATI_IN_TARGET` in
-            testa a una riga.
+            testa a una riga -- o finisce con un backslash.
     """
     for carattere, nome in _IRRAPPRESENTABILI.items():
         if carattere in path:
             raise ValueError(
                 f"path con {nome}, non rappresentabile in una depfile di "
                 f"make: {path!r}")
+    # Un backslash in fondo al nome non ha grafia in fondo a una riga: li'
+    # e' la continuazione, e make attacca la riga dopo (misurato: «No rule to
+    # make target»); raddoppiato resta due backslash, perche' make li dimezza
+    # solo davanti a un carattere che legge. Ogni file importato puo' essere
+    # l'ultimo prerequisito, quindi si rifiuta in ogni posizione.
+    if path.endswith('\\'):
+        raise ValueError(
+            f"path con un backslash in fondo, non rappresentabile in una "
+            f"depfile di make: {path!r}")
     if target:
         for carattere, nome in _VIETATI_IN_TARGET.items():
             if carattere in path:
@@ -117,11 +137,9 @@ def _scappa(path: str, target: bool) -> str:
                     f"path con {nome} in posizione di target, non "
                     f"rappresentabile in una depfile di make: {path!r}")
     path = path.replace('$', '$$')
-    for carattere in _DA_SCAPPARE:
-        path = path.replace(carattere, '\\' + carattere)
-    if target:
-        path = path.replace('%', r'\%')
-    return path
+    da_scappare = re.escape(''.join(_DA_SCAPPARE) + ('%' if target else ''))
+    return re.sub(rf'(\\*)([{da_scappare}])',
+                  lambda m: m.group(1) * 2 + '\\' + m.group(2), path)
 
 
 def make_depfile(target: str, prerequisites: Sequence[str]) -> str:

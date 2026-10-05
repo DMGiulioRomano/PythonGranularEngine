@@ -12,7 +12,7 @@ sources:
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
   - src/pge/export/depfile_writer.py
-last_synced_commit: c378d97
+last_synced_commit: 93d82c1
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -150,10 +150,15 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   clean` compreso — cioè il comando con cui se ne uscirebbe — e resta solo
   cancellarla a mano. `depfile_writer` scappa perciò tutto ciò che make sa
   leggere col backslash (`#`, lo spazio, il tab, `:`, `|`, più `$` raddoppiato
-  e `%` in posizione di target) e rifiuta il resto con un `ValueError` che
-  nomina il file: `;` e l'a capo, in ogni posizione; `=`, `|` e il tab come
-  *target*, dove make non registrerebbe la regola — in silenzio per `=`, che
-  legge l'intera riga come un assegnamento di variabile. Un file **importato**
+  e `%` in posizione di target), raddoppiando i backslash del nome che
+  precedono uno di quei caratteri — la regola di make: un carattere dietro
+  2N+1 backslash è N backslash e il carattere letterale, quindi `q\#r.yml`
+  scritto `q\\#r.yml` riaprirebbe il commento — e rifiuta il resto con un
+  `ValueError` che nomina il file: `;`, l'a capo e un backslash in fondo al
+  nome (in fondo a una riga è la continuazione), in ogni posizione; `=`, `|`
+  e il tab come *target*, dove make non registrerebbe la regola — in
+  silenzio per `=`, che legge l'intera riga come un assegnamento di
+  variabile. Un file **importato**
   con uno di quei tre perde la propria regola vuota della `-MP` e tiene la
   dipendenza, che fra i prerequisiti si scrive: l'aggiunta costa l'aggiunta,
   non tutta la depfile.

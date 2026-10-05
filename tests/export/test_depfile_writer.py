@@ -77,8 +77,21 @@ def test_un_file_importato_due_volte_compare_una_volta():
     # Fra i prerequisiti `=` e' letterale: make legge l'intera riga come un
     # assegnamento solo quando sta in testa (vedi sotto).
     ('streams/m=n.yml', 'streams/m=n.yml'),
+    # Il backslash e' letterale dove make non lo legge, cioe' davanti a ogni
+    # carattere che non scappa...
+    ('streams/a\\b.yml', 'streams/a\\b.yml'),
+    # ...e davanti a uno che scappa vale la regola di make: un carattere
+    # dietro 2N+1 backslash e' N backslash e il carattere letterale. Senza
+    # raddoppiarli, il backslash del nome scappa quello della depfile, e il
+    # carattere torna nudo (`q\\#` apre un commento, `s\\:` separa).
+    ('streams/o\\ p.yml', 'streams/o\\\\\\ p.yml'),
+    ('streams/q\\#r.yml', 'streams/q\\\\\\#r.yml'),
+    ('streams/s\\:t.yml', 'streams/s\\\\\\:t.yml'),
+    ('streams/u\\\\:v.yml', 'streams/u\\\\\\\\\\:v.yml'),
 ], ids=['spazio', 'cancelletto', 'dollaro', 'percento', 'due_punti', 'pipe',
-        'tab', 'uguale'])
+        'tab', 'uguale', 'backslash', 'backslash_spazio',
+        'backslash_cancelletto', 'backslash_due_punti',
+        'due_backslash_due_punti'])
 def test_escaping_dei_prerequisiti(path, atteso):
     testo = make_depfile('out.aif', ['m.yml', path])
 
@@ -94,6 +107,17 @@ def test_il_percento_si_scappa_solo_dove_e_un_target():
 
     righe = [r for r in testo.splitlines() if r and not r.startswith('#')]
     assert righe == [r'out/p\%q.aif: m.yml e%f.yml', r'e\%f.yml:']
+
+
+def test_un_backslash_davanti_al_percento_del_target_si_raddoppia():
+    """Il `%` di un target si scappa, quindi un backslash del nome davanti
+    a lui va raddoppiato come davanti agli altri: `\\\\\\%` e' un backslash e
+    un `%` letterale, mentre `\\\\%` farebbe di nuovo una regola a pattern."""
+    testo = make_depfile('out/p\\%q.aif', ['m.yml', 'e\\%f.yml'])
+
+    righe = [r for r in testo.splitlines() if r and not r.startswith('#')]
+    assert righe == ['out/p\\\\\\%q.aif: m.yml e\\%f.yml',
+                     'e\\\\\\%f.yml:']
 
 
 def test_un_path_con_un_a_capo_non_si_puo_scrivere():
@@ -113,6 +137,23 @@ def test_un_punto_e_virgola_non_si_puo_scrivere(prerequisiti):
     testa a una riga da' «missing separator». Stessa ragione dell'a capo:
     fermerebbe ogni `make` dopo, non questo render."""
     with pytest.raises(ValueError, match='punto e virgola'):
+        make_depfile('out.aif', prerequisiti)
+
+
+@pytest.mark.parametrize('prerequisiti', [
+    ['stra\\'],
+    ['m.yml', 'stra\\'],
+    ['m.yml', 'stra\\', 'c.yml'],
+], ids=['master', 'importato_in_fondo', 'importato_in_mezzo'])
+def test_un_backslash_in_fondo_al_nome_non_si_puo_scrivere(prerequisiti):
+    """In fondo a una riga il backslash e' la continuazione: make attacca
+    la riga dopo, e la depfile nomina un file che non c'e' (misurato: «No
+    rule to make target»). Raddoppiato non si salva, perche' make dimezza i
+    backslash solo davanti a un carattere che legge, e il fine riga non lo
+    e': `stra\\\\` resta due backslash. Il file puo' finire in fondo alla riga
+    in ogni posizione -- l'ultimo prerequisito -- quindi si rifiuta in ogni
+    posizione, come il `;`."""
+    with pytest.raises(ValueError, match='backslash in fondo'):
         make_depfile('out.aif', prerequisiti)
 
 
@@ -199,7 +240,8 @@ def _nel_futuro(path, rispetto_a):
 
 @pytest.mark.parametrize('nome', [
     'risacca.yml', 'nuovo stream.yml', 'a#b.yml', 'c$d.yml', 'e%f.yml',
-    'g:h.yml', 'i|j.yml', 'k\tl.yml', 'm=n.yml'])
+    'g:h.yml', 'i|j.yml', 'k\tl.yml', 'm=n.yml', 'a\\b.yml', 'o\\ p.yml',
+    'q\\#r.yml', 's\\:t.yml', 'u\\\\:v.yml', 'w\\|x.yml'])
 def test_make_rifa_il_target_quando_cambia_un_file_importato(progetto, nome):
     progetto.scrivi('m.yml')
     importato = progetto.scrivi(nome)
@@ -217,7 +259,8 @@ def test_make_rifa_il_target_quando_cambia_un_file_importato(progetto, nome):
 
 
 @pytest.mark.parametrize('nome', ['risacca.yml', 'nuovo stream.yml',
-                                  'e%f.yml', 'g:h.yml'])
+                                  'e%f.yml', 'g:h.yml', 'o\\ p.yml',
+                                  'q\\#r.yml', 's\\:t.yml', 'y\\%z.yml'])
 def test_un_file_importato_sparito_non_ferma_make(progetto, nome):
     progetto.scrivi('m.yml')
     importato = progetto.scrivi(nome)
