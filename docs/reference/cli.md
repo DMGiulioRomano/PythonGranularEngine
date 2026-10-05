@@ -12,7 +12,7 @@ sources:
   - src/pge/rendering/supercollider_renderer.py
   - make/build.mk
   - src/pge/export/depfile_writer.py
-last_synced_commit: 2d4594c
+last_synced_commit: c378d97
 entry_for: [cli-flags, build-flags]
 ---
 
@@ -78,7 +78,7 @@ Senza argomenti: stampa usage ed esce con codice 1.
 | `--cache-dir DIR` | `cache` | `CACHEDIR` | directory dei manifest di fingerprint |
 | `--samples-dir DIR` | `./refs/` (globale `PATHSAMPLES`) | — | directory dei file audio sorgente, per **entrambi** i renderer. Vale per i tre posti da cui un run legge i sample: durata dello stream (`Stream` → `get_sample_duration`), lettura in render (`SampleRegistry` con numpy, SSDIR con csound) e waveform in partitura. Assente: comportamento storico, `./refs/` **relativo al cwd** del processo. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--log-dir DIR` | `logs` | `LOGDIR` | directory dei log di **tutto** il run, con qualunque renderer: logfile di Csound, log degli errori engine (`<basename>_engine.log`, quello che la riga `Dettagli:` indica) e log dei clip. È la cartella che `make setup` crea e `make clean` svuota come `LOGDIR`. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
-| `--depfile FILE` | — | — (lo passano le regole MIX di `make/build.mk`) | depfile di make del render (issue #290): il target — l'output, scritto come lo si è passato — dipende dal master e da ogni file che il master importa con `file:` (`Generator.source_files`), con una regola vuota per ogni file importato (la `-MP` di gcc: un file sparito rifà il render invece di fermare make). Scritta subito dopo il caricamento dello YAML, quindi anche da un render che muore più avanti; per sostituzione, mai a metà. Presente senza valore: messaggio + exit 1 (vedi Bounds) |
+| `--depfile FILE` | — | — (lo passano le regole MIX di `make/build.mk`) | depfile di make del render (issue #290): il target — l'output, scritto come lo si è passato — dipende dal master e da ogni file che il master importa con `file:` (`Generator.source_files`), con una regola vuota per ogni file importato (la `-MP` di gcc: un file sparito rifà il render invece di fermare make). Scritta subito dopo il caricamento dello YAML, quindi anche da un render che muore più avanti; per sostituzione, mai a metà. Un path che make non sa leggere è un errore invece di una depfile rotta (vedi Bounds). Presente senza valore: messaggio + exit 1 (vedi Bounds) |
 | `--orc-path PATH` | `csound/main.orc` | — | orchestra Csound |
 | `--incdir DIR` | `src` | — | include dir per Csound |
 | `--ssdir DIR` | `--samples-dir`, altrimenti `refs` | — | sample search dir di Csound (variabile d'ambiente SSDIR). Vince su `--samples-dir` quando è esplicito; **non basta da solo** (vedi Bounds) |
@@ -144,6 +144,19 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   stream decide cosa rifare, quindi la depfile non serve. Una depfile rimasta
   da un altro target gli aggiunge prerequisiti e non tocca nessun altro;
   `make clean` le toglie con il resto di `$(GENDIR)`.
+- **Un nome di file che make non sa leggere ferma il render, non i `make`
+  dopo.** La depfile è inclusa da ogni `make`, quindi una sua riga illeggibile
+  non costa il render che l'ha scritta: ferma ogni `make` successivo, `make
+  clean` compreso — cioè il comando con cui se ne uscirebbe — e resta solo
+  cancellarla a mano. `depfile_writer` scappa perciò tutto ciò che make sa
+  leggere col backslash (`#`, lo spazio, il tab, `:`, `|`, più `$` raddoppiato
+  e `%` in posizione di target) e rifiuta il resto con un `ValueError` che
+  nomina il file: `;` e l'a capo, in ogni posizione; `=`, `|` e il tab come
+  *target*, dove make non registrerebbe la regola — in silenzio per `=`, che
+  legge l'intera riga come un assegnamento di variabile. Un file **importato**
+  con uno di quei tre perde la propria regola vuota della `-MP` e tiene la
+  dipendenza, che fra i prerequisiti si scrive: l'aggiunta costa l'aggiunta,
+  non tutta la depfile.
 - **`--log-dir` non è un flag csound**, benché sia stato a lungo scritto in
   mezzo a loro: vale con qualunque renderer, perché i due log che scrive la
   fase di caricamento (errori engine e clip) esistono prima che si scelga un

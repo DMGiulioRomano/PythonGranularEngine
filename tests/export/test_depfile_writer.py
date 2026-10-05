@@ -68,7 +68,17 @@ def test_un_file_importato_due_volte_compare_una_volta():
     # `%` e' letterale fra i prerequisiti: e' nel *target* che fa di una
     # regola una regola a pattern (vedi sotto).
     ('streams/e%f.yml', 'streams/e%f.yml'),
-], ids=['spazio', 'cancelletto', 'dollaro', 'percento'])
+    # I tre che make separa o interpreta come lo spazio, e che sono legali in
+    # un nome di file POSIX: nudi, la depfile non si legge affatto (`:` da'
+    # «multiple target patterns», `|` manda make a cercare `streams/g`).
+    ('streams/g:h.yml', r'streams/g\:h.yml'),
+    ('streams/i|j.yml', r'streams/i\|j.yml'),
+    ('streams/k\tl.yml', 'streams/k\\\tl.yml'),
+    # Fra i prerequisiti `=` e' letterale: make legge l'intera riga come un
+    # assegnamento solo quando sta in testa (vedi sotto).
+    ('streams/m=n.yml', 'streams/m=n.yml'),
+], ids=['spazio', 'cancelletto', 'dollaro', 'percento', 'due_punti', 'pipe',
+        'tab', 'uguale'])
 def test_escaping_dei_prerequisiti(path, atteso):
     testo = make_depfile('out.aif', ['m.yml', path])
 
@@ -91,6 +101,54 @@ def test_un_path_con_un_a_capo_non_si_puo_scrivere():
     `make`: una riga spezzata li fermerebbe tutti, non solo questo render."""
     with pytest.raises(ValueError, match='a capo'):
         make_depfile('out.aif', ['m.yml', 'stra\nno.yml'])
+
+
+@pytest.mark.parametrize('prerequisiti', [
+    ['stra;no.yml'],
+    ['m.yml', 'stra;no.yml'],
+], ids=['master', 'importato'])
+def test_un_punto_e_virgola_non_si_puo_scrivere(prerequisiti):
+    """Il `;` apre la ricetta, e il backslash non lo salva: fra i
+    prerequisiti make cerca una regola per la meta' sinistra del nome, in
+    testa a una riga da' «missing separator». Stessa ragione dell'a capo:
+    fermerebbe ogni `make` dopo, non questo render."""
+    with pytest.raises(ValueError, match='punto e virgola'):
+        make_depfile('out.aif', prerequisiti)
+
+
+@pytest.mark.parametrize('target, atteso', [
+    ('out/a=b.aif', 'uguale'),
+    ('out/a|b.aif', 'barra verticale'),
+    ('out/a\tb.aif', 'tab'),
+], ids=['uguale', 'pipe', 'tab'])
+def test_un_target_che_make_non_registra_non_si_puo_scrivere(target, atteso):
+    """La prima riga *e'* la depfile: se make non ne registra il target, la
+    dipendenza non esiste, e in silenzio.
+
+    `=` glielo impedisce leggendo l'intera riga come un assegnamento di
+    variabile (`out/a = b.aif: m.yml`); `|` e il tab, pur col backslash,
+    valgono fra i prerequisiti ma non in testa a una riga.
+    """
+    with pytest.raises(ValueError, match=atteso):
+        make_depfile(target, ['m.yml'])
+
+
+@pytest.mark.parametrize('nome', ['a=b.yml', 'a|b.yml', 'a\tb.yml'],
+                         ids=['uguale', 'pipe', 'tab'])
+def test_un_file_cosi_costa_la_sua_regola_vuota_non_la_depfile(nome):
+    """La `-MP` e' un'aggiunta, la prima riga e' la dipendenza.
+
+    Fra i prerequisiti quei tre caratteri si scrivono, quindi la dipendenza
+    c'e'; la regola vuota no, e si omette invece di far fallire tutta la
+    depfile. Il prezzo e' quello che la `-MP` evita: se quel file sparisce,
+    make si ferma invece di rifare il render.
+    """
+    testo = make_depfile('out.aif', ['m.yml', nome, 'c.yml'])
+
+    righe = [r for r in testo.splitlines() if r and not r.startswith('#')]
+    assert righe[1:] == ['c.yml:'], "la regola vuota di 'nome' non si scrive"
+    assert righe[0].startswith('out.aif: m.yml '), righe[0]
+    assert righe[0].endswith(' c.yml'), righe[0]
 
 
 # =============================================================================
@@ -140,7 +198,8 @@ def _nel_futuro(path, rispetto_a):
 
 
 @pytest.mark.parametrize('nome', [
-    'risacca.yml', 'nuovo stream.yml', 'a#b.yml', 'c$d.yml', 'e%f.yml'])
+    'risacca.yml', 'nuovo stream.yml', 'a#b.yml', 'c$d.yml', 'e%f.yml',
+    'g:h.yml', 'i|j.yml', 'k\tl.yml', 'm=n.yml'])
 def test_make_rifa_il_target_quando_cambia_un_file_importato(progetto, nome):
     progetto.scrivi('m.yml')
     importato = progetto.scrivi(nome)
@@ -158,7 +217,7 @@ def test_make_rifa_il_target_quando_cambia_un_file_importato(progetto, nome):
 
 
 @pytest.mark.parametrize('nome', ['risacca.yml', 'nuovo stream.yml',
-                                  'e%f.yml'])
+                                  'e%f.yml', 'g:h.yml'])
 def test_un_file_importato_sparito_non_ferma_make(progetto, nome):
     progetto.scrivi('m.yml')
     importato = progetto.scrivi(nome)

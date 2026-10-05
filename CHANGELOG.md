@@ -59,7 +59,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   la vede make: il nuovo flag `--depfile FILE` scrive una depfile di make
   (master e file importati, `Generator.source_files`, alla `gcc -MD -MP`), le
   ricette MIX di `make/build.mk` la passano in `$(GENDIR)` e il Makefile la
-  include. Uno stream importato suona come nel laboratorio solo con
+  include. Un nome di file che make non sa leggere e' un errore del render e
+  non una depfile rotta: inclusa da ogni `make`, una riga illeggibile
+  fermerebbe ogni `make` successivo (`make clean` compreso) invece del render
+  che l'ha scritta. Uno stream importato suona come nel laboratorio solo con
   lo stesso seed e lo stesso id: `docs/reference/yaml.md`, «Stream come file».
 
 - **`docs/explanation/stream-decomposition.md`** — la decisione sulla
