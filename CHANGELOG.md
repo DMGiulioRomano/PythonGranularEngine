@@ -153,6 +153,43 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lo stesso, ma arriva dal builder: `normalize_read_direction` da solo non
   rifiuta più un corpo malformato nella forma, lo Stream sì.
 
+- **Finestre e `grain_clip` passano al registry generico** (issue #265,
+  seguito di #185, forma decisa in #177). `WINDOW_STRATEGY_REGISTRY` e
+  `GRAIN_CLIP_STRATEGIES` sono `StrategyRegistry` coi domini
+  `window_selection` e `grain_clip`; le due `Factory.create` delegano, quindi
+  lookup e `StrategyNotFoundError` vivono in un punto solo, e l'errore che il
+  chiamante vede non cambia. Fuori dal giro resta solo `DistributionFactory`,
+  ferma davanti alla decisione sulla validazione.
+
+  **`from_spec()` resta dov'era e continua a passare da `create`.** Leggere la
+  spec di `grain.envelope` è dominio delle finestre, non del registry. Un test
+  nuovo lo misura sostituendo `'single'` nel registry: una `from_spec` che
+  istanziasse le classi direttamente era l'unico rosso dell'intera suite.
+  La docstring di `WindowController` prometteva che registrare una strategy
+  bastasse ad aggiungere una modalità; non è vero, perché `from_spec` sceglie
+  fra quattro nomi guardando la forma dello YAML, e ora lo dice:
+  `register_window_strategy` sostituisce, non aggiunge.
+
+  **`register_window_strategy(name, strategy_class)`**: il secondo parametro
+  si chiamava `cls`, l'ultima façade che portava quel nome; nessuna chiamata
+  viva lo passa per parola chiave. Registrare una window strategy ora emette
+  la riga diagnostica su `pge.diagnostics` (mai su stdout), che prima mancava.
+
+  **`WINDOW_STRATEGY_REGISTRY` tiene il proprio nome**, anche se è l'unico che
+  non segue `<DOMINIO>_STRATEGIES`: nessuno lo importa da fuori dal motore
+  (verificato in PGE-ls, PGE-ui, gl-ls, granulation-studies e mare-nostrum), e
+  rinominarlo non avrebbe comprato niente.
+
+  **`grain_clip` non espone un punto di registrazione, per decisione.** Una
+  `register_grain_clip_strategy` dichiarerebbe estensibile la chiave YAML
+  `clip_strategy`, il cui vocabolario è chiuso anche in gl-ls
+  (`CLIP_STRATEGIES`) e in PGE-ui (due bottoni). Il modulo lo dice, e
+  `tests/strategies/test_registry_convergenza.py` tiene vera la dichiarazione,
+  alias di modulo compresi. `MODULI_CON_REGISTRAZIONE_DINAMICA` non cambia.
+
+  Nessun impatto a valle: nessun repo importa questi nomi e i messaggi
+  d'errore sono gli stessi. Niente issue in PGE-ls, PGE-ui o gl-ls.
+
 ### Rimosso
 
 - **L'avviso di migrazione di `loop_unit`** (issue #242). Dalla v9.0.0 alla
@@ -181,6 +218,28 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   niente. gl-ls e granulation-studies lo usano per una diagnostica propria,
   che resta vera perché l'engine continua a leggere quei numeri in secondi:
   lì diventa stantio solo il rimando all'avviso del motore.
+
+### Corretto
+
+- **`clip_strategy: passthrough` moriva di `TypeError`** (trovato nella
+  #265). `Stream.__init__` costruisce ogni clip strategy con
+  `margin=config.clip_margin`, qualunque nome scelga lo YAML, e
+  `PassthroughClipStrategy` non aveva un costruttore che lo accettasse: ogni
+  YAML con `clip_strategy: passthrough` si fermava prima di rendere un
+  campione, con un traceback e non con un `[ERRORE]` del motore
+  (`PassthroughClipStrategy() takes no arguments`). Il valore è documentato in
+  `docs/reference/yaml.md`, gl-ls lo accetta e l'Inspector di PGE-ui lo offre
+  con un bottone, quindi il crash era raggiungibile dall'editor.
+
+  Ora passthrough accetta il `margin` e lo ignora: senza filtro non c'è
+  niente da allargare. Nessun test percorreva la strada di `Stream` — la
+  strategy era sempre costruita a mano senza argomenti o iniettata già
+  costruita — e adesso due lo fanno: il contratto di costruzione su tutte le
+  chiavi del registry, e uno `Stream` vero costruito da YAML che deve tenere
+  i grani oltre la fine.
+
+  A valle non c'è niente da cambiare: il bottone di PGE-ui comincia a
+  funzionare, e la diagnostica di gl-ls era già giusta.
 
 ---
 
