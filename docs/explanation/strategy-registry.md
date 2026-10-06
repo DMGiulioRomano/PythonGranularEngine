@@ -13,6 +13,7 @@ sources:
   - src/pge/strategies/variation_registry.py
   - src/pge/strategies/grain_clip_strategy.py
   - src/pge/controllers/window_selection_strategy.py
+  - src/pge/controllers/window_controller.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/envelopes/envelope_factory.py
   - src/pge/core/stream.py
@@ -23,6 +24,8 @@ sources:
   - tests/shared/test_distribution_strategy.py
   - tests/shared/test_range_anchor.py
   - tests/shared/test_stdout_contract.py
+  - tests/controllers/test_window_controller.py
+  - tests/strategies/test_grain_clip_strategy.py
   - tests/strategies/test_misc_strategy_errors.py
   - tests/strategies/test_registry.py
   - tests/strategies/test_registry_convergenza.py
@@ -32,7 +35,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 95a83b7
+last_synced_commit: 77a9a93
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -46,9 +49,9 @@ e #185 (le altre).
 **Stato: il tracer bullet è stato sparato, la forma ha retto, e la replica è
 fatta.** La #184 ha messo la classe in `src/pge/strategies/registry.py` e vi ha
 cablato `voice_pan_strategy`; la #185 ci ha portato altri cinque registry
-(pitch, onset, pointer, density, variation), e i **tre** che restano sono
-quelli che questo documento tiene fuori per ragioni loro — `window_selection`
-e `grain_clip` (#265), `distribution` dopo la decisione sulla validazione.
+(pitch, onset, pointer, density, variation), e la #265 gli ultimi due che
+questo documento teneva per dopo, `window_selection` e `grain_clip`. Ne resta
+fuori **uno**, `distribution`, fermo davanti alla decisione sulla validazione.
 Nessun caso speciale è servito per farla passare, né al tracer bullet né alla
 replica — che era la domanda a cui il tracer bullet doveva rispondere. Quel che segue descrive la forma e, per ogni
 scelta, il vincolo che l'ha decisa; dove #184 ha *aggiunto* qualcosa alla
@@ -68,10 +71,11 @@ StrategyNotFoundError(strategy_kind=…)` dentro `create()`, che nell'albero ha
 esattamente nove siti.
 
 **La tabella fotografa lo stato prima di #184/#185**, che è il suo mestiere:
-è il problema come lo si è trovato. Le due righe `↳` dicono dove è arrivato.
-Dopo #185 quei nove siti sono **quattro** — `window_selection_strategy`,
+è il problema come lo si è trovato. Le righe `↳` dicono dove è arrivato.
+Dopo #185 quei nove siti erano **quattro** — `window_selection_strategy`,
 `grain_clip_strategy`, `distribution_strategy` e `StrategyRegistry.create`,
-l'ultimo dei quali serve sei registry.
+l'ultimo dei quali serviva sei registry. Dopo #265 sono **due**:
+`distribution_strategy` e `StrategyRegistry.create`, che ne serve otto.
 
 | modulo | mappa | registrazione | riga diagnostica | `create()` |
 |---|---|---|---|---|
@@ -85,6 +89,7 @@ l'ultimo dei quali serve sei registry.
 | ↳ *dopo #185* (pitch, onset, pointer, density, variation) | `StrategyRegistry('<kind>', …)` | `(name, strategy_class)`, delega a `.register` | sì, dominio `<kind>` | delega a `.create`; density tiene la propria façade e la propria validazione |
 | `controllers/window_selection_strategy.py` | `WINDOW_STRATEGY_REGISTRY` | `(name, cls)` | no | `create(name, **kwargs)` + `from_spec(...)` |
 | `strategies/grain_clip_strategy.py` | `GRAIN_CLIP_STRATEGIES` | — | — | `create(name, **kwargs)` |
+| ↳ *dopo #265* (window_selection, grain_clip) | `StrategyRegistry('<kind>', …)`, nomi di modulo invariati | window: `(name, strategy_class)`, delega a `.register`; grain_clip: nessuna, per decisione | window sì, dominio `window_selection`; grain_clip — | delega a `.create`; window tiene `from_spec`, che passa da `create` |
 | `shared/distribution_strategy.py` | `DistributionFactory._registry` (attributo di classe) | `DistributionFactory.register(name, strategy_class)`, classmethod, **valida** | no | `create(mode, rng=None, anchor=…)` |
 
 La tabella è la prova che si tratta di duplicazione e non di somiglianza: per
@@ -117,14 +122,15 @@ regola di quale riga vive su stdout è scritta in [[contratto-stdout]]. Quel che
 resta della divergenza descritta dalla issue non è il canale, è **chi la riga la
 emette**: tre registry su nove la emettono, cinque tacciono, uno non ha la
 funzione da cui emetterla. Quel conto è la fotografia del prima, come la
-tabella qui sotto: dopo #185 i registry che parlano sono sei, **due**
-tacciono (`window` e `distribution`) e uno non ha ancora la funzione
-(`grain_clip`) — il conto a convergenza avvenuta è nella sezione «Il
-`print()`», che lo tiene aggiornato. I due che tacciono non tacciono per la
-stessa ragione, ed è la sezione «Chi resta fuori» a dirlo: `window` è nel
-seguito (#265), `DistributionFactory.register` è ferma davanti alla decisione
-sulla validazione. Contarne uno solo faceva nove registri su otto, e mandava a
-cercare in `distribution` una riga che non c'è.
+tabella qui sotto: dopo #185 i registry che parlavano erano sei, **due**
+tacevano (`window` e `distribution`) e uno non aveva la funzione
+(`grain_clip`). Dopo #265 parlano in **sette**: `window` ha cominciato con la
+conversione, `distribution` tace ancora, ferma davanti alla decisione sulla
+validazione, e `grain_clip` la funzione non l'avrà — è una decisione, non un
+ritardo, e la sezione «Chi resta fuori» la motiva. Il conto a convergenza
+avvenuta è nella sezione «Il `print()`», che lo tiene aggiornato. Contare i
+muti come uno solo faceva nove registri su otto, e mandava a cercare in
+`distribution` una riga che non c'è.
 
 Due vincoli esterni rendono questa duplicazione più cara di quanto sembri, e
 sono ciò che decide la forma più di ogni preferenza di stile:
@@ -358,7 +364,9 @@ non dice nulla su che cosa i registry della famiglia contengano oggi. E
 quello non lo chiedeva nessuno — `registry.base` era confrontata solo con il
 nome che la tabella del presidio dichiara, cioè due grafie dello stesso nome —
 mentre `base` non la legge nessun ramo di codice, essendo portata per il
-seguito (#265, e la decisione qui sotto su `distribution`). Un `base` cablato
+seguito (#265, e la decisione qui sotto su `distribution`). La #265 non ne ha
+avuto bisogno — finestre e `grain_clip` sono passati senza leggerla — quindi
+a portarla resta la sola decisione su `distribution`. Un `base` cablato
 sull'ABC di un altro asse era perciò **inerte**: misurato, con
 `StrategyRegistry('voice_pointer', VoiceOnsetStrategy, …)` e la tabella
 d'accordo — le due grafie sbagliate insieme, che è la forma che prende la
@@ -737,6 +745,59 @@ porta anche `from_spec()`, che è lettura di YAML e resta sua; il secondo non ha
 punto di registrazione e la conversione è l'occasione per decidere se debba
 averlo.
 
+**La #265 li ha portati dentro, e ha deciso tre cose che erano loro e non del
+meccanismo.**
+
+- **`from_spec()` resta in `window_selection_strategy` e continua a passare da
+  `create`.** Che lo faccia lo misura
+  `test_window_controller.py::TestWindowStrategyFactoryFromSpec::test_from_spec_sceglie_il_nome_e_il_registry_la_classe`,
+  che sostituisce `'single'` nel registry e pretende la sostituta. Misurato:
+  facendo istanziare a `from_spec` la classe direttamente, era l'unico rosso
+  dell'intera suite — le classi sono le stesse, quindi ogni altro test
+  passava. La conversione ha reso visibile anche un limite che c'era già:
+  `from_spec` sceglie fra quattro nomi guardando la *forma* di
+  `grain.envelope`, quindi una strategy registrata sotto un nome **nuovo** non
+  è raggiungibile da nessuno YAML. `register_window_strategy` serve a
+  sostituire, non ad aggiungere, e ora la docstring lo dice invece di
+  promettere il contrario.
+- **`WINDOW_STRATEGY_REGISTRY` tiene il proprio nome**, l'unico che non segue
+  `<DOMINIO>_STRATEGIES`. Prima di decidere è stato verificato chi lo importa
+  da fuori: nessuno in PGE-ls, PGE-ui, gl-ls, granulation-studies e
+  mare-nostrum. Rinominarlo era quindi possibile, ma non avrebbe comprato
+  niente, e la regola di «Implicazioni codice» — i nomi che non costano ancora
+  niente restano fermi — decide per lasciarlo.
+- **`grain_clip` non espone un punto di registrazione.** Il registry generico
+  lo offre gratis (`GRAIN_CLIP_STRATEGIES.register`), ma una
+  `register_grain_clip_strategy` di modulo dichiarerebbe estensibile la chiave
+  YAML `clip_strategy`, e quel vocabolario è chiuso anche fuori dal motore:
+  `docs/reference/yaml.md` lo elenca, gl-ls ne tiene una copia a mano
+  (`CLIP_STRATEGIES`, che segnerebbe rosso un nome nuovo su YAML valido),
+  PGE-ui ne disegna i due bottoni. Nessuno nel motore la chiedeva. Il modulo lo
+  dice nella docstring, il suo `Caso` lo dichiara con `registrazione=None`, e
+  `test_un_registry_senza_registrazione_non_ne_espone_una` tiene vera la
+  dichiarazione — anche contro un alias di modulo, che il censimento dei punti
+  di registrazione di [[contratto-stdout]] non vede, e contro un `register`
+  sulla factory (la forma di `DistributionFactory.register`), che quel
+  censimento vede ma che una riga nella sua lista rimette verde. Misurato:
+  prima che il test leggesse anche dentro le classi, quel `register` più la
+  riga lasciavano la suite interamente verde. Per la stessa ragione
+  `MODULI_CON_REGISTRAZIONE_DINAMICA` non cambia: le finestre c'erano già, e
+  `grain_clip` per decisione non entra.
+
+**E un difetto che la conversione non ha causato, ma che stava nello stesso
+modulo.** `Stream.__init__` costruisce ogni clip strategy con
+`margin=config.clip_margin`, qualunque nome scelga lo YAML, e
+`PassthroughClipStrategy` non lo accettava: `clip_strategy: passthrough`,
+valore documentato e offerto da PGE-ui, moriva di `TypeError` prima di
+rendere un campione. Il registry generico inoltra gli argomenti tali e quali,
+per decisione, quindi il difetto sarebbe sopravvissuto alla conversione
+identico. Nessun test lo vedeva perché nessuno percorreva la strada di
+`Stream`; ora `test_grain_clip_strategy.py` lo fa su tutte le chiavi del
+registry, e passthrough accetta il `margin` e lo ignora. Che lo ignori lo
+misura uno `Stream` da YAML con un margine più corto del grano: con un margine
+lungo quanto il grano anche `overflow_margin` tiene tutte le code, e una
+passthrough che il margine lo applicava lasciava verde l'intera suite.
+
 `distribution_strategy` rientra anche lui, ma **più tardi ancora e con una
 domanda aperta davanti**: la sua `register` valida `issubclass` e quel rifiuto
 è pinnato (vedi «`base` è portato, non imposto»), quindi convertirlo sulla
@@ -760,15 +821,15 @@ scrittura diretta è quel che fanno le fixture per rimettere a posto lo stato.
 
 **La riga diagnostica passa da tre registry a sette.** Uniformare vuol dire
 anche estendere, non solo togliere: i quattro muti di allora (pitch, onset,
-pointer, window) cominciano a parlare. Sette è però il conto a convergenza
-avvenuta, non quello di #184/#185: **con #185 chiusa i registry che parlano sono
-sei**, perché `window` è nel seguito insieme a `grain_clip` (#265, vedi «Chi
-resta fuori»). Gli altri due sono quelli che il conto non tocca, ciascuno per il
-proprio motivo: `grain_clip` un punto di registrazione oggi non ce l'ha — ne
-parlerebbe otto solo se il seguito decidesse di dargliene uno, che è appunto la
-domanda lasciata aperta lì — e `distribution` ce l'ha ma è fermo davanti alla
-domanda sulla validazione, quindi il suo eventuale nono ingresso è oltre
-l'orizzonte di questa decisione. Su un canale
+pointer, window) cominciano a parlare. Sette è il conto a convergenza
+avvenuta, e con la #265 è il conto di oggi: con #185 chiusa i registry che
+parlavano erano sei, e `window` ha cominciato con la propria conversione. Gli
+altri due sono quelli che il conto non tocca, ciascuno per il proprio motivo:
+`grain_clip` un punto di registrazione non ce l'ha e la #265 ha deciso che non
+lo avrà (vedi «Chi resta fuori»), quindi un ottavo non ci sarà da lì; e
+`distribution` ce l'ha ma è fermo davanti alla domanda sulla validazione,
+quindi il suo eventuale ottavo ingresso è oltre l'orizzonte di questa
+decisione. Su un canale
 spento di default il prezzo è nullo a runtime; il prezzo vero è che d'ora in
 poi «registrare» e «annunciare la registrazione» sono la stessa operazione e
 non si possono più separare per registry — che è precisamente quel che si
@@ -853,18 +914,20 @@ nuova.
   dell'helper — dati di quel test, non la copia dell'etichetta di un modulo.
 
   **E non si ferma sulle façade.** `StrategyRegistry.register` — il metodo a
-  cui tutte e sei delegano, e un punto di registrazione a pieno titolo per il
-  censimento di [[contratto-stdout]], che legge le `def register_*_strategy`
-  di modulo **e** i metodi `register` dentro una classe — teneva `cls` come
-  secondo parametro: il nome da cui pitch, onset e pointer sono stati
-  convertiti, sopravvissuto nell'unico punto che serve tutti e sei i domini.
-  Si chiama `strategy_class` anche lì, e
-  `test_registry_convergenza.py::test_la_firma_della_classe_generica_e_quella_delle_sei_facade`
-  lo pretende.
+  cui tutte delegano (sei con la #185, sette con la #265), e un punto di
+  registrazione a pieno titolo per il censimento di [[contratto-stdout]], che
+  legge le `def register_*_strategy` di modulo **e** i metodi `register`
+  dentro una classe — teneva `cls` come secondo parametro: il nome da cui
+  pitch, onset e pointer sono stati convertiti, sopravvissuto nell'unico punto
+  che serve tutti i domini. Si chiama `strategy_class` anche lì, e
+  `test_registry_convergenza.py::test_la_firma_della_classe_generica_e_quella_delle_facade`
+  lo pretende. Con la #265 il nome lo ha perso anche
+  `register_window_strategy`, l'ultima façade che lo portava.
 
   La misura è quella e non una più larga, perché la più larga sarebbe falsa e
   verrebbe letta come regola: lo `strategy_kind` degli **errori** è ancora
-  scritto a mano in ventidue punti di `src/`, **dieci** dei quali
+  scritto a mano in venti punti di `src/` — erano ventidue, e la #265 ha tolto
+  i due dei `create` di finestre e `grain_clip`, che ora delegano —, **dieci** dei quali
   `"voice_pitch"` dentro il modulo che #185 ha convertito — altri due stanno
   in `core/stream.py`, che #185 non tocca — e uno `"density"` nella façade
   che ha riscritto. Non è una svista: il censimento della #177 —
@@ -874,9 +937,9 @@ nuova.
   domanda, e nessuna issue l'ha ancora posta.
 - **Ordine di esecuzione** → ~~#184 (pan, con la guardia estesa a
   `StrategyRegistry.register`)~~ **fatta**, ~~#185 (pitch, onset, pointer,
-  density, variation)~~ **fatta**, poi #265 per `window_selection_strategy` e
-  `grain_clip_strategy`, e `distribution_strategy` dopo la decisione sulla
-  validazione.
+  density, variation)~~ **fatta**, ~~#265 (`window_selection_strategy` e
+  `grain_clip_strategy`)~~ **fatta**, resta `distribution_strategy` dopo la
+  decisione sulla validazione.
 - **Se il tracer bullet chiede un'eccezione** → si torna a questo documento e si
   cambia la forma. Un caso speciale nella classe generica è il segnale che la
   forma è sbagliata, non che il modulo è strano.

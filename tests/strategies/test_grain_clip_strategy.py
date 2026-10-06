@@ -21,6 +21,11 @@ import pytest
 from types import SimpleNamespace
 
 from pge.core.grain import Grain
+from pge.strategies.grain_clip_strategy import (
+    GRAIN_CLIP_STRATEGIES,
+    GrainClipStrategyFactory,
+    PassthroughClipStrategy,
+)
 
 
 def make_grain(onset: float, duration: float = 0.05) -> Grain:
@@ -205,3 +210,72 @@ class TestGrainClipStrategyFactory:
         from pge.strategies.grain_clip_strategy import GRAIN_CLIP_STRATEGIES
         assert 'overflow_margin' in GRAIN_CLIP_STRATEGIES
         assert 'passthrough' in GRAIN_CLIP_STRATEGIES
+
+
+# =============================================================================
+# 4. Costruite come le costruisce Stream
+# =============================================================================
+
+class TestCostruiteComeLeCostruisceStream:
+    """`Stream.__init__` passa `margin=config.clip_margin` a **ogni** strategy.
+
+    Qualunque nome scelga la chiave YAML `clip_strategy`, la costruzione e'
+    `GrainClipStrategyFactory.create(nome, margin=...)`. I test qui sopra
+    costruiscono `PassthroughClipStrategy()` a mano e chiedono alla factory
+    `create('passthrough')` senza argomenti, e cosi' fanno le fixture di
+    `tests/core/test_stream*.py`, che la iniettano gia' costruita: nessuno
+    percorreva la strada di `Stream`, e su quella strada
+    `clip_strategy: passthrough` moriva di `TypeError` prima di rendere un
+    campione -- un valore documentato in `docs/reference/yaml.md`, accettato
+    da gl-ls e offerto da un bottone dell'Inspector di PGE-ui.
+    """
+
+    @pytest.mark.parametrize('nome', sorted(GRAIN_CLIP_STRATEGIES))
+    def test_ogni_strategy_accetta_il_margin_che_stream_le_passa(self, nome):
+        """Il contratto di costruzione, su tutto il registry.
+
+        Derivato dalle chiavi, non elencato: una terza strategy che non
+        accettasse `margin` sarebbe lo stesso difetto, e questo test la
+        vedrebbe il giorno in cui viene registrata.
+        """
+        strategy = GrainClipStrategyFactory.create(nome, margin=0.25)
+        assert isinstance(strategy, GRAIN_CLIP_STRATEGIES[nome])
+
+    @staticmethod
+    def _code_oltre(stream, margine=0.0):
+        # Le tabelle le assegna il Generator; senza, la generazione non parte.
+        stream.sample_table_num = 1
+        stream.envelope_table_num = 2
+        stream.window_table_map = {'hanning': 2}
+        limite = stream.onset + stream.duration + margine
+        return [g for voce in stream.voices for g in voce
+                if g.onset + g.duration > limite]
+
+    def test_clip_strategy_passthrough_dallo_yaml(self, build_stream):
+        """Dallo YAML allo Stream: passthrough parte, non scarta le code e
+        ignora `clip_margin`, come dice `docs/reference/yaml.md`.
+
+        Il margine e' piu' corto del grano, e non per caso. Con un margine
+        lungo quanto il grano anche `overflow_margin` tiene tutte le code, e
+        l'asserzione non distingue passthrough da un filtro che il margine lo
+        applica. Misurato: con `clip_margin: 0.5` su grani da 0.5 s, una
+        passthrough che tagliava a `fine + margin` quando il margine non e'
+        nullo lasciava verde l'intera suite.
+        """
+        grani_lunghi = {'duration': 0.5, 'envelope': 'hanning'}
+        margine = 0.1
+
+        # Il contrappunto: col default le code oltre la fine vengono scartate,
+        # quindi l'ultima asserzione non e' soddisfatta dal vuoto. Oltre
+        # `fine + margine` non ne lascia nessuna `overflow_margin` per
+        # costruzione: trovarne una e' cio' che dice che il margine e' ignorato.
+        assert not self._code_oltre(build_stream(grain=grani_lunghi))
+
+        stream = build_stream(clip_strategy='passthrough',
+                              clip_margin=margine, grain=grani_lunghi)
+
+        assert isinstance(stream._clip_strategy, PassthroughClipStrategy)
+        assert self._code_oltre(stream, margine), (
+            "passthrough ha scartato i grani oltre fine + clip_margin: il "
+            "margine va accettato e ignorato, non applicato"
+        )
