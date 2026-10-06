@@ -714,3 +714,188 @@ class TestOverflowDellePotenze:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+# =============================================================================
+# 7. OVERFLOW DELLA SOMMA DEI PESI (issue #219)
+# =============================================================================
+
+class TestOverflowDellaSomma:
+    """La somma dei pesi trabocca, e lo dice (issue #219).
+
+    E' la finestra che #212 ha lasciato aperta, e sta esattamente in mezzo ai
+    due casi che quella issue copre. Tre distribuzioni normalizzano dividendo
+    ogni peso per la somma di tutti: #212 intercetta la **potenza** che non sta
+    in un float, ma non il caso in cui i singoli pesi ci stanno e a traboccare
+    e' la loro somma.
+
+    Con `rate: 0.5` e `n_reps: 1024` il peso piu' grande e' `2**1023`, ancora
+    finito; la somma supera il massimo float e diventa `inf`, quindi ogni
+    `w / inf` e' `0.0`. Il risultato non era un errore: era un envelope le cui
+    durate sommano a **zero** invece che a `total_time` — tutti i cicli di
+    durata nulla, senza una riga di avviso.
+
+    Un ciclo in meno (`n_reps: 1023`) rende correttamente, uno in piu'
+    (`n_reps: 1025`) fa traboccare la potenza e #212 lo prende gia'.
+
+    `validate_distribution` ha il check sulla somma delle durate e se ne
+    accorgerebbe, ma non sta sul percorso di espansione — e metterlo li' non e'
+    la via d'uscita: il suo check sulla monotonia degli start times rifiuta
+    configurazioni ordinarie (l'`exponential` di default con `n_reps >= 55` ha
+    start times che si assorbono nei float e diventano uguali), quindi
+    renderebbe rosso cio' che oggi suona.
+    """
+
+    TOTAL_TIME = 10.0
+
+    def test_la_somma_che_trabocca_diventa_parameter_bound_error(self):
+        """Il repro della issue: durate tutte a zero, nessun errore."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError):
+            ExponentialDistribution(rate=0.5).calculate_distribution(
+                self.TOTAL_TIME, 1024)
+
+    def test_un_ciclo_in_meno_continua_a_rendere(self):
+        """Il confine di sotto: `n_reps: 1023` non ha mai avuto un problema.
+
+        La controprova che la guardia non si e' allargata su cio' che
+        funziona. Il peso piu' grande e' `2**1022` e la somma ci sta: le durate
+        sommano a `total_time`, con la prima infinitesima ma legittima.
+        """
+        starts, durations = ExponentialDistribution(
+            rate=0.5).calculate_distribution(self.TOTAL_TIME, 1023)
+
+        assert len(durations) == 1023
+        assert sum(durations) == pytest.approx(self.TOTAL_TIME)
+
+    def test_un_ciclo_in_piu_resta_l_overflow_della_potenza(self):
+        """Il confine di sopra: `n_reps: 1025` e' il caso di #212.
+
+        Li' e' `rate ** -i` a non stare in un float, e l'intercettazione e'
+        quella di prima. Serve a dire che le due guardie sono contigue e non
+        sovrapposte: la finestra di #219 e' larga un ciclo.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            ExponentialDistribution(rate=0.5).calculate_distribution(
+                self.TOTAL_TIME, 1025)
+
+        assert 'sum(' not in exc.value.hint
+
+    def test_la_power_ha_la_sua_finestra(self):
+        """Non e' un difetto della sola `exponential`: e' della normalizzazione.
+
+        `power` ci arriva per un'altra strada — il peso piu' grande e'
+        `n_reps ** exponent` — ma il guasto e' lo stesso, e la finestra e'
+        altrettanto stretta: con `n_reps: 1000`, `exponent: 102.3` rende,
+        `102.5` dava durate a zero e `103.0` fa traboccare la potenza.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError):
+            PowerDistribution(exponent=102.5).calculate_distribution(
+                self.TOTAL_TIME, 1000)
+
+    def test_la_power_sotto_il_confine_continua_a_rendere(self):
+        """La controprova, sull'altra distribuzione."""
+        starts, durations = PowerDistribution(
+            exponent=102.3).calculate_distribution(self.TOTAL_TIME, 1000)
+
+        assert sum(durations) == pytest.approx(self.TOTAL_TIME)
+
+    # (distribuzione, parametro, valore non finito)
+    NON_FINITI = [
+        (PowerDistribution, 'exponent', float('nan')),
+        (PowerDistribution, 'exponent', float('inf')),
+        (ExponentialDistribution, 'rate', float('nan')),
+        (GeometricDistribution, 'ratio', float('nan')),
+        (GeometricDistribution, 'ratio', float('inf')),
+        (LogarithmicDistribution, 'base', float('nan')),
+    ]
+
+    @pytest.mark.parametrize("dist,parametro,valore", NON_FINITI)
+    def test_un_parametro_non_finito_non_rende_piu_un_inviluppo_di_nan(
+            self, dist, parametro, valore):
+        """La stessa guardia prende un secondo difetto, della stessa famiglia.
+
+        YAML conosce `.nan` e `.inf`, e nessuno dei quattro costruttori li
+        rifiuta: i confronti che fanno da bound sono tutti falsi su `nan`
+        (`nan <= 0` e' falso, `nan <= 1` e' falso), e `inf` passa i bound per
+        definizione. Da li' i pesi diventano `nan` e le durate con loro, quindi
+        l'envelope si rendeva con breakpoint `nan` — in silenzio, come le
+        durate a zero qui sopra.
+
+        La guardia non sorveglia il parametro, sorveglia la normalizzazione: e'
+        la somma a non essere un numero finito, e il motivo per cui non lo e'
+        resta nel messaggio.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError):
+            dist(**{parametro: valore}).calculate_distribution(
+                self.TOTAL_TIME, 4)
+
+    def test_un_parametro_non_finito_che_normalizza_resta_valido(self):
+        """La controprova: `base: .inf` non e' uno dei casi sopra.
+
+        `log(i + 1, inf)` e' `0.0`, quindi i pesi valgono tutti 1 e i cicli
+        escono uniformi: la somma e' finita e le durate sommano a `total_time`.
+        La guardia non scatta, e giustamente — dice cio' che misura, non cio'
+        che sospetta del parametro.
+        """
+        starts, durations = LogarithmicDistribution(
+            base=float('inf')).calculate_distribution(self.TOTAL_TIME, 4)
+
+        assert sum(durations) == pytest.approx(self.TOTAL_TIME)
+
+    def test_il_messaggio_non_promette_un_float_quando_il_guasto_e_nan(self):
+        """Il testo di #212 era tarato su un solo guasto, e ora sono due.
+
+        «il risultato non sta in un float» e' vero di una somma che trabocca e
+        falso di una somma `nan`, che in un float ci sta benissimo. La frase
+        dice ora cio' che la guardia misura davvero — che non e' un numero
+        finito — e resta vera di entrambi.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            PowerDistribution(exponent=float('nan')).calculate_distribution(
+                self.TOTAL_TIME, 4)
+
+        assert 'non sta in un float' not in exc.value.hint
+        assert 'numero finito' in exc.value.hint
+
+    def test_la_coppia_si_accusa_solo_quando_e_davvero_una_coppia(self):
+        """L'altra meta' della stessa frase, e la piu' insidiosa.
+
+        #212 spiega a lungo perche' l'errore nomina due valori: `ratio: 10` e
+        `n_reps: 400` sono legittimi da soli, non c'e' un colpevole, c'e' una
+        coppia — e dire solo l'uno o solo l'altro non direbbe quale ridurre.
+        Il ragionamento regge sull'overflow e cade su `nan`: `exponent: .nan`
+        e' fuori posto da solo, a qualunque `n_reps`, e invitare a ridurre i
+        cicli manderebbe l'utente a cercare una soglia che non esiste.
+
+        Quindi la diagnosi della coppia vale dove il valore e' finito, e dove
+        non lo e' si dice quello.
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            PowerDistribution(exponent=float('nan')).calculate_distribution(
+                self.TOTAL_TIME, 4)
+
+        assert 'la coppia' not in exc.value.hint
+        assert 'Riduci n_reps' not in exc.value.hint
+
+    def test_sulla_coppia_vera_la_diagnosi_di_212_resta_intatta(self):
+        """La controprova: niente e' cambiato dove #212 aveva ragione."""
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            ExponentialDistribution(rate=0.5).calculate_distribution(
+                self.TOTAL_TIME, 1024)
+
+        assert "e' la coppia a esplodere" in exc.value.hint
+        assert 'Riduci n_reps' in exc.value.hint
+        assert 'avvicina rate a 1' in exc.value.hint
