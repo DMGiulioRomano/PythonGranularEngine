@@ -87,6 +87,44 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `Stream.grains`, che nella 9.1.0 avverte ancora di una rimozione «in 9.0.0»
   (#285).
 
+- **Il corpo di una PR dichiara l'issue che chiude** — template, check e
+  ruleset. GitHub chiude un'issue al merge soltanto se un closing keyword
+  **inglese** compare nel **corpo** della pull request: la #219 e' rimasta
+  aperta dopo il merge della PR #293, il cui corpo diceva «Chiude #219».
+  Niente era rotto e nessuna CI poteva accorgersene — una frase italiana e'
+  prosa, non un errore.
+
+  Tre pezzi, perche' **nessuna regola dei ruleset di GitHub legge il corpo di
+  una PR**: le loro metadata restrictions coprono messaggio di commit, email e
+  nomi di branch o tag. Il workflow `pr-closes-issue.yml` misura (job
+  `closes-issue`, su `opened`/`edited`/`reopened`/`synchronize`/`ready_for_review`),
+  `.github/rulesets/main-closes-issue.json` lo pretende verde su `main`, e
+  `.github/pull_request_template.md` mette la riga in cima al corpo, dove
+  GitHub la legge.
+
+  Il check e' **piu' stretto di GitHub, mai piu' largo**: un rifiuto si vede
+  e si corregge, un verde su una riga che GitHub non collega e' l'issue che
+  resta aperta e nessuno guarda. Percio' pretende lo spazio (`Closes #12`, non
+  `Closes: #12`), legge solo cio' che GitHub legge — commenti HTML, recinti e
+  codice in linea escono prima del confronto, altrimenti il check sarebbe
+  verde **per via dell'esempio nel template** su ogni PR mai compilata — e
+  rifiuta `Closes owner/repo#n` col motivo giusto: un closing keyword chiude
+  solo nel repo della PR, e un'issue di PGE-ui la chiude una PR su PGE-ui.
+  La via d'uscita e' dichiarata e vuole un motivo (`No issue: <perche'>`).
+
+  `tests/test_pr_closing_keyword.py` sorveglia i quattro anelli, e tre di
+  essi sbagliano in silenzio: il template versionato **deve** fallire il check
+  (uno che passa e' inutile), il nome del job e il contesto richiesto dal
+  ruleset devono coincidere (divergendo, il merge aspetta per sempre un
+  contesto che nessuno pubblica), `edited` e `synchronize` devono esserci (senza
+  il primo correggere il corpo non fa tornare verde il check, senza il secondo
+  la head nuova di un push resta senza check), e il corpo deve passare per
+  l'ambiente e non interpolato nel `run` — lo scrive chiunque apra una PR.
+
+  `.claude/rules/pr-closes-issue.md` e' la meta' che fa il lavoro vero: Claude
+  Code scrive la riga di default invece di farla prendere al check.
+
+
 ### Cambiato
 
 - **I guard di forma degli envelope valgono per ogni chiave** (issue #211).
