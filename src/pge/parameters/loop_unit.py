@@ -5,17 +5,24 @@ Il vocabolario di `pointer.loop_unit` (issue #222) e le chiavi del blocco
 `pointer` che quell'unita' interpreta. Due tuple e nient'altro: il modulo non
 importa niente, e sta qui per questo (issue #246).
 
-Stavano in `controllers/pointer_controller.py`, che tira dentro
-`pge.envelopes.envelope` e quindi numpy: la' nessuno le poteva importare. Le
-legge PGE-ui, per dire mentre si scrive che una grafia il motore la rifiuta
-invece di lasciarlo scoprire da un render che muore, e ne tengono un mirror
-statico gl-ls e PGE-ls. Il bridge dell'editor continuera' a leggerle dal
-sorgente — non importa mai il motore, per costruzione — ma legge un modulo che
-esiste per essere letto, e il suo oracolo di parita' ora le importa.
+Stavano in `controllers/pointer_controller.py`. Quel modulo oggi si importa
+senza terze parti — `Envelope`, l'orchestratore, `StreamConfig` e il logger
+usano la sola stdlib — ma per caso e non per contratto: nessuna guardia lo
+sorveglia, e la prima dipendenza pesante che scendesse da li' lo renderebbe
+illeggibile a chi non ha il venv del motore. Questo modulo non importa niente,
+e `_MODULI_SENZA_TERZE_PARTI` lo misura.
+
+Chi le legge lo fa dal **sorgente**, al path: il bridge di PGE-ui (che non
+importa mai il motore, per costruzione) le usa per dire mentre si scrive che
+una grafia il motore la rifiuta, invece di lasciarlo scoprire da un render che
+muore, e i patti di parita' di PGE-ls rileggono tutte e due le tuple per il
+mirror statico del language server. gl-ls ne tiene un mirror statico a sua
+volta. Il path e la forma letterale sono quindi parte del contratto, e
+`tests/parameters/test_loop_unit.py` li tiene fermi.
 
 Per lo stesso motivo le due tuple vanno scritte come **letterali**: chi legge
-da fuori lo fa con `ast`, risolve i nomi di un livello e dentro lo stesso file,
-e un valore calcolato gli torna come "non lo so".
+da fuori lo fa con `ast`, risolve al piu' i nomi di un livello e dentro lo
+stesso file, e un valore calcolato gli torna come "non lo so".
 """
 from __future__ import annotations
 
@@ -34,7 +41,8 @@ LOOP_UNITS = ('seconds', 'absolute', 'normalized')
 # queste benche' loop non sia: e' una posizione nel sample come loop_start,
 # stesso dominio e stessa unita' (reference §10.1), e sopravvive al loop.
 #
-# Pubblica senza underscore dalla #246: PGE-ui decide da questo elenco se
-# mostrare il selettore dell'unita' (`loopUnitRescaleKeys`) e gl-ls lo mirrora
-# in `diagnostics._UNIT_SCALED`. Era privata di nome e non di fatto.
+# Pubblica senza underscore dalla #246: PGE-ls la rilegge da qui nei suoi patti
+# di parita', gl-ls la mirrora in `diagnostics._UNIT_SCALED` e PGE-ui in
+# `loopUnitRescaleKeys`, che decide se mostrare il selettore dell'unita'. Era
+# privata di nome e non di fatto.
 LOOP_UNIT_SCOPE = ('start', 'loop_start', 'loop_end', 'loop_dur')

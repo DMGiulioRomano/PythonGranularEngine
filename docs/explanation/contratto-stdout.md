@@ -8,6 +8,8 @@ sources:
   - src/pge/cli.py
   - src/pge/api.py
   - src/pge/engine/generator.py
+  - src/pge/engine/solo_mute.py
+  - src/pge/shared/magnify_spec.py
   - src/pge/strategies/registry.py
   - src/pge/strategies/strategy_registry.py
   - src/pge/strategies/variation_registry.py
@@ -186,8 +188,10 @@ dove e' eseguibile; qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
-| `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 37 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
-| `engine/generator.py` | — | — (al logger dalla #188) | `[SEED]` (due: il seed di sessione su stdout, il seed di un file importato su stderr), `Creazione di N stream`, `⚡ SOLO MODE`, `🔇 N stream muted`, `⚠️ impossibile valutare` |
+| `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 32 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
+| `shared/magnify_spec.py` | — | — | 5 (i rifiuti di `--magnify-at`: stavano in `cli.py`, la #246 li ha spostati col parser) |
+| `engine/generator.py` | — | — (al logger dalla #188) | `[SEED]` (due: il seed di sessione su stdout, il seed di un file importato su stderr), `Creazione di N stream`, `⚠️ impossibile valutare` |
+| `engine/solo_mute.py` | — | — | `⚡ SOLO MODE`, `🔇 N stream muted` (stavano in `engine/generator.py`, #246) |
 | `rendering/*_renderer.py` (3) | `[CACHE] <id>: <status>` | — | — |
 | `rendering/stream_cache_manager.py` | `[CACHE] <id>: <status>` | — | `[CACHE] N/M stream da ricompilare` |
 | `rendering/score_writer.py` | — | — | 4 (path del `.sco` e riepilogo) |

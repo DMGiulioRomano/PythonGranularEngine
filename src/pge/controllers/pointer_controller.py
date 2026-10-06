@@ -24,9 +24,9 @@ from pge.shared.logger import (
 )
 from pge.shared.exceptions import InvalidFieldValueError
 # Il vocabolario di loop_unit e le chiavi che interpreta stanno in un
-# modulo senza dipendenze: li leggono PGE-ui, gl-ls e PGE-ls, e qui
-# dentro sarebbero importabili solo con numpy (issue #246). Non vanno
-# ridichiarati: vedi tests/parameters/test_loop_unit.py.
+# modulo senza dipendenze, sorvegliato perche' resti tale: li leggono
+# PGE-ui e PGE-ls dal sorgente, al path, e gl-ls li mirrora (issue #246).
+# Non vanno ridichiarati: vedi tests/parameters/test_loop_unit.py.
 from pge.parameters.loop_unit import LOOP_UNITS, LOOP_UNIT_SCOPE
 
 

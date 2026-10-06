@@ -113,14 +113,17 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   importi** (issue #246). PGE-ui ha un harness di parita' che chiede al motore
   le regole che la UI prometteva di replicare, invece di ricopiarle: la
   grammatica di `--magnify-at`, la regola solo/mute, il vocabolario di
-  `pointer.loop_unit`. Tre di quelle letture non potevano essere import —
-  `pge.cli` tira dentro matplotlib, `engine/generator.py` e
-  `controllers/pointer_controller.py` numpy, e il job della sua CI dove la
-  parita' gira non costruisce il venv del motore — quindi l'oracolo estraeva
-  dall'AST di quei file i nodi che gli servivano e li eseguiva. Funzionava, ed
-  erano i byte del motore; ma pinnava **nomi privati** e la loro posizione nel
-  file, cosi' che una rinomina qui rendeva rossa la CI di un altro repository
-  su ogni pull request aperta, comprese quelle che non c'entravano.
+  `pointer.loop_unit`. Le prime due letture non potevano essere import —
+  `pge.cli` tira dentro matplotlib, `engine/generator.py` numpy e soundfile,
+  e il job della sua CI dove la parita' gira non costruisce il venv del
+  motore — quindi l'oracolo estraeva dall'AST di quei file i nodi che gli
+  servivano e li eseguiva. Funzionava, ed erano i byte del motore; ma pinnava
+  **nomi privati** e la loro posizione nel file, cosi' che una rinomina qui
+  rendeva rossa la CI di un altro repository su ogni pull request aperta,
+  comprese quelle che non c'entravano. Il terzo lo leggono dal sorgente il
+  bridge di PGE-ui e i patti di PGE-ls: `controllers/pointer_controller.py`
+  oggi si importa senza terze parti, ma per caso e non per contratto, e chi
+  legge al path legge un file che esiste per altro.
 
   I tre pezzi stanno ora in moduli che non importano niente, con nomi pubblici:
 

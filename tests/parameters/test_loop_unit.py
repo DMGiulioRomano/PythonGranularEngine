@@ -5,27 +5,25 @@
 Il vocabolario di `pointer.loop_unit` come modulo a se', e perche' (#246).
 
 Sono due tuple: le grafie ammesse (#222) e le chiavi del blocco `pointer` che
-l'unita' interpreta. Stavano in `controllers/pointer_controller.py`, dove
-nessuno le poteva importare: quel modulo tira dentro `pge.envelopes.envelope`
-e quindi numpy.
+l'unita' interpreta. Stavano in `controllers/pointer_controller.py`, che oggi
+si importa senza terze parti ma per caso: `Envelope`, l'orchestratore e
+`StreamConfig` usano la sola stdlib, e nessuna guardia lo pretende. Qui il
+modulo non importa niente, e `_MODULI_SENZA_TERZE_PARTI` lo misura.
 
-Il prezzo lo pagavano due repository, e in modi diversi:
+Chi le legge da fuori lo fa dal **sorgente**, con `ast`, al path:
 
-- **PGE-ui** le legge per dire «questa grafia il motore la rifiuta» mentre si
-  scrive, invece di scoprirlo da un render che muore. Il suo bridge non importa
-  mai il motore -- e' un processo Flask nel venv dell'editor -- quindi legge il
-  **testo** del sorgente con `ast`; il suo oracolo di parita' faceva lo stesso,
-  non per scelta ma perche' il job node della sua CI non costruisce il venv del
-  motore. Due letture che pinnavano il nome del file e la posizione della
-  costante dentro di lui.
-- **gl-ls** e **PGE-ls** ne tengono un mirror statico (`loop_unit.py`,
-  `diagnostics._UNIT_SCALED`), che e' prosa: non si accorge di essere stata
-  contraddetta.
+- **PGE-ui** legge `LOOP_UNITS` per dire «questa grafia il motore la rifiuta»
+  mentre si scrive, invece di scoprirlo da un render che muore. Il suo bridge
+  non importa mai il motore -- e' un processo Flask nel venv dell'editor -- e
+  la sua parita' confronta proprio quella lettura, non un import.
+- **PGE-ls** rilegge tutte e due le tuple nei patti di parita' del suo mirror
+  statico (`granular_ls/loop_unit.py`); **gl-ls** ne tiene un altro
+  (`diagnostics._UNIT_SCALED`), che e' prosa: non si accorge di essere stato
+  contraddetto.
 
-Importabile col python nudo, l'oracolo chiede invece di estrarre. Il bridge
-continuera' a leggere il sorgente -- quella non e' una deroga, e' cio' che
-significa non importare il motore -- ma legge un modulo che esiste per essere
-letto, e il ripiego sul vecchio path resta per i motori piu' vecchi.
+Il path e la forma letterale sono percio' il contratto, e una lettura dal path
+vecchio su un motore nuovo non fallisce: dice «il motore precede #222», cioe'
+verde. I ripieghi sul vecchio path, a valle, restano per i motori piu' vecchi.
 
 `LOOP_UNIT_SCOPE` perde l'underscore: due repository lo mirrorano, quindi era
 privato solo di nome. Dichiararlo e' meno costoso che lasciare che qualcuno lo
@@ -127,11 +125,12 @@ class TestModuloLeggero:
             f"esiste per essere importabile senza il venv del motore (#246)")
 
     def test_le_due_tuple_sono_letterali(self):
-        """Non calcolate: il bridge di PGE-ui non importa il motore, le legge
-        dall'AST, e la sua risoluzione dei nomi va di un livello e dentro lo
-        stesso file. Un valore costruito da un'espressione gli torna come
-        «non lo so» -- e un «non lo so» letto come un valore e' il modo in cui
-        un controllo si spegne in silenzio."""
+        """Non calcolate: il bridge di PGE-ui e i patti di PGE-ls non
+        importano il motore, le leggono dall'AST, e la loro risoluzione dei
+        nomi va al piu' di un livello e dentro lo stesso file. Un valore
+        costruito da un'espressione gli torna come «non lo so» -- e un «non lo
+        so» letto come un valore e' il modo in cui un controllo si spegne in
+        silenzio."""
         from pge.parameters import loop_unit
         with open(loop_unit.__file__, encoding='utf-8') as fh:
             albero = ast.parse(fh.read())

@@ -140,7 +140,7 @@ class TestPlotEnvelopesValidationGolden:
 
 
 class TestMagnifyAtValidationGolden:
-    """I 4 errori di _parse_magnify_spec + SPEC vuoto, messaggi esatti."""
+    """I 4 errori di parse_magnify_spec + SPEC vuoto, messaggi esatti."""
 
     def test_invalid_token_message(self, mocks, capsys):
         _run_expect_exit(
