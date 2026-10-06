@@ -57,6 +57,14 @@ class OverflowMarginClipStrategy(GrainClipStrategy):
 class PassthroughClipStrategy(GrainClipStrategy):
     """Nessun filtro: tutti i grain passano al renderer integralmente."""
 
+    def __init__(self, margin: float = 0.0):
+        # Accettato e ignorato: senza filtro un margine non ha niente da
+        # allargare. Ma `Stream.__init__` costruisce ogni clip strategy con
+        # `margin=config.clip_margin`, qualunque nome scelga lo YAML, e senza
+        # questo costruttore `clip_strategy: passthrough` moriva di
+        # `TypeError` prima di rendere un campione.
+        pass
+
     def apply(self, voices, stream):
         return voices
 

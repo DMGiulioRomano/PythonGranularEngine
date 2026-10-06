@@ -21,6 +21,11 @@ import pytest
 from types import SimpleNamespace
 
 from pge.core.grain import Grain
+from pge.strategies.grain_clip_strategy import (
+    GRAIN_CLIP_STRATEGIES,
+    GrainClipStrategyFactory,
+    PassthroughClipStrategy,
+)
 
 
 def make_grain(onset: float, duration: float = 0.05) -> Grain:
@@ -205,3 +210,59 @@ class TestGrainClipStrategyFactory:
         from pge.strategies.grain_clip_strategy import GRAIN_CLIP_STRATEGIES
         assert 'overflow_margin' in GRAIN_CLIP_STRATEGIES
         assert 'passthrough' in GRAIN_CLIP_STRATEGIES
+
+
+# =============================================================================
+# 4. Costruite come le costruisce Stream
+# =============================================================================
+
+class TestCostruiteComeLeCostruisceStream:
+    """`Stream.__init__` passa `margin=config.clip_margin` a **ogni** strategy.
+
+    Qualunque nome scelga la chiave YAML `clip_strategy`, la costruzione e'
+    `GrainClipStrategyFactory.create(nome, margin=...)`. I test qui sopra
+    costruiscono `PassthroughClipStrategy()` a mano e chiedono alla factory
+    `create('passthrough')` senza argomenti, e cosi' fanno le fixture di
+    `tests/core/test_stream*.py`, che la iniettano gia' costruita: nessuno
+    percorreva la strada di `Stream`, e su quella strada
+    `clip_strategy: passthrough` moriva di `TypeError` prima di rendere un
+    campione -- un valore documentato in `docs/reference/yaml.md`, accettato
+    da gl-ls e offerto da un bottone dell'Inspector di PGE-ui.
+    """
+
+    @pytest.mark.parametrize('nome', sorted(GRAIN_CLIP_STRATEGIES))
+    def test_ogni_strategy_accetta_il_margin_che_stream_le_passa(self, nome):
+        """Il contratto di costruzione, su tutto il registry.
+
+        Derivato dalle chiavi, non elencato: una terza strategy che non
+        accettasse `margin` sarebbe lo stesso difetto, e questo test la
+        vedrebbe il giorno in cui viene registrata.
+        """
+        strategy = GrainClipStrategyFactory.create(nome, margin=0.25)
+        assert isinstance(strategy, GRAIN_CLIP_STRATEGIES[nome])
+
+    @staticmethod
+    def _code_oltre_la_fine(stream):
+        # Le tabelle le assegna il Generator; senza, la generazione non parte.
+        stream.sample_table_num = 1
+        stream.envelope_table_num = 2
+        stream.window_table_map = {'hanning': 2}
+        fine = stream.onset + stream.duration
+        return [g for voce in stream.voices for g in voce
+                if g.onset + g.duration > fine]
+
+    def test_clip_strategy_passthrough_dallo_yaml(self, build_stream):
+        """Dallo YAML allo Stream: passthrough parte e non scarta le code."""
+        grani_lunghi = {'duration': 0.5, 'envelope': 'hanning'}
+
+        # Il contrappunto: col default le stesse code vengono scartate, quindi
+        # la seconda asserzione non e' soddisfatta dal vuoto.
+        assert not self._code_oltre_la_fine(build_stream(grain=grani_lunghi))
+
+        stream = build_stream(clip_strategy='passthrough', clip_margin=0.5,
+                              grain=grani_lunghi)
+
+        assert isinstance(stream._clip_strategy, PassthroughClipStrategy)
+        assert self._code_oltre_la_fine(stream), (
+            "passthrough ha scartato i grani che sforano la fine dello stream"
+        )
