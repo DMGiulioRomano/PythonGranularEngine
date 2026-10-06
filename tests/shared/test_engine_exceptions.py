@@ -1335,6 +1335,13 @@ _MODULI_SENZA_TERZE_PARTI = (
     'pge.parameters.pitch_unit',
     'pge.parameters.parameter_schema',
     'pge.rendering.envelope_extractor',
+    # I moduli nati dalla #246 per essere importati da la': la grammatica
+    # di --magnify-at stava in `cli.py` (matplotlib) e l'oracolo ne
+    # estraeva i nodi dall'AST. Qui l'import e' il ramo primario di
+    # quell'op, e se smettesse di funzionare l'oracolo ripiegherebbe
+    # sull'ast-slice storico di `cli.py`, dove la grammatica non c'e'
+    # piu': un rosso che dice 'si e' spostata' senza dire dove.
+    'pge.shared.magnify_spec',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui

@@ -80,7 +80,10 @@ class TestMainShim:
         assert main.main is cli.main
         assert main._handle_engine_error is cli._handle_engine_error
         assert main._parse_jobs is cli._parse_jobs
-        assert main._parse_magnify_spec is cli._parse_magnify_spec
+        # Nome pubblico dalla #246: la grammatica di --magnify-at e'
+        # uscita da cli.py in pge/shared/magnify_spec.py, e `cli` la
+        # tiene nel proprio namespace perche' la importa.
+        assert main.parse_magnify_spec is cli.parse_magnify_spec
         assert main._build_renderer is cli._build_renderer
 
     def test_shim_usage_via_subprocess(self):
