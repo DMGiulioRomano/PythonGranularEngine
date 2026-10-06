@@ -832,9 +832,15 @@ CLASSIFICAZIONE = {
         INTERFACCIA,
     ('engine/generator.py', "⚠️  Warning: impossibile valutare '{}': {}"):
         INTERFACCIA,
-    ('engine/generator.py', '⚡ SOLO MODE: creazione di {} stream (su {} totali)'):
+    # --- engine/solo_mute.py ---
+    # Le due righe di solo/mute. Stavano sotto engine/generator.py: la
+    # #246 ha spostato la regola in un modulo senza dipendenze perche'
+    # l'oracolo di PGE-ui la importi invece di estrarne il FunctionDef
+    # dal ClassDef di Generator. Canale e forma invariati: dicono a chi
+    # rende perche' sta sentendo meno stream di quelli che ha scritto.
+    ('engine/solo_mute.py', '⚡ SOLO MODE: creazione di {} stream (su {} totali)'):
         INTERFACCIA,
-    ('engine/generator.py', '🔇 {} stream muted'):
+    ('engine/solo_mute.py', '🔇 {} stream muted'):
         INTERFACCIA,
     # --- rendering/csound_renderer.py ---
     ('rendering/csound_renderer.py', '[CACHE] {}: {}'):

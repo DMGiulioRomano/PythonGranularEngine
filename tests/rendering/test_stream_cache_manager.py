@@ -133,7 +133,7 @@ class TestFingerprintComputation:
 
 class TestFingerprintIgnoresMuteSolo:
     """
-    mute/solo cambiano QUALI stream vengono renderizzati (_filter_solo_mute),
+    mute/solo cambiano QUALI stream vengono renderizzati (filter_solo_mute),
     non il contenuto audio del singolo stem: non devono entrare nel fingerprint.
     Altrimenti il toggle del flag marca lo stem dirty e forza un re-render inutile.
 

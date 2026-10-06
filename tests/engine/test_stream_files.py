@@ -185,7 +185,7 @@ def test_il_piazzamento_viene_dal_master(brano):
 def test_le_chiavi_di_piazzamento_del_file_sono_ignorate(brano):
     """Un `solo` o un `mute` rimasti nel file non arrivano al brano.
 
-    `_filter_solo_mute` guarda la *presenza* della chiave: un `solo` del file
+    `filter_solo_mute` guarda la *presenza* della chiave: un `solo` del file
     che arrivasse nel master metterebbe in solo l'intero brano su quello
     stream, e un `mute` lo zittirebbe, senza che il master dica niente.
     """

@@ -1342,6 +1342,7 @@ _MODULI_SENZA_TERZE_PARTI = (
     # sull'ast-slice storico di `cli.py`, dove la grammatica non c'e'
     # piu': un rosso che dice 'si e' spostata' senza dire dove.
     'pge.shared.magnify_spec',
+    'pge.engine.solo_mute',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui

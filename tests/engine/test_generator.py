@@ -9,7 +9,8 @@ Sezioni:
 1.  Test __init__() - costruzione e stato iniziale
 2.  Test load_yaml() - caricamento e preprocessing YAML
 3.  Test _eval_math_expressions() - valutazione espressioni matematiche
-4.  Test _filter_solo_mute() - logica solo/mute sugli stream
+4.  (la logica solo/mute e' uscita da Generator con la #246: i suoi test
+     stanno in tests/engine/test_solo_mute.py)
 5.  Test create_elements() - orchestrazione creazione stream
 6.  Test _create_streams() - creazione stream granulari
 7.  Test _register_stream_windows() - pre-registrazione finestre
@@ -807,132 +808,6 @@ class TestEvalMathExpressions:
 
 
 # =============================================================================
-# 4. TEST _filter_solo_mute()
-# =============================================================================
-
-class TestFilterSoloMute:
-    """Test per _filter_solo_mute() - logica solo/mute."""
-
-    def test_no_solo_no_mute_returns_all(self, gen):
-        """Senza solo ne' mute, ritorna tutti gli stream."""
-        streams = [
-            {'stream_id': 'a'},
-            {'stream_id': 'b'},
-            {'stream_id': 'c'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 3
-
-    def test_solo_mode_returns_only_solo(self, gen):
-        """In modalita' solo, ritorna solo gli stream con flag 'solo'."""
-        streams = [
-            {'stream_id': 'a', 'solo': True},
-            {'stream_id': 'b'},
-            {'stream_id': 'c'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 1
-        assert result[0]['stream_id'] == 'a'
-
-    def test_solo_multiple(self, gen):
-        """Piu' stream con solo sono tutti inclusi."""
-        streams = [
-            {'stream_id': 'a', 'solo': True},
-            {'stream_id': 'b', 'solo': True},
-            {'stream_id': 'c'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 2
-
-    def test_mute_excludes_muted(self, gen):
-        """Mute esclude gli stream con flag 'mute'."""
-        streams = [
-            {'stream_id': 'a'},
-            {'stream_id': 'b', 'mute': True},
-            {'stream_id': 'c'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 2
-        assert all(s['stream_id'] != 'b' for s in result)
-
-    def test_solo_overrides_mute(self, gen):
-        """Solo ha priorita' su mute: in solo mode solo quelli con 'solo'."""
-        streams = [
-            {'stream_id': 'a', 'solo': True},
-            {'stream_id': 'b', 'mute': True},
-            {'stream_id': 'c'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 1
-        assert result[0]['stream_id'] == 'a'
-
-    def test_all_muted_returns_empty(self, gen):
-        """Tutti muted ritorna lista vuota."""
-        streams = [
-            {'stream_id': 'a', 'mute': True},
-            {'stream_id': 'b', 'mute': True},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 0
-
-    def test_empty_list_returns_empty(self, gen):
-        """Lista vuota ritorna lista vuota."""
-        result = gen._filter_solo_mute([])
-        assert result == []
-
-    def test_solo_checks_key_presence_not_value(self, gen):
-        """Solo controlla la presenza della chiave, non il valore."""
-        streams = [
-            {'stream_id': 'a', 'solo': False},  # chiave presente!
-            {'stream_id': 'b'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 1
-        assert result[0]['stream_id'] == 'a'
-
-    def test_mute_checks_key_presence_not_value(self, gen):
-        """Mute controlla la presenza della chiave, non il valore."""
-        streams = [
-            {'stream_id': 'a', 'mute': False},  # chiave presente!
-            {'stream_id': 'b'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 1
-        assert result[0]['stream_id'] == 'b'
-
-    def test_solo_with_value_none(self, gen):
-        """Solo con valore None e' ancora rilevato."""
-        streams = [
-            {'stream_id': 'a', 'solo': None},
-            {'stream_id': 'b'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == 1
-
-    def test_preserves_order(self, gen):
-        """_filter_solo_mute preserva l'ordine originale."""
-        streams = [
-            {'stream_id': 'c'},
-            {'stream_id': 'a'},
-            {'stream_id': 'b', 'mute': True},
-        ]
-        result = gen._filter_solo_mute(streams)
-        assert [s['stream_id'] for s in result] == ['c', 'a']
-
-    def test_solo_and_mute_on_same_stream(self, gen):
-        """Stream con sia solo che mute: solo mode include chi ha solo."""
-        streams = [
-            {'stream_id': 'a', 'solo': True, 'mute': True},
-            {'stream_id': 'b'},
-        ]
-        result = gen._filter_solo_mute(streams)
-        # Solo mode attivo perche' c'e' almeno un 'solo'
-        # In solo mode, prende chi ha 'solo' -> 'a' ce l'ha
-        assert len(result) == 1
-        assert result[0]['stream_id'] == 'a'
-
-
-# =============================================================================
 # 5. TEST create_elements()
 # =============================================================================
 
@@ -949,7 +824,7 @@ class TestCreateElements:
         gen.data = {'streams': []}
         gen.streams = ['mock_stream']
 
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]), \
              patch.object(gen, '_create_streams'):
             result = gen.create_elements()
 
@@ -957,11 +832,11 @@ class TestCreateElements:
         assert result == ['mock_stream']
 
     def test_create_elements_calls_filter(self, gen):
-        """create_elements chiama _filter_solo_mute."""
+        """create_elements chiama filter_solo_mute."""
         stream_list = [{'stream_id': 's1'}]
         gen.data = {'streams': stream_list}
 
-        with patch.object(gen, '_filter_solo_mute', return_value=[]) as mock_filter, \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]) as mock_filter, \
              patch.object(gen, '_create_streams'):
             gen.create_elements()
 
@@ -972,7 +847,7 @@ class TestCreateElements:
         gen.data = {'streams': [{'stream_id': 's1'}, {'stream_id': 's2'}]}
         filtered = [{'stream_id': 's1'}]
 
-        with patch.object(gen, '_filter_solo_mute', return_value=filtered), \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=filtered), \
              patch.object(gen, '_create_streams') as mock_cs:
             gen.create_elements()
 
@@ -985,7 +860,7 @@ class TestCreateElements:
             'cartridges': [{'cartridge_id': 't1'}],
         }
 
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]), \
              patch.object(gen, '_create_streams'):
             result = gen.create_elements()
 
@@ -996,7 +871,7 @@ class TestCreateElements:
         """create_elements con dict senza chiave 'streams' usa default vuoto."""
         gen.data = {}
 
-        with patch.object(gen, '_filter_solo_mute', return_value=[]) as mock_filter, \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]) as mock_filter, \
              patch.object(gen, '_create_streams'):
             gen.create_elements()
 
@@ -1008,7 +883,7 @@ class TestCreateElements:
         m = mock_open(read_data=yaml.dump({'seed': 42, 'streams': []}))
         with patch('builtins.open', m):
             gen.load_yaml()
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]), \
              patch.object(gen, '_create_streams'):
             gen.create_elements()
         assert gen.seed == 42
@@ -1020,7 +895,7 @@ class TestCreateElements:
         m = mock_open(read_data=yaml.dump({'streams': []}))
         with patch('builtins.open', m):
             gen.load_yaml()
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]), \
              patch.object(gen, '_create_streams'):
             gen.create_elements()
         assert isinstance(gen.seed, int)
@@ -1417,7 +1292,7 @@ class TestEdgeCases:
         gen.data = {'streams': []}
         gen.streams = ['pre_existing']
 
-        with patch.object(gen, '_filter_solo_mute', return_value=[]), \
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]), \
              patch.object(gen, '_create_streams'):
             gen.create_elements()
 
@@ -1481,31 +1356,6 @@ class TestParametrized:
         """Vari tipi passano invariati attraverso _eval_math_expressions."""
         result = gen._eval_math_expressions(passthrough)
         assert result == passthrough
-
-    @pytest.mark.parametrize("n_streams", [0, 1, 2, 5, 10])
-    def test_filter_various_sizes(self, gen, n_streams):
-        """_filter_solo_mute con varie dimensioni lista."""
-        streams = [{'stream_id': f's{i}'} for i in range(n_streams)]
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == n_streams
-
-    @pytest.mark.parametrize("n_muted,total,expected", [
-        (0, 3, 3),
-        (1, 3, 2),
-        (2, 3, 1),
-        (3, 3, 0),
-    ])
-    def test_filter_mute_counts(self, gen, n_muted, total, expected):
-        """_filter_solo_mute con vari conteggi mute."""
-        streams = []
-        for i in range(total):
-            s = {'stream_id': f's{i}'}
-            if i < n_muted:
-                s['mute'] = True
-            streams.append(s)
-
-        result = gen._filter_solo_mute(streams)
-        assert len(result) == expected
 
     @pytest.mark.parametrize("yaml_path", [
         'config.yml',
