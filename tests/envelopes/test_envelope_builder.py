@@ -1398,7 +1398,7 @@ class TestLogDellaTrasformazioneCompatta:
 class TestNessunIndiceScrittoAMano:
     """La guardia strutturale sul punto 1 di #219.
 
-    I tre test del log qui sopra dicono che *quel* lettore e' allineato. Questo
+    I test del log qui sopra dicono che *quel* lettore e' allineato. Questo
     dice che non ne nasce un quarto: il difetto di #213/#219 non e' un indice
     sbagliato ma un **secondo** lettore del layout, e il secondo lettore e'
     sempre nato per comodita', in una funzione dove serviva un valore e la
@@ -1428,17 +1428,27 @@ class TestNessunIndiceScrittoAMano:
 
     @staticmethod
     def _radice():
-        import pge
+        """La radice del repo, da cui partono i percorsi di `MODULI`.
+
+        Dal file di test e non da `pge.__file__`: con un'installazione non
+        editabile quello punta al site-packages, e `<lib>/src/pge/...` non
+        esiste. E' l'idioma degli altri test che leggono i sorgenti
+        (`test_range_unit_definitions.py`, `test_stream_config_errors.py`).
+        """
         from pathlib import Path
-        # src/pge/__init__.py -> src/
-        return Path(pge.__file__).resolve().parent.parent
+        # tests/envelopes/test_envelope_builder.py -> radice del repo
+        return Path(__file__).resolve().parents[2]
 
     @classmethod
-    def _letture_posizionali(cls, percorso):
-        """(funzione, riga, nome, indice) di ogni `compact[<int>]` nel file."""
+    def _letture_in(cls, sorgente):
+        """(funzione, riga, nome, indice) di ogni `compact[<int>]` in `sorgente`.
+
+        Lo scanner della guardia, separato dalla lettura del file perche' la
+        controprova lo possa interrogare su sorgenti scritti apposta: se ne
+        provasse una copia, uno scanner rotto qui la lascerebbe verde.
+        """
         import ast
 
-        sorgente = (cls._radice().parent / percorso).read_text(encoding='utf-8')
         albero = ast.parse(sorgente)
 
         trovate = []
@@ -1461,6 +1471,12 @@ class TestNessunIndiceScrittoAMano:
         percorri(albero, '<modulo>')
         return trovate
 
+    @classmethod
+    def _letture_posizionali(cls, percorso):
+        """Le letture di `_letture_in` nel modulo `percorso` del repo."""
+        sorgente = (cls._radice() / percorso).read_text(encoding='utf-8')
+        return cls._letture_in(sorgente)
+
     @pytest.mark.parametrize("percorso", sorted(MODULI))
     def test_solo_il_decoder_legge_gli_slot_per_posizione(self, percorso):
         """Fuori dalle funzioni ammesse, gli slot si leggono dalle costanti."""
@@ -1481,25 +1497,34 @@ class TestNessunIndiceScrittoAMano:
         non e' piu' un `ast.Constant`, un nome di campo cambiato — passerebbe
         identico. Qui si misura che il riconoscimento funziona, e insieme che
         non confonde `item[0]` di un breakpoint con uno slot del compatto.
+
+        Interroga lo **stesso** scanner della guardia (`_letture_in`), non una
+        sua copia: la prima versione rifaceva il predicato in proprio, e con lo
+        scanner della guardia sabotato a restituire sempre `[]` restavano verdi
+        tutti e quattro i test — controprova compresa. Misura anche la
+        funzione a cui la lettura e' attribuita, perche' la guardia filtra su
+        quella: un'attribuzione sbagliata mette una lettura abusiva sotto il
+        nome del decoder, e la guardia tace.
         """
-        import ast
+        def letture(sorgente):
+            return [(funzione, indice) for funzione, _riga, _nome, indice
+                    in self._letture_in(sorgente)]
 
-        trovate = []
-
-        def cerca(sorgente):
-            del trovate[:]
-            albero = ast.parse(sorgente)
-            for nodo in ast.walk(albero):
-                if (isinstance(nodo, ast.Subscript)
-                        and isinstance(nodo.value, ast.Name)
-                        and nodo.value.id in self.NOMI_COMPATTO
-                        and isinstance(nodo.slice, ast.Constant)
-                        and isinstance(nodo.slice.value, int)):
-                    trovate.append(nodo.slice.value)
-            return list(trovate)
-
-        assert cerca("def f(compact):\n    return compact[4]\n") == [4]
-        assert cerca("def f(item):\n    return [item[0], item[1]]\n") == []
-        assert cerca(
+        assert letture("def f(compact):\n    return compact[4]\n") == [('f', 4)]
+        assert letture("def f(item):\n    return [item[0], item[1]]\n") == []
+        assert letture(
             "def f(compact):\n"
             "    return compact[EnvelopeBuilder.COMPACT_TIME_DIST]\n") == []
+
+        # L'attribuzione: il metodo che la contiene, anche dentro una classe
+        # e dentro una funzione annidata; fuori da ogni funzione, il modulo.
+        assert letture(
+            "class B:\n"
+            "    def _compact_slots(self, compact):\n"
+            "        return compact[0]\n"
+            "    def _log(self, compatto):\n"
+            "        def dentro():\n"
+            "            return compatto[3]\n"
+            "        return dentro\n"
+            "x = compact[2]\n") == [('_compact_slots', 0), ('dentro', 3),
+                                     ('<modulo>', 2)]

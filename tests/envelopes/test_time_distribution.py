@@ -712,9 +712,6 @@ class TestOverflowDellePotenze:
         assert sum(durations) == pytest.approx(10.0)
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
-
 # =============================================================================
 # 7. OVERFLOW DELLA SOMMA DEI PESI (issue #219)
 # =============================================================================
@@ -723,10 +720,10 @@ class TestOverflowDellaSomma:
     """La somma dei pesi trabocca, e lo dice (issue #219).
 
     E' la finestra che #212 ha lasciato aperta, e sta esattamente in mezzo ai
-    due casi che quella issue copre. Tre distribuzioni normalizzano dividendo
-    ogni peso per la somma di tutti: #212 intercetta la **potenza** che non sta
-    in un float, ma non il caso in cui i singoli pesi ci stanno e a traboccare
-    e' la loro somma.
+    due casi che quella issue copre. Quattro distribuzioni su cinque
+    normalizzano dividendo ogni peso per la somma di tutti (`linear` no): #212
+    intercetta la **potenza** che non sta in un float, ma non il caso in cui i
+    singoli pesi ci stanno e a traboccare e' la loro somma.
 
     Con `rate: 0.5` e `n_reps: 1024` il peso piu' grande e' `2**1023`, ancora
     finito; la somma supera il massimo float e diventa `inf`, quindi ogni
@@ -957,3 +954,7 @@ class TestOverflowDellaSomma:
         starts, durations = ExponentialDistribution(
             rate=10 ** 400).calculate_distribution(self.TOTAL_TIME, 1)
         assert sum(durations) == pytest.approx(self.TOTAL_TIME)
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
