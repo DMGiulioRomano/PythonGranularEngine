@@ -185,7 +185,8 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `clip_strategy`, il cui vocabolario è chiuso anche in gl-ls
   (`CLIP_STRATEGIES`) e in PGE-ui (due bottoni). Il modulo lo dice, e
   `tests/strategies/test_registry_convergenza.py` tiene vera la dichiarazione,
-  alias di modulo compresi. `MODULI_CON_REGISTRAZIONE_DINAMICA` non cambia.
+  alias di modulo e `register` sulla factory compresi.
+  `MODULI_CON_REGISTRAZIONE_DINAMICA` non cambia.
 
   Nessun impatto a valle: nessun repo importa questi nomi e i messaggi
   d'errore sono gli stessi. Niente issue in PGE-ls, PGE-ui o gl-ls.

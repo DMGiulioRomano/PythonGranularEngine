@@ -35,7 +35,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 9627402
+last_synced_commit: 4b6cd79
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -776,7 +776,11 @@ meccanismo.**
   dice nella docstring, il suo `Caso` lo dichiara con `registrazione=None`, e
   `test_un_registry_senza_registrazione_non_ne_espone_una` tiene vera la
   dichiarazione — anche contro un alias di modulo, che il censimento dei punti
-  di registrazione di [[contratto-stdout]] non vede. Per la stessa ragione
+  di registrazione di [[contratto-stdout]] non vede, e contro un `register`
+  sulla factory (la forma di `DistributionFactory.register`), che quel
+  censimento vede ma che una riga nella sua lista rimette verde. Misurato:
+  prima che il test leggesse anche dentro le classi, quel `register` più la
+  riga lasciavano la suite interamente verde. Per la stessa ragione
   `MODULI_CON_REGISTRAZIONE_DINAMICA` non cambia: le finestre c'erano già, e
   `grain_clip` per decisione non entra.
 
