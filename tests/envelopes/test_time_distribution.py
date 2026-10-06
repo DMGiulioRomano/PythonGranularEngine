@@ -899,3 +899,30 @@ class TestOverflowDellaSomma:
         assert "e' la coppia a esplodere" in exc.value.hint
         assert 'Riduci n_reps' in exc.value.hint
         assert 'avvicina rate a 1' in exc.value.hint
+
+    # `n_reps` crescenti sulla grafia intera, che non ha soglia.
+    @pytest.mark.parametrize("n_reps", [1, 2, 400, 1100, 3000])
+    def test_un_esponente_intero_non_ha_una_somma_da_controllare(self, n_reps):
+        """La grafia intera di `power` non passa dai float, e non deve.
+
+        `(i + 1) ** 150` fra interi e' esatto e illimitato: la somma e' un
+        `int` di cinquecento cifre, e la divisione che segue da' comunque un
+        float fra 0 e 1 — `power` con esponente intero non ha mai avuto una
+        soglia, a nessun `n_reps`. Lo stesso valore scritto `150.0` si ferma a
+        114 cicli, ed e' l'unico punto dove il motore distingue le due grafie.
+
+        Quindi `math.isfinite` su quella somma e' la domanda sbagliata: non
+        risponde «no», alza `OverflowError: int too large to convert to
+        float`, e la guardia di #219 romperebbe un render che funziona. La
+        domanda e' se la somma sia un float non finito; un intero grande e'
+        una somma perfettamente buona.
+
+        (Trovato leggendo lo specchio di PGE-ls, che sonda proprio questa
+        grafia: le prime versioni della guardia la rompevano e il resto della
+        suite restava verde, perche' ogni esponente sondato era un float.)
+        """
+        starts, durations = PowerDistribution(
+            exponent=150).calculate_distribution(self.TOTAL_TIME, n_reps)
+
+        assert len(durations) == n_reps
+        assert sum(durations) == pytest.approx(self.TOTAL_TIME)

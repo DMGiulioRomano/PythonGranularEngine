@@ -191,6 +191,22 @@ class TimeDistributionStrategy(ABC):
         `n_reps >= 55` ha start times che si assorbono nei float e diventano
         uguali), quindi renderebbe rosso cio' che oggi suona.
 
+        **La guardia chiede alla somma se e' un float non finito, non se e'
+        finita**, e la differenza non e' pedanteria: `power` con esponente
+        **intero** eleva fra interi, dove Python e' esatto e illimitato, quindi
+        la somma e' un `int` che a `n_reps: 3000` ha cinquecento cifre.
+        `math.isfinite` su quell'intero non risponde «no»: alza
+        `OverflowError: int too large to convert to float`, e la guardia
+        romperebbe un render che non ha mai avuto una soglia (la divisione che
+        segue da' comunque un float fra 0 e 1 — `exponent: 150` rende a
+        qualunque `n_reps`, mentre `150.0` si ferma a 114). Un intero grande e'
+        una somma perfettamente buona; e' il float che puo' non esserlo.
+
+        Nessun'altra distribuzione ci arriva con un intero: `exponential` mette
+        in lista `rate ** 0` intero e tutti gli altri pesi float, `logarithmic`
+        somma logaritmi e `geometric` somma durate, che nascono da un
+        `first_duration` float.
+
         L'espressione resta `(w / somma) * total_time` e non
         `w * total_time / somma`: in virgola mobile le due non danno gli stessi
         bit, e le durate dei cicli decidono gli onset dei grani.
@@ -205,7 +221,7 @@ class TimeDistributionStrategy(ABC):
                 entra nel messaggio dentro `sum(...)`.
         """
         somma = sum(weights)
-        if not math.isfinite(somma):
+        if isinstance(somma, float) and not math.isfinite(somma):
             raise self._overflow(param_name, value, n_reps, f'sum({formula})')
 
         cycle_durations = [(w / somma) * total_time for w in weights]
