@@ -19,6 +19,12 @@ CLI, formati) richiede analisi d'impatto su `PGE-ls`, `PGE-ui` e `gl-ls` ed
 eventuale apertura di issue — una per repo, e la copertura di uno non implica
 quella degli altri. Regola completa: @.claude/rules/cross-repo-impact.md
 
+**Corpo della PR:** la prima riga dichiara in inglese l'issue che la PR
+chiude (`Closes #N`, una riga per issue). E' l'unica cosa che GitHub legge
+per chiuderla al merge: un «Chiude #219» non chiude niente, e la #219 e'
+rimasta aperta dopo il merge della PR #293 per questo. Il check
+`closes-issue` lo verifica. Regola completa: @.claude/rules/pr-closes-issue.md
+
 **Sync del paper CIM 2026:** quando una PR su PGE tocca qualcosa usato dagli
 esempi del paper (rendering, score visualizer, superficie usata da
 `render_example.py`), chiedi all'utente se bumpare il submodule PGE nel repo
