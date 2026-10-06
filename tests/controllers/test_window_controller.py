@@ -1434,6 +1434,33 @@ class TestWindowStrategyFactoryFromSpec:
         )
         assert isinstance(s, MultiStateWindowStrategy)
 
+    def test_from_spec_sceglie_il_nome_e_il_registry_la_classe(self, default_config):
+        """`from_spec` decide *quale* strategy, non *con che classe* (issue #265).
+
+        Leggere la spec YAML e' dominio delle finestre e resta qui; costruire
+        passa da `create`, cioe' dal registry. Una `from_spec` che istanziasse
+        le classi direttamente supererebbe ogni altro test di questa sezione
+        -- le classi sono le stesse -- e ignorerebbe in silenzio chi ha
+        sostituito una strategy con `register_window_strategy`.
+        """
+        from pge.controllers.window_selection_strategy import (
+            WINDOW_STRATEGY_REGISTRY, SingleWindowStrategy, WindowStrategyFactory,
+        )
+
+        class SingleSostituita(SingleWindowStrategy):
+            pass
+
+        originale = WINDOW_STRATEGY_REGISTRY['single']
+        WINDOW_STRATEGY_REGISTRY['single'] = SingleSostituita
+        try:
+            s = WindowStrategyFactory.from_spec(
+                'hanning', default_config, ['hanning'], self._make_gate()
+            )
+        finally:
+            WINDOW_STRATEGY_REGISTRY['single'] = originale
+
+        assert type(s) is SingleSostituita
+
 
 # =============================================================================
 # 27. TEST WindowController — _gate come property proxy

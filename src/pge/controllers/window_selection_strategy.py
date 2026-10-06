@@ -3,10 +3,20 @@
 Strategy Pattern per la selezione della finestra (envelope) di ogni grano.
 
 Ogni strategia implementa un unico metodo select(elapsed_time) -> str.
-Per aggiungere una nuova modalità:
-  1. Crea una sottoclasse di WindowSelectionStrategy
-  2. Implementa select()
-  3. Registra la strategia in WindowController.__init__()
+Le quattro modalita' vivono in `WINDOW_STRATEGY_REGISTRY`, uno
+`StrategyRegistry` del dominio 'window_selection' (issue #265, forma decisa in
+#177 e provata da #184/#185): lookup, `StrategyNotFoundError` e riga
+diagnostica della registrazione stanno nella classe generica, qui resta solo il
+dominio.
+
+Quale modalita' usa uno stream lo decide `WindowStrategyFactory.from_spec()`
+dalla *forma* di `grain.envelope` (stringa, lista, dict from/to, dict states):
+e' lettura di YAML, cioe' dominio delle finestre, e per questo resta qui e non
+nel registry. Ne segue un limite da sapere prima di estendere: una strategy
+registrata sotto un nome **nuovo** con `register_window_strategy()` non e'
+raggiungibile da nessuno YAML, perche' `from_spec` sceglie fra quei quattro
+nomi. Registrarla sotto uno dei quattro la *sostituisce*, ed e' l'uso che
+`from_spec` onora: costruisce sempre passando dal registry.
 
 Design:
 - OCP: nuove modalità si aggiungono senza toccare select_window() né le strategie esistenti
@@ -16,15 +26,15 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Type
 
 from pge.shared.probability_gate import ProbabilityGate
 from pge.shared.logger import log_window_curve_warning
 from pge.shared.exceptions import (
     ConfigError,
     InvalidStrategyConfigError,
-    StrategyNotFoundError,
 )
+from pge.strategies.registry import StrategyRegistry
 
 # Il path YAML della curva, lo stesso per multistate e transition.
 CURVE_FIELD = 'grain.envelope.curve'
@@ -294,25 +304,39 @@ class MultiStateWindowStrategy(WindowSelectionStrategy):
 # REGISTRY E FACTORY
 # =============================================================================
 
-from typing import Dict, Type  # noqa: E402  (import locale, dopo le classi)
-
-WINDOW_STRATEGY_REGISTRY: Dict[str, Type[WindowSelectionStrategy]] = {
+# Il nome e' l'unico della famiglia che non segue `<DOMINIO>_STRATEGIES`, e
+# resta: nessuno lo importa da fuori dal motore (verificato in PGE-ls, PGE-ui,
+# gl-ls, granulation-studies e mare-nostrum per la #265), quindi rinominarlo
+# avrebbe speso una decisione su niente.
+WINDOW_STRATEGY_REGISTRY = StrategyRegistry('window_selection', WindowSelectionStrategy, {
     'single':     SingleWindowStrategy,
     'random':     RandomWindowStrategy,
     'transition': TransitionWindowStrategy,
     'multistate': MultiStateWindowStrategy,
-}
+})
 
 
-def register_window_strategy(name: str, cls: Type[WindowSelectionStrategy]) -> None:
+def register_window_strategy(
+    name: str,
+    strategy_class: Type[WindowSelectionStrategy],
+) -> None:
     """
-    Registra dinamicamente una nuova WindowSelectionStrategy.
+    Registra dinamicamente una WindowSelectionStrategy.
+
+    Delega a `StrategyRegistry.register`, che annuncia la registrazione sul
+    logger diagnostico col dominio 'window_selection' (mai su stdout, vedi
+    docs/explanation/contratto-stdout.md).
+
+    Un nome nuovo non e' raggiungibile dallo YAML: `from_spec` sceglie fra
+    'single', 'random', 'transition' e 'multistate' guardando la forma di
+    `grain.envelope`. Registrare sotto uno di quei nomi sostituisce la
+    strategy per tutti gli stream che lo usano.
 
     Args:
-        name: chiave stringa per il registry
-        cls:  classe che implementa WindowSelectionStrategy
+        name:           chiave stringa per il registry
+        strategy_class: classe che implementa WindowSelectionStrategy
     """
-    WINDOW_STRATEGY_REGISTRY[name] = cls
+    WINDOW_STRATEGY_REGISTRY.register(name, strategy_class)
 
 
 class WindowStrategyFactory:
@@ -335,15 +359,10 @@ class WindowStrategyFactory:
             **kwargs: parametri passati al costruttore
 
         Raises:
-            KeyError: se il nome non è nel registry
+            StrategyNotFoundError: se il nome non e' nel registry, con il
+                dominio 'window_selection' e le chiavi disponibili.
         """
-        if name not in WINDOW_STRATEGY_REGISTRY:
-            raise StrategyNotFoundError(
-                strategy_kind="window_selection",
-                name=name,
-                available=list(WINDOW_STRATEGY_REGISTRY.keys()),
-            )
-        return WINDOW_STRATEGY_REGISTRY[name](**kwargs)
+        return WINDOW_STRATEGY_REGISTRY.create(name, **kwargs)
 
     @staticmethod
     def from_spec(
