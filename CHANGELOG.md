@@ -222,6 +222,97 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **La somma dei pesi che trabocca non rende più durate a zero** (issue #219,
+  punto 2). Quattro delle cinque distribuzioni temporali del formato compatto
+  normalizzano dividendo ogni peso per la somma di tutti. La #212 aveva coperto
+  l'overflow delle **potenze**, non il caso in cui i singoli pesi stanno nei
+  float e a traboccare è la loro **somma**:
+
+  ```yaml
+  density: [[[0, 10], [100, 50]], 10.0, 1024, 'linear', {type: exponential, rate: 0.5}]
+  ```
+
+  Con `n_reps: 1024` il peso più grande è `2**1023`, ancora finito; la somma
+  supera il massimo float e diventa `inf`, quindi ogni `w / inf` è `0.0`. Il
+  risultato non era un errore: era un envelope le cui durate sommano a **zero**
+  invece che a `total_time` — tutti i cicli di durata nulla, senza una riga di
+  avviso. Un ciclo in meno rende correttamente, uno in più fa traboccare la
+  potenza e la #212 lo intercetta già: la finestra è larga un ciclo e sta
+  esattamente in mezzo ai due casi coperti. `power` ci arriva per un'altra
+  strada (`exponent: 102.5` con `n_reps: 1000`) e `logarithmic`/`geometric`
+  non ci arrivano affatto — i pesi logaritmici valgono circa 1 ciascuno, le
+  durate geometriche sono limitate da `total_time`.
+
+  Ora una somma che è un float non finito alza lo stesso
+  `ParameterBoundError` della #212, che nomina la coppia parametro/`n_reps`.
+  Un float, perché `power` con esponente intero somma interi esatti e
+  illimitati: lì `math.isfinite` alzerebbe `OverflowError` su una somma
+  perfettamente buona, e quella grafia non ha soglia a nessun `n_reps`.
+  La normalizzazione era quattro copie delle stesse sei righe in quattro delle
+  cinque distribuzioni (`linear` non ha pesi): è una sola,
+  `TimeDistributionStrategy._normalize`, e la guardia vive lì anche per le due
+  dove oggi non può scattare — è una proprietà della normalizzazione, non di
+  quale formula ha prodotto i pesi. L'aritmetica non si muove di un bit
+  (l'espressione resta `(w / somma) * total_time`), verificato confrontando la
+  rappresentazione IEEE754 prima e dopo, con la grafia intera e float di
+  ciascun parametro: cambiano soltanto le configurazioni le cui durate
+  sommavano a zero — la finestra di questa issue — e diventano errori.
+
+  Non si è usato `validate_distribution`, che ha già il check sulla somma delle
+  durate ma non sta sul percorso di espansione: spostarlo lì renderebbe rosso
+  ciò che oggi suona, perché il suo check sulla monotonia degli start times
+  rifiuta configurazioni ordinarie (l'`exponential` di default con
+  `n_reps >= 55` ha start times che si assorbono nei float e diventano uguali).
+
+- **Un parametro `.nan`/`.inf` di una distribuzione non rende più un envelope
+  di `nan`.** Scoperta lavorando alla #219 e chiusa dalla stessa guardia.
+  Nessuno dei quattro costruttori rifiutava quei valori — i confronti che fanno
+  da bound sono tutti falsi su `nan` (`nan <= 0` è falso, `nan <= 1` è falso) e
+  `inf` li passa per definizione — quindi da `exponent: .nan`, `rate: .nan`,
+  `ratio: .nan`, `ratio: .inf`, `base: .nan` e `exponent: .inf` uscivano pesi
+  `nan`, durate `nan` e breakpoint `nan`, in silenzio. Ora cadono come la somma
+  che trabocca. La guardia misura la somma e non il parametro, quindi
+  `base: .inf` — che dà `log(i + 1, inf) == 0.0`, pesi tutti a 1 e cicli
+  uniformi — resta valido.
+
+  Due frasi del messaggio della #212 hanno smesso di valere per tutti i
+  chiamanti e sono state corrette: «il risultato non sta in un float» è falso
+  di `nan`, che in un float ci sta, e diventa «non è un numero finito»; la
+  diagnosi della coppia parametro/`n_reps` regge sull'overflow e cade su `nan`,
+  che è fuori posto da solo a qualunque `n_reps`, quindi si accusa la coppia
+  dove il valore è finito e altrove si dice quello. Sul percorso della #212 il
+  valore è sempre finito, quindi lì il messaggio è intatto parola per parola.
+
+- **Il log della trasformazione compatta non nega più un dato che c'è**
+  (issue #219, punto 1). `_log_compact_transformation` decodificava gli slot
+  del formato compatto per conto proprio, con `compact[4] if len(compact) == 5`
+  per la distribuzione temporale. Lo slot `wrap` è stato aggiunto *dopo* quella
+  riga: un compatto a sei elementi ha `len == 6`, quindi la condizione era falsa
+  e su `[pattern, end, reps, 'linear', 'exponential', true]` la distribuzione
+  non veniva loggata affatto. Il layout si era mosso per aggiunta invece che
+  per permutazione, ed è esattamente il guasto che la issue descriveva in
+  ipotesi: un log non alza errori, quindi dice con sicurezza il valore
+  sbagliato a chi diagnostica un render.
+
+  Il layout del compatto esiste ora in due posti e non più:
+  `EnvelopeBuilder.is_compact_format`, che lo *definisce* per posizione, e
+  `EnvelopeBuilder._compact_slots`, che lo percorre. Espansione e log chiamano
+  quella. Il `wrap` entra nel log (non c'era mai stato) e l'interpolazione non
+  dichiarata si legge come tale — «non dichiarata nel compatto (vale il type
+  dell'envelope; linear se nessuno lo dichiara)» — invece che come un `linear`
+  indistinguibile da uno scritto nel file. Il log non nomina il tipo applicato
+  perché non lo vede: in `{type: cubic, points: [<compatto>]}` vale `cubic`, e
+  un `linear (default)` lì sarebbe stato la stessa certezza sbagliata in un
+  altro posto. Il default (`DEFAULT_INTERP`) è uno solo, letto sia
+  dall'`Envelope` che lo applica sia dal log che lo nomina. Una guardia AST
+  rifiuta un nuovo `compact[<intero>]` fuori dal decoder.
+
+  Restano letti dalle costanti anche gli ultimi quattro siti di
+  `envelopes/envelope.py` (lo slot del pattern nelle due funzioni di scaling) e
+  gli slot del BP group si nominano scomponendo, come già fanno
+  `is_bp_group`, `_expand_bp_group` e `read_direction._check_bp_group`. Nessun
+  cambio di comportamento in quelle quattro.
+
 - **`clip_strategy: passthrough` moriva di `TypeError`** (trovato nella
   #265). `Stream.__init__` costruisce ogni clip strategy con
   `margin=config.clip_margin`, qualunque nome scelga lo YAML, e
