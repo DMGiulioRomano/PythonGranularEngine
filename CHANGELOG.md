@@ -223,10 +223,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 ### Corretto
 
 - **La somma dei pesi che trabocca non rende più durate a zero** (issue #219,
-  punto 2). Tre distribuzioni temporali del formato compatto normalizzano
-  dividendo ogni peso per la somma di tutti. La #212 aveva coperto l'overflow
-  delle **potenze**, non il caso in cui i singoli pesi stanno nei float e a
-  traboccare è la loro **somma**:
+  punto 2). Quattro delle cinque distribuzioni temporali del formato compatto
+  normalizzano dividendo ogni peso per la somma di tutti. La #212 aveva coperto
+  l'overflow delle **potenze**, non il caso in cui i singoli pesi stanno nei
+  float e a traboccare è la loro **somma**:
 
   ```yaml
   density: [[[0, 10], [100, 50]], 10.0, 1024, 'linear', {type: exponential, rate: 0.5}]
@@ -243,15 +243,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   non ci arrivano affatto — i pesi logaritmici valgono circa 1 ciascuno, le
   durate geometriche sono limitate da `total_time`.
 
-  Ora la somma è controllata con `math.isfinite` e alza lo stesso
+  Ora una somma che è un float non finito alza lo stesso
   `ParameterBoundError` della #212, che nomina la coppia parametro/`n_reps`.
+  Un float, perché `power` con esponente intero somma interi esatti e
+  illimitati: lì `math.isfinite` alzerebbe `OverflowError` su una somma
+  perfettamente buona, e quella grafia non ha soglia a nessun `n_reps`.
   La normalizzazione era quattro copie delle stesse sei righe in quattro delle
   cinque distribuzioni (`linear` non ha pesi): è una sola,
   `TimeDistributionStrategy._normalize`, e la guardia vive lì anche per le due
   dove oggi non può scattare — è una proprietà della normalizzazione, non di
   quale formula ha prodotto i pesi. L'aritmetica non si muove di un bit
   (l'espressione resta `(w / somma) * total_time`), verificato confrontando la
-  rappresentazione IEEE754 su 1080 combinazioni.
+  rappresentazione IEEE754 prima e dopo, con la grafia intera e float di
+  ciascun parametro: cambiano soltanto le configurazioni le cui durate
+  sommavano a zero — la finestra di questa issue — e diventano errori.
 
   Non si è usato `validate_distribution`, che ha già il check sulla somma delle
   durate ma non sta sul percorso di espansione: spostarlo lì renderebbe rosso
