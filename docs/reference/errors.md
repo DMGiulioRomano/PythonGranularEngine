@@ -6,11 +6,12 @@ tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
   - src/pge/envelopes/envelope_builder.py
+  - src/pge/envelopes/time_distribution.py
   - src/pge/cli.py
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: f69f137
+last_synced_commit: 8917ce0
 entry_for: [error-handling]
 ---
 
@@ -652,11 +653,17 @@ streams:
 ```
 
 `ParameterBoundError` accetta anche un `hint` opzionale, per i casi in cui il
-vincolo violato **non è un intervallo sul singolo valore**. È il caso
-dell'overflow delle potenze nelle distribuzioni temporali del formato compatto
-(`ratio ** n_reps`): nessuno dei due valori è fuori posto da solo, quindi non
-c'è nessun `[min, max]` da stampare — e infatti la riga `Bounds` viene omessa
-quando entrambi i bound sono ignoti, invece di scrivere `[None, None]`.
+vincolo violato **non è un intervallo sul singolo valore**. È il caso delle
+distribuzioni temporali del formato compatto, dove un calcolo non dà un numero
+finito: nessuno dei due valori è fuori posto da solo, quindi non c'è nessun
+`[min, max]` da stampare — e infatti la riga `Bounds` viene omessa quando
+entrambi i bound sono ignoti, invece di scrivere `[None, None]`.
+
+Il calcolo che non torna è di tre tipi, con lo stesso errore e tre hint
+diversi.
+
+**La potenza che trabocca** (issue #212): `ratio ** n_reps`, `rate ** -i`,
+`(i + 1) ** exponent`.
 
 ```yaml
 streams:
@@ -666,10 +673,56 @@ streams:
 ```
 [ERRORE] Parametro 'ratio' fuori bounds
   value:        10
-  Hint:         la distribuzione 'geometric(ratio=10)' calcola ratio ** n_reps con n_reps=400, e il risultato non sta in un float. Ne' ratio=10 ne' n_reps=400 e' fuori posto da solo: e' la coppia a esplodere. Riduci n_reps, oppure avvicina ratio a 1.
+  Hint:         la distribuzione 'geometric(ratio=10)' calcola ratio ** n_reps con n_reps=400, e il risultato non e' un numero finito. Ne' ratio=10 ne' n_reps=400 e' fuori posto da solo: e' la coppia a esplodere. Riduci n_reps, oppure avvicina ratio a 1.
   Stream:       s1
   Config:       configs/PGE_test.yml
 ```
+
+**La somma dei pesi che trabocca** (issue #219). Quattro delle cinque
+distribuzioni normalizzano dividendo ogni peso per la somma di tutti: i singoli
+pesi possono stare nei float mentre il loro totale no. La finestra è larga un
+ciclo e sta in mezzo ai due casi della #212 — con `n_reps: 1023` rende, con
+`1025` è la potenza a traboccare. Prima della #219 non era un errore: ogni
+`w / inf` è `0.0`, quindi le durate dei cicli sommavano a **zero** invece che
+a `total_time`, senza una riga di avviso.
+
+```yaml
+streams:
+  s1:
+    density: [[[0, 5], [100, 50]], 10.0, 1024, 'linear', {type: exponential, rate: 0.5}]
+```
+```
+[ERRORE] Parametro 'rate' fuori bounds
+  value:        0.5
+  Hint:         la distribuzione 'exponential(rate=0.5)' calcola sum(rate ** -i) con n_reps=1024, e il risultato non e' un numero finito. Ne' rate=0.5 ne' n_reps=1024 e' fuori posto da solo: e' la coppia a esplodere. Riduci n_reps, oppure avvicina rate a 1.
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+**Il parametro che non è un numero finito** (issue #219). YAML legge `.nan` e
+`.inf` come valori, e nessun bound delle distribuzioni li rifiuta: i confronti
+che fanno da bound sono tutti falsi su `nan` (`nan <= 0` è falso, `nan <= 1` è
+falso) e `inf` li passa per definizione. Da lì uscivano pesi `nan`, durate
+`nan` e breakpoint `nan`, in silenzio. Qui la diagnosi della coppia non vale —
+il valore è fuori posto da solo, a qualunque `n_reps` — e l'hint lo dice.
+
+```yaml
+streams:
+  s1:
+    density: [[[0, 5], [100, 50]], 10.0, 4, 'linear', {type: power, exponent: .nan}]
+```
+```
+[ERRORE] Parametro 'exponent' fuori bounds
+  value:        nan
+  Hint:         la distribuzione 'power(exp=nan)' calcola sum((i + 1) ** exponent) con n_reps=4, e il risultato non e' un numero finito. exponent=nan non e' un numero finito, quindi non lo e' nemmeno cio' che se ne calcola: qui n_reps=4 non c'entra, e ridurlo non aiuta. Scrivi exponent come un numero (YAML legge `.nan` e `.inf` come valori, non come errori di battitura).
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+La guardia misura la **somma**, non il parametro: `base: .inf` dà
+`log(i + 1, inf) == 0.0`, quindi pesi tutti a 1 e cicli uniformi — somma
+finita, durate che sommano a `total_time`, nessun errore. Dice ciò che ha
+misurato, non ciò che sospetta di chi ha scritto lo YAML.
 
 ### Envelope malformato (forma)
 ```yaml
