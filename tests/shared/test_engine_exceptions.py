@@ -1343,6 +1343,7 @@ _MODULI_SENZA_TERZE_PARTI = (
     # piu': un rosso che dice 'si e' spostata' senza dire dove.
     'pge.shared.magnify_spec',
     'pge.engine.solo_mute',
+    'pge.parameters.loop_unit',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui

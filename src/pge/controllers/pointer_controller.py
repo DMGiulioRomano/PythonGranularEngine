@@ -23,19 +23,11 @@ from pge.shared.logger import (
     log_loop_init,
 )
 from pge.shared.exceptions import InvalidFieldValueError
-
-# Vocabolario di 'loop_unit' (issue #222). Fuori di qui e' un errore.
-#
-# 'seconds' e' la grafia canonica — allinea loop_unit a grain.duration_unit,
-# l'unita' nata «sul modello di loop_unit» (CHANGELOG v5.1.0) — e 'absolute'
-# l'alias storico, quello che i config e la reference hanno sempre scritto.
-# Sono la stessa lettura: valori gia' in secondi assoluti, nessuna conversione.
-LOOP_UNITS = ('seconds', 'absolute', 'normalized')
-
-# Le chiavi del blocco pointer che 'loop_unit' interpreta. 'start' e' fra
-# queste benche' loop non sia: e' una posizione nel sample come loop_start,
-# stesso dominio e stessa unita' (reference §10.1).
-_LOOP_UNIT_SCOPE = ('start', 'loop_start', 'loop_end', 'loop_dur')
+# Il vocabolario di loop_unit e le chiavi che interpreta stanno in un
+# modulo senza dipendenze: li leggono PGE-ui, gl-ls e PGE-ls, e qui
+# dentro sarebbero importabili solo con numpy (issue #246). Non vanno
+# ridichiarati: vedi tests/parameters/test_loop_unit.py.
+from pge.parameters.loop_unit import LOOP_UNITS, LOOP_UNIT_SCOPE
 
 
 class PointerController:
@@ -261,7 +253,7 @@ class PointerController:
         # Copia superficiale: non modificare il dizionario originale
         # (il fingerprint della cache e stream_data_map leggono i dati grezzi).
         scaled = dict(params)
-        for key in _LOOP_UNIT_SCOPE:
+        for key in LOOP_UNIT_SCOPE:
             if scaled.get(key) is not None:
                 scaled[key] = self._scale_value(scaled[key], scale)
 
