@@ -341,8 +341,9 @@ def test_il_registry_non_e_vuoto_e_mappa_nomi_su_classi(caso):
     `StrategyRegistry('voice_pointer', VoiceOnsetStrategy, ...)` e mettendo
     `base='VoiceOnsetStrategy'` nella tabella, `make tests` restava
     interamente verde -- `base` non la legge nessuno, quindi un valore
-    sbagliato e' inerte finche' qualcuno non ci costruisce sopra (la #265, o
-    la decisione sulla validazione di `distribution`).
+    sbagliato e' inerte finche' qualcuno non ci costruisce sopra (la
+    decisione sulla validazione di `distribution`: la #265 non ne ha avuto
+    bisogno).
 
     Non e' il rifiuto che `tests/strategies/test_registry.py` vieta: li' il
     divieto e' su `StrategyRegistry.register`, che non deve **rifiutare** una

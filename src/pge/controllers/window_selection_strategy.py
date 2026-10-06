@@ -19,7 +19,8 @@ nomi. Registrarla sotto uno dei quattro la *sostituisce*, ed e' l'uso che
 `from_spec` onora: costruisce sempre passando dal registry.
 
 Design:
-- OCP: nuove modalità si aggiungono senza toccare select_window() né le strategie esistenti
+- OCP: una modalità si sostituisce senza toccare select_window() né le strategie
+  esistenti; aggiungerne una vuol dire anche insegnare a from_spec() a sceglierla
 - SRP: ogni classe gestisce un solo algoritmo di selezione
 """
 from __future__ import annotations

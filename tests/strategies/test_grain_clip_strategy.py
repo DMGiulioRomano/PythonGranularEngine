@@ -242,27 +242,40 @@ class TestCostruiteComeLeCostruisceStream:
         assert isinstance(strategy, GRAIN_CLIP_STRATEGIES[nome])
 
     @staticmethod
-    def _code_oltre_la_fine(stream):
+    def _code_oltre(stream, margine=0.0):
         # Le tabelle le assegna il Generator; senza, la generazione non parte.
         stream.sample_table_num = 1
         stream.envelope_table_num = 2
         stream.window_table_map = {'hanning': 2}
-        fine = stream.onset + stream.duration
+        limite = stream.onset + stream.duration + margine
         return [g for voce in stream.voices for g in voce
-                if g.onset + g.duration > fine]
+                if g.onset + g.duration > limite]
 
     def test_clip_strategy_passthrough_dallo_yaml(self, build_stream):
-        """Dallo YAML allo Stream: passthrough parte e non scarta le code."""
+        """Dallo YAML allo Stream: passthrough parte, non scarta le code e
+        ignora `clip_margin`, come dice `docs/reference/yaml.md`.
+
+        Il margine e' piu' corto del grano, e non per caso. Con un margine
+        lungo quanto il grano anche `overflow_margin` tiene tutte le code, e
+        l'asserzione non distingue passthrough da un filtro che il margine lo
+        applica. Misurato: con `clip_margin: 0.5` su grani da 0.5 s, una
+        passthrough che tagliava a `fine + margin` quando il margine non e'
+        nullo lasciava verde l'intera suite.
+        """
         grani_lunghi = {'duration': 0.5, 'envelope': 'hanning'}
+        margine = 0.1
 
-        # Il contrappunto: col default le stesse code vengono scartate, quindi
-        # la seconda asserzione non e' soddisfatta dal vuoto.
-        assert not self._code_oltre_la_fine(build_stream(grain=grani_lunghi))
+        # Il contrappunto: col default le code oltre la fine vengono scartate,
+        # quindi l'ultima asserzione non e' soddisfatta dal vuoto. Oltre
+        # `fine + margine` non ne lascia nessuna `overflow_margin` per
+        # costruzione: trovarne una e' cio' che dice che il margine e' ignorato.
+        assert not self._code_oltre(build_stream(grain=grani_lunghi))
 
-        stream = build_stream(clip_strategy='passthrough', clip_margin=0.5,
-                              grain=grani_lunghi)
+        stream = build_stream(clip_strategy='passthrough',
+                              clip_margin=margine, grain=grani_lunghi)
 
         assert isinstance(stream._clip_strategy, PassthroughClipStrategy)
-        assert self._code_oltre_la_fine(stream), (
-            "passthrough ha scartato i grani che sforano la fine dello stream"
+        assert self._code_oltre(stream, margine), (
+            "passthrough ha scartato i grani oltre fine + clip_margin: il "
+            "margine va accettato e ignorato, non applicato"
         )
