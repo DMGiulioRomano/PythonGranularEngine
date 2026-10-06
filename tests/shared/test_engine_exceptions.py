@@ -1355,11 +1355,17 @@ _MODULI_SENZA_TERZE_PARTI = (
     'pge.envelopes.envelope_builder',
     # `pge.api` l'oracolo lo importa dalla PGE-ui #150, per chiedere a
     # `renderer_types()` l'elenco dei backend invece di tenerne una
-    # copia; la funzione importa `renderer_factory` a sua volta, quindi
-    # la guardia copre tutti e due. Mancava, e la giunzione fra i due
-    # registri (tests/test_downstream_surface.py) e' cio' che l'ha
-    # fatto vedere: separati, ognuno poteva restare indietro sull'altro.
+    # copia. Mancava, e la giunzione fra i due registri
+    # (tests/test_downstream_surface.py) e' cio' che l'ha fatto vedere:
+    # separati, ognuno poteva restare indietro sull'altro.
     'pge.api',
+    # E `renderer_factory` va nominato a parte: `renderer_types()` lo
+    # importa alla chiamata, e questa guardia importa i moduli senza
+    # chiamare niente -- `import pge.api` non lo carica. Coperto "per
+    # transitivita'" non lo era: un `import numpy` li' dentro restava
+    # verde qui e faceva morire l'op nel job node. La giunzione lo deriva
+    # dall'AST della funzione (`test_gli_import_lazy_delle_funzioni_...`).
+    'pge.rendering.renderer_factory',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui

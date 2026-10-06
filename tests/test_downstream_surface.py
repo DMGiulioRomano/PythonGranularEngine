@@ -41,8 +41,10 @@ censimento sarebbe il difetto che tutti e due i file esistono per chiudere.
 motore non acquistino una terza parte lo misura
 `tests/shared/test_engine_exceptions.py` in un interprete figlio
 (`_MODULI_SENZA_TERZE_PARTI`). Qui c'e' solo la *giunzione* fra i due registri
-(`test_i_moduli_letti_senza_venv_sono_quelli_dichiarati_leggeri`), che e' cio'
-che rende verificabile la completezza di quella lista dal lato di chi legge.
+(`test_i_moduli_letti_senza_venv_sono_quelli_dichiarati_leggeri`, e per gli
+import fatti alla chiamata `test_gli_import_lazy_delle_funzioni_chiamate_...`),
+che e' cio' che rende verificabile la completezza di quella lista dal lato di
+chi legge.
 
 ## Le due meta', e perche' si misurano in modo diverso
 
@@ -333,6 +335,67 @@ class TestSimboliImportati:
             f"ma _MODULI_SENZA_TERZE_PARTI non li sorveglia: un import pesante "
             f"la' dentro passerebbe in silenzio. Aggiungili in "
             f"tests/shared/test_engine_exceptions.py.")
+
+    def test_gli_import_lazy_delle_funzioni_chiamate_sono_sorvegliati(self):
+        """La giunzione vale anche per cio' che una funzione importa da dentro.
+
+        La guardia di `_MODULI_SENZA_TERZE_PARTI` *importa* i moduli e basta:
+        non chiama niente. Ma l'oracolo le funzioni le chiama, e un import
+        dentro il corpo di una funzione avviene solo li'. `renderer_types()`
+        e' il caso: importa `pge.rendering.renderer_factory` alla chiamata, e
+        `import pge.api` non lo carica -- un `import numpy` in quel modulo
+        lasciava la guardia verde e faceva morire l'op del popover nel job
+        node. Il commento che diceva «la guardia copre tutti e due» era la
+        premessa non misurata.
+
+        Derivato dall'AST delle funzioni elencate, non trascritto: la
+        prossima funzione che importa da dentro entra qui da sola. Le classi
+        restano fuori dichiaratamente -- i loro metodi chiamati a valle non
+        stanno in questo registro, e scendere in tutti accuserebbe import
+        pesanti voluti (la durata implicita dello `StreamCacheManager`, che
+        l'oracolo lascia esplodere apposta)."""
+        import importlib
+        import textwrap
+
+        from tests.shared.test_engine_exceptions import (
+            _MODULI_SENZA_TERZE_PARTI, _dipendenze_di_terze_parti)
+        terze_parti = set(_dipendenze_di_terze_parti())
+
+        def scoperto(nome_modulo):
+            """Un import da dentro che la guardia non misura: un modulo del
+            motore che lei non importa, o una terza parte e basta."""
+            radice = nome_modulo.split('.')[0]
+            if radice in terze_parti:
+                return True
+            return radice == 'pge' and nome_modulo not in _MODULI_SENZA_TERZE_PARTI
+
+        scoperti = []
+        for modulo, voce in sorted(SIMBOLI_IMPORTATI.items()):
+            if not voce['senza_venv']:
+                continue
+            mod = importlib.import_module(modulo)
+            for nome in voce['nomi']:
+                oggetto = getattr(mod, nome, None)
+                if not inspect.isfunction(oggetto):
+                    continue
+                albero = ast.parse(textwrap.dedent(inspect.getsource(oggetto)))
+                for nodo in ast.walk(albero):
+                    if isinstance(nodo, ast.ImportFrom) and nodo.module:
+                        importati = [nodo.module]
+                    elif isinstance(nodo, ast.Import):
+                        importati = [a.name for a in nodo.names]
+                    else:
+                        continue
+                    scoperti.extend(f"{modulo}.{nome} -> {m}"
+                                    for m in importati if scoperto(m))
+        assert not scoperti, (
+            f"import fatti alla chiamata che _MODULI_SENZA_TERZE_PARTI non "
+            f"sorveglia: {', '.join(scoperti)}. La guardia importa i moduli "
+            f"ma non chiama le funzioni, quindi un import pesante la' dentro "
+            f"passerebbe in silenzio. Un modulo del motore va aggiunto in "
+            f"tests/shared/test_engine_exceptions.py; una terza parte rompe "
+            f"la funzione nel job node di PGE-ui, e va tolta o discussa la' "
+            f"(.claude/rules/cross-repo-impact.md).")
 
 
 class TestFormeChiamate:
