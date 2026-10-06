@@ -1344,6 +1344,13 @@ _MODULI_SENZA_TERZE_PARTI = (
     'pge.shared.magnify_spec',
     'pge.engine.solo_mute',
     'pge.parameters.loop_unit',
+    # `pge.api` l'oracolo lo importa dalla PGE-ui #150, per chiedere a
+    # `renderer_types()` l'elenco dei backend invece di tenerne una
+    # copia; la funzione importa `renderer_factory` a sua volta, quindi
+    # la guardia copre tutti e due. Mancava, e la giunzione fra i due
+    # registri (tests/test_downstream_surface.py) e' cio' che l'ha
+    # fatto vedere: separati, ognuno poteva restare indietro sull'altro.
+    'pge.api',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui

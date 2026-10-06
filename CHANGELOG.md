@@ -10,6 +10,26 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Il registro della superficie che un altro repository legge** (issue #246),
+  `tests/test_downstream_surface.py`. Elenca i moduli, i simboli e i letterali
+  che PGE-ui legge del motore, e verifica che ognuno si risolva ancora dove li'
+  lo si cerca: per import quelli che l'oracolo di parita' importa, per AST **al
+  path** quelli che il bridge legge dal sorgente — li' il contratto e' la
+  coppia path piu' nome, perche' spostare una costante in un altro modulo la
+  rende invisibile come rinominarla. Dove il lettore a valle pretende un dato
+  riducibile, il registro applica la sua stessa regola (nomi risolti di un
+  livello, dentro lo stesso file): un valore che diventa un'espressione gli
+  torna come «non lo so», e un «non lo so» preso per un valore e' il modo
+  silenzioso di sbagliare.
+
+  Non e' una promessa di API pubblica: un nome con l'underscore resta privato,
+  e il motore non si impegna a mantenerlo — si impegna a non rinominarlo per
+  sbaglio. Una rinomina voluta passa da qui, e l'elenco e' la checklist di cosa
+  aggiornare anche di la'. Non e' nemmeno una seconda copia del contratto di
+  stdout: le **forme** delle righe restano in
+  `tests/shared/test_stdout_contract.py`, e una guardia impedisce che entrino
+  in questo registro.
+
 - **Lo stream come file: `file:` negli stream del master** (issue #290, passo
   2 del piano «stream come file» di mare-nostrum). Una voce della lista
   `streams:` puo' essere `- file: <path>`: lo stream e' scritto in un altro
@@ -88,6 +108,41 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   (#285).
 
 ### Cambiato
+
+- **Tre pezzi di motore escono dai moduli pesanti perche' chi li legge li
+  importi** (issue #246). PGE-ui ha un harness di parita' che chiede al motore
+  le regole che la UI prometteva di replicare, invece di ricopiarle: la
+  grammatica di `--magnify-at`, la regola solo/mute, il vocabolario di
+  `pointer.loop_unit`. Tre di quelle letture non potevano essere import —
+  `pge.cli` tira dentro matplotlib, `engine/generator.py` e
+  `controllers/pointer_controller.py` numpy, e il job della sua CI dove la
+  parita' gira non costruisce il venv del motore — quindi l'oracolo estraeva
+  dall'AST di quei file i nodi che gli servivano e li eseguiva. Funzionava, ed
+  erano i byte del motore; ma pinnava **nomi privati** e la loro posizione nel
+  file, cosi' che una rinomina qui rendeva rossa la CI di un altro repository
+  su ogni pull request aperta, comprese quelle che non c'entravano.
+
+  I tre pezzi stanno ora in moduli che non importano niente, con nomi pubblici:
+
+  | prima | adesso |
+  |---|---|
+  | `cli._parse_magnify_spec`, `cli._MAGNIFY_*` | `pge.shared.magnify_spec.parse_magnify_spec`, `MAGNIFY_KEYS` / `MAGNIFY_NUMERIC_KEYS` / `MAGNIFY_STR_KEYS` |
+  | `Generator._filter_solo_mute` | `pge.engine.solo_mute.filter_solo_mute` |
+  | `pointer_controller.LOOP_UNITS`, `_LOOP_UNIT_SCOPE` | `pge.parameters.loop_unit.LOOP_UNITS`, `LOOP_UNIT_SCOPE` |
+
+  Il comportamento non cambia di un byte. I cinque messaggi di `--magnify-at`
+  e le due righe di solo/mute restano quelle, sullo stesso canale: sono
+  interfaccia, e il mirror JS dell'editor promette di anticiparle. Il
+  censimento di `tests/shared/test_stdout_contract.py` le segue nei nuovi
+  moduli. `LOOP_UNIT_SCOPE` perde l'underscore perche' due repository lo
+  mirrorano: era privato di nome e non di fatto. Lo shim `src/main.py`
+  ri-esporta `parse_magnify_spec` e non piu' il nome privato.
+
+- **`_MODULI_SENZA_TERZE_PARTI` acquista quattro moduli**, fra cui `pge.api`,
+  che l'oracolo importa dalla PGE-ui #150 e che quella guardia non sorvegliava:
+  l'ha fatto vedere la giunzione fra i due registri (sotto), perche' separati
+  ognuno dei due poteva restare indietro sull'altro senza che niente lo
+  dicesse.
 
 - **I guard di forma degli envelope valgono per ogni chiave** (issue #211).
   Fino a oggi li applicava solo `grain.read_direction`, al proprio valore
