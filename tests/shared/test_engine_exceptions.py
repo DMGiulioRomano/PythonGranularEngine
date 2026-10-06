@@ -1343,7 +1343,16 @@ _MODULI_SENZA_TERZE_PARTI = (
     # piu': un rosso che dice 'si e' spostata' senza dire dove.
     'pge.shared.magnify_spec',
     'pge.engine.solo_mute',
+    # Il vocabolario di loop_unit di la' lo legge il bridge, dall'AST, e
+    # non l'oracolo; il modulo sta qui perche' esiste per non dipendere da
+    # niente, e la promessa vale solo se qualcuno la misura.
     'pge.parameters.loop_unit',
+    # L'op `build_envelope` (PGE-ui #180) costruisce un `Envelope` vero, e
+    # `constants` chiede al builder le interpolazioni ammesse: tutti e due
+    # dentro il job node, senza venv. Il loro ImportError fa morire l'op
+    # e non scrive un `None`.
+    'pge.envelopes.envelope',
+    'pge.envelopes.envelope_builder',
     # `pge.api` l'oracolo lo importa dalla PGE-ui #150, per chiedere a
     # `renderer_types()` l'elenco dei backend invece di tenerne una
     # copia; la funzione importa `renderer_factory` a sua volta, quindi

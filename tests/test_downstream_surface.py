@@ -137,8 +137,23 @@ SIMBOLI_IMPORTATI = {
         'nomi': ('renderer_types',),
         'perche': 'elenco dei backend audio per il popover del render',
     },
-    # I tre moduli nati dalla #246 perche' l'oracolo li importasse invece di
-    # estrarne i nodi dall'AST ed eseguirli.
+    # L'op `build_envelope` (PGE-ui #180, sui guard di forma della #211)
+    # costruisce un `Envelope` vero e ne legge il `field` dell'errore; l'op
+    # `constants` chiede al builder le interpolazioni ammesse, che
+    # `PGEEnv.INTERP_TYPES` ricopia.
+    'pge.envelopes.envelope': {
+        'senza_venv': True,
+        'nomi': ('Envelope',),
+        'perche': 'verdetto del motore sulla forma di un envelope',
+    },
+    'pge.envelopes.envelope_builder': {
+        'senza_venv': True,
+        'nomi': ('EnvelopeBuilder',),
+        'perche': 'interpolazioni ammesse in un BP group',
+    },
+    # I due moduli nati dalla #246 perche' l'oracolo li importasse invece di
+    # estrarne i nodi dall'AST ed eseguirli. Il terzo, `parameters/loop_unit.py`,
+    # non e' qui: di la' lo legge solo il bridge, dal sorgente (sotto).
     'pge.shared.magnify_spec': {
         'senza_venv': True,
         'nomi': ('parse_magnify_spec', 'MAGNIFY_KEYS', 'MAGNIFY_NUMERIC_KEYS',
@@ -149,11 +164,6 @@ SIMBOLI_IMPORTATI = {
         'senza_venv': True,
         'nomi': ('filter_solo_mute',),
         'perche': 'quali stream il motore costruisce (mute/solo)',
-    },
-    'pge.parameters.loop_unit': {
-        'senza_venv': True,
-        'nomi': ('LOOP_UNITS', 'LOOP_UNIT_SCOPE'),
-        'perche': 'vocabolario di pointer.loop_unit',
     },
 }
 
@@ -181,9 +191,19 @@ LETTI_DAL_SORGENTE = (
     ('rendering/sc_score_writer.py', 'SYNTH_NAME', True),
 )
 
-# Dentro una classe, non a livello di modulo: il bridge scende nel ClassDef.
+# Dentro una classe, non a livello di modulo: il bridge scende nel ClassDef e
+# cerca li' un'assegnazione o un metodo con quel nome.
 LETTI_DENTRO_UNA_CLASSE = (
-    ('rendering/renderer_factory.py', 'RendererFactory', '_VALID_TYPES'),
+    ('rendering/renderer_factory.py', 'RendererFactory', '_VALID_TYPES',
+     "e' l'unica strada per cui l'elenco dei backend arriva al popover del "
+     "render (l'API pubblica renderer_types() il bridge non la puo' "
+     "chiamare, non importa il motore)"),
+    ('parameters/pitch_unit.py', 'EdoUnit', 'value_bounds',
+     "il bridge ne ricava il fattore di ottave dei bounds EDO "
+     "(`_parse_edo_factor`): senza, i preset EDO di GET /bounds spariscono"),
+    ('parameters/pitch_unit.py', 'RatioUnit', 'value_bounds',
+     "il bridge ne ricava i bounds di pitch.ratio (`_parse_ratio_bounds`): "
+     "senza, GET /bounds non porta la chiave ratio"),
 )
 
 # Letterali di stringa che a valle valgono una domanda, non un valore: «questo
@@ -322,9 +342,13 @@ class TestFormeChiamate:
     solo `hasattr` non anticipa."""
 
     def test_stream_cache_manager_accetta_i_suoi_kwargs(self):
+        """`renderer_type` compreso: l'oracolo lo passa da PGE-ui #151, perche'
+        il backend e' il terzo asse dentro l'hash, e un manager costruito
+        senza chiederebbe ogni fingerprint in una configurazione in cui il
+        prodotto non gira mai."""
         from pge.rendering.stream_cache_manager import StreamCacheManager
         parametri = inspect.signature(StreamCacheManager.__init__).parameters
-        for kwarg in ('cache_path', 'samples_dir'):
+        for kwarg in ('cache_path', 'samples_dir', 'renderer_type'):
             assert kwarg in parametri, (
                 f"StreamCacheManager non accetta piu' {kwarg}=: l'oracolo di "
                 f"PGE-ui lo costruisce cosi' per l'op fingerprint")
@@ -385,6 +409,28 @@ class TestFormeChiamate:
         bounds = EdoUnit(12).value_bounds()
         assert hasattr(bounds, 'max_val')
 
+    def test_le_interpolazioni_del_builder_si_chiedono_alla_classe(self):
+        """`EnvelopeBuilder.VALID_INTERP_TYPES`: attributo di classe, che il
+        solo `hasattr` sul modulo non vede."""
+        from pge.envelopes.envelope_builder import EnvelopeBuilder
+        tipi = getattr(EnvelopeBuilder, 'VALID_INTERP_TYPES', None)
+        assert tipi, (
+            "EnvelopeBuilder.VALID_INTERP_TYPES non c'e' piu' (o e' vuota): "
+            "l'op constants di PGE-ui la legge, e PGEEnv.INTERP_TYPES la "
+            "ricopia per envShapeError")
+
+    def test_un_envelope_rifiutato_dice_il_campo(self):
+        """L'op `build_envelope` costruisce un `Envelope` e legge `field`
+        dall'errore: la parita' della #211 pretende che ogni rifiuto lo porti,
+        e un `getattr(exc, 'field', None)` a valle non distingue un attributo
+        rinominato da un rifiuto senza campo."""
+        from pge.envelopes.envelope import Envelope
+        with pytest.raises(Exception) as rifiuto:
+            Envelope([[[0, 0], [100, 1]], 1, True])
+        assert isinstance(getattr(rifiuto.value, 'field', None), str), (
+            f"{type(rifiuto.value).__name__} non porta piu' `field`: e' la "
+            f"sotto-posizione che la parita' delle forme di PGE-ui confronta")
+
     def test_renderer_types_resta_la_porta_dei_backend(self):
         from pge.api import renderer_types
         tipi = renderer_types()
@@ -417,17 +463,19 @@ class TestLettiDalSorgente:
                 f"file, quindi leggerebbe 'non lo so' -- e un 'non lo so' "
                 f"preso per un valore e' il modo silenzioso di sbagliare")
 
-    @pytest.mark.parametrize('relpath,classe,nome', LETTI_DENTRO_UNA_CLASSE)
-    def test_il_nome_e_dichiarato_in_quella_classe(self, relpath, classe, nome):
+    @pytest.mark.parametrize('relpath,classe,nome,perche', LETTI_DENTRO_UNA_CLASSE)
+    def test_il_nome_e_dichiarato_in_quella_classe(self, relpath, classe, nome,
+                                                   perche):
         albero = _albero(relpath)
         corpo = next((n.body for n in albero.body
                       if isinstance(n, ast.ClassDef) and n.name == classe), None)
-        assert corpo is not None, f"{relpath} non dichiara piu' la classe {classe}"
-        assert any(_assegnato(n, nome) is not None for n in corpo), (
-            f"{classe}.{nome} non e' piu' dichiarato in {relpath}: e' l'unica "
-            f"strada per cui l'elenco dei backend arriva al popover del render "
-            f"(l'API pubblica renderer_types() il bridge non la puo' chiamare, "
-            f"non importa il motore)")
+        assert corpo is not None, (
+            f"{relpath} non dichiara piu' la classe {classe}: il bridge di "
+            f"PGE-ui la cerca per nome in questo file ({perche})")
+        assert any(_assegnato(n, nome) is not None
+                   or (isinstance(n, ast.FunctionDef) and n.name == nome)
+                   for n in corpo), (
+            f"{classe}.{nome} non e' piu' dichiarato in {relpath}: {perche}")
 
     @pytest.mark.parametrize('relpath,letterale,perche', LETTERALI_DI_CAPACITA)
     def test_il_letterale_di_capacita_c_e(self, relpath, letterale, perche):
@@ -457,7 +505,7 @@ class TestIlRegistroNonEUnaCopia:
             voci.extend(voce['nomi'])
             voci.append(voce['perche'])
         voci.extend(n for _, n, _ in LETTI_DAL_SORGENTE)
-        voci.extend(n for _, _, n in LETTI_DENTRO_UNA_CLASSE)
+        voci.extend(n for _, _, n, _ in LETTI_DENTRO_UNA_CLASSE)
         voci.extend(lett for _, lett, _ in LETTERALI_DI_CAPACITA)
         for voce in voci:
             assert '[CACHE]' not in voce and 'SOLO MODE' not in voce, (
@@ -471,4 +519,6 @@ class TestIlRegistroNonEUnaCopia:
             assert voce['perche'], f"{modulo} non dice perche' e' qui"
             assert voce['nomi'], f"{modulo} non elenca nomi"
         for _, _, perche in LETTERALI_DI_CAPACITA:
+            assert perche
+        for _, _, _, perche in LETTI_DENTRO_UNA_CLASSE:
             assert perche

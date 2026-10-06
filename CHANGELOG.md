@@ -138,11 +138,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   mirrorano: era privato di nome e non di fatto. Lo shim `src/main.py`
   ri-esporta `parse_magnify_spec` e non piu' il nome privato.
 
-- **`_MODULI_SENZA_TERZE_PARTI` acquista quattro moduli**, fra cui `pge.api`,
-  che l'oracolo importa dalla PGE-ui #150 e che quella guardia non sorvegliava:
-  l'ha fatto vedere la giunzione fra i due registri (sotto), perche' separati
-  ognuno dei due poteva restare indietro sull'altro senza che niente lo
-  dicesse.
+- **`_MODULI_SENZA_TERZE_PARTI` acquista sei moduli**: i tre nuovi, piu'
+  tre che l'oracolo di PGE-ui importava gia' senza venv e che quella guardia
+  non sorvegliava — `pge.api` dalla PGE-ui #150, `pge.envelopes.envelope` e
+  `pge.envelopes.envelope_builder` dalla PGE-ui #180 (op `build_envelope`,
+  sui guard di forma della #211). Li ha fatti vedere la giunzione fra i due
+  registri (sotto), perche' separati ognuno dei due poteva restare indietro
+  sull'altro senza che niente lo dicesse.
 
 - **I guard di forma degli envelope valgono per ogni chiave** (issue #211).
   Fino a oggi li applicava solo `grain.read_direction`, al proprio valore
