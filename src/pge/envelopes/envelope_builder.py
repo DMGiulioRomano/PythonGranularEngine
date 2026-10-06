@@ -14,9 +14,34 @@ MODIFICHE PRINCIPALI:
 from __future__ import annotations
 
 import math
-from typing import List, Union, Tuple, Optional
+from typing import List, NamedTuple, Union, Tuple, Optional
 
 from pge.shared.exceptions import InvalidFieldValueError
+
+
+# Il tipo d'interpolazione che il motore applica a un segmento che non ne
+# dichiara uno. Vive qui perche' da #219 e' il log a nominarlo: il decoder
+# degli slot riporta `None` per un interp non dichiarato, e chi stampa dice
+# quale default prende il suo posto invece di confonderli.
+DEFAULT_INTERP = 'linear'
+
+
+class _CompactSlots(NamedTuple):
+    """Gli slot di un formato compatto, nominati (issue #219).
+
+    Il ritorno di `EnvelopeBuilder._compact_slots`, che e' il solo posto che
+    percorre quel layout per posizione. Una tupla nominata e non un dict
+    perche' i campi sono fissi e noti: un `slots.n_rep` sbagliato di una
+    lettera e' un AttributeError, un `slots['n_rep']` un KeyError a runtime
+    dentro un log.
+    """
+
+    pattern: list
+    end_time: object
+    n_reps: object
+    interp: object
+    time_dist: object
+    wrap: bool
 
 
 # I guard di forma (issue #211). Vivono qui e non nelle singole chiavi perche'
@@ -535,6 +560,44 @@ class EnvelopeBuilder:
         return True
         
     @classmethod
+    def _compact_slots(cls, compact: list) -> '_CompactSlots':
+        """Gli slot di un compatto, letti una volta sola (issue #219).
+
+        Il layout della tupla esiste in due posti e non piu': `is_compact_format`,
+        che lo *definisce* per posizione, e questa funzione, che lo percorre.
+        Chiunque abbia bisogno dei valori chiama qui — l'espansione e il log
+        della trasformazione — perche' due decoder allineati a mano sono
+        esattamente la condizione che #219 ha trovato rotta: il log aveva il
+        proprio `compact[4] if len(compact) == 5`, e lo slot `wrap` e' stato
+        aggiunto dopo quella riga, quindi su un compatto a sei elementi la
+        distribuzione temporale non veniva loggata affatto. Nessun errore: un
+        dato che c'era e che il log negava.
+
+        Precondizione: `compact` ha gia' passato `is_compact_format`, che
+        ammette da 3 a 6 elementi. I tre `len(compact) > SLOT` distinguono
+        quindi solo gli slot opzionali assenti — non c'e' un settimo slot da
+        cui difendersi, e `COMPACT_WRAP` e' l'ultimo per costruzione: e' quel
+        limite superiore a rendere questi test esaustivi invece che parziali.
+
+        `wrap` assente e `wrap: null` valgono entrambi `False`, che e' il suo
+        default; gli altri due opzionali restano `None`, perche' per loro
+        "non dichiarato" e' una risposta che i chiamanti distinguono (l'interp
+        cade sul default globale, la distribuzione sulla `linear`).
+        """
+        return _CompactSlots(
+            pattern=compact[cls.COMPACT_PATTERN],
+            end_time=compact[cls.COMPACT_END_TIME],  # Tempo assoluto finale
+            n_reps=compact[cls.COMPACT_N_REPS],
+            interp=(compact[cls.COMPACT_INTERP]
+                    if len(compact) > cls.COMPACT_INTERP else None),
+            time_dist=(compact[cls.COMPACT_TIME_DIST]
+                       if len(compact) > cls.COMPACT_TIME_DIST else None),
+            wrap=bool(compact[cls.COMPACT_WRAP])
+            if len(compact) > cls.COMPACT_WRAP
+            and compact[cls.COMPACT_WRAP] is not None else False,
+        )
+
+    @classmethod
     def _expand_compact_format(cls, compact: list, time_offset: float = 0.0,
                                field: Optional[str] = None) -> list:
         """
@@ -566,24 +629,18 @@ class EnvelopeBuilder:
             ... )
             [[0.3, 30], [0.45, 50], ...] # cicli accelerano
         """
-        # Parse input
-        # Precondizione: `compact` ha gia' passato `is_compact_format`, che
-        # ammette da 3 a 6 elementi. I tre `len(compact) > SLOT` qui sotto
-        # distinguono quindi solo gli slot opzionali assenti — non c'e' un
-        # settimo slot da cui difendersi, e `COMPACT_WRAP` e' l'ultimo per
-        # costruzione: e' quel limite superiore a rendere questi test
-        # esaustivi invece che parziali.
-        pattern_points_pct = compact[cls.COMPACT_PATTERN]
-        end_time = compact[cls.COMPACT_END_TIME]  # Tempo assoluto finale
-        n_reps = compact[cls.COMPACT_N_REPS]
-        interp_type = (compact[cls.COMPACT_INTERP]
-                       if len(compact) > cls.COMPACT_INTERP else None)
-        time_dist_spec = (compact[cls.COMPACT_TIME_DIST]
-                          if len(compact) > cls.COMPACT_TIME_DIST else None)
-        wrap = (compact[cls.COMPACT_WRAP]
-                if len(compact) > cls.COMPACT_WRAP else False)
-        if wrap is None:
-            wrap = False
+        # Parse input: gli slot si leggono dal decoder unico (issue #219).
+        slots = cls._compact_slots(compact)
+        pattern_points_pct = slots.pattern
+        end_time = slots.end_time
+        n_reps = slots.n_reps
+        time_dist_spec = slots.time_dist
+        wrap = slots.wrap
+        # `slots.interp` non si legge qui: l'interpolazione di un compatto la
+        # consuma `extract_interp_type` dal chiamante, che la passa a
+        # `Envelope`. La locale c'era, assegnata e mai usata, e il refactoring
+        # di #219 l'ha resa visibile — sembrava governare l'interpolazione
+        # dell'espansione, che non ne sa niente.
         
         # Valida
         # Il `bool` va escluso a mano: `is_compact_format` lo lascia passare
@@ -813,12 +870,17 @@ class EnvelopeBuilder:
         if logger is None:
             return
         
-        # Parse compact format
-        pattern_points_pct = compact[0]
-        end_time = compact[1]
-        n_reps = compact[2]
-        interp_type = compact[3] if len(compact) >= 4 else 'linear'
-        time_dist_spec = compact[4] if len(compact) == 5 else None
+        # Parse compact format: lo stesso decoder dell'espansione, non una
+        # seconda decodifica (issue #219). La sua aveva `len(compact) == 5`
+        # per il `time_dist`, scritto prima che lo slot `wrap` esistesse: su
+        # un compatto a sei elementi la distribuzione non veniva loggata.
+        slots = cls._compact_slots(compact)
+        pattern_points_pct = slots.pattern
+        end_time = slots.end_time
+        n_reps = slots.n_reps
+        interp_type = slots.interp
+        time_dist_spec = slots.time_dist
+        wrap = slots.wrap
         
         # Conta breakpoints espansi
         n_breakpoints = len(expanded)
@@ -837,10 +899,18 @@ class EnvelopeBuilder:
         logger.info(f"  Time offset: {time_offset}s (from previous breakpoints)")
         logger.info(f"  Total duration: {total_duration}s (end_time - offset)")
         logger.info(f"  Repetitions: {n_reps}")
+        # Il decoder riporta cio' che e' dichiarato, quindi `None` dove lo slot
+        # manca: il default lo nomina chi lo applica. Prima il log lo risolveva
+        # per conto proprio e un `linear` scritto nel file era indistinguibile
+        # da uno messo dal motore (issue #219).
         if interp_type:
             logger.info(f"  Interpolation: {interp_type}")
+        else:
+            logger.info(f"  Interpolation: {DEFAULT_INTERP} (default)")
         if time_dist_spec:
             logger.info(f"  Time distribution spec: {time_dist_spec}")
+        if wrap:
+            logger.info(f"  Wrap: {wrap} (gap inter-ciclo chiuso sul primo y)")
         if distributor:
             logger.info(f"  Distribution strategy: {distributor.name}")
         

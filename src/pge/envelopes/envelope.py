@@ -455,16 +455,21 @@ class Envelope:
             # errore di arita' riporta i punti (`accepts_bp_group`).
             if not EnvelopeBuilder.accepts_bp_group(group):
                 return group
-            return [_scale_points_y(group[0]), group[1]]
+            # Gli slot del gruppo si nominano scomponendo, come fanno
+            # `is_bp_group`, `_expand_bp_group` e `read_direction._check_bp_group`
+            # (issue #219): `group[0]`/`group[1]` dicevano la posizione e non
+            # la cosa.
+            punti, interp = group
+            return [_scale_points_y(punti), interp]
 
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
                 if EnvelopeBuilder.is_compact_format(item):
-                    pattern = item[0]
+                    pattern = item[EnvelopeBuilder.COMPACT_PATTERN]
                     scaled_pattern = _scale_points_y(pattern)
                     new_item = list(item)
-                    new_item[0] = scaled_pattern
+                    new_item[EnvelopeBuilder.COMPACT_PATTERN] = scaled_pattern
                     scaled.append(new_item)
                 elif EnvelopeBuilder.is_bp_group(item):
                     # BP group: scala i valori Y dei punti, preserva interp e
@@ -491,10 +496,10 @@ class Envelope:
 
         if isinstance(raw_data, list):
             if EnvelopeBuilder.is_compact_format(raw_data):
-                pattern = raw_data[0]
+                pattern = raw_data[EnvelopeBuilder.COMPACT_PATTERN]
                 scaled_pattern = _scale_points_y(pattern)
                 new_data = list(raw_data)
-                new_data[0] = scaled_pattern
+                new_data[EnvelopeBuilder.COMPACT_PATTERN] = scaled_pattern
                 return new_data
             elif EnvelopeBuilder.is_bp_group(raw_data):
                 # BP group diretto [points, interp]
@@ -613,7 +618,10 @@ def _scale_time_recursive(points: List, factor: float) -> List:
         # arita' riporta i punti del file e non quelli scalati.
         if not EnvelopeBuilder.accepts_bp_group(group):
             return group
-        return [_scale_group_points_time(group[0], factor), group[1]]
+        # Gli slot del gruppo si nominano scomponendo (issue #219), come nel
+        # gemello `_scale_group_y` che scala le y degli stessi punti.
+        punti, interp = group
+        return [_scale_group_points_time(punti, factor), interp]
 
     # CASO 1: L'intera lista è un formato compatto
     if EnvelopeBuilder.is_compact_format(points):
