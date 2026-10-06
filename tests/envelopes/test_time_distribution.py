@@ -926,3 +926,34 @@ class TestOverflowDellaSomma:
 
         assert len(durations) == n_reps
         assert sum(durations) == pytest.approx(self.TOTAL_TIME)
+
+    def test_un_parametro_intero_enorme_non_rompe_il_messaggio(self):
+        """Un intero grande e' finito, e dirlo non deve traboccare.
+
+        `rate: 10 ** 400` e' un intero legittimo per il costruttore (`> 0`), e
+        dal secondo peso in poi l'esponente negativo lo porta nei float, dove
+        non ci sta: il motore alza il `ParameterBoundError` della #212 da
+        `n_reps: 2`. Ma la frase da scrivere dipende da se il valore e' finito,
+        e `math.isfinite` su un intero di quattrocento cifre non risponde «si'»:
+        alza `OverflowError: int too large to convert to float`. Cosi' la
+        costruzione del messaggio rompeva l'errore che stava spiegando.
+
+        Un intero Python e' sempre finito, per quanto grande — e' solo il float
+        che puo' non esserlo. E qui la diagnosi giusta e' quella della coppia:
+        `10 ** 400` da solo non e' fuori posto, con `n_reps: 1` rende.
+
+        (Trovato dalla suite di parita' di PGE-ls, che sonda proprio questa
+        coppia.)
+        """
+        from pge.shared.exceptions import ParameterBoundError
+
+        with pytest.raises(ParameterBoundError) as exc:
+            ExponentialDistribution(rate=10 ** 400).calculate_distribution(
+                self.TOTAL_TIME, 2)
+
+        assert "e' la coppia a esplodere" in exc.value.hint
+
+        # E con un ciclo solo rende, perche' `rate ** 0` resta intero.
+        starts, durations = ExponentialDistribution(
+            rate=10 ** 400).calculate_distribution(self.TOTAL_TIME, 1)
+        assert sum(durations) == pytest.approx(self.TOTAL_TIME)

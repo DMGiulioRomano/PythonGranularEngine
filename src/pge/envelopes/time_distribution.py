@@ -28,19 +28,29 @@ def _is_finite(value) -> bool:
     """Se `value` e' un numero finito, cioe' se la diagnosi della coppia di
     #212 vale per lui (vedi `_overflow`).
 
-    Non e' `math.isfinite` nudo perche' qui si sta costruendo un messaggio
-    d'errore: un valore che non e' un numero affatto — un `ratio` stringa
-    arriva fin qui se i confronti del costruttore l'hanno lasciato passare —
-    non deve alzare un TypeError mentre se ne spiega un altro.
+    Qui si sta costruendo un messaggio d'errore, quindi questa funzione non
+    deve alzare niente mentre spiega un altro guasto — ed e' per questo che non
+    e' `math.isfinite` nudo, in **due** modi diversi:
+
+    - un valore che non e' un numero affatto (un `ratio` stringa arriva fin qui
+      se i confronti del costruttore l'hanno lasciato passare) darebbe
+      `TypeError`;
+    - un **intero grande** darebbe `OverflowError: int too large to convert to
+      float`. Un intero Python e' sempre finito, per quanto grande, e solo il
+      float puo' non esserlo: `rate: 10 ** 400` e' un intero legittimo per il
+      costruttore, trabocca nei float dal secondo peso, e la frase da scrivere
+      e' quella della coppia — `10 ** 400` con `n_reps: 1` rende.
 
     Il `bool` conta come numero finito, al contrario di quanto fanno i guard
     sui bound altrove: la domanda qui non e' se sia un valore ammissibile ma
     se abbia una grandezza, e `true` vale 1. Nessuno dei quattro bool arriva
     comunque a questa funzione — `1 ** -i`, `(i + 1) ** True` e `ratio` a 1
     non traboccano, e a `ratio = 1` la geometrica ripiega sull'uniforme."""
-    if not isinstance(value, (int, float)):
-        return False
-    return math.isfinite(value)
+    if isinstance(value, int):  # `bool` compreso: sottoclasse di `int`
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return False
 
 
 # =============================================================================
