@@ -137,8 +137,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   e le due righe di solo/mute restano quelle, sullo stesso canale: sono
   interfaccia, e il mirror JS dell'editor promette di anticiparle. Il
   censimento di `tests/shared/test_stdout_contract.py` le segue nei nuovi
-  moduli. `LOOP_UNIT_SCOPE` perde l'underscore perche' due repository lo
-  mirrorano: era privato di nome e non di fatto. Lo shim `src/main.py`
+  moduli. `LOOP_UNIT_SCOPE` perde l'underscore perche' altri repository lo
+  leggono: i patti di parita' di PGE-ls dal sorgente, gl-ls e PGE-ui come
+  mirror statico, e `tests/test_bounds.py` di granulation-studies come
+  attributo di `pointer_controller` — quel test va aggiornato al prossimo bump
+  del submodule `engine/`, dove `_LOOP_UNIT_SCOPE` sarebbe un
+  `AttributeError`. Era privato di nome e non di fatto. Lo shim `src/main.py`
   ri-esporta `parse_magnify_spec` e non piu' il nome privato.
 
 - **`_MODULI_SENZA_TERZE_PARTI` acquista sette moduli**: i tre nuovi, piu'

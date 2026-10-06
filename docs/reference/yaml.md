@@ -2633,6 +2633,8 @@ un envelope dal YAML al runtime è:
 - `src/pge/parameters/parser.py` — `GranularParser.parse_parameter` + validazione
 - `src/pge/parameters/gate_factory.py` — uso di envelope per `deviation_probability`
 - `src/pge/controllers/pointer_controller.py` — `loop_unit` e scaling dei valori loop
+- `src/pge/parameters/loop_unit.py` — vocabolario di `loop_unit` (`LOOP_UNITS`) e
+  chiavi che interpreta (`LOOP_UNIT_SCOPE`)
 - `src/pge/controllers/window_selection_strategy.py` — `_validate_curve_range`
 - `src/pge/core/stream.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy
 
