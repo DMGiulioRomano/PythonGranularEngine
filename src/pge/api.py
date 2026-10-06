@@ -97,6 +97,10 @@
 #                       sull'ultimo breakpoint (raggiungibile da YAML)
 #     FutureWarning     le API deprecate che l'host chiama (Stream.grains,
 #                       window_shape_min_px), dal modulo warnings
+#     `[SEED] Il file importato ...`  load_yaml / load_generator, quando un
+#                       file importato con `file:` dichiara un seed diverso da
+#                       quello del master (issue #290): lo stream si rende col
+#                       seed del master
 #
 # Chi incorpora e ha bisogno di silenzio: contextlib.redirect_stdout NON
 # basta -- copre l'elenco qui sopra e nient'altro. Serve anche
@@ -709,6 +713,23 @@ def export_sv(
         layout=layout,
     )
     return output_path
+
+
+def export_depfile(
+    generator,
+    target: str,
+    output_path: str,
+) -> str:
+    """Scrive la depfile di make del render (issue #290); ritorna output_path.
+
+    `target` dipende da `generator.source_files`: il master e ogni file che
+    importa con `file:`. `target` e' il file che la regola di make produce,
+    scritto come make lo nomina (il `$@` della regola). Va chiamata dopo
+    `load_yaml`, che e' dove i file importati si conoscono.
+    """
+    from pge.export.depfile_writer import write_depfile
+
+    return write_depfile(output_path, target, generator.source_files)
 
 
 def export_grain_json(

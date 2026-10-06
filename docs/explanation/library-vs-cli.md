@@ -78,8 +78,9 @@ Divisione delle policy (chi decide cosa):
   l'host non lo ascolta.
 - **Il censimento è di stdout, e c'è anche stderr.** Gli avvisi del clip
   logger passano di là (`⚠️  CLIP: ...` dall'handler console), e con loro i
-  record WARNING dei logger senza handler (`logging.lastResort`) e i
-  `FutureWarning` delle API deprecate, quindi `redirect_stdout` da solo non
+  record WARNING dei logger senza handler (`logging.lastResort`), i
+  `FutureWarning` delle API deprecate e l'avviso sul seed di uno stream
+  importato con `file:` (#290), quindi `redirect_stdout` da solo non
   è silenzio: per chi incorpora servono entrambe le redirezioni. La console
   del clip logger spenta zittisce il clip logger, non stderr. Dirlo fa
   parte del punto — un censimento di stdout letto come inventario completo

@@ -298,7 +298,7 @@ def main():
             "[--renderer csound|numpy|supercollider] "
             "[--jobs N|auto] "
             "[--format aiff|wav|flac] "
-            "[--samples-dir DIR] [--log-dir DIR] "
+            "[--samples-dir DIR] [--log-dir DIR] [--depfile FILE] "
             "[--orc-path PATH] [--incdir DIR] [--ssdir DIR] [--sfdir DIR] "
             "[--message-level N] "
             "[--keep-sco] [--sco-dir DIR] "
@@ -492,6 +492,24 @@ def main():
             sys.exit(1)
         log_dir = sys.argv[idx + 1]
 
+    # --depfile FILE (issue #290): una depfile di make con le dipendenze del
+    # render -- il master e ogni file che importa con `file:` -- per la
+    # regola che lo produce (`make/build.mk`, ramo non-STEMS). Senza, quella
+    # regola conosce solo il master, e modificare soltanto uno stream
+    # importato lascia l'audio di prima con un «nothing to be done».
+    #
+    # Terzo flag che rifiuta il valore mancante, per la ragione dei due qui
+    # sopra: ignorarlo renderebbe senza depfile, e make continuerebbe a non
+    # vedere i file importati -- un fallimento che somiglia al successo.
+    depfile = None
+    if '--depfile' in sys.argv:
+        idx = sys.argv.index('--depfile')
+        if idx + 1 >= len(sys.argv):
+            print("--depfile richiede un file. "
+                  "Esempio: --depfile generated/brano.aif.d")
+            sys.exit(1)
+        depfile = sys.argv[idx + 1]
+
     # --- Csound config args ---
 
     orc_path = 'csound/main.orc'
@@ -640,6 +658,15 @@ def main():
 
         print(f"Caricamento {yaml_file}...")
         generator.load_yaml()
+
+        # Subito dopo il caricamento, che e' dove i file importati si
+        # conoscono: anche un render che muore piu' avanti -- un sample
+        # mancante nello stream importato -- lascia la depfile giusta, e il
+        # file da correggere fra le dipendenze. Il target e' l'output come
+        # lo si e' ricevuto: e' il `$@` della regola, e make confronta i nomi
+        # come stringhe.
+        if depfile:
+            api.export_depfile(generator, output_file, depfile)
 
         print("Generazione streams...")
         generator.create_elements()

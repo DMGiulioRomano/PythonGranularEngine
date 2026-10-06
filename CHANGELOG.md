@@ -10,6 +10,64 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Lo stream come file: `file:` negli stream del master** (issue #290, passo
+  2 del piano «stream come file» di mare-nostrum). Una voce della lista
+  `streams:` puo' essere `- file: <path>`: lo stream e' scritto in un altro
+  documento YAML — un documento del laboratorio, che si apre e si rende anche
+  da solo — e il master ne decide soltanto il piazzamento.
+
+  ```yaml
+  seed: 1441
+  streams:
+    - file: streams/risacca.yml   # un documento del laboratorio
+      onset: 12.5
+      mute: true
+  ```
+
+  `file:` si risolve in `Generator.load_yaml`, prima delle espressioni
+  matematiche; da li' il motore vede una lista di stream come prima, e cache,
+  fingerprint e solo/mute lavorano sullo stream risolto. Il path e' relativo
+  alla cartella del master. Il file importato porta un solo stream, e un
+  `file:` dentro di lui e' un errore (niente catene, niente cicli). Ogni chiave
+  ha una sola casa: accanto a `file:` il master tiene `stream_id`, `onset`,
+  `mute`, `solo`, e ogni altra chiave e' un errore; `stream_id` di default e'
+  il nome del file senza estensione. Del file si ignorano i top-level
+  (`duration`, `bpm`, `seed`) e le chiavi di piazzamento dello stream; la
+  `duration` dello stream viene dal file. Un `seed` del file diverso da quello
+  del master produce un avviso su stderr (`[SEED] Il file importato ...`) e il
+  render procede col seed del master. Due stream con lo stesso `stream_id`
+  effettivo, se almeno uno viene da `file:`, sono un errore; l'id effettivo
+  e' quello dopo le espressioni matematiche, quindi `1.yml` e `01.yml`
+  importati senza `stream_id` collidono (sono entrambi lo stream `1`).
+
+  Errori nuovi, sotto `ConfigError`: `StreamFileError` e le sue quattro
+  sottoclassi (`StreamFileKeyError`, `StreamFileCountError`,
+  `StreamFileChainError`, `StreamFileDuplicateIdError`). Un file importato
+  mancante, illeggibile o malformato ha i tipi del master che non si legge
+  (#257). Ogni messaggio nomina il master e il file importato: la testa o
+  `Config:` il file in cui l'errore e' scritto, la nuova riga `Importato da:`
+  o `Voce:` l'altro. Vale anche per gli errori del *contenuto* di uno stream
+  importato — un sample mancante, un campo obbligatorio — che prima avrebbero
+  nominato il master. `Generator.stream_origins` conserva, per id effettivo,
+  la voce del master che ha importato ogni stream.
+
+  Spostare uno stream dal master a un file non lo marca dirty (il dict
+  risolto e' lo stesso), e modificare il file importato marca dirty solo quello
+  stream: lo misura `TestStreamFile` in `tests/e2e/test_cache_e2e.py` con
+  csound via `make`. In MIX (`STEMS=false`), dove la regola di make dipendeva
+  dal solo master e modificare uno stream importato lasciava l'audio di prima,
+  la vede make: il nuovo flag `--depfile FILE` scrive una depfile di make
+  (master e file importati, `Generator.source_files`, alla `gcc -MD -MP`), le
+  ricette MIX di `make/build.mk` la passano in `$(GENDIR)` e il Makefile la
+  include. Un nome di file che make non sa leggere e' un errore del render e
+  non una depfile rotta: inclusa da ogni `make`, una riga illeggibile
+  fermerebbe ogni `make` successivo (`make clean` compreso) invece del render
+  che l'ha scritta. I caratteri glob (`*`, `?`, `[`) si scappano come gli
+  altri: nudi, make espande il nome nei file che gli somigliano, e un
+  `risacca [v2].yml` accanto a un `risacca 2.yml` dava la dipendenza
+  all'altro file. Uno stream importato suona come nel laboratorio solo con
+  lo stesso seed e lo stesso id: `docs/reference/yaml.md`, «Stream come file».
+
 - **`docs/explanation/stream-decomposition.md`** — la decisione sulla
   decomposizione di `Stream` (issue #190): decisione, non esecuzione. Rimisurato
   dopo #183 e #186, `stream.py` ha 1117 righe ma 510 di codice: e' cresciuto in

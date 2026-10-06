@@ -31,6 +31,19 @@ Caching per-stream con fingerprint contenuto. Attivo con `STEMS=true CACHE=true`
 
 - `compute_fingerprint(stream_dict)` — SHA-256 del dict YAML dello stream, escluse le chiavi non-audio in `FINGERPRINT_IGNORE_KEYS` (`solo`, `mute`): toggle di solo/mute cambia *quali* stream renderizzare, non il contenuto del singolo stem, quindi non deve marcarlo dirty (issue #108). `onset` resta invece incluso (divergenza nota col lato JS, PGE-ui #39). Nel payload entrano anche `VARIATION_SEMANTICS_VERSION` e `renderer` (issue #228): sono le due dipendenze dello stem che il testo YAML non dichiara — la semantica con cui il motore lo interpreta, e il backend che lo rende. Senza `renderer`, rendere con un backend e rilanciare con un altro lascerebbe ogni stream `clean`, con in output l'audio del primo annunciato come del secondo
 - `is_dirty(stream_dict, aif_path)` — True se stream_id assente, fingerprint cambiato, o file .aif assente
+
+**Stream importati con `file:`** (issue #290): il cache manager non li vede
+come tali. La risoluzione avviene in `Generator.load_yaml`, e quello che arriva
+al fingerprint e al GC è lo stream già risolto — lo stesso dict dello stream
+scritto per intero nel master. Ne seguono tre cose, misurate da
+`TestStreamFile` (`tests/e2e/test_cache_e2e.py`, csound via `make`) e dal
+gemello numpy in `tests/engine/test_stream_files.py`: modificare il file
+importato marca dirty quello stream e nessun altro; spostare uno stream dal
+master a un file non lo marca dirty; i top-level del file importato (`seed`,
+`duration`, `bpm`), che lo stream risolto non porta, non toccano il
+fingerprint. Il GC legge gli id da `generator.data`, cioè dal documento
+risolto: una voce `file:` non risolta non avrebbe `stream_id`, e il suo stem
+verrebbe cancellato come orfano a ogni render.
 - `update_after_build(stream_dicts)` — aggiorna manifest con fingerprint correnti
 - `garbage_collect(current_stream_ids, aif_dir, aif_prefix)` — rimuove dal manifest gli stream non più nel YAML; cancella `.aif` orfani
 

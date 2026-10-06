@@ -760,3 +760,97 @@ def test_e2e_config_directory_con_la_barra_finale_non_nomina_il_log_col_basename
         "vero, l'esempio della Sez. 4 va rimesso su `logs/<dir>_engine.log`")
     assert re.fullmatch(r'\d{8}_\d{6}_engine\.log', nome), (
         f"ripiego di configure_engine_logger atteso sul timestamp: {nome}")
+
+
+# =============================================================================
+# Lo stream come file (issue #290): gli errori nominano il master e il file
+# =============================================================================
+# Il master sta in tmp_path, il file importato in `streams/` accanto a lui: il
+# path di `file:` e' relativo alla cartella del master, e il subprocess gira
+# con `cwd=PROJECT_ROOT` -- cioe' altrove, che e' il caso che la regola serve.
+
+YAML_STREAM_IMPORTATO = """\
+seed: 2
+duration: 0.5
+streams:
+  - stream_id: "risacca"
+    onset: 0.0
+    duration: 0.5
+    sample: "{sample}"
+    density: 20
+    grain:
+      duration: 0.05
+"""
+
+
+def _brano_che_importa(tmp_path, nome, voce, sample='pino.wav'):
+    """Un master `nome` con la voce `voce` e il file `streams/risacca.yml`."""
+    (tmp_path / 'streams').mkdir(exist_ok=True)
+    (tmp_path / 'streams' / 'risacca.yml').write_text(
+        YAML_STREAM_IMPORTATO.format(sample=sample))
+    return _write_yaml(tmp_path, nome, f"seed: 1\nstreams:\n{voce}")
+
+
+@pytest.mark.e2e
+def test_e2e_file_importato_mancante(tmp_path, cleanup_log):
+    master = _write_yaml(tmp_path, '60_importa_assente.yml',
+                         "streams:\n  - file: streams/assente.yml\n")
+    cleanup_log.append(_log_path_for(master))
+    result = _run(master)
+    _assert_clean_config_output(result)
+    assert "File di configurazione non trovato" in result.stdout
+    assert "streams/assente.yml" in result.stdout
+    assert f"Importato da: {master}, streams[0]" in result.stdout
+    _assert_log_contains(master, "ConfigFileNotFoundError",
+                         ['streams/assente.yml'])
+
+
+@pytest.mark.e2e
+def test_e2e_chiave_estranea_accanto_a_file(tmp_path, cleanup_log):
+    master = _brano_che_importa(
+        tmp_path, '61_importa_con_density.yml',
+        "  - file: streams/risacca.yml\n    density: 10\n")
+    cleanup_log.append(_log_path_for(master))
+    result = _run(master)
+    _assert_clean_user_output(result)
+    assert "Chiave non ammessa accanto a 'file:': 'density'" in result.stdout
+    assert "Voce:         streams[0] (file: streams/risacca.yml)" in (
+        result.stdout)
+    assert f"Config:       {master}" in result.stdout
+    _assert_log_contains(master, "StreamFileKeyError", ['density'])
+
+
+@pytest.mark.e2e
+def test_e2e_sample_mancante_nello_stream_importato(tmp_path, cleanup_log):
+    """`Config:` e' il file in cui il sample e' scritto, non il master."""
+    master = _brano_che_importa(
+        tmp_path, '62_importa_sample_assente.yml',
+        "  - file: streams/risacca.yml\n", sample='__assente_290__.wav')
+    cleanup_log.append(_log_path_for(master))
+    result = _run(master)
+    _assert_clean_user_output(result)
+    assert "Sample non trovato: '__assente_290__.wav'" in result.stdout
+    importato = os.path.join(str(tmp_path), 'streams', 'risacca.yml')
+    assert f"Config:       {importato}" in result.stdout
+    assert f"Importato da: {master}, streams[0]" in result.stdout
+
+
+@pytest.mark.e2e
+def test_e2e_l_avviso_sul_seed_va_su_stderr(tmp_path, cleanup_log):
+    """Il render procede, e l'avviso esce dal canale che PGE-ui mostra come
+    log (#162): stdout resta del protocollo e dell'interfaccia."""
+    if not os.path.exists(os.path.join(PROJECT_ROOT, 'refs', 'pino.wav')):
+        pytest.skip("refs/pino.wav assente: `make test-samples`")
+    master = _brano_che_importa(
+        tmp_path, '63_importa_seed_diverso.yml',
+        "  - file: streams/risacca.yml\n")
+    cleanup_log.append(_log_path_for(master))
+    result = subprocess.run(
+        [sys.executable, 'src/main.py', master,
+         str(tmp_path / 'out.wav'), '--format', 'wav'],
+        cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=120)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "[SEED] Il file importato" in result.stderr
+    assert "ha seed 2, il master ha seed 1" in result.stderr
+    assert "[SEED] Il file importato" not in result.stdout

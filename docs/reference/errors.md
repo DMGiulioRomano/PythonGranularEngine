@@ -8,8 +8,9 @@ sources:
   - src/pge/envelopes/envelope_builder.py
   - src/pge/cli.py
   - src/pge/engine/generator.py
+  - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: f8f9fdf
+last_synced_commit: f69f137
 entry_for: [error-handling]
 ---
 
@@ -37,6 +38,7 @@ Forma del messaggio user-facing:
   <dettaglio chiave: valore>
   Stream:    <stream_id>     (se enrichito)
   Config:    <yaml_path>     (se enrichito)
+  Importato da: <master>, streams[i]   (se il file e' importato con `file:`)
 ```
 
 Tutte le classi ereditano da `EngineError`. Sotto-gerarchie principali: `ConfigError` (YAML invalido) e `EngineRuntimeError` (errori a render-time).
@@ -92,7 +94,16 @@ EngineError                                  (Exception)
 │   ├── InvalidStrategyConfigError           PR3 — config strategia invalida
 │   ├── InvalidRendererError                 PR4 — renderer kind sconosciuto
 │   ├── InvalidWindowError                   PR4 — window name/param invalido
-│   └── FtableError                          PR4 — incoerenza FtableManager
+│   ├── FtableError                          PR4 — incoerenza FtableManager
+│   └── StreamFileError                      #290 — voce `file:` del master
+│       │                                    che non si risolve
+│       ├── StreamFileKeyError               chiave non di piazzamento
+│       │                                    accanto a `file:`
+│       ├── StreamFileCountError             il file importato non porta
+│       │                                    esattamente uno stream
+│       ├── StreamFileChainError             `file:` dentro un file importato
+│       └── StreamFileDuplicateIdError       `stream_id` effettivo duplicato,
+│                                            con almeno una voce `file:`
 │
 └── EngineRuntimeError                       PR4 — errori runtime (non config)
     ├── _SubprocessRenderError               base dei render delegati a un binario
@@ -285,6 +296,33 @@ EngineError                                  (Exception)
   altrimenti il rimedio-che-non-fa-nulla si sposta di un livello invece di
   sparire. Stessa forma dell'hint di `_BinaryNotFoundError`, e stessa regola —
   un rimedio si scrive solo quando c'è.
+- **Lo stream come file (#290): ogni errore nomina i due file, con una regola
+  sola.** Una voce `- file: <path>` del master importa uno stream scritto in un
+  altro documento, quindi il guasto sta sempre fra due file. La testa o la riga
+  `Config:` nominano il file in cui l'errore è **scritto**; l'altra riga nomina
+  l'altro file. Una chiave estranea accanto a `file:` e uno `stream_id`
+  duplicato stanno nel master: `Config:` è il master, `Voce:`/`Voci:` nominano
+  la voce col suo `file:` come è scritto. Uno stream che manca nel file
+  importato, una catena di `file:`, un sample sbagliato nello stream importato
+  stanno nel file importato: la testa o `Config:` sono quel file, e
+  `Importato da:` nomina il master e la voce.
+
+  Un file importato che **non si legge** — mancante, illeggibile, malformato —
+  non ha classi sue: è lo stesso guasto del master che non si legge, quindi
+  ha gli stessi tipi della #257 (`ConfigFileNotFoundError`,
+  `ConfigReadError`, `ConfigParseError` e le loro sottoclassi concrete), letti
+  dalla stessa funzione (`Generator._read_document`), una chiamata e un `try`
+  per file. Il `try` resta stretto attorno al proprio `open()`: è il vincolo
+  scritto sopra, e vale per file. Quel che cambia è la riga `Importato da:`,
+  perché «File di configurazione non trovato: streams/assente.yml» non dice chi
+  lo stava cercando.
+
+  `imported_by` è un attributo di `ConfigError` e di `SampleNotFoundError`,
+  `None` finché nessuno importa: un `StreamFileOrigin` (master, posizione
+  della voce, `file:` come scritto, path risolto). Le classi della #257 non
+  chiamano `_context_lines()` — il file è il soggetto del head — quindi la
+  riga la dicono da sé, con lo stesso helper (`_righe_importato_da`). Viaggia
+  nello stato del pickle come ogni altro attributo arricchito.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
   (es. errori I/O di rendering) si appendono qui.
 - Ogni sotto-classe override `user_message()` con formato strutturato.
@@ -348,8 +386,17 @@ mentre risalgono lo stack:
 | Raise site (parser/strategy/registry)       | dato locale (param, value, available, ...) |
 | Chi conosce la chiave YAML → `EnvelopeBuilder` | `field=` passato **in discesa** (issue #211) |
 | Parser/Stream/Controller chiamante          | `err.stream_id`         |
-| `Generator.create_elements`                 | `err.config_file`       |
+| `resolve_stream_files` (#290)               | `err.imported_by` sugli errori di lettura di un file importato |
+| `Generator._create_streams` (#290)          | `err.config_file` = file importato + `err.imported_by`, per uno stream importato |
+| `Generator.create_elements`                 | `err.config_file` (il master), se nessuno l'ha già scritto |
 | `main._handle_engine_error`                 | path engine log         |
+
+`create_elements` scriveva il master in `config_file` su ogni errore, senza
+condizione. Con `file:` (#290) quella riga avrebbe mandato a cercare il sample,
+o il campo mancante, di uno stream importato nel file che non lo contiene:
+`_create_streams` attribuisce al file importato gli errori dei suoi stream
+(`Generator.stream_origins`, per id effettivo), e `create_elements` scrive il
+master solo dove `config_file` è ancora vuoto.
 
 Il campo di un errore di forma dell'envelope è l'unico dato che non si
 aggiunge risalendo ma si passa scendendo: `EnvelopeBuilder` non conosce il nome
@@ -475,6 +522,95 @@ vuota e `configure_engine_logger` ripiega sul timestamp. Senza la barra
 (`pge configs out.wav`) il log torna a essere `logs/configs_engine.log`. Detto
 qui perché è l'unico messaggio del censimento che nomina un file dove l'utente
 poi non lo trova, e un caso e2e lo tiene fermo.
+
+### Lo stream come file (`file:`, issue #290)
+
+Ogni messaggio nomina il master e il file importato (Sez. 1). File importato
+mancante — stessi tipi del master che non si legge, più `Importato da:`:
+
+```
+[ERRORE] File di configurazione non trovato: 'configs/streams/assente.yml'
+  Path cercato: /home/utente/brano/configs/streams/assente.yml
+  Importato da: configs/brano.yml, streams[0]
+  Dettagli:     logs/brano_engine.log
+```
+
+Una chiave che non è di piazzamento accanto a `file:` — l'errore sta nel
+master:
+
+```yaml
+streams:
+  - file: streams/risacca.yml
+    onset: 12.5
+    density: 40
+```
+```
+[ERRORE] Chiave non ammessa accanto a 'file:': 'density'
+  Voce:         streams[0] (file: streams/risacca.yml)
+  Hint:         accanto a 'file:' il master tiene solo il piazzamento dello stream (stream_id, onset, mute, solo). Il resto ha casa nel file importato: scrivilo li'.
+  Config:       configs/brano.yml
+  Dettagli:     logs/brano_engine.log
+```
+
+Un file importato con due stream — l'errore sta nel file importato. La riga
+`Trovati:` dice quale forma è stata letta: `nessuno stream`, `N stream`,
+`'streams' non e' una lista (dict)`, `una voce che non e' uno stream (str)`,
+`il documento non e' una mappa (list)`:
+
+```
+[ERRORE] Il file importato deve contenere un solo stream: 'configs/streams/due.yml'
+  Trovati:      2 stream
+  Hint:         uno stream come file e' un documento con una lista 'streams:' di un solo stream. Per importarne piu' d'uno: un file per stream, e una voce 'file:' per file nel master.
+  Importato da: configs/brano.yml, streams[0]
+  Dettagli:     logs/brano_engine.log
+```
+
+Una catena di `file:`. Anche il master che importa se stesso finisce qui, se
+`file:` è la sua sola voce; con più voci si ferma prima, all'errore di
+conteggio qui sopra — in nessun caso c'è un ciclo da inseguire:
+
+```
+[ERRORE] Il file importato usa a sua volta 'file:': 'configs/streams/catena.yml'
+  Trovato:      file: altro.yml
+  Hint:         niente catene: lo stream di un file importato e' scritto per intero. Importa 'altro.yml' direttamente dal master, oppure copia qui il suo stream.
+  Importato da: configs/brano.yml, streams[0]
+  Dettagli:     logs/brano_engine.log
+```
+
+Lo stesso file importato due volte senza `stream_id`: i due stem avrebbero lo
+stesso nome. Le voci in collisione vanno a capo incolonnate (Sez. 2):
+
+```
+[ERRORE] stream_id duplicato: 'risacca'
+  Voci:         streams[0] (file: streams/risacca.yml)
+                streams[1] (file: streams/risacca.yml)
+  Hint:         lo stream_id e' il nome dello stem e la chiave della cache, quindi due stream non possono condividerlo. Senza 'stream_id' una voce 'file:' prende il nome del file: scrivine uno diverso accanto a 'file:'.
+  Config:       configs/brano.yml
+  Dettagli:     logs/brano_engine.log
+```
+
+Un errore del **contenuto** dello stream importato: `Config:` è il file in cui
+il valore è scritto, il master sta in `Importato da:`.
+
+```
+[ERRORE] Sample non trovato: 'assente.wav'
+  Path cercato: ./refs/assente.wav
+  Stream:       risacca
+  Config:       configs/streams/risacca.yml
+  Importato da: configs/brano.yml, streams[0]
+  Dettagli:     logs/brano_engine.log
+```
+
+Un `file:` che non è un path non vuoto (numero, `null`, lista) è
+`InvalidFieldValueError` su `streams[i].file`, con `Config:` il master.
+
+L'avviso sul seed (regola 6) **non è un errore**: il render procede, e la riga
+esce su stderr, fuori dalla forma del protocollo
+([[contratto-stdout]]):
+
+```
+[SEED] Il file importato 'configs/streams/risacca.yml' (streams[0] di 'configs/brano.yml') ha seed 7, il master ha seed 1441: lo stream si rende col seed del master, quindi non suona come quando il file si rende da solo.
+```
 
 ### Renderer sconosciuto
 CLI: `--renderer foo`
@@ -680,3 +816,5 @@ di test in `configs/`.
   - PR3 (Strategy errors) — #42
   - PR4 (Rendering errors) — #43
   - PR5 (Documentation) — questo file
+- Issue #290 — lo stream come file: la famiglia `StreamFileError` e la riga
+  `Importato da:`
