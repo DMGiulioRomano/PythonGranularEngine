@@ -397,14 +397,15 @@ def test_il_censimento_della_famiglia_e_completo():
     # la cercano per attributo, quindi un rename la farebbe sparire invece di
     # fallire.
     #
-    # Vale anche per i due file fuori dal giro, che non hanno un test per
-    # attributo ma hanno lo stesso buco: il confronto fra insiemi qui sopra
-    # ragiona sui *file*, quindi una seconda mappa aggiunta a un file gia'
-    # dichiarato non sposta nessun insieme. Misurato: appendendo
-    # `SONDA_STRATEGIES = {...}` a `grain_clip_strategy.py` — cioe' un asse
-    # nuovo sulla forma vecchia, esattamente il caso per cui il censimento
-    # esiste — questo test restava verde. Un file dichiarato espone una mappa
-    # e quella soltanto.
+    # Vale anche per i file fuori dal giro (erano due fino alla #265, oggi
+    # nessuno), che non hanno un test per attributo ma hanno lo stesso buco: il
+    # confronto fra insiemi qui sopra ragiona sui *file*, quindi una seconda
+    # mappa aggiunta a un file gia' dichiarato non sposta nessun insieme.
+    # Misurato quando era ancora fuori: appendendo `SONDA_STRATEGIES = {...}`
+    # a `grain_clip_strategy.py` — cioe' un asse nuovo sulla forma vecchia,
+    # esattamente il caso per cui il censimento esiste — questo test, prima
+    # del confronto per nome, restava verde. Un file dichiarato espone una
+    # mappa e quella soltanto.
     attese = {caso.relpath: [caso.mappa] for caso in CONVERTITI}
     attese.update({rel: [mappa] for rel, (mappa, _) in FUORI_DAL_GIRO.items()})
     for rel, nomi in attese.items():
@@ -496,21 +497,37 @@ def test_un_registry_senza_registrazione_non_ne_espone_una(caso):
     di delega che questo modulo fa ai `register_*`. Un alias di livello modulo
     (`register_x = REGISTRY.register`) quel censimento non lo vede affatto,
     quindi qui contano le due grafie.
+
+    E contano anche dentro le classi del modulo, non solo al livello del
+    modulo. Un `register` sulla factory e' la forma che la famiglia ha gia'
+    (`DistributionFactory.register`), e per quel censimento e' un punto di
+    registrazione come una `def` di modulo, con lo stesso rimedio: una riga
+    nella sua lista. Misurato: aggiungendo a `GrainClipStrategyFactory` un
+    `register` che delega a `GRAIN_CLIP_STRATEGIES.register`, e il modulo a
+    `MODULI_CON_REGISTRAZIONE_DINAMICA`, la suite restava interamente verde
+    con questo `Caso` ancora a `None`.
     """
+    def nomi(corpo):
+        definiti = [
+            nodo.name for nodo in corpo
+            if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        assegnati = [
+            bersaglio.id for nodo in corpo if isinstance(nodo, ast.Assign)
+            for bersaglio in nodo.targets if isinstance(bersaglio, ast.Name)
+        ] + [
+            nodo.target.id for nodo in corpo
+            if isinstance(nodo, ast.AnnAssign) and isinstance(nodo.target, ast.Name)
+        ]
+        return [nome for nome in definiti + assegnati if nome.startswith('register')]
+
     tree = ast.parse(_sorgente(caso.relpath))
-    definite = [
-        nodo.name for nodo in tree.body
-        if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
-    assegnate = [
-        bersaglio.id for nodo in tree.body if isinstance(nodo, ast.Assign)
-        for bersaglio in nodo.targets if isinstance(bersaglio, ast.Name)
-    ] + [
-        nodo.target.id for nodo in tree.body
-        if isinstance(nodo, ast.AnnAssign) and isinstance(nodo.target, ast.Name)
-    ]
     esposte = sorted(
-        nome for nome in definite + assegnate if nome.startswith('register')
+        nomi(tree.body) + [
+            f"{classe.name}.{nome}" for classe in ast.walk(tree)
+            if isinstance(classe, ast.ClassDef)
+            for nome in nomi(classe.body)
+        ]
     )
 
     assert not esposte, (
