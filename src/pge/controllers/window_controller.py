@@ -38,8 +38,11 @@ class WindowController:
       - Transition dict:  morphing probabilistico from→to (TransitionWindowStrategy)
       - Multi-state dict: transizione attraverso N stati (MultiStateWindowStrategy)
 
-    Per aggiungere nuove modalità: registra una WindowSelectionStrategy nel
-    WINDOW_STRATEGY_REGISTRY senza modificare questo controller.
+    La modalità la sceglie WindowStrategyFactory.from_spec() dalla forma di
+    grain.envelope, e la costruisce passando da WINDOW_STRATEGY_REGISTRY:
+    register_window_strategy() sotto uno di quei quattro nomi sostituisce la
+    strategy senza modificare questo controller. Un nome nuovo, invece, non è
+    raggiungibile dallo YAML finché from_spec() non impara a sceglierlo.
     """
 
     # =========================================================================
