@@ -293,9 +293,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `EnvelopeBuilder.is_compact_format`, che lo *definisce* per posizione, e
   `EnvelopeBuilder._compact_slots`, che lo percorre. Espansione e log chiamano
   quella. Il `wrap` entra nel log (non c'era mai stato) e l'interpolazione non
-  dichiarata si legge come `linear (default)` invece che come un `linear`
-  indistinguibile da uno scritto nel file. Una guardia AST rifiuta un nuovo
-  `compact[<intero>]` fuori dal decoder.
+  dichiarata si legge come tale — «non dichiarata nel compatto (vale il type
+  dell'envelope; linear se nessuno lo dichiara)» — invece che come un `linear`
+  indistinguibile da uno scritto nel file. Il log non nomina il tipo applicato
+  perché non lo vede: in `{type: cubic, points: [<compatto>]}` vale `cubic`, e
+  un `linear (default)` lì sarebbe stato la stessa certezza sbagliata in un
+  altro posto. Il default (`DEFAULT_INTERP`) è uno solo, letto sia
+  dall'`Envelope` che lo applica sia dal log che lo nomina. Una guardia AST
+  rifiuta un nuovo `compact[<intero>]` fuori dal decoder.
 
   Restano letti dalle costanti anche gli ultimi quattro siti di
   `envelopes/envelope.py` (lo slot del pattern nelle due funzioni di scaling) e

@@ -1287,24 +1287,74 @@ class TestLogDellaTrasformazioneCompatta:
 
         assert not any('rap' in r for r in righe)
 
-    def test_l_interp_non_dichiarata_si_vede_come_default(self):
-        """Il log dice il default, e dice che e' un default.
+    def test_l_interp_non_dichiarata_si_vede_come_non_dichiarata(self):
+        """Il log dice che lo slot manca, e chi decide al suo posto.
 
         Il decoder riporta cio' che e' **dichiarato**, quindi `None` dove lo
         slot manca — e i chiamanti distinguono le due cose. Il log di prima
         risolveva il default per conto proprio (`compact[3] if len >= 4 else
         'linear'`) e stampava `Interpolation: linear` in entrambi i casi:
-        l'informazione c'era ma un `linear` scritto nel file e un `linear`
-        messo dal motore erano indistinguibili, che su un referto di
-        diagnostica e' la distinzione utile.
+        un `linear` scritto nel file e uno che il file non scrive erano
+        indistinguibili, che su un referto di diagnostica e' la distinzione
+        utile.
+
+        Il fallback si nomina dalla costante che l'`Envelope` applica, non da
+        un letterale del test: e' quella a dire cosa vale quando nessuno
+        dichiara un tipo.
         """
-        assert any('Interpolation: linear (default)' in r
-                   for r in self._righe([[[0, 0], [50, 1]], 1.0, 2]))
+        from pge.envelopes.envelope_builder import DEFAULT_INTERP
+
+        righe = self._righe([[[0, 0], [50, 1]], 1.0, 2])
+        assert any('non dichiarata' in r and DEFAULT_INTERP in r
+                   for r in righe)
 
         # Dichiarata, si vede come dichiarata e senza la nota.
         righe = self._righe([[[0, 0], [50, 1]], 1.0, 2, 'linear'])
         assert any('Interpolation: linear' in r for r in righe)
-        assert not any('(default)' in r for r in righe)
+        assert not any('non dichiarata' in r for r in righe)
+
+    @staticmethod
+    def _envelope_e_righe(spec):
+        """Il `type` dell'Envelope costruito da `spec`, e le righe
+        `Interpolation` che il log del compatto ha emesso per costruirlo."""
+        from pge.envelopes.envelope import Envelope
+
+        with patch('pge.shared.logger.get_clip_logger') as mock_get_logger:
+            logger = MagicMock()
+            mock_get_logger.return_value = logger
+            env = Envelope(spec)
+            righe = [str(c) for c in logger.info.call_args_list
+                     if 'Interpolation' in str(c)]
+        return env.type, righe
+
+    PATTERN = [[0, 0], [50, 1], [100, 0]]
+
+    @pytest.mark.parametrize("spec, tipo_applicato", [
+        # Il `type` del dict decide per il compatto che non dichiara: e'
+        # l'esempio del docstring di `Envelope`.
+        ({'type': 'cubic', 'points': [PATTERN, 1.0, 2]}, 'cubic'),
+        ({'type': 'step', 'points': [PATTERN, 1.0, 2]}, 'step'),
+        # Due compatti in lista: vale il primo che dichiara
+        # (`extract_interp_type`), anche per il secondo che tace.
+        ([[PATTERN, 1.0, 2, 'step'], [PATTERN, 2.0, 2]], 'step'),
+    ], ids=['dict-cubic', 'dict-step', 'secondo-compatto'])
+    def test_l_interp_non_dichiarata_non_si_spaccia_per_quella_applicata(
+            self, spec, tipo_applicato):
+        """Il log del compatto non sa quale interpolazione vincera'.
+
+        Lo slot mancante non vuol dire `linear`: l'`Envelope` interpola col
+        `type` del dict, o con l'interp del primo compatto che la dichiara, e
+        solo se nessuno lo fa col default. Il log vede il compatto e basta, e
+        chiamare quel caso `linear (default)` scriveva su un referto di
+        diagnostica un tipo che il motore non stava applicando — la certezza
+        sbagliata da cui #219 voleva togliere il log, rimessa da un'altra
+        parte.
+        """
+        tipo, righe = self._envelope_e_righe(spec)
+
+        assert tipo == tipo_applicato  # la premessa: il motore non usa linear
+        assert any('non dichiarata' in r for r in righe)
+        assert not any('Interpolation: linear' in r for r in righe)
 
     def test_il_log_segue_gli_slot_insieme_all_espansione(self, monkeypatch):
         """L'invariante vero: il layout si muove e il log si muove con lui.

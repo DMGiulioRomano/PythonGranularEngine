@@ -63,16 +63,20 @@ class Envelope:
             })
         """
         # Import qui per evitare circular import
-        from pge.envelopes.envelope_builder import EnvelopeBuilder
+        from pge.envelopes.envelope_builder import (
+            DEFAULT_INTERP, EnvelopeBuilder,
+        )
         
-        # Parse type e raw_points
+        # Parse type e raw_points. Il default e' la costante del builder, che
+        # il log del compatto nomina (issue #219): un letterale qui e uno li'
+        # potrebbero divergere senza che nessun test se ne accorga.
         if isinstance(breakpoints, dict):
-            self.type = breakpoints.get('type', 'linear')
+            self.type = breakpoints.get('type', DEFAULT_INTERP)
             raw_points = breakpoints['points']
         elif isinstance(breakpoints, list):
             # Controlla se c'è tipo in formato compatto
             extracted_type = EnvelopeBuilder.extract_interp_type(breakpoints)
-            self.type = extracted_type or 'linear'
+            self.type = extracted_type or DEFAULT_INTERP
             raw_points = breakpoints
         else:
             raise ValueError(f"Formato envelope non valido: {breakpoints}")
@@ -554,7 +558,7 @@ def create_scaled_envelope(
     `field` e' il nome YAML della chiave, per gli errori di forma del builder
     (issue #211): vedi `Envelope`.
     """
-    from pge.envelopes.envelope_builder import EnvelopeBuilder
+    from pge.envelopes.envelope_builder import DEFAULT_INTERP, EnvelopeBuilder
 
     # 1. Gestione DICT
     if isinstance(raw_data, dict):
@@ -564,7 +568,8 @@ def create_scaled_envelope(
         if local_unit == 'normalized':
             scaled_points = _scale_time_recursive(points, duration)
             return Envelope(
-                {'type': raw_data.get('type', 'linear'), 'points': scaled_points},
+                {'type': raw_data.get('type', DEFAULT_INTERP),
+                 'points': scaled_points},
                 field=field,
             )
         return Envelope(raw_data, field=field)

@@ -19,10 +19,11 @@ from typing import List, NamedTuple, Union, Tuple, Optional
 from pge.shared.exceptions import InvalidFieldValueError
 
 
-# Il tipo d'interpolazione che il motore applica a un segmento che non ne
-# dichiara uno. Vive qui perche' da #219 e' il log a nominarlo: il decoder
-# degli slot riporta `None` per un interp non dichiarato, e chi stampa dice
-# quale default prende il suo posto invece di confonderli.
+# Il tipo d'interpolazione di un `Envelope` quando nessuno ne dichiara uno: ne'
+# il `type` del dict, ne' un compatto. Lo applica `Envelope.__init__`, che lo
+# legge da qui; vive qui perche' da #219 lo nomina anche il log del compatto, e
+# due letterali — uno che il motore applica e uno che il log stampa — sono la
+# condizione che #219 ha trovato rotta nel layout degli slot.
 DEFAULT_INTERP = 'linear'
 
 
@@ -900,13 +901,19 @@ class EnvelopeBuilder:
         logger.info(f"  Total duration: {total_duration}s (end_time - offset)")
         logger.info(f"  Repetitions: {n_reps}")
         # Il decoder riporta cio' che e' dichiarato, quindi `None` dove lo slot
-        # manca: il default lo nomina chi lo applica. Prima il log lo risolveva
-        # per conto proprio e un `linear` scritto nel file era indistinguibile
-        # da uno messo dal motore (issue #219).
+        # manca. Prima il log lo risolveva per conto proprio e un `linear`
+        # scritto nel file era indistinguibile da uno che il file non scrive
+        # (issue #219). Ma il log non puo' nemmeno dire *quale* tipo prende il
+        # posto dello slot: lo decide l'`Envelope` — il `type` del dict, o
+        # l'interp del primo compatto che la dichiara — e qui si vede il solo
+        # compatto. `DEFAULT_INTERP` e' l'ultimo dei tre, non il tipo applicato:
+        # stampato come tale, il log diceva `linear` su un `{type: cubic}`.
         if interp_type:
             logger.info(f"  Interpolation: {interp_type}")
         else:
-            logger.info(f"  Interpolation: {DEFAULT_INTERP} (default)")
+            logger.info(
+                f"  Interpolation: non dichiarata nel compatto (vale il "
+                f"type dell'envelope; {DEFAULT_INTERP} se nessuno lo dichiara)")
         if time_dist_spec:
             logger.info(f"  Time distribution spec: {time_dist_spec}")
         if wrap:
