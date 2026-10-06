@@ -237,7 +237,8 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   strategy era sempre costruita a mano senza argomenti o iniettata già
   costruita — e adesso due lo fanno: il contratto di costruzione su tutte le
   chiavi del registry, e uno `Stream` vero costruito da YAML che deve tenere
-  i grani oltre la fine.
+  i grani oltre la fine, anche oltre `fine + clip_margin`: così il margine
+  ignorato è misurato, non solo scritto.
 
   A valle non c'è niente da cambiare: il bottone di PGE-ui comincia a
   funzionare, e la diagnostica di gl-ls era già giusta.

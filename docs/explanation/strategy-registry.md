@@ -35,7 +35,7 @@ sources:
   - tests/strategies/test_voice_pan_strategy.py
   - tests/test_minimum_python_syntax.py
   - pyproject.toml
-last_synced_commit: 4b6cd79
+last_synced_commit: 77a9a93
 ---
 
 # Il registry generico delle strategy — la forma decisa
@@ -793,7 +793,10 @@ rendere un campione. Il registry generico inoltra gli argomenti tali e quali,
 per decisione, quindi il difetto sarebbe sopravvissuto alla conversione
 identico. Nessun test lo vedeva perché nessuno percorreva la strada di
 `Stream`; ora `test_grain_clip_strategy.py` lo fa su tutte le chiavi del
-registry, e passthrough accetta il `margin` e lo ignora.
+registry, e passthrough accetta il `margin` e lo ignora. Che lo ignori lo
+misura uno `Stream` da YAML con un margine più corto del grano: con un margine
+lungo quanto il grano anche `overflow_margin` tiene tutte le code, e una
+passthrough che il margine lo applicava lasciava verde l'intera suite.
 
 `distribution_strategy` rientra anche lui, ma **più tardi ancora e con una
 domanda aperta davanti**: la sua `register` valida `issubclass` e quel rifiuto
