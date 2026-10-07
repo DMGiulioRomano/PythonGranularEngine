@@ -27,7 +27,8 @@ from pge.core.stream_config import stream_duration_is_implicit
 
 
 # Chiavi escluse dal fingerprint: cambiano QUALI stream vengono renderizzati
-# (vedi Generator._filter_solo_mute), non il contenuto audio del singolo stem.
+# (vedi pge.engine.solo_mute.filter_solo_mute), non il contenuto audio del
+# singolo stem.
 # Includerle marcherebbe lo stem dirty a ogni toggle, forzando re-render inutili.
 # Allineato al lato JS di PGE-ui (backend.js FP_IGNORE). Issue #108.
 # NOTA: 'onset' resta volutamente FUORI da questo set — l'engine lo include

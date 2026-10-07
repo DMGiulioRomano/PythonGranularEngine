@@ -24,10 +24,10 @@
 #
 # --- righe su stdout (censimento verificato da tests/test_api_stdout.py) ---
 #
-#   da load_generator(), tutte da Generator:
+#   da load_generator(), tutte da Generator tranne due:
 #     `[SEED]`              create_elements, quando lo YAML non ha `seed:`
-#     `🔇`                  _filter_solo_mute, quanti stream sono muted
-#     `⚡ SOLO MODE`        _filter_solo_mute, in modalita' solo
+#     `🔇`                  solo_mute.filter_solo_mute, quanti stream sono muted
+#     `⚡ SOLO MODE`        solo_mute.filter_solo_mute, in modalita' solo
 #     `Creazione di`        _create_streams, quanti stream sta costruendo
 #     `⚠️  Warning: impossibile valutare`  espressione matematica nello YAML
 #

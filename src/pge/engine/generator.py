@@ -26,6 +26,11 @@ from pge.shared.exceptions import (
     config_parse_error, config_read_error,
 )
 from pge.shared.logger import get_diagnostic_logger
+# La regola solo/mute sta in un modulo suo, senza dipendenze: il mirror
+# di PGE-ui la confronta con l'originale, e qui dentro sarebbe
+# importabile solo con numpy (issue #246). Non va ridichiarata: vedi
+# tests/engine/test_solo_mute.py.
+from pge.engine.solo_mute import filter_solo_mute
 from pge.shared.seeding import session_seed
 from pge.engine.stream_files import (
     StreamFileOrigin, origins_by_id, resolve_stream_files,
@@ -297,7 +302,7 @@ class Generator:
 
         # Estrai e filtra stream
         stream_data_list = self.data.get('streams', [])
-        filtered_streams = self._filter_solo_mute(stream_data_list)
+        filtered_streams = filter_solo_mute(stream_data_list)
 
         # Crea stream (QUI viene chiamato _register_stream_windows)
         try:
@@ -463,40 +468,6 @@ class Generator:
         # leggere .voices, non generano mai i grani. Tabelle e costruzione
         # Stream restano invece eager (numerazione FtableManager).
         return stream
-    
-    def _filter_solo_mute(self, stream_data_list: list) -> list:
-        """
-        Applica logica solo/mute agli stream.
-        
-        Regole:
-        - Se almeno uno stream ha 'solo' → prendi SOLO quelli con 'solo'
-        - Altrimenti → prendi tutti TRANNE quelli con 'mute'
-        
-        Args:
-            stream_data_list: lista dizionari stream
-            
-        Returns:
-            list: stream filtrati
-        """
-        # Controlla se c'è almeno un solo
-        solo_mode = any('solo' in s for s in stream_data_list)
-        
-        if solo_mode:
-            # Modalità SOLO: prendi solo quelli con flag 'solo'
-            filtered = [s for s in stream_data_list if 'solo' in s]
-            print(
-                f"⚡ SOLO MODE: creazione di {len(filtered)} stream "
-                f"(su {len(stream_data_list)} totali)"
-            )
-        else:
-            # Modalità normale: escludi solo quelli muted
-            filtered = [s for s in stream_data_list if 'mute' not in s]
-            muted_count = len(stream_data_list) - len(filtered)
-            
-            if muted_count > 0:
-                print(f"🔇 {muted_count} stream muted")
-        
-        return filtered
     
     # =========================================================================
     # PREPROCESSING YAML

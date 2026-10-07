@@ -1335,6 +1335,38 @@ _MODULI_SENZA_TERZE_PARTI = (
     'pge.parameters.pitch_unit',
     'pge.parameters.parameter_schema',
     'pge.rendering.envelope_extractor',
+    # I moduli nati dalla #246 per essere importati da la': la grammatica
+    # di --magnify-at stava in `cli.py` (matplotlib) e l'oracolo ne
+    # estraeva i nodi dall'AST. Qui l'import e' il ramo primario di
+    # quell'op, e se smettesse di funzionare l'oracolo ripiegherebbe
+    # sull'ast-slice storico di `cli.py`, dove la grammatica non c'e'
+    # piu': un rosso che dice 'si e' spostata' senza dire dove.
+    'pge.shared.magnify_spec',
+    'pge.engine.solo_mute',
+    # Il vocabolario di loop_unit di la' lo leggono il bridge, dall'AST, e
+    # dalla PGE-ui #194 anche l'oracolo, per import, per confrontare le due
+    # letture: un import pesante qui farebbe morire quel confronto nel job
+    # node, che il venv del motore non lo costruisce.
+    'pge.parameters.loop_unit',
+    # L'op `build_envelope` (PGE-ui #180) costruisce un `Envelope` vero, e
+    # `constants` chiede al builder le interpolazioni ammesse: tutti e due
+    # dentro il job node, senza venv. Il loro ImportError fa morire l'op
+    # e non scrive un `None`.
+    'pge.envelopes.envelope',
+    'pge.envelopes.envelope_builder',
+    # `pge.api` l'oracolo lo importa dalla PGE-ui #150, per chiedere a
+    # `renderer_types()` l'elenco dei backend invece di tenerne una
+    # copia. Mancava, e la giunzione fra i due registri
+    # (tests/test_downstream_surface.py) e' cio' che l'ha fatto vedere:
+    # separati, ognuno poteva restare indietro sull'altro.
+    'pge.api',
+    # E `renderer_factory` va nominato a parte: `renderer_types()` lo
+    # importa alla chiamata, e questa guardia importa i moduli senza
+    # chiamare niente -- `import pge.api` non lo carica. Coperto "per
+    # transitivita'" non lo era: un `import numpy` li' dentro restava
+    # verde qui e faceva morire l'op nel job node. La giunzione lo deriva
+    # dall'AST della funzione (`test_gli_import_lazy_delle_funzioni_...`).
+    'pge.rendering.renderer_factory',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui

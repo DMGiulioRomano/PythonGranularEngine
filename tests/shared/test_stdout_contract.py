@@ -774,16 +774,6 @@ CLASSIFICAZIONE = {
         INTERFACCIA,
     ('cli.py', '--log-dir richiede una directory. Esempio: --log-dir /percorso/ai/log'):
         INTERFACCIA,
-    ('cli.py', "--magnify-at: chiave ignota '{}'. Valide: {}."):
-        INTERFACCIA,
-    ('cli.py', '--magnify-at: nessun target valido nello SPEC.'):
-        INTERFACCIA,
-    ('cli.py', "--magnify-at: ogni target richiede la chiave 't' (tempo in secondi)."):
-        INTERFACCIA,
-    ('cli.py', "--magnify-at: token non valido '{}'. Usa chiave=valore (es. t=14,zoom=10)."):
-        INTERFACCIA,
-    ('cli.py', "--magnify-at: valore non numerico per '{}': '{}'."):
-        INTERFACCIA,
     ('cli.py', '--page-duration deve essere positivo, ricevuto: {}'):
         INTERFACCIA,
     ('cli.py', "--page-duration non valido: '{}'. Deve essere un numero."):
@@ -842,9 +832,15 @@ CLASSIFICAZIONE = {
         INTERFACCIA,
     ('engine/generator.py', "⚠️  Warning: impossibile valutare '{}': {}"):
         INTERFACCIA,
-    ('engine/generator.py', '⚡ SOLO MODE: creazione di {} stream (su {} totali)'):
+    # --- engine/solo_mute.py ---
+    # Le due righe di solo/mute. Stavano sotto engine/generator.py: la
+    # #246 ha spostato la regola in un modulo senza dipendenze perche'
+    # l'oracolo di PGE-ui la importi invece di estrarne il FunctionDef
+    # dal ClassDef di Generator. Canale e forma invariati: dicono a chi
+    # rende perche' sta sentendo meno stream di quelli che ha scritto.
+    ('engine/solo_mute.py', '⚡ SOLO MODE: creazione di {} stream (su {} totali)'):
         INTERFACCIA,
-    ('engine/generator.py', '🔇 {} stream muted'):
+    ('engine/solo_mute.py', '🔇 {} stream muted'):
         INTERFACCIA,
     # --- rendering/csound_renderer.py ---
     ('rendering/csound_renderer.py', '[CACHE] {}: {}'):
@@ -884,6 +880,23 @@ CLASSIFICAZIONE = {
     # --- rendering/supercollider_renderer.py ---
     ('rendering/supercollider_renderer.py', '[CACHE] {}: {}'):
         PROTOCOLLO,
+    # --- shared/magnify_spec.py ---
+    # Le cinque righe della grammatica di --magnify-at. Stavano sotto
+    # cli.py: la #246 ha spostato la grammatica in un modulo senza
+    # dipendenze perche' l'oracolo di PGE-ui la importi invece di
+    # estrarne i nodi dall'AST di cli.py. Il canale e la forma non sono
+    # cambiati, e devono restare questi: il mirror JS dell'editor li
+    # anticipa mentre si scrive nel popover del render.
+    ('shared/magnify_spec.py', "--magnify-at: chiave ignota '{}'. Valide: {}."):
+        INTERFACCIA,
+    ('shared/magnify_spec.py', '--magnify-at: nessun target valido nello SPEC.'):
+        INTERFACCIA,
+    ('shared/magnify_spec.py', "--magnify-at: ogni target richiede la chiave 't' (tempo in secondi)."):
+        INTERFACCIA,
+    ('shared/magnify_spec.py', "--magnify-at: token non valido '{}'. Usa chiave=valore (es. t=14,zoom=10)."):
+        INTERFACCIA,
+    ('shared/magnify_spec.py', "--magnify-at: valore non numerico per '{}': '{}'."):
+        INTERFACCIA,
     # --- shared/logger.py ---
     ('shared/logger.py', '📝 Clip log file: {}'):
         INTERFACCIA,
