@@ -845,9 +845,12 @@ def test_e2e_l_avviso_sul_seed_va_su_stderr(tmp_path, cleanup_log):
         tmp_path, '63_importa_seed_diverso.yml',
         "  - file: streams/risacca.yml\n")
     cleanup_log.append(_log_path_for(master))
+    # numpy: il test guarda il canale dell'avviso, non il backend, e il
+    # default (csound) lo faceva fallire dove csound non c'e'.
     result = subprocess.run(
         [sys.executable, 'src/main.py', master,
-         str(tmp_path / 'out.wav'), '--format', 'wav'],
+         str(tmp_path / 'out.wav'), '--format', 'wav',
+         '--renderer', 'numpy'],
         cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=120)
 
     assert result.returncode == 0, result.stdout + result.stderr
