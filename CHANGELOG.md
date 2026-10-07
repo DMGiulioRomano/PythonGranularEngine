@@ -107,6 +107,44 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `Stream.grains`, che nella 9.1.0 avverte ancora di una rimozione «in 9.0.0»
   (#285).
 
+- **Il corpo di una PR dichiara l'issue che chiude** — template, check e
+  ruleset. GitHub chiude un'issue al merge soltanto se un closing keyword
+  **inglese** compare nel **corpo** della pull request: la #219 e' rimasta
+  aperta dopo il merge della PR #293, il cui corpo diceva «Chiude #219».
+  Niente era rotto e nessuna CI poteva accorgersene — una frase italiana e'
+  prosa, non un errore.
+
+  Tre pezzi, perche' **nessuna regola dei ruleset di GitHub legge il corpo di
+  una PR**: le loro metadata restrictions coprono messaggio di commit, email e
+  nomi di branch o tag. Il workflow `pr-closes-issue.yml` misura (job
+  `closes-issue`, su `opened`/`edited`/`reopened`/`synchronize`/`ready_for_review`),
+  `.github/rulesets/main-closes-issue.json` lo pretende verde su `main`, e
+  `.github/pull_request_template.md` mette la riga in cima al corpo, dove
+  GitHub la legge.
+
+  Il check e' **piu' stretto di GitHub, mai piu' largo**: un rifiuto si vede
+  e si corregge, un verde su una riga che GitHub non collega e' l'issue che
+  resta aperta e nessuno guarda. Percio' pretende lo spazio (`Closes #12`, non
+  `Closes: #12`), legge solo cio' che GitHub legge — commenti HTML, recinti e
+  codice in linea escono prima del confronto, altrimenti il check sarebbe
+  verde **per via dell'esempio nel template** su ogni PR mai compilata — e
+  rifiuta `Closes owner/repo#n` col motivo giusto: un closing keyword chiude
+  solo nel repo della PR, e un'issue di PGE-ui la chiude una PR su PGE-ui.
+  La via d'uscita e' dichiarata e vuole un motivo (`No issue: <perche'>`).
+
+  `tests/test_pr_closing_keyword.py` sorveglia i quattro anelli, e tre di
+  essi sbagliano in silenzio: il template versionato **deve** fallire il check
+  (uno che passa e' inutile), il nome del job e il contesto richiesto dal
+  ruleset devono coincidere (divergendo, il merge aspetta per sempre un
+  contesto che nessuno pubblica), `edited` e `synchronize` devono esserci (senza
+  il primo correggere il corpo non fa tornare verde il check, senza il secondo
+  la head nuova di un push resta senza check), e il corpo deve passare per
+  l'ambiente e non interpolato nel `run` — lo scrive chiunque apra una PR.
+
+  `.claude/rules/pr-closes-issue.md` e' la meta' che fa il lavoro vero: Claude
+  Code scrive la riga di default invece di farla prendere al check.
+
+
 ### Cambiato
 
 - **Tre pezzi di motore escono dai moduli pesanti perche' chi li legge li
@@ -222,6 +260,44 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lo stesso, ma arriva dal builder: `normalize_read_direction` da solo non
   rifiuta più un corpo malformato nella forma, lo Stream sì.
 
+- **Finestre e `grain_clip` passano al registry generico** (issue #265,
+  seguito di #185, forma decisa in #177). `WINDOW_STRATEGY_REGISTRY` e
+  `GRAIN_CLIP_STRATEGIES` sono `StrategyRegistry` coi domini
+  `window_selection` e `grain_clip`; le due `Factory.create` delegano, quindi
+  lookup e `StrategyNotFoundError` vivono in un punto solo, e l'errore che il
+  chiamante vede non cambia. Fuori dal giro resta solo `DistributionFactory`,
+  ferma davanti alla decisione sulla validazione.
+
+  **`from_spec()` resta dov'era e continua a passare da `create`.** Leggere la
+  spec di `grain.envelope` è dominio delle finestre, non del registry. Un test
+  nuovo lo misura sostituendo `'single'` nel registry: una `from_spec` che
+  istanziasse le classi direttamente era l'unico rosso dell'intera suite.
+  La docstring di `WindowController` prometteva che registrare una strategy
+  bastasse ad aggiungere una modalità; non è vero, perché `from_spec` sceglie
+  fra quattro nomi guardando la forma dello YAML, e ora lo dice:
+  `register_window_strategy` sostituisce, non aggiunge.
+
+  **`register_window_strategy(name, strategy_class)`**: il secondo parametro
+  si chiamava `cls`, l'ultima façade che portava quel nome; nessuna chiamata
+  viva lo passa per parola chiave. Registrare una window strategy ora emette
+  la riga diagnostica su `pge.diagnostics` (mai su stdout), che prima mancava.
+
+  **`WINDOW_STRATEGY_REGISTRY` tiene il proprio nome**, anche se è l'unico che
+  non segue `<DOMINIO>_STRATEGIES`: nessuno lo importa da fuori dal motore
+  (verificato in PGE-ls, PGE-ui, gl-ls, granulation-studies e mare-nostrum), e
+  rinominarlo non avrebbe comprato niente.
+
+  **`grain_clip` non espone un punto di registrazione, per decisione.** Una
+  `register_grain_clip_strategy` dichiarerebbe estensibile la chiave YAML
+  `clip_strategy`, il cui vocabolario è chiuso anche in gl-ls
+  (`CLIP_STRATEGIES`) e in PGE-ui (due bottoni). Il modulo lo dice, e
+  `tests/strategies/test_registry_convergenza.py` tiene vera la dichiarazione,
+  alias di modulo e `register` sulla factory compresi.
+  `MODULI_CON_REGISTRAZIONE_DINAMICA` non cambia.
+
+  Nessun impatto a valle: nessun repo importa questi nomi e i messaggi
+  d'errore sono gli stessi. Niente issue in PGE-ls, PGE-ui o gl-ls.
+
 ### Rimosso
 
 - **L'avviso di migrazione di `loop_unit`** (issue #242). Dalla v9.0.0 alla
@@ -250,6 +326,120 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   niente. gl-ls e granulation-studies lo usano per una diagnostica propria,
   che resta vera perché l'engine continua a leggere quei numeri in secondi:
   lì diventa stantio solo il rimando all'avviso del motore.
+
+### Corretto
+
+- **La somma dei pesi che trabocca non rende più durate a zero** (issue #219,
+  punto 2). Quattro delle cinque distribuzioni temporali del formato compatto
+  normalizzano dividendo ogni peso per la somma di tutti. La #212 aveva coperto
+  l'overflow delle **potenze**, non il caso in cui i singoli pesi stanno nei
+  float e a traboccare è la loro **somma**:
+
+  ```yaml
+  density: [[[0, 10], [100, 50]], 10.0, 1024, 'linear', {type: exponential, rate: 0.5}]
+  ```
+
+  Con `n_reps: 1024` il peso più grande è `2**1023`, ancora finito; la somma
+  supera il massimo float e diventa `inf`, quindi ogni `w / inf` è `0.0`. Il
+  risultato non era un errore: era un envelope le cui durate sommano a **zero**
+  invece che a `total_time` — tutti i cicli di durata nulla, senza una riga di
+  avviso. Un ciclo in meno rende correttamente, uno in più fa traboccare la
+  potenza e la #212 lo intercetta già: la finestra è larga un ciclo e sta
+  esattamente in mezzo ai due casi coperti. `power` ci arriva per un'altra
+  strada (`exponent: 102.5` con `n_reps: 1000`) e `logarithmic`/`geometric`
+  non ci arrivano affatto — i pesi logaritmici valgono circa 1 ciascuno, le
+  durate geometriche sono limitate da `total_time`.
+
+  Ora una somma che è un float non finito alza lo stesso
+  `ParameterBoundError` della #212, che nomina la coppia parametro/`n_reps`.
+  Un float, perché `power` con esponente intero somma interi esatti e
+  illimitati: lì `math.isfinite` alzerebbe `OverflowError` su una somma
+  perfettamente buona, e quella grafia non ha soglia a nessun `n_reps`.
+  La normalizzazione era quattro copie delle stesse sei righe in quattro delle
+  cinque distribuzioni (`linear` non ha pesi): è una sola,
+  `TimeDistributionStrategy._normalize`, e la guardia vive lì anche per le due
+  dove oggi non può scattare — è una proprietà della normalizzazione, non di
+  quale formula ha prodotto i pesi. L'aritmetica non si muove di un bit
+  (l'espressione resta `(w / somma) * total_time`), verificato confrontando la
+  rappresentazione IEEE754 prima e dopo, con la grafia intera e float di
+  ciascun parametro: cambiano soltanto le configurazioni le cui durate
+  sommavano a zero — la finestra di questa issue — e diventano errori.
+
+  Non si è usato `validate_distribution`, che ha già il check sulla somma delle
+  durate ma non sta sul percorso di espansione: spostarlo lì renderebbe rosso
+  ciò che oggi suona, perché il suo check sulla monotonia degli start times
+  rifiuta configurazioni ordinarie (l'`exponential` di default con
+  `n_reps >= 55` ha start times che si assorbono nei float e diventano uguali).
+
+- **Un parametro `.nan`/`.inf` di una distribuzione non rende più un envelope
+  di `nan`.** Scoperta lavorando alla #219 e chiusa dalla stessa guardia.
+  Nessuno dei quattro costruttori rifiutava quei valori — i confronti che fanno
+  da bound sono tutti falsi su `nan` (`nan <= 0` è falso, `nan <= 1` è falso) e
+  `inf` li passa per definizione — quindi da `exponent: .nan`, `rate: .nan`,
+  `ratio: .nan`, `ratio: .inf`, `base: .nan` e `exponent: .inf` uscivano pesi
+  `nan`, durate `nan` e breakpoint `nan`, in silenzio. Ora cadono come la somma
+  che trabocca. La guardia misura la somma e non il parametro, quindi
+  `base: .inf` — che dà `log(i + 1, inf) == 0.0`, pesi tutti a 1 e cicli
+  uniformi — resta valido.
+
+  Due frasi del messaggio della #212 hanno smesso di valere per tutti i
+  chiamanti e sono state corrette: «il risultato non sta in un float» è falso
+  di `nan`, che in un float ci sta, e diventa «non è un numero finito»; la
+  diagnosi della coppia parametro/`n_reps` regge sull'overflow e cade su `nan`,
+  che è fuori posto da solo a qualunque `n_reps`, quindi si accusa la coppia
+  dove il valore è finito e altrove si dice quello. Sul percorso della #212 il
+  valore è sempre finito, quindi lì il messaggio è intatto parola per parola.
+
+- **Il log della trasformazione compatta non nega più un dato che c'è**
+  (issue #219, punto 1). `_log_compact_transformation` decodificava gli slot
+  del formato compatto per conto proprio, con `compact[4] if len(compact) == 5`
+  per la distribuzione temporale. Lo slot `wrap` è stato aggiunto *dopo* quella
+  riga: un compatto a sei elementi ha `len == 6`, quindi la condizione era falsa
+  e su `[pattern, end, reps, 'linear', 'exponential', true]` la distribuzione
+  non veniva loggata affatto. Il layout si era mosso per aggiunta invece che
+  per permutazione, ed è esattamente il guasto che la issue descriveva in
+  ipotesi: un log non alza errori, quindi dice con sicurezza il valore
+  sbagliato a chi diagnostica un render.
+
+  Il layout del compatto esiste ora in due posti e non più:
+  `EnvelopeBuilder.is_compact_format`, che lo *definisce* per posizione, e
+  `EnvelopeBuilder._compact_slots`, che lo percorre. Espansione e log chiamano
+  quella. Il `wrap` entra nel log (non c'era mai stato) e l'interpolazione non
+  dichiarata si legge come tale — «non dichiarata nel compatto (vale il type
+  dell'envelope; linear se nessuno lo dichiara)» — invece che come un `linear`
+  indistinguibile da uno scritto nel file. Il log non nomina il tipo applicato
+  perché non lo vede: in `{type: cubic, points: [<compatto>]}` vale `cubic`, e
+  un `linear (default)` lì sarebbe stato la stessa certezza sbagliata in un
+  altro posto. Il default (`DEFAULT_INTERP`) è uno solo, letto sia
+  dall'`Envelope` che lo applica sia dal log che lo nomina. Una guardia AST
+  rifiuta un nuovo `compact[<intero>]` fuori dal decoder.
+
+  Restano letti dalle costanti anche gli ultimi quattro siti di
+  `envelopes/envelope.py` (lo slot del pattern nelle due funzioni di scaling) e
+  gli slot del BP group si nominano scomponendo, come già fanno
+  `is_bp_group`, `_expand_bp_group` e `read_direction._check_bp_group`. Nessun
+  cambio di comportamento in quelle quattro.
+
+- **`clip_strategy: passthrough` moriva di `TypeError`** (trovato nella
+  #265). `Stream.__init__` costruisce ogni clip strategy con
+  `margin=config.clip_margin`, qualunque nome scelga lo YAML, e
+  `PassthroughClipStrategy` non aveva un costruttore che lo accettasse: ogni
+  YAML con `clip_strategy: passthrough` si fermava prima di rendere un
+  campione, con un traceback e non con un `[ERRORE]` del motore
+  (`PassthroughClipStrategy() takes no arguments`). Il valore è documentato in
+  `docs/reference/yaml.md`, gl-ls lo accetta e l'Inspector di PGE-ui lo offre
+  con un bottone, quindi il crash era raggiungibile dall'editor.
+
+  Ora passthrough accetta il `margin` e lo ignora: senza filtro non c'è
+  niente da allargare. Nessun test percorreva la strada di `Stream` — la
+  strategy era sempre costruita a mano senza argomenti o iniettata già
+  costruita — e adesso due lo fanno: il contratto di costruzione su tutte le
+  chiavi del registry, e uno `Stream` vero costruito da YAML che deve tenere
+  i grani oltre la fine, anche oltre `fine + clip_margin`: così il margine
+  ignorato è misurato, non solo scritto.
+
+  A valle non c'è niente da cambiare: il bottone di PGE-ui comincia a
+  funzionare, e la diagnostica di gl-ls era già giusta.
 
 ---
 

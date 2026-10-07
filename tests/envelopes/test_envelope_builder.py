@@ -1215,3 +1215,316 @@ class TestIndiciFormatoCompatto:
         with pytest.raises(InvalidFieldValueError) as exc_info:
             read_direction._check_compact(compatto)
         assert exc_info.value.value == 'linear'
+
+
+# =============================================================================
+# 16. IL LOG DELLA TRASFORMAZIONE LEGGE GLI STESSI SLOT (issue #219)
+# =============================================================================
+
+class TestLogDellaTrasformazioneCompatta:
+    """Il log del compatto legge gli slot da dove li legge l'espansione.
+
+    E' il punto 1 di #219, il residuo piu' benigno (e' solo logging) e insieme
+    il piu' insidioso: un log non alza nessun errore, quindi dopo una
+    permutazione degli slot direbbe con sicurezza il valore sbagliato — e chi
+    diagnostica un render guardando il log parte da quella certezza.
+
+    Non era un'ipotesi. `_log_compact_transformation` decodificava per conto
+    proprio con `compact[4] if len(compact) == 5`, e lo slot `wrap` e' stato
+    aggiunto *dopo* quella riga: un compatto a 6 elementi ha `len == 6`, quindi
+    la condizione era falsa e la distribuzione temporale non veniva loggata
+    affatto. Il layout si era mosso per aggiunta invece che per permutazione, e
+    il log taceva su un dato che c'era.
+
+    La via d'uscita non e' far leggere le costanti anche a lui — sarebbero due
+    decoder allineati a mano, cioe' la condizione che ha prodotto il difetto —
+    ma un decoder solo, `_compact_slots`, che chiamano sia l'espansione sia il
+    log. `is_compact_format` resta fuori: e' lei a *definire* il layout per
+    posizione.
+    """
+
+    @staticmethod
+    def _righe(compact):
+        """Le righe che il log emette per `compact`, come stringhe."""
+        with patch('pge.shared.logger.get_clip_logger') as mock_get_logger:
+            logger = MagicMock()
+            mock_get_logger.return_value = logger
+            EnvelopeBuilder._log_compact_transformation(
+                compact, [[0.0, 0], [0.5, 1]],
+                time_offset=0.0, total_duration=1.0, distributor=None)
+            return [str(c) for c in logger.info.call_args_list]
+
+    def test_la_distribuzione_si_vede_anche_col_wrap_dichiarato(self):
+        """Il difetto misurato: sei slot, e la distribuzione spariva dal log."""
+        compact = [[[0, 0], [50, 1]], 1.0, 2, 'linear', 'exponential', True]
+        assert EnvelopeBuilder.is_compact_format(compact)
+
+        assert any('exponential' in r for r in self._righe(compact))
+
+    def test_il_wrap_dichiarato_si_vede(self):
+        """Il sesto slot non era loggato affatto, non solo mal letto.
+
+        Aggiunta oltre la lettera della issue, e per la stessa ragione che la
+        motiva: il blocco `[INPUT]` del log enumera il compatto scritto nel
+        file, e `wrap` cambia l'espanso — inietta un breakpoint sintetico a
+        fine di ogni ciclo. Un log che descrive l'input omettendo uno slot che
+        muove l'output e' incompleto nello stesso modo in cui era sbagliato
+        quello che leggeva lo slot vecchio. Ora che il decoder glielo porta in
+        mano, tacerlo sarebbe una scelta.
+        """
+        righe = self._righe([[[0, 0], [50, 1]], 1.0, 2, 'linear', None, True])
+
+        assert any('rap' in r and 'True' in r for r in righe)
+
+    def test_il_wrap_non_dichiarato_non_si_vede(self):
+        """La controprova: il log dice cio' che c'e' scritto.
+
+        Un `Wrap: False` su ogni compatto sarebbe una riga che non distingue
+        niente, come il `None` dell'interp e della distribuzione che il log ha
+        sempre taciuto quando assenti.
+        """
+        righe = self._righe([[[0, 0], [50, 1]], 1.0, 2])
+
+        assert not any('rap' in r for r in righe)
+
+    def test_l_interp_non_dichiarata_si_vede_come_non_dichiarata(self):
+        """Il log dice che lo slot manca, e chi decide al suo posto.
+
+        Il decoder riporta cio' che e' **dichiarato**, quindi `None` dove lo
+        slot manca — e i chiamanti distinguono le due cose. Il log di prima
+        risolveva il default per conto proprio (`compact[3] if len >= 4 else
+        'linear'`) e stampava `Interpolation: linear` in entrambi i casi:
+        un `linear` scritto nel file e uno che il file non scrive erano
+        indistinguibili, che su un referto di diagnostica e' la distinzione
+        utile.
+
+        Il fallback si nomina dalla costante che l'`Envelope` applica, non da
+        un letterale del test: e' quella a dire cosa vale quando nessuno
+        dichiara un tipo.
+        """
+        from pge.envelopes.envelope_builder import DEFAULT_INTERP
+
+        righe = self._righe([[[0, 0], [50, 1]], 1.0, 2])
+        assert any('non dichiarata' in r and DEFAULT_INTERP in r
+                   for r in righe)
+
+        # Dichiarata, si vede come dichiarata e senza la nota.
+        righe = self._righe([[[0, 0], [50, 1]], 1.0, 2, 'linear'])
+        assert any('Interpolation: linear' in r for r in righe)
+        assert not any('non dichiarata' in r for r in righe)
+
+    @staticmethod
+    def _envelope_e_righe(spec):
+        """Il `type` dell'Envelope costruito da `spec`, e le righe
+        `Interpolation` che il log del compatto ha emesso per costruirlo."""
+        from pge.envelopes.envelope import Envelope
+
+        with patch('pge.shared.logger.get_clip_logger') as mock_get_logger:
+            logger = MagicMock()
+            mock_get_logger.return_value = logger
+            env = Envelope(spec)
+            righe = [str(c) for c in logger.info.call_args_list
+                     if 'Interpolation' in str(c)]
+        return env.type, righe
+
+    PATTERN = [[0, 0], [50, 1], [100, 0]]
+
+    @pytest.mark.parametrize("spec, tipo_applicato", [
+        # Il `type` del dict decide per il compatto che non dichiara: e'
+        # l'esempio del docstring di `Envelope`.
+        ({'type': 'cubic', 'points': [PATTERN, 1.0, 2]}, 'cubic'),
+        ({'type': 'step', 'points': [PATTERN, 1.0, 2]}, 'step'),
+        # Due compatti in lista: vale il primo che dichiara
+        # (`extract_interp_type`), anche per il secondo che tace.
+        ([[PATTERN, 1.0, 2, 'step'], [PATTERN, 2.0, 2]], 'step'),
+    ], ids=['dict-cubic', 'dict-step', 'secondo-compatto'])
+    def test_l_interp_non_dichiarata_non_si_spaccia_per_quella_applicata(
+            self, spec, tipo_applicato):
+        """Il log del compatto non sa quale interpolazione vincera'.
+
+        Lo slot mancante non vuol dire `linear`: l'`Envelope` interpola col
+        `type` del dict, o con l'interp del primo compatto che la dichiara, e
+        solo se nessuno lo fa col default. Il log vede il compatto e basta, e
+        chiamare quel caso `linear (default)` scriveva su un referto di
+        diagnostica un tipo che il motore non stava applicando — la certezza
+        sbagliata da cui #219 voleva togliere il log, rimessa da un'altra
+        parte.
+        """
+        tipo, righe = self._envelope_e_righe(spec)
+
+        assert tipo == tipo_applicato  # la premessa: il motore non usa linear
+        assert any('non dichiarata' in r for r in righe)
+        assert not any('Interpolation: linear' in r for r in righe)
+
+    def test_il_log_segue_gli_slot_insieme_all_espansione(self, monkeypatch):
+        """L'invariante vero: il layout si muove e il log si muove con lui.
+
+        I due test qui sopra fissano il difetto misurato; questo fissa la
+        *classe* del difetto, che e' il disallineamento fra due lettori — e
+        nessuno lo osserva finche' il layout non si muove davvero.
+
+        Qui `interp` e `time_dist` si scambiano di posto nelle costanti. Un
+        log con una copia propria degli indici continuerebbe a leggere lo slot
+        vecchio e chiamerebbe `exponential` un tipo di interpolazione: non un
+        errore, una certezza sbagliata in cima al referto che si legge quando
+        un render non suona come doveva.
+
+        Si scambiano quei due e non altri perche' `is_compact_format` non si
+        tocca — e' lei a definire il layout per posizione — e la lista
+        permutata deve restare valida per lei: lo slot 3 vuole una stringa, il
+        4 una stringa o un dict, quindi due stringhe ci stanno in entrambi gli
+        ordini. (Con `wrap`, che al suo slot vuole un `bool`, la permutazione
+        non sarebbe nemmeno esprimibile.)
+        """
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_INTERP', 4)
+        monkeypatch.setattr(EnvelopeBuilder, 'COMPACT_TIME_DIST', 3)
+
+        # Scritta nel layout permutato: distribuzione allo slot 3, interp al 4.
+        permutato = [[[0, 0], [50, 1]], 1.0, 2, 'exponential', 'step']
+        assert EnvelopeBuilder.is_compact_format(permutato)
+
+        righe = self._righe(permutato)
+
+        assert any('Interpolation: step' in r for r in righe)
+        assert any('spec: exponential' in r for r in righe)
+        # E non ha chiamato "interpolazione" cio' che sta allo slot vecchio.
+        assert not any('Interpolation: exponential' in r for r in righe)
+
+
+# =============================================================================
+# 17. NESSUNO LEGGE IL COMPATTO PER POSIZIONE A MANO (issue #219)
+# =============================================================================
+
+class TestNessunIndiceScrittoAMano:
+    """La guardia strutturale sul punto 1 di #219.
+
+    I test del log qui sopra dicono che *quel* lettore e' allineato. Questo
+    dice che non ne nasce un quarto: il difetto di #213/#219 non e' un indice
+    sbagliato ma un **secondo** lettore del layout, e il secondo lettore e'
+    sempre nato per comodita', in una funzione dove serviva un valore e la
+    costante sembrava un giro lungo.
+
+    Il presidio e' un AST e non un `grep`: cerca i soli *subscript interi* su
+    un nome che tiene un compatto, quindi non si confonde con `item[0]` /
+    `item[1]` di un breakpoint — che sono la coppia `[t, v]`, definita da
+    `is_breakpoint` e non da questo layout.
+
+    Limite dichiarato: riconosce il compatto dal **nome della variabile**. Un
+    compatto legato a un nome generico (`item`, `raw_data`) sfugge, ed e'
+    il caso dei due siti di `envelope.py` che #219 ha convertito: li' il
+    presidio sono i test di scaling. Vale per cio' che si chiama come si
+    chiama, che e' la convenzione dei tre moduli che quel layout percorrono.
+    """
+
+    # I moduli che percorrono il layout del compatto, e la funzione che in
+    # ciascuno ha il diritto di leggerlo per posizione.
+    MODULI = {
+        'src/pge/envelopes/envelope_builder.py': {'_compact_slots'},
+        'src/pge/envelopes/envelope.py': set(),
+        'src/pge/parameters/read_direction.py': set(),
+    }
+
+    NOMI_COMPATTO = ('compact', 'compatto', 'scaled_compact')
+
+    @staticmethod
+    def _radice():
+        """La radice del repo, da cui partono i percorsi di `MODULI`.
+
+        Dal file di test e non da `pge.__file__`: con un'installazione non
+        editabile quello punta al site-packages, e `<lib>/src/pge/...` non
+        esiste. E' l'idioma degli altri test che leggono i sorgenti
+        (`test_range_unit_definitions.py`, `test_stream_config_errors.py`).
+        """
+        from pathlib import Path
+        # tests/envelopes/test_envelope_builder.py -> radice del repo
+        return Path(__file__).resolve().parents[2]
+
+    @classmethod
+    def _letture_in(cls, sorgente):
+        """(funzione, riga, nome, indice) di ogni `compact[<int>]` in `sorgente`.
+
+        Lo scanner della guardia, separato dalla lettura del file perche' la
+        controprova lo possa interrogare su sorgenti scritti apposta: se ne
+        provasse una copia, uno scanner rotto qui la lascerebbe verde.
+        """
+        import ast
+
+        albero = ast.parse(sorgente)
+
+        trovate = []
+
+        def percorri(nodo, funzione):
+            for figlio in ast.iter_child_nodes(nodo):
+                if isinstance(figlio, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    percorri(figlio, figlio.name)
+                    continue
+                if (isinstance(figlio, ast.Subscript)
+                        and isinstance(figlio.value, ast.Name)
+                        and figlio.value.id in cls.NOMI_COMPATTO
+                        and isinstance(figlio.slice, ast.Constant)
+                        and isinstance(figlio.slice.value, int)
+                        and not isinstance(figlio.slice.value, bool)):
+                    trovate.append((funzione, figlio.lineno,
+                                    figlio.value.id, figlio.slice.value))
+                percorri(figlio, funzione)
+
+        percorri(albero, '<modulo>')
+        return trovate
+
+    @classmethod
+    def _letture_posizionali(cls, percorso):
+        """Le letture di `_letture_in` nel modulo `percorso` del repo."""
+        sorgente = (cls._radice() / percorso).read_text(encoding='utf-8')
+        return cls._letture_in(sorgente)
+
+    @pytest.mark.parametrize("percorso", sorted(MODULI))
+    def test_solo_il_decoder_legge_gli_slot_per_posizione(self, percorso):
+        """Fuori dalle funzioni ammesse, gli slot si leggono dalle costanti."""
+        ammesse = self.MODULI[percorso]
+        abusivi = [l for l in self._letture_posizionali(percorso)
+                   if l[0] not in ammesse]
+
+        assert not abusivi, (
+            f"{percorso}: letture del compatto per posizione fuori da "
+            f"{sorted(ammesse) or 'nessuna funzione'} -> {abusivi}. "
+            f"Usa EnvelopeBuilder._compact_slots o le costanti COMPACT_*."
+        )
+
+    def test_la_guardia_vede_davvero_un_indice_a_mano(self):
+        """La controprova, senza la quale il test sopra e' verde per cecita'.
+
+        Un AST che non trovasse mai niente — un `ast.Index` di Python 3.8 che
+        non e' piu' un `ast.Constant`, un nome di campo cambiato — passerebbe
+        identico. Qui si misura che il riconoscimento funziona, e insieme che
+        non confonde `item[0]` di un breakpoint con uno slot del compatto.
+
+        Interroga lo **stesso** scanner della guardia (`_letture_in`), non una
+        sua copia: la prima versione rifaceva il predicato in proprio, e con lo
+        scanner della guardia sabotato a restituire sempre `[]` restavano verdi
+        tutti e quattro i test — controprova compresa. Misura anche la
+        funzione a cui la lettura e' attribuita, perche' la guardia filtra su
+        quella: un'attribuzione sbagliata mette una lettura abusiva sotto il
+        nome del decoder, e la guardia tace.
+        """
+        def letture(sorgente):
+            return [(funzione, indice) for funzione, _riga, _nome, indice
+                    in self._letture_in(sorgente)]
+
+        assert letture("def f(compact):\n    return compact[4]\n") == [('f', 4)]
+        assert letture("def f(item):\n    return [item[0], item[1]]\n") == []
+        assert letture(
+            "def f(compact):\n"
+            "    return compact[EnvelopeBuilder.COMPACT_TIME_DIST]\n") == []
+
+        # L'attribuzione: il metodo che la contiene, anche dentro una classe
+        # e dentro una funzione annidata; fuori da ogni funzione, il modulo.
+        assert letture(
+            "class B:\n"
+            "    def _compact_slots(self, compact):\n"
+            "        return compact[0]\n"
+            "    def _log(self, compatto):\n"
+            "        def dentro():\n"
+            "            return compatto[3]\n"
+            "        return dentro\n"
+            "x = compact[2]\n") == [('_compact_slots', 0), ('dentro', 3),
+                                     ('<modulo>', 2)]

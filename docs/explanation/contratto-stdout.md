@@ -27,7 +27,7 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
   - tests/engine/test_generator.py
-last_synced_commit: 95a83b7
+last_synced_commit: 9627402
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -304,7 +304,10 @@ Dalla #185 quella riga ha **un solo chiamante**, `StrategyRegistry.register`, e
 il dominio che nomina e' il `kind` del registry invece di un letterale scritto
 accanto alla chiamata: e' la ragione per cui i sorgenti qui sopra includono ora
 anche `registry.py` e i tre moduli di voce (pitch, onset, pointer), che prima
-registravano assegnando nel dizionario e non emettevano niente. La riga non
+registravano assegnando nel dizionario e non emettevano niente. La #265 ha
+fatto lo stesso con `register_window_strategy`, il punto di registrazione che
+sta fuori da `strategies/`: era fra i sorgenti gia' da prima, muto, e ora la
+riga la emette anche lui, col dominio `window_selection`. La riga non
 pretende un `__name__`: se il registrabile non ne ha, ne nomina il tipo — un
 rifiuto dentro una diagnostica sarebbe superficie pubblica scritta nel posto
 sbagliato.

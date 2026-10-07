@@ -24,6 +24,35 @@ _RIMEDI_OVERFLOW = {
 }
 
 
+def _is_finite(value) -> bool:
+    """Se `value` e' un numero finito, cioe' se la diagnosi della coppia di
+    #212 vale per lui (vedi `_overflow`).
+
+    Qui si sta costruendo un messaggio d'errore, quindi questa funzione non
+    deve alzare niente mentre spiega un altro guasto — ed e' per questo che non
+    e' `math.isfinite` nudo, in **due** modi diversi:
+
+    - un valore che non e' un numero affatto (un `ratio` stringa arriva fin qui
+      se i confronti del costruttore l'hanno lasciato passare) darebbe
+      `TypeError`;
+    - un **intero grande** darebbe `OverflowError: int too large to convert to
+      float`. Un intero Python e' sempre finito, per quanto grande, e solo il
+      float puo' non esserlo: `rate: 10 ** 400` e' un intero legittimo per il
+      costruttore, trabocca nei float dal secondo peso, e la frase da scrivere
+      e' quella della coppia — `10 ** 400` con `n_reps: 1` rende.
+
+    Il `bool` conta come numero finito, al contrario di quanto fanno i guard
+    sui bound altrove: la domanda qui non e' se sia un valore ammissibile ma
+    se abbia una grandezza, e `true` vale 1. Nessuno dei quattro bool arriva
+    comunque a questa funzione — `1 ** -i`, `(i + 1) ** True` e `ratio` a 1
+    non traboccano, e a `ratio = 1` la geometrica ripiega sull'uniforme."""
+    if isinstance(value, int):  # `bool` compreso: sottoclasse di `int`
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return False
+
+
 # =============================================================================
 # ABSTRACT BASE CLASS
 # =============================================================================
@@ -64,7 +93,7 @@ class TimeDistributionStrategy(ABC):
         pass
     
     def _overflow(self, param_name: str, value, n_reps: int, formula: str):
-        """L'errore di una potenza che trabocca (issue #212).
+        """L'errore di un calcolo che non da' un numero finito (issue #212).
 
         Non e' un bound sul valore e non poteva esserlo: `ratio: 10` e
         `n_reps: 400` sono legittimi da soli, e il costruttore che riceve il
@@ -80,8 +109,39 @@ class TimeDistributionStrategy(ABC):
         Il rimedio finale, invece, dipende dal parametro: `ratio` e `rate` sono
         fattori, e verso 1 la progressione diventa uniforme; `exponent` no — 1
         e' un esponente ordinario, ed e' la sua scala a essere fuori misura.
+
+        **Due frasi hanno smesso di essere vere per tutti i chiamanti** quando
+        #219 ha aggiunto la guardia sulla somma, che prende anche le somme
+        `nan` (un parametro `.nan`/`.inf`, che nessun bound rifiuta):
+
+        - «il risultato non sta in un float» e' vero di una somma che
+          trabocca e falso di `nan`, che in un float ci sta benissimo. Ora la
+          frase dice cio' che si e' misurato — che non e' un numero finito — e
+          vale per entrambi;
+        - la diagnosi della **coppia** regge sull'overflow e cade su `nan`:
+          `exponent: .nan` e' fuori posto da solo, a qualunque `n_reps`, e
+          invitare a ridurre i cicli manderebbe a cercare una soglia che non
+          esiste. Quindi si accusa la coppia dove il valore e' finito, e dove
+          non lo e' si dice quello. Sul percorso di #212 il valore e' sempre
+          finito — una potenza di un `nan` non trabocca, da' `nan` — quindi li'
+          il messaggio e' rimasto quello di allora, parola per parola.
         """
         from pge.shared.exceptions import ParameterBoundError
+
+        if _is_finite(value):
+            diagnosi = (
+                f"Ne' {param_name}={value} ne' n_reps={n_reps} e' fuori posto "
+                f"da solo: e' la coppia a esplodere. Riduci n_reps, oppure "
+                f"{_RIMEDI_OVERFLOW.get(param_name, f'riduci {param_name}')}."
+            )
+        else:
+            diagnosi = (
+                f"{param_name}={value} non e' un numero finito, quindi non lo "
+                f"e' nemmeno cio' che se ne calcola: qui n_reps={n_reps} non "
+                f"c'entra, e ridurlo non aiuta. Scrivi {param_name} come un "
+                f"numero (YAML legge `.nan` e `.inf` come valori, non come "
+                f"errori di battitura)."
+            )
 
         return ParameterBoundError(
             param_name=param_name,
@@ -91,12 +151,96 @@ class TimeDistributionStrategy(ABC):
             value=value,
             hint=(
                 f"la distribuzione '{self.name}' calcola {formula} con "
-                f"n_reps={n_reps}, e il risultato non sta in un float. "
-                f"Ne' {param_name}={value} ne' n_reps={n_reps} e' fuori posto "
-                f"da solo: e' la coppia a esplodere. Riduci n_reps, oppure "
-                f"{_RIMEDI_OVERFLOW.get(param_name, f'riduci {param_name}')}."
+                f"n_reps={n_reps}, e il risultato non e' un numero finito. "
+                f"{diagnosi}"
             ),
         )
+
+    def _normalize(self, weights, total_time, param_name, value, n_reps,
+                   formula):
+        """La normalizzazione dei pesi, in un posto solo (issue #219).
+
+        Quattro delle cinque distribuzioni finiscono cosi': ogni peso diviso
+        per la somma di tutti, per `total_time`, e gli start times cumulati
+        dalle durate. (`linear` no: calcola la durata del ciclo per divisione
+        diretta e non ha pesi.) Erano quattro copie delle stesse sei righe, ed
+        e' li' che #219 ha trovato la guardia mancante: in due di quelle copie
+        la somma puo' traboccare, e tenerla in una sola delle due avrebbe
+        lasciato il difetto vivo nell'altra.
+
+        `math.isfinite` sulla somma copre i due modi in cui la divisione che
+        segue non da' un numero, e nessuno dei due dava un errore:
+
+        - la **somma che esce dai float** mentre i singoli pesi ci stanno
+          ancora (issue #219). E' la finestra fra i due casi di #212: con
+          `rate: 0.5` e `n_reps: 1024` il peso piu' grande e' `2**1023`,
+          finito, ma il totale no — e ogni `w / inf` e' `0.0`, quindi le
+          durate sommavano a zero invece che a `total_time`. Un ciclo in meno
+          rende, uno in piu' fa traboccare la potenza e #212 lo prende gia';
+        - la somma **`nan`**, da un parametro `.nan`/`.inf` che nessun
+          costruttore rifiuta: i confronti che fanno da bound sono tutti falsi
+          su `nan`. Li' le durate erano `nan`, e i breakpoint con loro.
+
+        Nelle altre due la guardia non puo' scattare: i pesi logaritmici
+        valgono circa 1 ciascuno, quindi servirebbe un `n_reps` dell'ordine di
+        `1e307`, e le durate geometriche sono limitate da `total_time` per
+        costruzione. Sta li' comunque, perche' e' una proprieta' della
+        normalizzazione e non di quale formula ha prodotto i pesi: il giorno
+        che una di quelle due cambia forma, il difetto non torna in silenzio.
+
+        Cio' che la guardia **non** fa e' sorvegliare il parametro: misura la
+        somma. `base: .inf` da' `log(i + 1, inf) == 0.0`, quindi pesi tutti a
+        1 e cicli uniformi — somma finita, durate che sommano a `total_time`,
+        nessun errore. Giustamente: dice cio' che ha misurato, non cio' che
+        sospetta di chi ha scritto lo YAML.
+
+        `validate_distribution` ha il check sulla somma delle durate e se ne
+        accorgerebbe, ma non sta sul percorso di espansione — e spostarlo qui
+        non e' la via d'uscita: il suo check sulla monotonia degli start times
+        rifiuta configurazioni ordinarie (l'`exponential` di default con
+        `n_reps >= 55` ha start times che si assorbono nei float e diventano
+        uguali), quindi renderebbe rosso cio' che oggi suona.
+
+        **La guardia chiede alla somma se e' un float non finito, non se e'
+        finita**, e la differenza non e' pedanteria: `power` con esponente
+        **intero** eleva fra interi, dove Python e' esatto e illimitato, quindi
+        la somma e' un `int` che a `n_reps: 3000` ha cinquecento cifre.
+        `math.isfinite` su quell'intero non risponde «no»: alza
+        `OverflowError: int too large to convert to float`, e la guardia
+        romperebbe un render che non ha mai avuto una soglia (la divisione che
+        segue da' comunque un float fra 0 e 1 — `exponent: 150` rende a
+        qualunque `n_reps`, mentre `150.0` si ferma a 114). Un intero grande e'
+        una somma perfettamente buona; e' il float che puo' non esserlo.
+
+        Nessun'altra distribuzione ci arriva con un intero: `exponential` mette
+        in lista `rate ** 0` intero e tutti gli altri pesi float, `logarithmic`
+        somma logaritmi e `geometric` somma durate, che nascono da un
+        `first_duration` float.
+
+        L'espressione resta `(w / somma) * total_time` e non
+        `w * total_time / somma`: in virgola mobile le due non danno gli stessi
+        bit, e le durate dei cicli decidono gli onset dei grani.
+
+        Args:
+            weights: i pesi da normalizzare. Per `geometric` sono le durate
+                gia' calcolate, che e' la stessa operazione sugli stessi
+                numeri.
+            param_name, value: il parametro della distribuzione, per il
+                messaggio: e' una delle due cose da cambiare.
+            formula: la formula dei pesi come l'utente la ritroverebbe, che
+                entra nel messaggio dentro `sum(...)`.
+        """
+        somma = sum(weights)
+        if isinstance(somma, float) and not math.isfinite(somma):
+            raise self._overflow(param_name, value, n_reps, f'sum({formula})')
+
+        cycle_durations = [(w / somma) * total_time for w in weights]
+
+        cycle_start_times = [0.0]
+        for duration in cycle_durations[:-1]:
+            cycle_start_times.append(cycle_start_times[-1] + duration)
+
+        return cycle_start_times, cycle_durations
 
     def _validate_inputs(self, total_time: float, n_reps: int):
         """Validazione comune."""
@@ -189,17 +333,9 @@ class ExponentialDistribution(TimeDistributionStrategy):
             raise self._overflow(
                 'rate', self.rate, n_reps, 'rate ** -i'
             ) from exc
-        sum_weights = sum(weights)
-        
-        # Normalizza a total_time
-        cycle_durations = [(w / sum_weights) * total_time for w in weights]
-        
-        # Calcola start times cumulativi
-        cycle_start_times = [0.0]
-        for duration in cycle_durations[:-1]:
-            cycle_start_times.append(cycle_start_times[-1] + duration)
-        
-        return cycle_start_times, cycle_durations
+
+        return self._normalize(
+            weights, total_time, 'rate', self.rate, n_reps, 'rate ** -i')
     
     @property
     def name(self) -> str:
@@ -233,17 +369,10 @@ class LogarithmicDistribution(TimeDistributionStrategy):
         
         # Genera pesi logaritmici crescenti
         weights = [math.log(i + 1, self.base) + 1 for i in range(n_reps)]
-        sum_weights = sum(weights)
-        
-        # Normalizza a total_time
-        cycle_durations = [(w / sum_weights) * total_time for w in weights]
-        
-        # Calcola start times cumulativi
-        cycle_start_times = [0.0]
-        for duration in cycle_durations[:-1]:
-            cycle_start_times.append(cycle_start_times[-1] + duration)
-        
-        return cycle_start_times, cycle_durations
+
+        return self._normalize(
+            weights, total_time, 'base', self.base, n_reps,
+            'log(i + 1, base) + 1')
     
     @property
     def name(self) -> str:
@@ -304,17 +433,14 @@ class GeometricDistribution(TimeDistributionStrategy):
         # nella stessa misura, quindi `first_duration` e' piccolo e le durate
         # restano nell'ordine di `total_time`.
         cycle_durations = [first_duration * (self.ratio ** i) for i in range(n_reps)]
-        
-        # Normalizza per garantire sum == total_time (correzione errori floating point)
-        actual_sum = sum(cycle_durations)
-        cycle_durations = [(d / actual_sum) * total_time for d in cycle_durations]
-        
-        # Calcola start times
-        cycle_start_times = [0.0]
-        for duration in cycle_durations[:-1]:
-            cycle_start_times.append(cycle_start_times[-1] + duration)
-        
-        return cycle_start_times, cycle_durations
+
+        # Normalizza per garantire sum == total_time (correzione errori
+        # floating point). Qui i "pesi" sono le durate: la stessa divisione
+        # sugli stessi numeri, quindi passa dallo stesso posto delle altre
+        # tre (issue #219).
+        return self._normalize(
+            cycle_durations, total_time, 'ratio', self.ratio, n_reps,
+            'first_duration * ratio ** i')
     
     @property
     def name(self) -> str:
@@ -384,17 +510,10 @@ class PowerDistribution(TimeDistributionStrategy):
             raise self._overflow(
                 'exponent', self.exponent, n_reps, '(i + 1) ** exponent'
             ) from exc
-        sum_weights = sum(weights)
-        
-        # Normalizza
-        cycle_durations = [(w / sum_weights) * total_time for w in weights]
-        
-        # Start times
-        cycle_start_times = [0.0]
-        for duration in cycle_durations[:-1]:
-            cycle_start_times.append(cycle_start_times[-1] + duration)
-        
-        return cycle_start_times, cycle_durations
+
+        return self._normalize(
+            weights, total_time, 'exponent', self.exponent, n_reps,
+            '(i + 1) ** exponent')
     
     @property
     def name(self) -> str:

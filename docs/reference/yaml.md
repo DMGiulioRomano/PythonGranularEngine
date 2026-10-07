@@ -645,6 +645,7 @@ Note:
 - Con `passthrough` il renderer NumPy alloca un buffer esteso sull'extent reale dei grain (`max(g.onset + g.duration)`), quindi il file `.aif` può superare `stream.duration`.
 - Csound: stesso filtraggio a monte → SCO contiene solo i grain validi. Il grain non viene mai troncato (incluso intero o escluso).
 - `clip_margin` è un float fisso, non un Parameter con envelope (coerente con `time_scale`).
+- Con `passthrough`, `clip_margin` è accettato e ignorato: senza filtro non c'è niente da allargare. Fino alla #265 la combinazione (anche col solo default `0.0`) faceva fallire il render con `TypeError`.
 
 ---
 
