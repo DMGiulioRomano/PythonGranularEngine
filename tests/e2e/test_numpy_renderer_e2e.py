@@ -196,6 +196,18 @@ def _make_build_mix(tmp_path, jobs=None):
     return result, result.stdout + result.stderr
 
 
+def _build_in(tmp_path, yaml_text, build, **kw):
+    """Scrive `yaml_text` in `tmp_path` e lancia `build`: deve riuscire."""
+    _write_yaml(tmp_path, yaml_text)
+    result, output = build(tmp_path, **kw)
+    assert result.returncode == 0, f"make fallito:\n{output}"
+    return tmp_path, output
+
+
+# I test che leggono soltanto l'esito di una build la condividono: la build
+# gira una volta per classe (fixture di classe su `tmp_path_factory`), non una
+# per test. Chi modifica la cartella dopo la build tiene il proprio `tmp_path`.
+
 # =============================================================================
 # 1. STEMS MODE
 # =============================================================================
@@ -204,26 +216,23 @@ def _make_build_mix(tmp_path, jobs=None):
 class TestNumpyStems:
     """STEMS=true RENDERER=numpy: un .aif per stream."""
 
-    def test_per_stream_files_created(self, tmp_path):
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def due(tmp_path_factory):
+        tmp_path, _ = _build_in(tmp_path_factory.mktemp("stems"),
+                                _YAML_TWO_STREAMS, _make_build_stems)
+        return tmp_path
+
+    def test_per_stream_files_created(self, due):
         """Un file .aif separato viene creato per ogni stream."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_stems(tmp_path)
-
-        assert result.returncode == 0, f"make fallito:\n{output}"
-
-        sfdir = tmp_path / "output"
+        sfdir = due / "output"
         assert (sfdir / "e2e_numpy_test__s1.aif").exists(), "s1.aif non trovato"
         assert (sfdir / "e2e_numpy_test__s2.aif").exists(), "s2.aif non trovato"
 
-    def test_no_mix_file_created(self, tmp_path):
+    def test_no_mix_file_created(self, due):
         """In STEMS mode non viene creato il file mix (senza suffisso stream)."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_stems(tmp_path)
-
-        assert result.returncode == 0, f"make fallito:\n{output}"
-
         # Il file mix non deve esistere
-        assert not (tmp_path / "output" / "e2e_numpy_test.aif").exists(), \
+        assert not (due / "output" / "e2e_numpy_test.aif").exists(), \
             "file mix creato per errore in STEMS mode"
 
     def test_correct_number_of_files(self, tmp_path):
@@ -258,24 +267,21 @@ class TestNumpyStems:
 class TestNumpyMix:
     """STEMS=false RENDERER=numpy: un .aif unico con tutti gli stream."""
 
-    def test_single_mix_file_created(self, tmp_path):
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def mix(tmp_path_factory):
+        tmp_path, _ = _build_in(tmp_path_factory.mktemp("mix"),
+                                _YAML_TWO_STREAMS, _make_build_mix)
+        return tmp_path
+
+    def test_single_mix_file_created(self, mix):
         """Un solo file .aif viene creato con tutti gli stream mixati."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_mix(tmp_path)
-
-        assert result.returncode == 0, f"make fallito:\n{output}"
-
-        assert (tmp_path / "output" / "e2e_numpy_test.aif").exists(), \
+        assert (mix / "output" / "e2e_numpy_test.aif").exists(), \
             "file mix non trovato"
 
-    def test_no_per_stream_files_created(self, tmp_path):
+    def test_no_per_stream_files_created(self, mix):
         """In MIX mode non vengono creati file per-stream."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_mix(tmp_path)
-
-        assert result.returncode == 0, f"make fallito:\n{output}"
-
-        sfdir = tmp_path / "output"
+        sfdir = mix / "output"
         per_stream_files = list(sfdir.glob("e2e_numpy_test_*.aif"))
         assert len(per_stream_files) == 0, \
             f"file per-stream creati per errore in MIX mode: {per_stream_files}"
@@ -305,22 +311,21 @@ streams:
 class TestNumpyStemsCache:
     """STEMS=true RENDERER=numpy CACHE=true: build incrementale."""
 
-    def test_first_build_both_dirty(self, tmp_path):
-        """Prima build: entrambi gli stream DIRTY."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_stems(tmp_path, cache=True)
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def prima(tmp_path_factory):
+        return _build_in(tmp_path_factory.mktemp("prima_build"),
+                         _YAML_TWO_STREAMS, _make_build_stems, cache=True)
 
-        assert result.returncode == 0, f"make fallito:\n{output}"
+    def test_first_build_both_dirty(self, prima):
+        """Prima build: entrambi gli stream DIRTY."""
+        _, output = prima
         assert "[CACHE] s1: DIRTY" in output
         assert "[CACHE] s2: DIRTY" in output
 
-    def test_manifest_created_after_first_build(self, tmp_path):
+    def test_manifest_created_after_first_build(self, prima):
         """Prima build: manifest JSON creato con fingerprint per s1 e s2."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output = _make_build_stems(tmp_path, cache=True)
-
-        assert result.returncode == 0, f"make fallito:\n{output}"
-
+        tmp_path, _ = prima
         manifest = _load_manifest(tmp_path)
         assert "s1" in manifest
         assert "s2" in manifest
@@ -375,29 +380,30 @@ streams:
 class TestNumpyStemsParallel:
     """STEMS=true RENDERER=numpy JOBS=2: pipeline multi-processo via make."""
 
-    def test_parallel_build_creates_files(self, tmp_path):
-        """La build con JOBS=2 completa e produce gli stem attesi."""
-        _write_yaml(tmp_path, _YAML_DENSE_STREAM)
-        result, output = _make_build_stems(tmp_path, cache=False, jobs=2)
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def coppia(tmp_path_factory):
+        """JOBS=1 e JOBS=2, ognuno nella sua cartella."""
+        seq, _ = _build_in(tmp_path_factory.mktemp("seq"), _YAML_DENSE_STREAM,
+                           _make_build_stems, cache=False, jobs=1)
+        par, _ = _build_in(tmp_path_factory.mktemp("par"), _YAML_DENSE_STREAM,
+                           _make_build_stems, cache=False, jobs=2)
+        return seq, par
 
-        assert result.returncode == 0, f"make fallito:\n{output}"
-        assert (tmp_path / "output" / "e2e_numpy_test__s1.aif").exists(), \
+    def test_parallel_build_creates_files(self, coppia):
+        """La build con JOBS=2 completa e produce gli stem attesi."""
+        _, par = coppia
+        assert (par / "output" / "e2e_numpy_test__s1.aif").exists(), \
             "stem s1 non trovato con JOBS=2"
 
-    def test_parallel_output_matches_sequential(self, tmp_path):
+    def test_parallel_output_matches_sequential(self, coppia):
         """JOBS=2 vs JOBS=1: stessa durata, diff massima < 1 LSB a 24 bit."""
         import numpy as np
         import soundfile as sf
 
-        _write_yaml(tmp_path, _YAML_DENSE_STREAM)
-        r1, out1 = _make_build_stems(tmp_path, cache=False, jobs=1)
-        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
-        stem = tmp_path / "output" / "e2e_numpy_test__s1.aif"
-        seq, _ = sf.read(str(stem))
-
-        r2, out2 = _make_build_stems(tmp_path, cache=False, jobs=2)
-        assert r2.returncode == 0, f"make JOBS=2 fallito:\n{out2}"
-        par, _ = sf.read(str(stem))
+        stem = "output/e2e_numpy_test__s1.aif"
+        seq, _ = sf.read(str(coppia[0] / stem))
+        par, _ = sf.read(str(coppia[1] / stem))
 
         assert seq.shape == par.shape
         assert np.max(np.abs(seq - par)) < 2.0 ** -24
@@ -434,30 +440,37 @@ class TestNumpyMixParallelAuto:
     """STEMS=false RENDERER=numpy, JOBS vuoto (default CLI 'auto'):
     render_merged_streams multi-processo via make."""
 
-    def test_mix_auto_build_creates_file(self, tmp_path):
-        """La build MIX senza JOBS (auto) completa e produce il mix."""
-        _write_yaml(tmp_path, _YAML_DENSE_TWO_STREAMS)
-        result, output = _make_build_mix(tmp_path)
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def coppia(tmp_path_factory):
+        """JOBS=1 e JOBS auto, ognuno nella sua cartella.
 
-        assert result.returncode == 0, f"make fallito:\n{output}"
-        assert (tmp_path / "output" / "e2e_numpy_test.aif").exists(), \
+        Nella stessa cartella il secondo `make` non rendeva niente: in MIX il
+        mix e' un target file, aggiornato rispetto al YAML, e JOBS non e' un
+        suo prerequisito. Il confronto leggeva due volte lo stesso file.
+        """
+        seq, _ = _build_in(tmp_path_factory.mktemp("seq"),
+                           _YAML_DENSE_TWO_STREAMS, _make_build_mix, jobs=1)
+        par, out_par = _build_in(tmp_path_factory.mktemp("par"),
+                                 _YAML_DENSE_TWO_STREAMS, _make_build_mix)
+        assert "main.py" in out_par, f"JOBS auto non ha reso:\n{out_par}"
+        return seq, par
+
+    def test_mix_auto_build_creates_file(self, coppia):
+        """La build MIX senza JOBS (auto) completa e produce il mix."""
+        _, par = coppia
+        assert (par / "output" / "e2e_numpy_test.aif").exists(), \
             "file mix non trovato con JOBS=auto"
 
-    def test_mix_auto_matches_sequential(self, tmp_path):
+    def test_mix_auto_matches_sequential(self, coppia):
         """JOBS auto vs JOBS=1 su MIX multi-stream: stessa durata,
         diff massima < 1 LSB a 24 bit."""
         import numpy as np
         import soundfile as sf
 
-        _write_yaml(tmp_path, _YAML_DENSE_TWO_STREAMS)
-        r1, out1 = _make_build_mix(tmp_path, jobs=1)
-        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
-        mix = tmp_path / "output" / "e2e_numpy_test.aif"
-        seq, _ = sf.read(str(mix))
-
-        r2, out2 = _make_build_mix(tmp_path)
-        assert r2.returncode == 0, f"make JOBS=auto fallito:\n{out2}"
-        par, _ = sf.read(str(mix))
+        mix = "output/e2e_numpy_test.aif"
+        seq, _ = sf.read(str(coppia[0] / mix))
+        par, _ = sf.read(str(coppia[1] / mix))
 
         assert seq.shape == par.shape
         assert np.max(np.abs(seq - par)) < 2.0 ** -24
@@ -503,17 +516,26 @@ class TestNumpyStemsStreamParallel:
     """STEMS=true RENDERER=numpy JOBS=2 con piu' stream densi: il dispatch
     stream-level produce stem byte-identici a JOBS=1 (contratto rafforzato)."""
 
-    def test_stream_parallel_creates_all_stems(self, tmp_path):
-        """La build con JOBS=2 su 3 stream densi produce tutti gli stem."""
-        _write_yaml(tmp_path, _YAML_DENSE_THREE_STREAMS)
-        result, output = _make_build_stems(tmp_path, cache=False, jobs=2)
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def coppia(tmp_path_factory):
+        """JOBS=1 e JOBS=2, ognuno nella sua cartella."""
+        seq, _ = _build_in(tmp_path_factory.mktemp("seq"),
+                           _YAML_DENSE_THREE_STREAMS, _make_build_stems,
+                           cache=False, jobs=1)
+        par, _ = _build_in(tmp_path_factory.mktemp("par"),
+                           _YAML_DENSE_THREE_STREAMS, _make_build_stems,
+                           cache=False, jobs=2)
+        return seq, par
 
-        assert result.returncode == 0, f"make fallito:\n{output}"
+    def test_stream_parallel_creates_all_stems(self, coppia):
+        """La build con JOBS=2 su 3 stream densi produce tutti gli stem."""
+        _, par = coppia
         for sid in ('s1', 's2', 's3'):
-            assert (tmp_path / "output" / f"e2e_numpy_test__{sid}.aif").exists(), \
+            assert (par / "output" / f"e2e_numpy_test__{sid}.aif").exists(), \
                 f"stem {sid} non trovato con JOBS=2"
 
-    def test_stream_parallel_stems_byte_identical_to_sequential(self, tmp_path):
+    def test_stream_parallel_stems_byte_identical_to_sequential(self, coppia):
         """JOBS=2 vs JOBS=1: ogni stem BYTE-IDENTICO (==), non solo < 1 LSB.
 
         Nel path stream-level l'ordine delle somme float64 dentro il worker e'
@@ -521,16 +543,11 @@ class TestNumpyStemsStreamParallel:
         import numpy as np
         import soundfile as sf
 
-        _write_yaml(tmp_path, _YAML_DENSE_THREE_STREAMS)
-        r1, out1 = _make_build_stems(tmp_path, cache=False, jobs=1)
-        assert r1.returncode == 0, f"make JOBS=1 fallito:\n{out1}"
-        seq = {sid: sf.read(str(tmp_path / "output" / f"e2e_numpy_test__{sid}.aif"))[0]
+        seq_dir, par_dir = coppia
+        seq = {sid: sf.read(str(seq_dir / "output" / f"e2e_numpy_test__{sid}.aif"))[0]
                for sid in ('s1', 's2', 's3')}
-
-        r2, out2 = _make_build_stems(tmp_path, cache=False, jobs=2)
-        assert r2.returncode == 0, f"make JOBS=2 fallito:\n{out2}"
         for sid in ('s1', 's2', 's3'):
-            par, _ = sf.read(str(tmp_path / "output" / f"e2e_numpy_test__{sid}.aif"))
+            par, _ = sf.read(str(par_dir / "output" / f"e2e_numpy_test__{sid}.aif"))
             assert seq[sid].shape == par.shape
             assert np.array_equal(seq[sid], par), \
                 f"stem {sid}: JOBS=2 non byte-identico a JOBS=1"

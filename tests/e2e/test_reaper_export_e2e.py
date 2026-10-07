@@ -131,69 +131,76 @@ def _make_build(tmp_path, stems: bool, extra_flags=None):
 # =============================================================================
 # 1. STEMS MODE
 # =============================================================================
+#
+# I test leggono il .rpp e gli .aif senza toccarli: la build gira una volta
+# per classe (e per YAML), non una per test.
+
+def _build_condivisa(tmp_path, yaml_text, stems):
+    _write_yaml(tmp_path, yaml_text)
+    result, output, rpp_out = _make_build(tmp_path, stems=stems)
+    assert result.returncode == 0, f"make fallito:\n{output}"
+    return tmp_path, rpp_out
+
 
 @pytest.mark.e2e
 class TestReaperStemsExport:
     """STEMS=true REAPER=true: un TRACK per stream nel .rpp."""
 
-    def test_build_succeeds(self, tmp_path):
-        """La pipeline YAML → .aif + .rpp non fallisce."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, _ = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def due(tmp_path_factory):
+        return _build_condivisa(tmp_path_factory.mktemp("stems_due"),
+                                _YAML_TWO_STREAMS, stems=True)
 
-    def test_rpp_file_created(self, tmp_path):
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def tre(tmp_path_factory):
+        return _build_condivisa(tmp_path_factory.mktemp("stems_tre"),
+                                _YAML_THREE_STREAMS, stems=True)
+
+    def test_build_succeeds(self, due):
+        """La pipeline YAML → .aif + .rpp non fallisce (lo verifica `due`)."""
+
+    def test_rpp_file_created(self, due):
         """Il file .rpp viene creato al path indicato da REAPER_PATH."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = due
         assert rpp_out.exists(), f".rpp non trovato: {rpp_out}"
 
-    def test_rpp_contains_reaper_project_header(self, tmp_path):
+    def test_rpp_contains_reaper_project_header(self, due):
         """Il file .rpp inizia con il tag <REAPER_PROJECT."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = due
         content = rpp_out.read_text()
         assert "<REAPER_PROJECT" in content, \
             f"header Reaper mancante nel .rpp:\n{content[:200]}"
 
-    def test_rpp_has_one_track_per_stream(self, tmp_path):
+    def test_rpp_has_one_track_per_stream(self, tre):
         """In STEMS mode il .rpp contiene un TRACK per ogni stream."""
-        _write_yaml(tmp_path, _YAML_THREE_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = tre
         content = rpp_out.read_text()
         track_count = content.count("<TRACK")
         assert track_count == 3, \
             f"attesi 3 TRACK, trovati {track_count}:\n{content}"
 
-    def test_rpp_track_names_match_stream_ids(self, tmp_path):
+    def test_rpp_track_names_match_stream_ids(self, tre):
         """I nomi dei TRACK nel .rpp corrispondono agli stream_id del YAML."""
-        _write_yaml(tmp_path, _YAML_THREE_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = tre
         content = rpp_out.read_text()
         for stream_id in ("alpha", "beta", "gamma"):
             assert f'NAME "{stream_id}"' in content, \
                 f'TRACK NAME "{stream_id}" non trovato nel .rpp'
 
-    def test_rpp_references_aif_files(self, tmp_path):
+    def test_rpp_references_aif_files(self, due):
         """Il .rpp referenzia i file .aif generati."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = due
         content = rpp_out.read_text()
         assert 'FILE "' in content, \
             f"nessuna referenza FILE nel .rpp:\n{content}"
         assert ".aif" in content, \
             f"i file .aif non sono referenziati nel .rpp:\n{content}"
 
-    def test_rpp_stream_positions_match_onsets(self, tmp_path):
+    def test_rpp_stream_positions_match_onsets(self, due):
         """Le posizioni POSITION nel .rpp corrispondono agli onset degli stream."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = due
         content = rpp_out.read_text()
         # s1: onset=0.0, s2: onset=1.0
         assert "POSITION 0.0" in content, \
@@ -201,11 +208,9 @@ class TestReaperStemsExport:
         assert "POSITION 1.0" in content, \
             "POSITION 1.0 (onset s2) non trovato nel .rpp"
 
-    def test_aif_stems_also_created(self, tmp_path):
+    def test_aif_stems_also_created(self, due):
         """In STEMS mode i file .aif per-stream vengono creati insieme al .rpp."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, _ = _make_build(tmp_path, stems=True)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        tmp_path, _ = due
         sfdir = tmp_path / "output"
         assert (sfdir / "e2e_reaper_test__s1.aif").exists(), "s1.aif non trovato"
         assert (sfdir / "e2e_reaper_test__s2.aif").exists(), "s2.aif non trovato"
@@ -219,32 +224,28 @@ class TestReaperStemsExport:
 class TestReaperMixExport:
     """STEMS=false REAPER=true: un TRACK per il file mix."""
 
-    def test_build_succeeds(self, tmp_path):
-        """La pipeline MIX + REAPER non fallisce."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, _ = _make_build(tmp_path, stems=False)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+    @staticmethod
+    @pytest.fixture(scope="class")
+    def mix(tmp_path_factory):
+        return _build_condivisa(tmp_path_factory.mktemp("mix"),
+                                _YAML_TWO_STREAMS, stems=False)
 
-    def test_rpp_file_created(self, tmp_path):
+    def test_build_succeeds(self, mix):
+        """La pipeline MIX + REAPER non fallisce (lo verifica `mix`)."""
+
+    def test_rpp_file_created(self, mix):
         """Il file .rpp viene creato anche in MIX mode."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=False)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        _, rpp_out = mix
         assert rpp_out.exists(), f".rpp non trovato: {rpp_out}"
 
-    def test_rpp_contains_reaper_project_header(self, tmp_path):
+    def test_rpp_contains_reaper_project_header(self, mix):
         """Il file .rpp MIX contiene il tag <REAPER_PROJECT."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, rpp_out = _make_build(tmp_path, stems=False)
-        assert result.returncode == 0, f"make fallito:\n{output}"
-        content = rpp_out.read_text()
-        assert "<REAPER_PROJECT" in content
+        _, rpp_out = mix
+        assert "<REAPER_PROJECT" in rpp_out.read_text()
 
-    def test_mix_aif_also_created(self, tmp_path):
+    def test_mix_aif_also_created(self, mix):
         """In MIX mode il file .aif mix viene creato insieme al .rpp."""
-        _write_yaml(tmp_path, _YAML_TWO_STREAMS)
-        result, output, _ = _make_build(tmp_path, stems=False)
-        assert result.returncode == 0, f"make fallito:\n{output}"
+        tmp_path, _ = mix
         assert (tmp_path / "output" / "e2e_reaper_test.aif").exists(), \
             "file mix .aif non trovato"
 
