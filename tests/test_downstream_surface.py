@@ -61,8 +61,14 @@ lettura esattamente come rinominarla, e l'esito e' peggiore, perche' il valore
 mancante vale "motore ignoto" e un motore ignoto non pretende niente -- l'asse
 di staleness si spegne e ogni stem diventa verde proprio mentre il motore sta
 per riscriverlo diverso. Per questa meta' si verifica dunque che il nome sia
-dichiarato **in quel file**, e dove serve che sia **letterale**: la risoluzione
-dei nomi di chi legge va di un livello e dentro lo stesso file.
+dichiarato **in quel file**, e che letto **con la regola del bridge** -- che non
+e' una sola: `literal_eval` secco, nomi risolti di un livello, le sole chiavi
+di un dict -- dia la **forma** che il bridge pretende prima di prenderlo per
+buono. Un letterale non basta: `3.0` lo e', e dove serve un intero torna None.
+
+`pge.parameters.loop_unit` sta in tutte e due le meta': il bridge legge
+`LOOP_UNITS` dal sorgente, e dalla PGE-ui #194 l'oracolo importa il modulo e
+pretende che le due letture coincidano.
 
 ## Riferimenti
 
@@ -73,6 +79,7 @@ dei nomi di chi legge va di un livello e dentro lo stesso file.
 
 import ast
 import inspect
+import math
 import os
 
 import pytest
@@ -154,8 +161,7 @@ SIMBOLI_IMPORTATI = {
         'perche': 'interpolazioni ammesse in un BP group',
     },
     # I due moduli nati dalla #246 perche' l'oracolo li importasse invece di
-    # estrarne i nodi dall'AST ed eseguirli. Il terzo, `parameters/loop_unit.py`,
-    # non e' qui: di la' lo legge solo il bridge, dal sorgente (sotto).
+    # estrarne i nodi dall'AST ed eseguirli.
     'pge.shared.magnify_spec': {
         'senza_venv': True,
         'nomi': ('parse_magnify_spec', 'MAGNIFY_KEYS', 'MAGNIFY_NUMERIC_KEYS',
@@ -167,30 +173,135 @@ SIMBOLI_IMPORTATI = {
         'nomi': ('filter_solo_mute',),
         'perche': 'quali stream il motore costruisce (mute/solo)',
     },
+    # Il terzo sta in tutte e due le meta': il bridge legge `LOOP_UNITS` dal
+    # sorgente (sotto), e dalla PGE-ui #194 l'oracolo importa questo modulo e
+    # pretende che le due letture coincidano. Spostare la costante e' un rosso
+    # su tutte e due.
+    'pge.parameters.loop_unit': {
+        'senza_venv': True,
+        'nomi': ('LOOP_UNITS',),
+        'perche': "vocabolario di pointer.loop_unit, confrontato con la "
+                  "lettura AST del bridge",
+    },
 }
 
 
 # -----------------------------------------------------------------------------
 # META' 2 — i nomi che il bridge legge dal sorgente, al loro path
 # -----------------------------------------------------------------------------
-# Path relativi a src/pge/. `letterale` = la lettura a valle pretende un valore
-# riducibile a letterale, perche' il suo risolutore va di un livello e dentro
-# lo stesso file; dove e' False il nome e' cercato ma il valore no (lo
-# `_VALID_TYPES` dentro una classe, che il bridge legge come insieme di stringhe
-# ma che qui basta esista).
+# Path relativi a src/pge/. Ogni voce dice COME il bridge legge il valore e
+# CHE FORMA pretende prima di prenderlo per buono, perche' in
+# `engine_introspect.py` le letture sono tre e non una, e un registro con una
+# regola sola sarebbe piu' largo di almeno una di loro:
+#
+# - `_secco`: `literal_eval` del nodo e basta, nessun nome risolto
+#   (`_read_int_constant`, `_read_str_constant`, `engine_loop_units`);
+# - `_un_livello`: i nomi dentro una tupla risolti sull'ULTIMA assegnazione
+#   che li precede nello stesso file (`_module_constant`, che serve
+#   `RANGE_UNITS` e `RELATIVE_RANGE_BOUNDS`);
+# - `_chiavi`: un dict letterale, e di lui le sole chiavi stringa
+#   (`_assigned_dict`): i valori il bridge non li riduce.
+#
+# Fuori dalla forma la risposta a valle e' None o [], cioe' "motore ignoto", e
+# un letterale non basta: `VARIATION_SEMANTICS_VERSION = 3.0` lo e', e il
+# bridge lo legge None, perche' `_read_int_constant` vuole un intero (misurato:
+# con la sola regola del letterale questo registro restava verde).
+
+_ILLEGGIBILE = object()
+
+
+def _secco(nodo, prima):
+    """`literal_eval` e basta: un nome non si risolve."""
+    try:
+        return ast.literal_eval(nodo)
+    except Exception:
+        return _ILLEGGIBILE
+
+
+def _un_livello(nodo, prima):
+    """Una tupla i cui nomi si risolvono di un livello, dentro lo stesso file.
+
+    Non `literal_eval` secco: il motore scrive le tuple di vocabolario per
+    nome (`RANGE_UNITS = (RANGE_UNIT_ABSOLUTE, RANGE_UNIT_RELATIVE)`), e un
+    `literal_eval` su quel nodo accuserebbe una scrittura che `_module_constant`
+    legge benissimo. Conta l'ULTIMA assegnazione del nome fra gli statement
+    `prima`, non l'ultima che era un letterale, e deve valere uno scalare:
+    sono le regole di `_bound_literal`."""
+    if not isinstance(nodo, (ast.Tuple, ast.List)):
+        return _secco(nodo, prima)
+    valori = []
+    for elt in nodo.elts:
+        if isinstance(elt, ast.Name):
+            valore = _ILLEGGIBILE
+            for statement in prima:
+                assegnato = _assegnato(statement, elt.id)
+                if assegnato is not None:
+                    valore = _secco(assegnato, ())
+            if not isinstance(valore, (str, int, float)):
+                return _ILLEGGIBILE
+        else:
+            valore = _secco(elt, prima)
+            if valore is None or valore is _ILLEGGIBILE:
+                return _ILLEGGIBILE
+        valori.append(valore)
+    return tuple(valori)
+
+
+def _chiavi(nodo, prima):
+    """Le chiavi stringa di un dict letterale; i valori non contano."""
+    if not isinstance(nodo, ast.Dict):
+        return _ILLEGGIBILE
+    return [k.value for k in nodo.keys
+            if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+
+
+def _intero(valore):
+    """un intero, non un booleano"""
+    return isinstance(valore, int) and not isinstance(valore, bool)
+
+
+def _intero_positivo(valore):
+    """un intero positivo, non un booleano"""
+    return _intero(valore) and valore > 0
+
+
+def _stringa(valore):
+    """una stringa non vuota"""
+    return isinstance(valore, str) and bool(valore)
+
+
+def _stringhe(valore):
+    """una tupla o lista non vuota di stringhe"""
+    return (isinstance(valore, (tuple, list)) and bool(valore)
+            and all(isinstance(v, str) for v in valore))
+
+
+def _dominio(valore):
+    """due numeri finiti, non booleani, col minimo prima del massimo"""
+    return (isinstance(valore, tuple) and len(valore) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and math.isfinite(v) for v in valore)
+            and valore[0] <= valore[1])
+
 
 LETTI_DAL_SORGENTE = (
-    ('rendering/envelope_extractor.py', 'ENVELOPE_COLORS', True),
-    ('parameters/parameter_definitions.py', 'GRANULAR_PARAMETERS', False),
-    ('parameters/parameter_definitions.py', 'RANGE_UNITS', True),
-    ('parameters/parameter_definitions.py', 'RELATIVE_RANGE_BOUNDS', True),
-    ('parameters/pitch_unit.py', 'PITCH_UNIT_PRESETS', False),
-    ('shared/constants.py', 'DEFAULT_OUTPUT_SR', True),
-    ('rendering/stream_cache_manager.py', 'VARIATION_SEMANTICS_VERSION', True),
-    ('parameters/loop_unit.py', 'LOOP_UNITS', True),
-    ('rendering/supercollider_renderer.py', 'DEFAULT_SYNTHDEF_SOURCE', True),
-    ('rendering/supercollider_renderer.py', 'DEFAULT_SYNTHDEF_DIR', True),
-    ('rendering/sc_score_writer.py', 'SYNTH_NAME', True),
+    ('rendering/envelope_extractor.py', 'ENVELOPE_COLORS', _chiavi, _stringhe),
+    ('parameters/parameter_definitions.py', 'GRANULAR_PARAMETERS', _chiavi,
+     _stringhe),
+    ('parameters/parameter_definitions.py', 'RANGE_UNITS', _un_livello,
+     _stringhe),
+    ('parameters/parameter_definitions.py', 'RELATIVE_RANGE_BOUNDS',
+     _un_livello, _dominio),
+    ('parameters/pitch_unit.py', 'PITCH_UNIT_PRESETS', _chiavi, _stringhe),
+    ('shared/constants.py', 'DEFAULT_OUTPUT_SR', _secco, _intero_positivo),
+    ('rendering/stream_cache_manager.py', 'VARIATION_SEMANTICS_VERSION', _secco,
+     _intero),
+    ('parameters/loop_unit.py', 'LOOP_UNITS', _secco, _stringhe),
+    ('rendering/supercollider_renderer.py', 'DEFAULT_SYNTHDEF_SOURCE', _secco,
+     _stringa),
+    ('rendering/supercollider_renderer.py', 'DEFAULT_SYNTHDEF_DIR', _secco,
+     _stringa),
+    ('rendering/sc_score_writer.py', 'SYNTH_NAME', _secco, _stringa),
 )
 
 # Dentro una classe, non a livello di modulo: il bridge scende nel ClassDef e
@@ -229,47 +340,6 @@ LETTERALI_DI_CAPACITA = (
 def _albero(relpath):
     with open(os.path.join(SRC, relpath), encoding='utf-8') as fh:
         return ast.parse(fh.read(), filename=relpath)
-
-
-def _riducibile(valore, prima):
-    """Il valore si riduce a un dato, con la regola di chi legge da fuori.
-
-    Non `literal_eval` secco: il risolutore del bridge va di **un livello**,
-    e dentro lo stesso file. Il motore scrive le tuple di vocabolario per nome
-    (`RANGE_UNITS = (RANGE_UNIT_ABSOLUTE, RANGE_UNIT_RELATIVE)`), e un
-    `literal_eval` su quel nodo risponde "non lo so" sul checkout vero -- cioe'
-    accuserebbe una scrittura che a valle funziona benissimo. Un nome che punta
-    a un'espressione invece non si riduce davvero, e li' il rosso e' giusto.
-
-    `prima` sono gli statement che precedono l'assegnazione: conta l'ULTIMA
-    assegnazione del nome, non l'ultima che era un letterale.
-    """
-    try:
-        ast.literal_eval(valore)
-        return True
-    except (ValueError, TypeError):
-        pass
-    if not isinstance(valore, (ast.Tuple, ast.List)):
-        return False
-    for elt in valore.elts:
-        if not isinstance(elt, ast.Name):
-            try:
-                ast.literal_eval(elt)
-            except (ValueError, TypeError):
-                return False
-            continue
-        legato = None
-        for nodo in prima:
-            trovato = _assegnato(nodo, elt.id)
-            if trovato is not None:
-                legato = trovato
-        if legato is None:
-            return False
-        try:
-            ast.literal_eval(legato)
-        except (ValueError, TypeError):
-            return False
-    return True
 
 
 def _assegnato(nodo, nome):
@@ -432,12 +502,43 @@ class TestFormeChiamate:
                 f"privato -- il motore non si impegna a tenerlo -- ma una "
                 f"rinomina va accompagnata, non scoperta a valle (#246)")
 
+    def test_create_gate_accetta_i_kwargs_dell_oracolo(self):
+        """L'op `classify_deviation_probability` chiama `create_gate` per nome
+        di argomento, dentro un `except Exception` che scrive l'errore in
+        `gate_error`: un kwarg rinominato a valle non si legge come un oracolo
+        rotto, si legge come il motore che rifiuta il corpo."""
+        from pge.parameters.gate_factory import GateFactory
+        parametri = inspect.signature(GateFactory.create_gate).parameters
+        for kwarg in ('deviation_probability', 'param_key', 'has_explicit_range',
+                      'duration', 'time_mode'):
+            assert kwarg in parametri, (
+                f"GateFactory.create_gate non accetta piu' {kwarg}=: l'oracolo "
+                f"di PGE-ui lo passa, e il TypeError gli arriverebbe come "
+                f"gate_error, cioe' come un verdetto del motore")
+
     def test_la_factory_delle_time_distribution_risponde(self):
         from pge.envelopes.time_distribution import TimeDistributionFactory
         for nome in ('create', 'list_available'):
             assert hasattr(TimeDistributionFactory, nome)
         assert TimeDistributionFactory.list_available(), (
             'list_available() vuota: le soglie di overflow non si misurano piu')
+
+    def test_una_time_distribution_si_calcola_cosi(self):
+        """Di cio' che `create(spec)` restituisce l'oracolo legge `.name` e
+        chiama `.calculate_distribution(total_time, n_reps)`, posizionali e in
+        quest'ordine. La chiamata sta in un `except Exception` che riporta
+        l'errore come `calc_error`, cioe' come un overflow del motore: un
+        metodo rinominato a valle si leggerebbe come una soglia, non come un
+        oracolo rotto."""
+        from pge.envelopes.time_distribution import TimeDistributionFactory
+        for nome in TimeDistributionFactory.list_available():
+            strategia = TimeDistributionFactory.create(nome)
+            assert isinstance(strategia.name, str) and strategia.name, nome
+            inizi, durate = strategia.calculate_distribution(2.0, 4)
+            assert len(inizi) == len(durate) == 4, nome
+            assert sum(durate) == pytest.approx(2.0), (
+                f"{nome}: il secondo argomento non e' piu' n_reps, o il primo "
+                f"non e' piu' total_time")
 
     def test_gli_spec_portano_gli_attributi_che_a_valle_si_leggono(self):
         """`deviation_probability_key`, `is_smart`, `name`, `default`.
@@ -504,8 +605,11 @@ class TestFormeChiamate:
 
 class TestLettiDalSorgente:
 
-    @pytest.mark.parametrize('relpath,nome,letterale', LETTI_DAL_SORGENTE)
-    def test_il_nome_e_dichiarato_in_quel_file(self, relpath, nome, letterale):
+    @pytest.mark.parametrize(
+        'relpath,nome,lettura,forma', LETTI_DAL_SORGENTE,
+        ids=[f'{relpath}:{nome}' for relpath, nome, _, _ in LETTI_DAL_SORGENTE])
+    def test_il_nome_e_dichiarato_in_quel_file(self, relpath, nome, lettura,
+                                               forma):
         albero = _albero(relpath)
         valore, prima = None, []
         for nodo in albero.body:
@@ -519,12 +623,41 @@ class TestLettiDalSorgente:
             f"file con ast, quindi spostare la costante altrove la rende "
             f"invisibile come rinominarla, e il valore mancante vale 'motore "
             f"ignoto' -- un controllo che si spegne senza dirlo (#246)")
-        if letterale and not _riducibile(valore, prima):
-            pytest.fail(
-                f"{relpath}:{nome} non e' piu' riducibile a un dato: il "
-                f"risolutore a valle va di un livello e dentro lo stesso "
-                f"file, quindi leggerebbe 'non lo so' -- e un 'non lo so' "
-                f"preso per un valore e' il modo silenzioso di sbagliare")
+        letto = lettura(valore, prima)
+        assert letto is not _ILLEGGIBILE and forma(letto), (
+            f"{relpath}:{nome} letto come lo legge il bridge "
+            f"({lettura.__name__}) vale "
+            f"{'niente' if letto is _ILLEGGIBILE else repr(letto)}, e la' "
+            f"serve {forma.__doc__}: fuori da quella forma la risposta e' "
+            f"'non lo so' -- e un 'non lo so' preso per un valore e' il modo "
+            f"silenzioso di sbagliare (#246)")
+
+    @pytest.mark.parametrize('sorgente,lettura,forma,legge', [
+        # Il caso misurato: un letterale che il bridge legge None.
+        ('X = 3.0', _secco, _intero, False),
+        ('X = True', _secco, _intero, False),
+        ('X = 3', _secco, _intero, True),
+        # `engine_loop_units` non risolve i nomi, `_module_constant` si'.
+        ("A = 'a'\nX = (A, 'b')", _secco, _stringhe, False),
+        ("A = 'a'\nX = (A, 'b')", _un_livello, _stringhe, True),
+        # Conta l'ultima assegnazione, non l'ultimo letterale.
+        ("A = 'a'\nA = f()\nX = (A, 'b')", _un_livello, _stringhe, False),
+        ('X = (1.0, 0.0)', _un_livello, _dominio, False),
+        ('X = (0.0, 1e999)', _un_livello, _dominio, False),
+        # Di un dict il bridge legge le chiavi, non i valori.
+        ("X = {'a': COLORE}", _chiavi, _stringhe, True),
+        ('X = dict(a=1)', _chiavi, _stringhe, False),
+    ])
+    def test_le_letture_del_registro_sono_quelle_del_bridge(
+            self, sorgente, lettura, forma, legge):
+        """Le regole di questo registro, misurate su sorgenti finti.
+
+        Una lettura piu' larga di quella del bridge e' il guasto che il
+        registro esiste per prevenire, visto dal suo lato: verde qui su un
+        valore che di la' torna 'non lo so'."""
+        corpo = ast.parse(sorgente).body
+        letto = lettura(corpo[-1].value, corpo[:-1])
+        assert (letto is not _ILLEGGIBILE and forma(letto)) is legge
 
     @pytest.mark.parametrize('relpath,classe,nome,perche', LETTI_DENTRO_UNA_CLASSE)
     def test_il_nome_e_dichiarato_in_quella_classe(self, relpath, classe, nome,
@@ -567,7 +700,7 @@ class TestIlRegistroNonEUnaCopia:
         for modulo, voce in SIMBOLI_IMPORTATI.items():
             voci.extend(voce['nomi'])
             voci.append(voce['perche'])
-        voci.extend(n for _, n, _ in LETTI_DAL_SORGENTE)
+        voci.extend(n for _, n, _, _ in LETTI_DAL_SORGENTE)
         voci.extend(n for _, _, n, _ in LETTI_DENTRO_UNA_CLASSE)
         voci.extend(lett for _, lett, _ in LETTERALI_DI_CAPACITA)
         for voce in voci:

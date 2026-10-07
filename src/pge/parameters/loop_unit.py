@@ -17,12 +17,15 @@ importa mai il motore, per costruzione) le usa per dire mentre si scrive che
 una grafia il motore la rifiuta, invece di lasciarlo scoprire da un render che
 muore, e i patti di parita' di PGE-ls rileggono tutte e due le tuple per il
 mirror statico del language server. gl-ls ne tiene un mirror statico a sua
-volta. Il path e la forma letterale sono quindi parte del contratto, e
+volta. L'oracolo di parita' di PGE-ui invece importa il modulo, e pretende
+che la sua risposta coincida con quella del bridge. Il path e la forma
+letterale sono quindi parte del contratto, e
 `tests/parameters/test_loop_unit.py` li tiene fermi.
 
 Per lo stesso motivo le due tuple vanno scritte come **letterali**: chi legge
-da fuori lo fa con `ast`, risolve al piu' i nomi di un livello e dentro lo
-stesso file, e un valore calcolato gli torna come "non lo so".
+da fuori lo fa con `ast`, e il bridge di PGE-ui non risolve nemmeno un nome
+(`literal_eval` secco), quindi una tupla scritta per nome, come
+`RANGE_UNITS`, o un valore calcolato gli tornano come "non lo so".
 """
 from __future__ import annotations
 

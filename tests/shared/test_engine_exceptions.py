@@ -1343,9 +1343,10 @@ _MODULI_SENZA_TERZE_PARTI = (
     # piu': un rosso che dice 'si e' spostata' senza dire dove.
     'pge.shared.magnify_spec',
     'pge.engine.solo_mute',
-    # Il vocabolario di loop_unit di la' lo legge il bridge, dall'AST, e
-    # non l'oracolo; il modulo sta qui perche' esiste per non dipendere da
-    # niente, e la promessa vale solo se qualcuno la misura.
+    # Il vocabolario di loop_unit di la' lo leggono il bridge, dall'AST, e
+    # dalla PGE-ui #194 anche l'oracolo, per import, per confrontare le due
+    # letture: un import pesante qui farebbe morire quel confronto nel job
+    # node, che il venv del motore non lo costruisce.
     'pge.parameters.loop_unit',
     # L'op `build_envelope` (PGE-ui #180) costruisce un `Envelope` vero, e
     # `constants` chiede al builder le interpolazioni ammesse: tutti e due

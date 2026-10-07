@@ -16,11 +16,20 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lo si cerca: per import quelli che l'oracolo di parita' importa, per AST **al
   path** quelli che il bridge legge dal sorgente — li' il contratto e' la
   coppia path piu' nome, perche' spostare una costante in un altro modulo la
-  rende invisibile come rinominarla. Dove il lettore a valle pretende un dato
-  riducibile, il registro applica la sua stessa regola (nomi risolti di un
-  livello, dentro lo stesso file): un valore che diventa un'espressione gli
-  torna come «non lo so», e un «non lo so» preso per un valore e' il modo
-  silenzioso di sbagliare.
+  rende invisibile come rinominarla. Per ogni nome letto dal sorgente il
+  registro applica la regola di **quel** lettore, perche' il bridge ne ha tre
+  e non una — `literal_eval` secco, nomi risolti di un livello dentro lo
+  stesso file, le sole chiavi di un dict — e pretende la forma che il bridge
+  controlla prima di prendere il valore per buono: un intero non booleano, una
+  tupla di stringhe, due numeri finiti in ordine. Fuori da quella forma la
+  risposta a valle e' «non lo so», e un «non lo so» preso per un valore e' il
+  modo silenzioso di sbagliare: `VARIATION_SEMANTICS_VERSION = 3.0` e' un
+  letterale, e il bridge lo legge None, cioe' spegne l'asse di staleness
+  (misurato). Delle chiamate dell'oracolo il registro tiene anche la forma —
+  i kwargs di `StreamCacheManager` e di `GateFactory.create_gate`,
+  `calculate_distribution(total_time, n_reps)` — dove l'oracolo riporta
+  l'eccezione come verdetto del motore: un argomento rinominato si leggerebbe
+  a valle come un corpo rifiutato o un overflow, non come un oracolo rotto.
 
   Non e' una promessa di API pubblica: un nome con l'underscore resta privato,
   e il motore non si impegna a mantenerlo — si impegna a non rinominarlo per
@@ -178,9 +187,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   moduli. `LOOP_UNIT_SCOPE` perde l'underscore perche' altri repository lo
   leggono: i patti di parita' di PGE-ls dal sorgente, gl-ls e PGE-ui come
   mirror statico, e `tests/test_bounds.py` di granulation-studies come
-  attributo di `pointer_controller` — quel test va aggiornato al prossimo bump
-  del submodule `engine/`, dove `_LOOP_UNIT_SCOPE` sarebbe un
-  `AttributeError`. Era privato di nome e non di fatto. Lo shim `src/main.py`
+  attributo di `pointer_controller` — li' granulation-studies#98 legge gia' la
+  sede nuova e ripiega su `pointer_controller` solo finche' il submodule
+  `engine/` resta pinnato a un motore che non ce l'ha. Era privato di nome e
+  non di fatto. `LOOP_UNITS` lo leggono il bridge di PGE-ui dal sorgente e,
+  dalla PGE-ui #194, il suo oracolo per import, che pretende che le due
+  letture coincidano. Lo shim `src/main.py`
   ri-esporta `parse_magnify_spec` e non piu' il nome privato.
 
 - **`_MODULI_SENZA_TERZE_PARTI` acquista sette moduli**: i tre nuovi, piu'

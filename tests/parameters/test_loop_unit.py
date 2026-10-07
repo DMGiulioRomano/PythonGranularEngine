@@ -15,7 +15,8 @@ Chi le legge da fuori lo fa dal **sorgente**, con `ast`, al path:
 - **PGE-ui** legge `LOOP_UNITS` per dire «questa grafia il motore la rifiuta»
   mentre si scrive, invece di scoprirlo da un render che muore. Il suo bridge
   non importa mai il motore -- e' un processo Flask nel venv dell'editor -- e
-  la sua parita' confronta proprio quella lettura, non un import.
+  la sua parita' confronta quella lettura con l'import di questo modulo (dalla
+  PGE-ui #194): le due devono coincidere.
 - **PGE-ls** rilegge tutte e due le tuple nei patti di parita' del suo mirror
   statico (`granular_ls/loop_unit.py`); **gl-ls** ne tiene un altro
   (`diagnostics._UNIT_SCALED`), che e' prosa: non si accorge di essere stato
