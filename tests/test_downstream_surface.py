@@ -296,6 +296,11 @@ LETTI_DAL_SORGENTE = (
     ('shared/constants.py', 'DEFAULT_OUTPUT_SR', _secco, _intero_positivo),
     ('rendering/stream_cache_manager.py', 'VARIATION_SEMANTICS_VERSION', _secco,
      _intero),
+    # Gli assi del fingerprint (#297): la costante esiste per questa lettura.
+    # PGE-ui#207 ne ricava se su questo motore un cambio di seed rifa' gli
+    # stem; che l'elenco dica il vero lo misura test_stream_cache_manager.py.
+    ('rendering/stream_cache_manager.py', 'FINGERPRINT_AXES', _secco,
+     _stringhe),
     ('parameters/loop_unit.py', 'LOOP_UNITS', _secco, _stringhe),
     ('rendering/supercollider_renderer.py', 'DEFAULT_SYNTHDEF_SOURCE', _secco,
      _stringa),

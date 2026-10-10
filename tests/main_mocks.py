@@ -114,6 +114,10 @@ def build_mock_modules():
     gen_inst.streams = []
     gen_inst.stream_data_map = {}
     gen_inst.score_writer = MagicMock()
+    # Il seed che il documento dichiara (#297), letto da build_renderer per il
+    # fingerprint della cache: un Generator vero ha None o un valore, mai un
+    # MagicMock, che finirebbe nell'hash come la sua repr.
+    gen_inst.declared_seed = None
 
     # --- Mock rendering subsystem ---
     renderer_instance = MagicMock(name='renderer_instance')

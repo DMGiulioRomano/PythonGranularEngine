@@ -6,7 +6,8 @@ Gestisce il caching incrementale degli stream granulari.
 
 Responsabilita':
 - Calcolare il fingerprint SHA-256 del dict YAML di ogni stream, escludendo
-  le chiavi non-audio (solo/mute, vedi FINGERPRINT_IGNORE_KEYS)
+  le chiavi non-audio (solo/mute, vedi FINGERPRINT_IGNORE_KEYS), insieme a
+  cio' da cui lo stem dipende e che lo stream non dice (FINGERPRINT_AXES)
 - Persistere il manifest {stream_id: fingerprint} su disco come JSON
 - Decidere quali stream sono dirty (fingerprint cambiato o .aif assente)
 - Aggiornare il manifest dopo una build riuscita
@@ -56,6 +57,23 @@ FINGERPRINT_IGNORE_KEYS = frozenset({"solo", "mute"})
 #      restano in secondi invece di essere scalati per sample_dur_sec
 VARIATION_SEMANTICS_VERSION = 3
 
+# Gli assi del fingerprint: le chiavi che il payload di `compute_fingerprint`
+# puo' contenere, cioe' tutto cio' da cui il motore dichiara che uno stem
+# dipende. `stream` e' il testo dello stream; gli altri sono le dipendenze che
+# quel testo non dice -- la semantica, il backend, la durata del sample quando
+# `duration` manca (#205), il seed di testa quando il documento ne dichiara
+# uno (#297).
+#
+# Esiste per chi legge il motore senza importarlo: il bridge di PGE-ui legge
+# il sorgente per AST (`engine_introspect.py`), e deve poter sapere se su
+# QUESTO motore un cambio di seed rifa' gli stem, o se un render incrementale
+# rispondera' `clean` su stem vecchi (PGE-ui#207). Per questo e' una tupla
+# letterale di stringhe, che `ast.literal_eval` legge senza risolvere nomi.
+# Che dica il vero lo pretendono i test, nelle due direzioni: nessuna chiave
+# del payload fuori dall'elenco, nessuna voce che nessun payload contenga.
+FINGERPRINT_AXES = ('semantics', 'stream', 'renderer', 'sample_dur_sec',
+                    'seed')
+
 
 class StreamCacheManager:
     """
@@ -69,13 +87,21 @@ class StreamCacheManager:
         renderer_type: backend che produce gli stem ('numpy' | 'csound' |
             'supercollider'). Entra nel fingerprint: lo stesso YAML reso da
             due backend diversi da' due file diversi (issue #228).
+        seed: il seed di testa che il documento DICHIARA, o None se non ne
+            dichiara uno (issue #297). Entra nel fingerprint: ogni RNG del
+            motore deriva da `(seed, rng_group o stream_id, componente)`,
+            quindi lo stesso stream con un altro seed e' un altro stem. Non
+            il seed di sessione che il Generator pesca quando il documento
+            tace: cambia a ogni run, e nell'hash invaliderebbe ogni stem a
+            ogni render (vedi `Generator.declared_seed`).
     """
 
     def __init__(self, cache_path: str, samples_dir: Optional[str] = None,
-                 renderer_type: Optional[str] = None):
+                 renderer_type: Optional[str] = None, seed=None):
         self.cache_path = cache_path
         self.samples_dir = samples_dir
         self.renderer_type = renderer_type
+        self.seed = seed
 
     def _sample_dur_sec(self, sample) -> Optional[float]:
         """Durata del sample, o None se non risolvibile.
@@ -108,7 +134,8 @@ class StreamCacheManager:
 
         Nell'hash entra anche VARIATION_SEMANTICS_VERSION: lo stem dipende dal
         testo YAML E dalla semantica con cui il motore lo interpreta, e la
-        seconda puo' cambiare a YAML fermo.
+        seconda puo' cambiare a YAML fermo. Le altre dipendenze di questo
+        genere sono elencate in FINGERPRINT_AXES.
 
         Args:
             stream_dict: dict parametri dello stream dallo YAML
@@ -116,6 +143,12 @@ class StreamCacheManager:
         Returns:
             Stringa esadecimale SHA-256 di 64 caratteri
         """
+        serialized = json.dumps(self._payload(stream_dict), sort_keys=True)
+        return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+
+    def _payload(self, stream_dict: dict) -> dict:
+        """Il dict che `compute_fingerprint` hasha. Le sue chiavi stanno in
+        FINGERPRINT_AXES, ed e' quello che i test confrontano con l'elenco."""
         filtered = {
             k: v for k, v in stream_dict.items()
             if k not in FINGERPRINT_IGNORE_KEYS
@@ -151,8 +184,21 @@ class StreamCacheManager:
             sample_dur = self._sample_dur_sec(stream_dict.get('sample'))
             if sample_dur is not None:
                 payload['sample_dur_sec'] = sample_dur
-        serialized = json.dumps(payload, sort_keys=True)
-        return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+        # Il seed di testa (issue #297), con la regola di `sample_dur_sec`: la
+        # chiave entra solo quando il documento dichiara un seed. Un progetto
+        # senza seed produce il payload di prima e nessuno stem si invalida
+        # -- senza seed la realizzazione non e' riproducibile comunque.
+        #
+        # Il seed entra come lo legge la derivazione degli RNG, che lo scrive
+        # in una stringa (`f"{seed}:{stream_id}:..."`, shared/seeding.py):
+        # due seed sono lo stesso seed quando quella stringa coincide.
+        # `1441` e `'1441'` danno gli stessi grani e lo stesso fingerprint,
+        # `1441` e `1441.0` no. Il JSON del valore nudo distinguerebbe il
+        # primo caso (un re-render per niente) e morirebbe su una data, che
+        # e' cio' che `yaml.safe_load` fa di `seed: 2026-10-10`.
+        if self.seed is not None:
+            payload['seed'] = f"{self.seed}"
+        return payload
 
     # =========================================================================
     # PERSISTENZA
