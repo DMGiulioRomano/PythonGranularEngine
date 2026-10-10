@@ -6,7 +6,8 @@ Gestisce il caching incrementale degli stream granulari.
 
 Responsabilita':
 - Calcolare il fingerprint SHA-256 del dict YAML di ogni stream, escludendo
-  le chiavi non-audio (solo/mute, vedi FINGERPRINT_IGNORE_KEYS)
+  le chiavi non-audio (solo/mute, vedi FINGERPRINT_IGNORE_KEYS), insieme a
+  cio' da cui lo stem dipende e che lo stream non dice (FINGERPRINT_AXES)
 - Persistere il manifest {stream_id: fingerprint} su disco come JSON
 - Decidere quali stream sono dirty (fingerprint cambiato o .aif assente)
 - Aggiornare il manifest dopo una build riuscita
@@ -55,6 +56,23 @@ FINGERPRINT_IGNORE_KEYS = frozenset({"solo", "mute"})
 #      'normalized' senza loop_unit, pointer.start e i parametri di loop
 #      restano in secondi invece di essere scalati per sample_dur_sec
 VARIATION_SEMANTICS_VERSION = 3
+
+# Gli assi del fingerprint: le chiavi che il payload di `compute_fingerprint`
+# puo' contenere, cioe' tutto cio' da cui il motore dichiara che uno stem
+# dipende. `stream` e' il testo dello stream; gli altri sono le dipendenze che
+# quel testo non dice -- la semantica, il backend, la durata del sample quando
+# `duration` manca (#205), il seed di testa quando il documento ne dichiara
+# uno (#297).
+#
+# Esiste per chi legge il motore senza importarlo: il bridge di PGE-ui legge
+# il sorgente per AST (`engine_introspect.py`), e deve poter sapere se su
+# QUESTO motore un cambio di seed rifa' gli stem, o se un render incrementale
+# rispondera' `clean` su stem vecchi (PGE-ui#207). Per questo e' una tupla
+# letterale di stringhe, che `ast.literal_eval` legge senza risolvere nomi.
+# Che dica il vero lo pretendono i test, nelle due direzioni: nessuna chiave
+# del payload fuori dall'elenco, nessuna voce che nessun payload contenga.
+FINGERPRINT_AXES = ('semantics', 'stream', 'renderer', 'sample_dur_sec',
+                    'seed')
 
 
 class StreamCacheManager:
@@ -116,7 +134,8 @@ class StreamCacheManager:
 
         Nell'hash entra anche VARIATION_SEMANTICS_VERSION: lo stem dipende dal
         testo YAML E dalla semantica con cui il motore lo interpreta, e la
-        seconda puo' cambiare a YAML fermo.
+        seconda puo' cambiare a YAML fermo. Le altre dipendenze di questo
+        genere sono elencate in FINGERPRINT_AXES.
 
         Args:
             stream_dict: dict parametri dello stream dallo YAML
@@ -128,7 +147,8 @@ class StreamCacheManager:
         return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
 
     def _payload(self, stream_dict: dict) -> dict:
-        """Il dict che `compute_fingerprint` hasha."""
+        """Il dict che `compute_fingerprint` hasha. Le sue chiavi stanno in
+        FINGERPRINT_AXES, ed e' quello che i test confrontano con l'elenco."""
         filtered = {
             k: v for k, v in stream_dict.items()
             if k not in FINGERPRINT_IGNORE_KEYS

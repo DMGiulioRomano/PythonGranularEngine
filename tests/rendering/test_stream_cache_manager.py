@@ -1064,3 +1064,69 @@ class TestFingerprintSeed:
         assert not stesso.is_dirty(self.STREAM, str(aif))
         assert altro.is_dirty(self.STREAM, str(aif))
 
+
+class TestFingerprintAxes:
+    """`FINGERPRINT_AXES` dichiara le chiavi del payload del fingerprint (#297).
+
+    Chi legge il motore senza importarlo (il bridge di PGE-ui, per AST) deve
+    poter sapere da cosa dipende uno stem su *quel* motore: se il seed non c'e',
+    un render incrementale dopo un cambio di seed risponde `clean` su stem
+    vecchi. Che la costante si legga per AST lo pretende il registro della
+    superficie (`tests/test_downstream_surface.py`); qui si pretende che dica
+    il vero, nelle due direzioni: nessuna chiave del payload fuori dall'elenco,
+    nessuna voce dell'elenco che nessun payload contenga.
+    """
+
+    @staticmethod
+    def _write_wav(directory, name, seconds):
+        import numpy as np
+        import soundfile as sf
+        sf.write(str(directory / name),
+                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+
+    def _payloads(self, cache_path, tmp_path):
+        """Il payload di ogni configurazione che cambia le chiavi: con e senza
+        seed, con `duration` dichiarata e con la durata del sample."""
+        self._write_wav(tmp_path, 'tono.wav', 1.0)
+        esplicita = {'stream_id': 's1', 'duration': 3.0, 'sample': 'tono.wav'}
+        implicita = {'stream_id': 's1', 'sample': 'tono.wav'}
+        payloads = []
+        for seed in (None, 1441):
+            mgr = StreamCacheManager(cache_path=cache_path,
+                                     samples_dir=str(tmp_path),
+                                     renderer_type='numpy', seed=seed)
+            for stream in (esplicita, implicita):
+                payloads.append(mgr._payload(stream))
+        return payloads
+
+    def test_e_una_tupla_di_stringhe_senza_doppioni(self):
+        assert isinstance(scm.FINGERPRINT_AXES, tuple)
+        assert all(isinstance(a, str) for a in scm.FINGERPRINT_AXES)
+        assert len(set(scm.FINGERPRINT_AXES)) == len(scm.FINGERPRINT_AXES)
+
+    def test_il_seed_e_un_asse(self):
+        assert 'seed' in scm.FINGERPRINT_AXES
+
+    def test_nessuna_chiave_del_payload_fuori_dall_elenco(self, cache_path,
+                                                          tmp_path):
+        for payload in self._payloads(cache_path, tmp_path):
+            assert set(payload) <= set(scm.FINGERPRINT_AXES), payload
+
+    def test_ogni_asse_dichiarato_entra_in_qualche_payload(self, cache_path,
+                                                           tmp_path):
+        visti = set()
+        for payload in self._payloads(cache_path, tmp_path):
+            visti |= set(payload)
+        assert visti == set(scm.FINGERPRINT_AXES)
+
+    def test_il_fingerprint_e_l_hash_del_payload(self, cache_path, tmp_path):
+        """Il payload che questi test guardano e' quello che si hasha davvero:
+        se `compute_fingerprint` costruisse il suo per conto proprio, i test
+        qui sopra misurerebbero un dict che nessuno usa."""
+        import hashlib
+        mgr = StreamCacheManager(cache_path=cache_path,
+                                 renderer_type='numpy', seed=1441)
+        stream = {'stream_id': 's1', 'duration': 3.0}
+        atteso = hashlib.sha256(json.dumps(
+            mgr._payload(stream), sort_keys=True).encode('utf-8')).hexdigest()
+        assert mgr.compute_fingerprint(stream) == atteso
