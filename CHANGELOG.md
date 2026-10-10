@@ -341,6 +341,38 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **La cache per stream vede il seed** (issue #297). Ogni RNG del motore deriva
+  da `(seed, rng_group o stream_id, componente)`, ma il fingerprint di
+  `StreamCacheManager` conteneva lo stream, la semantica, il backend e la
+  durata del sample, non il `seed` di testa. Con `--cache`, dopo un cambio di
+  seed ogni stream risultava `clean`: gli stem restavano la realizzazione del
+  seed di prima, annunciati come buoni. Il caso vero è il master di
+  mare-nostrum, a cui la mare-nostrum#8 ha dato `seed: 1441`: `make brano`
+  rendeva gli stem di prima finché la cache non si buttava a mano
+  (`FORCE=1`).
+
+  Ora il seed sta nel payload accanto al backend, con la regola di
+  `sample_dur_sec`: entra **solo quando il documento ne dichiara uno**. Un
+  progetto senza seed produce il payload di prima e nessuno stem si invalida
+  (il seed di sessione, diverso a ogni run, nell'hash invaliderebbe tutto a
+  ogni render); un progetto con seed si rirende una volta. Il seed che conta è
+  quello del master — quello del file importato con `file:` il motore lo
+  ignora già (#290), e la cache con lui — e entra come lo legge la
+  derivazione, cioè scritto in una stringa: `1441` e `'1441'` sono lo stesso
+  seed, `1441` e `1441.0` no.
+
+  Due nomi nuovi. `Generator.declared_seed` è il seed che il documento
+  dichiara, `None` senza `seed:` anche quando `seed` vale quello di sessione:
+  è quello che `api.build_renderer` passa al cache manager (nuovo kwarg
+  `seed`, default `None`, quindi chi costruisce `StreamCacheManager` senza
+  passarlo ottiene il fingerprint di prima). `FINGERPRINT_AXES`, in
+  `stream_cache_manager.py`, elenca le chiavi che il payload può contenere,
+  come tupla letterale di stringhe: PGE-ui legge il motore per AST senza
+  importarlo, e ne ricava se su quel motore un cambio di seed rifà gli stem
+  (PGE-ui#207). I test la tengono vera nelle due direzioni, e il registro
+  della superficie (`tests/test_downstream_surface.py`) ne pretende la
+  leggibilità per AST.
+
 - **La somma dei pesi che trabocca non rende più durate a zero** (issue #219,
   punto 2). Quattro delle cinque distribuzioni temporali del formato compatto
   normalizzano dividendo ogni peso per la somma di tutti. La #212 aveva coperto

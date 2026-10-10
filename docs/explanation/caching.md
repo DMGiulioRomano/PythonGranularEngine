@@ -5,6 +5,8 @@ status: stable
 tags: [caching, rendering, csound, supercollider]
 sources:
   - src/pge/rendering/stream_cache_manager.py
+  - src/pge/engine/generator.py
+  - src/pge/api.py
   - src/pge/cli.py
 last_synced_commit: c65dfae
 ---
@@ -29,7 +31,8 @@ Caching per-stream con fingerprint contenuto. Attivo con `STEMS=true CACHE=true`
 
 **API:**
 
-- `compute_fingerprint(stream_dict)` — SHA-256 del dict YAML dello stream, escluse le chiavi non-audio in `FINGERPRINT_IGNORE_KEYS` (`solo`, `mute`): toggle di solo/mute cambia *quali* stream renderizzare, non il contenuto del singolo stem, quindi non deve marcarlo dirty (issue #108). `onset` resta invece incluso (divergenza nota col lato JS, PGE-ui #39). Nel payload entrano anche `VARIATION_SEMANTICS_VERSION` e `renderer` (issue #228): sono le due dipendenze dello stem che il testo YAML non dichiara — la semantica con cui il motore lo interpreta, e il backend che lo rende. Senza `renderer`, rendere con un backend e rilanciare con un altro lascerebbe ogni stream `clean`, con in output l'audio del primo annunciato come del secondo
+- `compute_fingerprint(stream_dict)` — SHA-256 del dict YAML dello stream, escluse le chiavi non-audio in `FINGERPRINT_IGNORE_KEYS` (`solo`, `mute`): toggle di solo/mute cambia *quali* stream renderizzare, non il contenuto del singolo stem, quindi non deve marcarlo dirty (issue #108). `onset` resta invece incluso (divergenza nota col lato JS, PGE-ui #39). Nel payload entrano anche `VARIATION_SEMANTICS_VERSION` e `renderer` (issue #228): sono dipendenze dello stem che il testo YAML non dichiara — la semantica con cui il motore lo interpreta, e il backend che lo rende. Senza `renderer`, rendere con un backend e rilanciare con un altro lascerebbe ogni stream `clean`, con in output l'audio del primo annunciato come del secondo. Della stessa classe è il **seed** di testa (issue #297): ogni RNG del motore deriva da `(seed, rng_group o stream_id, componente)`, quindi lo stesso stream con un altro seed è un altro stem. Entra come `sample_dur_sec`, solo quando serve: solo se il documento **dichiara** un seed (`Generator.declared_seed`, non il seed di sessione che il Generator pesca quando il documento tace — diverso a ogni run, invaliderebbe ogni stem a ogni render), e come lo legge la derivazione, cioè come stringa (`1441` e `'1441'` sono lo stesso seed, `1441.0` no). Un progetto senza seed produce il payload di prima: nessuno stem si invalida
+- `FINGERPRINT_AXES` — le chiavi che il payload può contenere (`semantics`, `stream`, `renderer`, `sample_dur_sec`, `seed`), come tupla letterale: chi legge il motore per AST senza importarlo (il bridge di PGE-ui, PGE-ui#207) ne ricava da cosa dipende uno stem su *quel* motore — per esempio se un cambio di seed rifà gli stem o se un render incrementale risponde `clean` su stem vecchi. I test la tengono vera nelle due direzioni (nessuna chiave del payload fuori dall'elenco, nessuna voce che nessun payload contenga), e il registro della superficie (`tests/test_downstream_surface.py`) ne pretende la leggibilità per AST
 - `is_dirty(stream_dict, aif_path)` — True se stream_id assente, fingerprint cambiato, o file .aif assente
 
 **Stream importati con `file:`** (issue #290): il cache manager non li vede
@@ -41,7 +44,9 @@ gemello numpy in `tests/engine/test_stream_files.py`: modificare il file
 importato marca dirty quello stream e nessun altro; spostare uno stream dal
 master a un file non lo marca dirty; i top-level del file importato (`seed`,
 `duration`, `bpm`), che lo stream risolto non porta, non toccano il
-fingerprint. Il GC legge gli id da `generator.data`, cioè dal documento
+fingerprint. Il seed che conta è quello del master (issue #297): è l'unico con
+cui il motore rende, quindi cambiarlo rifà tutti gli stem, importati compresi,
+mentre cambiare quello del file importato non rifà niente. Il GC legge gli id da `generator.data`, cioè dal documento
 risolto: una voce `file:` non risolta non avrebbe `stream_id`, e il suo stem
 verrebbe cancellato come orfano a ogni render.
 - `update_after_build(stream_dicts)` — aggiorna manifest con fingerprint correnti

@@ -143,6 +143,15 @@ master**: il `seed` del file importato è ignorato, con un avviso su stderr se
 differisce. Vedi [Stream come file](#stream-come-file-file) e la sua
 [identità del suono](#identità-del-suono).
 
+**La cache stems vede il seed** (issue #297). Con `--cache`
+(`STEMS=true CACHE=true`) il seed dichiarato entra nel fingerprint di ogni
+stream: cambiarlo rifà tutti gli stem al render seguente, invece di lasciarli
+`clean` con in output la realizzazione del seed di prima. Conta il seed del
+master, non quello di un file importato. Due seed sono lo stesso seed quando
+la derivazione li scrive uguali (`1441` e `'1441'` sì, `1441` e `1441.0` no).
+Senza `seed:` il fingerprint resta quello di prima: il seed di sessione,
+diverso a ogni run, non invalida gli stem già resi.
+
 **Breaking (issue #154):** i render con `seed:` fissato prodotti col vecchio
 schema (`random.seed` globale, issue #81) NON sono riproducibili dopo il
 passaggio alla derivazione per-componente: i valori per-grano cambiano una
