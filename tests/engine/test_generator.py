@@ -902,6 +902,46 @@ class TestCreateElements:
         assert gen.seed_is_session is True
         assert '[SEED]' in capsys.readouterr().out
 
+    # declared_seed (issue #297): il seed che il DOCUMENTO dichiara. Dopo
+    # create_elements `seed` e' sempre valorizzato, anche senza `seed:` nello
+    # YAML (e' quello di sessione): chi deve sapere se la realizzazione e'
+    # riproducibile -- la cache per stream -- non puo' leggere `seed`.
+
+    def _elementi(self, gen, documento):
+        m = mock_open(read_data=yaml.dump(documento))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        with patch('pge.engine.generator.filter_solo_mute', return_value=[]), \
+             patch.object(gen, '_create_streams'):
+            gen.create_elements()
+
+    def test_declared_seed_e_il_seed_del_documento(self, gen):
+        self._elementi(gen, {'seed': 42, 'streams': []})
+        assert gen.declared_seed == 42
+
+    def test_declared_seed_senza_seed_e_none_anche_col_seed_di_sessione(
+            self, gen, capsys):
+        self._elementi(gen, {'streams': []})
+        assert gen.seed is not None
+        assert gen.declared_seed is None
+
+    def test_declared_seed_zero_e_un_seed(self, gen):
+        self._elementi(gen, {'seed': 0, 'streams': []})
+        assert gen.declared_seed == 0
+
+    def test_declared_seed_dopo_le_espressioni_matematiche(self, gen):
+        """E' il seed che deriva gli RNG: valutato, come `seed`."""
+        self._elementi(gen, {'seed': '(1000 + 441)', 'streams': []})
+        assert gen.declared_seed == 1441
+
+    def test_declared_seed_prima_di_create_elements(self, gen):
+        """Prima di create_elements nessun seed di sessione e' stato pescato:
+        senza `seed:` vale None anche li'."""
+        m = mock_open(read_data=yaml.dump({'streams': []}))
+        with patch('builtins.open', m):
+            gen.load_yaml()
+        assert gen.declared_seed is None
+
 # =============================================================================
 # 6. TEST _create_streams()
 # =============================================================================

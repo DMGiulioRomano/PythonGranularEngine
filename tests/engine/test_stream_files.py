@@ -797,15 +797,31 @@ def _rendi_con_cache(brano, capsys):
     return stati
 
 
-def _brano_con_cache(brano, stream_importato):
+_SENZA = object()
+
+
+def _brano_con_cache(brano, stream_importato, seed_master=1441,
+                     seed_file=1441):
+    """Un master che importa `risacca` e scrive dentro di se' `fermo`.
+
+    `_SENZA` toglie la chiave `seed`, che non e' lo stesso di `seed: null`
+    scritto nel documento (anche se il motore li legge allo stesso modo).
+    """
     (brano.root / 'out').mkdir(exist_ok=True)
-    brano.scrivi('streams/risacca.yml',
-                 _documento_del_laboratorio(stream=stream_importato))
-    brano.scrivi('brano.yml', {'seed': 1441, 'streams': [
+    importato = _documento_del_laboratorio(stream=stream_importato)
+    if seed_file is _SENZA:
+        del importato['seed']
+    else:
+        importato['seed'] = seed_file
+    brano.scrivi('streams/risacca.yml', importato)
+    master = {'streams': [
         {'file': 'streams/risacca.yml', 'onset': 0.5},
         {'stream_id': 'fermo', 'sample': SAMPLE, 'duration': 0.5,
          'density': 10},
-    ]})
+    ]}
+    if seed_master is not _SENZA:
+        master = {'seed': seed_master, **master}
+    brano.scrivi('brano.yml', master)
 
 
 def test_modificare_il_file_importato_marca_dirty_solo_quello_stream(
@@ -844,3 +860,97 @@ def test_spostare_uno_stream_in_un_file_non_invalida_la_cache(brano, capsys):
         {'file': 'streams/risacca.yml', 'onset': 0.5}]})
 
     assert _rendi_con_cache(brano, capsys) == {'risacca': 'clean'}
+
+
+# =============================================================================
+# La cache vede il seed del master (issue #297)
+# =============================================================================
+# Ogni RNG del motore e' `(seed, rng_group o stream_id, componente)`: dopo un
+# cambio di seed ogni stem e' la realizzazione di prima. Prima della #297 il
+# fingerprint non lo vedeva, e con la cache ogni stream risultava `clean`. Il
+# seed che conta e' quello del master, l'unico che il motore usa (regola 6
+# della #290): quello del file importato si ignora, e la cache con lui.
+
+def test_cambiare_il_seed_del_master_rifa_tutti_gli_stem(brano, capsys):
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=1441)
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'DIRTY'}
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'clean', 'fermo': 'clean'}
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=7)
+
+    # Tutti e due: lo stream importato e quello scritto nel master.
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'DIRTY'}
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'clean', 'fermo': 'clean'}
+
+
+def test_gli_stem_rifatti_sono_la_realizzazione_del_seed_nuovo(brano, capsys):
+    """Non basta che la cache dica DIRTY: lo stem sul disco deve essere
+    quello che un render senza cache darebbe col seed nuovo."""
+    import soundfile as sf
+
+    def stem():
+        # `risacca`: e' lo stream con dispersione (`distribution`, i
+        # `_range`), quello in cui il seed si sente.
+        (path,) = (brano.root / 'out').glob('brano__risacca.*')
+        return sf.read(str(path))[0]
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=1441)
+    _rendi_con_cache(brano, capsys)
+    col_1441 = stem()
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=7)
+    _rendi_con_cache(brano, capsys)
+    col_7 = stem()
+
+    # Il controllo che il caso discrimini: con un altro seed lo stream suona
+    # davvero diverso, o l'uguaglianza qui sotto non direbbe niente.
+    assert not np.array_equal(col_1441, col_7)
+
+    (brano.root / 'cache' / 'brano.json').unlink()
+    _rendi_con_cache(brano, capsys)
+    assert np.array_equal(stem(), col_7)
+
+
+def test_il_seed_del_file_importato_non_tocca_la_cache(brano, capsys):
+    """Il motore rende lo stream col seed del master e ignora quello del file
+    (con l'avviso `[SEED]` su stderr): cambiarlo non cambia l'audio, quindi
+    non rifa' niente."""
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_file=1441)
+    _rendi_con_cache(brano, capsys)
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_file=7)
+
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'clean', 'fermo': 'clean'}
+
+
+def test_aggiungere_il_seed_al_master_rifa_gli_stem(brano, capsys):
+    """Il caso vero di mare-nostrum#8: un brano senza seed a cui il seed
+    viene dato. Gli stem resi prima erano una realizzazione di sessione."""
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=_SENZA,
+                     seed_file=_SENZA)
+    _rendi_con_cache(brano, capsys)
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=1441,
+                     seed_file=_SENZA)
+
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'DIRTY'}
+
+
+def test_senza_seed_la_cache_non_si_invalida(brano, capsys):
+    """Senza seed nel documento la chiave non entra nel fingerprint: il seed
+    di sessione, diverso a ogni run, non invalida gli stem gia' resi. E' il
+    comportamento di prima della #297, e la ragione per cui nessun progetto
+    senza seed paga un re-render per questa modifica."""
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=_SENZA,
+                     seed_file=_SENZA)
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'DIRTY'}
+
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'clean', 'fermo': 'clean'}

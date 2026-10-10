@@ -20,6 +20,7 @@ Strategia:
   StreamCacheManager e' un modulo autonomo.
 """
 
+import datetime
 import json
 import os
 import pytest
@@ -974,3 +975,92 @@ class TestFingerprintRenderer:
                                     renderer_type='supercollider')
         assert sc_mgr.is_dirty(self.STREAM, str(aif))
         assert not numpy_mgr.is_dirty(self.STREAM, str(aif))
+
+
+class TestFingerprintSeed:
+    """Il seed di testa entra nel fingerprint (#297).
+
+    Ogni RNG del motore e' `(seed, rng_group o stream_id, componente)`
+    (`shared/seeding.py`): lo stesso stream con un altro seed e' un'altra
+    realizzazione, e il testo dello stream non lo dice. E' la classe di
+    dipendenza di semantica e backend. Senza, dopo un cambio di seed ogni
+    stream restava `clean` e in output la realizzazione del seed di prima,
+    annunciata come buona.
+
+    Come `sample_dur_sec`, la chiave entra solo quando il documento dichiara
+    un seed: un progetto senza seed produce il payload di prima, e nessuno
+    stem gia' reso si invalida.
+    """
+
+    STREAM = {'stream_id': 's1', 'onset': 0.0, 'duration': 3.0}
+
+    def _fp(self, cache_path, seed, stream=None):
+        return StreamCacheManager(
+            cache_path=cache_path, renderer_type='numpy', seed=seed,
+        ).compute_fingerprint(stream or self.STREAM)
+
+    def test_seed_diversi_danno_fingerprint_diversi(self, cache_path):
+        assert self._fp(cache_path, 1441) != self._fp(cache_path, 7)
+
+    def test_lo_stesso_seed_da_lo_stesso_fingerprint(self, cache_path):
+        assert self._fp(cache_path, 1441) == self._fp(cache_path, 1441)
+
+    def test_senza_seed_il_payload_e_quello_di_prima(self, cache_path):
+        """Un documento senza seed non paga niente: il payload e' quello di
+        prima della #297, chiave per chiave, quindi i manifest gia' scritti
+        restano validi. Senza seed la realizzazione non e' riproducibile
+        comunque (il Generator ne pesca uno di sessione a ogni run)."""
+        import hashlib
+        prima = {
+            'semantics': scm.VARIATION_SEMANTICS_VERSION,
+            'stream': self.STREAM,
+            'renderer': 'numpy',
+        }
+        atteso = hashlib.sha256(
+            json.dumps(prima, sort_keys=True).encode('utf-8')).hexdigest()
+
+        assert self._fp(cache_path, None) == atteso
+
+    def test_seed_zero_e_un_seed(self, cache_path):
+        """`seed: 0` e' un seed come gli altri (la derivazione e' sha256, non
+        un test di verita'): non e' l'assenza del seed."""
+        assert self._fp(cache_path, 0) != self._fp(cache_path, None)
+
+    @pytest.mark.parametrize('uno,altro,stessa_realizzazione', [
+        (1441, '1441', True),
+        (1441, 1441.0, False),
+        (datetime.date(2026, 10, 10), '2026-10-10', True),
+    ], ids=['int-e-stringa', 'int-e-float', 'data-yaml'])
+    def test_il_seed_si_legge_come_lo_legge_la_derivazione(
+            self, cache_path, uno, altro, stessa_realizzazione):
+        """Due seed sono lo stesso seed quando derivano gli stessi RNG, e la
+        derivazione scrive il seed in una stringa (`f"{seed}:{stream_id}:..."`).
+
+        La premessa e' chiesta alla derivazione vera, non trascritta: se un
+        giorno `component_rng` leggesse il seed in un altro modo, questo test
+        direbbe che il fingerprint non lo segue piu'. La data e' cio' che
+        `yaml.safe_load` fa di `seed: 2026-10-10`: un fingerprint che la
+        serializzasse in JSON morirebbe li', prima del render."""
+        from pge.shared.seeding import component_rng
+        premessa = (component_rng(uno, 's1', 'grain_duration').random()
+                    == component_rng(altro, 's1', 'grain_duration').random())
+        assert premessa is stessa_realizzazione
+
+        uguali = self._fp(cache_path, uno) == self._fp(cache_path, altro)
+        assert uguali is stessa_realizzazione
+
+    def test_uno_stem_reso_con_un_altro_seed_e_dirty(self, cache_path,
+                                                     tmp_path):
+        """L'invariante vera: non l'hash, ma che lo stem venga rirenderizzato."""
+        aif = tmp_path / 's1.aif'
+        aif.touch()
+        StreamCacheManager(cache_path=cache_path, renderer_type='numpy',
+                           seed=1441).update_after_build([self.STREAM])
+
+        stesso = StreamCacheManager(cache_path=cache_path,
+                                    renderer_type='numpy', seed=1441)
+        altro = StreamCacheManager(cache_path=cache_path,
+                                   renderer_type='numpy', seed=7)
+        assert not stesso.is_dirty(self.STREAM, str(aif))
+        assert altro.is_dirty(self.STREAM, str(aif))
+

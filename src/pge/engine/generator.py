@@ -149,6 +149,22 @@ class Generator:
         return self.data
 
     @property
+    def declared_seed(self):
+        """Il seed che il documento dichiara, o None se non ne dichiara uno.
+
+        Non e' `seed`: dopo `create_elements` quello e' sempre valorizzato, e
+        senza `seed:` nello YAML e' un seed di sessione, diverso a ogni run.
+        Chi deve sapere di quale seed lo stem e' la realizzazione *riproducibile*
+        -- il fingerprint della cache per stream (issue #297) -- vuole questo:
+        un seed di sessione nell'hash invaliderebbe ogni stem a ogni render.
+
+        E' il seed del master, valutato come `seed`: quello di un file
+        importato con `file:` il motore lo ignora (regola 6 della #290), e
+        chi legge questo valore con lui.
+        """
+        return None if self.seed_is_session else self.seed
+
+    @property
     def source_files(self) -> List[str]:
         """I file YAML da cui il brano e' letto, cioe' le dipendenze di un
         render: il master, poi ogni file importato con `file:` (issue #290),
