@@ -539,6 +539,14 @@ PARITY_CORPUS = [
     {'type': 'linear', 'points': [[0, 0.05], [1, 0.1]]},
     {'type': 'linear', 'points': [{'t': 0, 'v': 0.05}, {'t': 1, 'v': 0.1}]},
     {'type': 'linear'},
+    # forma tipata col corpo diretto: compatto e BP group dentro `points`
+    # (issue #289)
+    {'type': 'linear', 'points': [[[0, 0.05], [50, 0.1]], 1, 4]},
+    {'type': 'linear', 'points': [[[0, 0.05], [1, 0.1]], 'cubic']},
+    # `points` che non e' una lista: niente da scalare, e la scala non deve
+    # esplodere prima del costruttore, che sa dire cos'ha (issue #288)
+    {'type': 'linear', 'points': None},
+    {'type': 'linear', 'points': 5},
     # degeneri
     [],
     [0.05, 0.1],
@@ -593,6 +601,34 @@ class TestEnvelopeLikeParity:
         moltiplicazione non nomina ne' il campo ne' lo stream (issue #234)."""
         from pge.envelopes.envelope import scale_raw_param_values
         scale_raw_param_values(copy.deepcopy(raw), 1000.0)
+
+
+class TestScalaYFormaDict:
+    """La forma dict scala i suoi `points` come la lista nuda (issue #289).
+
+    `{type, points}` e la lista nuda sono lo stesso corpo per il builder, che
+    legge `points` come legge la lista: compatto e BP group diretti compresi.
+    La scala delle y aveva invece due rami, e quello del dict passava `points`
+    alla scansione elemento per elemento, dove un compatto o un gruppo diretti
+    non sono elementi ma il corpo intero: il pattern, `end_time` e `n_reps`
+    restavano com'erano, e il motore leggeva quei valori nell'unita' sbagliata.
+
+    La regola si chiede su tutto il corpus della parita', non sulle due forme
+    del difetto: due rami che divergono sono nati da copie separate (#234), e
+    la domanda giusta e' se ce ne sia ancora una.
+    """
+
+    @pytest.mark.parametrize(
+        "corpo", [r for r in PARITY_CORPUS if isinstance(r, list)],
+        ids=lambda r: repr(r)[:48])
+    def test_points_scalati_come_la_lista_nuda(self, corpo):
+        dict_scalato = Envelope._scale_raw_values_y(
+            {'type': 'linear', 'points': copy.deepcopy(corpo)}, 1000.0)
+
+        assert dict_scalato == {
+            'type': 'linear',
+            'points': Envelope._scale_raw_values_y(copy.deepcopy(corpo), 1000.0),
+        }
 
 
 class TestScaleRawParamValues:

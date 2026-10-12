@@ -466,15 +466,19 @@ class Envelope:
             punti, interp = group
             return [_scale_points_y(punti), interp]
 
+        def _scale_compact_y(compact):
+            # Del compatto si scala il solo pattern: `end_time` e `n_reps` non
+            # sono valori, e l'interp nemmeno.
+            scaled_compact = list(compact)
+            scaled_compact[EnvelopeBuilder.COMPACT_PATTERN] = _scale_points_y(
+                compact[EnvelopeBuilder.COMPACT_PATTERN])
+            return scaled_compact
+
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
                 if EnvelopeBuilder.is_compact_format(item):
-                    pattern = item[EnvelopeBuilder.COMPACT_PATTERN]
-                    scaled_pattern = _scale_points_y(pattern)
-                    new_item = list(item)
-                    new_item[EnvelopeBuilder.COMPACT_PATTERN] = scaled_pattern
-                    scaled.append(new_item)
+                    scaled.append(_scale_compact_y(item))
                 elif EnvelopeBuilder.is_bp_group(item):
                     # BP group: scala i valori Y dei punti, preserva interp e
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
@@ -492,24 +496,34 @@ class Envelope:
                     scaled.append(item)
             return scaled
 
+        def _scale_body_y(body):
+            # Il corpo di un envelope, scritto nudo o sotto `points`: per il
+            # builder sono la stessa cosa (`parse` riceve `points` come
+            # riceverebbe la lista), quindi la scala li legge con una regola
+            # sola. Il dict aveva la sua, che passava `points` alla scansione
+            # elemento per elemento: un compatto o un BP group diretti non
+            # sono elementi ma il corpo intero, e restavano nell'unita' dello
+            # YAML (issue #289). Ripetere qui l'ordine del builder — prima il
+            # compatto, poi il gruppo, poi la lista — e' cio' che `parse` fa.
+            if EnvelopeBuilder.is_compact_format(body):
+                return _scale_compact_y(body)
+            if EnvelopeBuilder.is_bp_group(body):
+                return _scale_group_y(body)
+            if isinstance(body, list):
+                return _scale_list_y(body)
+            # Un `points` che non e' una lista (null, un numero) non ha niente
+            # da scalare: resta com'e' scritto, e lo rifiuta il costruttore
+            # nominando il campo (issue #288). Iterarlo era un TypeError nudo.
+            return body
+
         if isinstance(raw_data, dict):
             new_data = copy.deepcopy(raw_data)
             if 'points' in new_data:
-                new_data['points'] = _scale_list_y(new_data['points'])
+                new_data['points'] = _scale_body_y(new_data['points'])
             return new_data
 
         if isinstance(raw_data, list):
-            if EnvelopeBuilder.is_compact_format(raw_data):
-                pattern = raw_data[EnvelopeBuilder.COMPACT_PATTERN]
-                scaled_pattern = _scale_points_y(pattern)
-                new_data = list(raw_data)
-                new_data[EnvelopeBuilder.COMPACT_PATTERN] = scaled_pattern
-                return new_data
-            elif EnvelopeBuilder.is_bp_group(raw_data):
-                # BP group diretto [points, interp]
-                return _scale_group_y(raw_data)
-            else:
-                return _scale_list_y(raw_data)
+            return _scale_body_y(raw_data)
 
         raise ValueError(f"Formato non supportato per _scale_raw_values_y: {raw_data}")
 
