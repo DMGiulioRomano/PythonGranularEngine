@@ -100,8 +100,9 @@ SIMBOLI_IMPORTATI = {
     'pge.rendering.stream_cache_manager': {
         'senza_venv': True,
         'nomi': ('VARIATION_SEMANTICS_VERSION', 'FINGERPRINT_IGNORE_KEYS',
-                 'StreamCacheManager'),
-        'perche': 'fingerprint degli stem e versione di semantica',
+                 'StreamCacheManager', 'FINGERPRINT_AXES'),
+        'perche': 'fingerprint degli stem, versione di semantica e assi del '
+                  'fingerprint, confrontati con la lettura AST del bridge',
     },
     'pge.parameters.parameter_definitions': {
         'senza_venv': True,
@@ -299,6 +300,8 @@ LETTI_DAL_SORGENTE = (
     # Gli assi del fingerprint (#297): la costante esiste per questa lettura.
     # PGE-ui#207 ne ricava se su questo motore un cambio di seed rifa' gli
     # stem; che l'elenco dica il vero lo misura test_stream_cache_manager.py.
+    # Sta in tutte e due le meta', come `LOOP_UNITS`: l'oracolo la importa e
+    # pretende che coincida con questa lettura (PGE-ui#209).
     ('rendering/stream_cache_manager.py', 'FINGERPRINT_AXES', _secco,
      _stringhe),
     ('parameters/loop_unit.py', 'LOOP_UNITS', _secco, _stringhe),

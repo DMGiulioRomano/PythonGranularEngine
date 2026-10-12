@@ -994,10 +994,10 @@ class TestFingerprintSeed:
 
     STREAM = {'stream_id': 's1', 'onset': 0.0, 'duration': 3.0}
 
-    def _fp(self, cache_path, seed, stream=None):
+    def _fp(self, cache_path, seed):
         return StreamCacheManager(
             cache_path=cache_path, renderer_type='numpy', seed=seed,
-        ).compute_fingerprint(stream or self.STREAM)
+        ).compute_fingerprint(self.STREAM)
 
     def test_seed_diversi_danno_fingerprint_diversi(self, cache_path):
         assert self._fp(cache_path, 1441) != self._fp(cache_path, 7)

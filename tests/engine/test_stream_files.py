@@ -928,6 +928,34 @@ def test_il_seed_del_file_importato_non_tocca_la_cache(brano, capsys):
         'risacca': 'clean', 'fermo': 'clean'}
 
 
+def test_senza_seed_nel_master_quello_del_file_non_entra_nella_cache(
+        brano, capsys):
+    """La forma che il laboratorio produce: ogni suo file porta `seed:` in
+    testa, anche quando il master non ne dichiara uno. Il brano si rende col
+    seed di sessione, e il seed del file non diventa quello della cache: non e'
+    `declared_seed`, e cambiarlo non rifa' niente.
+
+    Il caso qui sopra non lo distingue: col master seminato, un
+    `declared_seed` che ripiegasse sul seed del file restituirebbe comunque
+    quello del master."""
+    from pge import api
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=_SENZA,
+                     seed_file=1441)
+    gen = api.load_generator(str(brano.root / 'brano.yml'),
+                             samples_dir=brano.samples_dir)
+    assert gen.declared_seed is None
+
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'DIRTY', 'fermo': 'DIRTY'}
+
+    _brano_con_cache(brano, STREAM_DEL_LABORATORIO, seed_master=_SENZA,
+                     seed_file=7)
+
+    assert _rendi_con_cache(brano, capsys) == {
+        'risacca': 'clean', 'fermo': 'clean'}
+
+
 def test_aggiungere_il_seed_al_master_rifa_gli_stem(brano, capsys):
     """Il caso vero di mare-nostrum#8: un brano senza seed a cui il seed
     viene dato. Gli stem resi prima erano una realizzazione di sessione."""

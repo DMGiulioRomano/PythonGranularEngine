@@ -357,7 +357,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   (il seed di sessione, diverso a ogni run, nell'hash invaliderebbe tutto a
   ogni render); un progetto con seed si rirende una volta. Il seed che conta è
   quello del master — quello del file importato con `file:` il motore lo
-  ignora già (#290), e la cache con lui — e entra come lo legge la
+  ignora già (#290), e la cache con lui — ed entra come lo legge la
   derivazione, cioè scritto in una stringa: `1441` e `'1441'` sono lo stesso
   seed, `1441` e `1441.0` no.
 

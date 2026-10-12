@@ -46,9 +46,11 @@ master a un file non lo marca dirty; i top-level del file importato (`seed`,
 `duration`, `bpm`), che lo stream risolto non porta, non toccano il
 fingerprint. Il seed che conta è quello del master (issue #297): è l'unico con
 cui il motore rende, quindi cambiarlo rifà tutti gli stem, importati compresi,
-mentre cambiare quello del file importato non rifà niente. Il GC legge gli id da `generator.data`, cioè dal documento
-risolto: una voce `file:` non risolta non avrebbe `stream_id`, e il suo stem
-verrebbe cancellato come orfano a ogni render.
+mentre cambiare quello del file importato non rifà niente — nemmeno quando il
+master non ne dichiara uno, e il brano si rende col seed di sessione. Il GC
+legge gli id da `generator.data`, cioè dal documento risolto: una voce `file:`
+non risolta non avrebbe `stream_id`, e il suo stem verrebbe cancellato come
+orfano a ogni render.
 - `update_after_build(stream_dicts)` — aggiorna manifest con fingerprint correnti
 - `garbage_collect(current_stream_ids, aif_dir, aif_prefix)` — rimuove dal manifest gli stream non più nel YAML; cancella `.aif` orfani
 
@@ -72,6 +74,8 @@ verrebbe cancellato come orfano a ogni render.
 ## Implicazioni codice
 
 - `src/pge/rendering/stream_cache_manager.py` — implementazione
+- `src/pge/engine/generator.py` — `Generator.declared_seed`, il seed che entra nel fingerprint (issue #297)
+- `src/pge/api.py` — `_make_cache_manager`, che passa al cache manager backend, `samples_dir` e seed dichiarato
 - `src/pge/rendering/rendering_engine.py` — orchestrazione (GC + dirty check + update)
 - `src/pge/rendering/csound_renderer.py` — usa cache via `render_single_stream`
 - `tests/e2e/test_cache_e2e.py` — copertura E2E (15 test): first build, incremental, partial rebuild, GC
