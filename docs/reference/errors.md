@@ -6,12 +6,14 @@ tags: [errors, exceptions, user-facing]
 sources:
   - src/pge/shared/exceptions.py
   - src/pge/envelopes/envelope_builder.py
+  - src/pge/envelopes/envelope.py
+  - src/pge/core/stream.py
   - src/pge/envelopes/time_distribution.py
   - src/pge/cli.py
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: 8917ce0
+last_synced_commit: 9d92e58
 entry_for: [error-handling]
 ---
 
@@ -408,7 +410,9 @@ col prefisso del blocco per il pointer), il gate di `deviation_probability`
 dalla propria chiave, pitch, voices e curve delle finestre dal punto in cui
 leggono lo YAML. Senza campo l'errore nomina la sotto-posizione dentro
 l'envelope (`envelope.compact.n_reps`, `envelope.group.points`, …): è tutto ciò
-che il builder sa da solo, e resta comunque un `InvalidFieldValueError`.
+che il builder sa da solo, e resta comunque un `InvalidFieldValueError`. Lo
+stesso vale per i guard di `Envelope` sulla forma che legge prima del builder
+(`envelope.points`, `envelope.type`, `envelope.compact.interp`, issue #288).
 
 **Esempio: `WindowController.parse_window_list`**
 
@@ -749,6 +753,44 @@ cade *dentro* l'envelope lo dice l'hint. Fino a #211 li applicava solo
 `grain.read_direction`, e lo stesso corpo sotto un'altra chiave risaliva come
 `ValueError` o `TypeError` nudo — o, per `n_reps: true`, `x` fuori range e
 `y: true` nel pattern, si rendeva in silenzio.
+
+La forma che `Envelope` legge prima del builder ha gli stessi guard, con lo
+stesso campo (issue #288). Erano un `KeyError`, un `TypeError` e due
+`ValueError` nudi, senza campo né stream, e dalla CLI usciva un traceback:
+
+| corpo | senza campo nomina | era |
+|---|---|---|
+| dict senza `points`, o con `points` null o un numero | `envelope.points` | `KeyError: 'points'` / `TypeError` |
+| corpo vuoto: `[]`, `{points: []}` | `envelope.points` | `ValueError: Lista breakpoints vuota.` |
+| `type` del dict fuori da `linear`/`cubic`/`step`, o scritto vuoto | `envelope.type` | `ValueError: Tipo interpolazione non riconosciuto` |
+| interp del compatto che l'envelope prende come tipo, fuori dal registro | `envelope.compact.interp` | lo stesso `ValueError` |
+
+Il `Trovato:` è ciò che va corretto: il dict com'è scritto quando gli mancano i
+breakpoint (è lì che si vede `punti` al posto di `points`), il nome
+dell'interpolazione negli altri due casi. Dell'interp del compatto si valida
+lo slot che diventa il tipo dell'envelope — quello del compatto diretto, o del
+primo di una lista che ne dichiara uno — perché è l'unico che decide qualcosa:
+dentro `{type, points}` decide il `type` del dict, e lo slot resta ignorato.
+
+```yaml
+streams:
+  s1:
+    density: {type: linear, punti: [[0, 10], [10, 20]]}
+```
+```
+[ERRORE] Valore invalido per 'density'
+  Trovato:      {'type': 'linear', 'punti': [[0, 10], [10, 20]]}
+  Hint:         un envelope in forma dict porta i suoi breakpoint sotto la chiave `points` — una lista di breakpoint, un formato compatto o un BP group — e `type` ne e' l'interpolazione: {type: cubic, points: [[0, 0], [1, 1]]}. Qui `points` manca, o non contiene breakpoint (null, un numero).
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Un kwarg di una voice strategy che è una lista o un dict ma non un envelope
+(`step: []`, `pitch_range: [1, 2, 3]`, un dict senza `points`) è
+`InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse (issue #288). Lo
+Stream si costruiva, e il `TypeError` nudo arrivava al primo grano, quando la
+strategy faceva `float()` sul valore; `chord` esplodeva già al parse, nudo
+anche lui.
 
 ### Strategia non trovata
 ```yaml

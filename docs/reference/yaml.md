@@ -1654,6 +1654,11 @@ Campi:
 | `time_mode` | str (opzionale) | ereditato    | `'absolute'` o `'normalized'`              |
 | `time_unit` | str (opzionale) | come `time_mode` | alias locale per `time_mode` (vedi §3) |
 
+`points` assente, `null` o un numero, un corpo vuoto (`points: []`, come la
+lista nuda `[]`) e un `type` fuori dai tre nomi — o scritto e lasciato vuoto —
+sono `InvalidFieldValueError` sulla chiave dell'envelope (issue #288): vedi
+`docs/reference/errors.md`, «Envelope malformato (forma)».
+
 #### 2.4 Formato compatto
 
 Forma sintetica per generare N ripetizioni di un pattern definito in percentuale.
@@ -2142,6 +2147,12 @@ risaliva come `ValueError` nudo o si rendeva in silenzio.
 - `time_dist` con un nome fuori dal registro (§6) o con parametri che la
   distribuzione non accetta → errore. I vincoli sui parametri li applica il
   costruttore di ciascuna distribuzione.
+- `interp` (quarto elemento) fuori da `linear`/`cubic`/`step` → errore, sulla
+  sotto-posizione `envelope.compact.interp` quando la chiave non è passata
+  (issue #288). Vale per lo slot che l'envelope prende come proprio tipo:
+  quello del compatto diretto, o del primo compatto di una lista che ne
+  dichiara uno. Lo slot di un compatto dentro `{type, points}`, dove decide il
+  `type` del dict, resta ignorato come lo resta un nome valido.
 
 ---
 
@@ -2486,7 +2497,10 @@ mantenuto fino alla fine (hold).
 Tutti i parametri scalari delle voice strategy (`step`, `pitch_range`,
 `pointer_range`, `max_offset`, `base`, `spread`) accettano envelope. Il parsing
 avviene in `Stream._init_voice_manager` via `_parse_strategy_kwarg`, che usa
-`Envelope.is_envelope_like` per discriminare.
+`Envelope.is_envelope_like` per discriminare. Una lista o un dict che envelope
+non è (`step: []`, `pitch_range: [1, 2, 3]`, un dict senza `points`) è
+`InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse (issue #288):
+prima lo Stream si costruiva e il render moriva al primo grano.
 
 ```yaml
 voices:

@@ -381,6 +381,56 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `points:` seguito da tre parentesi aperte accanto a `duration_unit` o
   `loop_unit: normalized`; trovato, si rirende senza cache incrementale.
 
+- **Gli errori di forma sotto il builder nominano la chiave e lo stream**
+  (issue #288). La #287 aveva portato i guard di forma in `EnvelopeBuilder`
+  col campo passato dall'alto; restavano fuori i difetti dello stesso genere
+  che nascono in `Envelope`, e risalivano fuori dalla gerarchia `EngineError`
+  — senza campo, senza stream, con un traceback dalla CLI:
+
+  | corpo | era | ora, senza campo passato |
+  |---|---|---|
+  | dict senza `points`, o con `points` null o un numero | `KeyError: 'points'` / `TypeError` | `envelope.points` |
+  | `[]` o `{points: []}` | `ValueError: Lista breakpoints vuota.` | `envelope.points` |
+  | `type` del dict ignoto o scritto vuoto | `ValueError: Tipo interpolazione non riconosciuto` | `envelope.type` |
+  | interp del compatto che diventa il tipo, ignoto | lo stesso `ValueError` | `envelope.compact.interp` |
+
+  Tutti `InvalidFieldValueError`, e col campo passato nominano la chiave come
+  ogni guard del builder (`density`, `voices.num_voices`,
+  `grain.envelope.curve`, …). L'interp del compatto si valida dove lo slot si
+  legge, `extract_interp_type`, così l'hint dice che è il quarto elemento del
+  compatto e non il tipo globale; e si valida lo slot che l'envelope prende
+  come tipo, non ogni slot: dentro `{type, points}` decide il `type` del dict,
+  e rifiutare lì un nome ignoto farebbe correggere un valore che, corretto,
+  resterebbe ignorato. Nessuno YAML che oggi rende smette di rendere.
+
+  Le scale che precedono `Envelope` non anticipano più il suo errore: sotto
+  `time_mode: normalized` un dict senza `points` diventava un `points: []`,
+  cioè un corpo vuoto che nel file non c'è, e un `points: null` faceva
+  esplodere con un `TypeError` sia la scala dei tempi sia quella delle y.
+  `_parse_segments` tiene il suo `ValueError` sulla lista vuota: da uno YAML
+  non ci si arriva più, e resta l'invariante del metodo.
+
+  Il quarto difetto della issue non arrivava affatto all'envelope: un kwarg di
+  una voice strategy scritto come lista o dict non envelope (`step: []`,
+  `pitch_range: [1, 2, 3]`, un dict senza `points`) passava
+  `_parse_strategy_kwarg` com'era, lo Stream si costruiva, e il `TypeError`
+  arrivava al primo grano, quando la strategy faceva `float()` sul valore
+  (`chord` esplodeva al parse, nudo anche lui). Ora è
+  `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse: nessun kwarg di
+  strategy accetta una lista o un dict che non sia un envelope, e `progression`
+  di `chord_progression`, l'unico strutturale, il passo comune non lo vede.
+
+  La tabella ingressi × difetti di #287 (`test_stream_guard_di_forma.py`)
+  copre i corpi nuovi su tutte e tredici le strade verso l'envelope. Tre celle
+  stanno fuori, fissate ciascuna da un test perché l'esclusione non resti una
+  dimenticanza: sotto la chiave globale `deviation_probability` il dict senza
+  `points` è la forma per chiave e la lista vuota la rifiuta prima il
+  classificatore (#209), e `grain.read_direction` impone `step` e legge un
+  `type` vuoto come non dichiarato (#207). Il gate di `deviation_probability`
+  avvolgeva queste eccezioni in un errore sul corpo intero con la causa in
+  coda (#209): ora gli arrivano già come `EngineError` col campo, e risalgono
+  intatte con un hint che nomina la chiave mancante.
+
 - **La cache per stream vede il seed** (issue #297). Ogni RNG del motore deriva
   da `(seed, rng_group o stream_id, componente)`, ma il fingerprint di
   `StreamCacheManager` conteneva lo stream, la semantica, il backend e la
