@@ -309,7 +309,8 @@ class TestBuildRendererCache:
 
         scm_cls.assert_called_once_with(cache_path='cache/x.json',
                                         samples_dir=None,
-                                        renderer_type='numpy')
+                                        renderer_type='numpy',
+                                        seed=None)
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['cache_manager'] is scm_instance
         assert capsys.readouterr().out == ''
@@ -325,7 +326,8 @@ class TestBuildRendererCache:
 
         scm_cls.assert_called_once_with(cache_path='cache/y.json',
                                         samples_dir=None,
-                                        renderer_type='csound')
+                                        renderer_type='csound',
+                                        seed=None)
         kwargs = api_mocks['RendererFactory'].create.call_args.kwargs
         assert kwargs['cache_manager'] is scm_instance
         assert capsys.readouterr().out == ''
@@ -347,7 +349,28 @@ class TestBuildRendererCache:
 
         scm_cls.assert_called_once_with(cache_path='cache/y.json',
                                         samples_dir='/media/wavs',
-                                        renderer_type='csound')
+                                        renderer_type='csound',
+                                        seed=None)
+
+    @pytest.mark.parametrize('renderer', ['numpy', 'csound', 'supercollider'])
+    def test_il_seed_dichiarato_arriva_al_cache_manager(self, api_mocks,
+                                                        renderer):
+        """Il fingerprint vede il seed di testa (#297): lo stem e' la
+        realizzazione di quel seed, e il testo dello stream non lo dice. E'
+        il seed che il documento DICHIARA (`declared_seed`), non `seed`, che
+        dopo create_elements e' valorizzato anche senza `seed:` -- un seed di
+        sessione nell'hash invaliderebbe ogni stem a ogni run."""
+        scm_mod, scm_cls, _ = _make_scm_module()
+        gen = api_mocks['generator_instance']
+        gen.seed = 987654321          # quello di sessione: non deve arrivare
+        gen.declared_seed = 1441
+
+        with patch.dict(sys.modules,
+                        {'pge.rendering.stream_cache_manager': scm_mod}):
+            api_mocks['api'].build_renderer(
+                renderer, gen, cache_manifest_path='cache/z.json')
+
+        assert scm_cls.call_args.kwargs['seed'] == 1441
 
 
 class TestBuildRendererUnknownType:

@@ -113,7 +113,9 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   `cache/{basename}.json`, **uno per progetto**: a separare i backend è il
   fingerprint, che include il `renderer` (issue #228). Senza, passare da un
   renderer all'altro lascerebbe ogni stream `clean` — nessun re-render e in
-  `output/` l'audio del backend precedente. Nota che il DSP non entra nel
+  `output/` l'audio del backend precedente. Lo stesso vale per il `seed` di
+  testa (issue #297), quando il documento ne dichiara uno: cambiarlo rifà
+  tutti gli stem, senza svuotare la cache a mano. Nota che il DSP non entra nel
   fingerprint: modificare `pge_grain.scd` o `main.orc` non invalida nulla. La
   garbage collection degli stream orfani scatta solo con entrambe attive.
 - **`--keep-sco` / `--sco-dir`** hanno effetto solo con `--renderer csound`

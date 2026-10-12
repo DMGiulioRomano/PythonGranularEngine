@@ -293,6 +293,7 @@ def _with_trailing_sep(samples_dir):
 
 
 def _make_cache_manager(cache_manifest_path: Optional[str],
+                        generator,
                         samples_dir: Optional[str] = None,
                         renderer_type: Optional[str] = None):
     """StreamCacheManager sul manifest esplicito; None = cache disattiva.
@@ -300,15 +301,18 @@ def _make_cache_manager(cache_manifest_path: Optional[str],
     `samples_dir` serve al fingerprint degli stream senza `duration` (#205),
     che risolve la durata dal file audio: senza, la risoluzione userebbe
     PATHSAMPLES anche quando i sample stanno altrove. `renderer_type` ci
-    entra per lo stesso motivo (#228): lo stem dipende dal backend che lo
-    rende, e il testo YAML non lo dice.
+    entra perche' lo stem dipende dal backend che lo rende (#228), e il seed
+    perche' ne e' la realizzazione (#297): il testo dello stream non dice ne'
+    l'uno ne' l'altro. Il seed e' quello che il documento dichiara
+    (`generator.declared_seed`), letto solo a cache attiva.
     """
     if cache_manifest_path is None:
         return None
     from pge.rendering.stream_cache_manager import StreamCacheManager
     return StreamCacheManager(cache_path=cache_manifest_path,
                               samples_dir=samples_dir,
-                              renderer_type=renderer_type)
+                              renderer_type=renderer_type,
+                              seed=generator.declared_seed)
 
 
 def build_renderer(
@@ -355,8 +359,8 @@ def build_renderer(
             window_registry=window_reg,
             table_map=table_map,
             output_sr=output_sr,
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
-                                              renderer_type),
+            cache_manager=_make_cache_manager(cache_manifest_path, generator,
+                                              samples_dir, renderer_type),
             stream_data_map=generator.stream_data_map,
             audio_format=audio_format,
             jobs=jobs,
@@ -387,8 +391,8 @@ def build_renderer(
             'csound',
             score_writer=generator.score_writer,
             csound_config=csound_config,
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
-                                              renderer_type),
+            cache_manager=_make_cache_manager(cache_manifest_path, generator,
+                                              samples_dir, renderer_type),
             stream_data_map=generator.stream_data_map,
             sco_dir=opts.sco_dir,
         )
@@ -420,8 +424,8 @@ def build_renderer(
                     'timeout': opts.timeout,
                 }.items() if v is not None
             },
-            cache_manager=_make_cache_manager(cache_manifest_path, samples_dir,
-                                              renderer_type),
+            cache_manager=_make_cache_manager(cache_manifest_path, generator,
+                                              samples_dir, renderer_type),
             stream_data_map=generator.stream_data_map,
             osc_dir=opts.osc_dir,
         )
