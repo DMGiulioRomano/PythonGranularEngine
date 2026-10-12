@@ -74,10 +74,11 @@
 # ascolta): chi incorpora e la vuole la trova li', una per stream costruito.
 # Il conteggio vero dei grani, per stream, e' in `RenderResult.grain_counts`.
 #
-# Attenzione a una cosa che non si vede da qui: PGE-ui unisce stderr a stdout
-# (`stderr=subprocess.STDOUT`), quindi anche le righe di stderr elencate piu'
-# sotto attraversano quel parser. A tenerle fuori dagli eventi e' la loro
-# forma, non il canale.
+# Attenzione a una cosa che non si vede da qui: fino alla PGE-ui#162 il bridge
+# univa stderr a stdout (`stderr=subprocess.STDOUT`), e anche le righe di
+# stderr elencate piu' sotto attraversavano quel parser. Oggi al parser arriva
+# il solo stdout, ma per il motore a tenerle fuori dagli eventi resta la loro
+# forma, non il canale: un altro host puo' tornare a unire i flussi.
 #
 # Se una di queste righe passa al logger -- come la #188 ha fatto con la riga
 # per stream -- il censimento qui sopra va aggiornato: il test lo verifica in
