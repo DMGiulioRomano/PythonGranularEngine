@@ -310,3 +310,217 @@ def test_end_time_sotto_normalized_dice_l_unita(build):
     assert exc.value.field == 'density'
     assert exc.value.value == pytest.approx(0.6)
     assert 'time_mode: normalized' in exc.value.hint
+
+
+# =============================================================================
+# Un piano piu' in la' del builder: la forma che legge `Envelope` (issue #288)
+# =============================================================================
+# #287 ha portato i guard di forma nel builder, col campo passato dall'alto.
+# Restavano fuori i difetti dello stesso genere che nascono in `Envelope`,
+# prima o dopo di lui: il dict senza `points`, il corpo vuoto, l'interpolazione
+# ignota — del `type` del dict, o dello slot del compatto che l'envelope prende
+# come proprio tipo. Risalivano come KeyError, ValueError e TypeError nudi:
+# senza campo, senza stream, un traceback dalla CLI.
+
+
+def _corpi_sotto_il_builder(y, interp):
+    """Le righe di #288, un difetto per corpo, e il `value` che l'errore deve
+    riportare: cio' che e' scritto nel file.
+
+    Del dict che non porta breakpoint il `value` e' il dict intero, perche'
+    `points` o non c'e' o non dice niente da solo (`null`, `5`, `[]`): e' nel
+    dict che si vede `punti` al posto di `points`, ed e' il valore della
+    chiave. Dell'interpolazione ignota e' il nome, che e' cio' che va
+    corretto.
+    """
+    senza_points = {'type': interp, 'punti': [[0, y], [1.0, y]]}
+    points_null = {'type': interp, 'points': None}
+    points_numero = {'type': interp, 'points': 5}
+    points_vuoto = {'type': interp, 'points': []}
+    return {
+        'dict_senza_points': (senza_points, senza_points),
+        'points_null': (points_null, points_null),
+        'points_numero': (points_numero, points_numero),
+        'points_vuoto': (points_vuoto, points_vuoto),
+        'lista_vuota': ([], []),
+        'type_ignoto': ({'type': 'banana', 'points': [[0, y], [1.0, y]]},
+                        'banana'),
+        'type_null': ({'type': None, 'points': [[0, y], [1.0, y]]}, None),
+        'interp_del_compatto_ignoto': (
+            [[[0, y], [100, y]], 1.0, 2, 'banana'], 'banana'),
+        'interp_del_primo_compatto_ignoto': (
+            [[0, y], [[[0, y], [100, y]], 1.0, 2, 'banana']], 'banana'),
+    }
+
+
+# Tre celle stanno fuori dalla tabella, e non per un guard che manca: sotto la
+# chiave globale `deviation_probability` un dict senza `points` e' la forma per
+# chiave, non un envelope, e la lista vuota la rifiuta prima il classificatore
+# (#209); `grain.read_direction` impone `step` a ogni envelope (#207), e un
+# `type` lasciato vuoto lo legge come non dichiarato. Sono fissate qui sotto,
+# una per una, perche' l'esclusione non resti una dimenticanza.
+FUORI_DALLA_TABELLA = {
+    ('deviation_probability', 'dict_senza_points'),
+    ('deviation_probability', 'lista_vuota'),
+    ('grain.read_direction', 'type_null'),
+}
+
+CASI_SOTTO_IL_BUILDER = [
+    pytest.param(campo, corpo, id=f'{campo}-{corpo}')
+    for campo in CHIAVI
+    for corpo in _corpi_sotto_il_builder(0, 'linear')
+    if (campo, corpo) not in FUORI_DALLA_TABELLA
+]
+
+
+@pytest.mark.parametrize("campo, corpo", CASI_SOTTO_IL_BUILDER)
+def test_sotto_il_builder_stessa_risposta_sotto_ogni_chiave(build, campo, corpo):
+    scrivi, y, interp = CHIAVI[campo]
+    scritto, _ = _corpi_sotto_il_builder(y, interp)[corpo]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(scrivi(scritto))
+
+    assert exc.value.field == campo
+    assert exc.value.stream_id == STREAM_ID
+
+
+@pytest.mark.parametrize("corpo", list(_corpi_sotto_il_builder(0, 'linear')))
+@pytest.mark.parametrize("campo", ['density', 'pitch.semitones',
+                                   'deviation_probability.read_direction'])
+def test_sotto_il_builder_il_valore_e_quello_scritto(build, campo, corpo):
+    """Il `value` dell'errore e' cio' che e' scritto nel file. Tre ingressi
+    diversi verso `Envelope`: il parser, il pitch e il gate per chiave, che da
+    #209 avvolgeva ogni eccezione in un errore sul corpo intero."""
+    scrivi, y, interp = CHIAVI[campo]
+    scritto, valore = _corpi_sotto_il_builder(y, interp)[corpo]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(scrivi(scritto))
+
+    # `repr`, non `==`: `True == 1`, e un dict che confronta uguale non dice
+    # se e' quello del file.
+    assert repr(exc.value.value) == repr(valore)
+    assert exc.value.hint
+
+
+def test_fuori_tabella_il_dict_senza_points_globale_e_la_forma_per_chiave(build):
+    """Sotto la chiave globale un dict senza `points` non e' un envelope: e'
+    `deviation_probability` per chiave (`'points' in obj`, #209). Lo Stream si
+    costruisce."""
+    scrivi, y, interp = CHIAVI['deviation_probability']
+    scritto, _ = _corpi_sotto_il_builder(y, interp)['dict_senza_points']
+
+    build(scrivi(scritto))
+
+
+def test_fuori_tabella_la_lista_vuota_globale_la_rifiuta_il_classificatore(build):
+    """La lista vuota non e' envelope-like, quindi sotto la chiave globale non
+    arriva a `Envelope`: la rifiuta `_classify_deviation_probability` (#209),
+    con l'errore suo, che nomina comunque la chiave e lo stream."""
+    from pge.shared.exceptions import InvalidParameterError
+
+    scrivi, _, _ = CHIAVI['deviation_probability']
+
+    with pytest.raises(InvalidParameterError) as exc:
+        build(scrivi([]))
+
+    assert exc.value.param_name == 'deviation_probability'
+    assert exc.value.stream_id == STREAM_ID
+
+
+def test_fuori_tabella_read_direction_legge_il_type_null_come_non_dichiarato(build):
+    """`grain.read_direction` avvolge ogni envelope in `{type: step, ...}`
+    (#207): il `type` scritto deve essere `step` o non esserci, e `null` conta
+    come non scritto. A `Envelope` arriva `step`, e lo Stream si costruisce."""
+    scrivi, y, interp = CHIAVI['grain.read_direction']
+    scritto, _ = _corpi_sotto_il_builder(y, interp)['type_null']
+
+    build(scrivi(scritto))
+
+
+# Un kwarg di una voice strategy e' un numero, un nome o un envelope. Una lista
+# o un dict che envelope non e' passava `_parse_strategy_kwarg` com'era: la
+# strategy lo teneva come parametro, e al primo grano `resolve_param` faceva
+# `float()` su una lista — un TypeError nudo in generazione, dopo che lo Stream
+# si era costruito senza dire niente (`chord` esplodeva gia' al parse, nudo
+# anche lui). Nessun kwarg di strategy accetta una lista o un dict che non sia
+# un envelope: `progression` di `chord_progression`, l'unico strutturale, il
+# passo comune non lo vede (`_take_voice_pitch_keys`).
+KWARG_DI_STRATEGY = {
+    'voices.pan.step': lambda c: {
+        'voices': {'num_voices': 2, 'pan': {'strategy': 'step', 'step': c}}},
+    'voices.pitch.pitch_range': lambda c: {
+        'voices': {'num_voices': 2,
+                   'pitch': {'strategy': 'range', 'pitch_range': c}}},
+    'voices.onset_offset.step': lambda c: {
+        'voices': {'num_voices': 2,
+                   'onset_offset': {'strategy': 'linear', 'step': c}}},
+    'voices.pointer.pointer_range': lambda c: {
+        'voices': {'num_voices': 2,
+                   'pointer': {'strategy': 'stochastic', 'pointer_range': c}}},
+    'voices.pitch.chord': lambda c: {
+        'voices': {'num_voices': 2, 'pitch': {'strategy': 'chord', 'chord': c}}},
+}
+
+NON_ENVELOPE = {
+    'lista_vuota': [],
+    'lista_di_numeri': [1, 2, 3],
+    'breakpoint_senza_lista_esterna': [0, 5],
+    'dict_senza_points': {'type': 'linear', 'punti': [[0, 1], [1, 2]]},
+    'dict_qualunque': {'a': 1},
+}
+
+
+@pytest.mark.parametrize("corpo", list(NON_ENVELOPE))
+@pytest.mark.parametrize("campo", list(KWARG_DI_STRATEGY))
+def test_il_kwarg_che_non_e_un_envelope_si_ferma_al_parse(build, campo, corpo):
+    scritto = NON_ENVELOPE[corpo]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(KWARG_DI_STRATEGY[campo](scritto))
+
+    assert exc.value.field == campo
+    assert exc.value.stream_id == STREAM_ID
+    assert repr(exc.value.value) == repr(scritto)
+
+
+@pytest.mark.parametrize("campo, valido", [
+    ('voices.pan.step', [[0, 10], [1.0, 20]]),
+    ('voices.pitch.pitch_range', {'type': 'cubic', 'points': [[0, 1], [1.0, 2]]}),
+    ('voices.onset_offset.step', [[[0, 0.01], [100, 0.02]], 1.0, 2]),
+    ('voices.pointer.pointer_range', 0.1),
+    ('voices.pitch.chord', 'dom7'),
+])
+def test_il_kwarg_ben_scritto_resta_valido(build, campo, valido):
+    """La controprova: ogni riga della tabella cade per il valore, non per la
+    strategy. Scritto bene, lo stesso kwarg si costruisce."""
+    build(KWARG_DI_STRATEGY[campo](valido))
+
+
+# Le scale che precedono `Envelope` non devono anticiparne l'errore, come non
+# devono anticipare quello del builder (sopra): sotto `time_mode: normalized`
+# un dict senza `points` diventava un `points: []`, cioe' un corpo vuoto che nel
+# file non c'e', e un `points: null` faceva esplodere la scala con un TypeError
+# prima che qualcuno potesse nominare la chiave.
+DICT_SENZA_BREAKPOINT = ('dict_senza_points', 'points_null', 'points_numero')
+
+CASI_SCALATI_SOTTO_IL_BUILDER = [
+    pytest.param(ingresso, corpo, id=f'{ingresso}-{corpo}')
+    for ingresso in SCALE
+    for corpo in DICT_SENZA_BREAKPOINT
+    if (SCALE[ingresso][0], corpo) not in FUORI_DALLA_TABELLA
+]
+
+
+@pytest.mark.parametrize("ingresso, corpo", CASI_SCALATI_SOTTO_IL_BUILDER)
+def test_la_scala_non_anticipa_l_errore_del_costruttore(build, ingresso, corpo):
+    campo, scrivi, y = SCALE[ingresso]
+    scritto, valore = _corpi_sotto_il_builder(y, 'linear')[corpo]
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(scrivi(scritto))
+
+    assert exc.value.field == campo
+    assert exc.value.stream_id == STREAM_ID
+    assert repr(exc.value.value) == repr(valore)

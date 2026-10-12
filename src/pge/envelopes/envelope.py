@@ -10,6 +10,7 @@ Supports:
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Union, List, Dict, Any
 from pge.envelopes.envelope_factory import InterpolationStrategyFactory
 from pge.envelopes.envelope_segment import NormalSegment, Segment
@@ -65,22 +66,62 @@ class Envelope:
         # Import qui per evitare circular import
         from pge.envelopes.envelope_builder import (
             DEFAULT_INTERP, EnvelopeBuilder,
+            _DICT_POINTS_HINT, _EMPTY_HINT, _TYPE_HINT,
         )
-        
+        from pge.shared.exceptions import InvalidFieldValueError
+
         # Parse type e raw_points. Il default e' la costante del builder, che
         # il log del compatto nomina (issue #219): un letterale qui e uno li'
         # potrebbero divergere senza che nessun test se ne accorga.
+        #
+        # La forma che si legge qui, prima del builder, ha i suoi guard (issue
+        # #288), col campo passato dall'alto come quelli del builder e la
+        # sotto-posizione senza: `envelope.points`, `envelope.type`. Prima erano
+        # un KeyError, un TypeError e due ValueError nudi.
         if isinstance(breakpoints, dict):
+            # `points` deve esserci e dire dei breakpoint. Cio' che il builder
+            # sa percorrere gli arriva com'e' — una stringa o un dict li scorre
+            # elemento per elemento, e ne rifiuta il primo — mentre null o un
+            # numero non si percorrono affatto.
+            if not isinstance(breakpoints.get('points'), Iterable):
+                raise InvalidFieldValueError(
+                    field=EnvelopeBuilder._field(field, "points"),
+                    value=breakpoints,
+                    hint=_DICT_POINTS_HINT,
+                )
             self.type = breakpoints.get('type', DEFAULT_INTERP)
+            # Il tipo si guarda prima dei punti: e' la prima cosa che il dict
+            # dice di se'. Una chiave scritta e lasciata vuota non e' il
+            # default — non c'e' nessuna lettura da indovinare.
+            if self.type not in EnvelopeBuilder.VALID_INTERP_TYPES:
+                raise InvalidFieldValueError(
+                    field=EnvelopeBuilder._field(field, "type"),
+                    value=self.type,
+                    hint=_TYPE_HINT.format(
+                        tipi=', '.join(EnvelopeBuilder.VALID_INTERP_TYPES)),
+                )
             raw_points = breakpoints['points']
         elif isinstance(breakpoints, list):
-            # Controlla se c'è tipo in formato compatto
-            extracted_type = EnvelopeBuilder.extract_interp_type(breakpoints)
+            # Controlla se c'è tipo in formato compatto: lo slot che diventa il
+            # tipo dell'envelope si valida dove si legge (issue #288).
+            extracted_type = EnvelopeBuilder.extract_interp_type(
+                breakpoints, field=field)
             self.type = extracted_type or DEFAULT_INTERP
             raw_points = breakpoints
         else:
             raise ValueError(f"Formato envelope non valido: {breakpoints}")
-        
+
+        # Il corpo vuoto si ferma qui, dove il campo c'e' (issue #288): il
+        # builder lo espanderebbe in niente, e il primo a protestare era
+        # `_parse_segments`, che il campo non lo conosce. Il `value` e' il
+        # corpo com'e' scritto, dict compreso: e' il valore della chiave.
+        if not raw_points:
+            raise InvalidFieldValueError(
+                field=EnvelopeBuilder._field(field, "points"),
+                value=breakpoints,
+                hint=_EMPTY_HINT,
+            )
+
         # ESPANDI formato compatto usando Builder
         expanded_points = EnvelopeBuilder.parse(raw_points, field=field)
         
@@ -108,6 +149,9 @@ class Envelope:
         Returns:
             List[NormalSegment]
         """
+        # Da uno YAML non ci si arriva piu' vuoti: il corpo vuoto lo ferma
+        # `__init__` col campo (issue #288), e il builder non espande in niente
+        # un corpo che non lo e'. Resta l'invariante del metodo.
         if not breakpoints:
             raise ValueError("Lista breakpoints vuota.")
 
@@ -577,9 +621,14 @@ def create_scaled_envelope(
     # 1. Gestione DICT
     if isinstance(raw_data, dict):
         local_unit = raw_data.get('time_unit', time_mode)
-        points = raw_data.get('points', [])
-        
-        if local_unit == 'normalized':
+        points = raw_data.get('points')
+
+        # Si scala solo una lista di punti: un dict senza `points`, o con
+        # `points` null o un numero, va al costruttore com'e' scritto, che lo
+        # rifiuta nominando il campo (issue #288). Il ripiego su `[]` ne
+        # faceva un corpo vuoto che nel file non c'e', e `null` faceva
+        # esplodere la scala con un TypeError prima di lui.
+        if local_unit == 'normalized' and isinstance(points, list):
             scaled_points = _scale_time_recursive(points, duration)
             return Envelope(
                 {'type': raw_data.get('type', DEFAULT_INTERP),

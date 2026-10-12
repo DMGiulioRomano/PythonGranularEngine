@@ -148,19 +148,47 @@ def test_engine_error_del_builder_risale_intatto():
     assert err.hint
 
 
-def test_l_hint_riporta_la_causa_precisa():
+def test_l_hint_riporta_la_causa_precisa(monkeypatch):
     """L'hint elenca le forme note *e* dice cosa e' andato storto (review #216).
 
     Senza la causa, l'utente legge che il suo corpo "non si costruisce come
     envelope" e deve indovinare quale delle forme elencate stava sbagliando.
     La causa la conosce solo l'eccezione che arriva dal builder, e va letta
     prima di buttarla via.
+
+    Questo e' il ramo per cio' che non e' un `EngineError`. Da #288 nessun
+    corpo YAML ci arriva piu' — il dict senza `points`, che era il caso di
+    questo test, lo rifiuta `Envelope` col campo (sotto) — e la regola del
+    ramo si verifica con un'eccezione qualunque.
     """
+    import pge.parameters.gate_factory as gate_factory
+
+    def esplode(*args, **kwargs):
+        raise KeyError('points')
+
+    monkeypatch.setattr(gate_factory, 'create_scaled_envelope', esplode)
+
     with pytest.raises(InvalidFieldValueError) as exc_info:
-        _create_gate({'punti': [[0, 50]]})
+        _create_gate([[0, 50], [1, 60]])
 
     hint = exc_info.value.hint
     # Le forme note restano.
     assert "formato compatto" in hint
-    # E in coda la ragione, come l'ha detta il builder.
+    # E in coda la ragione, come l'ha detta chi ha fallito.
     assert str(exc_info.value.__cause__) in hint
+
+
+def test_il_dict_senza_points_lo_rifiuta_envelope_col_campo():
+    """Il dict senza `points` era un KeyError che questo modulo riavvolgeva
+    (#209). Da #288 lo rifiuta `Envelope` stesso: col campo passato dall'alto,
+    e con un hint che nomina la chiave che manca invece di riportare la
+    stringa di un KeyError. Risale intatto, come ogni `EngineError`."""
+    with pytest.raises(InvalidFieldValueError) as exc_info:
+        _create_gate({'punti': [[0, 50]]})
+
+    err = exc_info.value
+    assert err.field == 'deviation_probability.volume'
+    assert err.value == {'punti': [[0, 50]]}
+    assert "`points`" in err.hint
+    assert "formato compatto" in err.hint
+    assert err.__cause__ is None

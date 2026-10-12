@@ -72,6 +72,14 @@ _GRAIN_DURATION_UNIT_LABELS = {
 }
 
 
+_STRATEGY_KWARG_HINT = (
+    "un parametro di una voice strategy e' un numero, un nome o un envelope: "
+    "una lista di breakpoint ([[t, v], ...]), un formato compatto, un BP group "
+    "o un dict con `points`. Una lista vuota o di soli numeri, o un dict senza "
+    "`points`, non e' nessuno dei tre."
+)
+
+
 def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute',
                           field: Optional[str] = None):
     """Converte kwarg YAML strategy: str/int passthrough, envelope-like → Envelope.
@@ -83,6 +91,13 @@ def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absol
 
     `field` e' il path YAML del kwarg (`voices.pan.step`), che gli errori di
     forma dell'envelope nominano (issue #211).
+
+    Una lista o un dict che envelope non e' si ferma qui, su `field` (issue
+    #288). Nessun kwarg di strategy ne accetta uno — sono numeri, nomi o
+    envelope; `progression` di `chord_progression`, l'unico strutturale, lo
+    sottrae `_take_voice_pitch_keys` prima di questa conversione — e
+    lasciarlo passare voleva dire uno Stream che si costruisce e un TypeError
+    nudo al primo grano, quando `resolve_param` fa `float()` su una lista.
     """
     if isinstance(value, (str, int, float)):
         return value
@@ -94,6 +109,12 @@ def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absol
         if tm == 'normalized':
             return create_scaled_envelope(value, duration, 'normalized', field=field)
         return Envelope(value, field=field)
+    if isinstance(value, (list, dict)):
+        raise InvalidFieldValueError(
+            field=field if field is not None else 'voices',
+            value=value,
+            hint=_STRATEGY_KWARG_HINT,
+        )
     return value
 
 

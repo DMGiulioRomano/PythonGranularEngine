@@ -143,6 +143,36 @@ _DIST_TIPO_IMPLICITO = (
     "parametri: se ne volevi un'altra, dichiarane il nome."
 )
 
+# Gli hint di `Envelope` (issue #288): la forma che si legge prima del builder
+# o al posto suo, cioe' il dict, il corpo intero e il tipo dell'envelope. Stanno
+# qui con gli altri perche' sono la stessa famiglia, e `Envelope` li importa.
+
+_DICT_POINTS_HINT = (
+    "un envelope in forma dict porta i suoi breakpoint sotto la chiave "
+    "`points` — una lista di breakpoint, un formato compatto o un BP group — "
+    "e `type` ne e' l'interpolazione: {type: cubic, points: [[0, 0], [1, 1]]}. "
+    "Qui `points` manca, o non contiene breakpoint (null, un numero)."
+)
+
+_EMPTY_HINT = (
+    "un envelope ha almeno un breakpoint: senza punti non c'e' nessun valore "
+    "da leggere nel tempo. Un valore costante si scrive come numero, non come "
+    "lista vuota."
+)
+
+_TYPE_HINT = (
+    "il `type` di un envelope in forma dict e' l'interpolazione dei segmenti "
+    "che non ne dichiarano una propria: {tipi}. Omesso, vale `linear`; "
+    "scritto e lasciato vuoto non vale niente."
+)
+
+_COMPACT_INTERP_HINT = (
+    "il quarto elemento del formato compatto e' un'interpolazione ({tipi}), e "
+    "l'envelope la prende come proprio tipo: nella forma diretta, o dal primo "
+    "compatto di una lista che la dichiara. Omesso o null, il tipo resta "
+    "`linear`."
+)
+
 
 class EnvelopeBuilder:
     """
@@ -1065,15 +1095,27 @@ class EnvelopeBuilder:
 
 
     @classmethod
-    def extract_interp_type(cls, raw_points: list) -> Optional[str]:
+    def extract_interp_type(cls, raw_points: list,
+                            field: Optional[str] = None) -> Optional[str]:
         """
         Estrae tipo interpolazione da formato compatto (se presente).
-        
+
         Se ci sono più formati compatti con tipi diversi, usa il primo.
-        
+
+        E' il punto in cui lo slot si legge, quindi e' qui che si valida
+        (issue #288): un nome fuori da `VALID_INTERP_TYPES` e'
+        `InvalidFieldValueError` su `field`, o su `envelope.compact.interp`
+        senza. Prima arrivava a `InterpolationStrategyFactory` come se fosse il
+        `type` dell'envelope, e risaliva come ValueError nudo. Si valida lo
+        slot che diventa il tipo, non ogni slot: quello di un compatto che
+        l'envelope non legge (dentro un dict, o dopo il primo che ne dichiara
+        uno) non decide niente, e rifiutarlo farebbe correggere un valore che
+        corretto resterebbe ignorato.
+
         Args:
             raw_points: Lista con possibili formati compatti
-            
+            field: la chiave YAML da nominare negli errori (vedi `parse`)
+
         Returns:
             str or None: Tipo interpolazione ('linear', 'cubic', 'step')
         """
@@ -1085,7 +1127,8 @@ class EnvelopeBuilder:
             # interpolato col default.
             if (len(raw_points) > cls.COMPACT_INTERP
                     and raw_points[cls.COMPACT_INTERP] is not None):
-                return raw_points[cls.COMPACT_INTERP]
+                return cls._known_interp(
+                    raw_points[cls.COMPACT_INTERP], field)
             return None
 
         # Altrimenti itera sugli elementi (formato misto)
@@ -1093,9 +1136,21 @@ class EnvelopeBuilder:
             if cls.is_compact_format(item):
                 if (len(item) > cls.COMPACT_INTERP
                         and item[cls.COMPACT_INTERP] is not None):
-                    return item[cls.COMPACT_INTERP]
+                    return cls._known_interp(item[cls.COMPACT_INTERP], field)
 
         return None
+
+    @classmethod
+    def _known_interp(cls, interp: str, field: Optional[str]) -> str:
+        """L'interp dello slot di un compatto, se e' un nome del registro."""
+        if interp not in cls.VALID_INTERP_TYPES:
+            raise InvalidFieldValueError(
+                field=cls._field(field, "compact.interp"),
+                value=interp,
+                hint=_COMPACT_INTERP_HINT.format(
+                    tipi=', '.join(cls.VALID_INTERP_TYPES)),
+            )
+        return interp
 
 
 # =============================================================================

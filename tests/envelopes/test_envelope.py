@@ -20,6 +20,7 @@ import pytest
 import math
 from typing import List
 from pge.envelopes.envelope import Envelope
+from pge.shared.exceptions import InvalidFieldValueError
 from pge.envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
 
 
@@ -557,25 +558,60 @@ class TestCubicTwoPointSmoothstep:
 class TestErrorHandling:
     """Test gestione errori."""
     
+    # I tre errori qui sotto erano un ValueError, un KeyError e un ValueError
+    # nudi, senza campo (issue #288). Sono `InvalidFieldValueError`: senza la
+    # chiave YAML, che solo il chiamante conosce, nominano la sotto-posizione.
+
     def test_error_empty_breakpoints(self):
         """Errore con breakpoints vuoti."""
-        with pytest.raises(ValueError, match="Lista breakpoints vuota"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             Envelope([])
-    
+        assert exc.value.field == 'envelope.points'
+        assert exc.value.value == []
+
     def test_error_invalid_format(self):
         """Errore con formato non valido."""
         with pytest.raises((ValueError, TypeError)):
             Envelope("not a valid format")
-    
+
     def test_error_invalid_dict_format(self):
         """Errore con dict senza 'points'."""
-        with pytest.raises(KeyError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             Envelope({'type': 'linear'})  # Missing 'points'
-    
+        assert exc.value.field == 'envelope.points'
+        assert exc.value.value == {'type': 'linear'}
+
     def test_error_invalid_interp_type(self):
         """Errore con tipo interpolazione non valido."""
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             Envelope({'type': 'exponential', 'points': [[0, 0], [1, 10]]})
+        assert exc.value.field == 'envelope.type'
+        assert exc.value.value == 'exponential'
+
+    def test_il_campo_passato_vince_sulla_sotto_posizione(self):
+        """Chi costruisce l'envelope da uno YAML passa la chiave, come per i
+        guard del builder (#211): e' la chiave che l'errore nomina."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope({'type': 'linear', 'points': []}, field='density')
+        assert exc.value.field == 'density'
+
+    def test_l_interp_del_compatto_che_diventa_il_tipo(self):
+        """Lo slot dell'interp che l'envelope prende come tipo si valida dove
+        si legge, e l'hint dice che e' il quarto elemento del compatto."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope([[[0, 0], [100, 1]], 1.0, 2, 'cubicc'])
+        assert exc.value.field == 'envelope.compact.interp'
+        assert exc.value.value == 'cubicc'
+        assert 'quarto elemento' in exc.value.hint
+
+    def test_l_interp_di_un_compatto_che_l_envelope_non_legge_resta_ignorato(self):
+        """Dentro `{type, points}` il tipo e' quello del dict, e lo slot del
+        compatto non decide niente: un nome ignoto li' resta ignorato come lo
+        resta un nome valido. Rifiutarlo farebbe correggere un valore che,
+        corretto, non conterebbe lo stesso."""
+        env = Envelope({'type': 'step',
+                        'points': [[[0, 0], [100, 1]], 1.0, 2, 'cubicc']})
+        assert env.type == 'step'
 
 
 # =============================================================================
