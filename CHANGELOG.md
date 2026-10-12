@@ -341,6 +341,46 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **La forma dict si legge nell'unità dichiarata come la lista nuda** (issue
+  #289). `scale_raw_param_values` porta le y nell'unità del motore prima che il
+  corpo arrivi al builder — `grain.duration_unit` su `grain.duration` e sul
+  `grain.duration_range` assoluto, `loop_unit: normalized` su `loop_start`,
+  `loop_end` e `loop_dur` — e sulla lista nuda riconosceva il compatto e il BP
+  group diretti. Nella forma `{type, points}` no: `points` andava alla
+  scansione elemento per elemento, dove un compatto o un gruppo diretti non
+  sono elementi ma il corpo intero, e il pattern restava nell'unità dello
+  YAML. Misurato attraverso lo Stream con un sample di 2 s:
+
+  ```yaml
+  pointer:
+    loop_unit: normalized
+    loop_start: {type: linear, points: [[[0, 0.1], [100, 0.2]], 1.0, 2]}
+  ```
+
+  partiva da 0.1 s invece che da 0.2 s, in silenzio: il loop era un altro. Con
+  `duration_unit: milliseconds` il render moriva invece su un
+  `ParameterBoundError` per valori legali nell'unità dichiarata, senza dire che
+  l'unità era stata ignorata. Lo stesso compatto scritto dentro una lista si
+  scalava già: il difetto era della sola forma dict diretta.
+
+  Ora i due rami della scala passano per un helper solo, `_scale_body_y`, che
+  legge il corpo nell'ordine del builder — compatto, gruppo, lista — scritto
+  nudo o sotto `points`: due copie della stessa regola sono come era nato il
+  difetto del compatto in #234. Un `points` che non è una lista (null, un
+  numero) resta com'è scritto invece di far esplodere la scala con un
+  `TypeError`: lo rifiuta il costruttore (vedi #288 qui sotto). Il corpus di
+  parità di #234 lo chiede a ogni sua forma: il dict deve scalare `points`
+  come la lista nuda scala sé stessa.
+
+  **Cambia il suono** dei progetti che usano quella grafia sotto un'unità non
+  di default: corretto invece che sbagliato. `VARIATION_SEMANTICS_VERSION`
+  **non** si muove, come per #234: nessuno YAML di `configs/`, dei test, della
+  documentazione, di mare-nostrum, di granulation-studies o degli esempi del
+  paper CIM 2026 la usa, e un bump rifarebbe ogni stem di ogni progetto per una
+  grafia che nessuno scrive. Un progetto esterno si controlla cercando un
+  `points:` seguito da tre parentesi aperte accanto a `duration_unit` o
+  `loop_unit: normalized`; trovato, si rirende senza cache incrementale.
+
 - **La cache per stream vede il seed** (issue #297). Ogni RNG del motore deriva
   da `(seed, rng_group o stream_id, componente)`, ma il fingerprint di
   `StreamCacheManager` conteneva lo stream, la semantica, il backend e la

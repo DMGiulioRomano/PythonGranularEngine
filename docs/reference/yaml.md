@@ -745,7 +745,8 @@ grain:
 
   # Unità di misura per duration e duration_range: seconds (default) |
   # samples | milliseconds. La conversione avviene al parse e vale per
-  # scalari ed envelope (solo i valori, l'asse tempo resta invariato).
+  # scalari ed envelope in ogni grafia, {type, points} compreso (solo i
+  # valori, l'asse tempo resta invariato).
 
   # 'samples': campioni alla frequenza di output del motore (48000 Hz).
   duration_unit: samples
@@ -2369,6 +2370,23 @@ Internamente `PointerController._pre_normalize_loop_params` usa
 compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo un punto,
 un breakpoint o un BP group che il builder accetterà (§3.3): ciò che non lo è
 resta com'è, e lo rifiuta il builder nominando la chiave (§5.5, issue #211).
+
+Vale in ogni grafia, e la forma dict non fa eccezione: `points` si legge come
+la lista nuda, quindi un compatto o un BP group scritti direttamente dentro
+`{type, points}` si scalano come scritti da soli. Fino alla issue #289 no: la
+scala percorreva `points` elemento per elemento, il compatto e il gruppo
+diretti restavano nell'unità dello YAML, e il motore li leggeva in secondi —
+un loop diverso da quello scritto, senza errori. La stessa regola vale per la
+conversione di `grain.duration_unit` (§ Blocco Grain), che passa per la stessa
+funzione.
+
+```yaml
+pointer:
+  loop_unit: normalized
+  # identici: il pattern è scalato per sample_dur_sec in tutte e due
+  loop_start: [[[0, 0.1], [100, 0.2]], 1.0, 2]
+  loop_start: {type: linear, points: [[[0, 0.1], [100, 0.2]], 1.0, 2]}
+```
 
 ### Differenza chiave da `time_mode`
 
