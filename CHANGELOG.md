@@ -156,6 +156,33 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
+- **La riga di testa del riepilogo è protocollo, e il contratto di stdout
+  descrive il parser di PGE-ui com'è oggi** (issue #277).
+  `docs/explanation/contratto-stdout.md` è l'unico posto in cui il contratto
+  fra i due repository è dichiarato, e per forza descrive anche il lato che
+  non sta qui. La PGE-ui#162 ha chiuso i tre reperti della #178, e quattro
+  affermazioni erano rimaste indietro: il filtro sugli id dichiarati non è più
+  inerte senza id, è totale; la riga di path vale solo dentro il blocco
+  riassuntivo; stderr non arriva più al parser, perché i due pipe si
+  riuniscono etichettati; `stream-progress` è stato tolto da `app.jsx` col suo
+  stato. Restano le regole che quelle misure motivavano: `Manifest` e `GC`
+  restano protocollo perché occupano quello spazio di nomi, e nessuno, su
+  nessun canale, scrive righe con la forma del protocollo — vincola il motore,
+  non i suoi host.
+
+  La conseguenza per questo repo è una riga: «Generazione completata! N file
+  generati:» apre il blocco in cui il parser legge i path, quindi è
+  **protocollo** in `CLASSIFICAZIONE` invece che interfaccia. Cambiarne le
+  parole è adesso un cambio di superficie pubblica, con analisi d'impatto: il
+  blocco non si aprirebbe, e nessun path chiuderebbe il suo stream (sui giri
+  riusciti i pallini li salva il fallback di `done`, l'avanzamento vivo no).
+  La guardia legge come legge il parser: le forme del protocollo sono tre, e
+  i path del riepilogo contano solo sotto la sua testa, quindi una testa che
+  cambia parole fa diventare rossi anche i due test sui path, e
+  `test_la_riga_di_testa_apre_il_blocco_riassuntivo` dice quale riga. Nessuna
+  riga di output si è mossa; i commenti di `logger.py` e `api.py` che
+  descrivevano il bridge al presente sono passati al passato.
+
 - **Tre pezzi di motore escono dai moduli pesanti perche' chi li legge li
   importi** (issue #246). PGE-ui ha un harness di parita' che chiede al motore
   le regole che la UI prometteva di replicare, invece di ricopiarle: la
