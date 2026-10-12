@@ -553,11 +553,12 @@ class Envelope:
                 return _scale_compact_y(body)
             if EnvelopeBuilder.is_bp_group(body):
                 return _scale_group_y(body)
-            if isinstance(body, list):
+            if isinstance(body, (list, tuple)):
                 return _scale_list_y(body)
-            # Un `points` che non e' una lista (null, un numero) non ha niente
-            # da scalare: resta com'e' scritto, e lo rifiuta il costruttore
-            # nominando il campo (issue #288). Iterarlo era un TypeError nudo.
+            # Un `points` che non e' una sequenza di punti (null, un numero)
+            # non ha niente da scalare: resta com'e' scritto, e lo rifiuta il
+            # costruttore nominando il campo (issue #288). Iterarlo era un
+            # TypeError nudo.
             return body
 
         if isinstance(raw_data, dict):
@@ -623,12 +624,12 @@ def create_scaled_envelope(
         local_unit = raw_data.get('time_unit', time_mode)
         points = raw_data.get('points')
 
-        # Si scala solo una lista di punti: un dict senza `points`, o con
+        # Si scala solo una sequenza di punti: un dict senza `points`, o con
         # `points` null o un numero, va al costruttore com'e' scritto, che lo
         # rifiuta nominando il campo (issue #288). Il ripiego su `[]` ne
         # faceva un corpo vuoto che nel file non c'e', e `null` faceva
         # esplodere la scala con un TypeError prima di lui.
-        if local_unit == 'normalized' and isinstance(points, list):
+        if local_unit == 'normalized' and isinstance(points, (list, tuple)):
             scaled_points = _scale_time_recursive(points, duration)
             return Envelope(
                 {'type': raw_data.get('type', DEFAULT_INTERP),

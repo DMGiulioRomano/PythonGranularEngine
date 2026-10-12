@@ -630,6 +630,23 @@ class TestScalaYFormaDict:
             'points': Envelope._scale_raw_values_y(copy.deepcopy(corpo), 1000.0),
         }
 
+    def test_una_tupla_di_punti_si_scala_ancora(self):
+        """`points` lo scrive il codice, non solo lo YAML, e una tupla di
+        breakpoint il builder la percorre come una lista. La scansione del dict
+        la scalava gia': ridurre la scala alle sole liste, per lasciare com'e'
+        un `points` null o un numero (#288), non deve toglierla a lei."""
+        scalato = Envelope._scale_raw_values_y(
+            {'type': 'linear', 'points': ([0, 0.05], [1, 0.1])}, 1000.0)
+
+        assert scalato['points'] == [[0, 50.0], [1, 100.0]]
+
+    def test_una_tupla_di_punti_si_scala_ancora_nel_tempo(self):
+        """Lo stesso per la scala dei tempi sotto `normalized`."""
+        env = create_scaled_envelope(
+            {'type': 'linear', 'points': ([0, 1], [1, 2])}, 10.0, 'normalized')
+
+        assert env.breakpoints[-1][0] == pytest.approx(10.0)
+
 
 class TestScaleRawParamValues:
     """
