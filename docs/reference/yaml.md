@@ -2503,7 +2503,9 @@ avviene in `Stream._init_voice_manager` via `_parse_strategy_kwarg`, che usa
 `Envelope.is_envelope_like` per discriminare. Una lista o un dict che envelope
 non è (`step: []`, `pitch_range: [1, 2, 3]`, un dict senza `points`) è
 `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse (issue #288):
-prima lo Stream si costruiva e il render moriva al primo grano.
+prima lo Stream si costruiva e il render moriva al primo grano, o con una voce
+sola finiva senza che la strategy fosse mai consultata. Il rifiuto vale anche
+con `num_voices: 1`.
 
 ```yaml
 voices:

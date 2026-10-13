@@ -14,7 +14,7 @@ sources:
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: d9e821f
+last_synced_commit: 175fdf9
 entry_for: [error-handling]
 ---
 
@@ -798,7 +798,10 @@ Un kwarg di una voice strategy che è una lista o un dict ma non un envelope
 `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse (issue #288). Lo
 Stream si costruiva, e il `TypeError` nudo arrivava al primo grano, quando la
 strategy faceva `float()` sul valore; `chord` esplodeva già al parse, nudo
-anche lui.
+anche lui. Con una voce sola (`num_voices: 1`, o un envelope che non supera 1)
+non arrivava affatto: la voce 0 non consulta la strategy, e il render finiva.
+Lì il rifiuto è nuovo, e vale lo stesso: il valore è scritto male qualunque sia
+il numero di voci che lo leggerebbero.
 
 ### Strategia non trovata
 ```yaml

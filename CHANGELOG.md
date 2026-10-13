@@ -454,6 +454,12 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse: nessun kwarg di
   strategy accetta una lista o un dict che non sia un envelope, e `progression`
   di `chord_progression`, l'unico strutturale, il passo comune non lo vede.
+  **Con una voce sola il rifiuto è nuovo**: con `num_voices: 1` (o un envelope
+  che non supera 1) la voce 0 non consulta la strategy, il `TypeError` non
+  arrivava mai e il render finiva. Uno YAML così smette di rendere, ed è
+  voluto: il valore è scritto male comunque, e con una seconda voce
+  tornerebbe il `TypeError` al primo grano. Si corregge il kwarg, o si toglie
+  il sotto-blocco che non serve.
   Nemmeno l'identità RNG che il motore inietta nelle strategy stocastiche
   (`stream_id`, `seed`) passa per quel controllo, perché nel blocco non è
   scritta: un `rng_group` scritto come lista resta quello che era, invece di
