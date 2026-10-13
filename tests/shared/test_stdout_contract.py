@@ -544,9 +544,12 @@ def test_la_registrazione_dinamica_non_stampa(relpath):
 # stato scritto la chiudeva la `[CACHE]` successiva, e al riepilogo restava il
 # solo ultimo stream; il fix #151 di PGE-ui ha spostato tutta la chiusura qui,
 # perche' il renderer numpy fa il triage di tutti gli stream prima di scriverne
-# uno.) Toglierle l'indentazione, o spezzarla su piu' righe, lascia ogni stem
-# DIRTY col pallino giallo dopo un render che ha fatto esattamente cio' che il
-# pallino chiedeva.
+# uno.) Toglierle l'indentazione, o spezzarla su piu' righe, non chiude piu'
+# nessuno stream DIRTY sulla sua riga. Qui c'era scritto che ogni stem DIRTY
+# restava col pallino giallo: a valle pero' c'e' una rete, il fallback
+# dell'evento `done`, che su un giro riuscito reclama gli stream costruiti che
+# nessuno ha chiuso. Si perde l'avanzamento vivo, e su un giro fallito non si
+# reclama niente — lo stesso prezzo della riga di testa, piu' sotto.
 #
 # Misurato per sabotaggio: passando da `f"    {path}"` a `f"{path}"` la suite
 # di PGE restava interamente verde prima di questo test.
