@@ -92,7 +92,23 @@ class InterpolationStrategyFactory:
             )
         
         return strategy_class()
-    
+
+    @classmethod
+    def reads(cls, interp_type) -> bool:
+        """True se `create` accetta `interp_type`: la stessa risposta, perche'
+        e' la stessa chiamata.
+
+        Serve a chi deve rifiutare un nome prima di costruire, nominando il
+        campo (i guard di forma di `Envelope` e del builder, issue #288).
+        Confrontarlo con un elenco esatto sarebbe una seconda regola: `create`
+        ignora maiuscole e spazi attorno, e `type: Step` rende da sempre.
+        """
+        try:
+            cls.create(interp_type)
+        except ValueError:
+            return False
+        return True
+
     @classmethod
     def get_supported_types(cls) -> list:
         """

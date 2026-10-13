@@ -92,8 +92,10 @@ class Envelope:
             self.type = breakpoints.get('type', DEFAULT_INTERP)
             # Il tipo si guarda prima dei punti: e' la prima cosa che il dict
             # dice di se'. Una chiave scritta e lasciata vuota non e' il
-            # default — non c'e' nessuna lettura da indovinare.
-            if self.type not in EnvelopeBuilder.VALID_INTERP_TYPES:
+            # default — non c'e' nessuna lettura da indovinare. Il nome si
+            # rifiuta se lo rifiuta la factory che lo leggera', non un elenco
+            # esatto: lei non bada a maiuscole e spazi, e `Step` rendeva.
+            if not InterpolationStrategyFactory.reads(self.type):
                 raise InvalidFieldValueError(
                     field=EnvelopeBuilder._field(field, "type"),
                     value=self.type,

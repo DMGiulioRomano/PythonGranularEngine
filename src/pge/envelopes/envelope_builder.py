@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 from typing import List, NamedTuple, Union, Tuple, Optional
 
+from pge.envelopes.envelope_factory import InterpolationStrategyFactory
 from pge.shared.exceptions import InvalidFieldValueError
 
 
@@ -1103,10 +1104,10 @@ class EnvelopeBuilder:
         Se ci sono più formati compatti con tipi diversi, usa il primo.
 
         E' il punto in cui lo slot si legge, quindi e' qui che si valida
-        (issue #288): un nome fuori da `VALID_INTERP_TYPES` e'
+        (issue #288): un nome che `InterpolationStrategyFactory` non legge e'
         `InvalidFieldValueError` su `field`, o su `envelope.compact.interp`
-        senza. Prima arrivava a `InterpolationStrategyFactory` come se fosse il
-        `type` dell'envelope, e risaliva come ValueError nudo. Si valida lo
+        senza. Prima arrivava alla factory come se fosse il `type`
+        dell'envelope, e risaliva come ValueError nudo. Si valida lo
         slot che diventa il tipo, non ogni slot: quello di un compatto che
         l'envelope non legge (dentro un dict, o dopo il primo che ne dichiara
         uno) non decide niente, e rifiutarlo farebbe correggere un valore che
@@ -1142,8 +1143,15 @@ class EnvelopeBuilder:
 
     @classmethod
     def _known_interp(cls, interp: str, field: Optional[str]) -> str:
-        """L'interp dello slot di un compatto, se e' un nome del registro."""
-        if interp not in cls.VALID_INTERP_TYPES:
+        """L'interp dello slot di un compatto, se la factory lo legge.
+
+        Lo legge come lo legge `Envelope`, `interp or DEFAULT_INTERP`: scritto
+        vuoto e' il default. E il nome lo giudica la factory, non un elenco
+        esatto, perche' e' lei a costruirlo e non bada a maiuscole e spazi:
+        `'Step'` rendeva, e rifiutarlo farebbe smettere di rendere uno YAML
+        che rendeva.
+        """
+        if not InterpolationStrategyFactory.reads(interp or DEFAULT_INTERP):
             raise InvalidFieldValueError(
                 field=cls._field(field, "compact.interp"),
                 value=interp,

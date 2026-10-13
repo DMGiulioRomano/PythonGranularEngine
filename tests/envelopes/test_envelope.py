@@ -20,6 +20,7 @@ import pytest
 import math
 from typing import List
 from pge.envelopes.envelope import Envelope
+from pge.envelopes.envelope_factory import InterpolationStrategyFactory
 from pge.shared.exceptions import InvalidFieldValueError
 from pge.envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
 
@@ -612,6 +613,73 @@ class TestErrorHandling:
         env = Envelope({'type': 'step',
                         'points': [[[0, 0], [100, 1]], 1.0, 2, 'cubicc']})
         assert env.type == 'step'
+
+
+class TestNomeDiInterpolazione:
+    """Il guard sul nome d'interpolazione (issue #288) rifiuta cio' che la
+    factory rifiuta, e niente di piu'.
+
+    `InterpolationStrategyFactory.create` legge il nome senza badare a
+    maiuscole e spazi attorno (lo fissano i suoi test, `test_uppercase` e
+    `test_with_whitespace`), quindi `type: Step` ha sempre reso. Un confronto
+    esatto con `VALID_INTERP_TYPES` lo rifiutava: trasformava in errore uno
+    YAML che rendeva, mentre #288 cambia solo il tipo d'errore dei corpi che
+    gia' non rendevano.
+    """
+
+    # Due elenchi e non un oracolo nel test: cosa la factory legge lo dice
+    # `test_gli_elenchi_sono_quelli_della_factory`, qui sotto.
+    LETTI = ['linear', 'cubic', 'step', 'Step', 'CUBIC', ' linear ']
+    RIFIUTATI = ['banana', '', '   ', None, 5]
+
+    def test_gli_elenchi_sono_quelli_della_factory(self):
+        for nome in self.LETTI:
+            InterpolationStrategyFactory.create(nome)
+        for nome in self.RIFIUTATI:
+            with pytest.raises(ValueError):
+                InterpolationStrategyFactory.create(nome)
+
+    @pytest.mark.parametrize('nome', LETTI, ids=repr)
+    def test_il_type_che_la_factory_legge_rende(self, nome):
+        Envelope({'type': nome, 'points': [[0, 0], [0.5, 1], [1, 0]]},
+                 field='density')
+
+    @pytest.mark.parametrize('nome', RIFIUTATI, ids=repr)
+    def test_il_type_che_la_factory_rifiuta_nomina_il_campo(self, nome):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope({'type': nome, 'points': [[0, 0], [0.5, 1], [1, 0]]},
+                     field='density')
+        assert exc.value.field == 'density'
+        assert repr(exc.value.value) == repr(nome)
+
+    def test_step_scritto_maiuscolo_si_legge_step(self):
+        """Non basta che si costruisca: e' lo stesso envelope di prima."""
+        env = Envelope({'type': 'Step', 'points': [[0, 0], [1, 10]]})
+        assert env.evaluate(0.5) == 0
+
+    # Lo slot del compatto l'envelope lo legge come `interp or DEFAULT_INTERP`:
+    # scritto vuoto e' il default, e rendeva lineare. Spazi soli no: la factory
+    # non li legge, e non rendevano.
+    LETTI_NELLO_SLOT = ['cubic', 'STEP', ' linear ', '']
+    RIFIUTATI_NELLO_SLOT = ['banana', '   ']
+
+    @pytest.mark.parametrize('nome', LETTI_NELLO_SLOT, ids=repr)
+    def test_l_interp_del_compatto_che_la_factory_legge_rende(self, nome):
+        Envelope([[[0, 0], [100, 1]], 1.0, 2, nome], field='density')
+
+    @pytest.mark.parametrize('nome', RIFIUTATI_NELLO_SLOT, ids=repr)
+    def test_l_interp_del_compatto_che_la_factory_rifiuta_nomina_il_campo(
+            self, nome):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope([[[0, 0], [100, 1]], 1.0, 2, nome], field='density')
+        assert exc.value.field == 'density'
+        assert exc.value.value == nome
+
+    def test_lo_slot_si_legge_come_prima(self):
+        maiuscolo = Envelope([[[0, 0], [100, 1]], 1.0, 1, 'STEP'])
+        vuoto = Envelope([[[0, 0], [100, 1]], 1.0, 1, ''])
+        assert maiuscolo.evaluate(0.5) == 0
+        assert vuoto.evaluate(0.5) == pytest.approx(0.5)
 
 
 # =============================================================================
