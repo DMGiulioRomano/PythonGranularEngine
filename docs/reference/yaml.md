@@ -2397,9 +2397,10 @@ funzione.
 ```yaml
 pointer:
   loop_unit: normalized
-  # identici: il pattern è scalato per sample_dur_sec in tutte e due
+  # il pattern è scalato per sample_dur_sec
   loop_start: [[[0, 0.1], [100, 0.2]], 1.0, 2]
-  loop_start: {type: linear, points: [[[0, 0.1], [100, 0.2]], 1.0, 2]}
+  # identico, nella forma dict:
+  # loop_start: {type: linear, points: [[[0, 0.1], [100, 0.2]], 1.0, 2]}
 ```
 
 ### Differenza chiave da `time_mode`
