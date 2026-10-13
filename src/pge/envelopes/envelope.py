@@ -619,8 +619,6 @@ def create_scaled_envelope(
     `field` e' il nome YAML della chiave, per gli errori di forma del builder
     (issue #211): vedi `Envelope`.
     """
-    from pge.envelopes.envelope_builder import DEFAULT_INTERP, EnvelopeBuilder
-
     # 1. Gestione DICT
     if isinstance(raw_data, dict):
         local_unit = raw_data.get('time_unit', time_mode)
@@ -631,13 +629,15 @@ def create_scaled_envelope(
         # rifiuta nominando il campo (issue #288). Il ripiego su `[]` ne
         # faceva un corpo vuoto che nel file non c'e', e `null` faceva
         # esplodere la scala con un TypeError prima di lui.
+        #
+        # E il dict resta quello scritto, coi soli `points` scalati: il corpo
+        # vuoto il costruttore lo riporta per intero, e ricostruito come
+        # `{type, points}` diceva un `type: linear` che nel file non c'e' e
+        # perdeva il `time_unit` che c'e'. Il default del tipo lo applica il
+        # costruttore, come per ogni altro dict.
         if local_unit == 'normalized' and isinstance(points, (list, tuple)):
             scaled_points = _scale_time_recursive(points, duration)
-            return Envelope(
-                {'type': raw_data.get('type', DEFAULT_INTERP),
-                 'points': scaled_points},
-                field=field,
-            )
+            return Envelope({**raw_data, 'points': scaled_points}, field=field)
         return Envelope(raw_data, field=field)
 
     # 2. Gestione LIST

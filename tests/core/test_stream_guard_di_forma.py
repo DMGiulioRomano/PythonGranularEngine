@@ -524,3 +524,34 @@ def test_la_scala_non_anticipa_l_errore_del_costruttore(build, ingresso, corpo):
     assert exc.value.field == campo
     assert exc.value.stream_id == STREAM_ID
     assert repr(exc.value.value) == repr(valore)
+
+
+def _dict_vuoti():
+    """Corpi vuoti in forma dict senza `type`, o con una chiave in piu'. Quelli
+    della tabella qui sopra un `type: linear` ce l'hanno gia', in testa: e'
+    proprio il dict che la scala dei tempi ricostruiva, quindi il confronto
+    passava per coincidenza."""
+    return {
+        'senza_type': {'points': []},
+        'con_time_unit': {'time_unit': 'normalized', 'points': []},
+    }
+
+
+@pytest.mark.parametrize("corpo", list(_dict_vuoti()))
+@pytest.mark.parametrize("campo", ['density', 'deviation_probability',
+                                   'voices.pan.step'])
+def test_sotto_normalized_il_dict_vuoto_e_quello_scritto(build, campo, corpo):
+    """Sotto `time_mode: normalized` la scala dei tempi ricostruiva il dict
+    come `{type, points}`: del corpo vuoto, che l'errore riporta per intero,
+    il `Trovato:` diceva un `type: linear` che nel file non c'e', e perdeva il
+    `time_unit` che c'e'. Tre strade verso `create_scaled_envelope`: il
+    parser, il gate di `deviation_probability`, il kwarg di una strategy."""
+    scrivi, _, _ = CHIAVI[campo]
+    extra = scrivi(_dict_vuoti()[corpo])
+    extra['time_mode'] = 'normalized'
+
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build(extra)
+
+    assert exc.value.field == campo
+    assert repr(exc.value.value) == repr(_dict_vuoti()[corpo])
