@@ -7,13 +7,14 @@ sources:
   - src/pge/shared/exceptions.py
   - src/pge/envelopes/envelope_builder.py
   - src/pge/envelopes/envelope.py
+  - src/pge/envelopes/envelope_factory.py
   - src/pge/core/stream.py
   - src/pge/envelopes/time_distribution.py
   - src/pge/cli.py
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: 9d92e58
+last_synced_commit: d9e821f
 entry_for: [error-handling]
 ---
 
@@ -771,6 +772,13 @@ dell'interpolazione negli altri due casi. Dell'interp del compatto si valida
 lo slot che diventa il tipo dell'envelope — quello del compatto diretto, o del
 primo di una lista che ne dichiara uno — perché è l'unico che decide qualcosa:
 dentro `{type, points}` decide il `type` del dict, e lo slot resta ignorato.
+
+Il nome d'interpolazione lo giudica la factory che lo costruirà
+(`InterpolationStrategyFactory.reads`, la stessa risposta di `create`), non un
+elenco confrontato alla lettera. La factory non bada a maiuscole e spazi
+attorno, quindi `type: Step` rende come ha sempre reso, e si rifiuta solo un
+nome che lei non legge. Lo slot del compatto scritto vuoto vale il default,
+come `Envelope` l'ha sempre letto.
 
 ```yaml
 streams:

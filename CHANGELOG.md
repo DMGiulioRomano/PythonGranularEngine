@@ -428,14 +428,22 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   compatto e non il tipo globale; e si valida lo slot che l'envelope prende
   come tipo, non ogni slot: dentro `{type, points}` decide il `type` del dict,
   e rifiutare lì un nome ignoto farebbe correggere un valore che, corretto,
-  resterebbe ignorato. Nessuno YAML che oggi rende smette di rendere.
+  resterebbe ignorato. Nessuno YAML che oggi rende smette di rendere: il nome
+  lo giudica la factory che lo costruirà (`InterpolationStrategyFactory.reads`,
+  la stessa risposta di `create`), non un elenco confrontato alla lettera. Lei
+  non bada a maiuscole e spazi attorno, quindi `type: Step` o un compatto con
+  `'CUBIC'` rendevano e rendono, e lo slot del compatto scritto vuoto resta il
+  default.
 
   Le scale che precedono `Envelope` non anticipano più il suo errore: sotto
   `time_mode: normalized` un dict senza `points` diventava un `points: []`,
   cioè un corpo vuoto che nel file non c'è, e un `points: null` faceva
-  esplodere con un `TypeError` sia la scala dei tempi sia quella delle y.
-  `_parse_segments` tiene il suo `ValueError` sulla lista vuota: da uno YAML
-  non ci si arriva più, e resta l'invariante del metodo.
+  esplodere con un `TypeError` sia la scala dei tempi sia quella delle y. E la
+  scala dei tempi passa al costruttore il dict com'è scritto, coi soli
+  `points` scalati: lo ricostruiva come `{type, points}`, e il `Trovato:` del
+  corpo vuoto diceva un `type: linear` che nel file non c'è, senza il suo
+  `time_unit`. `_parse_segments` tiene il suo `ValueError` sulla lista vuota:
+  da uno YAML non ci si arriva più, e resta l'invariante del metodo.
 
   Il quarto difetto della issue non arrivava affatto all'envelope: un kwarg di
   una voice strategy scritto come lista o dict non envelope (`step: []`,
@@ -446,6 +454,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse: nessun kwarg di
   strategy accetta una lista o un dict che non sia un envelope, e `progression`
   di `chord_progression`, l'unico strutturale, il passo comune non lo vede.
+  Nemmeno l'identità RNG che il motore inietta nelle strategy stocastiche
+  (`stream_id`, `seed`) passa per quel controllo, perché nel blocco non è
+  scritta: un `rng_group` scritto come lista resta quello che era, invece di
+  diventare un errore su `voices.<asse>.stream_id`.
 
   La tabella ingressi × difetti di #287 (`test_stream_guard_di_forma.py`)
   copre i corpi nuovi su tutte e tredici le strade verso l'envelope. Tre celle

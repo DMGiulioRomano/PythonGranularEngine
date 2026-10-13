@@ -1655,9 +1655,10 @@ Campi:
 | `time_unit` | str (opzionale) | come `time_mode` | alias locale per `time_mode` (vedi §3) |
 
 `points` assente, `null` o un numero, un corpo vuoto (`points: []`, come la
-lista nuda `[]`) e un `type` fuori dai tre nomi — o scritto e lasciato vuoto —
-sono `InvalidFieldValueError` sulla chiave dell'envelope (issue #288): vedi
-`docs/reference/errors.md`, «Envelope malformato (forma)».
+lista nuda `[]`) e un `type` che non è uno dei tre nomi — maiuscole e spazi
+attorno a parte, che la factory delle interpolazioni ignora — o scritto e
+lasciato vuoto sono `InvalidFieldValueError` sulla chiave dell'envelope (issue
+#288): vedi `docs/reference/errors.md`, «Envelope malformato (forma)».
 
 #### 2.4 Formato compatto
 
@@ -2147,12 +2148,14 @@ risaliva come `ValueError` nudo o si rendeva in silenzio.
 - `time_dist` con un nome fuori dal registro (§6) o con parametri che la
   distribuzione non accetta → errore. I vincoli sui parametri li applica il
   costruttore di ciascuna distribuzione.
-- `interp` (quarto elemento) fuori da `linear`/`cubic`/`step` → errore, sulla
+- `interp` (quarto elemento) che non è `linear`/`cubic`/`step` (maiuscole e
+  spazi attorno a parte, come per il `type` del dict) → errore, sulla
   sotto-posizione `envelope.compact.interp` quando la chiave non è passata
   (issue #288). Vale per lo slot che l'envelope prende come proprio tipo:
   quello del compatto diretto, o del primo compatto di una lista che ne
   dichiara uno. Lo slot di un compatto dentro `{type, points}`, dove decide il
-  `type` del dict, resta ignorato come lo resta un nome valido.
+  `type` del dict, resta ignorato come lo resta un nome valido. Omesso, `null`
+  o scritto vuoto, il tipo resta `linear`.
 
 ---
 
