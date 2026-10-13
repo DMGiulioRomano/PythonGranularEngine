@@ -515,7 +515,8 @@ def test_il_rng_group_non_e_un_kwarg_della_strategy(build):
 
 
 def test_il_seed_del_run_non_e_un_kwarg_della_strategy(build, tmp_path):
-    build({})  # il sample, e la controprova senza seed
+    # Scrive il sample, ed e' la controprova: la stessa strategy, senza seed.
+    build(STRATEGY_STOCASTICA)
     Stream({'stream_id': STREAM_ID, 'onset': 0.0, 'duration': 2.0,
             'sample': 'tone.wav', **STRATEGY_STOCASTICA},
            seed=[1441, 1442], samples_dir=str(tmp_path))

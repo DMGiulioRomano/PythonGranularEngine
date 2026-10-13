@@ -448,8 +448,8 @@ class Stream:
         # scritti nel blocco e da #288 rifiuta una lista o un dict. Convertiti,
         # un rng_group o un seed non scalari diventavano un errore su
         # `voices.<asse>.stream_id` o `.seed`, chiavi che nel file non ci sono.
-        # Uno `stream_id` o un `seed` scritti nel blocco li sostituisce, come
-        # prima.
+        # Uno `stream_id` o un `seed` scritti nel blocco restano sostituiti
+        # dall'identita', come prima.
         identita = {}
         if name == 'stochastic':
             identita = {'stream_id': config.context.rng_id, 'seed': self.seed}
