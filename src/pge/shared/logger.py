@@ -247,10 +247,10 @@ def get_engine_log_path() -> str | None:
 #
 # **Quello che stderr NON e' e' un riparo**, e qui c'era scritto il
 # contrario: «la console di logging e' stderr, nemmeno accendendola si
-# rientra in stdout». Vero sul file descriptor, falso sul canale che conta.
-# Il bridge di PGE-ui lancia il motore con `stderr=subprocess.STDOUT`
-# (`RenderState.start` in `render_pipeline.py`): i due flussi arrivano allo
-# stesso `readline`, e ogni riga passa per `parse_render_line`. Misurato
+# rientra in stdout». Vero sul file descriptor, falso sul canale che contava.
+# Il bridge di PGE-ui lanciava il motore con `stderr=subprocess.STDOUT`
+# (`RenderState.start` in `render_pipeline.py`): i due flussi arrivavano allo
+# stesso `readline`, e ogni riga passava per `parse_render_line`. Misurato
 # nella #178: con `logging.basicConfig(level=DEBUG, format="%(message)s")` —
 # la configurazione piu' ordinaria che ci sia — un record diagnostico che
 # cominci per `[CACHE] <token>: ` ha prodotto nell'editor uno `stream-start`
@@ -259,11 +259,16 @@ def get_engine_log_path() -> str | None:
 # `DEBUG:pge.diagnostics:` che il formatter antepone, cioe' una scelta
 # dell'host.
 #
-# Quindi la regola non e' «il logger e' un altro canale», e' **nessuno, su
-# nessun canale, scrive righe con la forma del protocollo**. Le forme sono
-# due — `[CACHE] <token>: <resto>` e una riga di sola indentazione piu' un
-# path che finisca in `.aif/.wav/.flac` — e la seconda e' quella che il
-# logger scrive con piu' naturalezza (`log.debug("    %s", path)`). Le
+# Dalla PGE-ui#162 quel bridge non unisce piu' i flussi: i due pipe si
+# riuniscono etichettati, e al parser arriva il solo stdout. La regola pero'
+# non e' mai stata sul bridge: non e' «il logger e' un altro canale», e'
+# **nessuno, su nessun canale, scrive righe con la forma del protocollo**, e
+# vincola il motore, che un altro host puo' tornare a lanciare coi flussi
+# uniti. Le forme sono tre — `[CACHE] <token>: <resto>`, una riga di sola
+# indentazione piu' un path che finisca in `.aif/.wav/.flac`, e la testa del
+# blocco riassuntivo (`Generazione completata! ...:`, PGE-ui#162) — e la
+# seconda e' quella che il logger scrive con piu' naturalezza
+# (`log.debug("    %s", path)`). Le
 # sorveglia `test_nessun_messaggio_di_log_ha_la_forma_del_protocollo` in
 # `tests/shared/test_stdout_contract.py`.
 #

@@ -745,7 +745,8 @@ grain:
 
   # Unità di misura per duration e duration_range: seconds (default) |
   # samples | milliseconds. La conversione avviene al parse e vale per
-  # scalari ed envelope (solo i valori, l'asse tempo resta invariato).
+  # scalari ed envelope in ogni grafia, {type, points} compreso (solo i
+  # valori, l'asse tempo resta invariato).
 
   # 'samples': campioni alla frequenza di output del motore (48000 Hz).
   duration_unit: samples
@@ -1653,6 +1654,12 @@ Campi:
 | `time_mode` | str (opzionale) | ereditato    | `'absolute'` o `'normalized'`              |
 | `time_unit` | str (opzionale) | come `time_mode` | alias locale per `time_mode` (vedi §3) |
 
+`points` assente, `null` o un numero, un corpo vuoto (`points: []`, come la
+lista nuda `[]`) e un `type` che non è uno dei tre nomi — maiuscole e spazi
+attorno a parte, che la factory delle interpolazioni ignora — o scritto e
+lasciato vuoto sono `InvalidFieldValueError` sulla chiave dell'envelope (issue
+#288): vedi `docs/reference/errors.md`, «Envelope malformato (forma)».
+
 #### 2.4 Formato compatto
 
 Forma sintetica per generare N ripetizioni di un pattern definito in percentuale.
@@ -2141,6 +2148,14 @@ risaliva come `ValueError` nudo o si rendeva in silenzio.
 - `time_dist` con un nome fuori dal registro (§6) o con parametri che la
   distribuzione non accetta → errore. I vincoli sui parametri li applica il
   costruttore di ciascuna distribuzione.
+- `interp` (quarto elemento) che non è `linear`/`cubic`/`step` (maiuscole e
+  spazi attorno a parte, come per il `type` del dict) → errore, sulla
+  sotto-posizione `envelope.compact.interp` quando la chiave non è passata
+  (issue #288). Vale per lo slot che l'envelope prende come proprio tipo:
+  quello del compatto diretto, o del primo compatto di una lista che ne
+  dichiara uno. Lo slot di un compatto dentro `{type, points}`, dove decide il
+  `type` del dict, resta ignorato come lo resta un nome valido. Omesso, `null`
+  o scritto vuoto, il tipo resta `linear`.
 
 ---
 
@@ -2370,6 +2385,24 @@ compatti: il pattern `[x%, y]` viene scalato sul valore. Si scala solo un punto,
 un breakpoint o un BP group che il builder accetterà (§3.3): ciò che non lo è
 resta com'è, e lo rifiuta il builder nominando la chiave (§5.5, issue #211).
 
+Vale in ogni grafia, e la forma dict non fa eccezione: `points` si legge come
+la lista nuda, quindi un compatto o un BP group scritti direttamente dentro
+`{type, points}` si scalano come scritti da soli. Fino alla issue #289 no: la
+scala percorreva `points` elemento per elemento, il compatto e il gruppo
+diretti restavano nell'unità dello YAML, e il motore li leggeva in secondi —
+un loop diverso da quello scritto, senza errori. La stessa regola vale per la
+conversione di `grain.duration_unit` (§ Blocco Grain), che passa per la stessa
+funzione.
+
+```yaml
+pointer:
+  loop_unit: normalized
+  # il pattern è scalato per sample_dur_sec
+  loop_start: [[[0, 0.1], [100, 0.2]], 1.0, 2]
+  # identico, nella forma dict:
+  # loop_start: {type: linear, points: [[[0, 0.1], [100, 0.2]], 1.0, 2]}
+```
+
 ### Differenza chiave da `time_mode`
 
 Sono due chiavi indipendenti, e la ragione è che parlano di grandezze che non
@@ -2468,7 +2501,12 @@ mantenuto fino alla fine (hold).
 Tutti i parametri scalari delle voice strategy (`step`, `pitch_range`,
 `pointer_range`, `max_offset`, `base`, `spread`) accettano envelope. Il parsing
 avviene in `Stream._init_voice_manager` via `_parse_strategy_kwarg`, che usa
-`Envelope.is_envelope_like` per discriminare.
+`Envelope.is_envelope_like` per discriminare. Una lista o un dict che envelope
+non è (`step: []`, `pitch_range: [1, 2, 3]`, un dict senza `points`) è
+`InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse (issue #288):
+prima lo Stream si costruiva e il render moriva al primo grano, o con una voce
+sola finiva senza che la strategy fosse mai consultata. Il rifiuto vale anche
+con `num_voices: 1`.
 
 ```yaml
 voices:

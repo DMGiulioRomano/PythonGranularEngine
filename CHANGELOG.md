@@ -156,6 +156,33 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
+- **La riga di testa del riepilogo è protocollo, e il contratto di stdout
+  descrive il parser di PGE-ui com'è oggi** (issue #277).
+  `docs/explanation/contratto-stdout.md` è l'unico posto in cui il contratto
+  fra i due repository è dichiarato, e per forza descrive anche il lato che
+  non sta qui. La PGE-ui#162 ha chiuso i tre reperti della #178, e quattro
+  affermazioni erano rimaste indietro: il filtro sugli id dichiarati non è più
+  inerte senza id, è totale; la riga di path vale solo dentro il blocco
+  riassuntivo; stderr non arriva più al parser, perché i due pipe si
+  riuniscono etichettati; `stream-progress` è stato tolto da `app.jsx` col suo
+  stato. Restano le regole che quelle misure motivavano: `Manifest` e `GC`
+  restano protocollo perché occupano quello spazio di nomi, e nessuno, su
+  nessun canale, scrive righe con la forma del protocollo — vincola il motore,
+  non i suoi host.
+
+  La conseguenza per questo repo è una riga: «Generazione completata! N file
+  generati:» apre il blocco in cui il parser legge i path, quindi è
+  **protocollo** in `CLASSIFICAZIONE` invece che interfaccia. Cambiarne le
+  parole è adesso un cambio di superficie pubblica, con analisi d'impatto: il
+  blocco non si aprirebbe, e nessun path chiuderebbe il suo stream (sui giri
+  riusciti i pallini li salva il fallback di `done`, l'avanzamento vivo no).
+  La guardia legge come legge il parser: le forme del protocollo sono tre, e
+  i path del riepilogo contano solo sotto la sua testa, quindi una testa che
+  cambia parole fa diventare rossi anche i due test sui path, e
+  `test_la_riga_di_testa_apre_il_blocco_riassuntivo` dice quale riga. Nessuna
+  riga di output si è mossa; i commenti di `logger.py` e `api.py` che
+  descrivevano il bridge al presente sono passati al passato.
+
 - **Tre pezzi di motore escono dai moduli pesanti perche' chi li legge li
   importi** (issue #246). PGE-ui ha un harness di parita' che chiede al motore
   le regole che la UI prometteva di replicare, invece di ricopiarle: la
@@ -340,6 +367,114 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lì diventa stantio solo il rimando all'avviso del motore.
 
 ### Corretto
+
+- **La forma dict si legge nell'unità dichiarata come la lista nuda** (issue
+  #289). `scale_raw_param_values` porta le y nell'unità del motore prima che il
+  corpo arrivi al builder — `grain.duration_unit` su `grain.duration` e sul
+  `grain.duration_range` assoluto, `loop_unit: normalized` su `loop_start`,
+  `loop_end` e `loop_dur` — e sulla lista nuda riconosceva il compatto e il BP
+  group diretti. Nella forma `{type, points}` no: `points` andava alla
+  scansione elemento per elemento, dove un compatto o un gruppo diretti non
+  sono elementi ma il corpo intero, e il pattern restava nell'unità dello
+  YAML. Misurato attraverso lo Stream con un sample di 2 s:
+
+  ```yaml
+  pointer:
+    loop_unit: normalized
+    loop_start: {type: linear, points: [[[0, 0.1], [100, 0.2]], 1.0, 2]}
+  ```
+
+  partiva da 0.1 s invece che da 0.2 s, in silenzio: il loop era un altro. Con
+  `duration_unit: milliseconds` il render moriva invece su un
+  `ParameterBoundError` per valori legali nell'unità dichiarata, senza dire che
+  l'unità era stata ignorata. Lo stesso compatto scritto dentro una lista si
+  scalava già: il difetto era della sola forma dict diretta.
+
+  Ora i due rami della scala passano per un helper solo, `_scale_body_y`, che
+  legge il corpo nell'ordine del builder — compatto, gruppo, lista — scritto
+  nudo o sotto `points`: due copie della stessa regola sono come era nato il
+  difetto del compatto in #234. Un `points` che non è una lista (null, un
+  numero) resta com'è scritto invece di far esplodere la scala con un
+  `TypeError`: lo rifiuta il costruttore (vedi #288 qui sotto). Il corpus di
+  parità di #234 lo chiede a ogni sua forma: il dict deve scalare `points`
+  come la lista nuda scala sé stessa.
+
+  **Cambia il suono** dei progetti che usano quella grafia sotto un'unità non
+  di default: corretto invece che sbagliato. `VARIATION_SEMANTICS_VERSION`
+  **non** si muove, come per #234: nessuno YAML di `configs/`, dei test, della
+  documentazione, di mare-nostrum, di granulation-studies o degli esempi del
+  paper CIM 2026 la usa, e un bump rifarebbe ogni stem di ogni progetto per una
+  grafia che nessuno scrive. Un progetto esterno si controlla cercando un
+  `points:` seguito da tre parentesi aperte accanto a `duration_unit` o
+  `loop_unit: normalized`; trovato, si rirende senza cache incrementale.
+
+- **Gli errori di forma sotto il builder nominano la chiave e lo stream**
+  (issue #288). La #287 aveva portato i guard di forma in `EnvelopeBuilder`
+  col campo passato dall'alto; restavano fuori i difetti dello stesso genere
+  che nascono in `Envelope`, e risalivano fuori dalla gerarchia `EngineError`
+  — senza campo, senza stream, con un traceback dalla CLI:
+
+  | corpo | era | ora, senza campo passato |
+  |---|---|---|
+  | dict senza `points`, o con `points` null o un numero | `KeyError: 'points'` / `TypeError` | `envelope.points` |
+  | `[]` o `{points: []}` | `ValueError: Lista breakpoints vuota.` | `envelope.points` |
+  | `type` del dict ignoto o scritto vuoto | `ValueError: Tipo interpolazione non riconosciuto` | `envelope.type` |
+  | interp del compatto che diventa il tipo, ignoto | lo stesso `ValueError` | `envelope.compact.interp` |
+
+  Tutti `InvalidFieldValueError`, e col campo passato nominano la chiave come
+  ogni guard del builder (`density`, `voices.num_voices`,
+  `grain.envelope.curve`, …). L'interp del compatto si valida dove lo slot si
+  legge, `extract_interp_type`, così l'hint dice che è il quarto elemento del
+  compatto e non il tipo globale; e si valida lo slot che l'envelope prende
+  come tipo, non ogni slot: dentro `{type, points}` decide il `type` del dict,
+  e rifiutare lì un nome ignoto farebbe correggere un valore che, corretto,
+  resterebbe ignorato. Nessuno YAML che oggi rende smette di rendere: il nome
+  lo giudica la factory che lo costruirà (`InterpolationStrategyFactory.reads`,
+  la stessa risposta di `create`), non un elenco confrontato alla lettera. Lei
+  non bada a maiuscole e spazi attorno, quindi `type: Step` o un compatto con
+  `'CUBIC'` rendevano e rendono, e lo slot del compatto scritto vuoto resta il
+  default.
+
+  Le scale che precedono `Envelope` non anticipano più il suo errore: sotto
+  `time_mode: normalized` un dict senza `points` diventava un `points: []`,
+  cioè un corpo vuoto che nel file non c'è, e un `points: null` faceva
+  esplodere con un `TypeError` sia la scala dei tempi sia quella delle y. E la
+  scala dei tempi passa al costruttore il dict com'è scritto, coi soli
+  `points` scalati: lo ricostruiva come `{type, points}`, e il `Trovato:` del
+  corpo vuoto diceva un `type: linear` che nel file non c'è, senza il suo
+  `time_unit`. `_parse_segments` tiene il suo `ValueError` sulla lista vuota:
+  da uno YAML non ci si arriva più, e resta l'invariante del metodo.
+
+  Il quarto difetto della issue non arrivava affatto all'envelope: un kwarg di
+  una voice strategy scritto come lista o dict non envelope (`step: []`,
+  `pitch_range: [1, 2, 3]`, un dict senza `points`) passava
+  `_parse_strategy_kwarg` com'era, lo Stream si costruiva, e il `TypeError`
+  arrivava al primo grano, quando la strategy faceva `float()` sul valore
+  (`chord` esplodeva al parse, nudo anche lui). Ora è
+  `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse: nessun kwarg di
+  strategy accetta una lista o un dict che non sia un envelope, e `progression`
+  di `chord_progression`, l'unico strutturale, il passo comune non lo vede.
+  **Con una voce sola il rifiuto è nuovo**: con `num_voices: 1` (o un envelope
+  che non supera 1) la voce 0 non consulta la strategy, il `TypeError` non
+  arrivava mai e il render finiva. Uno YAML così smette di rendere, ed è
+  voluto: il valore è scritto male comunque, e con una seconda voce
+  tornerebbe il `TypeError` al primo grano. Si corregge il kwarg, o si toglie
+  il sotto-blocco che non serve.
+  Nemmeno l'identità RNG che il motore inietta nelle strategy stocastiche
+  (`stream_id`, `seed`) passa per quel controllo, perché nel blocco non è
+  scritta: un `rng_group` scritto come lista resta quello che era, invece di
+  diventare un errore su `voices.<asse>.stream_id`.
+
+  La tabella ingressi × difetti di #287 (`test_stream_guard_di_forma.py`)
+  copre i corpi nuovi su tutte e tredici le strade verso l'envelope. Tre celle
+  stanno fuori, fissate ciascuna da un test perché l'esclusione non resti una
+  dimenticanza: sotto la chiave globale `deviation_probability` il dict senza
+  `points` è la forma per chiave e la lista vuota la rifiuta prima il
+  classificatore (#209), e `grain.read_direction` impone `step` e legge un
+  `type` vuoto come non dichiarato (#207). Il gate di `deviation_probability`
+  avvolgeva queste eccezioni in un errore sul corpo intero con la causa in
+  coda (#209): ora gli arrivano già come `EngineError` col campo, e risalgono
+  intatte con un hint che nomina la chiave mancante.
 
 - **La cache per stream vede il seed** (issue #297). Ogni RNG del motore deriva
   da `(seed, rng_group o stream_id, componente)`, ma il fingerprint di

@@ -20,6 +20,8 @@ import pytest
 import math
 from typing import List
 from pge.envelopes.envelope import Envelope
+from pge.envelopes.envelope_factory import InterpolationStrategyFactory
+from pge.shared.exceptions import InvalidFieldValueError
 from pge.envelopes.envelope_interpolation import LinearInterpolation, StepInterpolation, CubicInterpolation
 
 
@@ -557,25 +559,127 @@ class TestCubicTwoPointSmoothstep:
 class TestErrorHandling:
     """Test gestione errori."""
     
+    # I tre errori qui sotto erano un ValueError, un KeyError e un ValueError
+    # nudi, senza campo (issue #288). Sono `InvalidFieldValueError`: senza la
+    # chiave YAML, che solo il chiamante conosce, nominano la sotto-posizione.
+
     def test_error_empty_breakpoints(self):
         """Errore con breakpoints vuoti."""
-        with pytest.raises(ValueError, match="Lista breakpoints vuota"):
+        with pytest.raises(InvalidFieldValueError) as exc:
             Envelope([])
-    
+        assert exc.value.field == 'envelope.points'
+        assert exc.value.value == []
+
     def test_error_invalid_format(self):
         """Errore con formato non valido."""
         with pytest.raises((ValueError, TypeError)):
             Envelope("not a valid format")
-    
+
     def test_error_invalid_dict_format(self):
         """Errore con dict senza 'points'."""
-        with pytest.raises(KeyError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             Envelope({'type': 'linear'})  # Missing 'points'
-    
+        assert exc.value.field == 'envelope.points'
+        assert exc.value.value == {'type': 'linear'}
+
     def test_error_invalid_interp_type(self):
         """Errore con tipo interpolazione non valido."""
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidFieldValueError) as exc:
             Envelope({'type': 'exponential', 'points': [[0, 0], [1, 10]]})
+        assert exc.value.field == 'envelope.type'
+        assert exc.value.value == 'exponential'
+
+    def test_il_campo_passato_vince_sulla_sotto_posizione(self):
+        """Chi costruisce l'envelope da uno YAML passa la chiave, come per i
+        guard del builder (#211): e' la chiave che l'errore nomina."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope({'type': 'linear', 'points': []}, field='density')
+        assert exc.value.field == 'density'
+
+    def test_l_interp_del_compatto_che_diventa_il_tipo(self):
+        """Lo slot dell'interp che l'envelope prende come tipo si valida dove
+        si legge, e l'hint dice che e' il quarto elemento del compatto."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope([[[0, 0], [100, 1]], 1.0, 2, 'cubicc'])
+        assert exc.value.field == 'envelope.compact.interp'
+        assert exc.value.value == 'cubicc'
+        assert 'quarto elemento' in exc.value.hint
+
+    def test_l_interp_di_un_compatto_che_l_envelope_non_legge_resta_ignorato(self):
+        """Dentro `{type, points}` il tipo e' quello del dict, e lo slot del
+        compatto non decide niente: un nome ignoto li' resta ignorato come lo
+        resta un nome valido. Rifiutarlo farebbe correggere un valore che,
+        corretto, non conterebbe lo stesso."""
+        env = Envelope({'type': 'step',
+                        'points': [[[0, 0], [100, 1]], 1.0, 2, 'cubicc']})
+        assert env.type == 'step'
+
+
+class TestNomeDiInterpolazione:
+    """Il guard sul nome d'interpolazione (issue #288) rifiuta cio' che la
+    factory rifiuta, e niente di piu'.
+
+    `InterpolationStrategyFactory.create` legge il nome senza badare a
+    maiuscole e spazi attorno (lo fissano i suoi test, `test_uppercase` e
+    `test_with_whitespace`), quindi `type: Step` ha sempre reso. Un confronto
+    esatto con `VALID_INTERP_TYPES` lo rifiutava: trasformava in errore uno
+    YAML che rendeva, mentre #288 cambia solo il tipo d'errore dei corpi che
+    gia' non rendevano.
+    """
+
+    # Due elenchi e non un oracolo nel test: cosa la factory legge lo dice
+    # `test_gli_elenchi_sono_quelli_della_factory`, qui sotto.
+    LETTI = ['linear', 'cubic', 'step', 'Step', 'CUBIC', ' linear ']
+    RIFIUTATI = ['banana', '', '   ', None, 5]
+
+    def test_gli_elenchi_sono_quelli_della_factory(self):
+        for nome in self.LETTI:
+            InterpolationStrategyFactory.create(nome)
+        for nome in self.RIFIUTATI:
+            with pytest.raises(ValueError):
+                InterpolationStrategyFactory.create(nome)
+
+    @pytest.mark.parametrize('nome', LETTI, ids=repr)
+    def test_il_type_che_la_factory_legge_rende(self, nome):
+        Envelope({'type': nome, 'points': [[0, 0], [0.5, 1], [1, 0]]},
+                 field='density')
+
+    @pytest.mark.parametrize('nome', RIFIUTATI, ids=repr)
+    def test_il_type_che_la_factory_rifiuta_nomina_il_campo(self, nome):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope({'type': nome, 'points': [[0, 0], [0.5, 1], [1, 0]]},
+                     field='density')
+        assert exc.value.field == 'density'
+        assert repr(exc.value.value) == repr(nome)
+
+    def test_step_scritto_maiuscolo_si_legge_step(self):
+        """Non basta che si costruisca: e' lo stesso envelope di prima."""
+        env = Envelope({'type': 'Step', 'points': [[0, 0], [1, 10]]})
+        assert env.evaluate(0.5) == 0
+
+    # Lo slot del compatto l'envelope lo legge come `interp or DEFAULT_INTERP`:
+    # scritto vuoto e' il default, e rendeva lineare. Spazi soli no: la factory
+    # non li legge, e non rendevano.
+    LETTI_NELLO_SLOT = ['cubic', 'STEP', ' linear ', '']
+    RIFIUTATI_NELLO_SLOT = ['banana', '   ']
+
+    @pytest.mark.parametrize('nome', LETTI_NELLO_SLOT, ids=repr)
+    def test_l_interp_del_compatto_che_la_factory_legge_rende(self, nome):
+        Envelope([[[0, 0], [100, 1]], 1.0, 2, nome], field='density')
+
+    @pytest.mark.parametrize('nome', RIFIUTATI_NELLO_SLOT, ids=repr)
+    def test_l_interp_del_compatto_che_la_factory_rifiuta_nomina_il_campo(
+            self, nome):
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope([[[0, 0], [100, 1]], 1.0, 2, nome], field='density')
+        assert exc.value.field == 'density'
+        assert exc.value.value == nome
+
+    def test_lo_slot_si_legge_come_prima(self):
+        maiuscolo = Envelope([[[0, 0], [100, 1]], 1.0, 1, 'STEP'])
+        vuoto = Envelope([[[0, 0], [100, 1]], 1.0, 1, ''])
+        assert maiuscolo.evaluate(0.5) == 0
+        assert vuoto.evaluate(0.5) == pytest.approx(0.5)
 
 
 # =============================================================================

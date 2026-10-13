@@ -10,6 +10,7 @@ Supports:
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Union, List, Dict, Any
 from pge.envelopes.envelope_factory import InterpolationStrategyFactory
 from pge.envelopes.envelope_segment import NormalSegment, Segment
@@ -65,22 +66,64 @@ class Envelope:
         # Import qui per evitare circular import
         from pge.envelopes.envelope_builder import (
             DEFAULT_INTERP, EnvelopeBuilder,
+            _DICT_POINTS_HINT, _EMPTY_HINT, _TYPE_HINT,
         )
-        
+        from pge.shared.exceptions import InvalidFieldValueError
+
         # Parse type e raw_points. Il default e' la costante del builder, che
         # il log del compatto nomina (issue #219): un letterale qui e uno li'
         # potrebbero divergere senza che nessun test se ne accorga.
+        #
+        # La forma che si legge qui, prima del builder, ha i suoi guard (issue
+        # #288), col campo passato dall'alto come quelli del builder e la
+        # sotto-posizione senza: `envelope.points`, `envelope.type`. Prima erano
+        # un KeyError, un TypeError e due ValueError nudi.
         if isinstance(breakpoints, dict):
+            # `points` deve esserci e dire dei breakpoint. Cio' che il builder
+            # sa percorrere gli arriva com'e' — una stringa o un dict li scorre
+            # elemento per elemento, e ne rifiuta il primo — mentre null o un
+            # numero non si percorrono affatto.
+            if not isinstance(breakpoints.get('points'), Iterable):
+                raise InvalidFieldValueError(
+                    field=EnvelopeBuilder._field(field, "points"),
+                    value=breakpoints,
+                    hint=_DICT_POINTS_HINT,
+                )
             self.type = breakpoints.get('type', DEFAULT_INTERP)
+            # Il tipo si guarda prima dei punti: e' la prima cosa che il dict
+            # dice di se'. Una chiave scritta e lasciata vuota non e' il
+            # default — non c'e' nessuna lettura da indovinare. Il nome si
+            # rifiuta se lo rifiuta la factory che lo leggera', non un elenco
+            # esatto: lei non bada a maiuscole e spazi, e `Step` rendeva.
+            if not InterpolationStrategyFactory.reads(self.type):
+                raise InvalidFieldValueError(
+                    field=EnvelopeBuilder._field(field, "type"),
+                    value=self.type,
+                    hint=_TYPE_HINT.format(
+                        tipi=', '.join(EnvelopeBuilder.VALID_INTERP_TYPES)),
+                )
             raw_points = breakpoints['points']
         elif isinstance(breakpoints, list):
-            # Controlla se c'è tipo in formato compatto
-            extracted_type = EnvelopeBuilder.extract_interp_type(breakpoints)
+            # Controlla se c'è tipo in formato compatto: lo slot che diventa il
+            # tipo dell'envelope si valida dove si legge (issue #288).
+            extracted_type = EnvelopeBuilder.extract_interp_type(
+                breakpoints, field=field)
             self.type = extracted_type or DEFAULT_INTERP
             raw_points = breakpoints
         else:
             raise ValueError(f"Formato envelope non valido: {breakpoints}")
-        
+
+        # Il corpo vuoto si ferma qui, dove il campo c'e' (issue #288): il
+        # builder lo espanderebbe in niente, e il primo a protestare era
+        # `_parse_segments`, che il campo non lo conosce. Il `value` e' il
+        # corpo com'e' scritto, dict compreso: e' il valore della chiave.
+        if not raw_points:
+            raise InvalidFieldValueError(
+                field=EnvelopeBuilder._field(field, "points"),
+                value=breakpoints,
+                hint=_EMPTY_HINT,
+            )
+
         # ESPANDI formato compatto usando Builder
         expanded_points = EnvelopeBuilder.parse(raw_points, field=field)
         
@@ -108,6 +151,9 @@ class Envelope:
         Returns:
             List[NormalSegment]
         """
+        # Da uno YAML non ci si arriva piu' vuoti: il corpo vuoto lo ferma
+        # `__init__` col campo (issue #288), e il builder non espande in niente
+        # un corpo che non lo e'. Resta l'invariante del metodo.
         if not breakpoints:
             raise ValueError("Lista breakpoints vuota.")
 
@@ -466,15 +512,19 @@ class Envelope:
             punti, interp = group
             return [_scale_points_y(punti), interp]
 
+        def _scale_compact_y(compact):
+            # Del compatto si scala il solo pattern: `end_time` e `n_reps` non
+            # sono valori, e l'interp nemmeno.
+            scaled_compact = list(compact)
+            scaled_compact[EnvelopeBuilder.COMPACT_PATTERN] = _scale_points_y(
+                compact[EnvelopeBuilder.COMPACT_PATTERN])
+            return scaled_compact
+
         def _scale_list_y(points_list):
             scaled = []
             for item in points_list:
                 if EnvelopeBuilder.is_compact_format(item):
-                    pattern = item[EnvelopeBuilder.COMPACT_PATTERN]
-                    scaled_pattern = _scale_points_y(pattern)
-                    new_item = list(item)
-                    new_item[EnvelopeBuilder.COMPACT_PATTERN] = scaled_pattern
-                    scaled.append(new_item)
+                    scaled.append(_scale_compact_y(item))
                 elif EnvelopeBuilder.is_bp_group(item):
                     # BP group: scala i valori Y dei punti, preserva interp e
                     # type per-punto. Prima del branch [t, v]: anche il gruppo
@@ -492,24 +542,35 @@ class Envelope:
                     scaled.append(item)
             return scaled
 
+        def _scale_body_y(body):
+            # Il corpo di un envelope, scritto nudo o sotto `points`: per il
+            # builder sono la stessa cosa (`parse` riceve `points` come
+            # riceverebbe la lista), quindi la scala li legge con una regola
+            # sola. Il dict aveva la sua, che passava `points` alla scansione
+            # elemento per elemento: un compatto o un BP group diretti non
+            # sono elementi ma il corpo intero, e restavano nell'unita' dello
+            # YAML (issue #289). Ripetere qui l'ordine del builder — prima il
+            # compatto, poi il gruppo, poi la lista — e' cio' che `parse` fa.
+            if EnvelopeBuilder.is_compact_format(body):
+                return _scale_compact_y(body)
+            if EnvelopeBuilder.is_bp_group(body):
+                return _scale_group_y(body)
+            if isinstance(body, (list, tuple)):
+                return _scale_list_y(body)
+            # Un `points` che non e' una sequenza di punti (null, un numero)
+            # non ha niente da scalare: resta com'e' scritto, e lo rifiuta il
+            # costruttore nominando il campo (issue #288). Iterarlo era un
+            # TypeError nudo.
+            return body
+
         if isinstance(raw_data, dict):
             new_data = copy.deepcopy(raw_data)
             if 'points' in new_data:
-                new_data['points'] = _scale_list_y(new_data['points'])
+                new_data['points'] = _scale_body_y(new_data['points'])
             return new_data
 
         if isinstance(raw_data, list):
-            if EnvelopeBuilder.is_compact_format(raw_data):
-                pattern = raw_data[EnvelopeBuilder.COMPACT_PATTERN]
-                scaled_pattern = _scale_points_y(pattern)
-                new_data = list(raw_data)
-                new_data[EnvelopeBuilder.COMPACT_PATTERN] = scaled_pattern
-                return new_data
-            elif EnvelopeBuilder.is_bp_group(raw_data):
-                # BP group diretto [points, interp]
-                return _scale_group_y(raw_data)
-            else:
-                return _scale_list_y(raw_data)
+            return _scale_body_y(raw_data)
 
         raise ValueError(f"Formato non supportato per _scale_raw_values_y: {raw_data}")
 
@@ -558,20 +619,25 @@ def create_scaled_envelope(
     `field` e' il nome YAML della chiave, per gli errori di forma del builder
     (issue #211): vedi `Envelope`.
     """
-    from pge.envelopes.envelope_builder import DEFAULT_INTERP, EnvelopeBuilder
-
     # 1. Gestione DICT
     if isinstance(raw_data, dict):
         local_unit = raw_data.get('time_unit', time_mode)
-        points = raw_data.get('points', [])
-        
-        if local_unit == 'normalized':
+        points = raw_data.get('points')
+
+        # Si scala solo una sequenza di punti: un dict senza `points`, o con
+        # `points` null o un numero, va al costruttore com'e' scritto, che lo
+        # rifiuta nominando il campo (issue #288). Il ripiego su `[]` ne
+        # faceva un corpo vuoto che nel file non c'e', e `null` faceva
+        # esplodere la scala con un TypeError prima di lui.
+        #
+        # E il dict resta quello scritto, coi soli `points` scalati: il corpo
+        # vuoto il costruttore lo riporta per intero, e ricostruito come
+        # `{type, points}` diceva un `type: linear` che nel file non c'e' e
+        # perdeva il `time_unit` che c'e'. Il default del tipo lo applica il
+        # costruttore, come per ogni altro dict.
+        if local_unit == 'normalized' and isinstance(points, (list, tuple)):
             scaled_points = _scale_time_recursive(points, duration)
-            return Envelope(
-                {'type': raw_data.get('type', DEFAULT_INTERP),
-                 'points': scaled_points},
-                field=field,
-            )
+            return Envelope({**raw_data, 'points': scaled_points}, field=field)
         return Envelope(raw_data, field=field)
 
     # 2. Gestione LIST

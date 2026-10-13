@@ -10,8 +10,8 @@ PGE ha due canali diagnostici, e la #178 li ha separati per *destinatario*:
 - **protocollo** — righe che `render_pipeline.py` di PGE-ui parsa riga per riga
   per ricavarne gli eventi NDJSON dell'editor. Restano su stdout, con quel
   formato esatto. Sono le `[CACHE] <id>: DIRTY|clean` dei renderer (da cui
-  l'editor deriva `stream-start`/`stream-done`) e i path del blocco
-  riassuntivo;
+  l'editor deriva `stream-start`/`stream-done`), i path del blocco
+  riassuntivo e, dalla PGE-ui#162, la riga di testa che lo apre;
 - **diagnostica** — righe che nessuno parsa e nessuno legge come interfaccia.
   Vanno al logger. Erano le registrazioni dinamiche di strategy (#187) e le
   due righe di contabilita' del `Generator` (#188): dopo i due scaglioni
@@ -534,7 +534,9 @@ def test_la_registrazione_dinamica_non_stampa(relpath):
 # 3. LA SECONDA RIGA DI PROTOCOLLO — il blocco riassuntivo
 # =============================================================================
 # Le righe che PGE-ui trasforma in eventi sono **due**, non una, e fin qui
-# questo file ne sorvegliava una sola. L'altra e' il blocco riassuntivo di
+# questo file ne sorvegliava una sola. (Le forme che legge sono tre: la terza
+# e' la testa del blocco, che non produce eventi ma lo apre, PGE-ui#162 — vedi
+# `FORMA_PROTOCOLLO_TESTA`.) L'altra e' il blocco riassuntivo di
 # `cli.py`: `print(f"    {path}")` sotto «Generazione completata! N file
 # generati:». Da li' `parse_render_line` ricava lo `stream-done` di ogni
 # stream DIRTY del giro: `[CACHE] <id>: DIRTY` lo mette in attesa, e lo chiude
@@ -542,9 +544,12 @@ def test_la_registrazione_dinamica_non_stampa(relpath):
 # stato scritto la chiudeva la `[CACHE]` successiva, e al riepilogo restava il
 # solo ultimo stream; il fix #151 di PGE-ui ha spostato tutta la chiusura qui,
 # perche' il renderer numpy fa il triage di tutti gli stream prima di scriverne
-# uno.) Toglierle l'indentazione, o spezzarla su piu' righe, lascia ogni stem
-# DIRTY col pallino giallo dopo un render che ha fatto esattamente cio' che il
-# pallino chiedeva.
+# uno.) Toglierle l'indentazione, o spezzarla su piu' righe, non chiude piu'
+# nessuno stream DIRTY sulla sua riga. Qui c'era scritto che ogni stem DIRTY
+# restava col pallino giallo: a valle pero' c'e' una rete, il fallback
+# dell'evento `done`, che su un giro riuscito reclama gli stream costruiti che
+# nessuno ha chiuso. Si perde l'avanzamento vivo, e su un giro fallito non si
+# reclama niente — lo stesso prezzo della riga di testa, piu' sotto.
 #
 # Misurato per sabotaggio: passando da `f"    {path}"` a `f"{path}"` la suite
 # di PGE restava interamente verde prima di questo test.
@@ -570,6 +575,22 @@ FORMA_PROTOCOLLO_PATH = re.compile(
 # `[CACHE] Manifest:` e `[CACHE] GC:`, che l'editor matcha e poi scarta col
 # filtro sugli id dichiarati.
 FORMA_PROTOCOLLO_CACHE = re.compile(r"^\[CACHE\]\s+(\S+):\s+(.+)$")
+
+
+# E questa e' `_RE_SUMMARY_HEAD`, la terza forma (PGE-ui#162). Da sola non
+# produce eventi: apre il blocco riassuntivo, ed e' soltanto li' dentro che una
+# riga di path chiude uno stream — il blocco si chiude alla prima riga non
+# indentata (`_RE_INDENTED`, qui sotto). Fuori dal blocco la forma del path e'
+# condivisa con le righe umane del motore, e prima di PGE-ui#162 un sample
+# chiamato come uno stem, citato dal `  Path cercato:` di un
+# `SampleNotFoundError`, chiudeva in anticipo lo stream. A discriminare e' la
+# posizione, quindi la riga di testa e' protocollo anche lei: se cambia parole
+# il blocco non si apre, e nessuna riga di path chiude piu' uno stream. PGE-ui
+# la legge dai sorgenti di `cli.py` e la riconosce per posizione, non per
+# parole (`tests/python/test_render_pipeline.py`): un rename qui e' un rosso
+# con un nome di la'.
+FORMA_PROTOCOLLO_TESTA = re.compile(r"^\s*Generazione completata!.*:\s*$")
+RIGA_INDENTATA = re.compile(r"^\s+\S")
 
 
 def _ha_forma_cache(forma):
@@ -612,22 +633,65 @@ def _ha_forma_di_path(forma):
             and forma.replace('{}', '').strip() == '')
 
 
-def _ha_forma_di_protocollo(forma):
-    """La riga entrerebbe in una delle due forme che PGE-ui riconosce.
+def _ha_forma_di_testa(forma):
+    """La riga aprirebbe il blocco riassuntivo nel parser di PGE-ui.
 
-    Le forme sono due, e questa e' l'unica funzione che lo dice: chi chiede
-    "questa riga finisce nel parser dell'editor" non deve ricordarsi di
-    chiederlo due volte. Chiederlo per la sola `[CACHE]` e' il modo in cui la
-    meta' del blocco riassuntivo e' rimasta scoperta la prima volta.
+    Si guarda riga per riga, come il parser che le riceve una alla volta: la
+    `print()` della CLI comincia con un `\\n`.
     """
-    return _ha_forma_cache(forma) or _ha_forma_di_path(forma)
+    return forma is not None and any(
+        FORMA_PROTOCOLLO_TESTA.match(riga)
+        for riga in forma.replace('{}', 'x').split('\n'))
+
+
+def _ha_forma_di_protocollo(forma):
+    """La riga entrerebbe in una delle tre forme che PGE-ui riconosce.
+
+    Le forme sono tre, e questa e' l'unica funzione che lo dice: chi chiede
+    "questa riga finisce nel parser dell'editor" non deve ricordarsi di
+    chiederlo tre volte. Chiederlo per la sola `[CACHE]` e' il modo in cui la
+    meta' del blocco riassuntivo e' rimasta scoperta la prima volta; la terza,
+    la testa del blocco, e' entrata con PGE-ui#162.
+    """
+    return (_ha_forma_cache(forma) or _ha_forma_di_testa(forma)
+            or _ha_forma_di_path(forma))
 
 
 def _stem_paths_su_stdout(testo):
-    """Le righe di `testo` che PGE-ui leggerebbe come path di uno stem."""
-    return [FORMA_PROTOCOLLO_PATH.match(r).group(1)
-            for r in testo.splitlines()
-            if FORMA_PROTOCOLLO_PATH.match(r)]
+    """Le righe di `testo` che PGE-ui leggerebbe come path di uno stem.
+
+    Con la sua lettura (PGE-ui#162), che e' per posizione: una riga di path
+    conta solo dentro il blocco riassuntivo, aperto dalla riga di testa e
+    chiuso dalla prima riga non indentata. Una lettura che contasse ogni riga
+    di quella forma direbbe che il protocollo regge anche quando la testa ha
+    cambiato parole — cioe' proprio quando di la' nessuno stream si chiude.
+    """
+    trovati, nel_blocco = [], False
+    for riga in testo.splitlines():
+        if FORMA_PROTOCOLLO_TESTA.match(riga):
+            nel_blocco = True
+            continue
+        if nel_blocco and not RIGA_INDENTATA.match(riga):
+            nel_blocco = False
+        trovato = FORMA_PROTOCOLLO_PATH.match(riga) if nel_blocco else None
+        if trovato:
+            trovati.append(trovato.group(1))
+    return trovati
+
+
+def test_la_lettura_del_path_e_per_posizione():
+    """La trascrizione fa la domanda che fa il parser: lo stesso path, fuori
+    dal blocco riassuntivo, non chiude niente. E' il caso di PGE-ui#162 — un
+    sample chiamato come uno stem, citato da un errore — e senza la testa del
+    blocco davanti nessuna riga di path conta."""
+    errore = "  Path cercato: refs/voce__streamA.wav\n"
+    blocco = ("\n Generazione completata! 1 file generati:\n"
+              "    /out/voce__streamA.wav\n"
+              "Log: /tmp/engine.log\n"
+              "    /fuori/dal/blocco__streamB.wav\n")
+
+    assert _stem_paths_su_stdout(errore) == []
+    assert _stem_paths_su_stdout(blocco) == ['/out/voce__streamA']
 
 
 def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
@@ -654,6 +718,49 @@ def test_il_blocco_riassuntivo_resta_protocollo(mocks, capsys):
         "(`    <path>__<id>.<ext>`). E' da li' che l'editor ricava lo "
         "stream-done di ogni stream DIRTY: vedi issue #178 e "
         "docs/explanation/contratto-stdout.md."
+    )
+
+
+def test_la_riga_di_testa_apre_il_blocco_riassuntivo(mocks, capsys):
+    """La riga di testa esce nella forma da cui PGE-ui apre il blocco.
+
+    E' la terza forma del protocollo (PGE-ui#162): senza di lei il blocco non
+    si apre, e nessuna riga di path chiude il suo stream DIRTY. Su un giro
+    riuscito i pallini se ne accorgono appena — il fallback dell'evento
+    `done` reclama gli stream costruiti che nessuno ha chiuso — ma
+    l'avanzamento vivo si perde; su uno fallito non si reclama niente. Una
+    sola testa, e i path subito sotto: il blocco si chiude alla prima riga
+    non indentata.
+    """
+    api_mod = mocks['main'].api
+    result = api_mod.RenderResult(
+        audio_paths=['/out/PGE_test__streamA.wav',
+                     '/out/PGE_test__stream-B.2.wav'],
+        elapsed_seconds=0.0, renderer_type='numpy', per_stream=True)
+    argv = ['main.py', 'test.yml', 'out.wav', '--per-stream',
+            '--renderer', 'numpy', '--format', 'wav']
+    with patch.object(api_mod, 'render', return_value=result):
+        with patch.object(sys, 'argv', argv):
+            mocks['main'].main()
+
+    righe = capsys.readouterr().out.splitlines()
+    teste = [i for i, riga in enumerate(righe)
+             if FORMA_PROTOCOLLO_TESTA.match(riga)]
+
+    assert len(teste) == 1, (
+        "la riga di testa del blocco riassuntivo («Generazione completata! N "
+        "file generati:») non esce piu' una volta sola nella forma che PGE-ui "
+        "riconosce: e' lei ad aprire il blocco, e senza blocco nessuna riga di "
+        "path chiude uno stream (PGE-ui#162). Vedi issue #277 e "
+        "docs/explanation/contratto-stdout.md."
+    )
+    sotto = righe[teste[0] + 1:teste[0] + 3]
+    assert [FORMA_PROTOCOLLO_PATH.match(r).group(1) if FORMA_PROTOCOLLO_PATH.match(r)
+            else r for r in sotto] == \
+        ['/out/PGE_test__streamA', '/out/PGE_test__stream-B.2'], (
+        "i path degli stem non stanno piu' subito sotto la riga di testa: "
+        "fra la testa e i path non puo' esserci una riga non indentata, che "
+        "chiuderebbe il blocco prima che cominci."
     )
 
 
@@ -746,8 +853,11 @@ INTERFACCIA = 'interfaccia'
 
 CLASSIFICAZIONE = {
     # --- cli.py ---
+    # Protocollo dalla PGE-ui#162: apre il blocco riassuntivo, l'unico posto
+    # in cui il parser legge le righe di path. Prima era interfaccia, e la
+    # sola cosa che l'editor ne faceva era colorarla (#277).
     ('cli.py', '\n Generazione completata! {} file generati:'):
-        INTERFACCIA,
+        PROTOCOLLO,
     ('cli.py', '\n Rendering completato in {}s{}'):
         INTERFACCIA,
     ('cli.py', '\nGenerazione partitura grafica...'):
@@ -982,10 +1092,12 @@ def test_solo_le_righe_di_protocollo_hanno_forma_di_protocollo():
     sola indentazione piu' un path. Classificare una riga come interfaccia
     non la tiene fuori dal parser — solo la sua forma lo fa.
 
-    Le forme da controllare sono percio' **due**, quante ne legge il parser.
+    Le forme da controllare sono percio' **tre**, quante ne legge il parser.
     Questo test ne guardava una: una `print(f"    {qualcosa}")` nuova, marcata
     interfaccia, sarebbe passata — ed e' esattamente la riga del blocco
-    riassuntivo, cioe' l'altra meta' del protocollo.
+    riassuntivo, cioe' l'altra meta' del protocollo. La terza e' la testa del
+    blocco (PGE-ui#162): una seconda riga «Generazione completata! ...:» fra le
+    interfacce aprirebbe un blocco dove il motore non ne stampa.
 
     **Il titolo dice "forma" e non "entra", e la differenza e' il confine
     della lettura statica** (`test_la_sagoma_e_piu_stretta_del_parser`). Due
@@ -1006,9 +1118,10 @@ def test_solo_le_righe_di_protocollo_hanno_forma_di_protocollo():
         assert not _ha_forma_di_protocollo(forma), (
             f"{modulo}: `{forma}` e' classificata {categoria} ma ha la forma "
             "che PGE-ui parsa. O e' protocollo, o va riscritta.\n"
-            "Le due forme — `[CACHE] <token>: ...` e una riga di sola "
-            "indentazione piu' un path — finiscono nel parser dell'editor "
-            "qualunque cosa la riga intenda dire: vedi issue #178."
+            "Le tre forme — `[CACHE] <token>: ...`, la testa del blocco "
+            "riassuntivo e una riga di sola indentazione piu' un path — "
+            "finiscono nel parser dell'editor qualunque cosa la riga intenda "
+            "dire: vedi issue #178 e #277."
         )
 
 
@@ -1018,7 +1131,7 @@ def test_le_righe_di_protocollo_sono_quelle_che_il_parser_legge():
     L'inclusione va tenuta nelle due direzioni, e questa e' quella che si
     perde: marcare protocollo una riga che nessuno parsa la congela senza
     motivo — e chi legge la tabella per sapere cosa non puo' toccare si
-    ritrova a difendere prosa. Le forme ammesse sono due, e sono le due che
+    ritrova a difendere prosa. Le forme ammesse sono tre, e sono le tre che
     `render_pipeline.py` riconosce.
     """
     for (modulo, forma), categoria in _classificazione_ordinata():
@@ -1027,7 +1140,7 @@ def test_le_righe_di_protocollo_sono_quelle_che_il_parser_legge():
         assert forma is not None, f"{modulo}: protocollo senza forma leggibile"
         assert _ha_forma_di_protocollo(forma), (
             f"{modulo}: `{forma}` e' marcata protocollo ma non ha nessuna "
-            "delle due forme che PGE-ui parsa. Se non la legge nessuno, e' "
+            "delle tre forme che PGE-ui parsa. Se non la legge nessuno, e' "
             "interfaccia, oppure diagnostica e allora va al logger (#188)."
         )
 
@@ -1064,10 +1177,10 @@ def test_nessuna_print_e_diagnostica():
 # =============================================================================
 # `logger.py` e questo file hanno scritto a lungo che la diagnostica e' al
 # sicuro perche' `logging` scrive su **stderr** e il protocollo vive su
-# stdout. Il file descriptor pero' non e' un confine: il bridge di PGE-ui
-# lancia il motore con `stderr=subprocess.STDOUT` (`RenderState.start`), quindi
-# stderr e stdout arrivano allo stesso `readline`, e ogni riga passa per
-# `parse_render_line`.
+# stdout. Il file descriptor pero' non era un confine: il bridge di PGE-ui
+# lanciava il motore con `stderr=subprocess.STDOUT` (`RenderState.start`),
+# quindi stderr e stdout arrivavano allo stesso `readline`, e ogni riga passava
+# per `parse_render_line`.
 #
 # Misurato, non dedotto. Con l'host che accende la diagnostica come chiunque
 # la accenderebbe:
@@ -1077,14 +1190,19 @@ def test_nessuna_print_e_diagnostica():
 #
 # la riga e' arrivata al parser tale e quale e ha prodotto `stream-start` +
 # `stream-done` per uno stream di nome `gaussian`, che non esiste. A salvarla
-# nel formato di default e' solo il prefisso `DEBUG:pge.diagnostics:` che il
+# nel formato di default era solo il prefisso `DEBUG:pge.diagnostics:` che il
 # formatter antepone — cioe' una scelta dell'host, non una garanzia del
 # motore: `format="%(message)s"` la toglie.
 #
-# Quindi la regola vera non e' «il logger e' un altro canale». E':
-# **nessuno, su nessun canale, scrive righe che hanno la forma del
-# protocollo.** Il censimento delle `print()` non basta a tenerla, perche' una
-# riga che nasce gia' sul logger non e' una `print()`.
+# Dalla PGE-ui#162 quel bridge non unisce piu' i due flussi: stderr va in un
+# pipe suo, i due pipe si riuniscono etichettati, e al parser arriva il solo
+# stdout. La misura qui sopra descrive com'era. La regola pero' non cambia,
+# perche' non e' mai stata una regola sul bridge: **nessuno, su nessun
+# canale, scrive righe che hanno la forma del protocollo.** Vincola il motore,
+# che e' l'unico su cui il motore possa qualcosa — un altro host, o lo stesso
+# bridge domani, puo' tornare a unirli. Il censimento delle `print()` non
+# basta a tenerla, perche' una riga che nasce gia' sul logger non e' una
+# `print()`.
 
 METODI_LOG = {'debug', 'info', 'warning', 'warn', 'error',
               'exception', 'critical', 'log'}
@@ -1132,14 +1250,16 @@ def _messaggi_di_log(tree):
 def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
     """Nessuna riga di logging ha una forma che il parser di PGE-ui legge.
 
-    Il canale non protegge: il bridge unisce stderr a stdout. A separare la
-    diagnostica dal protocollo resta solo la forma della riga, e questa e' la
-    guardia che la tiene separata.
+    Il canale non protegge: il bridge di PGE-ui univa stderr a stdout, e da
+    PGE-ui#162 non lo fa piu', ma la regola vincola il motore, non i suoi host.
+    A separare la diagnostica dal protocollo resta la forma della riga, e
+    questa e' la guardia che la tiene separata.
 
-    Le forme sono **due**, come per le `print()`. Guardare la sola `[CACHE]`
+    Le forme sono **tre**, come per le `print()`. Guardare la sola `[CACHE]`
     lasciava scoperta proprio quella che il logger scrive con piu' naturalezza:
     `log.debug("    %s", path)` — sola indentazione piu' un path — chiude
-    nell'editor lo stream in volo, e lo chiude *prima* che sia finito.
+    nell'editor lo stream in volo, e lo chiude *prima* che sia finito. La
+    terza e' la testa del blocco riassuntivo (PGE-ui#162).
 
     **Con lo stesso confine della sezione 4**, e qui conta di piu' perche' non
     c'e' nessun test di comportamento accanto: la sagoma e' piu' stretta di
@@ -1158,8 +1278,9 @@ def test_nessun_messaggio_di_log_ha_la_forma_del_protocollo():
                 colpevoli.append(f"{rel}: {originale!r}")
 
     assert not colpevoli, (
-        "questi messaggi di log hanno una delle due forme che PGE-ui parsa, "
-        "e stderr NON e' un riparo (il bridge lo unisce a stdout):\n  "
+        "questi messaggi di log hanno una delle tre forme che PGE-ui parsa, "
+        "e il canale non e' un riparo: la regola e' che nessuno, su nessun "
+        "canale, scriva righe con la forma del protocollo:\n  "
         + "\n  ".join(colpevoli)
         + "\nVedi docs/explanation/contratto-stdout.md, issue #178."
     )

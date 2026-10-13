@@ -27,7 +27,7 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
   - tests/engine/test_generator.py
-last_synced_commit: 9627402
+last_synced_commit: d2d5ed6
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -75,26 +75,31 @@ andava nel suo YAML — oppure della contabilita' interna del motore.
 
 ### Chi parsa, e cosa: il censimento del lato PGE-ui
 
-`render_pipeline.py` riconosce **due** forme, e nient'altro. Ogni altra riga
-diventa un evento `log`, che l'editor stampa nel suo terminale senza leggerla:
+`render_pipeline.py` riconosce **tre** forme, e nient'altro, e le cerca sul
+solo stdout (PGE-ui#162, sotto). Ogni altra riga diventa un evento `log`, che
+l'editor stampa nel suo terminale senza leggerla:
 
 | Forma | Regex a valle | Evento |
 |---|---|---|
 | `[CACHE] <token-senza-spazi>: <resto>` | `_RE_CACHE_LINE` | `stream-start`, `stream-done` |
-| `    <path>__<id>.<aif\|aiff\|wav\|flac>` | `_RE_STEM_PATH` | `stream-done` dello stream DIRTY che il path nomina |
+| `Generazione completata! <…>:` | `_RE_SUMMARY_HEAD` | nessuno: apre il blocco riassuntivo |
+| `    <path>__<id>.<aif\|aiff\|wav\|flac>` | `_RE_STEM_PATH` | `stream-done` dello stream DIRTY che il path nomina, solo dentro il blocco |
 
 Verificato eseguendo, non leggendo: un render vero passato dentro
-`parse_render_line` produce eventi **solo** su quelle due. L'esito del render
-(`ok`, `returncode`) e la lista dei file generati non passano da stdout — il
-bridge li ricava dal codice di uscita del processo e da una `glob` su disco.
+`parse_render_line` produce eventi **solo** sulla prima e sulla terza; la
+seconda cambia lo stato del parser, ed e' per questo che e' protocollo anche
+lei. L'esito del render (`ok`, `returncode`) e la lista dei file generati non
+passano da stdout — il bridge li ricava dal codice di uscita del processo e da
+una `glob` su disco.
 
-Ci sono poi tre righe che l'editor riconosce **solo per colorarle**
+Ci sono poi righe che l'editor riconosce **solo per colorarle**
 (`classifyLogLine` in `app.jsx`: `[ERROR]|Errore|errno|traceback`,
-`[CACHE]|cached`, `Generazione completata|→ output/`). E' un accoppiamento piu'
-debole — cambiare quelle righe cambia un colore, non un evento — ma esiste, e
-va saputo prima di riscriverle.
+`[CACHE]|cached`, `Generazione completata|→ output/`; il quarto colore,
+`[ABORT]`, e' di una riga che scrive il bridge, non il motore). E' un
+accoppiamento piu' debole — cambiare quelle righe cambia un colore, non un
+evento — ma esiste, e va saputo prima di riscriverle.
 
-### Le due righe di protocollo
+### Le righe di protocollo
 
 La prima e' `[CACHE] <id>: DIRTY|clean`, da cui l'editor deriva l'avanzamento
 per stream. La emettono i tre renderer, uno stream alla volta, e
@@ -130,9 +135,29 @@ vuol dire che la seconda riga di protocollo pesa piu' della prima: senza
 l'indentazione, o col path spezzato, nessuno stream DIRTY si chiude.
 
 Fino alla #178 non aveva nessuna guardia: togliendole l'indentazione la suite
-di PGE restava interamente verde, e oggi **ogni** stem DIRTY prenderebbe il
-pallino giallo dopo un render che ha fatto esattamente cio' che il pallino
-chiedeva.
+di PGE restava interamente verde, e nessuno stream DIRTY si chiudeva sulla sua
+riga. Il prezzo non e' quello che questo doc scriveva — «**ogni** stem DIRTY
+prenderebbe il pallino giallo» — perche' a valle c'e' una rete, la stessa che
+vale per la riga di testa qui sotto: su un giro riuscito il fallback
+dell'evento `done` di `backend.js` reclama gli stream costruiti che nessuno
+`stream-done` ha chiuso. Si perde l'avanzamento vivo, e su un giro fallito non
+si reclama niente.
+
+**E la riga di testa del blocco e' diventata protocollo anche lei**
+(PGE-ui#162, issue #277). Il parser legge le righe di path solo dentro il
+blocco: lo apre la riga «Generazione completata! N file generati:», lo chiude
+la prima riga non indentata. Se quella riga cambia parole il blocco non si
+apre piu', e nessuna riga di path chiude il suo stream: su un giro riuscito i
+pallini se ne accorgono appena — il fallback dell'evento `done` di
+`backend.js` reclama gli stream costruiti che nessuno `stream-done` ha chiuso —
+ma l'avanzamento vivo si perde; su un giro fallito non si reclama niente, che
+e' la direzione buona. PGE-ui la legge dal sorgente di `cli.py` e la riconosce
+*per posizione* — il `print` che precede il `for` il cui corpo e' un solo
+`print` di sola indentazione piu' interpolazione — quindi un rename qui
+diventa un rosso con un nome di la', come gia' succede per i `configs/`. Di
+qua e' in `CLASSIFICAZIONE` come protocollo, e
+`test_la_riga_di_testa_apre_il_blocco_riassuntivo` la misura sull'output vero:
+una sola testa, e i path subito sotto.
 
 ### La forma non dice l'intenzione
 
@@ -143,37 +168,57 @@ regex quanto un id interpolato, e due righe di `cli.py` lo fanno:
 N stream orfani: [...]` quando la GC rimuove qualcosa.
 
 A scartarle non e' la loro forma ma l'insieme degli id che la richiesta
-dichiara, e quel filtro e' **inerte** quando la richiesta non li dichiara.
-Misurato su un render vero: col filtro inerte l'editor apre uno stream di nome
-`Manifest` e uno di nome `GC`. Sono percio' classificate protocollo — non
-perche' l'editor ne ricavi qualcosa di utile, ma perche' occupano quello
-spazio di nomi e spostarle e' un cambio di superficie pubblica.
+dichiara. Fino alla PGE-ui#162 quel filtro era **inerte** quando la richiesta
+non li dichiarava, e misurato su un render vero l'editor apriva allora uno
+stream di nome `Manifest` e uno di nome `GC`. Da li' il filtro e' totale:
+`ids` assente o vuoto vuol dire «la richiesta non ha dichiarato nessuno
+stream», e da una richiesta che non dichiara niente non si deriva nessun
+evento. Le due righe restano classificate protocollo, e la ragione non e'
+cambiata: non perche' l'editor ne ricavi qualcosa di utile, ma perche'
+occupano quello spazio di nomi e spostarle e' un cambio di superficie
+pubblica.
 
-Lo stesso vale per la forma del path, con una collisione in piu' che la #178 ha
-misurato: **qualunque riga indentata che finisca per `__<qualcosa>.<ext>` e'
-candidata**. Un sample chiamato `voce__streamA.wav` citato dalla riga
-`  Path cercato:` di un `SampleNotFoundError` chiude in anticipo lo stream
-`streamA` — pallino verde su uno stem mai scritto. Stretta, ma reale: le righe
-umane e il protocollo condividono uno spazio di forme.
+Lo stesso valeva per la forma del path, con una collisione in piu' che la #178
+aveva misurato: **qualunque riga indentata che finisse per
+`__<qualcosa>.<ext>` era candidata**. Un sample chiamato `voce__streamA.wav`
+citato dalla riga `  Path cercato:` di un `SampleNotFoundError` chiudeva in
+anticipo lo stream `streamA` — pallino verde su uno stem mai scritto. Dalla
+PGE-ui#162 la riga di path vale **solo dentro il blocco riassuntivo**, sotto la
+sua riga di testa e finche' le righe restano indentate. La regex non e' stata
+ristretta — un path puo' contenere spazi, e stringerla costerebbe lo
+`stream-done` degli stream DIRTY, che tutti dipendono da quella riga — a
+discriminare e' la posizione. Le righe umane e il protocollo condividono
+ancora uno spazio di forme; il parser ha smesso di leggerle fuori dal posto in
+cui il motore stampa i path.
 
-### Stderr non e' un riparo
+### Stderr non era un riparo
 
 Questo doc e `logger.py` scrivevano che la diagnostica e' al sicuro perche' la
 console di `logging` e' stderr, «nemmeno accendendola si rientra nel canale che
-PGE-ui parsa». **E' falso.** Il bridge lancia il motore con
-`stderr=subprocess.STDOUT` (`RenderState.start`): i due flussi arrivano allo
-stesso `readline`, e ogni riga passa per `parse_render_line`.
+PGE-ui parsa». **Era falso.** Il bridge lanciava il motore con
+`stderr=subprocess.STDOUT` (`RenderState.start`): i due flussi arrivavano allo
+stesso `readline`, e ogni riga passava per `parse_render_line`.
 
 Misurato. Con l'host che accende la diagnostica come chiunque la accenderebbe —
 `logging.basicConfig(level=logging.DEBUG, format="%(message)s")` — un record
 `[CACHE] %s: registrata` ha prodotto `stream-start` e `stream-done` per uno
-stream di nome `gaussian`, che non esiste. Nel formato di default a salvarlo e'
-solo il prefisso `DEBUG:pge.diagnostics:` che il formatter antepone: una scelta
-dell'host, non una garanzia del motore.
+stream di nome `gaussian`, che non esiste. Nel formato di default a salvarlo
+era solo il prefisso `DEBUG:pge.diagnostics:` che il formatter antepone: una
+scelta dell'host, non una garanzia del motore.
 
-Quindi la regola vera non e' «il logger e' un altro canale». E': **nessuno, su
-nessun canale, scrive righe che hanno la forma del protocollo.** Il file
-descriptor non separa niente; separa la forma.
+Dalla PGE-ui#162 non e' piu' cosi', perche' a unire i due flussi era il bridge:
+`RenderState.start` passa `stderr=subprocess.PIPE`, i due pipe si riuniscono
+**etichettati** (`merged_output`) e al parser arriva il solo stdout
+(`render_events`). Una riga di `pge.diagnostics` con la forma del protocollo
+non produce piu' eventi, qualunque formatter usi l'host. La misura qui sopra
+descrive com'era.
+
+La regola del motore pero' non cambia, e la guardia sui messaggi di log resta:
+**nessuno, su nessun canale, scrive righe che hanno la forma del protocollo.**
+Non e' mai stata una regola sul bridge: vincola il motore, che e' l'unico su
+cui il motore possa qualcosa, e un altro host — o lo stesso bridge, domani —
+puo' tornare a unire i flussi. Il file descriptor non separa niente; separa la
+forma.
 
 ### La classificazione
 
@@ -188,7 +233,7 @@ dove e' eseguibile; qui il riassunto per modulo:
 
 | Modulo | Protocollo | Diagnostica | Interfaccia CLI |
 |---|---|---|---|
-| `cli.py` | `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 32 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
+| `cli.py` | la testa del riepilogo (`Generazione completata! {} file generati:`), `    <path>`, `[CACHE] Manifest:`, `[CACHE] GC:` | — | 31 (usage, errori dei flag, avanzamento, riepiloghi, path degli artefatti) |
 | `shared/magnify_spec.py` | — | — | 5 (i rifiuti di `--magnify-at`: stavano in `cli.py`, la #246 li ha spostati col parser) |
 | `engine/generator.py` | — | — (al logger dalla #188) | `[SEED]` (due: il seed di sessione su stdout, il seed di un file importato su stderr), `Creazione di N stream`, `⚠️ impossibile valutare` |
 | `engine/solo_mute.py` | — | — | `⚡ SOLO MODE`, `🔇 N stream muted` (stavano in `engine/generator.py`, #246) |
@@ -251,8 +296,11 @@ valle — e smette di essere **implicitamente** tale.
 
 Un canale esplicito (NDJSON su un fd dedicato, un `--events`) toglierebbe alla
 radice le collisioni di forma e permetterebbe eventi che oggi non esistono:
-`stream-progress` e' gia' gestito in `app.jsx` e nessuno lo emette. Ma e' un
-impegno cross-repo — due protocolli da mantenere finche' PGE-ui non migra — e
+`stream-progress` e' l'esempio. `app.jsx` aveva un ramo per lui, con lo stato e
+la barra che scriveva, e nessuno lo emetteva: la PGE-ui#162 l'ha tolto, e ha
+scritto che il giorno che quell'evento esistera' sara' per questa via, con lo
+stato che torna insieme al suo emettitore. Ma e' un impegno cross-repo — due
+protocolli da mantenere finche' PGE-ui non migra — e
 soprattutto non risolve quello che sembra risolvere: le righe umane restano su
 stdout e restano accidentalmente parsabili, perche' il motore resta una CLI che
 parla a una persona. Il costo e' certo, il guadagno parziale.
@@ -271,8 +319,10 @@ criterio. Tre condizioni, ognuna sufficiente:
 2. **un evento che la forma-riga non sa portare** — avanzamento sub-stream,
    dati strutturati per grano: qualsiasi cosa richieda di annidare;
 3. **una terza collisione** — le prime due (`Manifest`/`GC`, il path del
-   sample nell'errore) sono state assorbite dai filtri a valle. La terza dice
-   che i filtri stanno diventando il protocollo.
+   sample nell'errore) sono state assorbite a valle: il filtro sugli id
+   dichiarati e la posizione nel blocco riassuntivo (PGE-ui#162). La terza
+   dice che i filtri stanno diventando il protocollo — e la riga di testa del
+   blocco, protocollo per posizione, e' gia' un primo indizio.
 
 ## Trade-off
 
@@ -321,31 +371,39 @@ logging di chi importa `pge`, che non e' affare di `pge`.
 legge i sorgenti con `ast` e chiede otto cose: che la riga `[CACHE] <id>: ...`
 sia ancora un `print()` flushato nei quattro moduli che la emettono; che quei
 quattro siano **tutti** quelli che la emettono; che il blocco riassuntivo esca
-ancora indentato e col suffisso `__<id>` (e questo lo misura sull'output vero,
-facendo scrivere alla CLI il suo riepilogo — un `print()` letto con `ast` direbbe
-che la riga esiste, solo i byte dicono che esce indentata); che ogni `print()`
+ancora sotto la sua riga di testa, indentato e col suffisso `__<id>` (e questo
+lo misura sull'output vero, facendo scrivere alla CLI il suo riepilogo — un
+`print()` letto con `ast` direbbe che la riga esiste, solo i byte dicono che
+esce indentata); che ogni `print()`
 di `src/pge/` abbia una categoria e ogni voce della tabella una `print()`
 (non ogni categoria: dalla #188 `DIAGNOSTICA` non ne ha); che nessuna di
 quelle voci sia diagnostica (#188); che nessuna
 riga non-protocollo abbia forma di protocollo; e che nessun **messaggio di
-log** ce l'abbia, perche' stderr non e' un riparo. Le ultime due chiedono
-**entrambe** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova e
-un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
+log** ce l'abbia, perche' il canale non e' un riparo. Le ultime due chiedono
+**tutte e tre** le forme, non solo la `[CACHE]`: una `print(f"    {x}")` nuova
+e un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
 chiudono nell'editor lo stream in volo, e guardare la sola `[CACHE]` li
-lasciava passare. L'ottava e' il **confine** delle due precedenti: quanto la
-sagoma sia piu' stretta del parser, e perche' non si chiuda allargandola.
+lasciava passare; una seconda riga «Generazione completata! …:» aprirebbe un
+blocco dove il motore non ne stampa. L'ottava e' il **confine** delle due
+precedenti: quanto la sagoma sia piu' stretta del parser, e perche' non si
+chiuda allargandola.
 
 **La tabella dice dove una riga sta, non dove dovrebbe andare.** Spostare
 un'INTERFACCIA al logger resta una scelta di prodotto: cambia cio' che l'utente
 vede. Quel che la tabella impedisce e' di spostarne una senza accorgersi che
 era protocollo.
 
-**Due regex sono trascritte da PGE-ui**, che da qui non e' importabile.
-`FORMA_PROTOCOLLO_CACHE` e `FORMA_PROTOCOLLO_PATH` sono copie, e come ogni copia
-possono invecchiare: se cambiano di la', vanno aggiornate qui — ed e' un cambio
-di superficie pubblica, quindi con analisi d'impatto. `PREFISSO_PROTOCOLLO_CACHE`
-resta piu' stretto di entrambe di proposito: e' la guardia che difende la riga
-*per stream*, non la definizione di cio' che il parser legge.
+**Le tre forme sono trascritte da PGE-ui**, che da qui non e' importabile, e
+con loro la regola che chiude il blocco. `FORMA_PROTOCOLLO_CACHE`,
+`FORMA_PROTOCOLLO_TESTA`, `FORMA_PROTOCOLLO_PATH` e `RIGA_INDENTATA` sono copie,
+e come ogni copia possono invecchiare: se cambiano di la', vanno aggiornate qui
+— ed e' un cambio di superficie pubblica, quindi con analisi d'impatto. Dalla
+#277 la trascrizione legge anche come il parser legge: i path del blocco
+riassuntivo contano solo sotto la sua testa (`_stem_paths_su_stdout`), quindi
+una testa che cambia parole fa diventare rossi anche i due test sui path, e
+non solo quello sulla testa. `PREFISSO_PROTOCOLLO_CACHE` resta piu' stretto di
+`FORMA_PROTOCOLLO_CACHE` di proposito: e' la guardia che difende la riga *per
+stream*, non la definizione di cio' che il parser legge.
 
 **La meta' statica non arriva ovunque, e il confine non e' dove sembra.** La
 guardia riconosce come "forma di path" solo la *sagoma pura* — indentazione
@@ -355,8 +413,11 @@ valle e' invece molto piu' larga: le basta una riga indentata che contenga
 `__` e finisca in `.aif/.aiff/.wav/.flac`, e il resto della riga puo' essere
 qualunque cosa. Percio' `  ✓ {path}` di `score_visualizer.py` (oggi un `.png`)
 e la riga `  Path cercato: {path}` di `SampleNotFoundError` **cadono fuori
-dalla guardia statica** pur potendo entrare nel parser a runtime: e' la stessa
-collisione descritta sopra, e a chiuderla non c'e' un `ast` ma il test di
+dalla guardia statica**. Fino alla PGE-ui#162 potevano entrare nel parser a
+runtime — e' la collisione descritta sopra — e oggi le tiene fuori la
+posizione: escono fuori dal blocco riassuntivo, che una riga non indentata ha
+gia' chiuso. Lo scarto resta, ed e' dove una riga cosi' verrebbe stampata a
+deciderlo: dentro il blocco, a chiuderla non c'e' un `ast` ma il test di
 comportamento — piu' l'abitudine, qui sotto, di guardare ogni riga indentata
 che finisce con un path.
 
@@ -396,10 +457,18 @@ dice in prima persona, sopra `DIAGNOSTIC_LOGGER_NAME`.
   della forma, anche se il token e' una parola e non un id. Vale su stdout e
   **anche sul logger**: non c'e' un canale in cui quella forma sia libera.
 - **Scrivi una riga indentata che finisce con un path** → controlla che non
-  possa finire per `__<qualcosa>.<aif|aiff|wav|flac>`. Quella forma chiude lo
-  stream in corso nell'editor.
+  possa finire per `__<qualcosa>.<aif|aiff|wav|flac>`. Dentro il blocco
+  riassuntivo quella forma chiude lo stream in corso nell'editor; fuori, dalla
+  PGE-ui#162 il parser non la legge, ma la regola vale su ogni canale e per
+  ogni host, non solo per questo bridge.
 - **Cambi il formato di una riga di protocollo** → e' un cambio di superficie
-  pubblica: serve l'analisi d'impatto su PGE-ui e PGE-ls prima, non dopo.
+  pubblica: serve l'analisi d'impatto su PGE-ui e PGE-ls prima, non dopo. Vale
+  anche per le parole della riga di testa del riepilogo, «Generazione
+  completata! N file generati:»: dalla PGE-ui#162 e' lei ad aprire il blocco
+  in cui il parser legge i path.
+- **Stampi qualcosa fra la testa del riepilogo e i suoi path** → una riga non
+  indentata chiude il blocco: i path che la seguono non chiudono piu' i loro
+  stream.
 - **Vuoi zittire la libreria** → `contextlib.redirect_stdout` non basta: serve
   anche `redirect_stderr`, entrata prima che il clip logger si costruisca.
   `configure_clip_logger(console_enabled=False)` non la sostituisce: zittisce
