@@ -498,6 +498,24 @@ def test_il_kwarg_ben_scritto_resta_valido(build, campo, valido):
     build(KWARG_DI_STRATEGY[campo](valido))
 
 
+@pytest.mark.parametrize("num_voices", [1, [[0, 1], [2.0, 1]]],
+                         ids=['scalare', 'envelope'])
+def test_il_kwarg_si_ferma_anche_dove_la_strategy_non_si_consulta(
+        build, num_voices):
+    """Con una voce sola la strategy non si consulta mai: la voce 0 non ha
+    offset, e su main uno Stream cosi' rendeva fino in fondo, kwarg rotto
+    compreso. Il rifiuto vale lo stesso, ed e' una scelta, non una svista: e'
+    la forma del valore scritto a essere sbagliata, qualunque sia il numero di
+    voci che lo leggerebbero — e il giorno che le voci diventano due, il
+    TypeError non deve tornare al primo grano."""
+    with pytest.raises(InvalidFieldValueError) as exc:
+        build({'voices': {'num_voices': num_voices,
+                          'pan': {'strategy': 'step', 'step': []}}})
+
+    assert exc.value.field == 'voices.pan.step'
+    assert exc.value.stream_id == STREAM_ID
+
+
 # L'identita' RNG di una strategy stocastica non la scrive il blocco: la
 # inietta il motore — `stream_id`, che vale il `rng_group` quando c'e', e il
 # `seed` del run — e il rifiuto qui sopra, che legge i valori scritti nel
