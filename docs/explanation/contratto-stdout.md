@@ -27,7 +27,7 @@ sources:
   - tests/shared/test_stdout_contract.py
   - tests/test_api_stdout.py
   - tests/engine/test_generator.py
-last_synced_commit: 32dd950
+last_synced_commit: d2d5ed6
 ---
 
 # Il contratto di stdout — protocollo, diagnostica, interfaccia
@@ -135,9 +135,13 @@ vuol dire che la seconda riga di protocollo pesa piu' della prima: senza
 l'indentazione, o col path spezzato, nessuno stream DIRTY si chiude.
 
 Fino alla #178 non aveva nessuna guardia: togliendole l'indentazione la suite
-di PGE restava interamente verde, e oggi **ogni** stem DIRTY prenderebbe il
-pallino giallo dopo un render che ha fatto esattamente cio' che il pallino
-chiedeva.
+di PGE restava interamente verde, e nessuno stream DIRTY si chiudeva sulla sua
+riga. Il prezzo non e' quello che questo doc scriveva — «**ogni** stem DIRTY
+prenderebbe il pallino giallo» — perche' a valle c'e' una rete, la stessa che
+vale per la riga di testa qui sotto: su un giro riuscito il fallback
+dell'evento `done` di `backend.js` reclama gli stream costruiti che nessuno
+`stream-done` ha chiuso. Si perde l'avanzamento vivo, e su un giro fallito non
+si reclama niente.
 
 **E la riga di testa del blocco e' diventata protocollo anche lei**
 (PGE-ui#162, issue #277). Il parser legge le righe di path solo dentro il
@@ -295,7 +299,8 @@ radice le collisioni di forma e permetterebbe eventi che oggi non esistono:
 `stream-progress` e' l'esempio. `app.jsx` aveva un ramo per lui, con lo stato e
 la barra che scriveva, e nessuno lo emetteva: la PGE-ui#162 l'ha tolto, e ha
 scritto che il giorno che quell'evento esistera' sara' per questa via, con lo
-stato che torna insieme al suo emettitore. Ma e' un impegno cross-repo — due protocolli da mantenere finche' PGE-ui non migra — e
+stato che torna insieme al suo emettitore. Ma e' un impegno cross-repo — due
+protocolli da mantenere finche' PGE-ui non migra — e
 soprattutto non risolve quello che sembra risolvere: le righe umane restano su
 stdout e restano accidentalmente parsabili, perche' il motore resta una CLI che
 parla a una persona. Il costo e' certo, il guadagno parziale.
@@ -366,9 +371,10 @@ logging di chi importa `pge`, che non e' affare di `pge`.
 legge i sorgenti con `ast` e chiede otto cose: che la riga `[CACHE] <id>: ...`
 sia ancora un `print()` flushato nei quattro moduli che la emettono; che quei
 quattro siano **tutti** quelli che la emettono; che il blocco riassuntivo esca
-ancora indentato e col suffisso `__<id>` (e questo lo misura sull'output vero,
-facendo scrivere alla CLI il suo riepilogo — un `print()` letto con `ast` direbbe
-che la riga esiste, solo i byte dicono che esce indentata); che ogni `print()`
+ancora sotto la sua riga di testa, indentato e col suffisso `__<id>` (e questo
+lo misura sull'output vero, facendo scrivere alla CLI il suo riepilogo — un
+`print()` letto con `ast` direbbe che la riga esiste, solo i byte dicono che
+esce indentata); che ogni `print()`
 di `src/pge/` abbia una categoria e ogni voce della tabella una `print()`
 (non ogni categoria: dalla #188 `DIAGNOSTICA` non ne ha); che nessuna di
 quelle voci sia diagnostica (#188); che nessuna
@@ -378,8 +384,9 @@ log** ce l'abbia, perche' il canale non e' un riparo. Le ultime due chiedono
 e un `log.debug("    %s", path)` hanno la sagoma del blocco riassuntivo, cioe'
 chiudono nell'editor lo stream in volo, e guardare la sola `[CACHE]` li
 lasciava passare; una seconda riga «Generazione completata! …:» aprirebbe un
-blocco dove il motore non ne stampa. L'ottava e' il **confine** delle due precedenti: quanto la
-sagoma sia piu' stretta del parser, e perche' non si chiuda allargandola.
+blocco dove il motore non ne stampa. L'ottava e' il **confine** delle due
+precedenti: quanto la sagoma sia piu' stretta del parser, e perche' non si
+chiuda allargandola.
 
 **La tabella dice dove una riga sta, non dove dovrebbe andare.** Spostare
 un'INTERFACCIA al logger resta una scelta di prodotto: cambia cio' che l'utente
@@ -394,9 +401,9 @@ e come ogni copia possono invecchiare: se cambiano di la', vanno aggiornate qui
 #277 la trascrizione legge anche come il parser legge: i path del blocco
 riassuntivo contano solo sotto la sua testa (`_stem_paths_su_stdout`), quindi
 una testa che cambia parole fa diventare rossi anche i due test sui path, e
-non solo quello sulla testa. `PREFISSO_PROTOCOLLO_CACHE`
-resta piu' stretto di entrambe di proposito: e' la guardia che difende la riga
-*per stream*, non la definizione di cio' che il parser legge.
+non solo quello sulla testa. `PREFISSO_PROTOCOLLO_CACHE` resta piu' stretto di
+`FORMA_PROTOCOLLO_CACHE` di proposito: e' la guardia che difende la riga *per
+stream*, non la definizione di cio' che il parser legge.
 
 **La meta' statica non arriva ovunque, e il confine non e' dove sembra.** La
 guardia riconosce come "forma di path" solo la *sagoma pura* — indentazione
