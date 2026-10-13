@@ -442,9 +442,17 @@ class Stream:
         if axis.take_block_keys is not None:
             take = getattr(self, axis.take_block_keys)
             structural, for_manager = take(name, kw, config)
+        # L'identita' RNG di una strategy stocastica la inietta il motore — lo
+        # stream, o il suo rng_group, e il seed del run — e non e' un kwarg del
+        # blocco: non passa per la conversione qui sotto, che legge i valori
+        # scritti nel blocco e da #288 rifiuta una lista o un dict. Convertiti,
+        # un rng_group o un seed non scalari diventavano un errore su
+        # `voices.<asse>.stream_id` o `.seed`, chiavi che nel file non ci sono.
+        # Uno `stream_id` o un `seed` scritti nel blocco li sostituisce, come
+        # prima.
+        identita = {}
         if name == 'stochastic':
-            kw['stream_id'] = config.context.rng_id
-            kw['seed'] = self.seed
+            identita = {'stream_id': config.context.rng_id, 'seed': self.seed}
         # Gli errori di forma di un kwarg envelope nascono nel builder, dove lo
         # stream non si conosce: vanno attribuiti qui, come fa il parser coi
         # propri (issue #211).
@@ -454,12 +462,13 @@ class Stream:
                     val, self.duration, config.time_mode,
                     field=f'voices.{axis.yaml_key}.{k}',
                 )
-                for k, val in kw.items()
+                for k, val in kw.items() if k not in identita
             }
         except ConfigError as err:
             err.stream_id = self.stream_id
             raise
         kw.update(structural)
+        kw.update(identita)
         return axis.factory.create(name, **kw), for_manager
 
     def _take_voice_pitch_keys(self, name: str, kw: dict, config: StreamConfig):

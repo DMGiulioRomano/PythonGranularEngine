@@ -498,6 +498,29 @@ def test_il_kwarg_ben_scritto_resta_valido(build, campo, valido):
     build(KWARG_DI_STRATEGY[campo](valido))
 
 
+# L'identita' RNG di una strategy stocastica non la scrive il blocco: la
+# inietta il motore — `stream_id`, che vale il `rng_group` quando c'e', e il
+# `seed` del run — e il rifiuto qui sopra, che legge i valori scritti nel
+# blocco, non la deve leggere. Un `rng_group` scritto come lista (PGE-ls e
+# gl-ls lo segnalano; il motore lo legge nella sua resa testuale, e su main lo
+# Stream si costruiva) diventava un errore su `voices.pitch.stream_id`, una
+# chiave che nel file non c'e'.
+STRATEGY_STOCASTICA = {
+    'voices': {'num_voices': 2,
+               'pitch': {'strategy': 'stochastic', 'pitch_range': 2}}}
+
+
+def test_il_rng_group_non_e_un_kwarg_della_strategy(build):
+    build({**STRATEGY_STOCASTICA, 'rng_group': ['a', 'b']})
+
+
+def test_il_seed_del_run_non_e_un_kwarg_della_strategy(build, tmp_path):
+    build({})  # il sample, e la controprova senza seed
+    Stream({'stream_id': STREAM_ID, 'onset': 0.0, 'duration': 2.0,
+            'sample': 'tone.wav', **STRATEGY_STOCASTICA},
+           seed=[1441, 1442], samples_dir=str(tmp_path))
+
+
 # Le scale che precedono `Envelope` non devono anticiparne l'errore, come non
 # devono anticipare quello del builder (sopra): sotto `time_mode: normalized`
 # un dict senza `points` diventava un `points: []`, cioe' un corpo vuoto che nel
