@@ -266,20 +266,26 @@ def _funzioni_col_nome(relpath, nome):
 
 
 def _nomi_liberi(funzione):
-    """I nomi globali che il corpo legge, builtin esclusi.
+    """I nomi globali che l'exec di PGE-ls chiede, builtin esclusi.
 
-    Dal `symtable` della funzione estratta da sola, com'e' estratta di la':
-    gli scope annidati (comprehension, lambda, funzioni interne) contano, e
-    un nome che vi risulta globale lo e' anche per il `exec` di PGE-ls."""
-    tabella = symtable.symtable(
-        ast.unparse(funzione), '<estratta>', 'exec').get_children()[0]
-    liberi, pila = set(), [tabella]
+    Dal `symtable` del modulo fatto della sola funzione, com'e' compilata di
+    la'. Contano i nomi letti al `def`, nello scope del modulo — default,
+    decoratori e annotazioni, che li' si valutano subito perche' il modulo
+    estratto non ha il `from __future__ import annotations` del file — e i
+    globali di ogni scope sotto: il corpo, le comprehension, le lambda, le
+    funzioni interne e, dalla 3.14, il blocco `__annotate__` (PEP 649), che
+    `symtable` mette davanti alla funzione. Per questo si visitano tutti i
+    figli e non il primo: dalla 3.14 il primo e' quel blocco. Il nome della
+    funzione non conta, lo definisce l'exec stesso."""
+    radice = symtable.symtable(ast.unparse(funzione), '<estratta>', 'exec')
+    liberi = {s.get_name() for s in radice.get_symbols() if s.is_referenced()}
+    pila = list(radice.get_children())
     while pila:
         corrente = pila.pop()
         liberi |= {s.get_name() for s in corrente.get_symbols()
                    if s.is_global()}
         pila.extend(corrente.get_children())
-    return liberi - set(dir(builtins))
+    return liberi - set(dir(builtins)) - {funzione.name}
 
 
 def _attributi_letti_di_self(funzione):
@@ -456,6 +462,29 @@ class TestFunzioniEseguite:
         assert _accetta_posizionali(funzione, 2)
         assert _accetta_posizionali(funzione, 3)
         assert not _accetta_posizionali(funzione, 4)
+
+    def test_i_nomi_letti_al_def_contano_e_il_nome_della_funzione_no(self):
+        """L'exec di PGE-ls compila la sola funzione, senza il `from
+        __future__ import annotations` del file: sul suo Python (3.11) default,
+        decoratori e annotazioni si valutano al `def`, nel namespace che passa,
+        e un nome che manca e' un NameError prima ancora della chiamata. Il
+        nome della funzione invece lo definisce l'exec stesso, e una chiamata
+        ricorsiva lo trova.
+
+        L'insieme deve essere lo stesso su ogni Python della matrice. Dalla
+        3.14 `symtable` mette davanti a ogni funzione un blocco `__annotate__`
+        (PEP 649): la lettura che ne prendeva il primo figlio leggeva quello, e
+        tornava vuota — i tre test sulle funzioni vere passavano per cecita'."""
+        modulo = ast.parse(textwrap.dedent("""
+            @DECORO
+            def f(self, a: Tipo, b=DEFAULT, *, c: 'Stringa' = None) -> Ritorno:
+                h = lambda q: q + LAMBDA_G
+                def interna():
+                    return INTERNA_G
+                return f(a) + h(1) + interna()
+        """))
+        assert _nomi_liberi(modulo.body[0]) == {
+            'DECORO', 'Tipo', 'DEFAULT', 'Ritorno', 'LAMBDA_G', 'INTERNA_G'}
 
     def test_pointer_legge_le_posizioni_senza_time_mode(self):
         """`_pre_normalize_loop_params` lo legge PGE-ls per nome, nel file del
