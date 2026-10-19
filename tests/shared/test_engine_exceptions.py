@@ -1367,11 +1367,31 @@ _MODULI_SENZA_TERZE_PARTI = (
     # verde qui e faceva morire l'op nel job node. La giunzione lo deriva
     # dall'AST della funzione (`test_gli_import_lazy_delle_funzioni_...`).
     'pge.rendering.renderer_factory',
+    # I moduli che importa PGE-ls (#269), il cui job CI installa pygls,
+    # lsprotocol, PyYAML e pytest e niente del motore: il language server
+    # vero (`schema_bridge.from_python_path`) e la sua parita'. Si
+    # importavano gia' tutti senza numpy, ma per caso: nessuno li
+    # sorvegliava. Di la' il guasto e' il piu' muto dei tre -- il bridge
+    # legge dentro `try/except` e ripiega sulla propria copia statica --
+    # e la giunzione che li ha fatti vedere e' quella del registro gemello
+    # (tests/test_downstream_surface_pge_ls.py).
+    'pge.controllers.pointer_controller',
+    'pge.controllers.window_registry',
+    'pge.core.stream_config',
+    'pge.parameters.parameter_orchestrator',
+    'pge.parameters.parser',
+    'pge.parameters.read_direction',
+    'pge.shared.distribution_strategy',
+    'pge.strategies.voice_onset_strategy',
+    'pge.strategies.voice_pan_strategy',
+    'pge.strategies.voice_pitch_strategy',
+    'pge.strategies.voice_pointer_strategy',
 )
 
 # Se uno di questi acquista legittimamente una dipendenza pesante, il rosso qui
-# e' la richiesta di aprire la issue su PGE-ui prevista da
-# .claude/rules/cross-repo-impact.md, non di allentare la guardia.
+# e' la richiesta di aprire la issue su PGE-ui -- o su PGE-ls, per i moduli
+# del blocco #269 -- prevista da .claude/rules/cross-repo-impact.md, non di
+# allentare la guardia.
 
 
 def test_config_parse_error_eredita_lo_yaml_error_vero_quando_pyyaml_c_e():
