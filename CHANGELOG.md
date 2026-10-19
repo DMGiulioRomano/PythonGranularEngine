@@ -39,6 +39,44 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `tests/shared/test_stdout_contract.py`, e una guardia impedisce che entrino
   in questo registro.
 
+- **Il registro della superficie che PGE-ls legge** (issue #269),
+  `tests/test_downstream_surface_pge_ls.py`, gemello di quello di PGE-ui
+  (#246). Il lettore e' un altro, e fallisce in un altro modo: in PGE-ls un
+  rename non fa rosso, fa ripiegare il language server sulla propria copia
+  statica (le letture di `schema_bridge` stanno dentro `try/except`) o salta
+  un patto della parita' (`pytest.skip` su file o nome mancante), cioe'
+  verde. Il registro elenca, letti sul sorgente di PGE-ls (`94b811f`) e non
+  sulla prosa della issue, i diciannove moduli e i nomi che il bridge e la
+  parita' importano — attributi di classe compresi, come
+  `DistributionFactory._registry` e `WindowRegistry.all_names` —, i cinque
+  letterali letti dall'AST al path, e le tre funzioni che la parita' estrae
+  dal sorgente ed esegue con un namespace scritto a mano e un `self` finto
+  (`Stream._init_grain_reverse`, `Stream._pre_normalize_grain_params`,
+  `Generator._eval_math_expressions`). Di queste non basta il nome: il
+  registro pretende che i nomi che l'exec chiede stiano in quel namespace —
+  quelli del corpo e quelli che si valutano al `def` (default, decoratori,
+  annotazioni: il modulo estratto non ha il `from __future__ import
+  annotations` del file) —, che gli attributi letti di `self` stiano nel
+  `self` finto e che la funzione si chiami con gli stessi argomenti, perche'
+  di la' ognuno dei tre e' un `NameError`, un `AttributeError` o un
+  `TypeError`. La lettura e' la stessa su ogni Python della matrice, 3.14
+  compreso, dove `symtable` mette un blocco `__annotate__` davanti a ogni
+  funzione. Tiene anche le forme che
+  la parita' legge come verdetto del motore — i kwargs di
+  `GateFactory.create_gate`, la config `SimpleNamespace` con cui costruisce
+  `GranularParser`, le coppie `(t, y)` di `ParameterBoundError.violations` —
+  e il guard di `pointer.start`, che PGE-ls insegue con un regex sul testo.
+
+  `_MODULI_SENZA_TERZE_PARTI` sorveglia ora anche gli undici moduli che PGE-ls
+  importa e che nessuno sorvegliava: si importavano gia' senza numpy, ma per
+  caso, e la CI di PGE-ls non installa niente del motore. Una giunzione fra i
+  due elenchi lo misura. I simboli piu' esposti
+  (`DistributionFactory._registry`, `RANGE_ANCHORS`, `_RIMEDI_OVERFLOW`, il
+  guard di `pointer.start`, i due letterali e i tre metodi eseguiti) hanno un
+  commento che rimanda al registro, e la docstring di
+  `DistributionFactory.modes()` non dice piu' che PGE-ls legge di li': legge
+  `_registry`.
+
 - **Lo stream come file: `file:` negli stream del master** (issue #290, passo
   2 del piano «stream come file» di mare-nostrum). Una voce della lista
   `streams:` puo' essere `- file: <path>`: lo stream e' scritto in un altro

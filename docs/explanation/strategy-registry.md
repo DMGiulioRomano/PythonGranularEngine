@@ -152,7 +152,9 @@ sono ciò che decide la forma più di ogni preferenza di stile:
   esposizione — quell'issue elenca ciò che importa l'harness di parità di
   **PGE-ui**, e fra i suoi moduli non compare nessuna di queste mappe. Il
   censimento dell'esposizione PGE-ls, che al momento di scrivere questa
-  decisione non esisteva, è la #269.
+  decisione non esisteva, è la #269, ed è diventato eseguibile:
+  `tests/test_downstream_surface_pge_ls.py` fa rosso qui, sulla PR che sposta
+  uno di quei nomi, invece di lasciare che di là tacciano.
 - **La guardia sulla diagnostica è derivata dai sorgenti.**
   `tests/shared/test_stdout_contract.py` cerca con `ast` le `def
   register_*_strategy` di livello modulo, pretende che l'insieme dei moduli che
@@ -850,9 +852,10 @@ sé) — sopravvive identico. Per cinque di quei nomi, e cinque soli, è
 la condizione perché la parità di PGE-ls resti verde: le quattro mappe voce e
 `CHORD_INTERVALS`. Per tutti gli altri è disciplina interna, non vincolo
 esterno, e conviene saperlo in questi termini: chi esegue #184/#185 deve
-verificare *quali* nomi sono davvero pinnati, e il posto dove leggerlo è la
-#269 (o il censimento qui sopra) — non la #246, che inventaria la superficie
-importata da **PGE-ui** e non nomina nessuna di queste mappe.
+verificare *quali* nomi sono davvero pinnati, e il posto dove leggerlo è
+`tests/test_downstream_surface_pge_ls.py` (#269), che lo dice in forma
+eseguibile — non `tests/test_downstream_surface.py` (#246), che inventaria la
+superficie importata da **PGE-ui** e non nomina nessuna di queste mappe.
 
 **La documentazione di estensione è già disallineata, e questo la rimette in
 riga.** [[add-voice-strategy]] dice «registra nella factory
@@ -887,7 +890,8 @@ nuova.
   `Factory`, `SEMITONE_LOCKED`, `CHORD_INTERVALS` — ma sapendo quanto costa
   ciascuno. `VOICE_PITCH/ONSET/POINTER/PAN_STRATEGIES` e `CHORD_INTERVALS` sono
   importati per nome dal test di parità di PGE-ls (#269): lì il costo è
-  immediato e fuori da qui. Gli altri costano dentro (`SEMITONE_LOCKED` la legge `Stream`)
+  immediato e fuori da qui, e qui lo annuncia
+  `tests/test_downstream_surface_pge_ls.py`. Gli altri costano dentro (`SEMITONE_LOCKED` la legge `Stream`)
   o non costano ancora niente, e restano fermi per non spendere una decisione su
   niente. Se uno deve muoversi, prima l'analisi d'impatto cross-repo.
 - **Non aggiungere validazione `issubclass`** dentro `register()` in #184/#185:
@@ -958,5 +962,6 @@ nuova.
   #178 che ha portato il censimento di `CLASSIFICAZIONE`, da cui il conto della
   misura in «Il `print()`»), #269 (la superficie
   interna pinnata da PGE-ls: i cinque nomi di cui sopra, e perché il loro
-  presidio può tacere), #246 (la gemella per PGE-ui: stessa classe di
-  vincolo, altro elenco)
+  presidio può tacere; il registro eseguibile è
+  `tests/test_downstream_surface_pge_ls.py`), #246 (la gemella per PGE-ui:
+  stessa classe di vincolo, altro elenco)

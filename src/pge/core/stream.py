@@ -63,6 +63,10 @@ from dataclasses import dataclass, fields, MISSING as dataclass_MISSING
 # alla frequenza di output del motore (StreamContext.output_sr);
 # 'milliseconds' e' la scala comoda per la grana udibile (1-1000 ms) e usa un
 # fattore fisso, indipendente dal sample rate.
+#
+# Questa e l'etichetta qui sotto PGE-ls le legge dall'AST di QUESTO file, come
+# letterali: spostate o scritte con un'espressione, la sua parita' salta in
+# verde. Stanno nel registro di tests/test_downstream_surface_pge_ls.py (#269).
 GRAIN_DURATION_UNITS = ('seconds', 'samples', 'milliseconds')
 
 # Etichette per i messaggi d'errore: unita' -> nome dei valori attesi.
@@ -587,6 +591,11 @@ class Stream:
 
         Il dict originale non viene mutato (cache fingerprint e
         stream_data_map leggono i dati grezzi).
+
+        La parita' di PGE-ls estrae questo metodo dall'AST e lo esegue con un
+        namespace scritto a mano: un nome globale nuovo nel corpo, di la', e'
+        un NameError. Il registro di tests/test_downstream_surface_pge_ls.py
+        dice quali (#269).
         """
         grain = params.get('grain')
         if not isinstance(grain, dict) or 'duration_unit' not in grain:
@@ -670,6 +679,11 @@ class Stream:
         Qui vive anche il rifiuto della coppia `reverse` + `read_direction`
         (issue #207): le due chiavi governano la stessa grandezza con
         semantiche opposte.
+
+        Come `_pre_normalize_grain_params`, la parita' di PGE-ls lo estrae
+        dall'AST e lo esegue con un namespace scritto a mano e un `self` che
+        porta il solo `stream_id`: vedi tests/test_downstream_surface_pge_ls.py
+        (#269).
         """
         grain_params = params.get('grain', {}) or {}
 
