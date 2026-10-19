@@ -55,7 +55,10 @@ def build_stream(tmp_path):
     Serve a chi deve verificare qualcosa della superficie dello Stream: un
     MagicMock ha ogni attributo e quindi non puo' dire se un attributo esiste
     davvero, e `object.__new__(Stream)` salta proprio l'inizializzazione che
-    la superficie la costruisce.
+    la superficie la costruisce. Da #283 e' anche l'unico modo in cui i test
+    costruiscono uno Stream: le factory di `tests/core/test_stream*.py`
+    partono da qui e sostituiscono dopo i collaboratori da isolare, e una
+    guardia (`tests/core/test_stream_costruttore.py`) rifiuta il bypass.
 
     Il sample e' un wav di silenzio scritto in `tmp_path`: non dipende da
     `refs/`, che in un checkout pulito e' vuota (due test si skippano gia'

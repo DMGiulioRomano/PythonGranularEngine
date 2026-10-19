@@ -356,6 +356,7 @@ class TestStreamInit:
         assert not hasattr(s, '_grains')
         assert s.generated is False
         assert s.sample_table_num is None
+        assert s.window_table_map is None
         assert s.envelope_table_num is None
 
     def test_missing_sample_raises_value_error(self):
