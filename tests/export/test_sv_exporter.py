@@ -173,6 +173,20 @@ class TestEnvelopeLayers:
         layer = _timevalues_layer(_build([s]), 'density')
         assert layer.get('plotStyle') == '8'
 
+    @pytest.mark.parametrize('grafia,stile', [
+        ('Cubic', '7'), (' cubic ', '7'), ('STEP', '8'), ('Step', '8'),
+        ('LINEAR', '3'),
+    ])
+    def test_plotstyle_follows_the_name_the_engine_reads(self, grafia, stile):
+        # Issue #300: il motore legge il nome senza badare a maiuscole e
+        # spazi, e lo stile lo deve seguire. Con `Cubic` o `STEP` la sessione
+        # disegnava linee rette (il default "3") dove si suona una cubica o un
+        # gradino.
+        s = _stream(density=_param('density', Envelope(
+            {'type': grafia, 'points': [[0, 5.0], [DUR, 1000.0]]})))
+        layer = _timevalues_layer(_build([s]), 'density')
+        assert layer.get('plotStyle') == stile
+
     def test_plotstyle_per_layer_follows_each_envelope_type(self):
         # Tipi diversi nello stesso stream -> plotStyle indipendenti per layer.
         s = _stream(
