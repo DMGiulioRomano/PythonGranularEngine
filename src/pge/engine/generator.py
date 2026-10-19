@@ -506,6 +506,11 @@ class Generator:
             "(10 + 5)" → 15
             "(pi * 2)" → 6.283...
             "(max(3, 7))" → 7
+
+        La parita' di PGE-ls estrae questo metodo dall'AST, lo esegue con i
+        soli `math` e `re` nel namespace e ne confronta il `pattern` col suo
+        mirror, carattere per carattere: vedi
+        tests/test_downstream_surface_pge_ls.py (#269).
         """
         # Ricorsione su dict
         if isinstance(obj, dict):

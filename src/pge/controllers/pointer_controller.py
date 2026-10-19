@@ -95,6 +95,10 @@ class PointerController:
         # envelope va fermato adesso, mentre il campo ha ancora un nome: piu'
         # avanti diventa un TypeError dentro la generazione dei grani, quando
         # non c'e' piu' modo di dire all'utente cosa ha scritto.
+        #
+        # Di questa riga e' pinnata la forma, non solo il nome: PGE-ls la cerca
+        # nel testo con un regex, e anche una riscrittura equivalente e' un
+        # rosso di la' (tests/test_downstream_surface_pge_ls.py, #269).
         if not isinstance(self.start, (int, float)):
             err = InvalidFieldValueError(
                 field='pointer.start',

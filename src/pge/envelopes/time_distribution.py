@@ -17,6 +17,10 @@ import math
 # crescere; `exponent` e' una scala, dove 1 e' un valore ordinario e a
 # traboccare e' l'ordine di grandezza. Un parametro non elencato ricade su
 # "riduci <nome>", che e' vero per costruzione: l'overflow arriva dall'alto.
+#
+# Privato, ma la parita' di PGE-ls lo legge per nome e lo confronta col suo
+# specchio; su un nome che manca salta, in verde. Il nome sta nel registro di
+# tests/test_downstream_surface_pge_ls.py (#269).
 _RIMEDI_OVERFLOW = {
     'ratio': "avvicina ratio a 1",
     'rate': "avvicina rate a 1",
