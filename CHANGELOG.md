@@ -368,6 +368,49 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **`type: Cubic` è la cubica di `type: cubic`** (issue #300).
+  `InterpolationStrategyFactory` legge il nome dell'interpolazione senza badare
+  a maiuscole e spazi attorno, ma `Envelope` teneva il nome com'era scritto e
+  lo confrontava alla lettera nei due punti che decidono le tangenti di
+  Fritsch-Carlson. Con `Cubic`, `' cubic '` o lo slot `'CUBIC'` di un
+  compatto la strategy era la cubica ma senza tangenti, e ogni segmento
+  diventava uno smoothstep piatto su ogni breakpoint, in silenzio. Misurato su
+  `density: {type: Cubic, points: [[0, 10], [0.6, 40], [1.2, 15], [2.0, 30]]}`:
+  a `t = 0.3` 25.0 invece di 28.75, e l'integrale su 2 s 49.5 invece di 50.0 —
+  che il pointer usa per ricavare la posizione di lettura da `speed_ratio`.
+  Valeva anche per l'envelope per-segmento, dove i segmenti cubici senza tipo
+  proprio prendevano il globale.
+
+  Ora `Envelope.type` è il nome canonico, quello che la factory legge:
+  `InterpolationStrategyFactory.canonical(nome)` dà la chiave del registro, o
+  `None` se `create` non lo legge come nome, e `create` normalizza passando da
+  lì, così la regola sta in un posto solo. I lettori di `env.type` fuori da
+  `Envelope` tornano giusti senza toccarli: l'export Sonic Visualiser disegnava
+  linee rette (`plotStyle` 3) dove il motore suona una cubica o un gradino
+  (`Cubic` → 7, `STEP` → 8), e la partitura metteva `STEP` nel ramo che
+  campiona `evaluate` invece che in quello dei gradini.
+
+  Il tipo globale — il `type` del dict e lo slot del compatto — resta l'unico
+  letto senza badare a maiuscole e spazi: l'interp per-punto, quello del BP
+  group, l'`interp` di `chord_progression` e quello di `grain.read_direction`
+  si confrontano ancora alla lettera, come li controllano PGE-ls e gl-ls. La
+  regola è scritta in `docs/reference/yaml.md`, §4.5.
+
+  **Cambia il suono** dei progetti che scrivono `cubic` con maiuscole o spazi
+  nel `type` di un dict o nel quarto elemento di un compatto: la cubica invece
+  dello smoothstep, da tre breakpoint in su — con due la cubica del motore è
+  già lo smoothstep, che forza a zero le tangenti di entrambi gli estremi.
+  `Step` e `Linear` in maiuscolo suonavano già giusti, e per
+  loro cambiano solo l'export SV e, appena, la partitura.
+  `VARIATION_SEMANTICS_VERSION` **non** si muove, come per #234 e #289: nessuno
+  dei 106 YAML di motore, PGE-ui, PGE-ls, gl-ls, granulation-studies e
+  mare-nostrum, né degli 8 esempi del paper CIM 2026, letti come YAML e non con
+  grep, scrive un nome d'interpolazione non canonico, e un bump rifarebbe ogni
+  stem di ogni progetto per una grafia che nessuno scrive. Un progetto esterno
+  si controlla cercando `cubic` scritto con una maiuscola o fra spazi dopo un
+  `type:` o come quarto elemento di un compatto; trovato, si rirende senza
+  cache incrementale (la cache vede lo YAML, che non è cambiato).
+
 - **La forma dict si legge nell'unità dichiarata come la lista nuda** (issue
   #289). `scale_raw_param_values` porta le y nell'unità del motore prima che il
   corpo arrivi al builder — `grain.duration_unit` su `grain.duration` e sul
