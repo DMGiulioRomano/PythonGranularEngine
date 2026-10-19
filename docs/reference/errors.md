@@ -328,7 +328,13 @@ EngineError                                  (Exception)
   riga la dicono da sé, con lo stesso helper (`_righe_importato_da`). Viaggia
   nello stato del pickle come ogni altro attributo arricchito.
 - `EngineRuntimeError` separa runtime engine da config; sotto-classi future
-  (es. errori I/O di rendering) si appendono qui.
+  (es. errori I/O di rendering) si appendono qui. Si solleva anche da sola,
+  in un caso: uno `Stream` che genera i grani senza i riferimenti alle tabelle
+  che il `Generator` assegna dopo la costruzione (`sample_table_num`,
+  `window_table_map`, issue #283). Ci arriva solo chi usa la libreria fuori
+  dal `Generator`; il messaggio nomina lo stream, il riferimento che manca e
+  `Generator._create_stream`, e `stream_id` è valorizzato. Prima era un
+  `AttributeError` o il `TypeError` della validazione di `Grain`.
 - Ogni sotto-classe override `user_message()` con formato strutturato.
 
 ---

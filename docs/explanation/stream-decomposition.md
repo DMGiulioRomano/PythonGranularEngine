@@ -13,6 +13,7 @@ sources:
   - tests/conftest.py
   - tests/core/test_stream.py
   - tests/core/test_stream_multivoice.py
+  - tests/core/test_stream_costruttore.py
   - tests/core/test_stream_voices_yaml.py
   - tests/rendering/test_envelope_extractor.py
 last_synced_commit: 9d28726
@@ -278,19 +279,20 @@ venti attributi. Un `GrainGenerator` separato li avrebbe come costruttore, e lo
 `.voices` (#117), dopo che il Generator ha assegnato `sample_table_num` e
 `window_table_map`. L'accoppiamento cambierebbe nome, non misura.
 
-I test lo mostrano meglio di un argomento: quell'oggetto l'hanno già costruito.
-`_make_stream` in `tests/core/test_stream_multivoice.py` (69 test) e
-`stream_factory` in `tests/core/test_stream.py` (66 test) creano uno `Stream`
-con `object.__new__` e ci scrivono a mano esattamente gli ingressi della
-generazione. Quella lista è il costruttore che un generatore separato
+I test lo mostravano meglio di un argomento: quell'oggetto l'avevano già
+costruito. Fino a #283 `_make_stream` in `tests/core/test_stream_multivoice.py`
+(69 test) e `stream_factory` in `tests/core/test_stream.py` (66 test) creavano
+uno `Stream` con `object.__new__` e ci scrivevano a mano esattamente gli
+ingressi della generazione. Quella lista è il costruttore che un generatore separato
 chiederebbe. Il disagio di quei test è vero, ma la cura è costruire `Stream`
 veri e sostituirne i collaboratori (#283), non una classe che chiederebbe la
 stessa lista.
 
 Quel che la misura ha trovato su questo percorso non è un confine ma un
-contratto non dichiarato: `_create_grain` legge `window_table_map`, che
-`__init__` non dichiara, e uno `Stream` letto fuori dal Generator muore con un
-`AttributeError` dall'interno della generazione. Anche quello è #283.
+contratto non dichiarato: `_create_grain` leggeva `window_table_map`, che
+`__init__` non dichiarava, e uno `Stream` letto fuori dal Generator moriva con un
+`AttributeError` dall'interno della generazione. Anche quello era #283, ed è
+fatto (vedi l'esito sotto).
 
 ---
 
@@ -359,6 +361,15 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
   costruito; `window_table_map` dichiarato in `__init__`. È lo stadio 2 del plan
   `2026-08-03-001-refactor-stream-read-surface-plan.md`, che con la chiusura di
   #199 era rimasto senza issue.
+
+  **Esito (#283): fatto.** Le factory costruiscono uno `Stream` vero con
+  `build_stream` e ne sostituiscono i collaboratori; via le tre cicatrici, e
+  una guardia (`tests/core/test_stream_costruttore.py`) rifiuta il bypass nei
+  test. Lo `Stream` legge i campi dal contesto che costruisce: una lettura
+  dell'header. I riferimenti del Generator dichiarati sono due, non uno:
+  anche `sample_table_num` a `None` faceva morire la generazione, col
+  `TypeError` della validazione di `Grain`, e `generate_grains` ora dice quale
+  dei due manca. Il plan è in `docs/plans/done/`. Da qui #284 può partire.
 - **#284 — il blocco `voices:` al suo controller**, con il confine descritto
   sopra.
 - **#285 — i residui della superficie di lettura**: `grains` scaduta,
@@ -383,5 +394,5 @@ silenzio se la regola cambia.
 - [[parameter-curve]] — cosa legge `envelope_extractor` per nome, e perché
 - [[costo-rendering]] — la generazione lazy (#117) che tiene la generazione dentro lo `Stream`
 - [[architecture]] — dove sta lo `Stream` nella pipeline
-- Plan `docs/plans/2026-08-03-001-refactor-stream-read-surface-plan.md` — la superficie di lettura, stadi 1-3
+- Plan `docs/plans/done/2026-08-03-001-refactor-stream-read-surface-plan.md` — la superficie di lettura, stadi 1-3
 - Issue: #190 (questa decisione), #183, #186, #199, #269, #283, #284, #285

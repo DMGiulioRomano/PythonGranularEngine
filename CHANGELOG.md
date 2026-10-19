@@ -156,6 +156,40 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Cambiato
 
+- **Lo `Stream` si costruisce solo dal costruttore** (issue #283, stadio 2 del
+  plan del 2026-08-03, ora in `docs/plans/done/`). I test costruivano `Stream`
+  a metà con `object.__new__(Stream)` — 21 siti, da cui dipendevano 150 test —
+  e la produzione ne portava le cicatrici: `getattr(self, 'samples_dir',
+  None)` nel contesto, `getattr(self, '_voice_pointer_normalized', False)` a
+  ogni grano, il ripiego su `OverflowMarginClipStrategy(margin=0.0)` in
+  `generate_grains` per un `_clip_strategy` che `__init__` scrive sempre. Ora
+  le due factory (`stream_factory` e `make_stream`, la fixture che prende il
+  posto della funzione `_make_stream`) costruiscono uno `Stream` vero con
+  `build_stream` e poi ne sostituiscono i collaboratori. I bypass diretti
+  chiedono al costruttore il comportamento che verificavano: i campi di
+  contesto, i campi obbligatori, la semantica di `grain.reverse`. I cinque
+  che provavano solo l'inoltro fra metodi privati (`_init_stream_parameters`
+  verso l'orchestratore, `_init_controllers` verso i controller) sono usciti,
+  e con loro il plurale di `MissingFieldError`, che dal costruttore non si
+  raggiunge e che `test_engine_exceptions.py` già prova. Le cicatrici sono
+  andate, e una guardia (`tests/core/test_stream_costruttore.py`) rifiuta un
+  `object.__new__(Stream)` nei test.
+
+  Due difetti stavano sullo stesso percorso. **L'header del sample si leggeva
+  due volte per stream**: lo `Stream` costruiva lo `StreamContext` e poi ne
+  ri-derivava i campi dal dizionario con le stesse funzioni
+  (`resolve_stream_onset`, `resolve_stream_duration`). Ora li legge dal
+  contesto: una lettura e una risoluzione, verificate da un test. **I
+  riferimenti che assegna il `Generator` non erano dichiarati**: uno `Stream`
+  costruito fuori dal `Generator` e letto con `.voices` moriva dentro
+  `_create_grain`, con un `AttributeError` su `window_table_map` o, assegnata
+  quella, col `TypeError` della validazione di `Grain` su `sample_table`. Ora
+  `__init__` dichiara `sample_table_num` e `window_table_map` a `None`, e
+  `generate_grains` si ferma con un `EngineRuntimeError` che nomina lo stream,
+  quale dei due manca e `Generator._create_stream`. Dal `Generator` non cambia
+  niente, perché li assegna prima di ogni lettura, e non cambia l'audio.
+  `envelope_table_num` resta com'è: è materia di #285.
+
 - **La riga di testa del riepilogo è protocollo, e il contratto di stdout
   descrive il parser di PGE-ui com'è oggi** (issue #277).
   `docs/explanation/contratto-stdout.md` è l'unico posto in cui il contratto
