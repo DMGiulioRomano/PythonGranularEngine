@@ -74,6 +74,10 @@ pretende che le due letture coincidano.
 
 - registrazione del vincolo: issue #246
 - harness: `tests/parity/README.md` in PGE-ui, `PGE-ui/engine_introspect.py`
+- il gemello per PGE-ls: `tests/test_downstream_surface_pge_ls.py` (issue
+  #269), che da qui importa `SRC`, `_assegnato` e `_albero`. E' un file a
+  parte perche' il lettore fallisce in un altro modo: di la' un rename non fa
+  rosso, fa ripiegare su una copia statica o saltare un patto
 - regola di impatto cross-repo: `.claude/rules/cross-repo-impact.md`
 """
 

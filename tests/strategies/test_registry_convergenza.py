@@ -862,8 +862,10 @@ def test_semitone_locked_resta_un_nome_di_modulo_allineato_al_registry():
 def test_chord_intervals_resta_un_nome_di_modulo():
     """`CHORD_INTERVALS` e' il dominio di un kwarg, non del registry.
 
-    La importa per nome il test di parita' di PGE-ls (#269): il costo di
-    spostarla si paga in un altro repo, dove questa suite non arriva.
+    La importa per nome il test di parita' di PGE-ls: il costo di spostarla si
+    paga in un altro repo, e qui lo annuncia
+    `tests/test_downstream_surface_pge_ls.py` (#269). Questo test guarda il
+    contenuto, che quel registro non guarda.
     """
     from pge.strategies.voice_pitch_strategy import CHORD_INTERVALS
 
