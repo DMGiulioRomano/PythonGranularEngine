@@ -83,91 +83,96 @@ def _make_mock_window_controller():
     return wc
 
 
-def _make_stream(
-    duration=1.0,
-    onset=0.0,
-    inter_onset=0.1,
-    grain_dur=0.05,
-    pitch_ratio=1.0,
-    pointer_pos=0.5,
-    pan_value=0.0,
-    voice_manager=None,
-    num_voices_fn=None,
-    scatter_fn=None,
-    density_side_effect=None,
-    voice_pointer_normalized=False,
-):
-    """Crea uno Stream con tutti i controller mockati e VoiceManager reale/mock.
+@pytest.fixture
+def make_stream(build_stream):
+    """Factory di Stream con i controller mockati e un VoiceManager reale o mock.
+
+    Lo Stream e' vero: lo costruisce `build_stream` attraverso `__init__`, e
+    poi i collaboratori che la generazione multi-voce vuole isolare vengono
+    sostituiti (issue #283). Il VoiceManager, `num_voices`, `scatter` e
+    l'unita' dell'offset di pointer si iniettano qui invece di passare dal
+    blocco `voices:` dello YAML: sotto test c'e' la generazione, non il
+    wiring delle dimensioni, che prova `test_stream_voices_yaml.py`.
 
     num_voices_fn: callable t → float, se None restituisce max_voices per ogni t.
     """
-    s = object.__new__(Stream)
-    s.stream_id = 'test_stream'
-    s.onset = onset
-    s.duration = duration
-    s.sample = 'test.wav'
-    s.sample_dur_sec = 5.0
-    s.grain_reverse_mode = 'auto'
+    def _make(
+        duration=1.0,
+        onset=0.0,
+        inter_onset=0.1,
+        grain_dur=0.05,
+        pitch_ratio=1.0,
+        pointer_pos=0.5,
+        pan_value=0.0,
+        voice_manager=None,
+        num_voices_fn=None,
+        scatter_fn=None,
+        density_side_effect=None,
+        voice_pointer_normalized=False,
+    ):
+        s = build_stream(onset=onset, duration=duration)
+        # La durata del sample la decide il test, non il file di prova (un
+        # secondo): il pointer mock ci fa il wrap, l'offset normalizzato ci
+        # si scala.
+        s.sample_dur_sec = 5.0
 
-    s.grain_duration = _make_mock_parameter(grain_dur, 'grain_duration')
-    s.volume = _make_mock_parameter(-6.0, 'volume')
-    s.pan = _make_mock_parameter(pan_value, 'pan')
-    s.reverse = _make_mock_parameter(0, 'reverse')
-    # I due membri del gruppo esclusivo 'grain_direction' esistono sempre
-    # entrambi come attributi: l'orchestratore mette a None il non selezionato.
-    s.read_direction = None
-    s.grain_envelope = 'hanning'
+        # `grain_reverse_mode` resta 'auto' e `read_direction` il None del
+        # membro non dichiarato del gruppo 'grain_direction', come li lascia
+        # la costruzione.
+        s.grain_duration = _make_mock_parameter(grain_dur, 'grain_duration')
+        s.volume = _make_mock_parameter(-6.0, 'volume')
+        s.pan = _make_mock_parameter(pan_value, 'pan')
+        s.reverse = _make_mock_parameter(0, 'reverse')
 
-    s._pointer = _make_mock_pointer(pointer_pos, s.sample_dur_sec)
-    s._pitch = _make_mock_pitch(pitch_ratio)
-    s._window_controller = _make_mock_window_controller()
+        s._pointer = _make_mock_pointer(pointer_pos, s.sample_dur_sec)
+        s._pitch = _make_mock_pitch(pitch_ratio)
+        s._window_controller = _make_mock_window_controller()
 
-    s._voice_manager = voice_manager or VoiceManager(max_voices=1)
-    s._voice_pointer_normalized = voice_pointer_normalized
+        s._voice_manager = voice_manager or VoiceManager(max_voices=1)
+        s._voice_pointer_normalized = voice_pointer_normalized
 
-    # density: supporta side_effect per simulare distribution > 0
-    if density_side_effect is not None:
-        dens = Mock()
-        dens.calculate_inter_onset = Mock(side_effect=density_side_effect)
-        dens.density = 10.0
-        dens.fill_factor = None
-        dens.distribution = Mock()
-        dens.distribution.value = 0.0
-        s._density = dens
-    else:
-        s._density = _make_mock_density(inter_onset)
+        # density: supporta side_effect per simulare distribution > 0
+        if density_side_effect is not None:
+            dens = Mock()
+            dens.calculate_inter_onset = Mock(side_effect=density_side_effect)
+            dens.density = 10.0
+            dens.fill_factor = None
+            dens.distribution = Mock()
+            dens.distribution.value = 0.0
+            s._density = dens
+        else:
+            s._density = _make_mock_density(inter_onset)
 
-    # num_voices: mock Parameter che restituisce max_voices per default
-    max_v = float(s._voice_manager.max_voices)
-    nv = Mock()
-    nv.get_value = Mock(
-        side_effect=num_voices_fn if num_voices_fn is not None
-        else lambda t: max_v
-    )
-    s._num_voices = nv
+        # num_voices: mock Parameter che restituisce max_voices per default
+        max_v = float(s._voice_manager.max_voices)
+        nv = Mock()
+        nv.get_value = Mock(
+            side_effect=num_voices_fn if num_voices_fn is not None
+            else lambda t: max_v
+        )
+        s._num_voices = nv
 
-    # scatter: mock Parameter, default = 0.0 (cluster)
-    sc = Mock()
-    sc.get_value = Mock(
-        side_effect=scatter_fn if scatter_fn is not None
-        else lambda t: 0.0
-    )
-    s._scatter = sc
+        # scatter: mock Parameter, default = 0.0 (cluster)
+        sc = Mock()
+        sc.get_value = Mock(
+            side_effect=scatter_fn if scatter_fn is not None
+            else lambda t: 0.0
+        )
+        s._scatter = sc
 
-    s.sample_table_num = 1
-    s.envelope_table_num = 2
-    s.window_table_map = {'hanning': 2}
+        # Riferimenti alle tabelle: li assegna il Generator dopo la
+        # costruzione, e la generazione li pretende.
+        s.sample_table_num = 1
+        s.envelope_table_num = 2
+        s.window_table_map = {'hanning': 2}
 
-    # Clip strategy: passthrough per test (preserva semantiche pre-U2).
-    from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
-    s._clip_strategy = PassthroughClipStrategy()
+        # Clip strategy: passthrough per test (preserva semantiche pre-U2).
+        from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
+        s._clip_strategy = PassthroughClipStrategy()
 
-    # `voices` e' l'unico ingresso: `grains` e' una vista derivata
-    # e non ha piu' un setter (issue #201).
-    s.voices = []
-    s.generated = False
+        return s
 
-    return s
+    return _make
 
 
 # =============================================================================
@@ -177,24 +182,24 @@ def _make_stream(
 class TestGenerateGrainsBackwardCompat:
     """Con VoiceManager(max_voices=1) il comportamento è identico a prima."""
 
-    def test_single_voice_grain_count(self):
+    def test_single_voice_grain_count(self, make_stream):
         """1 voce, duration=1.0, inter_onset=0.1 → ~10 grani (floating point tolerance)."""
-        s = _make_stream(duration=1.0, inter_onset=0.1)
+        s = make_stream(duration=1.0, inter_onset=0.1)
         s.generate_grains()
         assert len(flat_grains(s)) in (10, 11)
 
-    def test_single_voice_voices_list_has_one_entry(self):
-        s = _make_stream(duration=1.0, inter_onset=0.1)
+    def test_single_voice_voices_list_has_one_entry(self, make_stream):
+        s = make_stream(duration=1.0, inter_onset=0.1)
         s.generate_grains()
         assert len(s.voices) == 1
 
-    def test_single_voice_onset_is_absolute(self):
-        s = _make_stream(duration=0.5, onset=2.0, inter_onset=0.1)
+    def test_single_voice_onset_is_absolute(self, make_stream):
+        s = make_stream(duration=0.5, onset=2.0, inter_onset=0.1)
         s.generate_grains()
         assert flat_grains(s)[0].onset == pytest.approx(2.0)
 
-    def test_generated_flag_set(self):
-        s = _make_stream()
+    def test_generated_flag_set(self, make_stream):
+        s = make_stream()
         s.generate_grains()
         assert s.generated is True
 
@@ -205,32 +210,32 @@ class TestGenerateGrainsBackwardCompat:
 
 class TestGenerateGrainsMultiVoiceCount:
 
-    def test_two_voices_double_grain_count(self):
+    def test_two_voices_double_grain_count(self, make_stream):
         """2 voci, stessa density → 2× i grani totali."""
         vm = VoiceManager(max_voices=2)
-        s1 = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=VoiceManager(max_voices=1))
-        s2 = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s1 = make_stream(duration=1.0, inter_onset=0.1, voice_manager=VoiceManager(max_voices=1))
+        s2 = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s1.generate_grains()
         s2.generate_grains()
         assert len(flat_grains(s2)) == len(flat_grains(s1)) * 2
 
-    def test_three_voices_triple_grain_count(self):
+    def test_three_voices_triple_grain_count(self, make_stream):
         vm = VoiceManager(max_voices=3)
-        s1 = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=VoiceManager(max_voices=1))
-        s3 = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s1 = make_stream(duration=1.0, inter_onset=0.1, voice_manager=VoiceManager(max_voices=1))
+        s3 = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s1.generate_grains()
         s3.generate_grains()
         assert len(flat_grains(s3)) == len(flat_grains(s1)) * 3
 
-    def test_two_voices_voices_list_has_two_entries(self):
+    def test_two_voices_voices_list_has_two_entries(self, make_stream):
         vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         assert len(s.voices) == 2
 
-    def test_each_voice_has_same_grain_count(self):
+    def test_each_voice_has_same_grain_count(self, make_stream):
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         counts = [len(v) for v in s.voices]
         assert counts[0] == counts[1] == counts[2]
@@ -242,35 +247,35 @@ class TestGenerateGrainsMultiVoiceCount:
 
 class TestGenerateGrainsVoiceZeroReference:
 
-    def test_voice_0_pitch_unmodified(self):
+    def test_voice_0_pitch_unmodified(self, make_stream):
         """Voce 0 non ha pitch offset → pitch_ratio identico al base."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         voice_0_pitches = [g.pitch_ratio for g in s.voices[0]]
         assert all(p == pytest.approx(1.0) for p in voice_0_pitches)
 
-    def test_voice_0_pointer_unmodified(self):
+    def test_voice_0_pointer_unmodified(self, make_stream):
         from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.3))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.5, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.5, voice_manager=vm)
         s.generate_grains()
         voice_0_pointers = [g.pointer_pos for g in s.voices[0]]
         assert all(p == pytest.approx(0.5) for p in voice_0_pointers)
 
-    def test_voice_0_onset_unmodified(self):
+    def test_voice_0_onset_unmodified(self, make_stream):
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=1.0))
-        s = _make_stream(duration=0.3, onset=5.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=0.3, onset=5.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         # Voce 0: onset = stream_onset + elapsed (no offset)
         assert s.voices[0][0].onset == pytest.approx(5.0)
 
-    def test_voice_0_pan_unmodified(self):
+    def test_voice_0_pan_unmodified(self, make_stream):
         from pge.strategies.voice_pan_strategy import RangePanStrategy
         vm = VoiceManager(max_voices=2, pan_strategy=RangePanStrategy(spread=60.0))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
         s.generate_grains()
         voice_0_pans = [g.pan for g in s.voices[0]]
         assert all(p == pytest.approx(0.0) for p in voice_0_pans)
@@ -282,36 +287,36 @@ class TestGenerateGrainsVoiceZeroReference:
 
 class TestGenerateGrainsVoiceOneOffsets:
 
-    def test_voice_1_pitch_offset_applied(self):
+    def test_voice_1_pitch_offset_applied(self, make_stream):
         """Voce 1 con StepPitchStrategy(step=12) → pitch_ratio = base * 2^(12/12) = 2.0."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         voice_1_pitches = [g.pitch_ratio for g in s.voices[1]]
         expected = 2 ** (12.0 / 12.0)  # = 2.0
         assert all(p == pytest.approx(expected) for p in voice_1_pitches)
 
-    def test_voice_1_pitch_offset_7_semitones(self):
+    def test_voice_1_pitch_offset_7_semitones(self, make_stream):
         """Voce 1 con step=7 → pitch_ratio = 2^(7/12) ≈ 1.4983."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=7.0))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         expected = 2 ** (7.0 / 12.0)
         voice_1_pitches = [g.pitch_ratio for g in s.voices[1]]
         assert all(p == pytest.approx(expected, rel=1e-4) for p in voice_1_pitches)
 
-    def test_voice_1_pointer_offset_applied(self):
+    def test_voice_1_pointer_offset_applied(self, make_stream):
         """Voce 1 con LinearPointerStrategy(step=0.2) → pointer = base + 0.2."""
         from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.2))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3, voice_manager=vm)
         s.generate_grains()
         voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
         assert all(p == pytest.approx(0.5) for p in voice_1_pointers)
 
-    def test_pointer_offset_rewrapped_into_buffer(self):
+    def test_pointer_offset_rewrapped_into_buffer(self, make_stream):
         """Voce con offset che supera sample_dur → pointer_pos re-wrappato in [0, sample_dur).
 
         Regressione issue #79: l'offset di voce veniva sommato DOPO il wrap base,
@@ -320,8 +325,8 @@ class TestGenerateGrainsVoiceOneOffsets:
         """
         from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=3.0))
-        # sample_dur_sec=5.0 (default _make_stream); base=4.5, voce 1 offset=3.0 → 7.5
-        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5, voice_manager=vm)
+        # sample_dur_sec=5.0 (default di make_stream); base=4.5, voce 1 offset=3.0 → 7.5
+        s = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5, voice_manager=vm)
         s.generate_grains()
         for voice_grains in s.voices:
             for g in voice_grains:
@@ -330,7 +335,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
         assert all(p == pytest.approx(2.5) for p in voice_1_pointers)
 
-    def test_normalized_linear_offset_scaled_by_sample_dur(self):
+    def test_normalized_linear_offset_scaled_by_sample_dur(self, make_stream):
         """normalized=True → step interpretato come frazione del buffer.
 
         LinearPointerStrategy(step=0.2), sample_dur_sec=5.0, base=0.3.
@@ -338,13 +343,13 @@ class TestGenerateGrainsVoiceOneOffsets:
         """
         from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.2))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3,
+        s = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=0.3,
                          voice_manager=vm, voice_pointer_normalized=True)
         s.generate_grains()
         voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
         assert all(p == pytest.approx(1.3) for p in voice_1_pointers)
 
-    def test_normalized_offset_rewrapped_into_buffer(self):
+    def test_normalized_offset_rewrapped_into_buffer(self, make_stream):
         """normalized=True con offset oltre il buffer → re-wrap in [0, sample_dur).
 
         step=0.6 normalizzato, sample_dur_sec=5.0 → offset=3.0; base=4.5
@@ -352,7 +357,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         """
         from pge.strategies.voice_pointer_strategy import LinearPointerStrategy
         vm = VoiceManager(max_voices=2, pointer_strategy=LinearPointerStrategy(step=0.6))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5,
+        s = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=4.5,
                          voice_manager=vm, voice_pointer_normalized=True)
         s.generate_grains()
         for voice_grains in s.voices:
@@ -361,7 +366,7 @@ class TestGenerateGrainsVoiceOneOffsets:
         voice_1_pointers = [g.pointer_pos for g in s.voices[1]]
         assert all(p == pytest.approx(2.5) for p in voice_1_pointers)
 
-    def test_normalized_stochastic_offset_scaled_by_sample_dur(self):
+    def test_normalized_stochastic_offset_scaled_by_sample_dur(self, make_stream):
         """normalized=True con stochastic → stesso cache[-1,1]*range, scalato per sample_dur_sec.
 
         Stesso stream_id → stesso seed → stesso fattore di cache. L'offset
@@ -377,8 +382,8 @@ class TestGenerateGrainsVoiceOneOffsets:
             max_voices=2,
             pointer_strategy=StochasticPointerStrategy(pointer_range=0.1, stream_id='seed_x'),
         )
-        s_sec = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=2.5, voice_manager=vm_sec)
-        s_norm = _make_stream(duration=0.3, inter_onset=0.1, pointer_pos=2.5,
+        s_sec = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=2.5, voice_manager=vm_sec)
+        s_norm = make_stream(duration=0.3, inter_onset=0.1, pointer_pos=2.5,
                               voice_manager=vm_norm, voice_pointer_normalized=True)
         s_sec.generate_grains()
         s_norm.generate_grains()
@@ -387,21 +392,21 @@ class TestGenerateGrainsVoiceOneOffsets:
         assert off_sec != pytest.approx(0.0)  # cache non nullo
         assert off_norm == pytest.approx(off_sec * s_norm.sample_dur_sec)
 
-    def test_voice_1_onset_offset_applied(self):
+    def test_voice_1_onset_offset_applied(self, make_stream):
         """Voce 1 con LinearOnsetStrategy(step=0.5) → primo onset = onset + 0.0 + 0.5."""
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=0.5))
-        s = _make_stream(duration=0.3, onset=2.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=0.3, onset=2.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         # Voce 1, primo grano: onset = stream_onset + elapsed(0.0) + onset_offset(0.5) = 2.5
         assert s.voices[1][0].onset == pytest.approx(2.5)
 
-    def test_voice_1_pan_offset_applied(self):
+    def test_voice_1_pan_offset_applied(self, make_stream):
         """Voce 1 con RangePanStrategy spread=60 → pan = base_pan + pan_offset."""
         from pge.strategies.voice_pan_strategy import RangePanStrategy
         # 2 voci, RangePanStrategy: voce 0 = 0, voce 1 = +30
         vm = VoiceManager(max_voices=2, pan_strategy=RangePanStrategy(spread=60.0))
-        s = _make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
+        s = make_stream(duration=0.3, inter_onset=0.1, pan_value=0.0, voice_manager=vm)
         s.generate_grains()
         voice_1_pans = [g.pan for g in s.voices[1]]
         assert all(p == pytest.approx(30.0) for p in voice_1_pans)
@@ -413,9 +418,9 @@ class TestGenerateGrainsVoiceOneOffsets:
 
 class TestCreateGrainWithVoiceConfig:
 
-    def test_identity_voice_config_identical_to_default(self):
+    def test_identity_voice_config_identical_to_default(self, make_stream):
         """VoiceConfig(1,0,0,0) produce lo stesso grano di nessun config."""
-        s = _make_stream(pitch_ratio=1.0, pointer_pos=0.5, pan_value=0.0, onset=1.0)
+        s = make_stream(pitch_ratio=1.0, pointer_pos=0.5, pan_value=0.0, onset=1.0)
         vc = VoiceConfig(1.0, 0.0, 0.0, 0.0)
         g = s._create_grain(elapsed_time=0.0, grain_dur=0.05, voice_config=vc)
         assert g.onset == pytest.approx(1.0)
@@ -423,52 +428,52 @@ class TestCreateGrainWithVoiceConfig:
         assert g.pointer_pos == pytest.approx(0.5)
         assert g.pan == pytest.approx(0.0)
 
-    def test_pitch_factor_multiplies_base(self):
+    def test_pitch_factor_multiplies_base(self, make_stream):
         """pitch_factor=2.0 → pitch_ratio base moltiplicato per 2.0."""
-        s = _make_stream(pitch_ratio=1.0)
+        s = make_stream(pitch_ratio=1.0)
         vc = VoiceConfig(pitch_factor=2.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(2.0)
 
-    def test_pitch_factor_compounds_base(self):
+    def test_pitch_factor_compounds_base(self, make_stream):
         """Se il pitch base è 2.0 e pitch_factor=2.0 → 2.0 * 2.0 = 4.0."""
-        s = _make_stream(pitch_ratio=2.0)
+        s = make_stream(pitch_ratio=2.0)
         vc = VoiceConfig(pitch_factor=2.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(4.0)
 
-    def test_pointer_offset_added(self):
+    def test_pointer_offset_added(self, make_stream):
         """pointer_offset=0.2 viene sommato al pointer base."""
-        s = _make_stream(pointer_pos=0.3)
+        s = make_stream(pointer_pos=0.3)
         vc = VoiceConfig(pitch_factor=1.0, pointer_offset=0.2, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pointer_pos == pytest.approx(0.5)
 
-    def test_pan_offset_added(self):
+    def test_pan_offset_added(self, make_stream):
         """pan_offset=30.0 viene sommato al pan base."""
-        s = _make_stream(pan_value=10.0)
+        s = make_stream(pan_value=10.0)
         vc = VoiceConfig(pitch_factor=1.0, pointer_offset=0.0, pan_offset=30.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pan == pytest.approx(40.0)
 
-    def test_onset_offset_added(self):
+    def test_onset_offset_added(self, make_stream):
         """onset_offset=0.5 viene sommato all'onset assoluto."""
-        s = _make_stream(onset=2.0)
+        s = make_stream(onset=2.0)
         vc = VoiceConfig(pitch_factor=1.0, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.5)
         g = s._create_grain(elapsed_time=0.1, grain_dur=0.05, voice_config=vc)
         # onset = stream_onset(2.0) + elapsed(0.1) + onset_offset(0.5) = 2.6
         assert g.onset == pytest.approx(2.6)
 
-    def test_pitch_factor_below_one_descends(self):
+    def test_pitch_factor_below_one_descends(self, make_stream):
         """pitch_factor=0.5 → pitch_ratio / 2 (ottava inferiore)."""
-        s = _make_stream(pitch_ratio=1.0)
+        s = make_stream(pitch_ratio=1.0)
         vc = VoiceConfig(pitch_factor=0.5, pointer_offset=0.0, pan_offset=0.0, onset_offset=0.0)
         g = s._create_grain(0.0, 0.05, voice_config=vc)
         assert g.pitch_ratio == pytest.approx(0.5)
 
-    def test_voice_config_none_uses_identity(self):
+    def test_voice_config_none_uses_identity(self, make_stream):
         """voice_config=None → comportamento identico a VoiceConfig(1,0,0,0)."""
-        s = _make_stream(pitch_ratio=1.0, pointer_pos=0.5, pan_value=0.0, onset=1.0)
+        s = make_stream(pitch_ratio=1.0, pointer_pos=0.5, pan_value=0.0, onset=1.0)
         g_none = s._create_grain(0.0, 0.05, voice_config=None)
         g_zero = s._create_grain(0.0, 0.05, voice_config=VoiceConfig(1.0, 0.0, 0.0, 0.0))
         assert g_none.pitch_ratio == g_zero.pitch_ratio
@@ -478,28 +483,28 @@ class TestCreateGrainWithVoiceConfig:
 
     # ── voice_gain: fade frazionario della voce di confine ──────────────────
 
-    def test_voice_gain_default_is_unity(self):
+    def test_voice_gain_default_is_unity(self, make_stream):
         """Senza voice_gain il volume resta quello base (firma backward-compatible)."""
-        s = _make_stream()  # s.volume mock → -6.0
+        s = make_stream()  # s.volume mock → -6.0
         g = s._create_grain(0.0, 0.05, voice_config=None)
         assert g.volume == pytest.approx(-6.0)
 
-    def test_voice_gain_unity_no_attenuation(self):
+    def test_voice_gain_unity_no_attenuation(self, make_stream):
         """voice_gain=1.0 → volume invariato (guard != 1.0 evita rumore FP)."""
-        s = _make_stream()
+        s = make_stream()
         g = s._create_grain(0.0, 0.05, voice_config=None, voice_gain=1.0)
         assert g.volume == pytest.approx(-6.0)
 
-    def test_voice_gain_half_attenuates_in_db(self):
+    def test_voice_gain_half_attenuates_in_db(self, make_stream):
         """voice_gain=0.5 → volume = base + 20*log10(0.5) ≈ base - 6.02 dB."""
-        s = _make_stream()
+        s = make_stream()
         g = s._create_grain(0.0, 0.05, voice_config=None, voice_gain=0.5)
         expected = -6.0 + 20.0 * math.log10(0.5)
         assert g.volume == pytest.approx(expected)
 
-    def test_voice_gain_tiny_clamped_to_volume_floor(self):
+    def test_voice_gain_tiny_clamped_to_volume_floor(self, make_stream):
         """voice_gain minuscolo → volume clampato al floor del bound volume (-120 dB)."""
-        s = _make_stream()
+        s = make_stream()
         g = s._create_grain(0.0, 0.05, voice_config=None, voice_gain=1e-9)
         assert g.volume == pytest.approx(-120.0)
 
@@ -510,17 +515,17 @@ class TestCreateGrainWithVoiceConfig:
 
 class TestGenerateGrainsReset:
 
-    def test_reset_on_regeneration(self):
+    def test_reset_on_regeneration(self, make_stream):
         vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         first_count = len(flat_grains(s))
         s.generate_grains()
         assert len(flat_grains(s)) == first_count
 
-    def test_voices_cleared_on_regeneration(self):
+    def test_voices_cleared_on_regeneration(self, make_stream):
         vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         s.generate_grains()
         assert len(s.voices) == 2
@@ -536,27 +541,27 @@ class TestNumVoicesTimeVarying:
     tick e usare il risultato come numero di voci attive in quel momento.
     """
 
-    def test_num_voices_get_value_called_per_tick(self):
+    def test_num_voices_get_value_called_per_tick(self, make_stream):
         """get_value viene chiamato una volta per voce per tick."""
         max_v = 3
         vm = VoiceManager(max_voices=max_v)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         ticks = len(s.voices[0])  # voice 0 ha un grano per tick
         assert s.num_voices.get_value.call_count == ticks * max_v
 
-    def test_static_num_voices_all_voices_receive_grains(self):
+    def test_static_num_voices_all_voices_receive_grains(self, make_stream):
         """Quando num_voices è costante == max_voices, tutte le voci ricevono grani."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         for voice_grains in s.voices:
             assert len(voice_grains) > 0
 
-    def test_num_voices_1_only_voice_0_gets_grains(self):
+    def test_num_voices_1_only_voice_0_gets_grains(self, make_stream):
         """Con num_voices=1 fisso (< max_voices), solo la voce 0 riceve grani."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, inter_onset=0.1,
             voice_manager=vm,
             num_voices_fn=lambda t: 1.0,
@@ -566,10 +571,10 @@ class TestNumVoicesTimeVarying:
         assert len(s.voices[1]) == 0
         assert len(s.voices[2]) == 0
 
-    def test_num_voices_2_voices_0_and_1_get_grains(self):
+    def test_num_voices_2_voices_0_and_1_get_grains(self, make_stream):
         """Con num_voices=2, le voci 0 e 1 ricevono grani; la 2 no."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, inter_onset=0.1,
             voice_manager=vm,
             num_voices_fn=lambda t: 2.0,
@@ -579,10 +584,10 @@ class TestNumVoicesTimeVarying:
         assert len(s.voices[1]) > 0
         assert len(s.voices[2]) == 0
 
-    def test_voices_list_length_always_equals_max_voices(self):
+    def test_voices_list_length_always_equals_max_voices(self, make_stream):
         """s.voices ha sempre max_voices entry anche quando num_voices < max."""
         vm = VoiceManager(max_voices=4)
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, inter_onset=0.1,
             voice_manager=vm,
             num_voices_fn=lambda t: 1.0,
@@ -590,11 +595,11 @@ class TestNumVoicesTimeVarying:
         s.generate_grains()
         assert len(s.voices) == 4
 
-    def test_growing_voices_voice_0_has_more_grains_than_voice_3(self):
+    def test_growing_voices_voice_0_has_more_grains_than_voice_3(self, make_stream):
         """Voci attivate progressivamente: voce 0 accumula più grani di voce 3."""
         # num_voices cresce da 1 a 4 in 10 secondi
         vm = VoiceManager(max_voices=4)
-        s = _make_stream(
+        s = make_stream(
             duration=10.0, inter_onset=1.0,
             voice_manager=vm,
             num_voices_fn=lambda t: min(4.0, 1.0 + t * 3.0 / 9.0),
@@ -602,10 +607,10 @@ class TestNumVoicesTimeVarying:
         s.generate_grains()
         assert len(s.voices[0]) > len(s.voices[3])
 
-    def test_growing_voices_voice_3_eventually_receives_grains(self):
+    def test_growing_voices_voice_3_eventually_receives_grains(self, make_stream):
         """Quando num_voices raggiunge 4, anche la voce 3 deve ricevere grani."""
         vm = VoiceManager(max_voices=4)
-        s = _make_stream(
+        s = make_stream(
             duration=10.0, inter_onset=1.0,
             voice_manager=vm,
             num_voices_fn=lambda t: min(4.0, 1.0 + t * 3.0 / 9.0),
@@ -613,11 +618,11 @@ class TestNumVoicesTimeVarying:
         s.generate_grains()
         assert len(s.voices[3]) > 0
 
-    def test_voice_0_always_gets_grain_at_every_tick(self):
+    def test_voice_0_always_gets_grain_at_every_tick(self, make_stream):
         """La voce 0 riceve sempre un grano (num_voices >= 1 per ogni tick)."""
         vm = VoiceManager(max_voices=4)
         total_ticks = 10
-        s = _make_stream(
+        s = make_stream(
             duration=float(total_ticks), inter_onset=1.0,
             voice_manager=vm,
             num_voices_fn=lambda t: min(4.0, 1.0 + t),
@@ -640,12 +645,12 @@ class TestNumVoicesFractionalFade:
     +20*log10(frac). frac == 0 → nessuna voce di confine (comportamento storico).
     """
 
-    BASE_VOLUME = -6.0  # _make_stream imposta s.volume = _make_mock_parameter(-6.0)
+    BASE_VOLUME = -6.0  # make_stream imposta s.volume = _make_mock_parameter(-6.0)
 
-    def test_constant_integer_num_voices_no_fade(self):
+    def test_constant_integer_num_voices_no_fade(self, make_stream):
         """num_voices intero costante → voci piene a volume base, nessuna confine."""
         vm = VoiceManager(max_voices=4)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
                          num_voices_fn=lambda t: 3.0)
         s.generate_grains()
         for vi in (0, 1, 2):
@@ -653,10 +658,10 @@ class TestNumVoicesFractionalFade:
             assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[vi])
         assert s.voices[3] == []
 
-    def test_boundary_voice_receives_fractional_gain(self):
+    def test_boundary_voice_receives_fractional_gain(self, make_stream):
         """num_voices=2.5 → voci 0,1 piene; voce 2 (confine) attenuata di 20*log10(0.5)."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
                          num_voices_fn=lambda t: 2.5)
         s.generate_grains()
         assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[0])
@@ -665,39 +670,39 @@ class TestNumVoicesFractionalFade:
         expected = self.BASE_VOLUME + 20.0 * math.log10(0.5)
         assert all(g.volume == pytest.approx(expected) for g in s.voices[2])
 
-    def test_zero_frac_no_boundary_voice(self):
+    def test_zero_frac_no_boundary_voice(self, make_stream):
         """num_voices=2.0 esatto → frac=0 → voce 2 vuota (nessun grano di confine)."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
                          num_voices_fn=lambda t: 2.0)
         s.generate_grains()
         assert len(s.voices[0]) > 0
         assert len(s.voices[1]) > 0
         assert s.voices[2] == []
 
-    def test_voices_beyond_boundary_stay_empty(self):
+    def test_voices_beyond_boundary_stay_empty(self, make_stream):
         """num_voices=2.3, max_v=4 → voce 2 confine (gain 0.3), voce 3 sempre vuota."""
         vm = VoiceManager(max_voices=4)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
                          num_voices_fn=lambda t: 2.3)
         s.generate_grains()
         assert len(s.voices[2]) > 0
         assert s.voices[3] == []
 
-    def test_full_voices_unaffected_by_fade(self):
+    def test_full_voices_unaffected_by_fade(self, make_stream):
         """Le voci < n_full mantengono esattamente il volume base (gain 1.0)."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm,
                          num_voices_fn=lambda t: 2.7)
         s.generate_grains()
         for vi in (0, 1):
             assert all(g.volume == pytest.approx(self.BASE_VOLUME) for g in s.voices[vi])
 
-    def test_fade_monotonic_over_time(self):
+    def test_fade_monotonic_over_time(self, make_stream):
         """value 2→3 nel tempo → il volume dei grani della voce di confine (2) cresce."""
         vm = VoiceManager(max_voices=3)
         # value sale da 2.0 a 3.0 in 10s: la voce 2 sfuma in ingresso (gain 0→1)
-        s = _make_stream(duration=10.0, inter_onset=1.0, voice_manager=vm,
+        s = make_stream(duration=10.0, inter_onset=1.0, voice_manager=vm,
                          num_voices_fn=lambda t: min(3.0, 2.0 + t / 10.0))
         s.generate_grains()
         v2 = s.voices[2]
@@ -723,37 +728,37 @@ class TestScatter:
 
     # ── BACKWARD COMPAT ────────────────────────────────────────────────────
 
-    def test_scatter_zero_constant_iot_same_grain_count(self):
+    def test_scatter_zero_constant_iot_same_grain_count(self, make_stream):
         """scatter=0, IOT costante → ogni voce ha lo stesso numero di grani."""
         vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         assert len(s.voices[0]) == len(s.voices[1])
 
-    def test_scatter_zero_varying_iot_voices_synchronized(self):
+    def test_scatter_zero_varying_iot_voices_synchronized(self, make_stream):
         """scatter=0, IOT variabile → voci usano sync_iot condiviso → stesso conteggio."""
         vm = VoiceManager(max_voices=2)
         iots = itertools.cycle([0.1, 0.2])
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, voice_manager=vm,
             density_side_effect=lambda t, gd: next(iots),
         )
         s.generate_grains()
         assert len(s.voices[0]) == len(s.voices[1])
 
-    def test_scatter_zero_voices_list_length(self):
+    def test_scatter_zero_voices_list_length(self, make_stream):
         """scatter=0 → s.voices ha max_v entry."""
         vm = VoiceManager(max_voices=3)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         assert len(s.voices) == 3
 
     # ── SCATTER INERTE (IOT COSTANTE) ──────────────────────────────────────
 
-    def test_scatter_one_constant_iot_voices_still_equal(self):
+    def test_scatter_one_constant_iot_voices_still_equal(self, make_stream):
         """scatter=1, IOT costante → lerp(c, c, 1) = c → voci sincronizzate."""
         vm = VoiceManager(max_voices=2)
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, voice_manager=vm,
             scatter_fn=lambda t: 1.0,
             inter_onset=0.1,
@@ -763,7 +768,7 @@ class TestScatter:
 
     # ── SCATTER ATTIVO (IOT VARIABILE) ─────────────────────────────────────
 
-    def test_scatter_one_varying_iot_voices_diverge(self):
+    def test_scatter_one_varying_iot_voices_diverge(self, make_stream):
         """scatter=1, IOT alternato [0.1, 0.2] → v0 ha più grani di v1.
 
         Sequenza chiamate con 2 voci e scatter=1:
@@ -775,7 +780,7 @@ class TestScatter:
         """
         vm = VoiceManager(max_voices=2)
         iots = itertools.cycle([0.1, 0.2])
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, voice_manager=vm,
             scatter_fn=lambda t: 1.0,
             density_side_effect=lambda t, gd: next(iots),
@@ -783,7 +788,7 @@ class TestScatter:
         s.generate_grains()
         assert len(s.voices[0]) > len(s.voices[1])
 
-    def test_scatter_one_varying_iot_v0_more_grains_than_v1(self):
+    def test_scatter_one_varying_iot_v0_more_grains_than_v1(self, make_stream):
         """scatter=1, sync_iot < indep_iot → v0 accumula più grani di v1."""
         # Il mock ritorna valori alternati [0.1, 0.2].
         # v0 usa sync_iot (call 1 di ogni iterazione = 0.1 quando entrambe le voci
@@ -791,7 +796,7 @@ class TestScatter:
         # → più grani in duration=1.0.
         vm = VoiceManager(max_voices=2)
         iots = itertools.cycle([0.1, 0.2])
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, voice_manager=vm,
             scatter_fn=lambda t: 1.0,
             density_side_effect=lambda t, gd: next(iots),
@@ -800,12 +805,12 @@ class TestScatter:
         assert len(s.voices[0]) > len(s.voices[1])
         assert len(s.voices[1]) > 0
 
-    def test_scatter_partial_blend_v0_more_than_v1(self):
+    def test_scatter_partial_blend_v0_more_than_v1(self, make_stream):
         """scatter=0.5, IOT alternato → v1 avanza più veloce di v0 → v0 > v1."""
         # sync_iot (v0) < blend(sync, indep, 0.5) (v1): v0 ha più grani.
         vm = VoiceManager(max_voices=2)
         iots = itertools.cycle([0.1, 0.2])
-        s = _make_stream(
+        s = make_stream(
             duration=1.0, voice_manager=vm,
             scatter_fn=lambda t: 0.5,
             density_side_effect=lambda t, gd: next(iots),
@@ -816,10 +821,10 @@ class TestScatter:
 
     # ── SCATTER COME ENVELOPE ──────────────────────────────────────────────
 
-    def test_scatter_get_value_called_per_iteration(self):
+    def test_scatter_get_value_called_per_iteration(self, make_stream):
         """_scatter.get_value viene chiamato una volta per iterazione del while."""
         vm = VoiceManager(max_voices=2)
-        s = _make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         ticks = len(s.voices[0])
         assert s._scatter.get_value.call_count == ticks
@@ -833,14 +838,14 @@ class TestGenerateGrainsEnvelopePerGrain:
     """Verifica che l'envelope della strategy venga valutata al tempo reale di
     ogni grain (voice_cursors[voice_index]), non una volta sola per stream."""
 
-    def test_pitch_envelope_early_grains_smaller_than_late(self):
+    def test_pitch_envelope_early_grains_smaller_than_late(self, make_stream):
         """Voice 1 con step=Envelope([[0,0],[1,12]]): pitch cresce nel tempo."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         from pge.envelopes.envelope import Envelope
         env = Envelope([[0.0, 0.0], [1.0, 12.0]])
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
         # duration=1.0, inter_onset=0.1 → ~10 grani per voce a t=0.0,0.1,...,0.9
-        s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         v1 = s.voices[1]
         assert len(v1) >= 3, "servono almeno 3 grani per confrontare early/late"
@@ -849,35 +854,35 @@ class TestGenerateGrainsEnvelopePerGrain:
         # Al t=0: step=0 → ratio=1.0; al t=0.9: step=10.8 → ratio = 2^(10.8/12) ≈ 1.93
         assert last_ratio > first_ratio
 
-    def test_pitch_envelope_voice_0_always_unmodified(self):
+    def test_pitch_envelope_voice_0_always_unmodified(self, make_stream):
         """Anche con step envelope, voce 0 ha sempre pitch_ratio = base."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         from pge.envelopes.envelope import Envelope
         env = Envelope([[0.0, 0.0], [1.0, 12.0]])
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
-        s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         voice_0_ratios = [g.pitch_ratio for g in s.voices[0]]
         assert all(r == pytest.approx(1.0) for r in voice_0_ratios)
 
-    def test_scalar_strategy_regression_constant_over_time(self):
+    def test_scalar_strategy_regression_constant_over_time(self, make_stream):
         """Con step scalare, tutti i grani di voice 1 hanno stesso pitch_ratio."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=12.0))
-        s = _make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=0.1, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         v1_ratios = [g.pitch_ratio for g in s.voices[1]]
         expected = 2 ** (12.0 / 12.0)
         assert all(r == pytest.approx(expected) for r in v1_ratios)
 
-    def test_pitch_envelope_values_match_envelope_at_voice_cursor(self):
+    def test_pitch_envelope_values_match_envelope_at_voice_cursor(self, make_stream):
         """Ogni grain di voice 1 ha pitch_ratio = 2^(step_at_t/12) con t=voice_cursor."""
         from pge.strategies.voice_pitch_strategy import StepPitchStrategy
         from pge.envelopes.envelope import Envelope
         env = Envelope([[0.0, 0.0], [1.0, 12.0]])
         vm = VoiceManager(max_voices=2, pitch_strategy=StepPitchStrategy(step=env))
         inter_onset = 0.1
-        s = _make_stream(duration=1.0, inter_onset=inter_onset, pitch_ratio=1.0, voice_manager=vm)
+        s = make_stream(duration=1.0, inter_onset=inter_onset, pitch_ratio=1.0, voice_manager=vm)
         s.generate_grains()
         v1 = s.voices[1]
         for i, grain in enumerate(v1):
@@ -900,12 +905,12 @@ class TestGrainClipStrategyIntegration:
     onset >= stream_end o coda che sfora stream_end.
     """
 
-    def test_default_excludes_grain_with_onset_past_stream_end(self):
+    def test_default_excludes_grain_with_onset_past_stream_end(self, make_stream):
         """Voce 1 con onset_offset enorme: grain spinti oltre stream_end → esclusi."""
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
-        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+        s = make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
@@ -917,12 +922,12 @@ class TestGrainClipStrategyIntegration:
         # voce 1: onset_offset=10.0 → tutti onset >= 10.0 → tutti esclusi
         assert s.voices[1] == []
 
-    def test_default_filters_per_voice_independently(self):
+    def test_default_filters_per_voice_independently(self, make_stream):
         """Voice 0 dentro bounds, voice 1 fuori: solo voice 1 filtrata."""
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
-        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+        s = make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
@@ -930,12 +935,12 @@ class TestGrainClipStrategyIntegration:
         assert voice_0_count >= 9  # ~10 grani in 1.0s @ 0.1s IOT
         assert len(s.voices[1]) == 0
 
-    def test_default_grains_flat_excludes_out_of_bounds(self):
+    def test_default_grains_flat_excludes_out_of_bounds(self, make_stream):
         """flat_grains(stream) (flatten) non contiene grain fuori bounds."""
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
-        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+        s = make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
@@ -944,12 +949,12 @@ class TestGrainClipStrategyIntegration:
             assert g.onset < stream_end
             assert g.onset + g.duration <= stream_end
 
-    def test_passthrough_strategy_keeps_out_of_bounds_grains(self):
+    def test_passthrough_strategy_keeps_out_of_bounds_grains(self, make_stream):
         """PassthroughClipStrategy iniettata: grain fuori bounds presenti."""
         from pge.strategies.voice_onset_strategy import LinearOnsetStrategy
         from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
         vm = VoiceManager(max_voices=2, onset_strategy=LinearOnsetStrategy(step=10.0))
-        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
+        s = make_stream(duration=1.0, onset=0.0, inter_onset=0.1,
                          grain_dur=0.05, voice_manager=vm)
         s._clip_strategy = PassthroughClipStrategy()
         s.generate_grains()
@@ -957,12 +962,12 @@ class TestGrainClipStrategyIntegration:
         assert len(s.voices[1]) > 0
         assert all(g.onset >= 10.0 for g in s.voices[1])
 
-    def test_grain_with_tail_exactly_at_stream_end_included(self):
+    def test_grain_with_tail_exactly_at_stream_end_included(self, make_stream):
         """grain.onset + grain.duration == stream_end → incluso (limit `<=`)."""
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         # inter_onset=0.25, grain_dur=0.25 FP-safe: onsets 0, 0.25, 0.5, 0.75
         # ultimo grain: onset=0.75, coda=1.0 == stream_end → incluso
-        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.25, grain_dur=0.25)
+        s = make_stream(duration=1.0, onset=0.0, inter_onset=0.25, grain_dur=0.25)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
         onsets = [g.onset for g in flat_grains(s)]
@@ -970,23 +975,23 @@ class TestGrainClipStrategyIntegration:
         for g in flat_grains(s):
             assert g.onset + g.duration <= 1.0 + 1e-9
 
-    def test_grain_with_tail_overflow_excluded(self):
+    def test_grain_with_tail_overflow_excluded(self, make_stream):
         """grain con coda che sfora stream_end → escluso (margin=0.0)."""
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
         # duration=1.0, grain_dur=0.2: grain con onset=0.9 → coda=1.1 > 1.0 → escluso
-        s = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
+        s = make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
         for g in flat_grains(s):
             assert g.onset + g.duration <= 1.0
 
-    def test_margin_allows_tail_overflow(self):
+    def test_margin_allows_tail_overflow(self, make_stream):
         """margin=0.5 ammette coda oltre stream_end → piu' grain di margin=0.0."""
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
-        s_strict = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
+        s_strict = make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
         s_strict._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s_strict.generate_grains()
-        s_loose = _make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
+        s_loose = make_stream(duration=1.0, onset=0.0, inter_onset=0.1, grain_dur=0.2)
         s_loose._clip_strategy = OverflowMarginClipStrategy(margin=0.5)
         s_loose.generate_grains()
         # con margin=0.0 grain con coda > 1.0 esclusi, con margin=0.5 inclusi
@@ -998,10 +1003,10 @@ class TestGrainClipStrategyIntegration:
         for g in flat_grains(s_loose):
             assert g.onset + g.duration <= 1.5 + 1e-9
 
-    def test_stream_with_nonzero_onset(self):
+    def test_stream_with_nonzero_onset(self, make_stream):
         """stream.onset != 0: stream_end = onset + duration calcolato corretto."""
         from pge.strategies.grain_clip_strategy import OverflowMarginClipStrategy
-        s = _make_stream(duration=1.0, onset=5.0, inter_onset=0.1, grain_dur=0.05)
+        s = make_stream(duration=1.0, onset=5.0, inter_onset=0.1, grain_dur=0.05)
         s._clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         s.generate_grains()
         for g in flat_grains(s):
