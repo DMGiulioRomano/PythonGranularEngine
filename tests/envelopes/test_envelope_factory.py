@@ -149,6 +149,44 @@ class TestInvalidTypes:
 
 
 # =============================================================================
+# 3b. IL NOME CANONICO (issue #300)
+# =============================================================================
+
+class TestCanonical:
+    """`canonical` dice quale nome `create` legge: la chiave del registro.
+
+    Chi tiene il nome dell'interpolazione — `Envelope.type`, e da li' le
+    tangenti della cubica, lo stile dell'export SV, il ramo a gradini della
+    partitura — lo confronta alla lettera, e deve tenere questo, non quello
+    scritto: `Cubic` costruiva la cubica e non era `'cubic'`.
+    """
+
+    @pytest.mark.parametrize('grafia,canonico', [
+        ('linear', 'linear'), ('LINEAR', 'linear'), ('  linear  ', 'linear'),
+        ('Step', 'step'), ('\tstep\n', 'step'),
+        ('cubic', 'cubic'), ('Cubic', 'cubic'), ('CuBiC', 'cubic'),
+    ])
+    def test_la_grafia_diventa_la_chiave(self, grafia, canonico):
+        assert InterpolationStrategyFactory.canonical(grafia) == canonico
+
+    @pytest.mark.parametrize('valore', [
+        'exponential', '', '   ', None, 5, LinearInterpolation(),
+    ])
+    def test_none_se_non_e_un_nome_che_create_legge(self, valore):
+        assert InterpolationStrategyFactory.canonical(valore) is None
+
+    @pytest.mark.parametrize('grafia', [
+        'LINEAR', ' step ', 'Cubic', 'cubic',
+    ])
+    def test_create_costruisce_la_strategy_del_nome_canonico(self, grafia):
+        """Una normalizzazione sola: quella che decide il nome tenuto e'
+        quella che decide la strategy costruita."""
+        canonico = InterpolationStrategyFactory.canonical(grafia)
+        attesa = type(InterpolationStrategyFactory.create(canonico))
+        assert type(InterpolationStrategyFactory.create(grafia)) is attesa
+
+
+# =============================================================================
 # 4. TEST PASSAGGIO ISTANZA GIÀ CREATA
 # =============================================================================
 

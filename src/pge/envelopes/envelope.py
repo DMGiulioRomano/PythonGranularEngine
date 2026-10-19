@@ -89,16 +89,22 @@ class Envelope:
                     value=breakpoints,
                     hint=_DICT_POINTS_HINT,
                 )
-            self.type = breakpoints.get('type', DEFAULT_INTERP)
+            tipo = breakpoints.get('type', DEFAULT_INTERP)
             # Il tipo si guarda prima dei punti: e' la prima cosa che il dict
             # dice di se'. Una chiave scritta e lasciata vuota non e' il
             # default — non c'e' nessuna lettura da indovinare. Il nome si
-            # rifiuta se lo rifiuta la factory che lo leggera', non un elenco
+            # rifiuta se la factory che lo leggera' non lo legge, non un elenco
             # esatto: lei non bada a maiuscole e spazi, e `Step` rendeva.
-            if not InterpolationStrategyFactory.reads(self.type):
+            #
+            # E si tiene il nome che lei ha letto, non quello scritto (issue
+            # #300): le tangenti della cubica e i lettori di `type` lo
+            # confrontano alla lettera, e su `Cubic` la strategy era la cubica
+            # ma senza tangenti, cioe' uno smoothstep su ogni breakpoint.
+            self.type = InterpolationStrategyFactory.canonical(tipo)
+            if self.type is None:
                 raise InvalidFieldValueError(
                     field=EnvelopeBuilder._field(field, "type"),
-                    value=self.type,
+                    value=tipo,
                     hint=_TYPE_HINT.format(
                         tipi=', '.join(EnvelopeBuilder.VALID_INTERP_TYPES)),
                 )
@@ -108,7 +114,12 @@ class Envelope:
             # tipo dell'envelope si valida dove si legge (issue #288).
             extracted_type = EnvelopeBuilder.extract_interp_type(
                 breakpoints, field=field)
-            self.type = extracted_type or DEFAULT_INTERP
+            # Anche qui il nome letto, non quello scritto (issue #300): lo
+            # slot `'CUBIC'` e' la cubica come `type: Cubic`. Uno slot che la
+            # factory non legge non arriva qui, lo rifiuta
+            # `extract_interp_type` col campo.
+            self.type = InterpolationStrategyFactory.canonical(
+                extracted_type or DEFAULT_INTERP)
             raw_points = breakpoints
         else:
             raise ValueError(f"Formato envelope non valido: {breakpoints}")
