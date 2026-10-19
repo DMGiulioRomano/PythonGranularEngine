@@ -268,7 +268,10 @@ pretendeva nel file il ciclo `for key in ('duration', 'duration_range')` del
 metodo, cosicché uno spostamento l'avrebbe resa rossa. L'estrazione che l'ha
 sostituita (PGE-ls `d30dac4`) ha cambiato il modo di fallire, e #269 non lo
 registra. Non è un veto: è un lavoro da coordinare, con una issue su PGE-ls
-prima dello spostamento.
+prima dello spostamento. Da quando la #269 ha un registro eseguibile,
+`tests/test_downstream_surface_pge_ls.py` (letto su PGE-ls `94b811f`), lo
+spostamento non passa più in silenzio: fa rosso qui, e il messaggio dice
+cosa va aggiornato di là.
 
 ### Domanda 3 — la generazione è separabile dallo stato che la produce?
 
@@ -369,8 +372,10 @@ Lo stadio 3 dello stesso plan — dare un nome al read-model — è deciso qui, 
 decisione è di non farlo.
 
 Prima di toccare `stream.py`, oltre a `/impact-analysis`: cosa PGE-ls legge di
-questo file per percorso va riletto sul suo `tests/test_pge_parity.py`, non su
-#269 §C, che è rimasto indietro (domanda 2); e gl-ls tiene uno specchio di
+questo file per percorso lo dice `tests/test_downstream_surface_pge_ls.py`, non
+#269 §C, che è rimasto indietro (domanda 2) — i due letterali, e i due metodi
+che la sua parità estrae ed esegue con un namespace scritto a mano, nomi
+liberi del corpo compresi; e gl-ls tiene uno specchio di
 `_pre_normalize_grain_params` (`diagnostics._UNIT_SCALED`) che diverge in
 silenzio se la regola cambia.
 
