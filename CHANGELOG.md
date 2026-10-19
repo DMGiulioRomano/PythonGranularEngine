@@ -53,10 +53,15 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   dal sorgente ed esegue con un namespace scritto a mano e un `self` finto
   (`Stream._init_grain_reverse`, `Stream._pre_normalize_grain_params`,
   `Generator._eval_math_expressions`). Di queste non basta il nome: il
-  registro pretende che i nomi liberi del corpo stiano in quel namespace, che
-  gli attributi letti di `self` stiano nel `self` finto e che la funzione si
-  chiami con gli stessi argomenti, perche' di la' ognuno dei tre e' un
-  `NameError`, un `AttributeError` o un `TypeError`. Tiene anche le forme che
+  registro pretende che i nomi che l'exec chiede stiano in quel namespace —
+  quelli del corpo e quelli che si valutano al `def` (default, decoratori,
+  annotazioni: il modulo estratto non ha il `from __future__ import
+  annotations` del file) —, che gli attributi letti di `self` stiano nel
+  `self` finto e che la funzione si chiami con gli stessi argomenti, perche'
+  di la' ognuno dei tre e' un `NameError`, un `AttributeError` o un
+  `TypeError`. La lettura e' la stessa su ogni Python della matrice, 3.14
+  compreso, dove `symtable` mette un blocco `__annotate__` davanti a ogni
+  funzione. Tiene anche le forme che
   la parita' legge come verdetto del motore — i kwargs di
   `GateFactory.create_gate`, la config `SimpleNamespace` con cui costruisce
   `GranularParser`, le coppie `(t, y)` di `ParameterBoundError.violations` —

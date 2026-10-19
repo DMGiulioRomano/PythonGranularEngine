@@ -47,7 +47,8 @@ Qui si guarda che ci siano i nomi, i path e le forme da cui li chiede.
    senza risolvere nomi. Spostata la costante, il patto salta in verde.
 3. **Funzioni estratte dal sorgente ed eseguite** — il nodo `def` preso
    dall'AST, compilato da solo con un namespace scritto a mano e un `self`
-   finto. Qui il contratto e' piu' del nome: i nomi liberi del corpo devono
+   finto. Qui il contratto e' piu' del nome: i nomi che l'exec chiede — quelli
+   del corpo e quelli che si valutano al `def`, annotazioni comprese — devono
    stare nel namespace che PGE-ls passa, gli attributi di `self` che il corpo
    legge nel suo `self` finto, gli argomenti in quelli che gli da'.
 4. **Forme** — la riga che un regex insegue, i campi che il bridge esclude per
