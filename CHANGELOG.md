@@ -371,6 +371,31 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   Nessun impatto a valle: nessun repo importa questi nomi e i messaggi
   d'errore sono gli stessi. Niente issue in PGE-ls, PGE-ui o gl-ls.
 
+- **Tre letture dello `Stream` non hanno più un default** (issue #285).
+  `ScoreVisualizer` legge `stream.pitch_unit`, `grain_visuals.window_name_map`
+  legge `stream.window_table_map` ed `envelope_extractor`, con
+  `show_voice_offsets`, legge `stream.voice_manager`, tutte e tre senza il
+  `getattr(stream, X, None)` di prima. Un rename di una delle tre lasciava,
+  senza un errore, la curva del pitch senza scala né etichette, la partitura
+  con le sole frecce, o la partitura e il laboratorio di granulation-studies
+  senza le curve per-voce. Per le due property è misurato: tolta dallo
+  `Stream`, la suite restava verde. Ora è un `AttributeError`, e per ciascuna
+  un test su uno `Stream` vero rende rosso il rename; per `window_table_map`,
+  che assegna il Generator, il test lega la mappa ai numeri che la
+  generazione scrive nei grani. La terza la issue non la elencava: la guardia
+  della superficie (`TestPublishedSurfaceResolves`) salta proprio la riga del
+  catalogo delle curve per-voce, che non si legge per nome.
+
+  `None` resta un valore: una mappa delle finestre non assegnata dà ancora la
+  mappa vuota, e un `voice_manager` a `None` nessuna curva. Cambia solo per un
+  oggetto che l'attributo non ce l'ha, cioè uno stream finto: a valle
+  granulation-studies e mare-nostrum passano `Stream` veri, e nessun altro
+  repo chiama queste funzioni.
+
+  Un test di `tests/rendering/test_grain_height_mode.py` diceva di misurare la
+  silhouette della finestra senza passare la mappa: col ripiego misurava la
+  freccia, alta uguale. Ora passa la mappa e conta i vertici.
+
 ### Rimosso
 
 - **L'avviso di migrazione di `loop_unit`** (issue #242). Dalla v9.0.0 alla
@@ -653,6 +678,40 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
   A valle non c'è niente da cambiare: il bottone di PGE-ui comincia a
   funzionare, e la diagnostica di gl-ls era già giusta.
+
+- **L'avviso di `Stream.grains` nominava una versione già uscita** (issue
+  #285). Deprecata in #201 con «rimozione prevista in 9.0.0», la deprecazione
+  è uscita proprio con la 9.0.0, e alla 9.1.0 il `FutureWarning` diceva
+  ancora che la property «sara' rimossa in PGE 9.0.0». La rimozione va alla
+  major successiva, **10.0.0**: nel messaggio, nella docstring, nel test e
+  nei due doc che la nominavano (`CLAUDE.md`,
+  `docs/explanation/multi-voice.md`). Nel frattempo non è comparso nessun
+  lettore, nei sette repo né nel paper CIM 2026.
+
+  `tests/core/test_stream_deprecazioni.py` lega la versione annunciata a
+  quella di `pyproject.toml`: il giorno che esce la 10.0.0 con la property
+  ancora dentro, il test è rosso.
+
+### Deprecato
+
+- **`Stream.sampleDurSec`, `Stream.pitch_range` e `Stream.envelope_table_num`**,
+  rimozione prevista in **10.0.0** insieme a `Stream.grains` (issue #285).
+  Restano leggibili ed emettono un `FutureWarning`, per la ragione di
+  `grains`: `Stream` non è esportato da `pge`, ma chi usa il motore come
+  libreria lo riceve da `Generator.streams`. Nessuno dei tre ha un lettore,
+  né nel motore né nei repo a valle (PGE-ls, PGE-ui, gl-ls,
+  granulation-studies, mare-nostrum) né negli script del paper CIM 2026:
+
+  - `sampleDurSec` è un alias: il rimpiazzo è `Stream.sample_dur_sec`;
+  - `pitch_range` diceva di servire a `ScoreVisualizer`, che invece legge
+    `config['pitch_range']`, un'altra cosa con lo stesso nome; il range del
+    pitch non è una curva pubblicata, e non ha un sostituto;
+  - `envelope_table_num` era dichiarato fra i riferimenti che il Generator
+    assegna, e il Generator non l'ha mai assegnato: vale `None`. Era un
+    attributo e da fuori si poteva scrivere, quindi avvisa anche in
+    scrittura.
+
+  Un render normale non li legge, e non avvisa.
 
 ---
 
