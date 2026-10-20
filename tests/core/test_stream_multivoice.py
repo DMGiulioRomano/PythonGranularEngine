@@ -20,6 +20,7 @@ Queste suite si appoggiano alla stessa infrastruttura di mock di test_stream.py.
 
 import math
 import pytest
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from pge.core.stream import Stream
@@ -128,8 +129,10 @@ def make_stream(build_stream):
         s._pitch = _make_mock_pitch(pitch_ratio)
         s._window_controller = _make_mock_window_controller()
 
-        s._voice_manager = voice_manager or VoiceManager(max_voices=1)
-        s._voice_pointer_normalized = voice_pointer_normalized
+        # Il controller del blocco `voices:` (#284), sostituito come gli altri:
+        # la generazione ne legge il VoiceManager, num_voices, scatter e
+        # l'unita' dell'offset di pointer.
+        voice_manager = voice_manager or VoiceManager(max_voices=1)
 
         # density: supporta side_effect per simulare distribution > 0
         if density_side_effect is not None:
@@ -144,13 +147,12 @@ def make_stream(build_stream):
             s._density = _make_mock_density(inter_onset)
 
         # num_voices: mock Parameter che restituisce max_voices per default
-        max_v = float(s._voice_manager.max_voices)
+        max_v = float(voice_manager.max_voices)
         nv = Mock()
         nv.get_value = Mock(
             side_effect=num_voices_fn if num_voices_fn is not None
             else lambda t: max_v
         )
-        s._num_voices = nv
 
         # scatter: mock Parameter, default = 0.0 (cluster)
         sc = Mock()
@@ -158,7 +160,13 @@ def make_stream(build_stream):
             side_effect=scatter_fn if scatter_fn is not None
             else lambda t: 0.0
         )
-        s._scatter = sc
+
+        s._voices_controller = SimpleNamespace(
+            voice_manager=voice_manager,
+            num_voices=nv,
+            scatter=sc,
+            pointer_normalized=voice_pointer_normalized,
+        )
 
         # Riferimenti alle tabelle: li assegna il Generator dopo la
         # costruzione, e la generazione li pretende.
@@ -822,12 +830,12 @@ class TestScatter:
     # ── SCATTER COME ENVELOPE ──────────────────────────────────────────────
 
     def test_scatter_get_value_called_per_iteration(self, make_stream):
-        """_scatter.get_value viene chiamato una volta per iterazione del while."""
+        """scatter.get_value viene chiamato una volta per iterazione del while."""
         vm = VoiceManager(max_voices=2)
         s = make_stream(duration=1.0, inter_onset=0.1, voice_manager=vm)
         s.generate_grains()
         ticks = len(s.voices[0])
-        assert s._scatter.get_value.call_count == ticks
+        assert s.scatter.get_value.call_count == ticks
 
 
 # =============================================================================

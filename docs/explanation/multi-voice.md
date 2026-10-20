@@ -7,6 +7,7 @@ sources:
   - src/pge/strategies/
   - src/pge/core/stream.py
   - src/pge/controllers/voice_manager.py
+  - src/pge/controllers/voices_controller.py
   - src/pge/shared/seeding.py
   - src/pge/engine/generator.py
 last_synced_commit: cef5050
@@ -45,7 +46,8 @@ Vedi [Architettura](#2-architettura) per il modello completo, [Componenti princi
 ## Implicazioni codice
 
 - `src/pge/strategies/` — un modulo per asse (`voice_<asse>_strategy.py`): ABC, strategy concrete, registry `VOICE_<ASSE>_STRATEGIES` e factory
-- `src/pge/core/stream.py` — `_init_voice_manager`, che cicla su `_VOICE_AXES` con `_build_voice_strategy` (§4), `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/pge/controllers/voices_controller.py` — `VoicesController`, il controller del blocco `voices:` (#284): cicla su `_VOICE_AXES` con `_build_voice_strategy` (§4), `_parse_strategy_kwarg` (envelope auto-detect)
+- `src/pge/core/stream.py` — costruisce il `VoicesController` in `_init_controllers` e ne espone `num_voices`, `scatter` e `voice_manager` come property
 - `src/pge/shared/seeding.py` — `voice_rng`, l'RNG per-voce delle strategy stocastiche
 - `src/pge/controllers/voice_manager.py` — `VoiceManager`, `VoiceConfig`
 - Estensione: vedi [[add-voice-strategy]]
@@ -97,7 +99,7 @@ La voce `0` è sempre il **riferimento immutabile** (tutti gli offset a zero). L
 
 ```
 Stream
-  └─ _init_voice_manager()          ← parsing YAML blocco 'voices:'
+  └─ VoicesController(voices, config)   ← parsing YAML blocco 'voices:' (#284)
        └─ VoiceManager
             ├─ VoicePitchStrategy
             ├─ VoiceOnsetStrategy
@@ -125,7 +127,7 @@ Stream.generate_grains()
 YAML 'voices:'
     │
     ▼
-Stream._init_voice_manager()
+VoicesController(params.get('voices', {}), config)     ← costruito da Stream._init_controllers
     ├─ per ogni riga di _VOICE_AXES presente nello YAML → _build_voice_strategy():
     │    ├─ take_block_keys della dimensione (solo pitch e pointer)
     │    ├─ Auto-injection stream_id (= rng_id, #169) e seed   (strategy `stochastic`: §6)
@@ -582,11 +584,16 @@ step=15, 4 voci → [0, 15, 30, 45]
 
 ## 4. Integrazione con Stream
 
-### Parsing YAML → `_init_voice_manager()`
+### Parsing YAML → `VoicesController`
 
-`src/pge/core/stream.py` legge il blocco `voices:` e costruisce il `VoiceManager`.
-Le quattro dimensioni non sono quattro blocchi di codice ma quattro righe di
-una tabella (issue #186). Ogni riga dice dove sta il sotto-blocco nello YAML,
+Il blocco `voices:` lo legge il suo controller,
+`src/pge/controllers/voices_controller.py`, come `PointerController` legge
+`pointer:` (issue #284): lo `Stream` gli passa il sotto-blocco e la config nel
+suo `_init_controllers`, e ne espone il risultato — `voice_manager`,
+`num_voices`, `scatter` — con tre property che delegano. Dallo `Stream` il
+wiring non legge niente: `duration`, `seed` e `stream_id` li prende da
+`config`. Le quattro dimensioni non sono quattro blocchi di codice ma quattro
+righe di una tabella (issue #186). Ogni riga dice dove sta il sotto-blocco nello YAML,
 quale Factory lo costruisce e in quale kwarg di `VoiceManager` finisce:
 
 ```python
@@ -600,8 +607,8 @@ _VOICE_AXES = (
 )
 ```
 
-`_init_voice_manager` cicla sulla tabella e, per ogni dimensione presente,
-chiama `_build_voice_strategy` — il passo comune: copia del sotto-blocco (lo
+Il costruttore del controller cicla sulla tabella e, per ogni dimensione
+presente, chiama `_build_voice_strategy` — il passo comune: copia del sotto-blocco (lo
 YAML letto resta quello scritto, perché la cache ne fa il fingerprint),
 `strategy` come nome, `stream_id` (che vale `rng_id`, #169) e `seed` iniettati
 se la strategy si chiama `stochastic`, gli altri kwarg passati a
@@ -611,14 +618,15 @@ Quel che distingue davvero una dimensione sta nel suo `take_block_keys`, che
 toglie da `kw` ciò che il passo comune non deve vedere. La riga ne porta il
 *nome* e `_build_voice_strategy` lo risolve sull'istanza (`getattr(self, …)`):
 una funzione catturata nel corpo della classe verrebbe chiamata scavalcando
-`self`, e un override o un `patch.object` su `Stream` non la raggiungerebbero.
+`self`, e un override o un `patch.object` sul controller non la
+raggiungerebbero.
 
 | dimensione | differenza | dove va |
 |---|---|---|
 | `pitch` | `semitone_range` → hard break (rinominato `pitch_range`) | `InvalidStrategyConfigError` |
 | `pitch` | `unit`, chiave di blocco; rifiutata ≠ semitones sulle `SEMITONE_LOCKED` | `VoiceManager(pitch_unit=…)` |
 | `pitch` | `progression`/`interp`/`voice_leading` di `chord_progression` (`progression` ha la forma di un envelope senza esserlo), più `time_mode`/`duration` dello stream se è `normalized` | alla strategy tali e quali |
-| `pointer` | `normalized`, chiave di blocco, solo bool | `Stream._voice_pointer_normalized` (letto da `_create_grain`) |
+| `pointer` | `normalized`, chiave di blocco, solo bool | `VoicesController.pointer_normalized` (letto da `Stream._create_grain`) |
 
 `onset_offset` e `pan` non ne hanno: sono il passo comune e basta. Le chiavi di
 blocco restano della propria dimensione — un `unit` sotto `pan` arriva al
@@ -855,16 +863,18 @@ Risultato: range cresce da 0 a 8 semitoni nella durata dello stream, indipendent
 |---|---|
 | `tests/parameters/test_parameter.py` | `resolve_param`: float, Envelope, int, None; regressione `_evaluate_input` |
 | `tests/controllers/test_voice_manager.py` | VoiceManager stateless, `get_voice_config(vi, t)`, time-varying, strategy opzionali, voice-0 invariant |
+| `tests/controllers/test_voices_controller.py` | `VoicesController` costruito da solo con `(blocco, config)` (#284): i default senza blocco, e `stream_id`, `seed`/`rng_id` e `duration` letti dalla config |
 | `tests/strategies/test_voice_pitch_strategy.py` | Tutte le pitch strategy con `time` arg, voice-0 invariant, stochastic direction invariance, envelope range |
 | `tests/strategies/test_voice_onset_strategy.py` | Linear, geometric, stochastic onset con `time` arg e envelope |
 | `tests/strategies/test_voice_pointer_strategy.py` | Linear, stochastic pointer con `time` arg e envelope |
 | `tests/strategies/test_voice_pan_strategy.py` | Range, stochastic, step pan con `time` arg, voice-0 invariant, spread/step envelope |
 | `tests/core/test_stream_multivoice.py` | Integrazione Stream+VoiceManager; `TestGenerateGrainsEnvelopePerGrain`: verifica valore esatto pitch_ratio per grain a `voice_cursors[vi]` |
-| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, effetti di ogni ramo che convivono nello stesso stream, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori, default delle chiavi di blocco senza il sotto-blocco, `rng_id` iniettato nelle stocastiche, hook risolti sull'istanza (#186) |
+| `tests/core/test_stream_voices_yaml.py` | Parsing YAML → strategy corrette; envelope su strategy params; `time_mode: normalized`; `TestVoicesWiring`: blocco non mutato, effetti di ogni ramo che convivono nello stesso stream, chiavi di blocco confinate alla propria dimensione, ordine di valutazione, `stream_id` sugli errori, default delle chiavi di blocco senza il sotto-blocco, `rng_id` iniettato nelle stocastiche, hook risolti sull'istanza del controller (#186, #284), lo Stream che non scrive lo stato delle voci (#284) |
 
 **Esecuzione test multi-voice:**
 ```bash
 make TEST_FILE=tests/controllers/test_voice_manager.py tests
+make TEST_FILE=tests/controllers/test_voices_controller.py tests
 make TEST_FILE=tests/strategies/test_voice_pitch_strategy.py tests
 make TEST_FILE=tests/core/test_stream_multivoice.py tests
 make TEST_FILE=tests/core/test_stream_voices_yaml.py tests

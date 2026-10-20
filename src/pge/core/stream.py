@@ -7,7 +7,8 @@ Fase 6 del refactoring: questa classe coordina i controller specializzati:
 - PointerController: posizionamento testina con loop e jitter
 - PitchController: trasposizione (semitoni o ratio)
 - DensityController: densità e distribuzione temporale
-- VoiceManager: voci multiple con offset pitch/pointer
+- VoicesController: il blocco voices: — il VoiceManager delle voci multiple
+  (offset pitch/onset/pointer/pan), num_voices e scatter
 
 Mantiene backward compatibility con Generator e ScoreVisualizer.
 Ispirato al DMX-1000 di Barry Truax (1988).
@@ -16,22 +17,21 @@ from __future__ import annotations
 
 import random
 import warnings
-from math import ceil, floor, log10
+from math import floor, log10
 from typing import Dict, List, Optional, Union
 
 from pge.core.grain import Grain
-from pge.envelopes.envelope import Envelope, create_scaled_envelope, scale_raw_param_values
+from pge.envelopes.envelope import Envelope, scale_raw_param_values
 from pge.controllers.window_controller import WindowController
 from pge.controllers.pointer_controller import PointerController
 from pge.controllers.pitch_controller import PitchController
 from pge.controllers.density_controller import DensityController
+from pge.controllers.voices_controller import VoicesController
 from pge.shared.constants import SECONDS_PER_MILLISECOND
 from pge.shared.utils import get_sample_duration
 from pge.shared.exceptions import (
-    ConfigError,
     EngineRuntimeError,
     InvalidFieldValueError,
-    InvalidStrategyConfigError,
     MissingFieldError,
     SampleNotFoundError,
 )
@@ -43,15 +43,10 @@ from pge.parameters.read_direction import (
     normalize_read_direction,
 )
 from pge.core.stream_config import StreamConfig, StreamContext
-from pge.controllers.voice_manager import VoiceManager, VoiceConfig
-from pge.parameters.pitch_unit import make_pitch_unit
-from pge.strategies.voice_pitch_strategy import VoicePitchStrategyFactory, SEMITONE_LOCKED
-from pge.strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
-from pge.strategies.voice_pointer_strategy import VoicePointerStrategyFactory
-from pge.strategies.voice_pan_strategy import VoicePanStrategyFactory
+from pge.controllers.voice_manager import VoiceConfig
 from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
 from pge.strategies.strategie import nominal_value
-from dataclasses import dataclass, fields, MISSING as dataclass_MISSING
+from dataclasses import fields, MISSING as dataclass_MISSING
 
 
 # Unita' di misura ammesse per grain.duration / grain.duration_range.
@@ -66,80 +61,6 @@ _GRAIN_DURATION_UNIT_LABELS = {
     'samples': 'campioni',
     'milliseconds': 'millisecondi',
 }
-
-
-_STRATEGY_KWARG_HINT = (
-    "un parametro di una voice strategy e' un numero, un nome o un envelope: "
-    "una lista di breakpoint ([[t, v], ...]), un formato compatto, un BP group "
-    "o un dict con `points`. Una lista vuota o di soli numeri, o un dict senza "
-    "`points`, non e' nessuno dei tre."
-)
-
-
-def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absolute',
-                          field: Optional[str] = None):
-    """Converte kwarg YAML strategy: str/int passthrough, envelope-like → Envelope.
-
-    Gli envelope-like ereditano il `time_mode` dello stream (issue #144),
-    esattamente come gli envelope diretti via GranularParser. In forma dict il
-    `time_mode` locale sovrascrive quello dello stream; in forma compatta (lista)
-    si applica il time_mode dello stream.
-
-    `field` e' il path YAML del kwarg (`voices.pan.step`), che gli errori di
-    forma dell'envelope nominano (issue #211).
-
-    Una lista o un dict che envelope non e' si ferma qui, su `field` (issue
-    #288). Nessun kwarg di strategy ne accetta uno — sono numeri, nomi o
-    envelope; `progression` di `chord_progression`, l'unico strutturale, lo
-    sottrae `_take_voice_pitch_keys` prima di questa conversione — e
-    lasciarlo passare voleva dire uno Stream che si costruisce e un TypeError
-    nudo al primo grano, quando `resolve_param` fa `float()` su una lista.
-    """
-    if isinstance(value, (str, int, float)):
-        return value
-    if Envelope.is_envelope_like(value):
-        if isinstance(value, dict):
-            tm = value.get('time_mode', stream_time_mode)
-        else:
-            tm = stream_time_mode
-        if tm == 'normalized':
-            return create_scaled_envelope(value, duration, 'normalized', field=field)
-        return Envelope(value, field=field)
-    if isinstance(value, (list, dict)):
-        raise InvalidFieldValueError(
-            field=field if field is not None else 'voices',
-            value=value,
-            hint=_STRATEGY_KWARG_HINT,
-        )
-    return value
-
-
-@dataclass(frozen=True)
-class _VoiceAxis:
-    """
-    Una dimensione del blocco `voices:`: una riga di `Stream._VOICE_AXES`
-    (issue #186).
-
-    Attributes:
-        yaml_key: chiave del sotto-blocco dentro `voices:`.
-        factory:  Factory della dimensione. `create(name, **kwargs)` ha la
-                  stessa firma sulle quattro, qualunque registry ci sia dietro.
-        slot:     kwarg di VoiceManager che riceve la strategy.
-        take_block_keys: le differenze vere della dimensione, o None se non ne
-                  ha. E' il *nome* di un metodo di Stream
-                  `(name, kw, config) -> (strutturali, per_manager)`, che
-                  toglie da `kw` cio' che il passo comune non deve vedere — le
-                  chiavi di blocco, config della dimensione e non della
-                  strategy, e i kwarg con la forma di un envelope che envelope
-                  non sono. Il nome e non la funzione: la tabella sta nel corpo
-                  della classe, e una funzione catturata li' verrebbe chiamata
-                  scavalcando l'istanza — un override o un `patch.object` su
-                  Stream non la raggiungerebbero.
-    """
-    yaml_key: str
-    factory: type
-    slot: str
-    take_block_keys: Optional[str] = None
 
 
 class Stream:
@@ -164,8 +85,8 @@ class Stream:
         Args:
             params: dizionario parametri dallo YAML
             seed: seed effettivo del run (issue #81/#154): YAML top-level o
-                  session seed del Generator. Propagato alle voice strategy
-                  stocastiche e, via StreamConfig, agli RNG per-componente
+                  session seed del Generator. Propagato, via StreamConfig,
+                  alle voice strategy stocastiche e agli RNG per-componente
                   (parameter/gate/iot/window/detune). None (default) →
                   comportamento legacy (hash() per-voce, random globale
                   per i componenti).
@@ -173,9 +94,9 @@ class Stream:
                   library/CLI). None (default) → fallback sul globale
                   PATHSAMPLES (comportamento legacy).
         """
-        # Seed di riproducibilità: iniettato nelle strategy stocastiche in
-        # _build_voice_strategy (il passo comune di _init_voice_manager, #186)
-        # e in StreamConfig per gli RNG per-componente.
+        # Seed di riproducibilità: passa per StreamConfig, che lo porta alle
+        # strategy stocastiche delle voci (VoicesController, #284) e agli RNG
+        # per-componente.
         self.seed = seed
         # Directory sample iniettata: dove get_sample_duration cerca il sample,
         # letto una volta sola qui sotto (issue #283).
@@ -217,9 +138,7 @@ class Stream:
         self._init_stream_parameters(params, config)
         # === 6. CONTROLLER (riceve config) ===
         self._init_controllers(params, config)
-        # === 7. VOICE MANAGER ===
-        self._init_voice_manager(params, config)
-        # === 7.5. GRAIN CLIP STRATEGY ===
+        # === 7. GRAIN CLIP STRATEGY ===
         self._clip_strategy = GrainClipStrategyFactory.create(
             config.clip_strategy,
             margin=config.clip_margin,
@@ -347,221 +266,16 @@ class Stream:
         self._window_controller = WindowController(
             params=params.get('grain', {}),
             config=config
-        )    
-            
-    def _init_voice_manager(self, params: dict, config: StreamConfig) -> None:
-        """
-        Costruisce VoiceManager dal blocco YAML 'voices:'.
+        )
 
-        YAML supportato:
-            voices:
-              num_voices: 4
-              pitch:
-                strategy: chord
-                chord: "dom7"
-              onset_offset:
-                strategy: linear
-                step: 0.05
-              pointer:
-                strategy: stochastic
-                pointer_range: 0.1
-              pan:
-                strategy: range
-                spread: 60.0
-
-        - voices assente → VoiceManager(max_voices=1)
-        - le quattro dimensioni sono un passo solo ripetuto sulla tabella
-          `_VOICE_AXES` (issue #186): vedi `_build_voice_strategy`. Le
-          differenze vere stanno in `_take_voice_pitch_keys` e
-          `_take_voice_pointer_keys`
-        - strategy stochastiche: identità RNG iniettata automaticamente nel
-          kwarg `stream_id` — vale rng_id (issue #169): lo stream_id, o il
-          rng_group quando la sequenza è condivisa fra stream
-        """
-        from pge.parameters.parameter import Parameter
-        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
-
-        # Modalità unità del voice pointer offset:
-        #   False (default) → offset in secondi nel sample
-        #   True            → offset normalizzato (frazione di sample_dur_sec)
-        # Impostato dal flag `normalized:` nel blocco `pointer:`
-        # (_take_voice_pointer_keys). Il default va scritto qui, prima di
-        # sapere se il blocco c'e': _create_grain lo legge a ogni grano.
-        self._voice_pointer_normalized = False
-
-        v = params.get('voices', {})
-        if not v:
-            # Senza blocco voices, valori di default (nessun config necessario)
-            self._num_voices = Parameter('num_voices', 1.0, GRANULAR_PARAMETERS['num_voices'])
-            self._scatter = Parameter('scatter', 0.0, GRANULAR_PARAMETERS['scatter'])
-            self._voice_manager = VoiceManager(max_voices=1)
-            return
-
-        from pge.parameters.parser import GranularParser
-        parser = GranularParser(config)
-
-        raw_num_voices = v.get('num_voices', 1)
-
-        # Parsa num_voices come Parameter (supporta Envelope time-varying, incluso formato dict).
-        self._num_voices = parser.parse_parameter(
-            'num_voices', raw_num_voices, value_field='voices.num_voices')
-
-        # Estrae max_voices per pre-computare tutti i VoiceConfig all'init.
-        # Se num_voices è un Envelope, max_voices = picco dei breakpoints.
-        param_val = self._num_voices.value
-        if isinstance(param_val, Envelope):
-            max_voices = ceil(max(bp[1] for bp in param_val.breakpoints))
-        else:
-            max_voices = ceil(param_val)
-        self._scatter = parser.parse_parameter(
-            'scatter', v.get('scatter', 0.0), value_field='voices.scatter')
-
-        # Il ciclo e' sulla tabella, non sulle chiavi di `voices:`: l'ordine
-        # delle dimensioni — e quindi quale errore arriva per primo quando
-        # piu' sotto-blocchi sono sbagliati — non dipende da come e' scritto
-        # lo YAML.
-        manager_kwargs = {}
-        for axis in self._VOICE_AXES:
-            if axis.yaml_key not in v:
-                continue
-            strategy, for_manager = self._build_voice_strategy(axis, v[axis.yaml_key], config)
-            manager_kwargs[axis.slot] = strategy
-            manager_kwargs.update(for_manager)
-
-        self._voice_manager = VoiceManager(max_voices=max_voices, **manager_kwargs)
-
-    def _build_voice_strategy(self, axis: _VoiceAxis, block: dict, config: StreamConfig):
-        """
-        Il passo comune alle quattro dimensioni: sotto-blocco YAML → strategy.
-
-        Returns:
-            (strategy, kwarg per VoiceManager oltre alla strategy)
-        """
-        # Copia: il blocco resta quello scritto. Il Generator tiene lo stesso
-        # dict in stream_data_map e la cache ne fa il fingerprint.
-        kw = dict(block)
-        name = kw.pop('strategy')
-        structural, for_manager = {}, {}
-        if axis.take_block_keys is not None:
-            take = getattr(self, axis.take_block_keys)
-            structural, for_manager = take(name, kw, config)
-        # L'identita' RNG di una strategy stocastica la inietta il motore — lo
-        # stream, o il suo rng_group, e il seed del run — e non e' un kwarg del
-        # blocco: non passa per la conversione qui sotto, che legge i valori
-        # scritti nel blocco e da #288 rifiuta una lista o un dict. Convertiti,
-        # un rng_group o un seed non scalari diventavano un errore su
-        # `voices.<asse>.stream_id` o `.seed`, chiavi che nel file non ci sono.
-        # Uno `stream_id` o un `seed` scritti nel blocco restano sostituiti
-        # dall'identita', come prima.
-        identita = {}
-        if name == 'stochastic':
-            identita = {'stream_id': config.context.rng_id, 'seed': self.seed}
-        # Gli errori di forma di un kwarg envelope nascono nel builder, dove lo
-        # stream non si conosce: vanno attribuiti qui, come fa il parser coi
-        # propri (issue #211).
-        try:
-            kw = {
-                k: _parse_strategy_kwarg(
-                    val, self.duration, config.time_mode,
-                    field=f'voices.{axis.yaml_key}.{k}',
-                )
-                for k, val in kw.items() if k not in identita
-            }
-        except ConfigError as err:
-            err.stream_id = self.stream_id
-            raise
-        kw.update(structural)
-        kw.update(identita)
-        return axis.factory.create(name, **kw), for_manager
-
-    def _take_voice_pitch_keys(self, name: str, kw: dict, config: StreamConfig):
-        """
-        Le differenze vere del pitch: l'hard break di `semitone_range`, la
-        chiave di blocco `unit` (validata contro SEMITONE_LOCKED) e i kwarg
-        strutturali di `chord_progression`.
-
-        Returns:
-            (kwarg strutturali, {'pitch_unit': ...} per VoiceManager)
-        """
-        # Hard break: `semitone_range` rinominato in `pitch_range` (il valore è
-        # letto nell'unità attiva, non in semitoni). Senza guard il kwarg ignoto
-        # darebbe un TypeError grezzo dal costruttore della strategy.
-        if 'semitone_range' in kw:
-            err = InvalidStrategyConfigError(
-                strategy_kind='voice_pitch',
-                field='voices.pitch.semitone_range',
-                value=kw['semitone_range'],
-                hint=(
-                    "`semitone_range` rinominato in `pitch_range` (stesso "
-                    "valore, letto nell'unità attiva: semitones/cents/edo/ratio…)."
-                ),
-            )
-            err.stream_id = self.stream_id
-            raise err
-        # `unit` è config del blocco, non kwarg della distribuzione: decide
-        # come l'offset (numero puro) diventa ratio in _create_grain.
-        unit_spec = kw.pop('unit', None)
-        # chord/chord_progression/spectral sono semitoni-locked
-        # (SEMITONE_LOCKED): rifiuta unità ≠ semitones.
-        if name in SEMITONE_LOCKED and unit_spec not in (None, 'semitones'):
-            err = InvalidStrategyConfigError(
-                strategy_kind='voice_pitch',
-                field='voices.pitch.unit',
-                value=unit_spec,
-                hint=(
-                    f"la strategia '{name}' è definita in semitoni: "
-                    "ometti `unit` oppure usa 'semitones'."
-                ),
-            )
-            err.stream_id = self.stream_id
-            raise err
-        pitch_unit = make_pitch_unit(unit_spec)
-        # chord_progression: i kwarg strutturali NON sono envelope-like e
-        # vanno sottratti alla conversione del passo comune. In particolare
-        # `progression` (lista di [t, str]) verrebbe scambiata per envelope
-        # da is_envelope_like → crash su evaluate.
-        structural = {}
-        if name == 'chord_progression':
-            for key in ('progression', 'interp', 'voice_leading'):
-                if key in kw:
-                    structural[key] = kw.pop(key)
-            # I tempi della progressione seguono il time_mode dello stream,
-            # come gli envelope: normalized → 0..1 scalati sulla duration.
-            if config.time_mode == 'normalized':
-                structural['time_mode'] = 'normalized'
-                structural['duration'] = self.duration
-        return structural, {'pitch_unit': pitch_unit}
-
-    def _take_voice_pointer_keys(self, name: str, kw: dict, config: StreamConfig):
-        """
-        La differenza vera del pointer: la chiave di blocco `normalized`. La
-        legge _create_grain, quindi va sullo Stream e non a VoiceManager.
-        """
-        # Solo bool puro: niente coercion silenziosa (cfr. grain.reverse,
-        # envelope_builder — il progetto valida i flag, non li forza).
-        raw_normalized = kw.pop('normalized', False)
-        if not isinstance(raw_normalized, bool):
-            err = InvalidFieldValueError(
-                field='voices.pointer.normalized',
-                value=raw_normalized,
-                hint="normalized accetta solo true/false (default: false).",
-            )
-            err.stream_id = self.stream_id
-            raise err
-        self._voice_pointer_normalized = raw_normalized
-        return {}, {}
-
-    # Le quattro dimensioni del blocco `voices:` (issue #186), nell'ordine in
-    # cui si valutano. Solo pitch e pointer hanno chiavi proprie; onset_offset
-    # e pan sono il passo comune e basta.
-    _VOICE_AXES = (
-        _VoiceAxis('pitch',        VoicePitchStrategyFactory,   'pitch_strategy',
-                   '_take_voice_pitch_keys'),
-        _VoiceAxis('onset_offset', VoiceOnsetStrategyFactory,   'onset_strategy'),
-        _VoiceAxis('pointer',      VoicePointerStrategyFactory, 'pointer_strategy',
-                   '_take_voice_pointer_keys'),
-        _VoiceAxis('pan',          VoicePanStrategyFactory,     'pan_strategy'),
-    )
+        # VOICES CONTROLLER (issue #284): il blocco `voices:` entra nel suo
+        # controller come gli altri quattro, e lo Stream legge da lui quel che
+        # il blocco produce — VoiceManager, num_voices, scatter e l'unita'
+        # dell'offset di pointer — invece di scriverlo su di se'.
+        self._voices_controller = VoicesController(
+            params=params.get('voices', {}),
+            config=config
+        )
 
     def _pre_normalize_grain_params(self, params: dict, output_sr: int) -> dict:
         """
@@ -771,7 +485,7 @@ class Stream:
                 Generator assegna dopo la costruzione (issue #283).
         """
         self._check_generator_references()
-        max_v = self._voice_manager.max_voices
+        max_v = self.voice_manager.max_voices
 
         # Struttura per raccogliere grani per voce (pre-allocata per max_voices)
         all_voice_grains: List[List[Grain]] = [[] for _ in range(max_v)]
@@ -786,7 +500,7 @@ class Stream:
             t0 = voice_cursors[0]
             grain_dur_0 = self.grain_duration.get_value(t0)
             sync_iot = self._density.calculate_inter_onset(t0, grain_dur_0)
-            scatter_val = self._scatter.get_value(t0)
+            scatter_val = self.scatter.get_value(t0)
 
             for voice_index in range(max_v):
                 t = voice_cursors[voice_index]
@@ -816,7 +530,7 @@ class Stream:
                     voice_gain = 0.0            # voce spenta → nessun grano
 
                 if voice_gain > 0.0:
-                    voice_config = self._voice_manager.get_voice_config(voice_index, t)
+                    voice_config = self.voice_manager.get_voice_config(voice_index, t)
                     grain = self._create_grain(t, grain_dur, voice_config,
                                                voice_gain=voice_gain)
                     all_voice_grains[voice_index].append(grain)
@@ -908,7 +622,7 @@ class Stream:
         # intero. calculate() restituisce già la posizione reale di lettura in
         # [0, sample_dur): audio e partitura usano lo stesso valore (issue #79).
         voice_pointer_offset = voice_config.pointer_offset
-        if self._voice_pointer_normalized:
+        if self._voices_controller.pointer_normalized:
             voice_pointer_offset *= self.sample_dur_sec
         pointer_pos = self._pointer.calculate(
             elapsed_time, grain_dur, grain_reverse, voice_offset=voice_pointer_offset
@@ -1050,7 +764,7 @@ class Stream:
     @property
     def num_voices(self):
         """Espone num_voices come Parameter (supporta Envelope time-varying)."""
-        return self._num_voices
+        return self._voices_controller.num_voices
 
     @property
     def pointer_deviation(self):
@@ -1087,12 +801,12 @@ class Stream:
     def voice_manager(self):
         """VoiceManager dello stream: sa campionare le curve degli offset
         per-voce (VoiceManager.offset_curves)."""
-        return self._voice_manager
+        return self._voices_controller.voice_manager
 
     @property
     def scatter(self):
         """Espone scatter come Parameter (supporta Envelope time-varying)."""
-        return self._scatter
+        return self._voices_controller.scatter
 
     # =========================================================================
     # GRANI LAZY (issue #117)

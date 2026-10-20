@@ -17,6 +17,7 @@ sources:
   - src/pge/shared/distribution_strategy.py
   - src/pge/envelopes/envelope_factory.py
   - src/pge/core/stream.py
+  - src/pge/controllers/voices_controller.py
   - src/pge/parameters/parameter.py
   - src/pge/shared/exceptions.py
   - src/pge/shared/logger.py
@@ -404,8 +405,9 @@ forte della prima:
 
 1. non sono contenuto del registry. `SEMITONE_LOCKED` è un'affermazione sulle
    *unità*, indicizzata per nome di strategy e letta da
-   `Stream._take_voice_pitch_keys` (il `take_block_keys` del pitch nel wiring
-   di `_init_voice_manager`, #186); `CHORD_INTERVALS` è il dominio di un kwarg.
+   `VoicesController._take_voice_pitch_keys` (il `take_block_keys` del pitch
+   nel wiring del blocco `voices:`, #186, dello `Stream` fino a #284);
+   `CHORD_INTERVALS` è il dominio di un kwarg.
    Attaccarle all'oggetto registry darebbe alla classe generica una superficie
    per dominio, cioè il caso speciale;
 2. sono già lette da chi non può seguirle. `CHORD_INTERVALS` la importa dal
@@ -413,7 +415,7 @@ forte della prima:
    il `diagnostic_provider.py` di quel repo la nomina anche lui, ma legge il
    proprio specchio in `granular_ls/voice_strategies.py`, quindi non è un
    secondo vincolo — è una copia a mano, e la copia non protesta.
-   `SEMITONE_LOCKED` non esce da qui: la legge `Stream._take_voice_pitch_keys`, e
+   `SEMITONE_LOCKED` non esce da qui: la legge `VoicesController._take_voice_pitch_keys`, e
    PGE-ls ne tiene un altro specchio (`SEMITONE_LOCKED_STRATEGIES`). Spostarle
    costa una CI rossa — altrove per la prima, qui per la seconda — in cambio di
    niente.
@@ -424,8 +426,9 @@ dichiararsi semitone-locked. La cura sarebbe metadato sulla classe, non sul
 registry. Il wiring (#186) non l'ha presa, e non l'ha nemmeno resa più
 piccola: la lettura di `SEMITONE_LOCKED` era un punto solo già prima — un `if`
 dentro il blocco pitch di `_init_voice_manager` — e resta un punto solo. Il
-wiring l'ha spostata in un metodo che ha un nome, `Stream._take_voice_pitch_keys`,
-che è dove un attributo di classe andrebbe letto. Spostare la dichiarazione dai
+wiring l'ha spostata in un metodo che ha un nome, `_take_voice_pitch_keys` —
+dello `Stream` allora, del `VoicesController` da #284 —, che è dove un
+attributo di classe andrebbe letto. Spostare la dichiarazione dai
 nomi alle classi resta però una decisione sulla superficie d'estensione
 ([[add-voice-strategy]]) e tocca `voice_pitch_strategy.py`: materiale per la
 decomposizione di `Stream` (#190) o per una issue sua, non per qui. #190 ha

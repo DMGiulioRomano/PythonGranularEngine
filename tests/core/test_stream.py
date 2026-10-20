@@ -33,6 +33,7 @@ import sys
 import os
 import pytest
 import math
+from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock, PropertyMock, call
 from dataclasses import dataclass
 from pge.core.stream_config import StreamContext, StreamConfig
@@ -194,18 +195,24 @@ def stream_factory(build_stream):
         s._pointer = _make_mock_pointer()
         s._pitch = _make_mock_pitch()
         s._density = _make_mock_density(inter_onset)
-        s._voice_manager = _make_mock_voice_manager(max_voices)
         s._window_controller = _make_mock_window_controller()
 
         # num_voices: mock Parameter che restituisce max_voices per ogni t
         _nv = Mock()
         _nv.get_value = Mock(return_value=float(max_voices))
-        s._num_voices = _nv
 
         # scatter: mock Parameter che restituisce 0.0 (comportamento cluster)
         _sc = Mock()
         _sc.get_value = Mock(return_value=0.0)
-        s._scatter = _sc
+
+        # Il controller del blocco `voices:` (#284): la generazione ne legge
+        # il VoiceManager, num_voices, scatter e l'unita' dell'offset.
+        s._voices_controller = SimpleNamespace(
+            voice_manager=_make_mock_voice_manager(max_voices),
+            num_voices=_nv,
+            scatter=_sc,
+            pointer_normalized=False,
+        )
 
         # Riferimenti alle tabelle: li assegna il Generator dopo la
         # costruzione, e la generazione li pretende.
@@ -855,10 +862,11 @@ class TestStreamProperties:
         assert s.pitch_range == 2.0
 
     def test_scatter_property(self, stream_factory):
-        """scatter espone il Parameter privato _scatter (simmetrico a num_voices)."""
+        """scatter espone il Parameter del controller delle voci (simmetrico a
+        num_voices)."""
         s = stream_factory()
         sentinel = _make_mock_parameter(0.0, 'scatter')
-        s._scatter = sentinel
+        s._voices_controller.scatter = sentinel
 
         assert s.scatter is sentinel
 
