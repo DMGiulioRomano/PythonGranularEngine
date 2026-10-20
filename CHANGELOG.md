@@ -179,15 +179,19 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   due volte per stream**: lo `Stream` costruiva lo `StreamContext` e poi ne
   ri-derivava i campi dal dizionario con le stesse funzioni
   (`resolve_stream_onset`, `resolve_stream_duration`). Ora li legge dal
-  contesto: una lettura e una risoluzione, verificate da un test. **I
+  contesto: l'header si legge una volta (lo verifica un test), e onset e
+  durata si risolvono una volta, in `StreamContext.from_yaml`. **I
   riferimenti che assegna il `Generator` non erano dichiarati**: uno `Stream`
   costruito fuori dal `Generator` e letto con `.voices` moriva dentro
   `_create_grain`, con un `AttributeError` su `window_table_map` o, assegnata
   quella, col `TypeError` della validazione di `Grain` su `sample_table`. Ora
   `__init__` dichiara `sample_table_num` e `window_table_map` a `None`, e
-  `generate_grains` si ferma con un `EngineRuntimeError` che nomina lo stream,
-  quale dei due manca e `Generator._create_stream`. Dal `Generator` non cambia
-  niente, perché li assegna prima di ogni lettura, e non cambia l'audio.
+  `generate_grains` si ferma con un `EngineRuntimeError` che nomina quale dei
+  due manca e `Generator._create_stream`, con lo stream nella riga `Stream:`.
+  La base `EngineRuntimeError` non aveva un `user_message()` suo, perché la si
+  sollevava solo attraverso le sottoclassi: ora ha la forma di errors.md, e le
+  sottoclassi non cambiano. Dal `Generator` non cambia niente, perché li
+  assegna prima di ogni lettura, e non cambia l'audio.
   `envelope_table_num` resta com'è: è materia di #285.
 
 - **La riga di testa del riepilogo è protocollo, e il contratto di stdout

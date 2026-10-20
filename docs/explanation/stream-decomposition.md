@@ -150,10 +150,10 @@ WindowController(params.get('grain', {}), config)
 ```
 
 Il wiring di `voices` è il mestiere più grande (115 righe di codice su 510), e
-dei quattro valori che scrive sullo `Stream` uno viene riletto a ogni grano con
-un `getattr` di ripiego (`_voice_pointer_normalized`). La suite di #186 lo dice
-già di sé: «lo stato che il wiring scrive sullo Stream invece di restituirlo»
-(`tests/core/test_stream_voices_yaml.py`, §16).
+dei quattro valori che scrive sullo `Stream` uno viene riletto a ogni grano
+(`_voice_pointer_normalized`, fino a #283 con un `getattr` di ripiego). La
+suite di #186 lo dice già di sé: «lo stato che il wiring scrive sullo Stream
+invece di restituirlo» (`tests/core/test_stream_voices_yaml.py`, §16).
 
 Il confine deciso:
 
@@ -318,13 +318,13 @@ tre repo a valle importa o estrae il wiring. In
 cambio: circa 110 righe di codice nette in meno sullo `Stream`, più di un
 quinto del modulo; l'unico blocco letto per conto d'altri
 rientra nel modello degli altri quattro, e `_voice_pointer_normalized` smette
-di essere stato scritto sullo `Stream` e riletto con un `getattr`.
+di essere stato scritto sullo `Stream` e riletto a ogni grano.
 
-**L'ordine.** #283 prima di #284: i test di generazione scrivono
-`_voice_pointer_normalized` a mano su uno `Stream` costruito a metà, e il
-trasloco del wiring va fatto sotto test che passano dal costruttore. #285 non
-dipende da nessuna delle due: tocca la superficie pubblica, e porta con sé la
-decisione su quando esce `grains`.
+**L'ordine.** #283 prima di #284: fino a #283 i test di generazione
+scrivevano `_voice_pointer_normalized` a mano su uno `Stream` costruito a
+metà, e il trasloco del wiring va fatto sotto test che passano dal
+costruttore. #285 non dipende da nessuna delle due: tocca la superficie
+pubblica, e porta con sé la decisione su quando esce `grains`.
 
 **La proiezione.** Dopo le tre, `stream.py` starebbe intorno alle 360 righe di
 codice se `grains` esce, intorno alle 385 se resta fino alla prossima major. È

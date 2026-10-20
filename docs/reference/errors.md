@@ -14,7 +14,7 @@ sources:
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: 175fdf9
+last_synced_commit: c4dca94
 entry_for: [error-handling]
 ---
 
@@ -332,10 +332,13 @@ EngineError                                  (Exception)
   in un caso: uno `Stream` che genera i grani senza i riferimenti alle tabelle
   che il `Generator` assegna dopo la costruzione (`sample_table_num`,
   `window_table_map`, issue #283). Ci arriva solo chi usa la libreria fuori
-  dal `Generator`; il messaggio nomina lo stream, il riferimento che manca e
-  `Generator._create_stream`, e `stream_id` è valorizzato. Prima era un
-  `AttributeError` o il `TypeError` della validazione di `Grain`.
-- Ogni sotto-classe override `user_message()` con formato strutturato.
+  dal `Generator`; il messaggio nomina il riferimento che manca e
+  `Generator._create_stream`, e lo stream sta nella riga `Stream:` (lo
+  `stream_id` è valorizzato). Prima era un `AttributeError` o il `TypeError`
+  della validazione di `Grain`.
+- Ogni sotto-classe override `user_message()` con formato strutturato. La base
+  `EngineRuntimeError`, sollevata da sola, ha il suo: `[ERRORE]` col messaggio,
+  poi le righe di contesto.
 
 ---
 
