@@ -107,16 +107,16 @@ class TestVoicesDefault:
 
     def test_no_voices_key_max_voices_1(self):
         s = _build_stream()
-        assert s._voice_manager.max_voices == 1
+        assert s.voice_manager.max_voices == 1
 
     def test_no_voices_key_voice_config_0_is_identity(self):
         s = _build_stream()
-        vc = s._voice_manager.get_voice_config(0, 0.0)
+        vc = s.voice_manager.get_voice_config(0, 0.0)
         assert vc == VoiceConfig(1.0, 0.0, 0.0, 0.0)
 
     def test_empty_voices_dict_max_voices_1(self):
         s = _build_stream(voices_params={})
-        assert s._voice_manager.max_voices == 1
+        assert s.voice_manager.max_voices == 1
 
 
 # =============================================================================
@@ -127,20 +127,20 @@ class TestNumVoices:
 
     def test_num_voices_4(self):
         s = _build_stream({'num_voices': 4})
-        assert s._voice_manager.max_voices == 4
+        assert s.voice_manager.max_voices == 4
 
     def test_num_voices_1_explicit(self):
         s = _build_stream({'num_voices': 1})
-        assert s._voice_manager.max_voices == 1
+        assert s.voice_manager.max_voices == 1
 
     def test_num_voices_high_count_pre_allocates(self):
         """Voci elevate (256): pre-allocazione di tutti i VoiceConfig."""
         s = _build_stream({'num_voices': 256})
-        assert s._voice_manager.max_voices == 256
+        assert s.voice_manager.max_voices == 256
 
     def test_num_voices_default_when_absent(self):
         s = _build_stream({'pitch': {'strategy': 'step', 'step': 3.0}})
-        assert s._voice_manager.max_voices == 1
+        assert s.voice_manager.max_voices == 1
 
 
 # =============================================================================
@@ -154,38 +154,38 @@ class TestVoicesPitchStrategy:
             'num_voices': 3,
             'pitch': {'strategy': 'step', 'step': 4.0},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(8.0))
+        assert s.voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert s.voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(8.0))
 
     def test_range_pitch_strategy(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'range', 'pitch_range': 12.0},
         })
-        assert s._voice_manager.get_voice_config(0, 0.0).pitch_factor == 1.0
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(12.0))
+        assert s.voice_manager.get_voice_config(0, 0.0).pitch_factor == 1.0
+        assert s.voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(12.0))
 
     def test_chord_pitch_strategy_dom7(self):
         s = _build_stream({
             'num_voices': 4,
             'pitch': {'strategy': 'chord', 'chord': 'dom7'},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
-        assert s._voice_manager.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(10.0))
+        assert s.voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert s.voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
+        assert s.voice_manager.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(10.0))
 
     def test_chord_pitch_strategy_maj(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'chord', 'chord': 'maj'},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
-        assert s._voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
+        assert s.voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
+        assert s.voice_manager.get_voice_config(2, 0.0).pitch_factor == pytest.approx(_f(7.0))
 
     def test_no_pitch_block_pitch_factor_identity(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i, 0.0).pitch_factor == 1.0
+            assert s.voice_manager.get_voice_config(i, 0.0).pitch_factor == 1.0
 
 
 # =============================================================================
@@ -205,7 +205,7 @@ class TestChordProgressionYAML:
             },
         })
         from pge.strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
-        assert isinstance(s._voice_manager._pitch_strategy, ChordProgressionPitchStrategy)
+        assert isinstance(s.voice_manager._pitch_strategy, ChordProgressionPitchStrategy)
 
     def test_pitch_factor_at_onsets(self):
         s = _build_stream({
@@ -216,7 +216,7 @@ class TestChordProgressionYAML:
                 'voice_leading': 'positional',
             },
         })
-        vm = s._voice_manager
+        vm = s.voice_manager
         # maj7 = [0,4,7,11] a t=0
         assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
         assert vm.get_voice_config(3, 0.0).pitch_factor == pytest.approx(_f(11.0))
@@ -235,7 +235,7 @@ class TestChordProgressionYAML:
             },
         })
         # v1 a metà (t=4): (4+3)/2 = 3.5 semitoni
-        assert s._voice_manager.get_voice_config(1, 4.0).pitch_factor == pytest.approx(_f(3.5))
+        assert s.voice_manager.get_voice_config(1, 4.0).pitch_factor == pytest.approx(_f(3.5))
 
     def test_unit_non_semitones_raises(self):
         """chord_progression è SEMITONE_LOCKED: unit ≠ semitones → errore."""
@@ -269,7 +269,7 @@ class TestChordProgressionYAML:
         }
         with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
             s = Stream(params)
-        vm = s._voice_manager
+        vm = s.voice_manager
         # norm 0.0 → t=0 (maj7); norm 1.0 → t=16 (min7)
         assert vm.get_voice_config(1, 0.0).pitch_factor == pytest.approx(_f(4.0))
         assert vm.get_voice_config(1, 16.0).pitch_factor == pytest.approx(_f(3.0))
@@ -288,21 +288,21 @@ class TestVoicesOnsetStrategy:
             'num_voices': 3,
             'onset_offset': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).onset_offset == pytest.approx(0.1)
-        assert s._voice_manager.get_voice_config(2, 0.0).onset_offset == pytest.approx(0.2)
+        assert s.voice_manager.get_voice_config(1, 0.0).onset_offset == pytest.approx(0.1)
+        assert s.voice_manager.get_voice_config(2, 0.0).onset_offset == pytest.approx(0.2)
 
     def test_geometric_onset_strategy(self):
         s = _build_stream({
             'num_voices': 3,
             'onset_offset': {'strategy': 'geometric', 'step': 0.1, 'base': 2.0},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).onset_offset == pytest.approx(0.1)
-        assert s._voice_manager.get_voice_config(2, 0.0).onset_offset == pytest.approx(0.2)
+        assert s.voice_manager.get_voice_config(1, 0.0).onset_offset == pytest.approx(0.1)
+        assert s.voice_manager.get_voice_config(2, 0.0).onset_offset == pytest.approx(0.2)
 
     def test_no_onset_block_onset_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
+            assert s.voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
 
 
 # =============================================================================
@@ -316,8 +316,8 @@ class TestVoicesPointerStrategy:
             'num_voices': 3,
             'pointer': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
-        assert s._voice_manager.get_voice_config(2, 0.0).pointer_offset == pytest.approx(0.2)
+        assert s.voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
+        assert s.voice_manager.get_voice_config(2, 0.0).pointer_offset == pytest.approx(0.2)
 
     def test_pointer_normalized_default_false(self):
         s = _build_stream({
@@ -334,7 +334,7 @@ class TestVoicesPointerStrategy:
         })
         assert s._voice_pointer_normalized is True
         # La strategy resta pura: step ancora applicato, nessun errore kwarg.
-        assert s._voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
+        assert s.voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
 
     def test_pointer_normalized_non_bool_raises(self):
         """`normalized` non-bool → InvalidFieldValueError (no coercion silenziosa)."""
@@ -348,7 +348,7 @@ class TestVoicesPointerStrategy:
     def test_no_pointer_block_pointer_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i, 0.0).pointer_offset == 0.0
+            assert s.voice_manager.get_voice_config(i, 0.0).pointer_offset == 0.0
 
 
 # =============================================================================
@@ -363,9 +363,9 @@ class TestVoicesPanStrategy:
             'num_voices': 2,
             'pan': {'strategy': 'range', 'spread': 60.0},
         })
-        assert isinstance(s._voice_manager._pan_strategy, RangePanStrategy)
-        assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
-        assert s._voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(30.0)
+        assert isinstance(s.voice_manager._pan_strategy, RangePanStrategy)
+        assert s.voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
+        assert s.voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(30.0)
 
     def test_step_pan_strategy(self):
         """StepPanStrategy: voce i → i × step gradi."""
@@ -373,10 +373,10 @@ class TestVoicesPanStrategy:
             'num_voices': 4,
             'pan': {'strategy': 'step', 'step': 15.0},
         })
-        assert isinstance(s._voice_manager._pan_strategy, StepPanStrategy)
-        assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
-        assert s._voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(15.0)
-        assert s._voice_manager.get_voice_config(3, 0.0).pan_offset == pytest.approx(45.0)
+        assert isinstance(s.voice_manager._pan_strategy, StepPanStrategy)
+        assert s.voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
+        assert s.voice_manager.get_voice_config(1, 0.0).pan_offset == pytest.approx(15.0)
+        assert s.voice_manager.get_voice_config(3, 0.0).pan_offset == pytest.approx(45.0)
 
     def test_spread_zero_all_pan_zero(self):
         s = _build_stream({
@@ -384,12 +384,12 @@ class TestVoicesPanStrategy:
             'pan': {'strategy': 'range', 'spread': 0.0},
         })
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
+            assert s.voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
 
     def test_no_pan_block_pan_offset_zero(self):
         s = _build_stream({'num_voices': 3})
         for i in range(3):
-            assert s._voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
+            assert s.voice_manager.get_voice_config(i, 0.0).pan_offset == 0.0
 
     def test_old_pan_names_rejected(self):
         """I vecchi nomi (linear/random/additive) non sono più accettati."""
@@ -418,8 +418,8 @@ class TestStochasticStreamIdInjection:
             'num_voices': 3,
             'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='stream_B')
-        offsets1 = [s1._voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
-        offsets2 = [s2._voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
+        offsets1 = [s1.voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
+        offsets2 = [s2.voice_manager.get_voice_config(i, 0.0).pitch_factor for i in range(1, 3)]
         assert offsets1 != offsets2
 
     def test_stochastic_pitch_same_stream_id_reproducible(self):
@@ -433,8 +433,8 @@ class TestStochasticStreamIdInjection:
             'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='same_stream')
         for i in range(3):
-            assert (s1._voice_manager.get_voice_config(i, 0.0).pitch_factor ==
-                    s2._voice_manager.get_voice_config(i, 0.0).pitch_factor)
+            assert (s1.voice_manager.get_voice_config(i, 0.0).pitch_factor ==
+                    s2.voice_manager.get_voice_config(i, 0.0).pitch_factor)
 
     def test_stochastic_onset_stream_id_injected(self):
         """StochasticOnsetStrategy riceve stream_id automaticamente."""
@@ -444,7 +444,7 @@ class TestStochasticStreamIdInjection:
         }, stream_id='my_stream')
         # Se stream_id fosse mancante, solleverebbe TypeError
         for i in range(3):
-            offset = s._voice_manager.get_voice_config(i, 0.0).onset_offset
+            offset = s.voice_manager.get_voice_config(i, 0.0).onset_offset
             assert 0.0 <= offset <= 0.2
 
     def test_stochastic_pointer_stream_id_injected(self):
@@ -454,7 +454,7 @@ class TestStochasticStreamIdInjection:
             'pointer': {'strategy': 'stochastic', 'pointer_range': 0.1},
         }, stream_id='my_stream')
         for i in range(3):
-            offset = s._voice_manager.get_voice_config(i, 0.0).pointer_offset
+            offset = s.voice_manager.get_voice_config(i, 0.0).pointer_offset
             assert -0.1 <= offset <= 0.1
 
     def test_stochastic_pan_stream_id_injected(self):
@@ -463,10 +463,10 @@ class TestStochasticStreamIdInjection:
             'num_voices': 3,
             'pan': {'strategy': 'stochastic', 'spread': 60.0},
         }, stream_id='my_stream')
-        assert isinstance(s._voice_manager._pan_strategy, StochasticPanStrategy)
-        assert s._voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
+        assert isinstance(s.voice_manager._pan_strategy, StochasticPanStrategy)
+        assert s.voice_manager.get_voice_config(0, 0.0).pan_offset == 0.0
         for i in range(1, 3):
-            offset = s._voice_manager.get_voice_config(i, 0.0).pan_offset
+            offset = s.voice_manager.get_voice_config(i, 0.0).pan_offset
             assert -30.0 <= offset <= 30.0
 
 
@@ -491,28 +491,28 @@ class TestSeedPropagation:
             'num_voices': 3,
             'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='s1', seed=42)
-        assert s._voice_manager._pitch_strategy.seed == 42
+        assert s.voice_manager._pitch_strategy.seed == 42
 
     def test_seed_injected_into_stochastic_onset(self):
         s = _build_stream({
             'num_voices': 3,
             'onset_offset': {'strategy': 'stochastic', 'max_offset': 0.2},
         }, stream_id='s1', seed=42)
-        assert s._voice_manager._onset_strategy.seed == 42
+        assert s.voice_manager._onset_strategy.seed == 42
 
     def test_seed_injected_into_stochastic_pointer(self):
         s = _build_stream({
             'num_voices': 3,
             'pointer': {'strategy': 'stochastic', 'pointer_range': 0.1},
         }, stream_id='s1', seed=42)
-        assert s._voice_manager._pointer_strategy.seed == 42
+        assert s.voice_manager._pointer_strategy.seed == 42
 
     def test_seed_injected_into_stochastic_pan(self):
         s = _build_stream({
             'num_voices': 3,
             'pan': {'strategy': 'stochastic', 'spread': 60.0},
         }, stream_id='s1', seed=42)
-        assert s._voice_manager._pan_strategy.seed == 42
+        assert s.voice_manager._pan_strategy.seed == 42
 
     def test_default_seed_is_none_backward_compatible(self):
         """Senza seed: strategy.seed è None → fallback hash() (comportamento attuale)."""
@@ -520,7 +520,7 @@ class TestSeedPropagation:
             'num_voices': 3,
             'pitch': {'strategy': 'stochastic', 'pitch_range': 3.0},
         }, stream_id='s1')
-        assert s._voice_manager._pitch_strategy.seed is None
+        assert s.voice_manager._pitch_strategy.seed is None
 
     def test_seed_produces_hashlib_offset(self):
         """Col seed l'offset è il valore derivato via hashlib (riproducibile)."""
@@ -529,7 +529,7 @@ class TestSeedPropagation:
             'pitch': {'strategy': 'stochastic', 'pitch_range': 2.0},
         }, stream_id='s1', seed=42)
         expected = EdoUnit(12).materialize(_seeded_pos(42, 's1', 1), 2.0)
-        got = s._voice_manager.get_voice_config(1, 0.0).pitch_factor
+        got = s.voice_manager.get_voice_config(1, 0.0).pitch_factor
         assert got == pytest.approx(expected)
 
 
@@ -541,24 +541,24 @@ class TestPartialVoicesBlock:
 
     def test_only_num_voices_no_strategies(self):
         s = _build_stream({'num_voices': 4})
-        assert s._voice_manager.max_voices == 4
+        assert s.voice_manager.max_voices == 4
         for i in range(4):
-            assert s._voice_manager.get_voice_config(i, 0.0).pitch_factor == 1.0
-            assert s._voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
+            assert s.voice_manager.get_voice_config(i, 0.0).pitch_factor == 1.0
+            assert s.voice_manager.get_voice_config(i, 0.0).onset_offset == 0.0
 
     def test_pitch_only_onset_zero(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'step', 'step': 3.0},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).onset_offset == 0.0
+        assert s.voice_manager.get_voice_config(1, 0.0).onset_offset == 0.0
 
     def test_onset_only_pitch_zero(self):
         s = _build_stream({
             'num_voices': 3,
             'onset_offset': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == 1.0
+        assert s.voice_manager.get_voice_config(1, 0.0).pitch_factor == 1.0
 
 
 # =============================================================================
@@ -671,7 +671,7 @@ class TestNumVoicesEnvelope:
     def test_envelope_num_voices_max_voices_precomputed_from_peak(self):
         """VoiceManager.max_voices == picco dell'envelope."""
         s = _build_stream({'num_voices': [[0, 1], [5, 4]]})
-        assert s._voice_manager.max_voices == 4
+        assert s.voice_manager.max_voices == 4
 
     def test_envelope_num_voices_stored_as_parameter_with_get_value(self):
         """stream.num_voices espone get_value()."""
@@ -721,7 +721,7 @@ class TestNumVoicesEnvelope:
         """Picco frazionario → max_voices = ceil(picco), così la voce di confine
         in cima ha uno slot e può sfumare (prima int() la troncava)."""
         s = _build_stream({'num_voices': [[0, 1], [5, 3.5]]})
-        assert s._voice_manager.max_voices == 4
+        assert s.voice_manager.max_voices == 4
 
     def test_envelope_fractional_boundary_voice_volume_attenuated(self):
         """La voce di confine frazionaria ha volume < voce piena.
@@ -754,30 +754,30 @@ class TestScatterParsing:
     def test_no_scatter_default_is_zero(self):
         """Senza scatter nel blocco voices, default = 0.0."""
         s = _build_stream({'num_voices': 2})
-        assert s._scatter.get_value(0.0) == pytest.approx(0.0)
+        assert s.scatter.get_value(0.0) == pytest.approx(0.0)
 
     def test_scatter_static_value(self):
         """scatter: 0.8 → Parameter che vale 0.8."""
         s = _build_stream({'num_voices': 2, 'scatter': 0.8})
-        assert s._scatter.get_value(0.0) == pytest.approx(0.8)
+        assert s.scatter.get_value(0.0) == pytest.approx(0.8)
 
     def test_scatter_envelope(self):
         """scatter come Envelope [[0, 0.0], [10, 1.0]]."""
         s = _build_stream({'num_voices': 2, 'scatter': [[0, 0.0], [10, 1.0]]})
-        assert s._scatter.get_value(0.0) == pytest.approx(0.0)
-        assert s._scatter.get_value(10.0) == pytest.approx(1.0)
-        assert 0.0 < s._scatter.get_value(5.0) < 1.0
+        assert s.scatter.get_value(0.0) == pytest.approx(0.0)
+        assert s.scatter.get_value(10.0) == pytest.approx(1.0)
+        assert 0.0 < s.scatter.get_value(5.0) < 1.0
 
     def test_no_voices_block_scatter_exists_and_is_zero(self):
-        """Senza blocco voices, _scatter esiste con valore 0.0."""
+        """Senza blocco voices, scatter esiste con valore 0.0."""
         s = _build_stream()
-        assert hasattr(s, '_scatter')
-        assert s._scatter.get_value(0.0) == pytest.approx(0.0)
+        assert hasattr(s, 'scatter')
+        assert s.scatter.get_value(0.0) == pytest.approx(0.0)
 
     def test_scatter_has_get_value(self):
-        """_scatter espone get_value (è un Parameter)."""
+        """scatter espone get_value (è un Parameter)."""
         s = _build_stream({'num_voices': 2, 'scatter': 0.5})
-        assert callable(s._scatter.get_value)
+        assert callable(s.scatter.get_value)
 
 
 # =============================================================================
@@ -799,8 +799,8 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pitch': {'strategy': 'step', 'step': 2},
         })
-        vc0 = s._voice_manager.get_voice_config(1, 0.0)
-        vc1 = s._voice_manager.get_voice_config(1, 1.0)
+        vc0 = s.voice_manager.get_voice_config(1, 0.0)
+        vc1 = s.voice_manager.get_voice_config(1, 1.0)
         assert vc0.pitch_factor == pytest.approx(vc1.pitch_factor)
         assert vc0.pitch_factor == pytest.approx(_f(2.0))
 
@@ -820,8 +820,8 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pitch': {'strategy': 'step', 'step': [[0, 0], [10, 12]]},
         })
-        vc_early = s._voice_manager.get_voice_config(1, 0.0)
-        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        vc_early = s.voice_manager.get_voice_config(1, 0.0)
+        vc_late = s.voice_manager.get_voice_config(1, 10.0)
         assert vc_late.pitch_factor > vc_early.pitch_factor
 
     def test_list_envelope_onset_varies_over_time(self):
@@ -830,8 +830,8 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'onset_offset': {'strategy': 'linear', 'step': [[0, 0.0], [10, 0.2]]},
         })
-        vc_early = s._voice_manager.get_voice_config(1, 0.0)
-        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        vc_early = s.voice_manager.get_voice_config(1, 0.0)
+        vc_late = s.voice_manager.get_voice_config(1, 10.0)
         assert vc_late.onset_offset > vc_early.onset_offset
 
     def test_list_envelope_pointer_varies_over_time(self):
@@ -840,8 +840,8 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pointer': {'strategy': 'linear', 'step': [[0, 0.0], [10, 0.5]]},
         })
-        vc_early = s._voice_manager.get_voice_config(1, 0.0)
-        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        vc_early = s.voice_manager.get_voice_config(1, 0.0)
+        vc_late = s.voice_manager.get_voice_config(1, 10.0)
         assert vc_late.pointer_offset > vc_early.pointer_offset
 
     # --- pan spread envelope ---
@@ -853,7 +853,7 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pan': {'strategy': 'range', 'spread': [[0, 0], [10, 120]]},
         })
-        assert isinstance(s._voice_manager._pan_strategy.spread, Envelope)
+        assert isinstance(s.voice_manager._pan_strategy.spread, Envelope)
 
     def test_pan_spread_envelope_pan_varies_over_time(self):
         """spread Envelope → pan_offset voce 1 più grande a t=10 che t=0."""
@@ -861,8 +861,8 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pan': {'strategy': 'range', 'spread': [[0, 0], [10, 120]]},
         })
-        vc_early = s._voice_manager.get_voice_config(1, 0.0)
-        vc_late = s._voice_manager.get_voice_config(1, 10.0)
+        vc_early = s.voice_manager.get_voice_config(1, 0.0)
+        vc_late = s.voice_manager.get_voice_config(1, 10.0)
         assert abs(vc_late.pan_offset) > abs(vc_early.pan_offset)
 
     def test_pan_step_envelope_pan_varies_over_time(self):
@@ -871,8 +871,8 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pan': {'strategy': 'step', 'step': [[0, 0], [10, 30]]},
         })
-        vc_early = s._voice_manager.get_voice_config(2, 0.0)
-        vc_late = s._voice_manager.get_voice_config(2, 10.0)
+        vc_early = s.voice_manager.get_voice_config(2, 0.0)
+        vc_late = s.voice_manager.get_voice_config(2, 10.0)
         assert abs(vc_late.pan_offset) > abs(vc_early.pan_offset)
 
     # --- dict envelope normalized ---
@@ -887,7 +887,7 @@ class TestStrategyKwargsEnvelope:
             },
         })
         # duration=10.0: normalized 1.0 → t=10.0
-        vc_end = s._voice_manager.get_voice_config(1, 10.0)
+        vc_end = s.voice_manager.get_voice_config(1, 10.0)
         assert vc_end.pitch_factor == pytest.approx(_f(12.0))
 
     # --- string kwargs pass-through (chord name) ---
@@ -900,7 +900,7 @@ class TestStrategyKwargsEnvelope:
         })
         # Se la stringa venisse convertita a float/Envelope, la factory crasherebbe.
         # dom7 = [0,4,7,10] → voce 1 → 4 semitoni → 2^(4/12)
-        vc = s._voice_manager.get_voice_config(1, 0.0)
+        vc = s.voice_manager.get_voice_config(1, 0.0)
         assert vc.pitch_factor == pytest.approx(_f(4.0))
 
     def test_int_kwarg_preserved_as_int(self):
@@ -912,7 +912,7 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pitch': {'strategy': 'spectral', 'max_partial': 4},
         })
-        vc = s._voice_manager.get_voice_config(1, 0.0)
+        vc = s.voice_manager.get_voice_config(1, 0.0)
         assert vc.pitch_factor == pytest.approx(_f(12.0))  # voce 1 = 1° parziale = 12 st
 
     def test_chord_inversion_int_preserved(self):
@@ -925,7 +925,7 @@ class TestStrategyKwargsEnvelope:
             'num_voices': 4,
             'pitch': {'strategy': 'chord', 'chord': 'maj', 'inversion': 1},
         })
-        vc = s._voice_manager.get_voice_config(1, 0.0)
+        vc = s.voice_manager.get_voice_config(1, 0.0)
         assert vc.pitch_factor == pytest.approx(_f(3.0))
 
 
@@ -940,29 +940,29 @@ class TestVoicesPitchUnit:
 
     def test_default_unit_is_semitones(self):
         s = _build_stream({'num_voices': 2, 'pitch': {'strategy': 'step', 'step': 12.0}})
-        assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
-        assert s._voice_manager.pitch_unit.divisions == 12
+        assert isinstance(s.voice_manager.pitch_unit, EdoUnit)
+        assert s.voice_manager.pitch_unit.divisions == 12
 
     def test_unit_quarter_tone_preset(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'step', 'step': 1.0, 'unit': 'quarter_tone'},
         })
-        assert s._voice_manager.pitch_unit.divisions == 24
+        assert s.voice_manager.pitch_unit.divisions == 24
 
     def test_unit_edo_dict(self):
         s = _build_stream({
             'num_voices': 3,
             'pitch': {'strategy': 'range', 'pitch_range': 12.0, 'unit': {'edo': 31}},
         })
-        assert s._voice_manager.pitch_unit.divisions == 31
+        assert s.voice_manager.pitch_unit.divisions == 31
 
     def test_unit_ratio(self):
         s = _build_stream({
             'num_voices': 2,
             'pitch': {'strategy': 'step', 'step': 1.5, 'unit': 'ratio'},
         })
-        assert isinstance(s._voice_manager.pitch_unit, RatioUnit)
+        assert isinstance(s.voice_manager.pitch_unit, RatioUnit)
 
     def test_unit_not_a_strategy_kwarg(self):
         # `unit` non deve finire nel costruttore della distribuzione: step resta
@@ -971,7 +971,7 @@ class TestVoicesPitchUnit:
             'num_voices': 2,
             'pitch': {'strategy': 'step', 'step': 5.0, 'unit': 'cents'},
         })
-        assert s._voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(2 ** (5.0 / 1200))
+        assert s.voice_manager.get_voice_config(1, 0.0).pitch_factor == pytest.approx(2 ** (5.0 / 1200))
 
 
 class TestVoicesPitchUnitJunction:
@@ -1035,14 +1035,14 @@ class TestVoicesPitchUnitSemitoneLocked:
 
     def test_chord_without_unit_ok(self):
         s = _build_stream({'num_voices': 4, 'pitch': {'strategy': 'chord', 'chord': 'dom7'}})
-        assert s._voice_manager.pitch_unit.divisions == 12
+        assert s.voice_manager.pitch_unit.divisions == 12
 
     def test_chord_explicit_semitones_ok(self):
         s = _build_stream({
             'num_voices': 4,
             'pitch': {'strategy': 'chord', 'chord': 'dom7', 'unit': 'semitones'},
         })
-        assert s._voice_manager.pitch_unit.divisions == 12
+        assert s.voice_manager.pitch_unit.divisions == 12
 
 
 # =============================================================================
@@ -1083,7 +1083,7 @@ class TestVoiceStrategyTimeModeInheritance:
             {'num_voices': 2, 'pan': {'strategy': 'step', 'step': [[.6, 0], [.7, 60.0]]}},
             time_mode='normalized', duration=10.0,
         )
-        step_env = s._voice_manager._pan_strategy.step
+        step_env = s.voice_manager._pan_strategy.step
         assert isinstance(step_env, Envelope)
         assert resolve_param(step_env, 6.0) == pytest.approx(0.0)
         assert resolve_param(step_env, 6.5) == pytest.approx(30.0)
@@ -1095,7 +1095,7 @@ class TestVoiceStrategyTimeModeInheritance:
             {'num_voices': 2, 'pan': {'strategy': 'step', 'step': [[.6, 0], [.7, 60.0]]}},
             time_mode=None, duration=10.0,
         )
-        step_env = s._voice_manager._pan_strategy.step
+        step_env = s.voice_manager._pan_strategy.step
         assert resolve_param(step_env, 0.6) == pytest.approx(0.0)
         assert resolve_param(step_env, 0.7) == pytest.approx(60.0)
         # ben oltre 0.7s la rampa è già finita (assoluto)
@@ -1108,7 +1108,7 @@ class TestVoiceStrategyTimeModeInheritance:
              'step': {'points': [[.6, 0], [.7, 60.0]], 'time_mode': 'absolute'}}},
             time_mode='normalized', duration=10.0,
         )
-        step_env = s._voice_manager._pan_strategy.step
+        step_env = s.voice_manager._pan_strategy.step
         assert resolve_param(step_env, 0.6) == pytest.approx(0.0)
         assert resolve_param(step_env, 0.7) == pytest.approx(60.0)
         assert resolve_param(step_env, 6.0) == pytest.approx(60.0)
@@ -1120,7 +1120,7 @@ class TestVoiceStrategyTimeModeInheritance:
              'step': {'points': [[.6, 0], [.7, 60.0]], 'time_mode': 'normalized'}}},
             time_mode=None, duration=10.0,
         )
-        step_env = s._voice_manager._pan_strategy.step
+        step_env = s.voice_manager._pan_strategy.step
         assert resolve_param(step_env, 6.0) == pytest.approx(0.0)
         assert resolve_param(step_env, 7.0) == pytest.approx(60.0)
 
@@ -1131,7 +1131,7 @@ class TestVoiceStrategyTimeModeInheritance:
              'step': [[.2, 0.0], [.8, 1.0]]}},
             time_mode='normalized', duration=10.0,
         )
-        step_env = s._voice_manager._onset_strategy.step
+        step_env = s.voice_manager._onset_strategy.step
         assert isinstance(step_env, Envelope)
         assert resolve_param(step_env, 2.0) == pytest.approx(0.0)
         assert resolve_param(step_env, 8.0) == pytest.approx(1.0)
@@ -1245,7 +1245,7 @@ class TestVoicesWiring:
         invece che come frazione del sample, senza nessun errore.
         """
         s = _build_stream_tm(copy.deepcopy(_VOICES_OGNI_RAMO), time_mode='normalized')
-        vm = s._voice_manager
+        vm = s.voice_manager
         # pointer: la chiave di blocco, e lo step envelope-like diventato Envelope
         assert s._voice_pointer_normalized is True
         assert isinstance(vm._pointer_strategy.step, Envelope)
@@ -1326,8 +1326,8 @@ class TestVoicesWiring:
         """
         s = _build_stream(voices)
         assert s._voice_pointer_normalized is False
-        assert isinstance(s._voice_manager.pitch_unit, EdoUnit)
-        assert s._voice_manager.pitch_unit.divisions == 12
+        assert isinstance(s.voice_manager.pitch_unit, EdoUnit)
+        assert s.voice_manager.pitch_unit.divisions == 12
 
     def test_le_stocastiche_ricevono_rng_id_non_stream_id(self):
         """L'identita' iniettata nel kwarg `stream_id` e' `rng_id` (#169).
@@ -1354,7 +1354,7 @@ class TestVoicesWiring:
         }
         with patch('pge.core.stream.get_sample_duration', return_value=SAMPLE_DUR):
             s = Stream(params)
-        vm = s._voice_manager
+        vm = s.voice_manager
         strategie = {
             'pitch': vm._pitch_strategy,
             'onset_offset': vm._onset_strategy,
