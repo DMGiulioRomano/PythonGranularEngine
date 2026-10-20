@@ -1658,7 +1658,8 @@ Campi:
 lista nuda `[]`) e un `type` che non è uno dei tre nomi — maiuscole e spazi
 attorno a parte, che la factory delle interpolazioni ignora — o scritto e
 lasciato vuoto sono `InvalidFieldValueError` sulla chiave dell'envelope (issue
-#288): vedi `docs/reference/errors.md`, «Envelope malformato (forma)».
+#288): vedi `docs/reference/errors.md`, «Envelope malformato (forma)». Un
+`type: Cubic` è la cubica, come `type: cubic` (§4.5).
 
 #### 2.4 Formato compatto
 
@@ -1960,6 +1961,33 @@ infinitesimale di `1e-6` secondi (`DISCONTINUITY_OFFSET` in `envelope_builder.py
 tra il primo punto di un nuovo ciclo e il punto precedente, in modo che due
 breakpoint non coincidano sullo stesso tempo. Questo permette discontinuità
 intenzionali senza degenerare gli algoritmi di interpolazione.
+
+#### 4.5 Come si scrive il nome
+
+Il nome si legge in due modi, secondo dove sta.
+
+**Il tipo globale non bada a maiuscole e spazi attorno**: il `type` della forma
+dict e lo slot `interp` del formato compatto, che l'envelope prende come
+proprio tipo. `Cubic`, `' cubic '` e `CUBIC` sono la cubica, e l'envelope tiene
+il nome canonico (`env.type == 'cubic'`, issue #300): la stessa curva di
+`cubic`, con le tangenti di Fritsch-Carlson, lo stesso stile nell'export Sonic
+Visualiser e lo stesso ramo nella partitura.
+
+```yaml
+density: {type: Cubic, points: [[0, 10], [0.6, 40], [1.2, 15], [2.0, 30]]}
+# identico a type: cubic
+```
+
+**Ogni altro interp si confronta alla lettera** con `linear`, `cubic`, `step`:
+quello per-punto (`[t, v, type]`, `{t, v, type}`, §2.6), quello del BP group
+(§2.7), l'`interp` di `chord_progression` e quello di `grain.read_direction`
+(§10.5). `[0.5, 30, 'Cubic']` è `InvalidFieldValueError`. PGE-ls e gl-ls
+controllano alla lettera questi stessi nomi: allargarli cambierebbe la
+superficie che validano, e non è stato fatto.
+
+Il tipo globale gl-ls non lo legge. L'editor d'inviluppo di PGE-ls sì, e alla
+lettera: `{type: Cubic}` e lo slot `'CUBIC'` vi si disegnano come `linear`, e
+salvati dalla GUI perdono il tipo (PGE-ls#72).
 
 ---
 
