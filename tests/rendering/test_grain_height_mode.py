@@ -42,10 +42,10 @@ def make_stream(grains, window_table_map=None):
     s.stream_id = 's1'
     s.onset = 0.0
     s.duration = 6.0
-    if window_table_map is not None:
-        s.window_table_map = window_table_map
-    else:
-        del s.window_table_map
+    # None e' lo stato che il costruttore dichiara finche' il Generator non
+    # assegna le tabelle (#283). Un attributo assente non lo e' piu': e' un
+    # rename, e la lettura solleva (#285).
+    s.window_table_map = window_table_map
     return s
 
 
@@ -61,15 +61,15 @@ def close_figures():
     plt.close('all')
 
 
-def drawn_ys(config, grain):
+def drawn_ys(config, grain, window_table_map=None):
     """Le y del poligono disegnato per un grano, con la config data."""
     viz = make_viz(config=config)
     fig, ax = plt.subplots()
     ax.set_xlim(0, 6)
     ax.set_ylim(0, 2)
     fig.canvas.draw()
-    viz._draw_grains_full(ax, make_stream([grain]), sample_duration=2.0,
-                          page_start=0.0, page_end=6.0)
+    viz._draw_grains_full(ax, make_stream([grain], window_table_map),
+                          sample_duration=2.0, page_start=0.0, page_end=6.0)
     return [y for _, y in ax.collections[0].get_paths()[0].vertices]
 
 
@@ -128,12 +128,19 @@ class TestHeightReachesThePolygon:
 
     def test_window_shape_follows_the_same_mode(self):
         """La silhouette della finestra si scala sulla stessa altezza: le due
-        forme non possono raccontare due geometrie diverse."""
+        forme non possono raccontare due geometrie diverse.
+
+        Senza la mappa delle finestre il disegno ripiega sulla freccia, che
+        e' alta uguale: fino a #285 questo test non la passava, e misurava la
+        freccia. Il numero dei vertici dice quale delle due e' stata disegnata.
+        """
         ys = drawn_ys({'grain_height': 'read_span',
                        'grain_shape': 'window',
                        'window_shape_resolution': 32},
                       make_grain(onset=1.0, duration=0.5, pointer_pos=0.4,
-                                 pitch_ratio=3.0, envelope_table=10))
+                                 pitch_ratio=3.0, envelope_table=10),
+                      window_table_map={'hanning': 10})
+        assert len(ys) > 6  # la silhouette; la freccia ha 5 vertici
         assert max(ys) == pytest.approx(1.9)
 
     def test_unknown_mode_is_refused_at_draw_time(self):

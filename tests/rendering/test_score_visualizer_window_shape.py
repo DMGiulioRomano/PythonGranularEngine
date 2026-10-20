@@ -51,10 +51,10 @@ def make_stream(grains, window_table_map=None):
     s.stream_id = 's1'
     s.onset = 0.0
     s.duration = 6.0
-    if window_table_map is not None:
-        s.window_table_map = window_table_map
-    else:
-        del s.window_table_map
+    # None e' lo stato che il costruttore dichiara finche' il Generator non
+    # assegna le tabelle (#283). Un attributo assente non lo e' piu': e' un
+    # rename, e la lettura solleva (#285).
+    s.window_table_map = window_table_map
     return s
 
 

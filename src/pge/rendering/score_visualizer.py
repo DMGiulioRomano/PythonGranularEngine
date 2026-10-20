@@ -1319,7 +1319,9 @@ class ScoreVisualizer:
         # Unità pitch dello stream corrente: serve a _normalize_envelope_value e
         # _annotate_breakpoints per scalare/etichettare la curva 'pitch' (i bounds
         # dipendono dall'unità, non sono statici come gli altri parametri).
-        pitch_unit = getattr(stream, 'pitch_unit', None)
+        # Letta senza default: con un default, un rename della property
+        # lasciava la curva senza scala ne' etichette, e nessun errore (#285).
+        pitch_unit = stream.pitch_unit
         self._current_pitch_unit = pitch_unit
         self._current_display_ranges = {}
 

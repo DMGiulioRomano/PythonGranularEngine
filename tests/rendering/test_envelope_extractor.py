@@ -356,6 +356,29 @@ class TestVoiceOffsetEnvelopeCollection:
         env = get_stream_envelopes(s, show_voice_offsets=True)
         assert not any(k.startswith('voice_') for k in env)
 
+    def test_a_stream_without_the_attribute_is_an_error(self):
+        """`None` e' un manager assente; un oggetto senza l'attributo e' un
+        nome che non corrisponde piu', e deve dirlo (#285).
+
+        La guardia della superficie (TestPublishedSurfaceResolves) salta la
+        riga delle curve per-voce, che non si leggono per nome: letto con un
+        default, un rename di `Stream.voice_manager` le toglieva dalla
+        partitura senza errore.
+        """
+        s = make_stream('s1', onset=0.0, duration=10.0)
+        del s.voice_manager
+        with pytest.raises(AttributeError, match='voice_manager'):
+            get_stream_envelopes(s, show_voice_offsets=True)
+
+    def test_a_real_stream_publishes_its_voice_curves(self, build_stream):
+        """Uno Stream vero, non un MagicMock col manager assegnato a mano:
+        e' qui che un rename diventa un test rosso. Fino a #285, togliendo la
+        property `voice_manager` l'intera suite restava verde."""
+        s = build_stream(voices={'num_voices': 3,
+                                 'pitch': {'strategy': 'step', 'step': 3.0}})
+        env = get_stream_envelopes(s, show_voice_offsets=True)
+        assert {'voice_pitch_offset__v1', 'voice_pitch_offset__v2'} <= set(env)
+
     def test_time_varying_num_voices_truncates_high_voice(self):
         from pge.envelopes.envelope import Envelope
         # num_voices sale da 1 a 4: la voce 2 e' attiva solo nella seconda meta'.
