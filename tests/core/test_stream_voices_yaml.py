@@ -2,9 +2,12 @@
 """
 test_stream_voices_yaml.py
 
-Suite TDD per il parsing del blocco YAML `voices:` in Stream._init_voice_manager.
+Suite TDD per il parsing del blocco YAML `voices:`, attraverso uno Stream vero.
 
-Verifica che Stream costruisca correttamente VoiceManager dai parametri YAML:
+Il blocco lo legge il suo controller, VoicesController (issue #284): lo Stream
+glielo passa con la config e ne espone il risultato con le property
+`voice_manager`, `num_voices` e `scatter`. Verifica che dai parametri YAML esca
+il VoiceManager giusto:
 
   voices:
     num_voices: 4
@@ -324,7 +327,7 @@ class TestVoicesPointerStrategy:
             'num_voices': 3,
             'pointer': {'strategy': 'linear', 'step': 0.1},
         })
-        assert s._voice_pointer_normalized is False
+        assert s._voices_controller.pointer_normalized is False
 
     def test_pointer_normalized_flag_parsed(self):
         """`normalized: true` impostato e rimosso dai kwarg della strategy."""
@@ -332,7 +335,7 @@ class TestVoicesPointerStrategy:
             'num_voices': 3,
             'pointer': {'strategy': 'linear', 'step': 0.1, 'normalized': True},
         })
-        assert s._voice_pointer_normalized is True
+        assert s._voices_controller.pointer_normalized is True
         # La strategy resta pura: step ancora applicato, nessun errore kwarg.
         assert s.voice_manager.get_voice_config(1, 0.0).pointer_offset == pytest.approx(0.1)
 
@@ -808,7 +811,7 @@ class TestStrategyKwargsEnvelope:
         """Un kwarg scritto coi breakpoint in forma dict e' un envelope, e come
         tale va convertito. Prima di #234 il predicato non lo riconosceva e la
         lista grezza finiva a valle come se fosse un valore qualsiasi."""
-        from pge.core.stream import _parse_strategy_kwarg
+        from pge.controllers.voices_controller import _parse_strategy_kwarg
         out = _parse_strategy_kwarg([{'t': 0, 'v': 0}, {'t': 10, 'v': 12}], 10.0)
         assert isinstance(out, Envelope)
 
@@ -1141,9 +1144,9 @@ class TestVoiceStrategyTimeModeInheritance:
 # 16. Il wiring delle quattro dimensioni (issue #186)
 # =============================================================================
 #
-# Il collasso dei quattro blocchi di _init_voice_manager in un ciclo su una
-# tabella puo' rompere quattro cose che le sezioni sopra non pinnavano, perche'
-# con quattro blocchi copiati erano vere per costruzione:
+# Il collasso dei quattro blocchi del wiring in un ciclo su una tabella (#186)
+# puo' rompere quattro cose che le sezioni sopra non pinnavano, perche' con
+# quattro blocchi copiati erano vere per costruzione:
 #
 # - il blocco `voices:` e' letto, non consumato: il Generator tiene lo stesso
 #   dict in `stream_data_map` e la cache ne fa il fingerprint;
@@ -1161,14 +1164,21 @@ class TestVoiceStrategyTimeModeInheritance:
 # (`test_le_stocastiche_ricevono_rng_id_non_stream_id`).
 #
 # La sesta la introduce la tabella stessa, e i blocchi copiati non potevano
-# violarla: gli hook `_take_voice_*_keys` sono metodi di Stream, e il wiring
-# deve raggiungerli come tali (`test_gli_hook_delle_dimensioni_passano_per_lo_stream`).
+# violarla: gli hook `_take_voice_*_keys` sono metodi dell'istanza che esegue
+# il wiring, e il wiring deve raggiungerli come tali
+# (`test_gli_hook_delle_dimensioni_passano_per_il_controller`).
 #
-# Due ancora riguardano lo stato che il wiring scrive sullo Stream invece di
-# restituirlo, `_voice_pointer_normalized`: ha un default anche quando il
-# sotto-blocco manca (`test_senza_le_dimensioni_speciali_restano_i_default`), e
-# il valore letto dal pointer sopravvive alle dimensioni che passano dopo per
-# lo stesso passo comune (`test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream`).
+# Due ancora riguardano l'unita' dell'offset di pointer, che il wiring
+# scriveva sullo Stream invece di restituirla (`_voice_pointer_normalized`): ha
+# un default anche quando il sotto-blocco manca
+# (`test_senza_le_dimensioni_speciali_restano_i_default`), e il valore letto dal
+# pointer sopravvive alle dimensioni che passano dopo per lo stesso passo
+# comune (`test_gli_effetti_di_ogni_ramo_convivono_nello_stesso_stream`).
+#
+# Da #284 il wiring sta nel controller del blocco, VoicesController, e le
+# invarianti sono traslocate con lui: l'unita' dell'offset e' il suo attributo
+# `pointer_normalized`, gli hook sono suoi metodi, e lo Stream non scrive piu'
+# lo stato delle voci (`test_lo_stream_non_scrive_lo_stato_delle_voci`).
 
 import copy
 import itertools
@@ -1239,15 +1249,15 @@ class TestVoicesWiring:
         quella dimensione. Con quattro blocchi copiati bastava: ogni blocco
         toccava solo il proprio stato. Col passo unico lo stesso codice gira
         anche per le dimensioni che vengono dopo, e il pan viene dopo il
-        pointer: un `_voice_pointer_normalized = False` scritto nel passo
-        comune, come default per dimensione, cancellerebbe il `normalized:
-        true` appena letto. L'offset delle voci verrebbe letto in secondi
+        pointer: un `pointer_normalized = False` scritto nel passo comune,
+        come default per dimensione, cancellerebbe il `normalized: true`
+        appena letto. L'offset delle voci verrebbe letto in secondi
         invece che come frazione del sample, senza nessun errore.
         """
         s = _build_stream_tm(copy.deepcopy(_VOICES_OGNI_RAMO), time_mode='normalized')
         vm = s.voice_manager
         # pointer: la chiave di blocco, e lo step envelope-like diventato Envelope
-        assert s._voice_pointer_normalized is True
+        assert s._voices_controller.pointer_normalized is True
         assert isinstance(vm._pointer_strategy.step, Envelope)
         # pitch: la chiave di blocco, e la progressione sottratta alla
         # conversione e scalata sulla duration (time_mode iniettato)
@@ -1321,13 +1331,30 @@ class TestVoicesWiring:
         il loro default: pointer in secondi, pitch in semitoni.
 
         Il default va scritto anche quando la dimensione manca: `_create_grain`
-        legge `_voice_pointer_normalized` a ogni grano, e il `getattr` con cui
-        lo fa nasconderebbe un attributo mai inizializzato invece di segnalarlo.
+        legge `pointer_normalized` del controller a ogni grano, e un attributo
+        mai inizializzato sarebbe un AttributeError al primo grano di uno
+        stream senza `voices:`.
         """
         s = _build_stream(voices)
-        assert s._voice_pointer_normalized is False
+        assert s._voices_controller.pointer_normalized is False
         assert isinstance(s.voice_manager.pitch_unit, EdoUnit)
         assert s.voice_manager.pitch_unit.divisions == 12
+
+    def test_lo_stream_non_scrive_lo_stato_delle_voci(self):
+        """Il wiring sta nel suo controller (#284): lo `Stream` non scrive
+        piu' quel che il blocco `voices:` produce, lo legge dal controller.
+
+        Erano quattro attributi scritti sullo `Stream` invece che restituiti,
+        e uno — l'unita' dell'offset di pointer — si rileggeva a ogni grano.
+        Restano le tre property della superficie di lettura."""
+        s = _build_stream(copy.deepcopy(_VOICES_OGNI_RAMO))
+
+        for attributo in ('_voice_manager', '_num_voices', '_scatter',
+                          '_voice_pointer_normalized'):
+            assert not hasattr(s, attributo), attributo
+        assert s.voice_manager.max_voices == 3
+        assert s.num_voices.get_value(0.0) == pytest.approx(3.0)
+        assert s.scatter.get_value(0.0) == pytest.approx(0.0)
 
     def test_le_stocastiche_ricevono_rng_id_non_stream_id(self):
         """L'identita' iniettata nel kwarg `stream_id` e' `rng_id` (#169).
@@ -1369,23 +1396,27 @@ class TestVoicesWiring:
         ('_take_voice_pointer_keys',
          {'num_voices': 2, 'pointer': {'strategy': 'linear', 'step': 0.1}}),
     ])
-    def test_gli_hook_delle_dimensioni_passano_per_lo_stream(self, metodo, voices):
+    def test_gli_hook_delle_dimensioni_passano_per_il_controller(self, metodo, voices):
         """La riga di `_VOICE_AXES` nomina l'hook, non ne tiene la funzione.
 
         Una tupla scritta nel corpo della classe cattura la funzione nel momento
         in cui la classe viene definita, e il wiring la chiamerebbe scavalcando
-        l'istanza: un `patch.object(Stream, ...)` — idioma della suite, vedi
-        `tests/core/test_stream.py` — o l'override di una sottoclasse non
-        verrebbero mai raggiunti, senza che niente lo dica. Il metodo resterebbe
-        leggibile e patchabile, e non sarebbe piu' quello che gira.
+        l'istanza: un `patch.object(VoicesController, ...)` — idioma della
+        suite, vedi `tests/core/test_stream.py` — o l'override di una
+        sottoclasse non verrebbero mai raggiunti, senza che niente lo dica. Il
+        metodo resterebbe leggibile e patchabile, e non sarebbe piu' quello che
+        gira. Fino a #284 il bersaglio era lo Stream; la proprieta' e' la
+        stessa.
         """
-        originale = getattr(Stream, metodo)
+        from pge.controllers.voices_controller import VoicesController
+
+        originale = getattr(VoicesController, metodo)
         chiamate = []
 
         def spia(self, *args, **kwargs):
-            chiamate.append(self.stream_id)
+            chiamate.append(self._config.context.stream_id)
             return originale(self, *args, **kwargs)
 
-        with patch.object(Stream, metodo, spia):
+        with patch.object(VoicesController, metodo, spia):
             _build_stream(voices, stream_id='spiato')
         assert chiamate == ['spiato']
