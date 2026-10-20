@@ -82,9 +82,13 @@ def window_name_map(stream):
     """Mappa table_num -> nome finestra, invertendo stream.window_table_map.
 
     Il grano porta il numero di tabella; per disegnarne la silhouette serve il
-    nome. Mappa assente -> {}: chi disegna ripiega sulla freccia.
+    nome. Mappa non assegnata (None) -> {}: chi disegna ripiega sulla freccia.
+
+    Lettura diretta, senza default: lo Stream dichiara sempre l'attributo
+    (#283), e un oggetto che non ce l'ha e' un rename, che deve essere un
+    errore e non una partitura con le sole frecce (#285).
     """
-    table_map = getattr(stream, 'window_table_map', None)
+    table_map = stream.window_table_map
     if not table_map:
         return {}
     return {num: name for name, num in table_map.items()}
