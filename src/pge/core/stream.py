@@ -17,7 +17,7 @@ from __future__ import annotations
 import random
 import warnings
 from math import ceil, floor, log10
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from pge.core.grain import Grain
 from pge.envelopes.envelope import Envelope, create_scaled_envelope, scale_raw_param_values
@@ -29,6 +29,7 @@ from pge.shared.constants import SECONDS_PER_MILLISECOND
 from pge.shared.utils import get_sample_duration
 from pge.shared.exceptions import (
     ConfigError,
+    EngineRuntimeError,
     InvalidFieldValueError,
     InvalidStrategyConfigError,
     MissingFieldError,
@@ -41,19 +42,14 @@ from pge.parameters.read_direction import (
     READ_DIRECTION_FIELD,
     normalize_read_direction,
 )
-from pge.core.stream_config import (
-    StreamConfig,
-    StreamContext,
-    resolve_stream_duration,
-    resolve_stream_onset,
-)
+from pge.core.stream_config import StreamConfig, StreamContext
 from pge.controllers.voice_manager import VoiceManager, VoiceConfig
 from pge.parameters.pitch_unit import make_pitch_unit
 from pge.strategies.voice_pitch_strategy import VoicePitchStrategyFactory, SEMITONE_LOCKED
 from pge.strategies.voice_onset_strategy import VoiceOnsetStrategyFactory
 from pge.strategies.voice_pointer_strategy import VoicePointerStrategyFactory
 from pge.strategies.voice_pan_strategy import VoicePanStrategyFactory
-from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory, OverflowMarginClipStrategy
+from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
 from pge.strategies.strategie import nominal_value
 from dataclasses import dataclass, fields, MISSING as dataclass_MISSING
 
@@ -181,8 +177,10 @@ class Stream:
         # _build_voice_strategy (il passo comune di _init_voice_manager, #186)
         # e in StreamConfig per gli RNG per-componente.
         self.seed = seed
-        # Directory sample iniettata: usata nei due call-site di
-        # get_sample_duration (qui e in _init_stream_context).
+        # Directory sample iniettata. Il sample si cerca qui sotto con
+        # l'argomento, una volta sola (issue #283): l'attributo resta, ma il
+        # motore non lo rilegge, e cambiarlo dopo la costruzione non sposta
+        # niente.
         self.samples_dir = samples_dir
         # === 3. CONFIGURATION ===
         sample = params.get('sample')
@@ -205,7 +203,7 @@ class Stream:
             StreamContext.from_yaml(params, sample_dur_sec=sample_dur),
             seed=seed,
         )
-        self._init_stream_context(params)
+        self._init_stream_context(config.context)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
         # Da qui in poi grain.duration e' in secondi qualunque sia l'unita'
         # dichiarata nello YAML, e con lei grain.duration_range — tranne dove
@@ -229,7 +227,11 @@ class Stream:
             margin=config.clip_margin,
         )
         # === 8. RIFERIMENTI CSOUND (assegnati da Generator) ===
+        # `Generator._create_stream` li assegna dopo la costruzione, e la
+        # generazione dei grani li pretende entrambi: `generate_grains` dice
+        # quale manca invece di morire dentro `_create_grain` (issue #283).
         self.sample_table_num: Optional[int] = None
+        self.window_table_map: Optional[Dict[str, int]] = None
         self.envelope_table_num: Optional[int] = None
         # === 9. STATO ===
         # Generazione lazy dei grani (issue #117): i backing field restano vuoti
@@ -267,9 +269,9 @@ class Stream:
         Oggi il ramo plurale non scatta mai da qui: i campi richiesti sono due,
         stream_id e sample, e `sample` e' controllato prima in __init__, che si
         ferma li'. Quindi `missing` e' al massimo {'stream_id'}. Il sorted() e
-        il ramo plurale restano per il prossimo campo di contesto senza default
-        — e sono ancora raggiungibili da chi chiama questo metodo bypassando
-        __init__ (tests/core/test_stream.py).
+        il ramo plurale restano per il prossimo campo di contesto senza default.
+        Nessun test li raggiunge piu' saltando __init__ (issue #283): il
+        messaggio plurale lo prova `tests/shared/test_engine_exceptions.py`.
         """
         missing = self._required_context_fields() - set(params.keys())
         if missing:
@@ -278,23 +280,30 @@ class Stream:
             err.stream_id = stream_id
             raise err
 
-    def _init_stream_context(self, params):
-        self._check_required_context_fields(params, params.get('stream_id', 'unknown'))
-        for key in self._required_context_fields():
-            setattr(self, key, params[key])
-        # getattr: il metodo e' esercitato nei test anche su istanze create
-        # con object.__new__ (bypass di __init__), dove samples_dir manca.
-        self.sample_dur_sec = get_sample_duration(
-            self.sample, base_path=getattr(self, 'samples_dir', None))
-        # onset (issue #220) e duration (issue #205) sono fuori dai campi
-        # obbligatori: il setattr sopra non le scrive piu', vanno risolte qui
-        # con la stessa regola di StreamContext.from_yaml. Senza queste righe
-        # gli attributi non esistono e la prima generazione di grani solleva
-        # AttributeError (self.onset + elapsed_time + voice_config.onset_offset),
-        # insieme a page_layout, score_visualizer, i due renderer, sv_exporter,
-        # reaper_project_writer e grain_json_writer, che leggono stream.onset.
-        self.onset = resolve_stream_onset(params)
-        self.duration = resolve_stream_duration(params, self.sample_dur_sec)
+    def _init_stream_context(self, context: StreamContext) -> None:
+        """I campi di contesto dello Stream sono quelli del contesto che ha
+        appena costruito (issue #283).
+
+        Prima li ri-derivava dal dizionario con le stesse funzioni che
+        `StreamContext.from_yaml` aveva gia' chiamato: due copie della stessa
+        regola, tenute allineate chiamando lo stesso helper, e l'header del
+        sample letto due volte. Qui il contesto e' gia' validato — i campi
+        obbligatori li ha controllati `_check_required_context_fields` — e
+        `onset` (issue #220) e `duration` (issue #205) gia' risolti.
+
+        Restano attributi e non diventano property sul contesto, che e'
+        congelato: `page_layout`, `score_visualizer`, i renderer, gli export e
+        la generazione dei grani li leggono come attributi dello stream.
+
+        I campi obbligatori si copiano dallo stesso elenco che
+        `_check_required_context_fields` pretende dallo YAML: il prossimo campo
+        di contesto senza default arriva sullo stream senza toccare qui.
+        """
+        for campo in self._required_context_fields():
+            setattr(self, campo, getattr(context, campo))
+        self.sample_dur_sec = context.sample_dur_sec
+        self.onset = context.onset
+        self.duration = context.duration
 
     def _init_stream_parameters(self, params: dict, config: StreamConfig) -> None:
         """
@@ -762,7 +771,12 @@ class Stream:
 
         Returns:
             List[List[Grain]]: grani organizzati per voce (voce 0 = riferimento)
+
+        Raises:
+            EngineRuntimeError: se mancano i riferimenti alle tabelle che il
+                Generator assegna dopo la costruzione (issue #283).
         """
+        self._check_generator_references()
         max_v = self._voice_manager.max_voices
 
         # Struttura per raccogliere grani per voce (pre-allocata per max_voices)
@@ -824,17 +838,42 @@ class Stream:
 
         # Post-process: applica GrainClipStrategy (Plan 001 U2).
         # stream.voices diventa l'unica fonte di verita' su quali grain esistono.
-        # Fallback per mock stream creati con object.__new__ senza __init__.
-        clip_strategy = getattr(self, '_clip_strategy', None)
-        if clip_strategy is None:
-            clip_strategy = OverflowMarginClipStrategy(margin=0.0)
         # Assegna ai backing field, non alle property: il getter di .voices
         # innescherebbe ricorsivamente generate_grains (generated ancora False).
-        self._voices = clip_strategy.apply(all_voice_grains, self)
+        self._voices = self._clip_strategy.apply(all_voice_grains, self)
         self.generated = True
 
         return self._voices
     
+    def _check_generator_references(self) -> None:
+        """I riferimenti alle tabelle ci sono, o un errore dice quali mancano.
+
+        Li assegna `Generator._create_stream` dopo la costruzione: lo stream
+        non sa che numero abbiano le tabelle, lo sa il FtableManager. Uno
+        Stream costruito da fuori e letto con `.voices` moriva dentro
+        `_create_grain`, con un `AttributeError` sulla mappa delle finestre o,
+        assegnata quella, col `TypeError` della validazione di `Grain` sulla
+        sample table: due errori che non dicevano ne' cosa mancava ne' chi lo
+        doveva fornire.
+        """
+        mancanti = []
+        if self.sample_table_num is None:
+            mancanti.append('sample_table_num')
+        if self.window_table_map is None:
+            mancanti.append('window_table_map')
+        if mancanti:
+            # Lo stream lo nomina il contesto (`stream_id`, la riga `Stream:`
+            # di `user_message`), non la testa: errors.md vuole che il
+            # contesto non ripeta la testa.
+            err = EngineRuntimeError(
+                f"Generazione dei grani senza {' e '.join(mancanti)}: i "
+                "riferimenti alle tabelle li assegna il Generator dopo la "
+                "costruzione (Generator._create_stream). Fuori dal Generator "
+                "vanno assegnati prima di leggere .voices."
+            )
+            err.stream_id = self.stream_id
+            raise err
+
     def _create_grain(self,
                       elapsed_time: float,
                       grain_dur: float,
@@ -877,7 +916,7 @@ class Stream:
         # intero. calculate() restituisce già la posizione reale di lettura in
         # [0, sample_dur): audio e partitura usano lo stesso valore (issue #79).
         voice_pointer_offset = voice_config.pointer_offset
-        if getattr(self, '_voice_pointer_normalized', False):
+        if self._voice_pointer_normalized:
             voice_pointer_offset *= self.sample_dur_sec
         pointer_pos = self._pointer.calculate(
             elapsed_time, grain_dur, grain_reverse, voice_offset=voice_pointer_offset

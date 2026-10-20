@@ -38,7 +38,8 @@ def stream(build_stream):
 
     `build_stream` costruisce lo Stream attraverso `__init__`; i riferimenti
     Csound (sample table, mappa finestre) li assegna normalmente il Generator,
-    quindi vanno forniti qui o `_create_grain` non arriva a costruire il Grain.
+    quindi vanno forniti qui o la generazione si ferma con l'errore che li
+    nomina (issue #283).
     """
     s = build_stream()
     s.sample_table_num = 1

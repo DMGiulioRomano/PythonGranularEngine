@@ -30,8 +30,9 @@ def resolve_stream_duration(yaml_data: dict, sample_dur_sec: float) -> float:
     A riposo lo stream risintetizza il sample, quindi l'unica durata non
     arbitraria e' quella del file: `duration` e' un override compositivo.
 
-    Punto unico di risoluzione: la usano sia StreamContext.from_yaml sia
-    Stream._init_stream_context, che scrivono la stessa durata su due oggetti.
+    Punto unico di risoluzione: la chiama StreamContext.from_yaml, e lo Stream
+    legge la durata dal contesto che ha costruito (issue #283). Prima la
+    risolveva una seconda volta, scrivendo la stessa durata su due oggetti.
     """
     if stream_duration_is_implicit(yaml_data):
         return sample_dur_sec
@@ -66,8 +67,8 @@ def resolve_stream_onset(yaml_data: dict) -> float:
     default e' la costante 0.0, non un valore derivato dal file audio. E' il
     motivo per cui qui il fingerprint della cache non si muove.
 
-    Punto unico di risoluzione: la usano sia StreamContext.from_yaml sia
-    Stream._init_stream_context, che scrivono lo stesso onset su due oggetti.
+    Punto unico di risoluzione: la chiama StreamContext.from_yaml, e lo Stream
+    legge l'onset dal contesto che ha costruito (issue #283).
     """
     if stream_onset_is_implicit(yaml_data):
         return 0.0
