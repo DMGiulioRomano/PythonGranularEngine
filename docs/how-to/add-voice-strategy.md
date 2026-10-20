@@ -6,7 +6,7 @@ tags: [voices, strategy, extension]
 sources:
   - src/pge/strategies/
   - src/pge/strategies/registry.py
-  - src/pge/core/stream.py
+  - src/pge/controllers/voices_controller.py
   - src/pge/shared/seeding.py
 last_synced_commit: cef5050
 entry_for: [add-voice-strategy]
@@ -52,22 +52,24 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
    del registry invece che per codice ripetuto in ogni modulo. La firma e'
    la stessa su tutti e quattro — `register_voice_<axis>_strategy(name,
    strategy_class)` — e la mappa resta un `dict` a tutti gli effetti.
-4. I kwarg della strategy non chiedono wiring. `Stream._build_voice_strategy`
-   (`src/pge/core/stream.py`) e' il passo unico delle quattro dimensioni
-   (issue #186): passa ogni kwarg per `_parse_strategy_kwarg`, che rende
+4. I kwarg della strategy non chiedono wiring.
+   `VoicesController._build_voice_strategy`
+   (`src/pge/controllers/voices_controller.py`, il controller del blocco
+   `voices:`, issue #284) e' il passo unico delle quattro dimensioni (issue
+   #186): passa ogni kwarg per `_parse_strategy_kwarg`, che rende
    envelope quelli che ne hanno la forma, e inietta `stream_id`/`seed` se la
    strategy si chiama `stochastic`.
 
-   `stream.py` va toccato in tre casi. I primi due stanno nel
-   `take_block_keys` della dimensione in `Stream._VOICE_AXES`: un kwarg con la
-   forma di un envelope che envelope non e' (come `progression` di
-   `chord_progression`), da sottrarre alla conversione; oppure una chiave di
-   blocco, config della dimensione e non della strategy (come `unit` del pitch
-   o `normalized` del pointer). Pitch e pointer un `take_block_keys` ce l'hanno
-   gia' (`_take_voice_pitch_keys`, `_take_voice_pointer_keys`); onset e pan
-   no: si scrive il metodo su `Stream` e se ne mette il *nome*, come stringa,
-   nella riga di tabella. `_build_voice_strategy` lo risolve sull'istanza,
-   quindi un override o un `patch.object` lo raggiungono.
+   `voices_controller.py` va toccato in tre casi. I primi due stanno nel
+   `take_block_keys` della dimensione in `VoicesController._VOICE_AXES`: un
+   kwarg con la forma di un envelope che envelope non e' (come `progression`
+   di `chord_progression`), da sottrarre alla conversione; oppure una chiave
+   di blocco, config della dimensione e non della strategy (come `unit` del
+   pitch o `normalized` del pointer). Pitch e pointer un `take_block_keys` ce
+   l'hanno gia' (`_take_voice_pitch_keys`, `_take_voice_pointer_keys`); onset
+   e pan no: si scrive il metodo sul controller e se ne mette il *nome*, come
+   stringa, nella riga di tabella. `_build_voice_strategy` lo risolve
+   sull'istanza, quindi un override o un `patch.object` lo raggiungono.
 
    Il terzo e' una strategy stocastica nuova. L'iniezione di `stream_id`
    (che vale `rng_id`, #169) e `seed` in `_build_voice_strategy` e' decisa dal
@@ -86,7 +88,7 @@ Estendere il sistema multi-voice lungo uno degli assi: pitch, onset, pointer, pa
 | Path | Tipo |
 |------|------|
 | `src/pge/strategies/voice_<axis>_strategy.py` | nuova classe, accanto alle altre dell'asse, e sua voce in `VOICE_<AXIS>_STRATEGIES` |
-| `src/pge/core/stream.py` | solo kwarg strutturali o chiavi di blocco (`take_block_keys`), o una stocastica con un nome diverso da `stochastic` |
+| `src/pge/controllers/voices_controller.py` | solo kwarg strutturali o chiavi di blocco (`take_block_keys`), o una stocastica con un nome diverso da `stochastic` |
 | `tests/strategies/test_voice_<axis>_strategy.py` | nuovi test |
 
 ## Test da aggiornare
@@ -109,7 +111,7 @@ make tests
 ```
 
 YAML con `voices: {num_voices: N, <chiave>: {strategy: <nome>, ...}}` e ascolto del risultato.
-`<chiave>` e' la chiave YAML della riga in `Stream._VOICE_AXES` (`pitch`,
+`<chiave>` e' la chiave YAML della riga in `VoicesController._VOICE_AXES` (`pitch`,
 `onset_offset`, `pointer`, `pan`), non il nome dell'asse usato negli altri
 passi: per l'onset le due differiscono, e un `onset:` dentro `voices:` viene
 ignorato senza errore — la strategy non viene nemmeno costruita, e l'ascolto

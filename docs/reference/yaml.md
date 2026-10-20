@@ -2500,7 +2500,8 @@ mantenuto fino alla fine (hold).
 
 Tutti i parametri scalari delle voice strategy (`step`, `pitch_range`,
 `pointer_range`, `max_offset`, `base`, `spread`) accettano envelope. Il parsing
-avviene in `Stream._init_voice_manager` via `_parse_strategy_kwarg`, che usa
+avviene nel controller del blocco, `VoicesController` (issue #284), via
+`_parse_strategy_kwarg`, che usa
 `Envelope.is_envelope_like` per discriminare. Una lista o un dict che envelope
 non è (`step: []`, `pitch_range: [1, 2, 3]`, un dict senza `points`) è
 `InvalidFieldValueError` su `voices.<asse>.<kwarg>` al parse (issue #288):
@@ -2566,7 +2567,7 @@ in silenzio.
 
 `num_voices` è un caso particolare: viene parsato come `Parameter` che ammette
 envelope, ma il `VoiceManager` pre-alloca `max_voices` pari al picco massimo dei
-breakpoint (vedere `Stream._init_voice_manager`). Le voci eccedenti il valore
+breakpoint (vedere `VoicesController`). Le voci eccedenti il valore
 istantaneo di `num_voices(t)` non vengono renderizzate al tempo `t`.
 
 ```yaml
@@ -2684,7 +2685,7 @@ un envelope dal YAML al runtime è:
 - `src/pge/parameters/loop_unit.py` — vocabolario di `loop_unit` (`LOOP_UNITS`) e
   chiavi che interpreta (`LOOP_UNIT_SCOPE`)
 - `src/pge/controllers/window_selection_strategy.py` — `_validate_curve_range`
-- `src/pge/core/stream.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy
+- `src/pge/controllers/voices_controller.py` — `_parse_strategy_kwarg` per envelope nelle voice strategy
 
 ---
 

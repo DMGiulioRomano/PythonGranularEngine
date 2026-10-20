@@ -7,6 +7,7 @@ sources:
   - src/pge/core/stream.py
   - src/pge/core/stream_config.py
   - src/pge/controllers/voice_manager.py
+  - src/pge/controllers/voices_controller.py
   - src/pge/controllers/pointer_controller.py
   - src/pge/rendering/envelope_extractor.py
   - src/pge/engine/generator.py
@@ -328,7 +329,8 @@ decisione su quando esce `grains`.
 
 **La proiezione.** Dopo le tre, `stream.py` starebbe intorno alle 360 righe di
 codice se `grains` esce, intorno alle 385 se resta fino alla prossima major. È
-una stima: #284 chiede di rimisurare e di scrivere il numero qui.
+una stima: #284 chiede di rimisurare e di scrivere il numero qui, e il numero
+misurato è nel suo esito, sotto «Implicazioni codice».
 
 **Quando riaprire.** La decisione regge finché regge la misura. I segnali che
 la rimettono in discussione:
@@ -372,6 +374,20 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
   dei due manca. Il plan è in `docs/plans/done/`. Da qui #284 può partire.
 - **#284 — il blocco `voices:` al suo controller**, con il confine descritto
   sopra.
+
+  **Esito (#284): fatto.** Il wiring sta in `VoicesController`
+  (`src/pge/controllers/voices_controller.py`), che `_init_controllers`
+  costruisce dopo gli altri quattro con `(params.get('voices', {}), config)`.
+  Le property `num_voices`, `scatter` e `voice_manager` delegano a lui, la
+  generazione legge le voci da li', e l'unità dell'offset di pointer è il suo
+  attributo `pointer_normalized`, scritto anche senza il blocco. Rimisurato
+  col metodo di sopra, `stream.py` passa da 1198 righe e 546 di codice (dopo
+  #283) a 912 e 402: 144 righe di codice in meno, contro le circa 110 stimate,
+  perché nel frattempo il wiring era cresciuto da 115 a 141 righe di codice
+  (#211 e #288, l'attribuzione degli errori di forma e il rifiuto dei kwarg che
+  envelope non sono). `voices_controller.py` ha 340 righe, 165 di codice: le
+  141 traslocate più import e intestazione. La stima per dopo #285 la rifà
+  #285, che decide anche quando esce `grains`.
 - **#285 — i residui della superficie di lettura**: `grains` scaduta,
   `sampleDurSec`, `pitch_range`, `envelope_table_num`, e le due letture
   `getattr(stream, X, None)` fuori dal catalogo.
@@ -389,7 +405,7 @@ silenzio se la regola cambia.
 
 ## Vedi anche
 
-- [[multi-voice]] — il blocco `voices:` e il wiring che #284 sposta
+- [[multi-voice]] — il blocco `voices:` e il controller in cui #284 ne ha spostato il wiring
 - [[strategy-registry]] — la tabella delle dimensioni di #186 e la domanda su `SEMITONE_LOCKED`
 - [[parameter-curve]] — cosa legge `envelope_extractor` per nome, e perché
 - [[costo-rendering]] — la generazione lazy (#117) che tiene la generazione dentro lo `Stream`

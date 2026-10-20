@@ -190,6 +190,34 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   niente, perché li assegna prima di ogni lettura, e non cambia l'audio.
   `envelope_table_num` resta com'è: è materia di #285.
 
+- **Il blocco `voices:` ha il suo controller** (issue #284, la cucitura che
+  la decisione di #190 tiene). Lo `Stream` leggeva da sé un solo sotto-blocco
+  YAML per conto di un collaboratore, `voices:`, e ne scriveva il risultato su
+  di sé: `_voice_manager`, `_num_voices`, `_scatter` e
+  `_voice_pointer_normalized`, che si rileggeva a ogni grano. Ora lo legge
+  `VoicesController` (`src/pge/controllers/voices_controller.py`), con la
+  firma degli altri quattro controller, `(blocco, config)`. I tre valori che il
+  wiring prendeva dallo `Stream` — `duration`, `seed`, `stream_id` — li legge
+  da `config`, dove stavano già. Traslocano con lui `_parse_strategy_kwarg`,
+  `_VoiceAxis`, `_VOICE_AXES`, il passo comune e i due hook delle dimensioni.
+  Lo `Stream` lo costruisce in `_init_controllers`, dopo gli altri quattro, e
+  le property `num_voices`, `scatter` e `voice_manager` delegano a lui:
+  la superficie di lettura non cambia, e nemmeno l'audio. L'unità dell'offset
+  di pointer è l'attributo `pointer_normalized` del controller, con il
+  default anche senza il blocco. `stream.py` passa da 546 a 402 righe di
+  codice (da 1198 a 912 in tutto), misurate col metodo della decisione; il
+  conto è in `docs/explanation/stream-decomposition.md`.
+
+  Le invarianti che la suite di #186 pinna sono traslocate col codice, e la
+  suite ora legge le voci dalle property invece che dagli attributi privati.
+  Il test degli hook patcha il controller invece dello `Stream`, e una guardia
+  verifica che lo `Stream` non scriva più lo stato delle voci.
+  `tests/controllers/test_voices_controller.py` costruisce il controller da
+  solo, con `(blocco, config)`, e verifica che `stream_id`, `seed`/`rng_id` e
+  `duration` vengano dalla config. Chi importava `_parse_strategy_kwarg` da
+  `pge.core.stream` lo trova in `pge.controllers.voices_controller`: nessun
+  repo a valle lo importa, lo nominano solo dei commenti.
+
 - **La riga di testa del riepilogo è protocollo, e il contratto di stdout
   descrive il parser di PGE-ui com'è oggi** (issue #277).
   `docs/explanation/contratto-stdout.md` è l'unico posto in cui il contratto
