@@ -67,6 +67,13 @@ _GRAIN_DURATION_UNIT_LABELS = {
     'milliseconds': 'millisecondi',
 }
 
+_ENVELOPE_TABLE_NUM_DEPRECATO = (
+    "Stream.envelope_table_num e' deprecato (issue #285) e sara' rimosso in "
+    "PGE 10.0.0: il Generator non l'ha mai assegnato, e il motore non lo "
+    "legge. I riferimenti che la generazione usa sono sample_table_num e "
+    "window_table_map."
+)
+
 
 _STRATEGY_KWARG_HINT = (
     "un parametro di una voice strategy e' un numero, un nome o un envelope: "
@@ -230,7 +237,10 @@ class Stream:
         # quale manca invece di morire dentro `_create_grain` (issue #283).
         self.sample_table_num: Optional[int] = None
         self.window_table_map: Optional[Dict[str, int]] = None
-        self.envelope_table_num: Optional[int] = None
+        # Il terzo riferimento il Generator non l'ha mai assegnato: deprecato
+        # (issue #285), resta dietro la property `envelope_table_num` finche'
+        # esce, in 10.0.0.
+        self._envelope_table_num: Optional[int] = None
         # === 9. STATO ===
         # Generazione lazy dei grani (issue #117): i backing field restano vuoti
         # finche' qualcuno non legge le property voices/grains, che innescano
@@ -994,8 +1004,36 @@ class Stream:
 
     @property
     def sampleDurSec(self) -> float:
-        """Alias per backward compatibility."""
+        """DEPRECATA (issue #285), rimozione prevista in 10.0.0.
+
+        Alias di `sample_dur_sec`, che nessuno legge: ne' il motore, ne' i
+        repo a valle (PGE-ls, PGE-ui, gl-ls, granulation-studies, mare-nostrum,
+        il paper CIM 2026).
+        """
+        warnings.warn(
+            "Stream.sampleDurSec e' deprecata (issue #285) e sara' rimossa in "
+            "PGE 10.0.0: usa Stream.sample_dur_sec, di cui e' un alias.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.sample_dur_sec
+
+    @property
+    def envelope_table_num(self) -> Optional[int]:
+        """DEPRECATO (issue #285), rimozione prevista in 10.0.0.
+
+        Era dichiarato fra i riferimenti Csound che assegna il Generator, che
+        pero' non l'ha mai assegnato: assegna `sample_table_num` e
+        `window_table_map`. Vale None, a meno che qualcuno lo scriva da fuori;
+        per questo avvisa anche in scrittura, invece di sparire.
+        """
+        warnings.warn(_ENVELOPE_TABLE_NUM_DEPRECATO, FutureWarning, stacklevel=2)
+        return self._envelope_table_num
+
+    @envelope_table_num.setter
+    def envelope_table_num(self, value: Optional[int]) -> None:
+        warnings.warn(_ENVELOPE_TABLE_NUM_DEPRECATO, FutureWarning, stacklevel=2)
+        self._envelope_table_num = value
         
     @property
     def density(self) -> Optional[Union[float, Envelope]]:
@@ -1033,7 +1071,22 @@ class Stream:
 
     @property
     def pitch_range(self) -> Union[float, Envelope]:
-        """Espone pitch_range per ScoreVisualizer."""
+        """DEPRECATA (issue #285), rimozione prevista in 10.0.0.
+
+        Diceva di esporre pitch_range «per ScoreVisualizer», che pero' legge
+        `config['pitch_range']`, un'altra cosa con lo stesso nome; nel motore
+        non la legge nessuno, e il range del pitch non e' una curva pubblicata
+        (`envelope_extractor._curve_sources`). Senza un lettore, non ha un
+        sostituto.
+        """
+        warnings.warn(
+            "Stream.pitch_range e' deprecata (issue #285) e sara' rimossa in "
+            "PGE 10.0.0: nel motore non la legge nessuno (ScoreVisualizer "
+            "legge config['pitch_range'], un'altra cosa con lo stesso nome) e "
+            "non ha un sostituto pubblico. Se ti serve, apri una issue.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self._pitch.range
 
     @property
@@ -1117,7 +1170,12 @@ class Stream:
 
     @property
     def grains(self) -> List[Grain]:
-        """DEPRECATA (issue #201), rimozione prevista in 9.0.0.
+        """DEPRECATA (issue #201), rimozione prevista in 10.0.0.
+
+        La deprecazione e' uscita con la 9.0.0 annunciando la rimozione «in
+        9.0.0», cioe' nella versione stessa che la conteneva: la promessa era
+        mal posta, e la rimozione va alla major successiva, come chiede SemVer
+        (issue #285).
 
         Vista flat dei grani, ordinata per onset. DERIVATA da `voices`, non
         memorizzata: ricalcolata a ogni lettura. Prima era un secondo campo,
@@ -1141,7 +1199,7 @@ class Stream:
         """
         warnings.warn(
             "Stream.grains e' deprecata (issue #201) e sara' rimossa in "
-            "PGE 9.0.0: e' una vista derivata di Stream.voices, lossy "
+            "PGE 10.0.0: e' una vista derivata di Stream.voices, lossy "
             "(il Grain non porta l'indice di voce) e ordinata per onset "
             "invece che per voce. Usa "
             "'[g for voice in stream.voices for g in voice]', aggiungendo "
