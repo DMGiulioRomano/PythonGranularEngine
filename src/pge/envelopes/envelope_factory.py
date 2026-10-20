@@ -114,9 +114,14 @@ class InterpolationStrategyFactory:
         e' la stessa chiamata.
 
         Serve a chi deve rifiutare un nome prima di costruire, nominando il
-        campo (i guard di forma di `Envelope` e del builder, issue #288).
+        campo: il guard dello slot del compatto nel builder (issue #288).
         Confrontarlo con un elenco esatto sarebbe una seconda regola: `create`
         ignora maiuscole e spazi attorno, e `type: Step` rende da sempre.
+
+        Chi del nome tiene il valore passa invece da `canonical`, come il
+        `type` del dict in `Envelope` (issue #300). Sulle stringhe le due
+        risposte coincidono; su un'istanza di strategy no, perche' `create` la
+        accetta ma un'istanza non e' un nome.
         """
         try:
             cls.create(interp_type)

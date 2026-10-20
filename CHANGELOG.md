@@ -394,7 +394,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   letto senza badare a maiuscole e spazi: l'interp per-punto, quello del BP
   group, l'`interp` di `chord_progression` e quello di `grain.read_direction`
   si confrontano ancora alla lettera, come li controllano PGE-ls e gl-ls. La
-  regola è scritta in `docs/reference/yaml.md`, §4.5.
+  regola è scritta in `docs/reference/yaml.md`, §4.5, e i test la fissano in
+  entrambi i versi. Il tipo globale lo legge alla lettera anche l'editor
+  d'inviluppo di PGE-ls, che disegna e salva `type: Cubic` come `linear`
+  (PGE-ls#72).
+
+  Dalla stessa lettura viene l'unico rifiuto nuovo: un `type` del dict che non
+  è una stringa — un'istanza di `InterpolationStrategy`, che solo chi usa il
+  motore come libreria può passare — è `InvalidFieldValueError` sulla chiave
+  dell'envelope (`envelope.type` se non è passata). `create` la costruirebbe,
+  ma un'istanza non è un nome, e prima `env.type` restava l'istanza.
 
   **Cambia il suono** dei progetti che scrivono `cubic` con maiuscole o spazi
   nel `type` di un dict o nel quarto elemento di un compatto: la cubica invece

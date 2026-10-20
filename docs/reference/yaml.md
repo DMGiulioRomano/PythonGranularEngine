@@ -1982,8 +1982,12 @@ density: {type: Cubic, points: [[0, 10], [0.6, 40], [1.2, 15], [2.0, 30]]}
 quello per-punto (`[t, v, type]`, `{t, v, type}`, §2.6), quello del BP group
 (§2.7), l'`interp` di `chord_progression` e quello di `grain.read_direction`
 (§10.5). `[0.5, 30, 'Cubic']` è `InvalidFieldValueError`. PGE-ls e gl-ls
-controllano alla lettera questi stessi nomi (il tipo globale non lo leggono):
-allargarli cambierebbe la superficie che validano, e non è stato fatto.
+controllano alla lettera questi stessi nomi: allargarli cambierebbe la
+superficie che validano, e non è stato fatto.
+
+Il tipo globale gl-ls non lo legge. L'editor d'inviluppo di PGE-ls sì, e alla
+lettera: `{type: Cubic}` e lo slot `'CUBIC'` vi si disegnano come `linear`, e
+salvati dalla GUI perdono il tipo (PGE-ls#72).
 
 ---
 
