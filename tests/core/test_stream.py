@@ -170,7 +170,9 @@ def stream_factory(build_stream):
     ):
         # Il verso del grano passa dallo YAML, come in produzione: la chiave
         # `reverse:` lasciata vuota e' l'unico modo di forzarlo.
-        if reverse_mode not in ('auto', True):
+        # `is True` e non `in (..., True)`: 1 e 1.0 sono uguali a True, e
+        # passerebbero il controllo senza scrivere il verso.
+        if reverse_mode != 'auto' and reverse_mode is not True:
             raise ValueError(f"reverse_mode: 'auto' o True, non {reverse_mode!r}")
         grain = {'duration': 0.05, 'envelope': 'hanning'}
         if reverse_mode is True:
@@ -759,6 +761,15 @@ class TestCalculateGrainReverse:
 
         # Backward (True) flippato -> False
         assert result is False
+
+    @pytest.mark.parametrize('verso', [1, 1.0, False, 'forced'])
+    def test_la_factory_rifiuta_un_verso_che_non_sa_scrivere(
+            self, stream_factory, verso):
+        """La factory scrive il verso nello YAML e ne conosce due, 'auto' e
+        True. `1` e `1.0` sono uguali a True ma non sono True: passavano il
+        controllo e diventavano in silenzio uno stream in modo 'auto'."""
+        with pytest.raises(ValueError, match="reverse_mode"):
+            stream_factory(reverse_mode=verso)
 
 
 # =============================================================================

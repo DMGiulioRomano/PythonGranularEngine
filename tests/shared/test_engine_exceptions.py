@@ -508,6 +508,22 @@ def test_engine_runtime_error_is_engine_error():
     assert err.config_file is None
 
 
+def test_engine_runtime_error_sollevata_da_sola_ha_la_forma_di_errors_md():
+    """La base si solleva anche da sola (issue #283): `[ERRORE]` col
+    messaggio, poi il contesto che qualcuno ha arricchito. Senza un
+    `user_message()` suo ripiegava su `str(self)`."""
+    from pge.shared.exceptions import EngineRuntimeError
+    err = EngineRuntimeError("boom")
+    assert err.user_message() == "[ERRORE] boom"
+
+    err.stream_id = 's1'
+    err.config_file = 'configs/x.yml'
+    assert err.user_message() == (
+        "[ERRORE] boom\n"
+        "  Stream:       s1\n"
+        "  Config:       configs/x.yml")
+
+
 def test_csound_render_error_inheritance_and_message():
     from pge.shared.exceptions import (
         CsoundRenderError, EngineError, EngineRuntimeError,

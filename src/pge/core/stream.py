@@ -177,8 +177,10 @@ class Stream:
         # _build_voice_strategy (il passo comune di _init_voice_manager, #186)
         # e in StreamConfig per gli RNG per-componente.
         self.seed = seed
-        # Directory sample iniettata: dove get_sample_duration cerca il sample,
-        # letto una volta sola qui sotto (issue #283).
+        # Directory sample iniettata. Il sample si cerca qui sotto con
+        # l'argomento, una volta sola (issue #283): l'attributo resta, ma il
+        # motore non lo rilegge, e cambiarlo dopo la costruzione non sposta
+        # niente.
         self.samples_dir = samples_dir
         # === 3. CONFIGURATION ===
         sample = params.get('sample')
@@ -292,9 +294,13 @@ class Stream:
         Restano attributi e non diventano property sul contesto, che e'
         congelato: `page_layout`, `score_visualizer`, i renderer, gli export e
         la generazione dei grani li leggono come attributi dello stream.
+
+        I campi obbligatori si copiano dallo stesso elenco che
+        `_check_required_context_fields` pretende dallo YAML: il prossimo campo
+        di contesto senza default arriva sullo stream senza toccare qui.
         """
-        self.stream_id = context.stream_id
-        self.sample = context.sample
+        for campo in self._required_context_fields():
+            setattr(self, campo, getattr(context, campo))
         self.sample_dur_sec = context.sample_dur_sec
         self.onset = context.onset
         self.duration = context.duration
@@ -856,12 +862,14 @@ class Stream:
         if self.window_table_map is None:
             mancanti.append('window_table_map')
         if mancanti:
+            # Lo stream lo nomina il contesto (`stream_id`, la riga `Stream:`
+            # di `user_message`), non la testa: errors.md vuole che il
+            # contesto non ripeta la testa.
             err = EngineRuntimeError(
-                f"Lo stream '{self.stream_id}' genera i grani senza "
-                f"{' e '.join(mancanti)}: i riferimenti alle tabelle li "
-                "assegna il Generator dopo la costruzione "
-                "(Generator._create_stream). Fuori dal Generator vanno "
-                "assegnati prima di leggere .voices."
+                f"Generazione dei grani senza {' e '.join(mancanti)}: i "
+                "riferimenti alle tabelle li assegna il Generator dopo la "
+                "costruzione (Generator._create_stream). Fuori dal Generator "
+                "vanno assegnati prima di leggere .voices."
             )
             err.stream_id = self.stream_id
             raise err

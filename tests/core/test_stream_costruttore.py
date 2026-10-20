@@ -50,6 +50,22 @@ class TestIlContestoSiLeggeUnaVolta:
 
         assert letture == ['silence.wav']
 
+    def test_ogni_campo_obbligatorio_diventa_un_attributo(self, build_stream,
+                                                          monkeypatch):
+        """Il prossimo campo di contesto senza default arriva sullo Stream
+        senza toccare `_init_stream_context`: e' per lui che
+        `_check_required_context_fields` resta generico, e i due metodi
+        devono leggere lo stesso elenco. Qui il ruolo lo fa `rng_group`, un
+        campo vero del contesto, reso obbligatorio per il test."""
+        from pge.core.stream import Stream
+        monkeypatch.setattr(
+            Stream, '_required_context_fields',
+            staticmethod(lambda: {'stream_id', 'sample', 'rng_group'}))
+
+        s = build_stream(rng_group='coro')
+
+        assert s.rng_group == 'coro'
+
 
 # =============================================================================
 # 2. I RIFERIMENTI CHE ASSEGNA IL GENERATOR SONO DICHIARATI
@@ -79,8 +95,26 @@ class TestIRiferimentiDelGenerator:
         assert 'sample_table_num' in messaggio
         assert 'window_table_map' in messaggio
         assert 'Generator' in messaggio
-        assert 'nuvola' in messaggio
         assert exc.value.stream_id == 'nuvola'
+
+    def test_il_messaggio_per_l_utente_ha_la_forma_di_errors_md(
+            self, build_stream):
+        """`[ERRORE]` in testa e lo stream nella riga `Stream:`, come ogni
+        errore che la CLI stampa (errors.md, «Sintassi»). La base
+        `EngineRuntimeError` non aveva un `user_message()` suo e ripiegava su
+        `str(self)`: niente testa, e lo `stream_id` valorizzato non si vedeva.
+        Lo stream si nomina una volta: il contesto non ripete la testa."""
+        s = build_stream(stream_id='nuvola')
+
+        with pytest.raises(EngineRuntimeError) as exc:
+            s.voices
+
+        messaggio = exc.value.user_message()
+        righe = messaggio.split('\n')
+        assert righe[0].startswith('[ERRORE] ')
+        assert 'sample_table_num' in righe[0]
+        assert righe[1:] == ['  Stream:       nuvola']
+        assert messaggio.count('nuvola') == 1
 
     @pytest.mark.parametrize('assegnato,mancante', [
         ('sample_table_num', 'window_table_map'),
@@ -113,16 +147,28 @@ class TestIRiferimentiDelGenerator:
 TESTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _e_stream(nodo):
+    """`Stream` nudo o qualificato col modulo (`modulo.Stream`)."""
+    return ((isinstance(nodo, ast.Name) and nodo.id == 'Stream')
+            or (isinstance(nodo, ast.Attribute) and nodo.attr == 'Stream'))
+
+
 def _costruzioni_a_meta(albero):
-    """Le chiamate `object.__new__(Stream)` e `Stream.__new__(Stream)`."""
+    """Le chiamate `object.__new__(Stream)` e `Stream.__new__(Stream)`, con
+    `Stream` nudo o qualificato col modulo.
+
+    Non vede un alias (`S = Stream; object.__new__(S)`) ne' un `__init__`
+    sostituito con `patch.object`: e' una guardia sulle grafie, non un'analisi
+    del flusso."""
     for nodo in ast.walk(albero):
         if not (isinstance(nodo, ast.Call)
                 and isinstance(nodo.func, ast.Attribute)
                 and nodo.func.attr == '__new__'
-                and isinstance(nodo.func.value, ast.Name)
-                and nodo.func.value.id in ('object', 'Stream')):
+                and ((isinstance(nodo.func.value, ast.Name)
+                      and nodo.func.value.id == 'object')
+                     or _e_stream(nodo.func.value))):
             continue
-        if any(isinstance(a, ast.Name) and a.id == 'Stream' for a in nodo.args):
+        if any(_e_stream(a) for a in nodo.args):
             yield nodo.lineno
 
 
@@ -156,10 +202,14 @@ class TestNessunoStreamAMeta:
 
     def test_la_guardia_vede_le_due_grafie(self):
         """La controprova: senza, una guardia che non trova niente e una
-        guardia cieca si leggono uguali."""
+        guardia cieca si leggono uguali. Anche col modulo davanti: questo
+        file stesso importa `pge.core.stream as modulo`."""
         albero = ast.parse(
             "a = object.__new__(Stream)\n"
             "b = Stream.__new__(Stream)\n"
-            "c = object.__new__(Altro)\n")
+            "c = object.__new__(Altro)\n"
+            "d = object.__new__(modulo.Stream)\n"
+            "e = modulo.Stream.__new__(modulo.Stream)\n"
+            "f = modulo.Altro.__new__(modulo.Altro)\n")
 
-        assert list(_costruzioni_a_meta(albero)) == [1, 2]
+        assert list(_costruzioni_a_meta(albero)) == [1, 2, 4, 5]
