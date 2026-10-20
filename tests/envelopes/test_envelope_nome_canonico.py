@@ -20,6 +20,8 @@ Organizzazione:
 2. Lo slot interp del compatto, che l'envelope prende come proprio tipo
 3. Il nome che l'envelope tiene
 4. Attraverso lo Stream, dove la issue ha misurato
+5. Un `type` che non e' un nome
+6. Gli altri interp restano alla lettera
 
 I due lettori fuori da `Envelope` — lo stile dell'export SV e il ramo a
 gradini della partitura — sono provati accanto ai loro test:
@@ -30,6 +32,13 @@ gradini della partitura — sono provati accanto ai loro test:
 import pytest
 
 from pge.envelopes.envelope import Envelope
+from pge.envelopes.envelope_interpolation import CubicInterpolation
+from pge.parameters.read_direction import normalize_read_direction
+from pge.shared.exceptions import (
+    InvalidFieldValueError,
+    InvalidStrategyConfigError,
+)
+from pge.strategies.voice_pitch_strategy import ChordProgressionPitchStrategy
 
 PUNTI = [[0, 10], [0.6, 40], [1.2, 15], [2.0, 30]]
 ISTANTI = (0.3, 0.45, 1.5, 1.8)
@@ -181,3 +190,67 @@ class TestAttraversoLoStream:
         assert _valori(scritto) == pytest.approx(_valori(canonico))
         assert scritto.integrate(0, 2.0) == pytest.approx(
             canonico.integrate(0, 2.0))
+
+
+# =============================================================================
+# 5. UN `type` CHE NON E' UN NOME
+# =============================================================================
+
+class TestTypeCheNonEUnNome:
+    """`create` costruisce anche da un'istanza di strategy, ma l'envelope tiene
+    il nome, e un'istanza non e' un nome: il `type` del dict la rifiuta col
+    campo, come ogni nome che la factory non legge. Prima di #300 il guard era
+    `reads`, che la accettava, e `env.type` restava l'istanza."""
+
+    def test_un_istanza_di_strategy_si_rifiuta_col_campo(self):
+        istanza = CubicInterpolation()
+        with pytest.raises(InvalidFieldValueError) as exc:
+            Envelope({'type': istanza, 'points': PUNTI}, field='density')
+        assert exc.value.field == 'density'
+        assert exc.value.value is istanza
+
+
+# =============================================================================
+# 6. GLI ALTRI INTERP RESTANO ALLA LETTERA
+# =============================================================================
+
+class TestGliAltriInterpAllaLettera:
+    """Solo il tipo globale non bada alle maiuscole (reference, §4.5). Gli
+    interp per-punto, del BP group, di `chord_progression` e di
+    `grain.read_direction` si confrontano alla lettera, come li controllano
+    PGE-ls e gl-ls: se uno di questi cominciasse a leggere `Cubic`, la
+    superficie che i due validano cambierebbe senza che niente lo dica."""
+
+    # Ogni caso ha accanto la sua controprova, la stessa forma scritta
+    # canonica: il rifiuto deve venire dal nome, non da altro nel corpo.
+
+    def test_l_interp_per_punto(self):
+        Envelope([[0, 10], [0.5, 30, 'cubic'], [1, 20]], field='density')
+        with pytest.raises(InvalidFieldValueError):
+            Envelope([[0, 10], [0.5, 30, 'Cubic'], [1, 20]], field='density')
+
+    def test_l_interp_per_punto_nel_breakpoint_dict(self):
+        def corpo(tipo):
+            return [{'t': 0, 'v': 10}, {'t': 0.5, 'v': 30, 'type': tipo},
+                    {'t': 1, 'v': 20}]
+
+        Envelope(corpo('cubic'), field='density')
+        with pytest.raises(InvalidFieldValueError):
+            Envelope(corpo('Cubic'), field='density')
+
+    def test_l_interp_del_bp_group(self):
+        Envelope([[[0, 10], [0.5, 30], [1, 20]], 'cubic'], field='density')
+        with pytest.raises(InvalidFieldValueError):
+            Envelope([[[0, 10], [0.5, 30], [1, 20]], 'Cubic'], field='density')
+
+    def test_l_interp_di_chord_progression(self):
+        ChordProgressionPitchStrategy(progression=[[0, 'maj']], interp='cubic')
+        with pytest.raises(InvalidStrategyConfigError):
+            ChordProgressionPitchStrategy(progression=[[0, 'maj']],
+                                          interp='Cubic')
+
+    def test_il_type_di_read_direction(self):
+        normalize_read_direction({'type': 'step', 'points': [[0, 1], [1, -1]]})
+        with pytest.raises(InvalidFieldValueError):
+            normalize_read_direction({'type': 'Step',
+                                      'points': [[0, 1], [1, -1]]})
