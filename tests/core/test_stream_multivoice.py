@@ -163,7 +163,6 @@ def make_stream(build_stream):
         # Riferimenti alle tabelle: li assegna il Generator dopo la
         # costruzione, e la generazione li pretende.
         s.sample_table_num = 1
-        s.envelope_table_num = 2
         s.window_table_map = {'hanning': 2}
 
         # Clip strategy: passthrough per test (preserva semantiche pre-U2).

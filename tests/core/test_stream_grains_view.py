@@ -43,7 +43,6 @@ def stream(build_stream):
     """
     s = build_stream()
     s.sample_table_num = 1
-    s.envelope_table_num = 2
     s.window_table_map = {'hanning': 2}
     return s
 
@@ -179,7 +178,7 @@ class TestDeprecazione:
     """
 
     def test_leggerla_avvisa(self, stream):
-        with pytest.warns(FutureWarning, match="9.0.0"):
+        with pytest.warns(FutureWarning, match=r"10\.0\.0"):
             stream.grains
 
     def test_l_avviso_nomina_il_rimpiazzo(self, stream):

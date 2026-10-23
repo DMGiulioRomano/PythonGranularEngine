@@ -212,7 +212,6 @@ def stream_factory(build_stream):
         # Riferimenti alle tabelle: li assegna il Generator dopo la
         # costruzione, e la generazione li pretende.
         s.sample_table_num = 1
-        s.envelope_table_num = 2
         s.window_table_map = {'hanning': 2}
 
         # Clip strategy: passthrough per test (preserva semantiche pre-U2).
@@ -359,7 +358,6 @@ class TestStreamInit:
         assert s.generated is False
         assert s.sample_table_num is None
         assert s.window_table_map is None
-        assert s.envelope_table_num is None
 
     def test_missing_sample_raises_value_error(self):
         """Stream senza 'sample' -> ValueError leggibile."""
@@ -780,10 +778,12 @@ class TestStreamProperties:
     """Test properties per backward compatibility con ScoreVisualizer."""
 
     def test_sampleDurSec_alias(self, stream_factory):
-        """sampleDurSec restituisce sample_dur_sec."""
+        """sampleDurSec restituisce sample_dur_sec, e avvisa: e' deprecata
+        (#285, tests/core/test_stream_deprecazioni.py)."""
         s = stream_factory(sample_dur_sec=7.5)
 
-        assert s.sampleDurSec == 7.5
+        with pytest.warns(FutureWarning):
+            assert s.sampleDurSec == 7.5
 
 
     def test_density_property(self, stream_factory):
@@ -859,11 +859,13 @@ class TestStreamProperties:
         assert s.loop_dur == 0.5
 
     def test_pitch_range_property(self, stream_factory):
-        """pitch_range dal PitchController."""
+        """pitch_range dal PitchController, e avvisa: e' deprecata (#285,
+        tests/core/test_stream_deprecazioni.py)."""
         s = stream_factory()
         s._pitch.range = 2.0
 
-        assert s.pitch_range == 2.0
+        with pytest.warns(FutureWarning):
+            assert s.pitch_range == 2.0
 
     def test_scatter_property(self, stream_factory):
         """scatter espone il Parameter privato _scatter (simmetrico a num_voices)."""

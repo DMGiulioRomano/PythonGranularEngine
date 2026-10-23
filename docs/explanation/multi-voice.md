@@ -643,7 +643,8 @@ Con N voci e densità costante, `len(voices[i])` è uguale per ogni voce attiva:
 il totale dei grani è `N × len(singola_voce)`.
 
 `Stream.grains` esiste ancora — vista flat e ordinata per onset — ma è
-**derivata** da `voices` e **deprecata** (issue #201): sarà rimossa in 9.0.0.
+**derivata** da `voices` e **deprecata** (issue #201): sarà rimossa in 10.0.0,
+la major dopo quella che l'ha deprecata, la 9.0.0 (#285).
 Non è memorizzata e non ha una setter: assegnarla lasciava `voices` vuoto e lo
 stream renderizzava silenzio senza segnalare nulla. Chi ha bisogno della lista
 piatta la costruisce dove serve:

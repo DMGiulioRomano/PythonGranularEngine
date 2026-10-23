@@ -72,9 +72,11 @@ passare dalla CLI né monkey-patchare i globali.
    senza handler, che `logging` manda a `lastResort` finché l'applicazione
    non configura il logging (oggi `Envelope`, per un `type` scritto
    sull'ultimo breakpoint), i `FutureWarning` delle API deprecate
-   (`Stream.grains`, `window_shape_min_px`) e, da `load_generator`, l'avviso
-   `[SEED] Il file importato ...` quando uno stream importato con `file:`
-   dichiara un seed diverso da quello del master (#290).
+   (`Stream.grains`, `Stream.sampleDurSec`, `Stream.pitch_range`,
+   `Stream.envelope_table_num`, `window_shape_min_px`) e, da
+   `load_generator`, l'avviso `[SEED] Il file importato ...` quando uno
+   stream importato con `file:` dichiara un seed diverso da quello del
+   master (#290).
 
    Chiudere entrambi i canali vuole entrambe le redirezioni. Spegnere la
    console del clip logger (`configure_clip_logger(console_enabled=False)`,

@@ -9,11 +9,14 @@ sources:
   - src/pge/controllers/voice_manager.py
   - src/pge/controllers/pointer_controller.py
   - src/pge/rendering/envelope_extractor.py
+  - src/pge/rendering/grain_visuals.py
+  - src/pge/rendering/score_visualizer.py
   - src/pge/engine/generator.py
   - tests/conftest.py
   - tests/core/test_stream.py
   - tests/core/test_stream_multivoice.py
   - tests/core/test_stream_costruttore.py
+  - tests/core/test_stream_deprecazioni.py
   - tests/core/test_stream_voices_yaml.py
   - tests/rendering/test_envelope_extractor.py
 last_synced_commit: 9d28726
@@ -375,6 +378,35 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
 - **#285 — i residui della superficie di lettura**: `grains` scaduta,
   `sampleDurSec`, `pitch_range`, `envelope_table_num`, e le due letture
   `getattr(stream, X, None)` fuori dal catalogo.
+
+  **Esito (#285): fatto.** `grains` esce alla 10.0.0, la major successiva:
+  era stata deprecata nella 9.0.0 annunciando la rimozione «in 9.0.0», cioè
+  nella versione che la conteneva, e la prima promessa che SemVer consente è
+  la major dopo. `sampleDurSec`, `pitch_range` ed `envelope_table_num` escono
+  con lei, con lo stesso `FutureWarning`: nessun lettore nei sette repo né
+  negli script del paper CIM 2026, ed `envelope_table_num`, che era un
+  attributo e da fuori si poteva scrivere, avvisa anche in scrittura.
+  `tests/core/test_stream_deprecazioni.py` lega la versione annunciata a
+  quella di `pyproject.toml`: una 10.0.0 senza la rimozione è un test rosso,
+  non un avviso che parla del passato.
+
+  Le letture silenziose erano tre, non due: anche
+  `envelope_extractor._voice_curves` leggeva `voice_manager` con un default,
+  e la guardia della superficie salta proprio quella riga del catalogo, che
+  non si legge per nome. Per le due property la prova è questa: tolta dallo
+  `Stream`, la suite restava verde. Ora sono letture dirette, ciascuna con un
+  test su uno `Stream` vero, e la stessa prova rende la suite rossa;
+  `window_table_map`, che non è una property ma l'attributo che assegna il
+  Generator, ha un test che lega la mappa ai numeri che la generazione scrive
+  nei grani. Uno dei test esistenti diceva di misurare la silhouette della
+  finestra e, senza la mappa, misurava la freccia, alta uguale.
+
+  Rimisurato col metodo di sopra, gli avvisi costano a `stream.py` 28 righe
+  di codice (58 in tutto), e la rimozione ne toglie 60. Con #284, che non
+  tocca le stesse righe, il file ha 430 righe di codice e alla 10.0.0 ne
+  avrà 370: lì la proiezione regge (diceva 360), mentre fino ad allora sono
+  430 contro 385, perché la proiezione contava `grains` e non gli avvisi
+  delle altre tre, che escono con loro.
 
 Lo stadio 3 dello stesso plan — dare un nome al read-model — è deciso qui, e la
 decisione è di non farlo.

@@ -491,11 +491,38 @@ class TestWindowNameMap:
         stream = SimpleNamespace(window_table_map={'hanning': 1, 'gaussian': 2})
         assert window_name_map(stream) == {1: 'hanning', 2: 'gaussian'}
 
-    def test_missing_map_is_empty(self):
-        """Senza mappa non ci sono nomi da risolvere: chi disegna ripiega
-        interamente sulla freccia."""
-        assert window_name_map(SimpleNamespace()) == {}
+    def test_map_not_assigned_is_empty(self):
+        """`None` e' lo stato che il costruttore dichiara finche' il Generator
+        non assegna le tabelle (#283): non ci sono nomi da risolvere, e chi
+        disegna ripiega interamente sulla freccia."""
         assert window_name_map(SimpleNamespace(window_table_map=None)) == {}
+
+    def test_an_object_without_the_attribute_is_an_error(self):
+        """Lo Stream dichiara sempre l'attributo (#283): un oggetto che non
+        ce l'ha non e' uno stream senza mappa, e' un nome che non corrisponde
+        piu'. Letta con un default, un rename spegneva le silhouette senza
+        errore e la partitura ripiegava sulle frecce (#285)."""
+        with pytest.raises(AttributeError, match='window_table_map'):
+            window_name_map(SimpleNamespace())
+
+    def test_a_real_stream_names_every_grain_it_generates(self, build_stream):
+        """La mappa che assegna il Generator e i numeri che la generazione
+        scrive nei grani sono la stessa cosa: ogni grano trova il nome della
+        sua finestra.
+
+        Lo Stream e' vero, non un oggetto che risponde a tutto: e' qui che
+        un rename dell'attributo diventa un test rosso invece di una
+        partitura con le frecce (#285).
+        """
+        stream = build_stream(grain={'duration': 0.05, 'envelope': 'gaussian'})
+        stream.sample_table_num = 1
+        stream.window_table_map = {'hanning': 2, 'gaussian': 3}
+
+        nomi = window_name_map(stream)
+        tabelle = {g.envelope_table for voce in stream.voices for g in voce}
+
+        assert tabelle == {3}
+        assert nomi[3] == 'gaussian'
 
 
 class TestGrainHeightMode:
