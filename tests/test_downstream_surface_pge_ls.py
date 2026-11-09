@@ -50,7 +50,9 @@ Qui si guarda che ci siano i nomi, i path e le forme da cui li chiede.
    finto. Qui il contratto e' piu' del nome: i nomi che l'exec chiede — quelli
    del corpo e quelli che si valutano al `def`, annotazioni comprese — devono
    stare nel namespace che PGE-ls passa, gli attributi di `self` che il corpo
-   legge nel suo `self` finto, gli argomenti in quelli che gli da'.
+   legge prima di averli scritti (`+=` e `del` compresi) nel suo `self` finto,
+   e la firma deve accettare i soli posizionali che gli da', senza
+   keyword-only obbligatori.
 4. **Forme** — la riga che un regex insegue, i campi che il bridge esclude per
    nome, le firme chiamate dove un'eccezione si legge come verdetto del motore.
 
@@ -107,11 +109,9 @@ LETTI_DAL_LANGUAGE_SERVER = (
 )
 
 # La parita', `tests/test_pge_parity.py`. Qui di solito il rosso c'e' — il
-# fixture `pge` o il test esplode — ma non sempre: dove la lettura e'
-# `getattr(modulo, NOME, None)` seguita da `pytest.skip`, il nome che sparisce
-# fa saltare il patto in verde (`_RIMEDI_OVERFLOW`, `DEFAULT_OUTPUT_SR`,
-# `SECONDS_PER_MILLISECOND`, `get_parameter_definition`, `ANCHOR_MIN`,
-# `RANGE_ANCHORS`, `RANGE_UNITS`).
+# fixture `pge` o il test esplode — ma non sempre: dove la lettura sta dentro
+# una guardia il nome che sparisce fa saltare il patto in verde. Quali sono lo
+# dice `TACIONO_NELLA_PARITA`, qui sotto, e lo dice il messaggio.
 IMPORTATI_DALLA_PARITA = {
     'pge.strategies.voice_pitch_strategy': (
         'VOICE_PITCH_STRATEGIES', 'CHORD_INTERVALS'),
@@ -120,7 +120,8 @@ IMPORTATI_DALLA_PARITA = {
     'pge.strategies.voice_pan_strategy': ('VOICE_PAN_STRATEGIES',),
     'pge.parameters.pitch_unit': ('PITCH_UNIT_PRESETS',),
     'pge.parameters.parameter_definitions': (
-        'GRANULAR_PARAMETERS', 'RANGE_UNITS', 'get_parameter_definition',
+        'GRANULAR_PARAMETERS', 'RANGE_UNITS', 'RANGE_UNIT_DEFAULT',
+        'RANGE_UNIT_RELATIVE', 'get_parameter_definition',
         'range_unit_is_relative'),
     'pge.parameters.parameter_schema': (
         'ALL_SCHEMAS', 'POINTER_PARAMETER_SCHEMA', 'resolve_yaml_path'),
@@ -142,6 +143,44 @@ IMPORTATI_DALLA_PARITA = {
         'TimeDistributionFactory', '_RIMEDI_OVERFLOW'),
     'pge.envelopes.envelope': (
         'create_scaled_envelope', 'scale_raw_param_values'),
+}
+
+# I nomi che la parita' legge dentro una guardia — `getattr(modulo, NOME,
+# None)` o `hasattr` seguiti da `pytest.skip`, un `try/except Exception` che
+# salta, un default scritto a mano — e cosa diventa verde di la' se spariscono.
+# Letti su PGE-ls 94b811f, guardia per guardia. Dove un nome e' letto anche
+# fuori dalla guardia, il resto della parita' esplode come al solito.
+TACIONO_NELLA_PARITA = {
+    ('pge.shared.distribution_strategy', 'RANGE_ANCHORS'):
+        "`test_range_anchors_match` salta",
+    ('pge.shared.distribution_strategy', 'ANCHOR_MIN'):
+        "`test_band_ceiling_mirror_matches_engine` salta",
+    ('pge.shared.distribution_strategy', 'ANCHOR_CENTER'):
+        "il verdetto del motore sugli envelope si chiede con un `'center'` "
+        "scritto a mano al suo posto",
+    ('pge.parameters.parser', 'GranularParser'):
+        "`test_band_ceiling_mirror_matches_engine` salta",
+    ('pge.shared.constants', 'SECONDS_PER_MILLISECOND'):
+        "`test_milliseconds_factor_matches` salta",
+    ('pge.shared.constants', 'DEFAULT_OUTPUT_SR'):
+        "`test_output_sr_matches` salta",
+    ('pge.parameters.parameter_definitions', 'get_parameter_definition'):
+        "`test_grain_duration_min_e_un_campione` salta",
+    ('pge.parameters.parameter_definitions', 'RANGE_UNITS'):
+        "`_range_unit_definitions` salta, e con lui i patti delle unita' del "
+        "`_range` e tutti quelli che eseguono `_pre_normalize_grain_params`",
+    ('pge.envelopes.time_distribution', '_RIMEDI_OVERFLOW'):
+        "`test_overflow_rimedi_come_il_motore` salta",
+    ('pge.parameters.read_direction', 'normalize_read_direction'):
+        "i tre corpus di grain.read_direction saltano",
+    ('pge.envelopes.envelope', 'create_scaled_envelope'):
+        "i due corpus di grain.read_direction che costruiscono l'envelope "
+        "saltano",
+    ('pge.parameters.read_direction', 'READ_DIRECTION_FIELD'):
+        "`_load_init_grain_reverse` salta, e con lui tutti i patti di "
+        "grain.reverse",
+    ('pge.parameters.gate_factory', 'GateFactory'):
+        "i tre corpus di deviation_probability saltano",
 }
 
 # Attributi letti su una classe, che il solo `hasattr` sul modulo non vede.
@@ -183,10 +222,15 @@ def _nomi_importati():
 
 
 def _chi_lo_legge(modulo, nome):
-    for m, nomi, se_si_muove in LETTI_DAL_LANGUAGE_SERVER:
-        if m == modulo and nome in nomi:
-            return f"il language server a runtime ({se_si_muove})"
-    return "la parita' di PGE-ls"
+    lettori = [f"il language server a runtime ({se_si_muove})"
+               for m, nomi, se_si_muove in LETTI_DAL_LANGUAGE_SERVER
+               if m == modulo and nome in nomi]
+    if nome in IMPORTATI_DALLA_PARITA.get(modulo, ()):
+        tace = TACIONO_NELLA_PARITA.get((modulo, nome))
+        lettori.append(
+            f"la parita' di PGE-ls (dentro una guardia: {tace}, in verde)"
+            if tace else "la parita' di PGE-ls")
+    return ' e '.join(lettori)
 
 
 # -----------------------------------------------------------------------------
@@ -289,25 +333,68 @@ def _nomi_liberi(funzione):
     return liberi - set(dir(builtins)) - {funzione.name}
 
 
+class _LettoreDiSelf(ast.NodeVisitor):
+    """Visita il corpo nell'ordine in cui si esegue: in un'assegnazione il
+    valore prima dei bersagli, e `self.n += 1` come una lettura seguita da
+    una scrittura. Approssima i rami con l'ordine del testo, che e' quello
+    che serve qui: un attributo scritto in un ramo e letto piu' avanti conta
+    come scritto."""
+
+    def __init__(self, nome_self):
+        self.nome_self = nome_self
+        self.scritti = set()
+        self.letti = set()
+
+    def _di_self(self, nodo):
+        return (isinstance(nodo, ast.Attribute)
+                and isinstance(nodo.value, ast.Name)
+                and nodo.value.id == self.nome_self)
+
+    def visit_Attribute(self, nodo):
+        if self._di_self(nodo):
+            if isinstance(nodo.ctx, ast.Store):
+                self.scritti.add(nodo.attr)
+            elif nodo.attr not in self.scritti:
+                # Load, e Del: `del self.x` vuole che x ci sia
+                self.letti.add(nodo.attr)
+        self.generic_visit(nodo)
+
+    def visit_Assign(self, nodo):
+        self.visit(nodo.value)
+        for bersaglio in nodo.targets:
+            self.visit(bersaglio)
+
+    def visit_AnnAssign(self, nodo):
+        if nodo.value is not None:
+            self.visit(nodo.value)
+        self.visit(nodo.target)
+
+    def visit_AugAssign(self, nodo):
+        if self._di_self(nodo.target) and nodo.target.attr not in self.scritti:
+            self.letti.add(nodo.target.attr)
+        self.visit(nodo.value)
+        self.visit(nodo.target)
+
+
 def _attributi_letti_di_self(funzione):
     """Gli attributi del primo argomento che il corpo legge senza averli
     scritti prima: quelli che il `self` finto deve avere."""
-    nome_self = funzione.args.args[0].arg
-
-    def di_self(ctx):
-        return {n.attr for n in ast.walk(funzione)
-                if isinstance(n, ast.Attribute) and isinstance(n.ctx, ctx)
-                and isinstance(n.value, ast.Name) and n.value.id == nome_self}
-
-    return di_self(ast.Load) - di_self(ast.Store)
+    argomenti = funzione.args
+    lettore = _LettoreDiSelf((argomenti.posonlyargs + argomenti.args)[0].arg)
+    for istruzione in funzione.body:
+        lettore.visit(istruzione)
+    return lettore.letti
 
 
 def _accetta_posizionali(funzione, quanti):
+    """Una chiamata con `quanti` posizionali, self compreso, e nessun
+    keyword: quella di PGE-ls."""
     argomenti = funzione.args
     tutti = len(argomenti.posonlyargs) + len(argomenti.args)
     obbligatori = tutti - len(argomenti.defaults)
-    return obbligatori <= quanti and (quanti <= tutti
-                                      or argomenti.vararg is not None)
+    keyword_only_obbligatori = any(d is None for d in argomenti.kw_defaults)
+    return (obbligatori <= quanti and not keyword_only_obbligatori
+            and (quanti <= tutti or argomenti.vararg is not None))
 
 
 # -----------------------------------------------------------------------------
@@ -318,7 +405,18 @@ class TestImportati:
 
     @pytest.mark.parametrize('modulo', _moduli_importati())
     def test_il_modulo_si_importa(self, modulo):
-        assert importlib.import_module(modulo) is not None
+        """Un modulo spostato e' un ImportError prima di ogni `hasattr`: il
+        messaggio di chi ne legge i nomi va detto qui, o non si legge mai."""
+        try:
+            importlib.import_module(modulo)
+        except ImportError as errore:
+            letture = '; '.join(
+                f"{nome}, lo legge {_chi_lo_legge(modulo, nome)}"
+                for m, nome in _nomi_importati() if m == modulo)
+            pytest.fail(
+                f"{modulo} non si importa piu' ({errore}). I suoi nomi: "
+                f"{letture}. Se lo spostamento e' voluto, aggiorna questo "
+                f"elenco e apri la issue su PGE-ls (#269)")
 
     @pytest.mark.parametrize('modulo,nome', _nomi_importati())
     def test_il_nome_c_e(self, modulo, nome):
@@ -335,6 +433,24 @@ class TestImportati:
         cls = getattr(importlib.import_module(modulo), classe)
         assert hasattr(cls, nome), (
             f"{classe}.{nome} non esiste piu': {perche} (#269)")
+
+    def test_ogni_silenzio_della_parita_e_un_nome_che_la_parita_importa(self):
+        """La giunzione dell'elenco dei patti che saltano: una voce che non e'
+        fra gli importati non verrebbe mai detta in nessun messaggio."""
+        importati = {(m, n) for m, nomi in IMPORTATI_DALLA_PARITA.items()
+                     for n in nomi}
+        assert set(TACIONO_NELLA_PARITA) <= importati
+
+    def test_il_messaggio_dice_chi_legge_e_se_di_la_si_tace(self):
+        """Un nome letto da entrambi li nomina entrambi; uno che la parita'
+        legge dentro una guardia dice quale patto salta in verde."""
+        anchors = _chi_lo_legge('pge.shared.distribution_strategy',
+                                'RANGE_ANCHORS')
+        assert 'language server' in anchors and 'test_range_anchors_match' in anchors
+        gate = _chi_lo_legge('pge.parameters.gate_factory', 'GateFactory')
+        assert 'deviation_probability' in gate and 'in verde' in gate
+        assert _chi_lo_legge('pge.parameters.pitch_unit',
+                             'PITCH_UNIT_PRESETS') == "la parita' di PGE-ls"
 
     def test_i_moduli_importati_sono_quelli_dichiarati_leggeri(self):
         """La giunzione con `_MODULI_SENZA_TERZE_PARTI`.
@@ -487,6 +603,35 @@ class TestFunzioniEseguite:
         assert _nomi_liberi(modulo.body[0]) == {
             'DECORO', 'Tipo', 'DEFAULT', 'Ritorno', 'LAMBDA_G', 'INTERNA_G'}
 
+    def test_self_e_argomenti_si_leggono_nell_ordine_della_chiamata(self):
+        """La controprova di `self` e degli argomenti, dove l'insieme non
+        basta. Un attributo scritto *dopo* averlo letto e' un AttributeError
+        sul `self` finto, e lo e' anche `self.n += 1` o `del self.x`, che
+        leggono prima di scrivere; uno scritto prima e poi letto no. Un
+        keyword-only senza default e' un TypeError per chi chiama con i soli
+        posizionali, come fa PGE-ls."""
+        funzione = ast.parse(textwrap.dedent("""
+            def f(self, /, params):
+                if self.modo:
+                    pass
+                self.contatore += 1
+                del self.vecchio
+                self.prima = 1
+                self.n = self.n + self.prima
+                self.modo = True
+        """)).body[0]
+        assert _attributi_letti_di_self(funzione) == {
+            'modo', 'contatore', 'vecchio', 'n'}
+
+        obbligatorio, facoltativo = ast.parse(textwrap.dedent("""
+            def g(self, params, output_sr, *, strict):
+                pass
+            def h(self, params, output_sr, *, strict=False):
+                pass
+        """)).body
+        assert not _accetta_posizionali(obbligatorio, 3)
+        assert _accetta_posizionali(facoltativo, 3)
+
     def test_pointer_legge_le_posizioni_senza_time_mode(self):
         """`_pre_normalize_loop_params` lo legge PGE-ls per nome, nel file del
         pointer controller: pretende che fra i nomi del corpo non ci sia
@@ -545,6 +690,29 @@ class TestForme:
                 assert hasattr(bounds, campo), (
                     f"i bounds di {nome} non hanno piu' {campo}: il bridge di "
                     f"PGE-ls li copia tutti e sei (#269)")
+
+    def test_i_preset_di_pitch_si_interrogano_come_li_interroga_pge_ls(self):
+        """`PITCH_UNIT_PRESETS[k]()` senza argomenti, poi `.value_bounds()`, e
+        di quei bounds i quattro campi che la parita' confronta col suo
+        `pitch_units.py`."""
+        from pge.parameters.pitch_unit import PITCH_UNIT_PRESETS
+        for chiave, fabbrica in PITCH_UNIT_PRESETS.items():
+            bounds = fabbrica().value_bounds()
+            for campo in ('min_val', 'max_val', 'max_range', 'variation_mode'):
+                assert hasattr(bounds, campo), (
+                    f"i bounds del preset {chiave} non hanno piu' {campo}: la "
+                    f"parita' di PGE-ls li legge da `factory().value_bounds()` "
+                    f"(#269)")
+
+    def test_il_rifiuto_di_un_campo_porta_il_campo_e_l_hint(self):
+        """La parita' di grain.reverse e di read_direction legge `err.field`
+        per sapere *quale* campo il motore nomina, e la prima riga di
+        `err.hint` per confrontarla con quella del suo messaggio."""
+        from pge.shared.exceptions import InvalidFieldValueError
+        rifiuto = InvalidFieldValueError(field='grain.reverse', value=1,
+                                         hint='prima riga\nseconda')
+        assert (rifiuto.field, rifiuto.hint) == ('grain.reverse',
+                                                 'prima riga\nseconda')
 
     def test_i_campi_che_il_bridge_esclude_per_nome_esistono(self):
         """Le chiavi di stream del LS sono i campi dei due dataclass meno
