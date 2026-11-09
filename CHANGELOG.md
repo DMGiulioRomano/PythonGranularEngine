@@ -408,9 +408,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   **Cambia il suono** dei progetti che scrivono `cubic` con maiuscole o spazi
   nel `type` di un dict o nel quarto elemento di un compatto: la cubica invece
   dello smoothstep, da tre breakpoint in su — con due la cubica del motore è
-  già lo smoothstep, che forza a zero le tangenti di entrambi gli estremi.
-  `Step` e `Linear` in maiuscolo suonavano già giusti, e per
-  loro cambiano solo l'export SV e, appena, la partitura.
+  già lo smoothstep, che forza a zero le tangenti di entrambi gli estremi. I
+  breakpoint si contano dopo l'espansione: un compatto con un pattern di due
+  punti ripetuto due volte ne ha già quattro, e il suo suono cambia.
+  `Step` e `Linear` in maiuscolo suonavano già giusti. Per `Step` cambiano
+  l'export SV e, appena, la partitura; per `Linear` niente, perché lo stile
+  di default dell'export e il ramo della partitura erano già quelli della
+  retta.
   `VARIATION_SEMANTICS_VERSION` **non** si muove, come per #234 e #289: nessuno
   dei 106 YAML di motore, PGE-ui, PGE-ls, gl-ls, granulation-studies e
   mare-nostrum, né degli 8 esempi del paper CIM 2026, letti come YAML e non con
