@@ -171,7 +171,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   che provavano solo l'inoltro fra metodi privati (`_init_stream_parameters`
   verso l'orchestratore, `_init_controllers` verso i controller) sono usciti,
   e con loro il plurale di `MissingFieldError`, che dal costruttore non si
-  raggiunge e che `test_engine_exceptions.py` già prova. Le cicatrici sono
+  raggiunge: lo prova `test_engine_exceptions.py`, per intero, sia in `str()`
+  sia in `user_message()` (prima chiedeva solo che i nomi comparissero, e la
+  formula plurale non la verificava nessuno). Le cicatrici sono
   andate, e una guardia (`tests/core/test_stream_costruttore.py`) rifiuta un
   `object.__new__(Stream)` nei test.
 

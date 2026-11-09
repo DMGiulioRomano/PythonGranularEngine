@@ -115,6 +115,25 @@ def test_missing_field_error_supports_multiple_fields():
     assert "bar" in msg
 
 
+def test_missing_field_error_plurale_in_str_e_in_user_message():
+    """Il plurale, per intero, nelle due forme del messaggio (issue #283).
+
+    Lo provava `test_stream.py` chiamando `_check_required_context_fields`
+    su uno Stream costruito a meta', con `match="Campi obbligatori
+    mancanti"` sullo `str()`. Dal costruttore non si raggiunge piu' (`sample`
+    si controlla prima e il costruttore si ferma li'), e il test sopra chiede
+    solo che i due nomi compaiano: un messaggio singolare con la lista
+    accodata lo passerebbe, e lo `str()` non lo guarda nessuno.
+    """
+    from pge.shared.exceptions import MissingFieldError
+
+    err = MissingFieldError(fields=["foo", "bar"])
+
+    assert str(err) == "Campi obbligatori mancanti: 'foo', 'bar'"
+    assert err.user_message() == (
+        "[ERRORE] Campi obbligatori mancanti: 'foo', 'bar'")
+
+
 def test_invalid_field_value_error_inherits_engine_and_value_error():
     """InvalidFieldValueError catturabile come EngineError e ValueError."""
     from pge.shared.exceptions import (
