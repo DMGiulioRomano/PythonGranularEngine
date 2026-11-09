@@ -56,16 +56,23 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   registro pretende che i nomi che l'exec chiede stiano in quel namespace —
   quelli del corpo e quelli che si valutano al `def` (default, decoratori,
   annotazioni: il modulo estratto non ha il `from __future__ import
-  annotations` del file) —, che gli attributi letti di `self` stiano nel
-  `self` finto e che la funzione si chiami con gli stessi argomenti, perche'
-  di la' ognuno dei tre e' un `NameError`, un `AttributeError` o un
-  `TypeError`. La lettura e' la stessa su ogni Python della matrice, 3.14
+  annotations` del file) —, che gli attributi letti di `self` prima di
+  essere scritti (`+=` e `del` compresi, nell'ordine in cui il corpo si
+  esegue) stiano nel `self` finto e che la funzione si chiami con gli stessi
+  posizionali, senza keyword-only obbligatori, perche' di la' ognuno dei tre
+  e' un `NameError`, un `AttributeError` o un `TypeError`. La lettura e' la stessa su ogni Python della matrice, 3.14
   compreso, dove `symtable` mette un blocco `__annotate__` davanti a ogni
   funzione. Tiene anche le forme che
   la parita' legge come verdetto del motore — i kwargs di
   `GateFactory.create_gate`, la config `SimpleNamespace` con cui costruisce
   `GranularParser`, le coppie `(t, y)` di `ParameterBoundError.violations` —
   e il guard di `pointer.start`, che PGE-ls insegue con un regex sul testo.
+  Il messaggio di ogni nome dice chi lo legge e, dove la parita' lo legge
+  dentro una guardia, quale patto di la' salta in verde
+  (`TACIONO_NELLA_PARITA`, tredici voci: `GateFactory` spegne tutti e tre i
+  corpus di `deviation_probability`, `READ_DIRECTION_FIELD` tutti i patti di
+  `grain.reverse`); il messaggio di un modulo spostato si legge nel test
+  dell'import, che e' quello che fallisce per primo.
 
   `_MODULI_SENZA_TERZE_PARTI` sorveglia ora anche gli undici moduli che PGE-ls
   importa e che nessuno sorvegliava: si importavano gia' senza numpy, ma per
