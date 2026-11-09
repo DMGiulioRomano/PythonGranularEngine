@@ -92,6 +92,21 @@ class TestPerSegmentDrawing:
         # Almeno 2 chiamate plot (una per segmento step + una per linear)
         assert len(ax.lines) >= 2
 
+    def test_step_in_maiuscolo_si_disegna_a_gradini(self):
+        # Issue #300: `type: STEP` e' il gradino che il motore suona, e va nel
+        # ramo dei gradini espliciti. Prima finiva in quello che campiona
+        # `evaluate`, e i salti prendevano la pendenza del campionamento.
+        punti = [[0, 10], [0.4, 60], [0.7, 30], [1, 80]]
+
+        def disegno(tipo):
+            viz, ax = self._make_viz()
+            stream = self._make_stream(
+                Envelope({'type': tipo, 'points': punti}))
+            viz._draw_envelopes(ax, stream, 0.0, 1.0, 0.0, 1.0)
+            return [line.get_xydata().tolist() for line in ax.lines]
+
+        assert disegno('STEP') == disegno('step')
+
     def test_uniform_linear_unchanged(self):
         # Uniforme: 1 sola line come prima del fix
         env = Envelope([[0, 0], [0.5, 1], [1, 0]])

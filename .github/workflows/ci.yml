@@ -7,7 +7,11 @@ on:
 jobs:
   tests:
     name: unit tests (py ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    # La 3.9 e' fuori supporto e actions/python-versions non la compila per
+    # Ubuntu 26.04, che e' diventato ubuntu-latest: setup-python fallisce prima
+    # di ogni test. Finche' requires-python dice >=3.9 la si prova su 24.04,
+    # l'ultima immagine per cui esiste; le altre versioni restano su latest.
+    runs-on: ${{ matrix.python == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:

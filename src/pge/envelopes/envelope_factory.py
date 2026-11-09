@@ -9,7 +9,7 @@ Design Pattern: Factory Method
 """
 from __future__ import annotations
 
-from typing import Union
+from typing import Optional, Union
 from pge.envelopes.envelope_interpolation import (
     InterpolationStrategy,
     LinearInterpolation,
@@ -79,19 +79,34 @@ class InterpolationStrategyFactory:
                 f"ricevuto: {type(interp_type).__name__}"
             )
         
-        normalized_type = interp_type.strip().lower()
-        
-        # Lookup e creazione
-        strategy_class = cls._STRATEGY_MAP.get(normalized_type)
-        
-        if strategy_class is None:
+        # La normalizzazione sta in `canonical`, e in nessun altro posto: chi
+        # tiene il nome lo prende da li', e deve essere lo stesso che costruisce.
+        normalized_type = cls.canonical(interp_type)
+
+        if normalized_type is None:
             valid_types = list(cls._STRATEGY_MAP.keys())
             raise ValueError(
                 f"Tipo interpolazione non riconosciuto: '{interp_type}'. "
                 f"Tipi validi: {valid_types}"
             )
-        
-        return strategy_class()
+
+        return cls._STRATEGY_MAP[normalized_type]()
+
+    @classmethod
+    def canonical(cls, interp_type) -> Optional[str]:
+        """Il nome canonico di `interp_type`, la chiave del registro: quello
+        che `create` legge. None se `create` non lo legge come nome.
+
+        E' il punto in cui una grafia smette di essere tale (issue #300):
+        `create` non bada a maiuscole e spazi attorno, quindi `Cubic` costruisce
+        la cubica, ma chi confronta il nome alla lettera — le tangenti di
+        `Envelope`, lo stile dell'export SV, il ramo a gradini della partitura
+        — su `Cubic` non trovava `cubic`. Chi tiene il nome tiene questo.
+        """
+        if not isinstance(interp_type, str):
+            return None
+        normalized_type = interp_type.strip().lower()
+        return normalized_type if normalized_type in cls._STRATEGY_MAP else None
 
     @classmethod
     def reads(cls, interp_type) -> bool:
@@ -99,9 +114,14 @@ class InterpolationStrategyFactory:
         e' la stessa chiamata.
 
         Serve a chi deve rifiutare un nome prima di costruire, nominando il
-        campo (i guard di forma di `Envelope` e del builder, issue #288).
+        campo: il guard dello slot del compatto nel builder (issue #288).
         Confrontarlo con un elenco esatto sarebbe una seconda regola: `create`
         ignora maiuscole e spazi attorno, e `type: Step` rende da sempre.
+
+        Chi del nome tiene il valore passa invece da `canonical`, come il
+        `type` del dict in `Envelope` (issue #300). Sulle stringhe le due
+        risposte coincidono; su un'istanza di strategy no, perche' `create` la
+        accetta ma un'istanza non e' un nome.
         """
         try:
             cls.create(interp_type)
