@@ -1118,7 +1118,10 @@ class EnvelopeBuilder:
             field: la chiave YAML da nominare negli errori (vedi `parse`)
 
         Returns:
-            str or None: Tipo interpolazione ('linear', 'cubic', 'step')
+            str or None: lo slot com'e' scritto, se la factory lo legge
+            (`'CUBIC'` compreso). Il nome canonico lo tiene `Envelope`
+            (issue #300): chi confronta il risultato alla lettera lo passa
+            prima da `InterpolationStrategyFactory.canonical`.
         """
         # FIX 2: Controlla PRIMA se raw_points STESSO è formato compatto con tipo
         if cls.is_compact_format(raw_points):

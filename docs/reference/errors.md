@@ -773,12 +773,16 @@ lo slot che diventa il tipo dell'envelope — quello del compatto diretto, o del
 primo di una lista che ne dichiara uno — perché è l'unico che decide qualcosa:
 dentro `{type, points}` decide il `type` del dict, e lo slot resta ignorato.
 
-Il nome d'interpolazione lo giudica la factory che lo costruirà
-(`InterpolationStrategyFactory.reads`, la stessa risposta di `create`), non un
-elenco confrontato alla lettera. La factory non bada a maiuscole e spazi
-attorno, quindi `type: Step` rende come ha sempre reso, e si rifiuta solo un
-nome che lei non legge. Lo slot del compatto scritto vuoto vale il default,
-come `Envelope` l'ha sempre letto.
+Il nome d'interpolazione lo giudica la factory che lo costruirà, non un elenco
+confrontato alla lettera: il `type` del dict con
+`InterpolationStrategyFactory.canonical`, il nome che `create` legge, e lo slot
+del compatto con `InterpolationStrategyFactory.reads`, la stessa risposta di
+`create`. La factory non bada a maiuscole e spazi attorno, quindi `type: Step`
+rende come ha sempre reso, e si rifiuta solo un nome che lei non legge. Lo slot
+del compatto scritto vuoto vale il default, come `Envelope` l'ha sempre letto.
+Un `type` che non è una stringa si rifiuta anche quando `create` lo
+costruirebbe: un'istanza di strategy non è un nome, e l'envelope tiene il nome
+(issue #300).
 
 ```yaml
 streams:
