@@ -107,6 +107,24 @@ class TestSlotDelCompatto:
         assert scritto.integrate(0, 3.0) == pytest.approx(
             canonico.integrate(0, 3.0))
 
+    @pytest.mark.parametrize('grafia', GRAFIE_CUBIC)
+    def test_un_pattern_di_due_punti_ripetuto(self, grafia):
+        """I breakpoint si contano dopo l'espansione. Con due la cubica del
+        motore e' gia' lo smoothstep, ma un pattern di due punti ripetuto due
+        volte ne ha quattro: prima di #300 lo slot `'CUBIC'` lo rendeva
+        smoothstep su ogni breakpoint (0.5 a `t = 0.1`, dove `cubic` da'
+        0.625), quindi anche questo suono cambia."""
+        pattern = [[0, 0], [100, 1]]
+        canonico = Envelope([pattern, 0.4, 2, 'cubic'])
+        scritto = Envelope([pattern, 0.4, 2, grafia])
+
+        assert len(scritto.breakpoints) == 4
+        istanti = (0.02, 0.1, 0.3, 0.38)
+        assert ([scritto.evaluate(t) for t in istanti]
+                == pytest.approx([canonico.evaluate(t) for t in istanti]))
+        assert scritto.integrate(0, 0.4) == pytest.approx(
+            canonico.integrate(0, 0.4))
+
 
 class TestEnvelopePerSegmento:
     """Con un tipo sul punto l'envelope ha un segmento per coppia, e i segmenti
