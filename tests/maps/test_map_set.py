@@ -291,7 +291,7 @@ class TestErrori:
         esplicito.advance(0, 0.0)
         assert esplicito.value('m1', 0.0) == _dopo(1)
 
-    @pytest.mark.parametrize('clock', ['tempo', None, True, [], {}])
+    @pytest.mark.parametrize('clock', ['tempo', None, True])
     def test_un_clock_che_non_e_un_clock(self, clock):
         with pytest.raises(MapConfigError) as exc:
             _mappe(clock=clock)

@@ -49,7 +49,7 @@ from pge.core.stream_config import StreamConfig, StreamContext
 from pge.controllers.voice_manager import VoiceConfig
 from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
 from pge.strategies.strategie import nominal_value
-from dataclasses import fields, MISSING as dataclass_MISSING
+from dataclasses import fields, replace, MISSING as dataclass_MISSING
 
 
 # Unita' di misura ammesse per grain.duration / grain.duration_range.
@@ -135,16 +135,19 @@ class Stream:
             err.stream_id = stream_id
             raise
         self._check_required_context_fields(params, stream_id)
-        # === 3.2. MAPPE (issue #308) ===
-        # Prima del config: le condividono il parser dei parametri, che ci
-        # compila le espressioni, e il giro dei grani, che le muove.
-        self._maps = self._init_maps(params, stream_id)
         config = StreamConfig.from_yaml(
             params,
             StreamContext.from_yaml(params, sample_dur_sec=sample_dur),
             seed=seed,
-            map_set=self._maps,
         )
+        # === 3.2. MAPPE (issue #308) ===
+        # Dopo il config, perche' gli envelope di `r` e di `clock` (issue
+        # #310) seguono la durata e il `time_mode` dello stream; prima di
+        # tutto il resto, perche' le condividono il parser dei parametri, che
+        # ci compila le espressioni, e il giro dei grani, che le muove. Il
+        # config e' congelato: le mappe ci entrano con una copia.
+        self._maps = self._init_maps(params, config)
+        config = replace(config, map_set=self._maps)
         self._init_stream_context(config.context)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
         # Da qui in poi grain.duration e' in secondi qualunque sia l'unita'
@@ -403,15 +406,21 @@ class Stream:
         return scaled_params
 
     @staticmethod
-    def _init_maps(params: dict, stream_id) -> MapSet:
+    def _init_maps(params: dict, config: StreamConfig) -> MapSet:
         """Le mappe dichiarate in `maps:` (issue #308), o un insieme vuoto.
 
         La chiave assente e' uno stream senza mappe. La chiave scritta e
         lasciata vuota no: passa a `MapSet.from_yaml`, che la rifiuta.
         """
+        stream_id = config.context.stream_id
         if 'maps' not in params:
             return MapSet(stream_id=stream_id)
-        return MapSet.from_yaml(params['maps'], stream_id=stream_id)
+        return MapSet.from_yaml(
+            params['maps'],
+            stream_id=stream_id,
+            duration=config.context.duration,
+            time_mode=config.time_mode,
+        )
 
     def _wrap_grain_expressions(self, params: dict, output_sr: int) -> dict:
         """Riconosce le espressioni nei campi del grano in cui valgono
