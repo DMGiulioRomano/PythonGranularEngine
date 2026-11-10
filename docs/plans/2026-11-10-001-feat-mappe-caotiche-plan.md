@@ -362,6 +362,11 @@ implementata (`.claude/rules/cross-repo-impact.md`). In sintesi:
   [Onset dalla mappa](https://claude.ai/artifact/XAuWGWr3Ski9dW3tLF9N32),
   [Clock e r nel tempo](https://claude.ai/artifact/8qRF82k5Ze7SKxNydbDnwS),
   [Banco del chirp](https://claude.ai/artifact/HCRgdxeuruWANe2vsNwNQV).
+  Le stesse quattro pagine stanno nel repo, apribili dal disco con un doppio
+  click: [mappe-caotiche-pagine/](mappe-caotiche-pagine/) (`mappa-logistica.html`,
+  `onset-dalla-mappa.html`, `clock-e-r-nel-tempo.html`, `banco-del-chirp.html`).
+  Il banco carica js-yaml da cdnjs e tutte i font da Google Fonts: senza rete
+  i font ripiegano su quelli di sistema, il banco non legge lo YAML.
 - A. Di Scipio, «Synthesis of Environmental Sound Textures by Iterated
   Nonlinear Functions», DAFx99: il modo `iterate` e la mappa `sin(r*x)`.
 - J. Pressing, «Nonlinear Maps as Generators of Musical Design», *Computer
