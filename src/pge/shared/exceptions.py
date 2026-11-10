@@ -1169,3 +1169,75 @@ class StreamFileDuplicateIdError(StreamFileError):
         # Niente riga `Stream:`: l'id e' gia' il soggetto del head.
         lines.append(f"  Config:       {self.config_file}")
         return "\n".join(lines)
+
+
+# =============================================================================
+# MAPPE CAOTICHE ED ESPRESSIONI (issue #307)
+# =============================================================================
+
+#: Sentinella per «nessun valore da mostrare»: `None` e' un valore che uno
+#: YAML puo' contenere (`r:` lasciata vuota), e va potuto stampare.
+_NESSUN_VALORE = object()
+
+
+class ExpressionError(ConfigError):
+    """Un'espressione che l'interprete non compila (issue #308).
+
+    Un parametro che legge una mappa si scrive come un'espressione,
+    `(0.02 + 0.08*m1)`: un nome non dichiarato, una parentesi che manca, una
+    funzione col numero sbagliato di argomenti si fermano qui, al caricamento,
+    e non al primo grano. `field` e' il path YAML del campo, quando chi
+    compila lo conosce; lo stream lo aggiunge chi lo conosce, come per ogni
+    altro `ConfigError`.
+    """
+
+    def __init__(self, expression, reason: str, field: str | None = None,
+                 hint: str | None = None):
+        self.expression = expression
+        self.reason = reason
+        self.field = field
+        self.hint = hint
+        dove = f" per '{field}'" if field else ""
+        super().__init__(f"Espressione non valida{dove}: {reason}")
+
+    def user_message(self) -> str:
+        dove = f" per '{self.field}'" if self.field else ""
+        lines = [
+            f"[ERRORE] Espressione non valida{dove}",
+            f"  Trovato:      {self.expression}",
+            f"  Dettaglio:    {self.reason}",
+        ]
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
+
+class MapConfigError(ConfigError):
+    """Il blocco `maps:` di uno stream, o una sua mappa, scritto male
+    (issue #308): `maps` che non e' un dizionario, un `type` che il catalogo
+    non ha, `r` che manca. `field` e' il path YAML del punto (`maps`,
+    `maps.m1`, `maps.m1.r`).
+    """
+
+    def __init__(self, field: str, reason: str, value=_NESSUN_VALORE,
+                 hint: str | None = None):
+        self.field = field
+        self.reason = reason
+        self.value = value
+        self.hint = hint
+        super().__init__(f"Mappa non valida in '{field}': {reason}")
+
+    @property
+    def has_value(self) -> bool:
+        return self.value is not _NESSUN_VALORE
+
+    def user_message(self) -> str:
+        lines = [f"[ERRORE] Mappa non valida in '{self.field}'"]
+        if self.has_value:
+            lines.append(f"  Trovato:      {self.value!r}")
+        lines.append(f"  Dettaglio:    {self.reason}")
+        if self.hint:
+            lines.append(f"  Hint:         {self.hint}")
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
