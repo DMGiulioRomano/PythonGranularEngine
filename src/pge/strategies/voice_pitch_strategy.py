@@ -530,8 +530,9 @@ VOICE_PITCH_STRATEGIES = StrategyRegistry('voice_pitch', VoicePitchStrategy, {
 
 # Strategie i cui offset sono intrinsecamente in semitoni (interi da
 # CHORD_INTERVALS / 12*log2): in v1 accettano solo l'unità `semitones`.
-# Singola fonte di verità per la validazione in Stream._take_voice_pitch_keys
-# (il take_block_keys del pitch nel wiring di _init_voice_manager, #186).
+# Singola fonte di verità per la validazione in
+# VoicesController._take_voice_pitch_keys (il take_block_keys del pitch nel
+# wiring del blocco voices:, #186, che #284 ha portato fuori dallo Stream).
 SEMITONE_LOCKED = frozenset({'chord', 'chord_progression', 'spectral'})
 
 

@@ -6,6 +6,7 @@ tags: [parameters, envelopes, extension]
 sources:
   - src/pge/parameters/parameter_schema.py
   - src/pge/envelopes/envelope.py
+  - src/pge/controllers/voices_controller.py
 last_synced_commit: 8c896d8
 entry_for: [make-parameter-envelope-aware]
 ---
@@ -26,7 +27,7 @@ Un parametro esistente accetta solo scalari e vuoi farlo accettare anche envelop
 
 1. Schema (`STREAM_PARAMETER_SCHEMA` o sotto-schema): aggiungi flag `accepts_envelope: True`
 2. Sito di consumo: invece di leggere `params['x']`, usa `resolve_param(self.x, time)` (o `self.x.evaluate(time)` se garantito Envelope)
-3. Per voice strategy: il parsing in `Stream._parse_strategy_kwarg` riconosce automaticamente liste `[[t, v], ...]` e dict `{points, time_mode}` e li trasforma in `Envelope`
+3. Per voice strategy: il parsing in `_parse_strategy_kwarg` (`src/pge/controllers/voices_controller.py`) riconosce automaticamente liste `[[t, v], ...]` e dict `{points, time_mode}` e li trasforma in `Envelope`
 4. Test envelope: scalare puro, lista breakpoint, dict cubic, formato compatto
 
 ## File toccati
