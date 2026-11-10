@@ -17,7 +17,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: cc31f3c
+last_synced_commit: 39b32aa
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -1083,9 +1083,10 @@ col file. Lo stesso nome in due stream sono due mappe.
 | chiave | valore | default |
 |---|---|---|
 | `type` | il tipo di mappa (vedi sotto) | obbligatoria |
-| `r` | il parametro della mappa, un numero | obbligatoria |
-| `clock` | quando la mappa fa un passo: `grain`, uno ogni volta che nasce un grano | `grain` |
-| `x0` | lo stato iniziale | quello del tipo |
+| `r` | il parametro della mappa: un numero o un envelope | obbligatoria |
+| `clock` | quando la mappa fa un passo: `grain`, oppure i passi al secondo (numero o envelope) | `grain` |
+| `iterate` | al posto di `clock`: i passi fatti da `x0` a ogni lettura, intero ≥ 1 | — |
+| `x0` | lo stato iniziale, un numero | quello del tipo |
 | `transient` | i passi scartati prima del primo grano, intero ≥ 0 | 300 |
 
 Il **nome** di una mappa (`m1`) è fatto di lettere, cifre e `_`, e non
@@ -1095,7 +1096,9 @@ già un'altra cosa: una funzione, `pi`, `e`, `t`, e nemmeno `x`, `y`, `r`.
 Un `maps:` scritto male si ferma al caricamento con un `MapConfigError` che
 nomina il punto (`maps.m1.r`) e lo stream: `maps` che non è un dizionario o è
 vuoto, un `type` che non c'è, `r` che manca o non è un numero finito, una
-chiave sconosciuta. Vedi [[errors]].
+chiave sconosciuta, un `clock` non positivo, `clock` e `iterate` insieme. Un
+envelope di `r` o di `clock` scritto male è l'errore di forma di ogni altro
+envelope, col suo path (`maps.m1.clock`). Vedi [[errors]].
 
 ### I tipi di mappa
 
@@ -1121,7 +1124,22 @@ e `MAP_KINDS` in `src/pge/maps/catalog.py`.
 
 ### Come avanza una mappa
 
-Con `clock: grain` la mappa fa **un passo per grano e per voce**: è contata
+Una mappa sa solo fare «un altro passo». Lo YAML dice quando.
+
+| scrittura | quando fa un passo | stato |
+|---|---|---|
+| `clock: grain` (default) | ogni volta che nasce un grano | uno **per voce** |
+| `clock: 8` | 8 passi al secondo, a intervalli fissi; il valore resta fermo fino al passo dopo | nessuno: è una funzione del tempo |
+| `clock: [[0, 2], [12, 20]]` | il passo k cade quando l'integrale del clock vale k | come sopra |
+| `iterate: 7` | mai: a ogni lettura si riparte da `x0` e si fanno 7 passi con l'`r` di quell'istante | nessuno |
+
+```yaml
+maps:
+  m1: {type: logistic, r: [[0, 3.0], [12, 4.0]], clock: [[0, 2], [12, 20]]}
+  m2: {type: logistic, r: [[0, 3.0], [12, 4.0]], iterate: 7, x0: 0.1}
+```
+
+**`clock: grain`** — la mappa fa **un passo per grano e per voce**: è contata
 sui grani, non sul tempo, e a densità doppia la stessa sequenza scorre in metà
 tempo.
 
@@ -1133,6 +1151,41 @@ tempo.
   lo stesso valore, in qualunque ordine.
 - Il passo si conta anche quando `voices.num_voices` tiene la voce spenta: la
   sequenza di una voce non dipende da quando viene accesa.
+
+**Clock a orologio** — `clock` è un numero di passi al secondo, o un envelope.
+
+- Il primo passo cade a `t = 0`; il passo k dove l'integrale del clock da 0
+  vale k. `clock: 5` è un passo ogni 0.2 s; da 2 a 20 passi/s lineari in 12 s
+  sono 132 passi, radi in principio e fitti alla fine.
+- Il valore **resta fermo** fra un passo e l'altro: i grani nati dentro lo
+  stesso passo leggono lo stesso valore.
+- È una funzione del tempo e **non ha uno stato per voce**: tutte le voci
+  leggono lo stesso valore allo stesso istante, anche con `scatter`.
+- Il clock deve essere **positivo e finito**, in ogni punto se è un envelope:
+  altrimenti è un errore al caricamento.
+
+**`iterate: n`** — il modo dell'articolo di Di Scipio (DAFx99). Sta **al posto
+di `clock`**, e non è un clock: a ogni lettura si riparte da `x0` e si fanno n
+passi con l'`r` di quell'istante. Il valore è l'n-esima iterata della stessa
+funzione, e a disegnare la curva è il movimento di `r`.
+
+- Con `r` fermo il valore è **fermo**: tutti i grani leggono lo stesso numero.
+- Con `r` a envelope è una curva nel tempo, campionata dagli onset dei grani.
+  `n` è la manopola della ruvidezza: più passi, più la curva è frastagliata.
+- Nessuno stato, né per voce né nel tempo. Non c'è un transitorio: `transient`
+  insieme a `iterate` è un errore.
+- Se la mappa scappa non si itera oltre: il valore è `x0`.
+
+`clock` e `iterate` insieme sono un **errore**, non una priorità.
+
+**`r` a envelope** si legge all'istante del passo — con `clock: grain`
+l'istante del grano, con un clock a orologio l'istante in cui il passo cade —
+o della lettura, in `iterate`. Il transitorio si fa a `r(0)`. Gli envelope di
+`r` e di `clock` seguono il `time_mode` dello stream come ogni altro: con
+`time_mode: normalized` i loro tempi sono frazioni della durata.
+
+Per chi deve sapere quando una mappa a orologio fa i suoi passi senza
+generare i grani: `stream.map_set.step_times(nome, fino_a)`.
 
 ### Le espressioni
 
@@ -1195,8 +1248,8 @@ tremolio casuale attorno al valore dato dalla mappa. La mappa non sostituisce
 il generatore casuale dentro la banda.
 
 **Cache.** Il fingerprint dello stream contiene `maps:` e il testo
-dell'espressione: cambiare `r`, `x0`, `transient` o l'espressione rifà lo
-stem. Uno stream che non scrive queste chiavi ha i grani e il fingerprint di
+dell'espressione: cambiare `r`, `clock`, `iterate`, `x0`, `transient` o
+l'espressione rifà lo stem. Uno stream che non scrive queste chiavi ha i grani e il fingerprint di
 prima.
 
 **Partitura ed export.** Un parametro scritto come espressione non ha una

@@ -10,6 +10,36 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: come avanza la mappa** (issue #310, la seconda sotto la
+  #307). Dopo la #308 una mappa faceva un passo per grano e `r` era un
+  numero. Ora lo YAML dice anche quando:
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: [[0, 3.0], [12, 4.0]], clock: [[0, 2], [12, 20]]}
+    m2: {type: logistic, r: [[0, 3.0], [12, 4.0]], iterate: 7, x0: 0.1}
+  ```
+
+  - **Clock a orologio**: `clock` e' un numero di passi al secondo, o un
+    envelope. Il passo k cade dove l'integrale del clock vale k
+    (`Envelope.integrate`), il primo a `t = 0`; il valore resta fermo fino al
+    passo dopo. E' una funzione del tempo: non ha uno stato per voce, e tutte
+    le voci leggono lo stesso valore allo stesso istante. Da 2 a 20 passi/s
+    in 12 s sono 132 passi.
+  - **`iterate: n`**, il modo alla Di Scipio (DAFx99), al posto di `clock`: a
+    ogni lettura si riparte da `x0` e si fanno n passi con l'`r` di
+    quell'istante. Nessuno stato. Con `r` fermo il valore e' costante; con
+    `r` che si muove e' una curva nel tempo, campionata dagli onset.
+  - **`r` a envelope**: letto all'istante del passo, o della lettura in
+    `iterate`; vale anche con `clock: grain`. Segue il `time_mode` dello
+    stream, come il clock a envelope.
+  - **Errori al caricamento**: `clock` e `iterate` insieme, `transient` con
+    `iterate`, un clock non positivo o non finito (anche in un solo punto
+    dell'envelope), `iterate` che non e' un intero positivo.
+
+  `MapSet.step_times(nome, fino_a)` da' gli istanti dei passi di una mappa a
+  orologio. Reference: `docs/reference/yaml.md`, «Come avanza una mappa».
+
 - **Mappe caotiche: `maps:` e le espressioni** (issue #308, la prima di sette
   sotto la #307). Uno stream dichiara una mappa iterata dentro `maps:`, e
   `grain.duration` la legge con un'espressione fra parentesi:
