@@ -358,11 +358,11 @@ def violated_bound(value: float, min_val: float, max_val):
     return "MIN", min_val
 
 
-def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value, 
-                     min_val, max_val, is_envelope=False):
+def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
+                     min_val, max_val, is_envelope=False, source=None):
     """
     Logga un warning per un valore clippato.
-    
+
     Args:
         stream_id: ID dello stream
         param_name: nome del parametro
@@ -372,18 +372,22 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
         min_val: limite minimo
         max_val: limite massimo
         is_envelope: True se il valore viene da un Envelope
+        source: da dove viene il valore base, come esce in fondo alla riga:
+            'FIX' (un numero), 'ENV' (un envelope), 'EXP' (un'espressione,
+            issue #308). Se dato, prevale su `is_envelope`, che resta per chi
+            chiamava con due casi soli.
     """
     logger = get_clip_logger()
-    
+
     if logger is None:
         return
-    
+
     # Calcola bound violato
     bound_type, bound_value = violated_bound(raw_value, min_val, max_val)
     deviation = raw_value - bound_value
 
-    source_type = "ENV" if is_envelope else "FIX"
-    
+    source_type = source or ("ENV" if is_envelope else "FIX")
+
     logger.warning(
         f"[{stream_id}] {param_name:<20} | "
         f"t={time:>7.3f}s | "
@@ -392,7 +396,7 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
         f"Δ={deviation:>+10.6f} | "
         f"({source_type})"
     )
-    
+
 
 def log_config_warning(stream_id: str, param_name: str, 
                     raw_value: float, clipped_value: float,
@@ -522,6 +526,44 @@ def log_high_density_warning(stream_id: str, elapsed_time: float,
         f"grain={grain_duration * 1000:.4f} ms | "
         f"IOT={1.0 / density * 1000:.5f} ms | "
         f"mode={mode}"
+        f"{note}"
+    )
+
+
+def log_map_escape_warning(stream_id: str, map_name: str,
+                           elapsed_time: float, r: float, x0: float,
+                           interval: float, is_first: bool = False):
+    """
+    Logga la fuga di una mappa (issue #308): un valore non finito, o oltre la
+    soglia, da cui la mappa e' ripartita da `x0`.
+
+    Non e' il resoconto di un taglio sul parametro: il valore scappato al
+    grano non arriva. E' la riga che dice perche' la sequenza si e'
+    interrotta — quasi sempre un `r` fuori dall'intervallo del tipo.
+
+    Args:
+        stream_id: ID dello stream
+        map_name: nome della mappa in `maps:`
+        elapsed_time: tempo corrente nello stream
+        r: il parametro della mappa a quel passo
+        x0: lo stato da cui la mappa e' ripartita
+        interval: intervallo del rate limiting, per dirlo nel primo avviso
+        is_first: True al primo avviso della mappa
+    """
+    logger = get_clip_logger()
+    if logger is None:
+        return
+
+    tag = "[MAP_ESCAPE_FIRST]" if is_first else "[MAP_ESCAPE]"
+    note = (f" << PRIMO AVVISO — log successivi soppressi "
+            f"(rate limit {interval:g}s)") if is_first else ""
+
+    logger.warning(
+        f"{tag} [{stream_id}] "
+        f"t={elapsed_time:>7.3f}s | "
+        f"mappa={map_name} | "
+        f"r={r:.6f} | "
+        f"scappata: riparte da x0={x0:g}"
         f"{note}"
     )
 
