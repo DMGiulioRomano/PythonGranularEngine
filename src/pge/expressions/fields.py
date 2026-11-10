@@ -12,4 +12,4 @@ alla volta: ogni campo che entra ha i suoi test su unita' di misura e casi
 speciali (le altre con la #313).
 """
 
-EXPRESSION_FIELDS = ('grain.duration',)
+EXPRESSION_FIELDS = ('grain.duration', 'grain.iot')

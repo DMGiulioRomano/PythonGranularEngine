@@ -648,7 +648,7 @@ class TestSchemaExclusion:
         """L'esclusione e' scritta: se crescesse in silenzio, ogni nome
         aggiunto sparirebbe dalla partitura senza che niente lo dica.
 
-        Quattro nomi, per quattro motivi diversi. `pointer_deviation` e
+        Cinque nomi, per cinque motivi diversi. `pointer_deviation` e
         `effective_density` sono pubblicati dalle righe dedicate piu' sotto —
         il primo col range al posto del valore base, la seconda come curva
         campionata invece che come segnaposto di schema. `pointer_speed_ratio`
@@ -656,11 +656,15 @@ class TestSchemaExclusion:
         `pointer_speed`: dal ciclo usciva una chiave che `getattr` non ha mai
         potuto risolvere. `pointer_start` non e' una curva e non puo' esserlo:
         is_smart=False, e il pointer lo somma come scalare (issue #199).
+
+        Il quinto, `grain_iot` (issue #311), e' l'attesa fra due grani: di
+        lei si pubblica la densita' che ne emerge, `effective_density`, dalla
+        stessa riga dedicata.
         """
         from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
         assert _SCHEMA_EXCLUDED == frozenset({
             'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
-            'effective_density'})
+            'effective_density', 'grain_iot'})
 
 
 class TestEnvelopeFilter:

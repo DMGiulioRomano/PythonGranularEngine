@@ -153,9 +153,15 @@ class ScoreWriter:
         f.write(comment(
             f'Grain duration: {self._format_param(stream.grain_duration, 1000, "ms")}'))
 
-        # Density parameters
-        f.write(comment(f'Density: {self._format_param(stream.density, 1, " g/s")}'))
-        f.write(comment(f'Distribution: {self._format_param(stream.distribution)}'))
+        # Density parameters. Con `grain.iot` (issue #311) la densita' non e'
+        # dichiarata, e `density` e `distribution` sarebbero due N/A: si
+        # scrive l'attesa, che e' cio' che lo YAML dice.
+        if getattr(stream, 'density_mode', None) == 'iot':
+            f.write(comment(
+                f'Inter-onset: {self._format_param(stream.iot, 1000, "ms")}'))
+        else:
+            f.write(comment(f'Density: {self._format_param(stream.density, 1, " g/s")}'))
+            f.write(comment(f'Distribution: {self._format_param(stream.distribution)}'))
 
         # Statistiche
         f.write(comment(f'Num voices: {self._format_param(stream.num_voices)}'))
