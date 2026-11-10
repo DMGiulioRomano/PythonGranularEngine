@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from pge.envelopes.envelope import Envelope
+from pge.expressions.expression import Expression
 
 VARYING = 'varying'
 CONSTANT = 'constant'
@@ -35,7 +36,7 @@ class ParameterCurve:
 
     @classmethod
     def classify(cls, raw) -> 'ParameterCurve':
-        """Classifica un valore grezzo (Envelope, numero o None).
+        """Classifica un valore grezzo (Envelope, numero, Expression o None).
 
         "Numero" e' cio' che `float()` sa leggere — chi espone `__float__` —
         non cio' che eredita da `float`. Un `isinstance(raw, (int, float))`
@@ -54,6 +55,14 @@ class ParameterCurve:
                 chiamante ha chiesto una curva a qualcosa che non ne ha una.
         """
         if raw is None:
+            return cls(kind=ABSENT)
+        if isinstance(raw, Expression):
+            # Un'espressione (issue #308) e' un valore dichiarato, ma non e'
+            # una curva: puo' dipendere dallo stato di una mappa, che non e'
+            # una funzione del tempo, quindi non ha breakpoint da disegnare
+            # ne' un valore da appiattire. Assente, e non un TypeError: chi
+            # legge le curve salta la riga senza avvisare, perche' non c'e'
+            # niente di illeggibile. Mostrarla e' la 6/7 (#314).
             return cls(kind=ABSENT)
         if isinstance(raw, Envelope):
             values = [bp[1] for bp in raw.breakpoints]

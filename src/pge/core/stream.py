@@ -35,6 +35,9 @@ from pge.shared.exceptions import (
     MissingFieldError,
     SampleNotFoundError,
 )
+from pge.expressions.expression import ExpressionSource
+from pge.expressions.fields import EXPRESSION_FIELDS
+from pge.maps.map_set import MapSet
 from pge.parameters.parameter_definitions import range_unit_is_relative
 from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
@@ -132,10 +135,15 @@ class Stream:
             err.stream_id = stream_id
             raise
         self._check_required_context_fields(params, stream_id)
+        # === 3.2. MAPPE (issue #308) ===
+        # Prima del config: le condividono il parser dei parametri, che ci
+        # compila le espressioni, e il giro dei grani, che le muove.
+        self._maps = self._init_maps(params, stream_id)
         config = StreamConfig.from_yaml(
             params,
             StreamContext.from_yaml(params, sample_dur_sec=sample_dur),
             seed=seed,
+            map_set=self._maps,
         )
         self._init_stream_context(config.context)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
@@ -144,6 +152,11 @@ class Stream:
         # quest'ultima e' una frazione della base (grain.duration_range_unit:
         # relative, issue #267), che adimensionale era e adimensionale resta.
         params = self._pre_normalize_grain_params(params, config.context.output_sr)
+        # === 3.6. ESPRESSIONI (issue #308) ===
+        # Dove un'espressione vale, la stringa diventa un ExpressionSource col
+        # fattore dell'unita': una stringa non si riscala, si riscala il suo
+        # risultato.
+        params = self._wrap_grain_expressions(params, config.context.output_sr)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
         # Da qui in poi grain.read_direction, se dichiarata, e' gia' validata e
@@ -389,6 +402,62 @@ class Stream:
         scaled_params['grain'] = scaled_grain
         return scaled_params
 
+    @staticmethod
+    def _init_maps(params: dict, stream_id) -> MapSet:
+        """Le mappe dichiarate in `maps:` (issue #308), o un insieme vuoto.
+
+        La chiave assente e' uno stream senza mappe. La chiave scritta e
+        lasciata vuota no: passa a `MapSet.from_yaml`, che la rifiuta.
+        """
+        if 'maps' not in params:
+            return MapSet(stream_id=stream_id)
+        return MapSet.from_yaml(params['maps'], stream_id=stream_id)
+
+    def _wrap_grain_expressions(self, params: dict, output_sr: int) -> dict:
+        """Riconosce le espressioni nei campi del grano in cui valgono
+        (`EXPRESSION_FIELDS`) e porta loro l'unita' di misura.
+
+        `_pre_normalize_grain_params` riscala i valori grezzi di
+        `grain.duration` — numeri ed envelope — ma una stringa la lascia
+        com'e': di un'espressione non si puo' riscalare il testo, si riscala
+        il **risultato**. Il fattore e' lo stesso, letto dalla stessa
+        `grain.duration_unit`, che a questo punto e' gia' validata.
+
+        Sta in un passo suo, e non dentro `_pre_normalize_grain_params`,
+        perche' quel metodo PGE-ls lo estrae dall'AST e lo esegue con un
+        namespace scritto a mano (#269): un nome nuovo nel suo corpo, di la',
+        e' un NameError.
+
+        Come gli altri normalizzatori non muta il dict originale.
+        """
+        grain = params.get('grain')
+        if not isinstance(grain, dict):
+            return params
+
+        unit = grain.get('duration_unit', 'seconds')
+        if unit == 'samples':
+            factor = 1.0 / output_sr
+        elif unit == 'milliseconds':
+            factor = SECONDS_PER_MILLISECOND
+        else:
+            factor = 1.0
+
+        wrapped = None
+        for field in EXPRESSION_FIELDS:
+            block, _, key = field.partition('.')
+            if block != 'grain' or not isinstance(grain.get(key), str):
+                continue
+            if wrapped is None:
+                wrapped = dict(grain)
+            wrapped[key] = ExpressionSource(
+                grain[key], field=field, scale=factor)
+
+        if wrapped is None:
+            return params
+        wrapped_params = dict(params)
+        wrapped_params['grain'] = wrapped
+        return wrapped_params
+
     def _init_grain_reverse(self, params: dict) -> None:
         """
         Inizializza parametri reverse del grano.
@@ -527,9 +596,24 @@ class Stream:
         # a prima. Con scatter>0 e distribution>0 i cursori divergono nel tempo.
         voice_cursors = [0.0] * max_v
 
+        # Le mappe dello stream (issue #308). Una mappa a `clock: grain` fa un
+        # passo per grano e per voce, e lo fa QUI, in testa al giro della
+        # voce: prima di ogni lettura dei parametri di quel grano — la durata
+        # si legge prima di `_create_grain` — cosi' l'ordine in cui i
+        # parametri la leggono non conta. Senza `maps:` l'insieme e' vuoto e
+        # le due chiamate non fanno niente.
+        maps = self._maps
+
         while any(c < self.duration for c in voice_cursors):
             # Voice 0 è il riferimento: definisce sync_iot e il valore di scatter
             t0 = voice_cursors[0]
+            # La voce 0 legge qui la durata del suo prossimo grano: il passo
+            # della sua mappa viene prima. Se ha gia' finito non nasce nessun
+            # grano e non c'e' nessun passo: le letture restano sul suo stato.
+            if t0 < self.duration:
+                maps.advance(0, t0)
+            else:
+                maps.select(0)
             grain_dur_0 = self.grain_duration.get_value(t0)
             sync_iot = self._density.calculate_inter_onset(t0, grain_dur_0)
             scatter_val = self.scatter.get_value(t0)
@@ -539,6 +623,16 @@ class Stream:
 
                 if t >= self.duration:
                     continue
+
+                # Il giro di questa voce: la sua mappa fa il suo passo (quello
+                # della voce 0 e' gia' fatto, qui sopra), e da qui le letture
+                # sono le sue. Il passo si conta anche se `num_voices` tiene
+                # la voce spenta: la sequenza di una voce non dipende da
+                # quando viene accesa.
+                if voice_index:
+                    maps.advance(voice_index, t)
+                else:
+                    maps.select(0)
 
                 # Voice 0 condivide già grain_dur_0 (t == t0), evita doppia chiamata
                 grain_dur = grain_dur_0 if voice_index == 0 else self.grain_duration.get_value(t)
@@ -873,6 +967,12 @@ class Stream:
             self.duration,
             grain_duration_at=lambda t: nominal_value(self.grain_duration, t),
         )
+
+    @property
+    def map_set(self) -> MapSet:
+        """Le mappe dichiarate in `maps:` (issue #308); vuoto se non ce ne
+        sono."""
+        return self._maps
 
     @property
     def voice_manager(self):

@@ -169,11 +169,18 @@ class StreamConfig:
     # iniettato da Stream (non letto dal dict per-stream). None → fallback
     # legacy sul random globale nei componenti stocastici.
     seed: Optional[Union[int, str]] = None
+    # Le mappe dichiarate in `maps:` (issue #308), gia' costruite: un
+    # `pge.maps.map_set.MapSet`. Come il seed non si legge dal dict dello
+    # stream ma lo inietta lo Stream, che le costruisce una volta sola: le
+    # condividono il parser dei parametri (che ci compila le espressioni) e
+    # il giro dei grani (che le muove). None nei config parziali.
+    map_set: Optional[object] = None
     context: Optional[StreamContext] = None
 
     @classmethod
     def from_yaml(cls, yaml_data: dict, context: StreamContext, allow_none: bool = True,
-                  seed: Optional[Union[int, str]] = None) -> 'StreamConfig':
+                  seed: Optional[Union[int, str]] = None,
+                  map_set=None) -> 'StreamConfig':
         """
         Regole di processo per la sintesi granulare.
         
@@ -199,4 +206,6 @@ class StreamConfig:
         # Il seed è top-level nello YAML (non per-stream): arriva dal chiamante
         # e sovrascrive qualsiasi chiave omonima nel dict dello stream.
         kwargs['seed'] = seed
+        # Stessa regola per le mappe: le costruisce lo Stream da `maps:`.
+        kwargs['map_set'] = map_set
         return cls(**kwargs)

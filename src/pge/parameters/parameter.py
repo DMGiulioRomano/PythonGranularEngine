@@ -17,15 +17,17 @@ degli altri componenti. Senza rng si usa il random globale (legacy).
 """
 from __future__ import annotations
 
+import math
 import random
 from typing import Union, Optional, Callable, Dict
 from pge.envelopes.envelope import Envelope
+from pge.expressions.expression import Expression
 from pge.parameters.parameter_curve import ParameterCurve
 from pge.parameters.parameter_definitions import (
     ParameterBounds,
     relative_band_width,
 )
-from pge.shared.logger import log_clip_warning
+from pge.shared.logger import log_clip_warning, violated_bound
 from pge.shared.probability_gate import *
 from pge.shared.distribution_strategy import (
     ANCHOR_CENTER,
@@ -34,17 +36,32 @@ from pge.shared.distribution_strategy import (
 )
 from pge.strategies.variation_registry import VariationFactory
 
-ParamInput = Union[float, int, Envelope]
-StrategyParam = Union[float, Envelope]
+ParamInput = Union[float, int, Envelope, Expression]
+StrategyParam = Union[float, Envelope, Expression]
 
 
 def resolve_param(param: Optional[StrategyParam], time: float) -> float:
-    """Risolve Union[float, Envelope] a float al tempo dato. None → 0.0."""
+    """Risolve un numero, un Envelope o un'Expression a float al tempo dato.
+    None → 0.0.
+
+    L'espressione (issue #308) e' il terzo tipo di valore: si valuta qui,
+    come l'envelope, ma il suo valore puo' dipendere dallo stato di una mappa
+    oltre che dal tempo.
+    """
     if param is None:
         return 0.0
-    if isinstance(param, Envelope):
+    if isinstance(param, (Envelope, Expression)):
         return param.evaluate(time)
     return float(param)
+
+
+def _value_source(value) -> str:
+    """Da dove viene il valore base, per la riga del clip log."""
+    if isinstance(value, Envelope):
+        return 'ENV'
+    if isinstance(value, Expression):
+        return 'EXP'
+    return 'FIX'
 
 class Parameter:
     """
@@ -186,8 +203,20 @@ class Parameter:
         return relative_band_width(val, base_val)
 
     def _clamp(self, value: float, time: float) -> float:
-        """Applica i limiti di sicurezza (Min/Max) e logga se taglia."""
-        clamped = self._bounds.clamp(value)
+        """Applica i limiti di sicurezza (Min/Max) e logga se taglia.
+
+        Un non-finito va sul bound che `violated_bound` nomina, come al parse
+        (`parser._clip_to_band`): finche' i valori erano numeri ed envelope
+        validati non poteva arrivare fin qui, ma un'espressione (issue #308)
+        si conosce solo grano per grano — `sqrt` di un negativo e' un NaN — e
+        `max(min, min(max, nan))` lo manderebbe sul tetto raccontandolo come
+        pavimento.
+        """
+        if math.isfinite(value):
+            clamped = self._bounds.clamp(value)
+        else:
+            clamped = violated_bound(
+                value, self._bounds.min_val, self._bounds.max_val)[1]
 
         if clamped != value:
             # Logga il warning usando il logger configurato
@@ -199,9 +228,9 @@ class Parameter:
                 clipped_value=clamped,
                 min_val=self._bounds.min_val,
                 max_val=self._bounds.max_val,
-                is_envelope=isinstance(self._value, Envelope)
+                source=_value_source(self._value),
             )
-        
+
         return clamped
 
     @property
@@ -241,5 +270,10 @@ class Parameter:
 
     def __repr__(self):
         """Rappresentazione stringa per debug."""
-        val_str = "Env" if isinstance(self._value, Envelope) else f"{self._value:.2f}"
+        if isinstance(self._value, Envelope):
+            val_str = "Env"
+        elif isinstance(self._value, Expression):
+            val_str = self._value.source
+        else:
+            val_str = f"{self._value:.2f}"
         return f"<Param '{self.name}': {val_str} (Mode: {self._bounds.variation_mode})>"

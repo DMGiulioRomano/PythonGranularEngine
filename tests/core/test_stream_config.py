@@ -324,9 +324,9 @@ class TestStreamConfigDefaults:
         assert config.context is None
 
     def test_field_count(self):
-        """StreamConfig ha esattamente 10 campi (issue #154: +seed;
-        range-anchor-mode: +range_anchor)."""
-        assert len(fields(StreamConfig)) == 10
+        """StreamConfig ha esattamente 11 campi (issue #154: +seed;
+        range-anchor-mode: +range_anchor; issue #308: +map_set)."""
+        assert len(fields(StreamConfig)) == 11
 
     def test_field_names(self):
         """Nomi campi nell'ordine atteso."""
@@ -334,9 +334,21 @@ class TestStreamConfigDefaults:
         expected = [
             'deviation_probability', 'range_always_active', 'distribution_mode',
             'range_anchor', 'time_mode', 'time_scale', 'clip_strategy',
-            'clip_margin', 'seed', 'context'
+            'clip_margin', 'seed', 'map_set', 'context'
         ]
         assert names == expected
+
+    def test_map_set_injected_via_from_yaml_kwarg(self, stream_context):
+        """Le mappe (issue #308) arrivano dal kwarg, gia' costruite dallo
+        Stream: una chiave omonima nel dict dello stream viene ignorata, e
+        il blocco `maps:` grezzo non finisce nel config."""
+        from pge.maps.map_set import MapSet
+        mappe = MapSet()
+        config = StreamConfig.from_yaml(
+            {'map_set': 'altro', 'maps': {'m1': {}}},
+            context=stream_context, map_set=mappe)
+        assert config.map_set is mappe
+        assert StreamConfig.from_yaml({}, context=stream_context).map_set is None
 
     def test_seed_injected_via_from_yaml_kwarg(self, stream_context):
         """Il seed arriva dal kwarg esplicito (top-level YAML), non dal dict

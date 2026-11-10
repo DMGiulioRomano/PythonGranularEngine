@@ -421,3 +421,91 @@ def compile_expression(
         raise ExpressionError(source, errore.reason, field=field,
                               hint=errore.hint) from None
     return CompiledExpression(source, tuple(parser.letti), chiusura)
+
+
+# =============================================================================
+# L'ESPRESSIONE COME VALORE DI UN PARAMETRO
+# =============================================================================
+
+def outer_parenthesized(source: str) -> bool:
+    """True se il testo sta tutto dentro una coppia di parentesi esterne.
+
+    E' come un'espressione si scrive in uno YAML: `(0.02 + 0.08*m1)`. La
+    parentesi che apre deve chiudersi all'ultimo carattere: `(a) + (b)`
+    comincia e finisce con una parentesi, ma non e' fra parentesi.
+    """
+    testo = source.strip()
+    if len(testo) < 2 or testo[0] != '(' or testo[-1] != ')':
+        return False
+    aperte = 0
+    for posizione, carattere in enumerate(testo):
+        if carattere == '(':
+            aperte += 1
+        elif carattere == ')':
+            aperte -= 1
+            if aperte == 0:
+                return posizione == len(testo) - 1
+    return False
+
+
+class ExpressionSource:
+    """Un'espressione ancora da compilare, con cio' che il parser dei
+    parametri non puo' sapere da solo: il path YAML da cui viene e il fattore
+    da applicare al **risultato** (l'unita' di misura del campo).
+
+    La costruisce chi legge lo YAML, e solo per i campi in cui un'espressione
+    vale: e' cosi' che una stringa altrove resta un errore.
+    """
+
+    __slots__ = ('text', 'field', 'scale')
+
+    def __init__(self, text: str, field: Optional[str] = None,
+                 scale: float = 1.0):
+        self.text = text
+        self.field = field
+        self.scale = scale
+
+    def __repr__(self) -> str:
+        return f"ExpressionSource({self.text!r}, field={self.field!r})"
+
+
+class Expression:
+    """Il terzo tipo di valore di un `Parameter`, accanto a numero ed
+    `Envelope` (issue #308).
+
+    Come un envelope si valuta a un tempo (`evaluate`), ma non e' una curva:
+    il suo valore puo' dipendere dallo stato di una mappa, che non e' una
+    funzione del tempo. Per questo non ha breakpoint e non si integra, e chi
+    distingue i valori per tipo lo riconosce come un caso suo.
+
+    L'ambiente lo fornisce `reader(nomi, tempo)`: le mappe dello stream.
+    """
+
+    __slots__ = ('_compiled', '_reader', 'scale')
+
+    def __init__(self, compiled: CompiledExpression,
+                 reader: Callable[[Tuple[str, ...], float], Mapping[str, float]],
+                 scale: float = 1.0):
+        self._compiled = compiled
+        self._reader = reader
+        self.scale = scale
+
+    @property
+    def source(self) -> str:
+        """Il testo com'e' scritto nello YAML."""
+        return self._compiled.source
+
+    @property
+    def names(self) -> Tuple[str, ...]:
+        """Le variabili che l'espressione legge."""
+        return self._compiled.names
+
+    def evaluate(self, time: float) -> float:
+        valore = self._compiled(self._reader(self._compiled.names, time))
+        return valore * self.scale
+
+    def __str__(self) -> str:
+        return self.source
+
+    def __repr__(self) -> str:
+        return f"Expression({self.source!r})"
