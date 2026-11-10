@@ -35,6 +35,9 @@ from pge.shared.seeding import session_seed
 from pge.engine.stream_files import (
     StreamFileOrigin, origins_by_id, resolve_stream_files,
 )
+from pge.engine.expression_shelter import (
+    shelter_expressions, unshelter_expressions,
+)
 
 class Generator:
     """
@@ -134,7 +137,11 @@ class Generator:
         raw_data, importati = resolve_stream_files(
             raw_data, self.yaml_path, self._read_document)
 
-        self.data = self._eval_math_expressions(raw_data)
+        # Le espressioni che si valutano a ogni grano (issue #308) non sono
+        # costanti da valutare qui: attraversano la valutazione al riparo, e
+        # tornano stringhe per il parser dei parametri, che le compila.
+        self.data = unshelter_expressions(
+            self._eval_math_expressions(shelter_expressions(raw_data)))
         # Seed top-level opzionale (issue #81): None se assente (il session
         # seed viene derivato in create_elements, non qui).
         self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
