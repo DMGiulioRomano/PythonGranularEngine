@@ -848,7 +848,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     attributo e da fuori si poteva scrivere, quindi avvisa anche in
     scrittura.
 
-  Un render normale non li legge, e non avvisa.
+  Un render normale non li legge, e non avvisa: lo tiene l'intera suite,
+  perché `pytest.ini` rende errore un `FutureWarning` «Stream.» attribuito
+  a un modulo `pge`, cioè a una lettura del motore. Chi li legge da fuori
+  riceve l'avviso.
 
 ---
 

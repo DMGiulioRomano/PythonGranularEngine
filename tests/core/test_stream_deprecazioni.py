@@ -104,13 +104,44 @@ class TestRestanoLeggibili:
 
 
 class TestIlMotoreNonLiLegge:
+    """Il preavviso e' per chi usa il motore come libreria: un render normale
+    non deve emetterlo, o lo vedrebbe chiunque.
+
+    Il primo test copre due percorsi, la generazione e le curve. Tutti gli
+    altri — partitura, renderer, export, CLI — li copre l'intera suite:
+    `pytest.ini` rende errore un FutureWarning «Stream.» attribuito a un
+    modulo `pge`, cioe' a una lettura del motore (stacklevel=2). Senza il
+    filtro, una lettura di `stream.sampleDurSec` aggiunta alla partitura
+    passava la suite con una riga nel riepilogo degli avvisi. Gli altri due
+    test verificano che il filtro ci sia e che prenda solo il motore.
+    """
 
     def test_generare_e_leggere_le_curve_non_avvisa(self, stream):
-        """Il preavviso e' per chi usa il motore come libreria: un render
-        normale non deve emetterlo, o lo vedrebbe chiunque."""
         from pge.rendering.envelope_extractor import get_stream_envelopes
         with warnings.catch_warnings():
             warnings.simplefilter('error', FutureWarning)
             stream.voices
             get_stream_envelopes(stream, show_static=True,
                                  show_voice_offsets=True)
+
+    @staticmethod
+    def _leggi_da(modulo, stream, nome):
+        """Legge `stream.<nome>` da un frame il cui modulo e' `modulo`: e' il
+        `__name__` dei globals a cui il FutureWarning viene attribuito."""
+        exec(f's.{nome}', {'__name__': modulo, 's': stream})
+
+    @pytest.mark.parametrize('nome', DEPRECATE)
+    def test_una_lettura_dal_motore_e_un_errore(self, stream, nome):
+        """Il filtro di pytest.ini e' attivo in questo test come in ogni
+        altro: se sparisce, o un `-W` lo spegne, questo e' rosso."""
+        with pytest.raises(FutureWarning, match=rf'Stream\.{nome}'):
+            self._leggi_da('pge.rendering.lettore_finto', stream, nome)
+
+    @pytest.mark.parametrize('nome', DEPRECATE)
+    def test_una_lettura_da_fuori_resta_un_avviso(self, stream, nome):
+        """Fuori dal motore e' l'avviso che deve essere, anche per un modulo
+        che comincia con `pge` senza esserne parte. I filtri restano quelli
+        della suite: niente pytest.warns, che li sostituirebbe."""
+        with warnings.catch_warnings(record=True) as visti:
+            self._leggi_da('pge_script_utente', stream, nome)
+        assert any(issubclass(w.category, FutureWarning) for w in visti)
