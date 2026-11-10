@@ -765,7 +765,7 @@ grain:
   iot: (0.020 + 0.180*m1)
 ```
 
-le attese percorrono in ciclo 169, 110, 177, 89 ms: 546 ms per quattro grani,
+le attese percorrono in ciclo 169, 110, 177, 89 ms: 545 ms per quattro grani,
 7.3 grani/s in media, fra 5.6 e 11.2. È un anello chiuso: la mappa decide
 quanto aspettare, e l'attesa decide quando la mappa farà il passo successivo
 (`clock: grain` è contato sui grani, non sul tempo).

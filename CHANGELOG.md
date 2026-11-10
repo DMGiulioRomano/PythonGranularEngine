@@ -23,7 +23,7 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     iot: (0.020 + 0.180*m1)
   ```
 
-  Le attese percorrono in ciclo 169, 110, 177, 89 ms: 546 ms per quattro
+  Le attese percorrono in ciclo 169, 110, 177, 89 ms: 545 ms per quattro
   grani, 7.3 grani/s in media. Con `grain.iot` la densita' non si decide:
   **emerge**, e si legge a cose fatte.
 

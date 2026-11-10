@@ -10,8 +10,11 @@ mappe caotiche 3/7).
 `onset[n+1] = onset[n] + iot`: e' il cursore per voce che c'e' gia' in
 `Stream.generate_grains`, con l'attesa presa da un'espressione invece che da
 `1/density`. I numeri sono quelli del plan: con `r = 3.5` le attese
-percorrono 169, 110, 177, 89 ms — 546 ms per quattro grani, 7.3 grani/s in
-media, fra 5.6 e 11.2.
+percorrono 169, 110, 177, 89 ms, 7.3 grani/s in media, fra 5.6 e 11.2.
+
+Un numero del plan e' arrotondato di troppo: «546 ms per quattro grani». Le
+quattro attese sono 168.85, 110.16, 177.50 e 88.91 ms, cioe' 545.42 ms. Qui
+si verifica il valore esatto, non quello scritto.
 """
 from unittest.mock import patch
 
@@ -89,10 +92,21 @@ class TestGliOnsetDallaMappa:
         s = stream()
         _e_il_ciclo([round(a * 1000) for a in _attese(s.voices[0])])
 
-    def test_quattro_grani_in_546_millisecondi(self, stream):
+    def test_quattro_grani_in_545_millisecondi(self, stream):
+        """La somma delle quattro attese del ciclo, calcolata dalla mappa:
+        545.42 ms (il plan scrive 546)."""
+        x = 0.3
+        for _ in range(300):
+            x = 3.5 * x * (1 - x)
+        ciclo = 0.0
+        for _ in range(4):
+            x = 3.5 * x * (1 - x)
+            ciclo += 0.020 + 0.180 * x
+        assert ciclo == pytest.approx(0.54542, abs=1e-5)
+
         onset = [g.onset for g in stream().voices[0]]
-        assert onset[4] - onset[0] == pytest.approx(0.546, abs=0.001)
-        assert onset[8] - onset[4] == pytest.approx(0.546, abs=0.001)
+        assert onset[4] - onset[0] == pytest.approx(ciclo, abs=1e-9)
+        assert onset[8] - onset[4] == pytest.approx(ciclo, abs=1e-9)
 
     def test_la_densita_media_e_7_3_grani_al_secondo(self, stream):
         s = stream(duration=60.0)
