@@ -98,9 +98,11 @@ class Stream:
                   library/CLI). None (default) → fallback sul globale
                   PATHSAMPLES (comportamento legacy).
         """
-        # Seed di riproducibilità: passa per StreamConfig, che lo porta alle
+        # Seed di riproducibilità. Lo porta l'argomento, via StreamConfig, alle
         # strategy stocastiche delle voci (VoicesController, #284) e agli RNG
-        # per-componente.
+        # per-componente: l'attributo resta, ma il motore non lo rilegge — il
+        # solo lettore era il wiring delle voci, che da #284 lo prende da
+        # `config.seed` — e cambiarlo dopo la costruzione non sposta niente.
         self.seed = seed
         # Directory sample iniettata. Il sample si cerca qui sotto con
         # l'argomento, una volta sola (issue #283): l'attributo resta, ma il

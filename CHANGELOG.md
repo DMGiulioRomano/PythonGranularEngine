@@ -249,14 +249,16 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   `VoicesController` (`src/pge/controllers/voices_controller.py`), con la
   firma degli altri quattro controller, `(blocco, config)`. I tre valori che il
   wiring prendeva dallo `Stream` — `duration`, `seed`, `stream_id` — li legge
-  da `config`, dove stavano già. Traslocano con lui `_parse_strategy_kwarg`,
+  da `config`, dove stavano già; l'attributo `Stream.seed` resta, ma il suo
+  solo lettore era il wiring, e il motore non lo rilegge più (come
+  `samples_dir` da #283). Traslocano con lui `_parse_strategy_kwarg`,
   `_VoiceAxis`, `_VOICE_AXES`, il passo comune e i due hook delle dimensioni.
   Lo `Stream` lo costruisce in `_init_controllers`, dopo gli altri quattro, e
   le property `num_voices`, `scatter` e `voice_manager` delegano a lui:
   la superficie di lettura non cambia, e nemmeno l'audio. L'unità dell'offset
   di pointer è l'attributo `pointer_normalized` del controller, con il
-  default anche senza il blocco. `stream.py` passa da 546 a 402 righe di
-  codice (da 1198 a 912 in tutto), misurate col metodo della decisione; il
+  default anche senza il blocco. `stream.py` passa da 545 a 401 righe di
+  codice (da 1220 a 936 in tutto), misurate col metodo della decisione; il
   conto è in `docs/explanation/stream-decomposition.md`.
 
   Le invarianti che la suite di #186 pinna sono traslocate col codice, e la

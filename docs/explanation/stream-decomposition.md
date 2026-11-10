@@ -384,8 +384,9 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
   Le property `num_voices`, `scatter` e `voice_manager` delegano a lui, la
   generazione legge le voci da li', e l'unità dell'offset di pointer è il suo
   attributo `pointer_normalized`, scritto anche senza il blocco. Rimisurato
-  col metodo di sopra, `stream.py` passa da 1198 righe e 546 di codice (dopo
-  #283) a 912 e 402: 144 righe di codice in meno, contro le circa 110 stimate,
+  col metodo di sopra, `stream.py` passa da 1220 righe e 545 di codice (main
+  dopo #283 e #269, che ha aggiunto solo prosa) a 936 e 401: 144 righe di
+  codice in meno, contro le circa 110 stimate,
   perché nel frattempo il wiring era cresciuto da 115 a 141 righe di codice
   (#211 e #288, l'attribuzione degli errori di forma e il rifiuto dei kwarg che
   envelope non sono). `voices_controller.py` ha 340 righe, 165 di codice: le
