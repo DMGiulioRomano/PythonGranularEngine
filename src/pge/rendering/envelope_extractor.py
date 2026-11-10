@@ -358,7 +358,10 @@ def _curve_of(source, stream):
 
 def _voice_curves(stream):
     """Curve per-voce, campionate da VoiceManager con la finestra attiva."""
-    manager = getattr(stream, 'voice_manager', None)
+    # Letto senza default (#285): questa riga del catalogo non si legge per
+    # nome, e la guardia della superficie la salta. Con un default, un rename
+    # di `Stream.voice_manager` toglieva le curve per-voce senza errore.
+    manager = stream.voice_manager
     if manager is None or not hasattr(manager, 'offset_curves'):
         return []
 

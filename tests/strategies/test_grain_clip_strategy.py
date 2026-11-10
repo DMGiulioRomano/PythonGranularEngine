@@ -245,7 +245,6 @@ class TestCostruiteComeLeCostruisceStream:
     def _code_oltre(stream, margine=0.0):
         # Le tabelle le assegna il Generator; senza, la generazione non parte.
         stream.sample_table_num = 1
-        stream.envelope_table_num = 2
         stream.window_table_map = {'hanning': 2}
         limite = stream.onset + stream.duration + margine
         return [g for voce in stream.voices for g in voce

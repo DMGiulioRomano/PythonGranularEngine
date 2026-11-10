@@ -1056,6 +1056,38 @@ class TestEnvelopeDisplayRange:
         assert not viz._current_display_ranges
 
 
+class TestPitchUnitOfTheLane:
+    """La curva `pitch` si scala e si etichetta con l'unita' dello stream,
+    che la corsia legge da `stream.pitch_unit`.
+
+    Letta con un default, un rename della property lasciava la curva senza
+    scala e senza etichette, e nessun errore: togliendo `Stream.pitch_unit`
+    l'intera suite restava verde (#285).
+    """
+
+    def test_a_stream_without_pitch_unit_is_an_error(self):
+        from types import SimpleNamespace
+        s = SimpleNamespace(onset=0.0, duration=10.0)
+        viz = make_viz([s])
+        fig, ax = plt.subplots()
+        with patch.object(viz, '_get_stream_envelopes', return_value={}):
+            with pytest.raises(AttributeError, match='pitch_unit'):
+                viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
+                                    page_start=0.0, page_end=10.0)
+
+    def test_the_lane_carries_the_unit_of_a_real_stream(self, build_stream):
+        """Uno Stream vero, non un MagicMock che risponde a tutto: la corsia
+        disegna la curva del pitch e porta l'unita' con cui l'ha scalata."""
+        s = build_stream(pitch={'cents': [[0, 0], [2.0, 1200]]})
+        viz = make_viz([s])
+        fig, ax = plt.subplots()
+        record = viz._draw_envelopes(ax, s, y_base=0.0, y_height=1.0,
+                                     page_start=0.0, page_end=s.duration)
+        assert 'pitch' in record.drawn_types
+        assert record.pitch_unit is s.pitch_unit
+        assert record.pitch_unit.symbol == 'c'
+
+
 # =============================================================================
 # GROUP - Filtro selettivo degli envelope (issue #101)
 # =============================================================================
