@@ -466,7 +466,21 @@ class TestDensityParameterSchema:
 
     def test_expected_parameters(self):
         names = {s.name for s in DENSITY_PARAMETER_SCHEMA}
-        assert names == {'fill_factor', 'density', 'distribution', 'effective_density'}
+        assert names == {'grain_iot', 'fill_factor', 'density',
+                         'distribution', 'effective_density'}
+
+    def test_grain_iot_e_il_terzo_modo_e_non_ha_un_default(self):
+        """`grain.iot` (issue #311) sta nel gruppo dei modi di densita', si
+        sceglie per presenza (default None) e, quando c'e', vince sugli
+        altri: il conflitto con loro lo rifiuta il DensityController prima
+        del selettore."""
+        iot = next(s for s in DENSITY_PARAMETER_SCHEMA if s.name == 'grain_iot')
+        assert iot.yaml_path == 'grain.iot'
+        assert iot.default is None
+        assert iot.exclusive_group == 'density_mode'
+        assert iot.group_priority < min(
+            s.group_priority for s in DENSITY_PARAMETER_SCHEMA
+            if s.exclusive_group == 'density_mode' and s.name != 'grain_iot')
 
     def test_density_mode_exclusive_group(self):
         """fill_factor e density appartengono a 'density_mode'."""

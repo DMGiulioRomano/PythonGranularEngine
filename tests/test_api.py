@@ -1256,17 +1256,20 @@ class TestParameterBoundsApi:
     @pytest.mark.parametrize('sr', [44100, 48000, 96000])
     def test_output_sr_overrides_grain_duration_min(self, sr):
         """Con output_sr: grain_duration.min_val = 1 campione (1/output_sr),
-        tutti gli altri parametri restano statici."""
+        e cosi' grain_iot.min_val (issue #311: l'attesa minima fra due grani
+        e' la stessa risoluzione); tutti gli altri parametri restano
+        statici."""
         from pge import api
         from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
 
         result = api.parameter_bounds(output_sr=sr)
 
-        assert result['grain_duration'].min_val == 1.0 / sr
-        assert result['grain_duration'].max_val == \
-            GRANULAR_PARAMETERS['grain_duration'].max_val
+        un_campione = ('grain_duration', 'grain_iot')
+        for name in un_campione:
+            assert result[name].min_val == 1.0 / sr
+            assert result[name].max_val == GRANULAR_PARAMETERS[name].max_val
         for name, bounds in result.items():
-            if name != 'grain_duration':
+            if name not in un_campione:
                 assert bounds == GRANULAR_PARAMETERS[name]
 
     def test_sample_dur_sec_overrides_loop_max(self):

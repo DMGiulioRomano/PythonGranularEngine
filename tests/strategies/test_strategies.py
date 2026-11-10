@@ -805,8 +805,11 @@ class TestRegistryContent:
         assert DENSITY_STRATEGIES[key] is expected_class
 
     def test_density_strategies_count(self):
-        """DENSITY_STRATEGIES ha esattamente 2 strategie."""
-        assert len(DENSITY_STRATEGIES) == 2
+        """DENSITY_STRATEGIES ha esattamente 3 strategie: fill_factor,
+        density e, dalla issue #311, grain_iot."""
+        assert len(DENSITY_STRATEGIES) == 3
+        assert set(DENSITY_STRATEGIES.keys()) == {
+            'fill_factor', 'density', 'grain_iot'}
 
     def test_all_density_strategies_are_subclass(self):
         """Tutte le strategie density sono subclass di DensityStrategy."""

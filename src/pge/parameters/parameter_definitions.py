@@ -248,6 +248,21 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         variation_mode='additive'
     ),
     
+    # L'attesa fino al grano successivo (issue #311), in secondi. Il
+    # pavimento e' un campione, la risoluzione temporale del motore: il
+    # numero qui sotto e' 1/48000 scritto come letterale, perche' chi legge
+    # questo registro dal sorgente non valuta una divisione, e
+    # get_parameter_definition lo sostituisce con 1/output_sr come fa per
+    # grain_duration. Il tetto e' l'inverso del pavimento di 'density'
+    # (0.01 grani/s). Non e' un limite musicale ma l'invariante del giro dei
+    # grani: un'attesa nulla, negativa o non finita e' un cursore che non
+    # avanza. Nessuna banda e nessun jitter implicito: l'attesa e' quella
+    # scritta.
+    'grain_iot': ParameterBounds(
+        min_val=2.0833333333333333e-05,
+        max_val=100.0,
+    ),
+
     'reverse': ParameterBounds(
         min_val=0,
         max_val=1,
@@ -368,6 +383,11 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
 _LOOP_PARAMS = frozenset({'loop_dur', 'loop_start', 'loop_end'})
 
 
+#: Parametri il cui pavimento e' un campione, cioe' 1/output_sr quando il
+#: sample rate e' noto: la durata di un grano e l'attesa fra due grani.
+_ONE_SAMPLE_FLOOR_PARAMS = frozenset({'grain_duration', 'grain_iot'})
+
+
 def get_parameter_definition(
     param_name: str,
     sample_dur_sec: float | None = None,
@@ -379,9 +399,10 @@ def get_parameter_definition(
     Per loop_dur, loop_start e loop_end, se sample_dur_sec è fornito,
     restituisce un nuovo ParameterBounds con max_val = sample_dur_sec.
 
-    Per grain_duration, se output_sr è fornito, restituisce un nuovo
-    ParameterBounds con min_val = 1 campione (1/output_sr): la durata
-    minima di un grano è la risoluzione temporale del motore.
+    Per grain_duration e grain_iot, se output_sr è fornito, restituisce un
+    nuovo ParameterBounds con min_val = 1 campione (1/output_sr): la durata
+    minima di un grano, e l'attesa minima fra due grani (issue #311), sono la
+    risoluzione temporale del motore.
 
     Tutti gli altri campi rimangono invariati.
 
@@ -390,7 +411,7 @@ def get_parameter_definition(
         sample_dur_sec: Durata del file audio in secondi (opzionale).
             Se fornito, sovrascrive max_val per i parametri loop.
         output_sr: Sample rate di output del motore (opzionale).
-            Se fornito, sovrascrive min_val per grain_duration.
+            Se fornito, sovrascrive min_val per grain_duration e grain_iot.
 
     Returns:
         ParameterBounds: L'oggetto configurazione.
@@ -410,7 +431,7 @@ def get_parameter_definition(
             default_jitter=bounds.default_jitter,
             variation_mode=bounds.variation_mode,
         )
-    if output_sr is not None and param_name == 'grain_duration':
+    if output_sr is not None and param_name in _ONE_SAMPLE_FLOOR_PARAMS:
         return ParameterBounds(
             min_val=1.0 / output_sr,
             max_val=bounds.max_val,

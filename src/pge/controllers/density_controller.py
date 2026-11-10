@@ -5,6 +5,10 @@ Implementa il modello Truax per la distribuzione temporale:
 - SYNCHRONOUS (distribution=0): inter-onset fisso
 - ASYNCHRONOUS (distribution=1): random(0, 2×avg)
 - INTERPOLAZIONE: blend lineare tra i due
+
+Con `grain.iot` (issue #311) l'attesa fra due grani e' scritta direttamente —
+un numero, un envelope, un'espressione che legge una mappa — e la densita'
+non si decide: emerge dagli onset.
 """
 from __future__ import annotations
 
@@ -13,7 +17,12 @@ from pge.strategies.strategy_registry import StrategyFactory, DENSITY_STRATEGIES
 from pge.core.stream_config import StreamConfig
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 from pge.shared.seeding import component_rng
+from pge.shared.exceptions import InvalidFieldValueError, MissingFieldError
 from pge.shared.logger import log_high_density_warning
+
+#: Le chiavi con cui `grain.iot` non convive (issue #311): ognuna dice in un
+#: altro modo quando nasce il grano successivo.
+IOT_EXCLUSIVE_KEYS = ('density', 'fill_factor', 'distribution')
 
 # Griglia di campionamento della curva di densita' reale. Piu' fitta dei 33
 # punti di DEFAULT_OFFSET_SAMPLES perche' qui la forma e' un'iperbole, non una
@@ -48,12 +57,18 @@ class DensityController:
     """
     Controlla la densità granulare e la distribuzione temporale.
     
-    Due modalità mutuamente esclusive:
-    1. FILL_FACTOR (prioritaria): density = fill_factor / grain_duration
+    Tre modalità mutuamente esclusive:
+    1. FILL_FACTOR (prioritaria fra le prime due, e il default):
+       density = fill_factor / grain_duration
        - La densità si adatta automaticamente alla durata del grano
-       
+
     2. DENSITY diretta: valore fisso o Envelope
        - Controllo esplicito della densità in grani/secondo
+
+    3. IOT (issue #311): `grain.iot` e' l'attesa fino al grano successivo
+       - Si sceglie per presenza della chiave, e con `density`,
+         `fill_factor` e `distribution` non convive: insieme sono un errore
+       - Nessuna distribuzione di Truax: l'attesa e' quella scritta
     """
     
     def __init__(
@@ -72,6 +87,10 @@ class DensityController:
             config.context.rng_id,
             'iot',
         )
+
+        # `grain.iot` con un'altra chiave di densita' e' un errore, e va
+        # detto prima che il selettore del gruppo scelga per priorita'.
+        self._check_iot_exclusivity(params, config)
 
         # Create orchestrator
         self._orchestrator = ParameterOrchestrator(config=config)
@@ -92,6 +111,49 @@ class DensityController:
         )
         self.distribution_param = self._loaded_params['distribution']
         self._init_density_notice(config)
+
+    @staticmethod
+    def _check_iot_exclusivity(params: dict, config) -> None:
+        """`grain.iot` non convive con `density`, `fill_factor`,
+        `distribution` (issue #311): e' un errore, non una priorita'.
+
+        Il modo si sceglie per PRESENZA della chiave, e anche il conflitto:
+        `distribution: 0` accanto a `grain.iot` non cambierebbe niente, ma
+        chi l'ha scritto si aspetta che voglia dire qualcosa. Per la stessa
+        ragione una `grain.iot:` lasciata vuota non e' «non scritta»: il
+        modo e' scelto e manca il valore, e leggerla come assente farebbe
+        ripartire in silenzio il default `fill_factor: 2`.
+        """
+        grain = params.get('grain') if isinstance(params, dict) else None
+        if not isinstance(grain, dict) or 'iot' not in grain:
+            return
+
+        stream_id = getattr(getattr(config, 'context', None), 'stream_id', None)
+        conflitti = [k for k in IOT_EXCLUSIVE_KEYS if k in params]
+        if conflitti:
+            err = InvalidFieldValueError(
+                field='grain.iot',
+                value=grain['iot'],
+                hint=(
+                    "grain.iot e' l'attesa fino al grano successivo: con lei "
+                    "la densita' non si decide, emerge dagli onset, e non "
+                    f"puo' stare insieme a {', '.join(conflitti)}.\n"
+                    "  Tieni grain.iot, oppure density / fill_factor (con "
+                    "distribution), non entrambe."
+                ),
+            )
+            err.stream_id = stream_id
+            raise err
+
+        if grain['iot'] is None:
+            err = MissingFieldError(
+                field='grain.iot',
+                hint=("la chiave e' scritta ma vuota: l'attesa va indicata "
+                      "(un numero, un envelope, o un'espressione come "
+                      "(0.02 + 0.18*m1)). Se non serve, togli la chiave."),
+            )
+            err.stream_id = stream_id
+            raise err
 
     def _init_density_notice(self, config) -> None:
         """Stato del rate limiting dell'avviso di density alta (issue #272).
@@ -123,7 +185,6 @@ class DensityController:
         """
         candidates = [name for name in self._loaded_params if name in DENSITY_STRATEGIES and self._loaded_params[name] is not None]
         if len(candidates) != 1:
-            from pge.shared.exceptions import InvalidFieldValueError
             raise InvalidFieldValueError(
                 field="density (gruppo esclusivo)",
                 value=candidates,
@@ -142,6 +203,18 @@ class DensityController:
         """
         Calcola il tempo fino al prossimo onset (IOT) basandosi sul modello Truax.
         """
+        # 0. MODALITA' IOT (issue #311): l'attesa e' quella scritta. Niente
+        #    `1 / density` — l'inverso dell'inverso non restituisce sempre il
+        #    numero di partenza — e niente distribuzione di Truax. Il clamp
+        #    del Parameter garantisce che sia positiva e finita, cioe' che il
+        #    cursore avanzi; la riga sopra soglia continua a uscire.
+        iot_param = self.iot
+        if iot_param is not None:
+            iot = iot_param.get_value(elapsed_time)
+            self._notice_high_density(
+                elapsed_time, 1.0 / iot, current_grain_duration)
+            return iot
+
         # 1. STRATEGY: Calcola density (con context per grain_duration)
         density = self._strategy.calculate_density(
             elapsed_time,
@@ -268,8 +341,23 @@ class DensityController:
         
     @property
     def distribution(self):
-        """Espone l'oggetto parametro distribution."""
+        """Espone l'oggetto parametro distribution; None in modalita' iot,
+        dove non e' dichiarato e non agisce."""
+        if self.mode == 'iot':
+            return None
         return self.distribution_param
+
+    @property
+    def iot(self):
+        """Il Parameter di `grain.iot` (se attivo), altrimenti None.
+
+        Come `fill_factor` e `density` si legge dal modo e dai parametri
+        caricati, non da un attributo suo: il modo e' uno, e lo dice la
+        strategy.
+        """
+        if self.mode == 'iot':
+            return self._loaded_params.get('grain_iot')
+        return None
 
     @property
     def fill_factor(self):

@@ -217,9 +217,28 @@ PITCH_PARAMETER_SCHEMA: List[ParameterSpec] = []
 # Parametri gestiti da DensityController.
 # NOTA: 'fill_factor' e 'density' sono mutuamente esclusivi.
 #       fill_factor ha priorità. La logica di selezione resta nel Controller.
+#       'grain_iot' (issue #311) e' il terzo modo, e con gli altri due non
+#       convive: vedi sotto.
 # =============================================================================
 
 DENSITY_PARAMETER_SCHEMA: List[ParameterSpec] = [
+    # L'attesa fino al grano successivo (issue #311). Sta dentro `grain:`
+    # come `grain.duration`, di cui segue l'unita'. E' il terzo modo del
+    # gruppo, e si sceglie per PRESENZA della chiave: senza, vale tutto come
+    # prima, default `fill_factor: 2` compreso.
+    #
+    # Scritta insieme a `density`, `fill_factor` o `distribution` e' un
+    # ERRORE, sollevato dal DensityController prima che l'orchestratore
+    # arrivi qui (stessa regola di reverse / read_direction: dicono cose
+    # diverse). La priorita' piu' alta serve solo a garantire che, superato
+    # quel controllo, il selettore scelga lei.
+    ParameterSpec(
+        name='grain_iot',
+        yaml_path='grain.iot',
+        default=None,  # None = chiave non dichiarata
+        exclusive_group='density_mode',
+        group_priority=0
+    ),
     ParameterSpec(
         name='fill_factor',
         yaml_path='fill_factor',
