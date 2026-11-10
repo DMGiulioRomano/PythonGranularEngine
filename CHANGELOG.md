@@ -10,6 +10,49 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: `grain.iot`, gli onset dalla mappa** (issue #311, la terza
+  sotto la #307). `grain.iot` e' l'attesa fino al grano successivo,
+  `onset[n+1] = onset[n] + iot`: il terzo modo di dire quando nasce un grano,
+  accanto a `density` e `fill_factor`. Un numero, un envelope, o
+  un'espressione che legge una mappa:
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: 3.5}
+  grain:
+    iot: (0.020 + 0.180*m1)
+  ```
+
+  Le attese percorrono in ciclo 169, 110, 177, 89 ms: 546 ms per quattro
+  grani, 7.3 grani/s in media. Con `grain.iot` la densita' non si decide:
+  **emerge**, e si legge a cose fatte.
+
+  - **Si sceglie per presenza della chiave.** Senza, vale tutto come prima,
+    default `fill_factor: 2` compreso. Scritta insieme a `density`,
+    `fill_factor` o `distribution` e' un **errore**, non una priorita'; scritta
+    e lasciata vuota anche.
+  - **Limiti: da un campione a 100 s.** Un numero o un envelope fuori limite
+    e' un errore al parse; un'espressione viene tagliata e scritta sul clip
+    log, cosi' un'attesa nulla, negativa o non finita non blocca il render.
+    `[DENSITY_HIGH]` continua a uscire sopra la soglia, con `mode=iot`.
+  - **Segue `grain.duration_unit`**, come `grain.duration`.
+  - **La densita' emersa e' una curva pubblicata**, `effective_density`: per
+    ogni grano della voce 0, `1 / attesa`, a gradini. Leggerla genera i grani.
+  - **Con la stessa mappa su `grain.iot` e `grain.duration`** ogni grano
+    porta il valore che ha deciso anche la sua attesa.
+  - **`Stream.density`, `fill_factor` e `distribution` sono `None`** su uno
+    stream con `grain.iot`; `Stream.iot` e' il parametro e
+    `Stream.density_mode` dice il modo (`fill_factor`, `density`, `iot`). Il
+    `repr`, la riga di fine render (`· iot`) e i commenti dello score
+    (`Inter-onset:`) leggono quello.
+  - **`scatter`** tiene la formula di sempre. Con `clock: grain` le mappe
+    delle voci sono identiche, e `scatter` non sposta niente: e' scritto in
+    reference come fatto, non come promessa.
+
+  `Stream._pre_normalize_grain_params` non e' cambiata: l'unita' di
+  `grain.iot` si applica in un passo suo. Reference: `docs/reference/yaml.md`,
+  «Densità».
+
 - **Mappe caotiche: come avanza la mappa** (issue #310, la seconda sotto la
   #307). Dopo la #308 una mappa faceva un passo per grano e `r` era un
   numero. Ora lo YAML dice anche quando:

@@ -17,7 +17,7 @@ sources:
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: 39b32aa
+last_synced_commit: 93d326b
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -667,6 +667,9 @@ Note:
 ## Densità
 
 `density` e `fill_factor` sono mutuamente esclusivi. `fill_factor` ha priorità.
+C'è un terzo modo, [`grain.iot`](#grainiot--lattesa-fra-due-grani): l'attesa
+fra due grani scritta direttamente, con cui la densità non si decide ma
+emerge. Si sceglie per presenza della chiave, e con questi due non convive.
 
 ```yaml
 # Modalità density: grani al secondo (fisso o envelope)
@@ -718,6 +721,80 @@ risultante: non è un taglio, è la riga che il vecchio clamp non scriveva, e
 serve a riconoscere un `grain.duration` sbagliato di un ordine di grandezza
 prima che il render finisca la RAM.
 
+### `grain.iot` — l'attesa fra due grani
+
+`grain.iot` è l'attesa fino al grano successivo (inter-onset time, issue
+#311): `onset[n+1] = onset[n] + iot`. È il terzo modo di dire quando nasce un
+grano, e l'unico in cui lo si dice direttamente.
+
+```yaml
+grain:
+  iot: 0.1                         # un metronomo: 10 grani al secondo
+  iot: [[0, 0.2], [30, 0.05]]      # un accelerando
+  iot: (0.020 + 0.180*m1)          # letta da una mappa (vedi sotto)
+```
+
+- **Il modo si sceglie per presenza della chiave.** Senza `grain.iot` vale
+  tutto come prima, default `fill_factor: 2` compreso.
+- **Insieme a `density`, `fill_factor` o `distribution` è un errore**, non una
+  priorità (`InvalidFieldValueError` su `grain.iot`): dicono in un altro modo
+  la stessa cosa, e scegliere in silenzio nasconderebbe l'errore. Vale per
+  presenza: anche `distribution: 0`. Una `grain.iot:` scritta e lasciata vuota
+  è un errore anche lei (`MissingFieldError`).
+- **Niente distribuzione di Truax sopra**: l'attesa è quella scritta. Il
+  disordine, se lo si vuole, viene dalla mappa.
+- **Sta dentro `grain:` e segue `grain.duration_unit`**, come
+  `grain.duration`: con `duration_unit: milliseconds`, `iot: 100` sono 0.1 s.
+  Su un'espressione il fattore si applica al risultato.
+- **Limiti: da un campione (1/48000 s) a 100 s.** Un numero o un envelope
+  fuori limite è un errore al parse, come per ogni parametro. Un'espressione
+  viene **tagliata** a ogni grano e scritta sul clip log: un'attesa nulla,
+  negativa o non finita non ferma il render, va a un campione (se è
+  `+inf`, a 100 s). Non è un limite musicale ma l'invariante del giro dei
+  grani: un'attesa nulla è un cursore che non avanza.
+- Sotto 0.25 ms di attesa (sopra 4000 grani/s) continua a uscire la riga
+  `[DENSITY_HIGH]`, con `mode=iot`.
+
+**La densità emerge.** Con `grain.iot` la densità non è dichiarata: la si
+legge a cose fatte. Con una mappa:
+
+```yaml
+maps:
+  m1: {type: logistic, r: 3.5}
+grain:
+  iot: (0.020 + 0.180*m1)
+```
+
+le attese percorrono in ciclo 169, 110, 177, 89 ms: 546 ms per quattro grani,
+7.3 grani/s in media, fra 5.6 e 11.2. È un anello chiuso: la mappa decide
+quanto aspettare, e l'attesa decide quando la mappa farà il passo successivo
+(`clock: grain` è contato sui grani, non sul tempo).
+
+La densità emersa è pubblicata come curva, `effective_density`, come in
+modalità `fill_factor`: in partitura e nella sessione Sonic Visualiser è
+`1 / attesa` per ogni grano della voce 0, tenuto fino al grano dopo. Non è
+una funzione del tempo — un'attesa letta da una mappa dipende dai grani già
+nati — quindi si conosce a grani fatti.
+
+**La stessa mappa su attesa e durata.** Con `iot` e `duration` che leggono la
+stessa mappa a `clock: grain`, ogni grano porta il valore che ha deciso anche
+la sua attesa: la mappa avanza una volta in testa al giro, e le due letture
+vedono lo stesso stato.
+
+**Più voci e `scatter`.** La formula è quella di sempre: l'attesa di una voce
+oltre la prima è `(1 − scatter) · attesa della voce 0 + scatter · attesa
+letta per la propria voce`. Ma le mappe delle voci partono tutte da `x0` e
+sono deterministiche: danno la **stessa sequenza**, e `scatter` — una media
+fra due attese uguali — **non sposta niente**. Le voci restano in fase, e si
+distinguono solo per gli offset di `voices:`. Dare alle voci stati iniziali
+diversi è una decisione ancora da prendere.
+
+**Chi legge la densità.** Per uno stream con `grain.iot`, `Stream.density`,
+`Stream.fill_factor` e `Stream.distribution` sono `None`; `Stream.iot` è il
+parametro, `Stream.density_mode` vale `iot`. I commenti dello score Csound
+scrivono `Inter-onset:` al posto di `Density:` e `Distribution:`, e la riga
+di fine render dice `· iot`.
+
 ---
 
 ## Volume e Pan
@@ -746,6 +823,9 @@ Bounds: `volume` ∈ [-120, 12], `pan` ∈ [-3600, 3600].
 ```yaml
 grain:
   duration: 0.05           # secondi, default 0.05
+  duration: (0.02 + 0.08*m1)   # letta da una mappa: vedi «Mappe ed espressioni»
+  iot: 0.1                 # attesa fino al grano successivo, al posto di
+                           # density / fill_factor: vedi «Densità»
   duration: [[0, 0.02], [30, 0.2]]
   duration_range: 0.01     # banda larga 0.01 s (default: ±0.005 s)
 
@@ -1216,8 +1296,9 @@ quando la mappa è in fondo al suo intervallo, il massimo quando è in cima. La
 mappa non usa per forza tutta la fascia scritta: con `r: 3.2` i valori sono
 due soli.
 
-**Dove vale.** Oggi su `grain.duration` (l'elenco è `EXPRESSION_FIELDS` in
-`src/pge/expressions/fields.py`). Su un altro parametro una stringa resta un
+**Dove vale.** Oggi su `grain.duration` e su
+[`grain.iot`](#grainiot--lattesa-fra-due-grani) (l'elenco è
+`EXPRESSION_FIELDS` in `src/pge/expressions/fields.py`). Su un altro parametro una stringa resta un
 errore (`InvalidParameterError`), che dice dove le espressioni valgono.
 
 **Quando si valuta.** A ogni grano, non al caricamento: è la differenza dalle
@@ -1242,6 +1323,7 @@ prosegue. Per riportarlo dentro in un altro modo lo si scrive:
 **Unità.** Con `grain.duration_unit` diversa da `seconds` il fattore si
 applica al **risultato** dell'espressione: `(20 + 80*m1)` con
 `duration_unit: milliseconds` sono gli stessi grani di `(0.02 + 0.08*m1)`.
+Vale per `grain.duration` e per `grain.iot`.
 
 **`_range` sopra un'espressione** resta lecito: `grain.duration_range` è un
 tremolio casuale attorno al valore dato dalla mappa. La mappa non sostituisce
@@ -2942,6 +3024,7 @@ un envelope dal YAML al runtime è:
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |
+| `grain_iot` | 1/48000 (1 campione) | 100 | — | secondi, segue `duration_unit`; l'attesa fra due grani (`grain.iot`), al posto di `density` / `fill_factor` / `distribution` |
 | `grain_duration_range` | 0 | 1 | — | secondi; con `duration_range_unit: relative` il numero è una frazione e il dominio è quello della modalità (`RELATIVE_RANGE_BOUNDS`), non quello del parametro — che i due `1` coincidano è un caso |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |
