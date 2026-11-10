@@ -140,7 +140,7 @@ class TestHeightReachesThePolygon:
                       make_grain(onset=1.0, duration=0.5, pointer_pos=0.4,
                                  pitch_ratio=3.0, envelope_table=10),
                       window_table_map={'hanning': 10})
-        assert len(ys) > 6  # la silhouette; la freccia ha 5 vertici
+        assert len(ys) > 6  # la silhouette; la freccia ne ha 6
         assert max(ys) == pytest.approx(1.9)
 
     def test_unknown_mode_is_refused_at_draw_time(self):

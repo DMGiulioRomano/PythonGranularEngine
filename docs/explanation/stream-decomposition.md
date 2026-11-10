@@ -421,12 +421,17 @@ Questa decisione non tocca `src/`. L'esecuzione sta in tre issue:
   nei grani. Uno dei test esistenti diceva di misurare la silhouette della
   finestra e, senza la mappa, misurava la freccia, alta uguale.
 
-  Rimisurato col metodo di sopra, gli avvisi costano a `stream.py` 28 righe
-  di codice (58 in tutto), e la rimozione ne toglie 60. Con #284, che non
-  tocca le stesse righe, il file ha 430 righe di codice e alla 10.0.0 ne
-  avrà 370: lì la proiezione regge (diceva 360), mentre fino ad allora sono
-  430 contro 385, perché la proiezione contava `grains` e non gli avvisi
-  delle altre tre, che escono con loro.
+  Rimisurato col metodo di sopra su main dopo #284, gli avvisi costano a
+  `stream.py` 28 righe di codice (58 in tutto), e la rimozione ne toglie 60:
+  il file passa da 401 a 429 righe di codice, e alla 10.0.0 ne avrà 369. Lì
+  la proiezione regge (diceva 360), mentre fino ad allora sono 429 contro
+  385, perché la proiezione contava `grains` e non gli avvisi delle altre
+  tre, che escono con loro.
+
+  Che il motore non legga nessuno dei quattro nomi lo tiene l'intera suite:
+  `pytest.ini` rende errore il loro `FutureWarning` quando lo emette una
+  lettura di un modulo `pge`. Senza, una lettura aggiunta alla partitura
+  passava la suite con una riga nel riepilogo degli avvisi.
 
 Lo stadio 3 dello stesso plan — dare un nome al read-model — è deciso qui, e la
 decisione è di non farlo.
