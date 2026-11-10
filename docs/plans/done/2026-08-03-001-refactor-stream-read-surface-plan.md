@@ -1,7 +1,7 @@
 ---
 title: "refactor: la superficie di lettura di Stream diventa un contratto verificato"
 type: refactor
-status: active
+status: done
 date: 2026-08-03
 issue: 199
 ---
@@ -191,6 +191,20 @@ stream, per lo stesso file.
 > e i test che ne dipendono 150, perché due dei siti sono factory
 > (`stream_factory`, `_make_stream`); le cicatrici in produzione sono tre, non
 > una. Vedi `docs/explanation/stream-decomposition.md`.
+>
+> **Esito (2026-10-19, #283): fatto.** Le due factory costruiscono uno
+> `Stream` vero con `build_stream` e poi ne sostituiscono i collaboratori
+> (`_make_stream` è diventata la fixture `make_stream`); i bypass diretti
+> chiedono al costruttore il comportamento che verificavano, e i cinque che
+> provavano solo l'inoltro fra metodi privati sono usciti. Via le tre
+> cicatrici, e una guardia (`tests/core/test_stream_costruttore.py`) rifiuta
+> `object.__new__(Stream)` nei test. Lo `Stream` legge i campi dal contesto
+> che ha costruito: una lettura dell'header, verificata. Lungo la strada è
+> emerso un secondo riferimento non dichiarato oltre a `window_table_map`:
+> `sample_table_num` lasciato a `None` faceva morire la generazione col
+> `TypeError` della validazione di `Grain`. Ora sono dichiarati entrambi, e
+> `generate_grains` dice quale manca. Con lo stadio 3 deciso in #190, il plan
+> è chiuso.
 
 ### Stadio 3 — il read-model prende un nome
 

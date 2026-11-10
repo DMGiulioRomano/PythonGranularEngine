@@ -115,6 +115,25 @@ def test_missing_field_error_supports_multiple_fields():
     assert "bar" in msg
 
 
+def test_missing_field_error_plurale_in_str_e_in_user_message():
+    """Il plurale, per intero, nelle due forme del messaggio (issue #283).
+
+    Lo provava `test_stream.py` chiamando `_check_required_context_fields`
+    su uno Stream costruito a meta', con `match="Campi obbligatori
+    mancanti"` sullo `str()`. Dal costruttore non si raggiunge piu' (`sample`
+    si controlla prima e il costruttore si ferma li'), e il test sopra chiede
+    solo che i due nomi compaiano: un messaggio singolare con la lista
+    accodata lo passerebbe, e lo `str()` non lo guarda nessuno.
+    """
+    from pge.shared.exceptions import MissingFieldError
+
+    err = MissingFieldError(fields=["foo", "bar"])
+
+    assert str(err) == "Campi obbligatori mancanti: 'foo', 'bar'"
+    assert err.user_message() == (
+        "[ERRORE] Campi obbligatori mancanti: 'foo', 'bar'")
+
+
 def test_invalid_field_value_error_inherits_engine_and_value_error():
     """InvalidFieldValueError catturabile come EngineError e ValueError."""
     from pge.shared.exceptions import (
@@ -506,6 +525,22 @@ def test_engine_runtime_error_is_engine_error():
     assert isinstance(err, EngineError)
     assert err.stream_id is None
     assert err.config_file is None
+
+
+def test_engine_runtime_error_sollevata_da_sola_ha_la_forma_di_errors_md():
+    """La base si solleva anche da sola (issue #283): `[ERRORE]` col
+    messaggio, poi il contesto che qualcuno ha arricchito. Senza un
+    `user_message()` suo ripiegava su `str(self)`."""
+    from pge.shared.exceptions import EngineRuntimeError
+    err = EngineRuntimeError("boom")
+    assert err.user_message() == "[ERRORE] boom"
+
+    err.stream_id = 's1'
+    err.config_file = 'configs/x.yml'
+    assert err.user_message() == (
+        "[ERRORE] boom\n"
+        "  Stream:       s1\n"
+        "  Config:       configs/x.yml")
 
 
 def test_csound_render_error_inheritance_and_message():

@@ -8,11 +8,15 @@ Stream e' l'orchestratore centrale della sintesi granulare:
 - Gestisce il loop di generazione grani
 - Mantiene backward compatibility con Generator e ScoreVisualizer
 
+Ogni Stream di questo file passa dal costruttore (issue #283): la factory
+`stream_factory` ne costruisce uno vero con `build_stream` e poi ne sostituisce
+i collaboratori. I test che verificavano soltanto l'inoltro fra metodi privati
+— `_init_stream_parameters` verso `ParameterOrchestrator`, `_init_controllers`
+verso i quattro controller — sono usciti con l'oggetto a meta' su cui giravano.
+
 Coverage:
-  1.  _init_stream_context - validazione parametri obbligatori
-  2.  _init_grain_reverse - semantica YAML reverse
-  3.  _init_stream_parameters - delega a ParameterOrchestrator
-  4.  _init_controllers - creazione controller
+  1.  contesto - campi da YAML e sample, campi obbligatori (dal costruttore)
+  2.  grain.reverse - semantica YAML (dal costruttore)
   5.  __init__ - pipeline completa
   6.  generate_grains - loop principale (1 voce, sync)
   7.  generate_grains - multi-voice con attivazione dinamica
@@ -127,23 +131,35 @@ def _minimal_yaml_params(stream_id='test_stream', onset=0.0,
     }
 
 
+def _write_wav(directory, name='tone.wav', seconds=1.0):
+    """Un wav di silenzio in `directory`, per chi costruisce lo Stream con
+    uno YAML che `build_stream` non sa scrivere (un campo che manca, nessun
+    blocco grain)."""
+    import numpy as np
+    import soundfile as sf
+    sf.write(str(directory / name),
+             np.zeros(int(48000 * seconds), dtype='float32'), 48000)
+
+
 # =============================================================================
 # FIXTURE: Stream con tutti i controller mockati
 # =============================================================================
 
 @pytest.fixture
-def stream_factory():
+def stream_factory(build_stream):
     """
     Factory per creare Stream con controller mockati.
 
-    Bypassa __init__ e assegna mock direttamente,
-    permettendo di testare i metodi in isolamento.
+    Lo Stream e' vero: lo costruisce `build_stream` attraverso `__init__`, e
+    poi i collaboratori da isolare vengono sostituiti con dei mock (issue
+    #283). L'isolamento resta, l'oggetto a meta' no: ogni attributo che la
+    costruzione dichiara esiste, e un test non puo' piu' appoggiarsi a uno
+    stato che in produzione non c'e'.
     """
     def _create(
         stream_id='test_stream',
         onset=0.0,
         duration=1.0,
-        sample='test.wav',
         sample_dur_sec=5.0,
         max_voices=1,
         inter_onset=0.1,
@@ -152,31 +168,29 @@ def stream_factory():
         pan_value=0.5,
         reverse_mode='auto',
     ):
-        
+        # Il verso del grano passa dallo YAML, come in produzione: la chiave
+        # `reverse:` lasciata vuota e' l'unico modo di forzarlo.
+        # `is True` e non `in (..., True)`: 1 e 1.0 sono uguali a True, e
+        # passerebbero il controllo senza scrivere il verso.
+        if reverse_mode != 'auto' and reverse_mode is not True:
+            raise ValueError(f"reverse_mode: 'auto' o True, non {reverse_mode!r}")
+        grain = {'duration': 0.05, 'envelope': 'hanning'}
+        if reverse_mode is True:
+            grain['reverse'] = None
+        s = build_stream(stream_id=stream_id, onset=onset, duration=duration,
+                         grain=grain)
 
-        # Bypass __init__ completamente
-        s = object.__new__(Stream)
-
-        # Contesto base
-        s.stream_id = stream_id
-        s.onset = onset
-        s.duration = duration
-        s.sample = sample
+        # La durata del sample la decide il test, non il file di prova (un
+        # secondo): chi la leggerebbe, i controller, e' sostituito qui sotto.
         s.sample_dur_sec = sample_dur_sec
 
-        # Parametri diretti (mock Parameter)
+        # Parametri diretti (mock Parameter). `read_direction` resta il None
+        # che l'orchestratore scrive per il membro non dichiarato del gruppo
+        # esclusivo 'grain_direction' (issue #207).
         s.grain_duration = _make_mock_parameter(grain_dur_value, 'grain_duration')
         s.volume = _make_mock_parameter(volume_value, 'volume')
         s.pan = _make_mock_parameter(pan_value, 'pan')
         s.reverse = _make_mock_parameter(0, 'reverse')
-        # I due membri del gruppo esclusivo 'grain_direction' esistono sempre
-        # entrambi come attributi: l'orchestratore mette a None il non
-        # selezionato (issue #207).
-        s.read_direction = None
-        s.grain_envelope = 'hanning'
-
-        # Reverse mode
-        s.grain_reverse_mode = reverse_mode
 
         # Controller mock
         s._pointer = _make_mock_pointer()
@@ -195,7 +209,8 @@ def stream_factory():
         _sc.get_value = Mock(return_value=0.0)
         s._scatter = _sc
 
-        # Csound references
+        # Riferimenti alle tabelle: li assegna il Generator dopo la
+        # costruzione, e la generazione li pretende.
         s.sample_table_num = 1
         s.envelope_table_num = 2
         s.window_table_map = {'hanning': 2}
@@ -205,299 +220,118 @@ def stream_factory():
         from pge.strategies.grain_clip_strategy import PassthroughClipStrategy
         s._clip_strategy = PassthroughClipStrategy()
 
-        # Stato
-        # `voices` e' l'unico ingresso: `grains` e' una vista derivata
-        # e non ha piu' un setter (issue #201).
-        s.voices = []
-        s.generated = False
-
         return s
 
     return _create
 
 
 # =============================================================================
-# 1. TEST _init_stream_context
+# 1. TEST CONTESTO, DAL COSTRUTTORE
 # =============================================================================
 
 class TestInitStreamContext:
-    """Test validazione parametri obbligatori in _init_stream_context."""
+    """I campi di contesto, chiesti al costruttore (issue #283).
 
-    def test_all_required_fields_present(self, stream_factory):
-        """Con tutti i campi presenti, non solleva errori."""
-        s = stream_factory()
-        
+    Prima si provavano chiamando `_init_stream_context` su un oggetto creato
+    con `object.__new__(Stream)`; ora il comportamento pubblico che quei test
+    verificavano — cosa lo Stream legge dallo YAML e dal sample, e cosa
+    rifiuta — si chiede a `Stream(...)`.
 
-        # Simula _init_stream_context su un oggetto gia' creato
-        s2 = object.__new__(Stream)
-        params = _minimal_yaml_params()
+    Un caso non ha un equivalente, ed e' uscito: il messaggio plurale di
+    `MissingFieldError`. Dal costruttore non si raggiunge, perche' `sample`
+    si controlla prima di ogni altro campo e il costruttore si ferma li'; il
+    messaggio lo prova `tests/shared/test_engine_exceptions.py`.
+    """
 
-        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
-            s2._init_stream_context(params)
+    def test_i_campi_vengono_dallo_yaml_e_dal_sample(self, build_stream):
+        s = build_stream(stream_id='nuvola', onset=2.5, duration=1.5)
 
-        assert s2.stream_id == 'test_stream'
-        assert s2.onset == 0.0
-        assert s2.duration == 1.0
-        assert s2.sample == 'test.wav'
-        assert s2.sample_dur_sec == 5.0
+        assert s.stream_id == 'nuvola'
+        assert s.onset == 2.5
+        assert s.duration == 1.5
+        assert s.sample == 'silence.wav'
+        assert s.sample_dur_sec == pytest.approx(1.0)
 
-    def test_missing_single_field_raises(self):
-        """Parametro singolo mancante -> ValueError con nome."""
-        
-        s = object.__new__(Stream)
-        params = {'onset': 0.0, 'duration': 1.0, 'sample': 'test.wav'}
-        # Manca stream_id
+    def test_stream_id_mancante_lo_nomina(self, tmp_path):
+        from pge.shared.exceptions import MissingFieldError
+        _write_wav(tmp_path)
+        params = _minimal_yaml_params(sample='tone.wav')
+        del params['stream_id']
 
-        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
-            with pytest.raises(ValueError, match="Campo obbligatorio mancante"):
-                s._init_stream_context(params)
+        with pytest.raises(MissingFieldError,
+                           match="Campo obbligatorio mancante") as exc_info:
+            Stream(params, samples_dir=str(tmp_path))
 
-    def test_missing_multiple_fields_raises(self):
-        """Piu' parametri mancanti -> ValueError con nomi."""
+        assert exc_info.value.fields == ['stream_id']
 
-        s = object.__new__(Stream)
-        params = {'onset': 0.0, 'duration': 1.0}
-        # Mancano stream_id e sample: le due condizioni di esistenza rimaste
-        # dopo #205 (duration) e #220 (onset). Omettere `onset` non basta piu'
-        # a rendere plurale il messaggio.
+    def test_params_vuoti_rifiutati(self):
+        """Senza niente il primo a mancare e' il sample."""
+        from pge.shared.exceptions import MissingFieldError
 
-        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
-            with pytest.raises(ValueError, match="Campi obbligatori mancanti"):
-                s._init_stream_context(params)
+        with pytest.raises(MissingFieldError) as exc_info:
+            Stream({})
 
-    def test_empty_params_raises(self):
-        """Params completamente vuoto -> ValueError."""
-        
-        s = object.__new__(Stream)
+        assert exc_info.value.fields == ['sample']
 
-        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
-            with pytest.raises(ValueError):
-                s._init_stream_context({})
-
-    def test_extra_fields_ignored(self):
-        """Campi extra non causano errori."""
-        
-        s = object.__new__(Stream)
-        params = _minimal_yaml_params()
-        params['extra_field'] = 'ignored'
-        params['another'] = 42
-
-        with patch('pge.core.stream.get_sample_duration', return_value=5.0):
-            s._init_stream_context(params)
+    def test_campi_extra_ignorati(self, build_stream):
+        s = build_stream(extra_field='ignored', another=42)
 
         assert s.stream_id == 'test_stream'
         assert not hasattr(s, 'extra_field')
 
-    def test_sample_dur_sec_from_util(self):
-        """sample_dur_sec viene da get_sample_duration, non da params."""
-        
-        s = object.__new__(Stream)
-        params = _minimal_yaml_params()
+    def test_sample_dur_sec_dal_file_non_dallo_yaml(self, build_stream):
+        """La durata del sample la dice l'header del file: una chiave
+        `sample_dur_sec` nello YAML non entra nel contesto."""
+        s = build_stream(sample_dur_sec=99.0)
 
-        with patch('pge.core.stream.get_sample_duration', return_value=3.14):
-            s._init_stream_context(params)
-
-        assert s.sample_dur_sec == 3.14
+        assert s.sample_dur_sec == pytest.approx(1.0)
 
 
 # =============================================================================
-# 2. TEST _init_grain_reverse
+# 2. TEST grain.reverse, DAL COSTRUTTORE
 # =============================================================================
 
 class TestInitGrainReverse:
-    """Test semantica YAML per grain reverse."""
+    """Semantica YAML di `grain.reverse`, chiesta al costruttore (issue #283).
 
-    def test_reverse_absent_means_auto(self, stream_factory):
+    `_init_grain_reverse` resta com'e': la parita' di PGE-ls la estrae dal
+    sorgente per AST e la esegue (`tests/test_pge_parity.py`).
+    """
+
+    @staticmethod
+    def _con_grain(build_stream, **chiavi):
+        return build_stream(grain={'duration': 0.05, 'envelope': 'hanning',
+                                   **chiavi})
+
+    def test_reverse_absent_means_auto(self, build_stream):
         """Chiave 'reverse' assente -> mode 'auto'."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {'grain': {}}  # No reverse key
+        assert self._con_grain(build_stream).grain_reverse_mode == 'auto'
 
-        s._init_grain_reverse(params)
-
-        assert s.grain_reverse_mode == 'auto'
-
-    def test_reverse_none_means_forced_true(self, stream_factory):
+    def test_reverse_none_means_forced_true(self, build_stream):
         """Chiave 'reverse:' vuota (None in YAML) -> mode True."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {'grain': {'reverse': None}}
-
-        s._init_grain_reverse(params)
+        s = self._con_grain(build_stream, reverse=None)
 
         assert s.grain_reverse_mode is True
 
-    def test_reverse_true_raises(self):
-        """reverse: true -> ValueError (semantica ristretta)."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {'grain': {'reverse': True}}
+    @pytest.mark.parametrize('valore', [True, False, 'auto', 1])
+    def test_reverse_con_un_valore_rifiutato(self, build_stream, valore):
+        """Semantica ristretta: la chiave, se c'e', e' vuota."""
+        from pge.shared.exceptions import InvalidFieldValueError
 
-        with pytest.raises(ValueError, match="grain.reverse"):
-            s._init_grain_reverse(params)
+        with pytest.raises(InvalidFieldValueError,
+                           match="grain.reverse") as exc_info:
+            self._con_grain(build_stream, reverse=valore)
 
-    def test_reverse_false_raises(self):
-        """reverse: false -> ValueError."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {'grain': {'reverse': False}}
+        assert exc_info.value.stream_id == 'test_stream'
 
-        with pytest.raises(ValueError, match="grain.reverse"):
-            s._init_grain_reverse(params)
+    def test_no_grain_key_means_auto(self, tmp_path):
+        """Nessun blocco 'grain' -> auto mode."""
+        _write_wav(tmp_path)
 
-    def test_reverse_string_raises(self):
-        """reverse: 'auto' -> ValueError."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {'grain': {'reverse': 'auto'}}
-
-        with pytest.raises(ValueError, match="grain.reverse"):
-            s._init_grain_reverse(params)
-
-    def test_reverse_number_raises(self):
-        """reverse: 1 -> ValueError."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {'grain': {'reverse': 1}}
-
-        with pytest.raises(ValueError):
-            s._init_grain_reverse(params)
-
-    def test_no_grain_key_means_auto(self):
-        """Nessuna chiave 'grain' -> auto mode."""
-        
-        s = object.__new__(Stream)
-        s.stream_id = 'test'
-        params = {}
-
-        s._init_grain_reverse(params)
+        s = Stream(_minimal_yaml_params(sample='tone.wav'),
+                   samples_dir=str(tmp_path))
 
         assert s.grain_reverse_mode == 'auto'
-
-
-# =============================================================================
-# 3. TEST _init_stream_parameters
-# =============================================================================
-
-class TestInitStreamParameters:
-    """Test delega a ParameterOrchestrator per parametri diretti."""
-
-    def test_creates_orchestrator_and_assigns(self):
-        """Crea orchestrator, chiama create_all_parameters, assegna attributi."""
-        
-        s = object.__new__(Stream)
-
-        mock_vol = _make_mock_parameter(-6.0, 'volume')
-        mock_pan = _make_mock_parameter(0.5, 'pan')
-        mock_params = {'volume': mock_vol, 'pan': mock_pan}
-
-        config = Mock()
-
-        with patch('pge.core.stream.ParameterOrchestrator') as MockOrch:
-            mock_orch_inst = MockOrch.return_value
-            mock_orch_inst.create_all_parameters.return_value = mock_params
-
-            s._init_stream_parameters({'volume': -6.0, 'pan': 0.5}, config)
-
-        assert s.volume is mock_vol
-        assert s.pan is mock_pan
-        MockOrch.assert_called_once_with(config=config)
-
-    def test_uses_stream_parameter_schema(self):
-        """Passa STREAM_PARAMETER_SCHEMA a create_all_parameters."""
-        
-        s = object.__new__(Stream)
-
-        config = Mock()
-
-        with patch('pge.core.stream.ParameterOrchestrator') as MockOrch:
-            mock_orch_inst = MockOrch.return_value
-            mock_orch_inst.create_all_parameters.return_value = {}
-
-            s._init_stream_parameters({}, config)
-
-        call_args = mock_orch_inst.create_all_parameters.call_args
-        from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
-        assert call_args.kwargs['schema'] is STREAM_PARAMETER_SCHEMA \
-            or call_args[1].get('schema') is STREAM_PARAMETER_SCHEMA \
-            or call_args[0][1] is STREAM_PARAMETER_SCHEMA
-
-
-# =============================================================================
-# 4. TEST _init_controllers
-# =============================================================================
-
-class TestInitControllers:
-    """Test creazione di tutti i controller."""
-
-    def test_creates_all_controllers(self):
-        """Crea PointerController, PitchController, DensityController,
-        WindowController, VoiceManager."""
-        
-        s = object.__new__(Stream)
-
-        config = Mock()
-        params = {
-            'pointer': {'start': 0.0},
-            'pitch': {'pitch_ratio': 1.0},
-            'grain': {'envelope': 'hanning'},
-            'voices': {'num_voices': 2},
-            'fill_factor': 2.0,
-        }
-
-        with patch('pge.core.stream.PointerController') as MockPtr, \
-             patch('pge.core.stream.PitchController') as MockPitch, \
-             patch('pge.core.stream.DensityController') as MockDens, \
-             patch('pge.core.stream.WindowController') as MockWin:
-
-            s._init_controllers(params, config)
-
-        MockPtr.assert_called_once()
-        MockPitch.assert_called_once()
-        MockDens.assert_called_once()
-        MockWin.assert_called_once()
-
-    def test_pointer_receives_pointer_subdict(self):
-        """PointerController riceve params['pointer'] o {} se assente."""
-        
-        s = object.__new__(Stream)
-
-        config = Mock()
-        params = {'pointer': {'start': 5.0}}
-
-        with patch('pge.core.stream.PointerController') as MockPtr, \
-             patch('pge.core.stream.PitchController'), \
-             patch('pge.core.stream.DensityController'), \
-             patch('pge.core.stream.WindowController'):
-            s._init_controllers(params, config)
-
-        call_kwargs = MockPtr.call_args
-        assert call_kwargs.kwargs['params'] == {'start': 5.0}
-
-    def test_missing_subkeys_default_to_empty(self):
-        """Sotto-chiavi mancanti producono {} come params."""
-        
-        s = object.__new__(Stream)
-
-        config = Mock()
-        params = {}  # Nessuna sotto-chiave
-
-        with patch('pge.core.stream.PointerController') as MockPtr, \
-             patch('pge.core.stream.PitchController') as MockPitch, \
-             patch('pge.core.stream.DensityController'), \
-             patch('pge.core.stream.WindowController') as MockWin:
-
-            s._init_controllers(params, config)
-
-        assert MockPtr.call_args.kwargs['params'] == {}
-        assert MockPitch.call_args.kwargs['params'] == {}
-        assert MockWin.call_args.kwargs['params'] == {}
 
 
 # =============================================================================
@@ -507,60 +341,25 @@ class TestInitControllers:
 class TestStreamInit:
     """Test pipeline completa di inizializzazione."""
 
-    def test_full_init_with_mocks(self):
-            """Init completo con tutte le dipendenze mockate."""
-            
+    def test_la_costruzione_non_genera_e_aspetta_i_riferimenti(
+            self, build_stream):
+        """Contratto lazy: la costruzione NON genera i grani, e i riferimenti
+        alle tabelle li assegna il Generator dopo.
 
-            params = _minimal_yaml_params(duration=2.0)
+        Si ispeziona il backing field grezzo, non la property voices, che
+        innesca generate_grains() al primo accesso.
+        """
+        s = build_stream(duration=2.0)
 
-            # _init_stream_context semplificato: la vera versione e'
-            # testata in TestInitStreamContext. Qui serve solo che assegni
-            # gli attributi di contesto senza chiamare fields(StreamContext),
-            # perche' StreamContext e' inquinato dallo stub di test_window_controller.
-            def fake_init_ctx(self_stream, p):
-                self_stream.stream_id = p['stream_id']
-                self_stream.onset = p['onset']
-                self_stream.duration = p['duration']
-                self_stream.sample = p['sample']
-                self_stream.sample_dur_sec = 5.0
-
-            with patch('pge.core.stream.get_sample_duration', return_value=5.0), \
-                patch('pge.core.stream.StreamContext') as MockSCtx, \
-                patch('pge.core.stream.StreamConfig') as MockSC, \
-                patch.object(Stream, '_init_stream_context', fake_init_ctx), \
-                patch.object(Stream, '_check_required_context_fields', lambda *a, **k: None), \
-                patch('pge.core.stream.ParameterOrchestrator') as MockOrch, \
-                patch('pge.core.stream.PointerController'), \
-                patch('pge.core.stream.PitchController'), \
-                patch('pge.core.stream.DensityController'), \
-                patch('pge.core.stream.WindowController'), \
-                patch('pge.core.stream.GrainClipStrategyFactory') as MockClipFactory:
-                MockSCtx.from_yaml.return_value = Mock()
-                MockSC.from_yaml.return_value = Mock()
-                MockClipFactory.create.return_value = Mock()
-
-                mock_orch_inst = MockOrch.return_value
-                mock_orch_inst.create_all_parameters.return_value = {
-                    'volume': _make_mock_parameter(-6.0, 'volume'),
-                    'pan': _make_mock_parameter(0.5, 'pan'),
-                    'grain_duration': _make_mock_parameter(0.05, 'grain_duration'),
-                    'grain_envelope': 'hanning',
-                    'reverse': _make_mock_parameter(0, 'reverse'),
-                }
-
-                s = Stream(params)
-
-            assert s.stream_id == 'test_stream'
-            assert s.duration == 2.0
-            # Contratto lazy: la costruzione NON genera i grani. Si ispeziona il
-            # backing field grezzo, non la property voices, che innesca
-            # generate_grains() al primo accesso.
-            assert s._voices == []
-            # Backing field unico (#201): la vista flat .grains e' derivata.
-            assert not hasattr(s, '_grains')
-            assert s.generated is False
-            assert s.sample_table_num is None
-            assert s.envelope_table_num is None
+        assert s.stream_id == 'test_stream'
+        assert s.duration == 2.0
+        assert s._voices == []
+        # Backing field unico (#201): la vista flat .grains e' derivata.
+        assert not hasattr(s, '_grains')
+        assert s.generated is False
+        assert s.sample_table_num is None
+        assert s.window_table_map is None
+        assert s.envelope_table_num is None
 
     def test_missing_sample_raises_value_error(self):
         """Stream senza 'sample' -> ValueError leggibile."""
@@ -934,14 +733,12 @@ class TestCalculateGrainReverse:
             s.reverse._value = valore
             assert s._calculate_grain_reverse(0.0) is True
 
-    def test_un_envelope_su_grain_reverse_e_irraggiungibile(self, stream_factory):
+    def test_un_envelope_su_grain_reverse_e_irraggiungibile(self, build_stream):
         """La controprova alla fonte: nessuno YAML puo' portare un Envelope
         dentro `reverse._value`, perche' la chiave non accetta valori."""
-        s = object.__new__(Stream)
-        s.stream_id = 'test_stream'
-
         with pytest.raises(ValueError, match="grain.reverse"):
-            s._init_grain_reverse({'grain': {'reverse': [[0, 0], [1, 1]]}})
+            build_stream(grain={'duration': 0.05, 'envelope': 'hanning',
+                                'reverse': [[0, 0], [1, 1]]})
 
     def test_flip_with_gate_auto_mode(self, stream_factory):
         """Gate aperto in auto mode flippa il risultato."""
@@ -964,6 +761,15 @@ class TestCalculateGrainReverse:
 
         # Backward (True) flippato -> False
         assert result is False
+
+    @pytest.mark.parametrize('verso', [1, 1.0, False, 'forced'])
+    def test_la_factory_rifiuta_un_verso_che_non_sa_scrivere(
+            self, stream_factory, verso):
+        """La factory scrive il verso nello YAML e ne conosce due, 'auto' e
+        True. `1` e `1.0` sono uguali a True ma non sono True: passavano il
+        controllo e diventavano in silenzio uno stream in modo 'auto'."""
+        with pytest.raises(ValueError, match="reverse_mode"):
+            stream_factory(reverse_mode=verso)
 
 
 # =============================================================================
@@ -1310,14 +1116,8 @@ class TestStreamSamplesDir:
     """Stream(params, samples_dir=...) risolve il sample dalla directory
     data invece del globale PATHSAMPLES; default None = comportamento legacy."""
 
-    def _write_wav(self, directory, name='tone.wav', seconds=2.0):
-        import numpy as np
-        import soundfile as sf
-        sf.write(str(directory / name),
-                 np.zeros(int(48000 * seconds), dtype='float32'), 48000)
-
     def test_samples_dir_resolves_sample_from_custom_dir(self, tmp_path):
-        self._write_wav(tmp_path, seconds=2.0)
+        _write_wav(tmp_path, seconds=2.0)
         params = _minimal_yaml_params(sample='tone.wav')
 
         s = Stream(params, samples_dir=str(tmp_path))
@@ -1327,7 +1127,7 @@ class TestStreamSamplesDir:
     def test_default_none_uses_pathsamples_fallback(self, tmp_path, monkeypatch):
         """Senza samples_dir vale il globale (parita' col comportamento
         storico, monkey-patch ancora efficace)."""
-        self._write_wav(tmp_path, seconds=1.0)
+        _write_wav(tmp_path, seconds=1.0)
         monkeypatch.setattr('pge.shared.utils.PATHSAMPLES', str(tmp_path) + '/')
         params = _minimal_yaml_params(sample='tone.wav')
 

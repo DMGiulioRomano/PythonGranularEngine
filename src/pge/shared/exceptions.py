@@ -749,6 +749,19 @@ class EngineRuntimeError(EngineError):
             lines.append(f"  Config:       {self.config_file}")
         return lines
 
+    def user_message(self) -> str:
+        """La forma di errors.md («Sintassi») per la base sollevata da sola.
+
+        Le sottoclassi hanno ognuna il proprio formato. La base si solleva da
+        sola in un caso, uno `Stream` che genera i grani senza i riferimenti
+        alle tabelle (issue #283), e senza questo metodo ripiegava su
+        `str(self)`: niente `[ERRORE]`, e uno `stream_id` valorizzato che non
+        si vedeva.
+        """
+        lines = [f"[ERRORE] {self}"]
+        lines.extend(self._context_lines())
+        return "\n".join(lines)
+
 
 class _SubprocessRenderError(EngineRuntimeError, RuntimeError):
     """Base dei render delegati a un binario esterno (csound, scsynth, sclang).

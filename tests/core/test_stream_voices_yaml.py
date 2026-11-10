@@ -1321,8 +1321,9 @@ class TestVoicesWiring:
         il loro default: pointer in secondi, pitch in semitoni.
 
         Il default va scritto anche quando la dimensione manca: `_create_grain`
-        legge `_voice_pointer_normalized` a ogni grano, e il `getattr` con cui
-        lo fa nasconderebbe un attributo mai inizializzato invece di segnalarlo.
+        legge `_voice_pointer_normalized` a ogni grano, e un attributo mai
+        inizializzato sarebbe un AttributeError al primo grano di uno stream
+        senza `voices:`.
         """
         s = _build_stream(voices)
         assert s._voice_pointer_normalized is False
