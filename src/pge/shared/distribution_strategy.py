@@ -35,6 +35,9 @@ ANCHOR_MIN = 'min'
 #: Valori validi della chiave YAML per-stream `range_anchor`. Esposto come
 #: registry perche' PGE-ls e PGE-ui possano leggerlo dal vivo invece di
 #: duplicarne una copia statica (stesso ruolo di DistributionFactory.modes()).
+#: Il language server di PGE-ls lo legge per nome dentro un `except
+#: Exception: pass`: rinominato, di la' non fallisce niente, si ripiega sulla
+#: copia statica. Il nome sta in tests/test_downstream_surface_pge_ls.py (#269).
 RANGE_ANCHORS = (ANCHOR_CENTER, ANCHOR_MIN)
 
 
@@ -230,7 +233,13 @@ class DistributionFactory:
     
     Registry pattern: mappa stringhe a classi.
     """
-    
+
+    # Privato, ma letto da fuori: il language server di PGE-ls ne prende le
+    # chiavi per nome (`schema_bridge.from_python_path`) dentro un `except
+    # Exception: pass`, e la sua parita' fa lo stesso. Rinominarlo non fa
+    # fallire niente di la': fa ripiegare l'enum di `distribution_mode` sulla
+    # copia statica, che da quel momento invecchia in silenzio. E' nel
+    # registro di tests/test_downstream_surface_pge_ls.py (#269).
     _registry = {
         'uniform': UniformDistribution,
         'gaussian': GaussianDistribution,
@@ -268,8 +277,10 @@ class DistributionFactory:
     def modes(cls) -> list:
         """Nomi delle distribuzioni registrate.
 
-        Punto di lettura per i consumer esterni (PGE-ls legge di qui l'enum di
-        `distribution_mode`) invece di ispezionare `_registry`.
+        Punto di lettura pensato per i consumer esterni, invece di ispezionare
+        `_registry`. Oggi nessuno lo chiama: gl-ls lo cita come fonte della
+        propria copia statica, e PGE-ls legge ancora `_registry` (vedi sopra),
+        che finche' non cambia lettura resta un nome privato pinnato.
         """
         return list(cls._registry.keys())
 
