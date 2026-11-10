@@ -10,6 +10,53 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: `maps:` e le espressioni** (issue #308, la prima di sette
+  sotto la #307). Uno stream dichiara una mappa iterata dentro `maps:`, e
+  `grain.duration` la legge con un'espressione fra parentesi:
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: 3.5}
+  grain:
+    duration: (0.02 + 0.08*m1)
+  ```
+
+  Con `r: 3.5` le durate dei grani percorrono in ciclo 86, 60, 90, 51 ms. In
+  questa fetta c'e' la logistica, un passo per grano (`clock: grain`) e `r`
+  numero; di una mappa si scrivono `type`, `r`, e se serve `x0` (default del
+  tipo, 0.3, **indipendente dal seed**) e `transient` (i passi scartati prima
+  del primo grano, default 300).
+
+  - **L'interprete e' un modulo suo, senza `eval`**
+    (`src/pge/expressions/expression.py`): `+ - * / **`, parentesi, `sin cos
+    tan abs sqrt exp log floor round sign min max pow frac clip fold wrap`,
+    `pi`, `e`, i nomi delle mappe dichiarate e `t`. Precedenze di Python. Gli
+    errori sono tutti al caricamento.
+  - **L'espressione e' il terzo tipo di valore di un `Parameter`**, accanto a
+    numero ed envelope. Si valuta a ogni grano; un valore fuori dai bounds
+    viene tagliato e scritto sul clip log (`(EXP)`), come un envelope a
+    runtime, e un non-finito va al limite. `grain.duration_unit` si applica
+    al risultato. `grain.duration_range` sopra un'espressione resta lecito.
+  - **Lo stato della mappa e' uno per voce**: avanza una volta per grano e
+    per voce, in testa al giro della voce, e chi la legge non la muove.
+  - **Una mappa che scappa** (non finita, o oltre 1000 in modulo) riparte da
+    `x0` e lo scrive sul clip log, `[MAP_ESCAPE]`, con rate limit.
+  - **Due errori nuovi** sotto `ConfigError`: `ExpressionError` (col campo e
+    il testo) e `MapConfigError` (col path del punto, `maps.m1.r`).
+  - **Al caricamento** un'espressione che nomina una mappa dichiarata non
+    passa piu' dalla valutazione delle espressioni matematiche, e non stampa
+    `impossibile valutare` su stdout. `Generator._eval_math_expressions` non
+    e' cambiata.
+
+  Le espressioni valgono oggi su `grain.duration` (`EXPRESSION_FIELDS`):
+  altrove una stringa resta un errore. Nessun breaking change: uno stream che
+  non scrive `maps:` ne' un'espressione da' gli stessi grani e lo stesso
+  fingerprint di prima (`tests/core/test_stream_senza_mappe_invariato.py`, su
+  un'istantanea presa prima della modifica), e `VARIATION_SEMANTICS_VERSION`
+  non si muove. Partitura ed export non disegnano un parametro scritto come
+  espressione: mostrarlo e' la #314. Reference: `docs/reference/yaml.md`,
+  «Mappe ed espressioni».
+
 - **Il registro della superficie che un altro repository legge** (issue #246),
   `tests/test_downstream_surface.py`. Elenca i moduli, i simboli e i letterali
   che PGE-ui legge del motore, e verifica che ognuno si risolva ancora dove li'

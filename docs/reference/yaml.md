@@ -10,12 +10,14 @@ sources:
   - src/pge/core/stream.py
   - src/pge/controllers/
   - src/pge/parameters/
+  - src/pge/expressions/
+  - src/pge/maps/
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: f69f137
+last_synced_commit: cc31f3c
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -54,6 +56,9 @@ Sezioni rilevanti in questo doc:
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`), unità
   (`_range_unit`: assoluta o frazione della base)
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [DeviationProbability](#deviation_probability-variazione-stocastica)
+- [Mappe ed espressioni](#mappe-ed-espressioni-maps) — `maps:` dichiara una
+  mappa iterata, e un parametro la legge con un'espressione
+  (`duration: (0.02 + 0.08*m1)`), valutata a ogni grano
 - [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
 - [Envelopes](#envelopes) — sintassi envelope completa
 
@@ -72,6 +77,7 @@ Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [En
 - `src/pge/shared/distribution_strategy.py` — banda dei `_range`: distribuzioni e `range_anchor`
 - `src/pge/envelopes/` — sintassi envelope
 - `src/pge/engine/stream_files.py` — `file:` negli stream del master (issue #290)
+- `src/pge/maps/`, `src/pge/expressions/` — `maps:` e le espressioni che le leggono (issue #307)
 - Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
 ---
@@ -1045,6 +1051,158 @@ pitch:
 > base si abbina a `value:` a fianco; nelle voci è `unit: {edo: N}` (il valore
 > arriva dalla strategy). La vecchia forma annidata `edo: {divisions, value}`
 > non è più valida (`InvalidFieldValueError` con hint di migrazione).
+
+---
+
+## Mappe ed espressioni (`maps:`)
+
+Uno stream può dichiarare una **mappa iterata** e far leggere un parametro del
+grano da quella, attraverso un'**espressione** (issue #307). Una mappa è una
+regola che calcola il prossimo valore dal precedente: fra un grano e il
+successivo c'è memoria, e una manopola sola (`r`) porta dall'ordine (un
+valore, poi cicli di 2, 4, 8 valori) al disordine.
+
+```yaml
+- stream_id: s1
+  sample: x.wav
+  maps:
+    m1: {type: logistic, r: 3.5}
+  grain:
+    duration: (0.02 + 0.08*m1)
+```
+
+Con `r: 3.5` la logistica percorre quattro valori (0.827, 0.501, 0.875,
+0.383) e le durate dei grani, in ciclo, 86, 60, 90, 51 ms.
+
+`maps:` sta **dentro lo stream**, non in testa al documento: con `file:` la
+testa del file importato viene ignorata, e dentro lo stream la mappa viaggia
+col file. Lo stesso nome in due stream sono due mappe.
+
+### Le chiavi di una mappa
+
+| chiave | valore | default |
+|---|---|---|
+| `type` | il tipo di mappa (vedi sotto) | obbligatoria |
+| `r` | il parametro della mappa, un numero | obbligatoria |
+| `clock` | quando la mappa fa un passo: `grain`, uno ogni volta che nasce un grano | `grain` |
+| `x0` | lo stato iniziale | quello del tipo |
+| `transient` | i passi scartati prima del primo grano, intero ≥ 0 | 300 |
+
+Il **nome** di una mappa (`m1`) è fatto di lettere, cifre e `_`, e non
+comincia con una cifra. Non può essere un nome che in un'espressione vuol dire
+già un'altra cosa: una funzione, `pi`, `e`, `t`, e nemmeno `x`, `y`, `r`.
+
+Un `maps:` scritto male si ferma al caricamento con un `MapConfigError` che
+nomina il punto (`maps.m1.r`) e lo stream: `maps` che non è un dizionario o è
+vuoto, un `type` che non c'è, `r` che manca o non è un numero finito, una
+chiave sconosciuta. Vedi [[errors]].
+
+### I tipi di mappa
+
+| `type` | passo | `r` | intervallo di `m1` | `x0` |
+|---|---|---|---|---|
+| `logistic` | `r*x*(1-x)` | 2.5 – 4 | 0 … 1 | 0.3 |
+
+- L'**intervallo di `m1`** è un fatto della mappa, e chi scrive un'espressione
+  deve conoscerlo: `minimo + (massimo − minimo) * m1` vale per una mappa che
+  vive in 0…1.
+- L'intervallo di **`r`** è quello in cui la mappa è interessante e resta nel
+  suo intervallo: non è un limite imposto. Fuori (`r: 4.5`) la mappa
+  **scappa**: quando un valore non è finito, o supera 1000 in modulo, la mappa
+  riparte da `x0` e lo scrive sul clip log (`[MAP_ESCAPE]`, con un limite di
+  una riga ogni 5 s di stream).
+- **`x0` non dipende dal `seed`**: una mappa è deterministica, ed è il suo
+  punto. Lo stesso YAML dà la stessa sequenza con qualunque seed.
+- Il **transitorio** fa sì che il primo grano sia già sull'attrattore. Con un
+  transitorio diverso cambia la *fase* di un ciclo, non l'insieme dei valori.
+
+Dati dello stesso catalogo, leggibili senza costruire uno stream: `MAP_TYPES`
+e `MAP_KINDS` in `src/pge/maps/catalog.py`.
+
+### Come avanza una mappa
+
+Con `clock: grain` la mappa fa **un passo per grano e per voce**: è contata
+sui grani, non sul tempo, e a densità doppia la stessa sequenza scorre in metà
+tempo.
+
+- Lo stato è **uno per voce**. Con più voci ogni voce percorre la sequenza
+  dall'inizio; con `scatter` i cursori delle voci divergono, e ognuna continua
+  a contare i suoi passi.
+- La mappa avanza in un punto solo, in testa al giro della voce, e chi la
+  legge non la muove: due parametri che leggono `m1` nello stesso grano vedono
+  lo stesso valore, in qualunque ordine.
+- Il passo si conta anche quando `voices.num_voices` tiene la voce spenta: la
+  sequenza di una voce non dipende da quando viene accesa.
+
+### Le espressioni
+
+Un parametro che legge una mappa si scrive come un'espressione **fra
+parentesi**, dove stanno un numero o un envelope.
+
+| | |
+|---|---|
+| operatori | `+ - * / **`, parentesi |
+| funzioni | `sin cos tan abs sqrt exp log floor round sign min max pow frac clip fold wrap` |
+| costanti | `pi`, `e` |
+| nomi | le mappe dichiarate nello stream (`m1`), e `t`: i secondi dall'inizio dello stream |
+
+- Le precedenze sono quelle di Python: `-m1**2` è `-(m1**2)`, e `2**3**2` è
+  `2**(3**2)`, cioè 512.
+- `clip(v, lo, hi)` appiattisce ai bordi, `fold(v, lo, hi)` riflette
+  (`fold(1.3, 0, 1)` dà 0.7), `wrap(v, lo, hi)` riparte dall'altro capo
+  (`wrap(-0.25, 0, 1)` dà 0.75). `frac(v)` è la parte frazionaria; `round`
+  arrotonda il mezzo verso l'alto (`round(2.5)` dà 3). `min` e `max` prendono
+  quanti argomenti si vuole, le altre il loro numero esatto.
+- Non c'è `eval`: l'interprete è un modulo suo
+  (`src/pge/expressions/expression.py`), e un testo che non è un'espressione
+  di questo linguaggio è un errore.
+
+**Minimo e massimo non sono chiavi: sono la forma dell'espressione.**
+`minimo + (massimo − minimo) * m1` — il minimo è il valore del parametro
+quando la mappa è in fondo al suo intervallo, il massimo quando è in cima. La
+mappa non usa per forza tutta la fascia scritta: con `r: 3.2` i valori sono
+due soli.
+
+**Dove vale.** Oggi su `grain.duration` (l'elenco è `EXPRESSION_FIELDS` in
+`src/pge/expressions/fields.py`). Su un altro parametro una stringa resta un
+errore (`InvalidParameterError`), che dice dove le espressioni valgono.
+
+**Quando si valuta.** A ogni grano, non al caricamento: è la differenza dalle
+[espressioni matematiche nei valori](#9-espressioni-matematiche-nei-valori),
+che sono costanti calcolate una volta sola. Il loader lascia com'è una stringa
+fra parentesi che nomina una mappa dichiarata nello stream, o `t`, senza
+avvisi su stdout.
+
+**Gli errori sono al caricamento**, in un `ExpressionError` col campo
+(`grain.duration`) e lo stream: una mappa non dichiarata, una parentesi che
+manca, una funzione col numero sbagliato di argomenti, un'espressione scritta
+senza le parentesi esterne.
+
+**I valori non si validano al caricamento.** Un envelope fuori dai bounds è un
+errore al parse; un'espressione no, perché i suoi valori nascono grano per
+grano. Un valore che esce viene **tagliato** ai limiti del parametro e scritto
+sul clip log, con `(EXP)` in fondo alla riga; un valore non finito
+(`sqrt` di un negativo, una divisione per zero) va al limite e il render
+prosegue. Per riportarlo dentro in un altro modo lo si scrive:
+`clip`, `fold`, `wrap`.
+
+**Unità.** Con `grain.duration_unit` diversa da `seconds` il fattore si
+applica al **risultato** dell'espressione: `(20 + 80*m1)` con
+`duration_unit: milliseconds` sono gli stessi grani di `(0.02 + 0.08*m1)`.
+
+**`_range` sopra un'espressione** resta lecito: `grain.duration_range` è un
+tremolio casuale attorno al valore dato dalla mappa. La mappa non sostituisce
+il generatore casuale dentro la banda.
+
+**Cache.** Il fingerprint dello stream contiene `maps:` e il testo
+dell'espressione: cambiare `r`, `x0`, `transient` o l'espressione rifà lo
+stem. Uno stream che non scrive queste chiavi ha i grani e il fingerprint di
+prima.
+
+**Partitura ed export.** Un parametro scritto come espressione non ha una
+curva nel tempo — il suo valore dipende dallo stato della mappa — e la
+partitura e la sessione Sonic Visualiser non lo disegnano. Nei commenti dello
+score Csound compare il testo dell'espressione.
 
 ---
 
@@ -2376,6 +2534,12 @@ pitch:
 
 L'espressione è valutata a parse-time, non a run-time: il risultato è un numero
 che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
+
+Fa eccezione una stringa tutta fra parentesi che nomina una mappa dichiarata
+in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la
+lascia com'è e la compila il parser dei parametri, per valutarla a ogni grano.
+È un altro linguaggio, con le sue funzioni: vedi
+[Mappe ed espressioni](#mappe-ed-espressioni-maps).
 
 ---
 
