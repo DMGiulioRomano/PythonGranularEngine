@@ -309,3 +309,92 @@ class TestNienteEval:
                          'lambda: 1', '1 if 1 else 2', '"a"'):
             with pytest.raises(ExpressionError):
                 compile_expression(sorgente, ['m1'])
+
+
+# =============================================================================
+# 7. PROFONDITA': UNA CHIUSURA COMPILATA NON SOLLEVA MAI
+# =============================================================================
+
+class TestProfondita:
+    """Il docstring del modulo promette che una chiusura compilata non
+    sollevi mai, e che gli errori siano tutti al parse. Due modi di
+    smentirlo, tutti e due fuori dalla gerarchia `EngineError`:
+
+    - una catena lunga (`a + b + c + ...`) si compilava in chiusure annidate
+      una nell'altra, una per operatore: si compilava, e alla valutazione —
+      a ogni grano — usciva un `RecursionError`;
+    - un annidamento profondo (parentesi, segni, potenze, chiamate) usciva
+      con un `RecursionError` gia' al parse.
+
+    La catena ora e' una chiusura sola, e l'annidamento ha un limite
+    dichiarato (`MAX_DEPTH`), detto da un `ExpressionError`.
+    """
+
+    @pytest.mark.parametrize('operatore, termine, atteso', [
+        ('+', '0.001', 5.0),
+        ('-', '0.001', -4.998),
+        ('*', '1', 1.0),
+        ('/', '1', 1.0),
+    ])
+    def test_una_catena_lunga_si_valuta(self, operatore, termine, atteso):
+        sorgente = f' {operatore} '.join([termine] * 5000)
+        assert valuta(sorgente) == pytest.approx(atteso)
+
+    def test_una_catena_lunga_si_valuta_anche_in_fondo_allo_stack(self):
+        """A ogni grano la valutazione arriva gia' qualche decina di frame
+        in fondo: la chiusura non deve aggiungerne uno per operatore."""
+        import sys
+        compilata = compile_expression(' + '.join(['m1'] * 5000), ['m1'])
+
+        def in_fondo(n):
+            return in_fondo(n - 1) if n else compilata({'m1': 1.0})
+
+        margine = sys.getrecursionlimit() - 200
+        assert in_fondo(margine) == 5000.0
+
+    @pytest.mark.parametrize('sorgente, atteso', [
+        ('0.1 + 0.2 - 0.3', (0.1 + 0.2) - 0.3),
+        ('1 - 2 - 3', -4.0),
+        ('2 / 4 / 8', 0.0625),
+        ('2 * 3 / 4 * 5', 7.5),
+        ('1 - 2 * 3 + 4 / 2', -3.0),
+    ])
+    def test_la_catena_si_valuta_da_sinistra(self, sorgente, atteso):
+        """`0.1 + 0.2 - 0.3` da' un numero da sinistra e un altro da destra
+        (5.55e-17 e 2.78e-17): la chiusura sola fa le operazioni nello
+        stesso ordine delle chiusure annidate, bit per bit."""
+        assert valuta(sorgente) == atteso
+        assert valuta('0.1 + 0.2 - 0.3') != 0.1 + (0.2 - 0.3)
+
+    @pytest.mark.parametrize('costruisci', [
+        lambda n: '(' * n + '1' + ')' * n,
+        lambda n: '-' * n + '1',
+        lambda n: '2**' * n + '1',
+        lambda n: 'abs(' * n + '1' + ')' * n,
+    ], ids=['parentesi', 'segni', 'potenze', 'chiamate'])
+    def test_fino_al_limite_si_compila(self, costruisci):
+        from pge.expressions.expression import MAX_DEPTH
+        compile_expression(costruisci(MAX_DEPTH), [])({})
+
+    @pytest.mark.parametrize('costruisci', [
+        lambda n: '(' * n + '1' + ')' * n,
+        lambda n: '-' * n + '1',
+        lambda n: '2**' * n + '1',
+        lambda n: 'abs(' * n + '1' + ')' * n,
+    ], ids=['parentesi', 'segni', 'potenze', 'chiamate'])
+    def test_oltre_il_limite_e_un_errore_al_parse(self, costruisci):
+        from pge.expressions.expression import MAX_DEPTH
+        for n in (MAX_DEPTH + 1, 2000):
+            with pytest.raises(ExpressionError) as exc:
+                compile_expression(costruisci(n), [], field='grain.duration')
+            assert 'annidata' in exc.value.reason
+            assert str(MAX_DEPTH) in exc.value.reason
+            assert exc.value.field == 'grain.duration'
+
+    def test_un_espressione_vera_resta_lontana_dal_limite(self):
+        """Il limite non tocca niente di quello che si scrive: qui ci sono
+        cinque livelli (le parentesi esterne, un segno, una chiamata, una
+        potenza, una parentesi)."""
+        from pge.expressions.expression import MAX_DEPTH
+        assert MAX_DEPTH >= 32
+        assert valuta('(-fold(m1**(2), 0, 1))', m1=0.5) == -0.25

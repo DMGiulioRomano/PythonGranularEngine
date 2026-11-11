@@ -37,6 +37,14 @@ giro che genera i grani: fuori dominio (`1/0`, `sqrt(-1)`, `exp(1000)`) da' un
 numero non finito, come in JavaScript, e a tagliarlo e scriverlo sul clip log
 e' il clamp del parametro. Gli errori sono tutti al parse.
 
+Vale anche per la profondita'. Una catena di somme o di prodotti
+(`a + b - c + ...`) e' **una** chiusura, che fa le operazioni da sinistra
+come le farebbero chiusure annidate: annidate, una per operatore, la
+valutazione di una catena lunga scendeva di un frame per termine, e oltre il
+limite di ricorsione di Python usciva un `RecursionError` a ogni grano. Cio'
+che si annida davvero — parentesi, segni, potenze, chiamate — ha un limite
+dichiarato, `MAX_DEPTH`, e oltre e' un `ExpressionError` al parse.
+
 Questo modulo non importa terze parti, e del motore solo gli errori: lo legge
 chi deve validare un'espressione senza costruire uno stream.
 """
@@ -182,6 +190,15 @@ FUNCTIONS: Dict[str, Tuple[Callable[..., float], int, Optional[int]]] = {
 #: Le costanti del linguaggio.
 CONSTANTS: Dict[str, float] = {'pi': math.pi, 'e': math.e}
 
+#: Quanti livelli si possono annidare: una parentesi, un segno, una potenza,
+#: una chiamata sono un livello ciascuno. Un'espressione scritta a mano ne ha
+#: meno di dieci (le parentesi esterne sono gia' uno); il limite c'e' perche'
+#: il parser e le chiusure scendono di qualche frame per livello, e oltre il
+#: limite di ricorsione di Python uscirebbe un `RecursionError`, fuori dagli
+#: errori del motore. Cinquanta livelli stanno sotto quel limite con margine,
+#: anche quando la compilazione o la valutazione partono in fondo allo stack.
+MAX_DEPTH = 50
+
 #: Un nome: lettere, cifre e `_`, con al piu' un punto (`m1.y`).
 NAME_PATTERN = r'[A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)?'
 
@@ -243,6 +260,19 @@ class _Parser:
         self._p = 0
         self._variabili = variabili
         self.letti: List[str] = []
+        self._profondita = 0
+
+    def _scendi(self):
+        """Un livello in piu' (vedi MAX_DEPTH). Chi scende risale a mano a
+        lavoro fatto: un errore abbandona il parser intero, e non c'e' niente
+        da rimettere a posto."""
+        self._profondita += 1
+        if self._profondita > MAX_DEPTH:
+            raise _Errore(
+                f"e' annidata troppo: al piu' {MAX_DEPTH} livelli fra "
+                "parentesi, segni, potenze e chiamate",
+                hint="togli le parentesi e i segni che non servono: "
+                     "((x)) e' x, --x e' x")
 
     def _tipo(self):
         return self._token[self._p][0] if self._p < len(self._token) else None
@@ -264,51 +294,72 @@ class _Parser:
         return f"{valore:g}" if tipo == 'n' else str(valore)
 
     def espressione(self):
-        a = self.termine()
-        while True:
-            tipo = self._tipo()
-            if tipo == '+':
-                self._p += 1
-                a = (lambda sx, dx: lambda env: sx(env) + dx(env))(
-                    a, self.termine())
-            elif tipo == '-':
-                self._p += 1
-                a = (lambda sx, dx: lambda env: sx(env) - dx(env))(
-                    a, self.termine())
-            else:
-                return a
+        primo = self.termine()
+        resto = []
+        while self._tipo() in ('+', '-'):
+            meno = self._tipo() == '-'
+            self._p += 1
+            resto.append((meno, self.termine()))
+        if not resto:
+            return primo
+        resto = tuple(resto)
+
+        def somma(env):
+            # Da sinistra, un termine alla volta: lo stesso ordine — e lo
+            # stesso arrotondamento — di `((a + b) - c) + d`.
+            valore = primo(env)
+            for meno, termine in resto:
+                if meno:
+                    valore = valore - termine(env)
+                else:
+                    valore = valore + termine(env)
+            return valore
+        return somma
 
     def termine(self):
-        a = self.unario()
-        while True:
-            tipo = self._tipo()
-            if tipo == '*':
-                self._p += 1
-                a = (lambda sx, dx: lambda env: sx(env) * dx(env))(
-                    a, self.unario())
-            elif tipo == '/':
-                self._p += 1
-                a = (lambda sx, dx: lambda env: _div(sx(env), dx(env)))(
-                    a, self.unario())
-            else:
-                return a
+        primo = self.unario()
+        resto = []
+        while self._tipo() in ('*', '/'):
+            diviso = self._tipo() == '/'
+            self._p += 1
+            resto.append((diviso, self.unario()))
+        if not resto:
+            return primo
+        resto = tuple(resto)
+
+        def prodotto(env):
+            valore = primo(env)
+            for diviso, fattore in resto:
+                if diviso:
+                    valore = _div(valore, fattore(env))
+                else:
+                    valore = valore * fattore(env)
+            return valore
+        return prodotto
 
     def unario(self):
         tipo = self._tipo()
         if tipo == '-':
             self._p += 1
+            self._scendi()
             a = self.unario()
+            self._profondita -= 1
             return lambda env: -a(env)
         if tipo == '+':
             self._p += 1
-            return self.unario()
+            self._scendi()
+            a = self.unario()
+            self._profondita -= 1
+            return a
         return self.potenza()
 
     def potenza(self):
         base = self.primario()
         if self._tipo() == '**':
             self._p += 1
+            self._scendi()
             esponente = self.unario()
+            self._profondita -= 1
             return lambda env: _pow(base(env), esponente(env))
         return base
 
@@ -321,8 +372,10 @@ class _Parser:
             return lambda env: valore
         if tipo == '(':
             self._p += 1
+            self._scendi()
             a = self.espressione()
             self._vuole(')')
+            self._profondita -= 1
             return a
         if tipo == 'id':
             self._p += 1
@@ -337,6 +390,7 @@ class _Parser:
                           hint=f"funzioni: {' '.join(FUNCTIONS)}")
         funzione, minimo, massimo = FUNCTIONS[nome]
         self._p += 1
+        self._scendi()
         argomenti = []
         if self._tipo() != ')':
             argomenti.append(self.espressione())
@@ -344,6 +398,7 @@ class _Parser:
                 self._p += 1
                 argomenti.append(self.espressione())
         self._vuole(')')
+        self._profondita -= 1
         quanti = len(argomenti)
         if quanti < minimo or (massimo is not None and quanti > massimo):
             raise _Errore(_argomenti_attesi(nome, minimo, massimo))
