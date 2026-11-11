@@ -837,9 +837,12 @@ class TestStreamProperties:
         deve leggere quello. Mock con spec per garantire che `.speed` non esista
         (regressione issue #88: prima leggeva `_pointer.speed.value` → AttributeError)."""
         s = stream_factory()
-        ptr = Mock(spec=['speed_ratio'])
+        ptr = Mock(spec=['speed_ratio', 'has_position'])
         ptr.speed_ratio = Mock()
         ptr.speed_ratio.value = 2.0
+        # Con `pointer.position` (issue #312) la velocita' non e' dichiarata
+        # e la property vale None: qui il puntatore si muove con speed_ratio.
+        ptr.has_position = False
         s._pointer = ptr
 
         assert s.pointer_speed == 2.0

@@ -25,6 +25,7 @@ from pge.expressions.expression import (
 from pge.parameters.parameter_definitions import (
     RANGE_UNIT_DEFAULT,
     get_parameter_definition,
+    parameter_wraps,
     range_unit_is_relative,
     relative_band_width,
     relative_range_bounds,
@@ -192,7 +193,11 @@ class GranularParser:
 
 
         # 3. VALIDAZIONE E CLIPPING (NUOVO!)
-        validated_value = self._validate_and_clip(
+        # Un parametro che rientra a capo (WRAPPING_PARAMETERS, issue #312)
+        # non ha un «fuori bounds» da rifiutare al parse: 1.25 e' 0.25, e lo
+        # dice il Parameter a ogni grano.
+        wraps = parameter_wraps(name)
+        validated_value = clean_value if wraps else self._validate_and_clip(
             clean_value,
             bounds.min_val,
             bounds.max_val,
@@ -237,6 +242,7 @@ class GranularParser:
             range_anchor=self.range_anchor,
             rng=component_rng(self.seed, self.rng_id, name),
             range_relative=is_relative,
+            wraps=wraps,
         )
 
     # =========================================================================

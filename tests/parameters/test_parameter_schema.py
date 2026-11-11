@@ -383,6 +383,7 @@ class TestPointerParameterSchema:
         names = {s.name for s in POINTER_PARAMETER_SCHEMA}
         expected = {
             'pointer_start', 'pointer_speed_ratio', 'pointer_deviation',
+            'pointer_position',
             'loop_start', 'loop_end', 'loop_dur'
         }
         assert expected == names

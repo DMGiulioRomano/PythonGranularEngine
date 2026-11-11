@@ -131,6 +131,7 @@ ENVELOPE_RANGES = {
     # === POINTER ===
     'pointer_start': (0.0, 1.0),         # normalizzato
     'pointer_speed': (-4.0, 16.0),
+    'pointer_position': (0.0, 1.0),      # frazione della finestra attiva
     'pointer_deviation': (0.0, 1.0),     # normalizzato
     'pointer_deviation_prob': (0, 100),
     'loop_dur': (0.001, 10.0),           # secondi

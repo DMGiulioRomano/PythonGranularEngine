@@ -51,6 +51,7 @@ ENVELOPE_COLORS = {
     # === POINTER ===
     'pointer_start': '#8dd3c7',   # celeste
     'pointer_speed': '#a65628',   # marrone
+    'pointer_position': '#1b9e77',  # verde acqua scuro (l'altra legge di moto)
     'pointer_deviation': '#fb8072',  # salmone
     'pointer_deviation_prob': '#fdb462',  # arancione chiaro
     'loop_dur': '#bebada',        # lavanda
@@ -147,6 +148,10 @@ ENVELOPE_STYLES = {
     # === POINTER ===
     'pointer_start': (_SHORTDASH, 1.1),
     'pointer_speed': (_SHORTDASH, 1.7),
+    # L'altra legge di moto del puntatore (issue #312): con `position` la
+    # velocita' non c'e', quindi le due non stanno mai nella stessa corsia.
+    # Stesso pattern della famiglia, uno spessore suo.
+    'pointer_position': (_SHORTDASH, 1.4),
     'pointer_deviation': (_DASHDASH, 1.1),
     'pointer_deviation_prob': (_DASHDASH, 0.6),
     'loop_dur': (_SPARSEDOT, 1.3),

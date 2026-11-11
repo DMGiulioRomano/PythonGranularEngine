@@ -169,6 +169,7 @@ class Stream:
         # fattore dell'unita': una stringa non si riscala, si riscala il suo
         # risultato.
         params = self._wrap_grain_expressions(params, config.context.output_sr)
+        params = self._wrap_block_expressions(params)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
         # Da qui in poi grain.read_direction, se dichiarata, e' gia' validata e
@@ -511,6 +512,37 @@ class Stream:
         wrapped_params = dict(params)
         wrapped_params['grain'] = wrapped
         return wrapped_params
+
+    @staticmethod
+    def _wrap_block_expressions(params: dict) -> dict:
+        """Riconosce le espressioni nei campi fuori da `grain:` in cui
+        valgono (`EXPRESSION_FIELDS`): oggi `pointer.position` (issue #312).
+
+        E' il gemello di `_wrap_grain_expressions`, senza l'unita' di
+        misura: qui non c'e' un fattore da portare al risultato — una
+        posizione nella finestra e' una frazione, e `loop_unit` non la
+        riscala. Una stringa in uno di questi campi diventa un
+        `ExpressionSource` col suo path, e la compila il parser dei
+        parametri; fuori dall'elenco una stringa resta l'errore che era.
+
+        Come gli altri normalizzatori non muta il dict originale.
+        """
+        wrapped_params = None
+        for field in EXPRESSION_FIELDS:
+            block, _, key = field.partition('.')
+            if block == 'grain' or not key:
+                continue
+            contenuto = params.get(block)
+            if not isinstance(contenuto, dict) or not isinstance(
+                    contenuto.get(key), str):
+                continue
+            if wrapped_params is None:
+                wrapped_params = dict(params)
+            if wrapped_params[block] is contenuto:
+                wrapped_params[block] = dict(contenuto)
+            wrapped_params[block][key] = ExpressionSource(
+                contenuto[key], field=field)
+        return params if wrapped_params is None else wrapped_params
 
     def _init_grain_reverse(self, params: dict) -> None:
         """
@@ -964,8 +996,22 @@ class Stream:
         
     @property
     def pointer_speed(self):
+        """Il valore di `pointer.speed_ratio`; None con `pointer.position`
+        (issue #312), dove non e' dichiarata e non muove niente: pubblicarne
+        il default direbbe una cosa falsa."""
+        if self._pointer.has_position:
+            return None
         # Il PointerController espone `speed_ratio` (Parameter), non `speed`.
         return self._pointer.speed_ratio.value
+
+    @property
+    def pointer_position(self):
+        """Il Parameter di `pointer.position`, la posizione di lettura nella
+        finestra attiva (issue #312); None se il puntatore si muove con
+        `speed_ratio`."""
+        if not self._pointer.has_position:
+            return None
+        return self._pointer.position
 
     @property
     def loop_start(self):

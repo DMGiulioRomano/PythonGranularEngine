@@ -10,6 +10,51 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: `pointer.position`, la posizione di lettura dalla mappa**
+  (issue #312, la quarta sotto la #307). La legge di moto del puntatore era
+  una sola, `start + integrale di speed_ratio`. `position` è la seconda: la
+  posizione scritta, da 0 a 1 **della finestra attiva** — la finestra di loop
+  se c'è, altrimenti il file intero.
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: 3.2}
+  pointer:
+    position: (m1)
+    loop_start: 0.2
+    loop_dur: 0.1
+    loop_unit: normalized
+  ```
+
+  I grani leggono da due sole posizioni, a 0.513 e a 0.799 della finestra.
+
+  - **Un numero, un envelope o un'espressione**, come `grain.iot`: un envelope
+    è uno scrub dichiarato della finestra.
+  - **Al posto di `speed_ratio` e `start`.** Scritte insieme sono un
+    **errore**, non una priorità, e per presenza della chiave; una
+    `position:` vuota anche. Senza `position` il puntatore è quello di prima,
+    bit per bit (`tests/core/test_stream_puntatore_invariato.py`, su
+    un'istantanea presa prima della prima riga).
+  - **Fuori da 0–1 rientra a capo**, con lo stesso wrap del confinamento al
+    loop: non è un errore al caricamento e non scrive sul clip log. Un valore
+    non finito va all'inizio della finestra, con una riga di clip log.
+  - **La finestra vale da subito ed è il vincolo**: anche mobile, la
+    posizione resta dentro la finestra di quell'istante. `offset_range` e gli
+    offset di pointer delle voci si sommano come prima. `loop_unit` non
+    riscala `position`.
+  - **Il verso `auto` vale «avanti»**: con `position` non c'è una velocità
+    dichiarata di cui seguire il segno. Il verso si dichiara con
+    `grain.read_direction`.
+  - **`WRAPPING_PARAMETERS`** (`parameter_definitions.py`): il dato che dice
+    quali bounds non tagliano ma riportano a capo. È una tupla letterale,
+    oggi col solo `pointer_position`, leggibile da chi specchia i bounds; non
+    è un settimo campo di `ParameterBounds`, i cui sei campi la parità di
+    PGE-ui confronta uno per uno.
+  - In partitura i grani stanno alle posizioni lette; un `position` a
+    envelope è la curva `pointer_position`, e `pointer_speed` non si
+    pubblica. `Stream.pointer_position` è il Parameter, `Stream.pointer_speed`
+    vale `None` con `position`.
+
 - **Mappe caotiche: `grain.iot`, gli onset dalla mappa** (issue #311, la terza
   sotto la #307). `grain.iot` e' l'attesa fino al grano successivo,
   `onset[n+1] = onset[n] + iot`: il terzo modo di dire quando nasce un grano,

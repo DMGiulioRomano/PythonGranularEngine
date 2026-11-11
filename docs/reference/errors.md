@@ -874,6 +874,27 @@ tempo del secondo breakpoint, `maps.m1.r`. Fuori da uno stream (`seed`) non
 c'è la riga `Stream:`. È un errore solo la stringa che, messa intera fra
 parentesi, vale un numero: `voce (1).wav` non lo è.
 
+`pointer.position` (issue #312) è una seconda legge di moto del puntatore, e
+con la prima non convive: scritta insieme a `speed_ratio` o a `start` è un
+`InvalidFieldValueError` sul campo, col valore com'è scritto.
+
+```yaml
+    pointer:
+      position: (m1)
+      speed_ratio: 2
+```
+```
+[ERRORE] Valore invalido per 'pointer.position'
+  Trovato:      '(m1)'
+  Hint:         pointer.position e' la posizione di lettura nella finestra attiva, da 0 a 1: prende il posto della partenza e della velocita', e non puo' stare insieme a speed_ratio.
+  Tieni pointer.position, oppure speed_ratio (con start), non entrambe. La finestra di loop e offset_range valgono con tutte e due.
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Una `position:` lasciata vuota è un `MissingFieldError`. Un valore fuori da
+0–1 non è un errore: rientra a capo della finestra.
+
 Un blocco `maps:` scritto male è un `MapConfigError`, che nomina il punto col
 suo path YAML:
 

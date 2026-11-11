@@ -56,6 +56,9 @@ Sezioni rilevanti in questo doc:
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`), unità
   (`_range_unit`: assoluta o frazione della base)
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [DeviationProbability](#deviation_probability-variazione-stocastica)
+- [`pointer.position`](#pointerposition--la-posizione-dichiarata) — la
+  posizione di lettura scritta, da 0 a 1 della finestra attiva, al posto di
+  `speed_ratio` e `start`
 - [Mappe ed espressioni](#mappe-ed-espressioni-maps) — `maps:` dichiara una
   mappa iterata, e un parametro la legge con un'espressione
   (`duration: (0.02 + 0.08*m1)`), valutata a ogni grano
@@ -1063,6 +1066,69 @@ anche senza nessun loop dichiarato. Le due chiavi parlano di assi diversi (vedi
 
 Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
 
+### `pointer.position` — la posizione dichiarata
+
+`start` e `speed_ratio` sono una legge di moto: una partenza, più l'integrale
+di una velocità. `position` è la seconda (issue #312): la posizione di lettura
+**scritta**, grano per grano.
+
+```yaml
+maps:
+  m1: {type: logistic, r: 3.2}
+pointer:
+  position: (m1)          # dove leggere, da 0 a 1 della finestra attiva
+  loop_start: 0.2
+  loop_dur: 0.1
+  loop_unit: normalized
+```
+
+Con `r: 3.2` la logistica ha due valori, e i grani leggono da due sole
+posizioni: a 0.513 e a 0.799 della finestra di loop.
+
+- **Da 0 a 1 della finestra attiva**: la finestra di loop se c'è, altrimenti
+  il file intero. `position: 0.5` senza loop è la metà del file; con
+  `loop_start: 0.4`, `loop_end: 0.9` è 0.65 s. È sempre una frazione,
+  qualunque sia `loop_unit`: quella dice in che unità sono scritti i bordi
+  della finestra, non la posizione.
+- **Un numero, un envelope o un'espressione.** Un numero è una lettura ferma;
+  un envelope è uno scrub dichiarato (`[[0, 0], [10, 1]]` attraversa la
+  finestra in dieci secondi) e segue il `time_mode` dello stream;
+  un'[espressione](#le-espressioni) legge una mappa.
+- **Al posto di `speed_ratio` e `start`**: scritte insieme a `position` sono
+  un **errore** (`InvalidFieldValueError` su `pointer.position`), non una
+  priorità, e vale per presenza della chiave — anche `start: 0`. Una
+  `position:` lasciata vuota è un errore anche lei (`MissingFieldError`).
+  Senza `position` il puntatore è quello di sempre, bit per bit.
+- **Fuori da 0–1 rientra a capo**, non si taglia: `1.25` è `0.25`, `-0.25` è
+  `0.75`, e un envelope da 0 a 3 ripassa la finestra tre volte. È lo stesso
+  wrap del [confinamento al loop](#confinamento-al-loop), quindi non è un
+  errore al caricamento e non scrive niente sul clip log. Un valore **non
+  finito** (`sqrt` di un negativo, una divisione per zero) va all'inizio
+  della finestra, e quello sì è una riga di clip log.
+- **La finestra vale da subito.** Con `speed_ratio` il puntatore entra nel
+  loop quando ci arriva; con `position` non c'è un viaggio, e il primo grano
+  è già dentro. La finestra può muoversi (`loop_start` e `loop_dur` a
+  envelope): la posizione resta dentro la finestra di quell'istante. È il
+  **vincolo** del puntatore.
+- **`offset_range` e gli offset di pointer delle voci si sommano come
+  prima**: la deviazione per grano è una frazione della finestra attiva, e il
+  tutto resta confinato dentro la finestra.
+- **Il verso `auto` vale «avanti».** Senza `grain.reverse` né
+  `grain.read_direction` il verso del grano segue il segno di `speed_ratio`;
+  con `position` una velocità dichiarata non c'è, e il grano si legge in
+  avanti anche quando la posizione scende. Il verso si dichiara con
+  [`grain.read_direction`](#grainread_direction--il-verso-di-lettura-del-grano)
+  (o `grain.reverse`).
+- **Più voci.** Con una mappa a `clock: grain` ogni voce ha il suo stato e
+  percorre la sua sequenza di posizioni.
+
+In partitura i grani stanno alle posizioni lette. Un `position` a envelope è
+la curva `pointer_position`; la curva `pointer_speed` non c'è, perché la
+velocità non è dichiarata.
+
+Bounds: `pointer_position` ∈ [0, 1), a capo (`WRAPPING_PARAMETERS` in
+`parameter_definitions.py`: l'unico parametro i cui bounds non tagliano).
+
 ### Confinamento al loop
 
 Con un loop attivo, la posizione finale di ogni grano — base + `offset_range` +
@@ -1319,8 +1385,9 @@ quando la mappa è in fondo al suo intervallo, il massimo quando è in cima. La
 mappa non usa per forza tutta la fascia scritta: con `r: 3.2` i valori sono
 due soli.
 
-**Dove vale.** Oggi su `grain.duration` e su
-[`grain.iot`](#grainiot--lattesa-fra-due-grani) (l'elenco è
+**Dove vale.** Oggi su `grain.duration`, su
+[`grain.iot`](#grainiot--lattesa-fra-due-grani) e su
+[`pointer.position`](#pointerposition--la-posizione-dichiarata) (l'elenco è
 `EXPRESSION_FIELDS` in `src/pge/expressions/fields.py`). Su un altro parametro una stringa resta un
 errore (`InvalidParameterError`), che dice dove le espressioni valgono.
 
@@ -2728,7 +2795,8 @@ in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la
 lascia com'è e la compila il parser dei parametri, per valutarla a ogni grano.
 È un altro linguaggio, con le sue funzioni: vedi
 [Mappe ed espressioni](#mappe-ed-espressioni-maps). Nei campi in cui
-un'espressione vale (`grain.duration`, `grain.iot`) il loader lascia com'è
+un'espressione vale (`grain.duration`, `grain.iot`, `pointer.position`) il
+loader lascia com'è
 anche una stringa che nomina un nome che questa valutazione non conosce
 (`sqrt`, `clip`): la compila l'interprete, senza l'avviso
 `impossibile valutare`.
@@ -3089,6 +3157,7 @@ un envelope dal YAML al runtime è:
 | `pitch_semitones` | -36 | 36 | 0 | ±3 ottave |
 | `read_direction` | -1 | +1 | — | solo `-1` e `+1`; assente = modalità `auto` |
 | `pointer_speed_ratio` | -100 | 100 | 1.0 | negativo = indietro |
+| `pointer_position` | 0 | 1 | — | frazione della finestra attiva (`pointer.position`), al posto di `speed_ratio` e `start`; fuori da 0–1 **rientra a capo**, non si taglia |
 | `pointer_deviation` | -1 | 1 | 0.0 | offset per-grano |
 | `loop_start` | 0 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |
 | `loop_end` | 0 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |

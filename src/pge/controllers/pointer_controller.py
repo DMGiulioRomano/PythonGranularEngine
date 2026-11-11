@@ -22,12 +22,19 @@ from pge.shared.logger import (
     log_loop_dynamic_mode,
     log_loop_init,
 )
-from pge.shared.exceptions import InvalidFieldValueError
+from pge.expressions.expression import ExpressionSource
+from pge.shared.exceptions import InvalidFieldValueError, MissingFieldError
 # Il vocabolario di loop_unit e le chiavi che interpreta stanno in un
 # modulo senza dipendenze, sorvegliato perche' resti tale: li leggono
 # PGE-ui e PGE-ls dal sorgente, al path, e gl-ls li mirrora (issue #246).
 # Non vanno ridichiarati: vedi tests/parameters/test_loop_unit.py.
 from pge.parameters.loop_unit import LOOP_UNITS, LOOP_UNIT_SCOPE
+
+#: Le chiavi con cui `pointer.position` non convive (issue #312): sono
+#: l'altra legge di moto del puntatore, `start + integrale di speed_ratio`.
+#: Un letterale, perche' chi specchia la regola da fuori lo legga dal
+#: sorgente.
+POSITION_EXCLUSIVE_KEYS = ('speed_ratio', 'start')
 
 
 class PointerController:
@@ -78,7 +85,58 @@ class PointerController:
     # =========================================================================
     # INITIALIZATION
     # =========================================================================
+    def _check_position_exclusivity(self, params) -> None:
+        """`pointer.position` non convive con `speed_ratio` e `start` (issue
+        #312): e' un errore, non una priorita'.
+
+        Sono due leggi di moto diverse — una posizione dichiarata, e una
+        partenza piu' l'integrale di una velocita' — e scegliere in silenzio
+        nasconderebbe che una delle due righe non viene letta. Il conflitto
+        vale per PRESENZA della chiave, come per `grain.iot`: `start: 0`
+        accanto a `position` non cambierebbe niente, ma chi l'ha scritto si
+        aspetta che voglia dire qualcosa. Per la stessa ragione una
+        `position:` lasciata vuota non e' «non scritta».
+        """
+        if not isinstance(params, dict) or 'position' not in params:
+            return
+        stream_id = self._config.context.stream_id
+        scritto = params['position']
+        if isinstance(scritto, ExpressionSource):
+            scritto = scritto.text
+        conflitti = [k for k in POSITION_EXCLUSIVE_KEYS if k in params]
+        if conflitti:
+            err = InvalidFieldValueError(
+                field='pointer.position',
+                value=scritto,
+                hint=(
+                    "pointer.position e' la posizione di lettura nella "
+                    "finestra attiva, da 0 a 1: prende il posto della "
+                    "partenza e della velocita', e non puo' stare insieme a "
+                    f"{', '.join(conflitti)}.\n"
+                    "  Tieni pointer.position, oppure speed_ratio (con "
+                    "start), non entrambe. La finestra di loop e "
+                    "offset_range valgono con tutte e due."
+                ),
+            )
+            err.stream_id = stream_id
+            raise err
+        if scritto is None:
+            err = MissingFieldError(
+                field='pointer.position',
+                hint=("la chiave e' scritta ma vuota: la posizione va "
+                      "indicata (un numero, un envelope, o un'espressione "
+                      "come (m1)). Se non serve, togli la chiave."),
+            )
+            err.stream_id = stream_id
+            raise err
+
     def _init_params(self, params: dict) -> None:
+        # 0. `position` al posto di `speed_ratio` e `start` (issue #312):
+        # sullo YAML com'e' scritto, prima di ogni conversione.
+        self._check_position_exclusivity(params)
+        # La legge di moto si sceglie per presenza della chiave.
+        self.has_position = isinstance(params, dict) and 'position' in params
+
         # 1. Pre-processing: conversione unita' PRIMA del pipeline
         normalized_params = self._pre_normalize_loop_params(params)
 
@@ -316,19 +374,29 @@ class PointerController:
         Returns:
             float: posizione in secondi nel sample sorgente, sempre in [0, sample_dur)
         """
-        # 1. Calcola movimento lineare (da speed)
-        linear_pos = self._calculate_linear_position(elapsed_time)
-
-        # 2. Ottieni posizione ESTESA e finestra attiva (window_start, window_length)
-        #    - Con loop:    extended_pos in coordinate estese [loop_start, loop_start+len),
-        #                   window_start = loop_start corrente, window_length = lunghezza loop
-        #    - Senza loop:  finestra = file intero (window_start=0, window_length=sample_dur)
-        if self.has_loop:
-            extended_pos, window_start, window_length = self._apply_loop(linear_pos, elapsed_time)
+        if self.has_position:
+            # 1-2 (issue #312). La posizione e' dichiarata: una frazione
+            #    della finestra attiva, letta a questo istante. Non c'e' un
+            #    viaggio da integrare ne' un loop in cui entrare, e nessuno
+            #    stato: i passi 3-5 sono quelli di sempre.
+            window_start, window_length = self._active_window(elapsed_time)
+            extended_pos = (window_start
+                            + self.position.get_value(elapsed_time)
+                            * window_length)
         else:
-            extended_pos = linear_pos
-            window_start = 0.0
-            window_length = self._sample_dur_sec
+            # 1. Calcola movimento lineare (da speed)
+            linear_pos = self._calculate_linear_position(elapsed_time)
+
+            # 2. Ottieni posizione ESTESA e finestra attiva (window_start, window_length)
+            #    - Con loop:    extended_pos in coordinate estese [loop_start, loop_start+len),
+            #                   window_start = loop_start corrente, window_length = lunghezza loop
+            #    - Senza loop:  finestra = file intero (window_start=0, window_length=sample_dur)
+            if self.has_loop:
+                extended_pos, window_start, window_length = self._apply_loop(linear_pos, elapsed_time)
+            else:
+                extended_pos = linear_pos
+                window_start = 0.0
+                window_length = self._sample_dur_sec
 
         # 3. Somma deviazione per-grano (scalata sulla finestra) e offset di voce,
         #    in coordinate estese. Sono spostamenti temporanei: non modificano lo
@@ -345,6 +413,23 @@ class PointerController:
         #    Senza loop collassa nel semplice % sample_dur_sec.
         rel = (final_pos - window_start) % window_length
         return (window_start + rel) % self._sample_dur_sec
+
+    def _active_window(self, elapsed_time: float) -> tuple[float, float]:
+        """La finestra in cui `pointer.position` si legge (issue #312):
+        `(inizio, lunghezza)` in secondi.
+
+        La finestra di loop a questo istante, se c'e' — anche mobile: i suoi
+        bordi sono envelope come ogni altro — altrimenti il file intero. La
+        lunghezza minima e' quella che `_apply_loop` da' al loop.
+        """
+        if not self.has_loop:
+            return 0.0, self._sample_dur_sec
+        start = self.loop_start.get_value(elapsed_time)
+        if self.loop_dur is not None:
+            length = self.loop_dur.get_value(elapsed_time)
+        else:
+            length = self.loop_end.get_value(elapsed_time) - start
+        return start, max(length, 0.001)
 
     def _apply_loop(
         self,
@@ -567,7 +652,13 @@ class PointerController:
         self._init_loop_state()
 
     def get_speed(self, elapsed_time: float) -> float:
-        """Ritorna la velocità istantanea al tempo specificato."""
+        """Ritorna la velocità istantanea al tempo specificato.
+
+        Con `pointer.position` (issue #312) non c'e' una velocita'
+        dichiarata — `speed_ratio` non si puo' scrivere — e questo e' il suo
+        default, 1: chi ne legge il segno per il verso `auto` del grano
+        trova «avanti». Il verso si dichiara con `grain.read_direction`.
+        """
         return self.speed_ratio.get_value(elapsed_time)
         
     # =========================================================================
@@ -618,4 +709,6 @@ class PointerController:
                 loop_info = f", loop={loop_start_val:.3f}-dynamic"
         else:
             loop_info = ""
+        if self.has_position:
+            return f"PointerController(position={self.position._value}{loop_info})"
         return f"PointerController(start={self.start}, speed={self.speed_ratio._value}{loop_info})"

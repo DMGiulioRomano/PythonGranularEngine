@@ -248,6 +248,7 @@ LEGEND_SHORT_NAMES = {
     'pointer_deviation': 'ptr dev',
     'pointer_speed': 'ptr spd',
     'pointer_start': 'ptr start',
+    'pointer_position': 'ptr pos',
     'grain_duration': 'grain dur',
     'num_voices': 'voices',
     'voice_pitch_offset': 'v pitch off',

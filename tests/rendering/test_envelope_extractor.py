@@ -965,6 +965,14 @@ class TestPublishedSurfaceResolves:
                        'read_direction': [[0, 1], [1.0, -1]]},
                 deviation_probability={'read_direction': 40},
             ),
+            # L'altra legge di moto del puntatore (issue #312): con
+            # `position` la velocita' non e' dichiarata, e viceversa.
+            build_stream(
+                stream_id='E',
+                density=10,
+                pointer={'position': [[0, 0.0], [1.0, 1.0]],
+                         'loop_start': 0.1, 'loop_dur': 0.5},
+            ),
         ]
 
     def _pubblicate_e_vive(self, build_stream):

@@ -26,6 +26,7 @@ from pge.parameters.parameter_curve import ParameterCurve
 from pge.parameters.parameter_definitions import (
     ParameterBounds,
     relative_band_width,
+    wrap_into_bounds,
 )
 from pge.shared.logger import log_clip_warning, violated_bound
 from pge.shared.probability_gate import *
@@ -85,6 +86,7 @@ class Parameter:
         range_anchor: str = ANCHOR_CENTER,
         rng: Optional[random.Random] = None,
         range_relative: bool = False,
+        wraps: bool = False,
     ):
         self.name = name
         self.owner_id = owner_id
@@ -100,6 +102,9 @@ class Parameter:
         # a range_anchor: quella dice dove cade la base dentro la banda,
         # questa quanto la banda e' larga.
         self._range_relative = bool(range_relative)
+        # True per una posizione ciclica (issue #312, WRAPPING_PARAMETERS):
+        # un valore fuori dai bounds non si taglia, rientra dall'altro capo.
+        self._wraps = bool(wraps)
 
         # Ancora effettiva: `range_anchor` vale solo se un range è stato
         # dichiarato. Senza range esplicito si applica il jitter implicito
@@ -213,7 +218,16 @@ class Parameter:
         pavimento.
         """
         if math.isfinite(value):
+            if self._wraps:
+                # Una posizione ciclica (issue #312) fuori dalla banda non si
+                # taglia: rientra dall'altro capo, e non c'e' niente da
+                # scrivere sul clip log — e' il suo comportamento normale.
+                return wrap_into_bounds(value, self._bounds)
             clamped = self._bounds.clamp(value)
+        elif self._wraps:
+            # Non c'e' un capo da cui un non-finito rientri: va all'inizio
+            # della banda, e questo si' lo si scrive.
+            clamped = self._bounds.min_val
         else:
             clamped = violated_bound(
                 value, self._bounds.min_val, self._bounds.max_val)[1]

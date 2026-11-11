@@ -305,6 +305,16 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
         max_val=100.0
     ),
     
+    # La posizione di lettura nella finestra attiva (issue #312): la finestra
+    # di loop se c'e', altrimenti il file intero. Da 0 a 1, e fuori RIENTRA
+    # (WRAPPING_PARAMETERS): e' una posizione ciclica, e il rientro e' lo stesso
+    # confinamento che il puntatore applica da sempre. Nessuna banda propria:
+    # la deviazione per grano resta `pointer.offset_range`.
+    'pointer_position': ParameterBounds(
+        min_val=0.0,
+        max_val=1.0,
+    ),
+
     'pointer_deviation': ParameterBounds(
         min_val=-1.0,
         max_val=1.0,        
@@ -381,6 +391,36 @@ GRANULAR_PARAMETERS: Dict[str, ParameterBounds] = {
 }
 
 _LOOP_PARAMS = frozenset({'loop_dur', 'loop_start', 'loop_end'})
+
+
+#: I parametri i cui bounds non tagliano ma **riportano a capo** (issue
+#: #312): un valore fuori da [min_val, max_val) rientra dall'altro capo. E'
+#: il caso di una posizione ciclica — `pointer.position`, la frazione della
+#: finestra di lettura, dove 1.25 e' 0.25. Per un parametro cosi' un numero
+#: o un envelope fuori dai bounds non sono un errore al parse, e il clip log
+#: non ne parla: e' il comportamento normale, non un taglio.
+#:
+#: Un letterale a parte, e non un settimo campo di `ParameterBounds`: quei
+#: sei campi sono confrontati uno per uno dalla parita' di PGE-ui (la sua
+#: lettura dall'AST contro il registro importato), e un campo in piu' la
+#: rende rossa su ogni sua PR. Qui il dato resta leggibile dal sorgente
+#: senza importare niente, come RANGE_UNITS e LOOP_UNITS.
+WRAPPING_PARAMETERS = ('pointer_position',)
+
+
+def parameter_wraps(param_name: str) -> bool:
+    """True se i bounds di `param_name` riportano a capo invece di tagliare."""
+    return param_name in WRAPPING_PARAMETERS
+
+
+def wrap_into_bounds(value: float, bounds: ParameterBounds) -> float:
+    """`value` riportato in [min_val, max_val) a capo.
+
+    Solo per valori finiti, e solo dove c'e' un tetto: chi chiama ha gia'
+    deciso dove va un non-finito.
+    """
+    span = bounds.max_val - bounds.min_val
+    return bounds.min_val + (value - bounds.min_val) % span
 
 
 #: Parametri il cui pavimento e' un campione, cioe' 1/output_sr quando il
