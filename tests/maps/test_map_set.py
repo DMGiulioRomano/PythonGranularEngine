@@ -270,9 +270,10 @@ class TestErrori:
 
     def test_il_type_sconosciuto_dice_quali_ci_sono(self):
         with pytest.raises(MapConfigError) as exc:
-            MapSet.from_yaml({'m1': {'type': 'tent', 'r': 3.5}})
+            MapSet.from_yaml({'m1': {'type': 'lorenz', 'r': 3.5}})
         assert 'logistic' in exc.value.hint
-        assert exc.value.value == 'tent'
+        assert 'custom' in exc.value.hint
+        assert exc.value.value == 'lorenz'
 
     def test_la_chiave_sconosciuta_dice_quali_ci_sono(self):
         with pytest.raises(MapConfigError) as exc:

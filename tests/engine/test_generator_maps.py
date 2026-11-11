@@ -131,6 +131,54 @@ class TestIlCaricamentoLasciaLEspressioneComE:
         assert 'impossibile valutare' in capsys.readouterr().out
 
 
+class TestLeEquazioniDiUnaMappaCustom:
+    """`maps.<nome>.x` e `.y` di una mappa `type: custom` (issue #313) sono
+    equazioni nel linguaggio delle espressioni, e si scrivono senza le
+    parentesi esterne. La valutazione al caricamento non le deve toccare:
+    ci vedrebbe un `(r*x)` da valutare (avviso su stdout) o un `(1+2)` da
+    riscrivere (un testo diverso da quello dello YAML)."""
+
+    def _custom(self, **equazioni):
+        return _stream(maps={'m1': {'type': 'custom', 'r': 3, **equazioni}},
+                       grain={'duration': '(0.03 + 0.01*m1)'})
+
+    @pytest.mark.parametrize('equazione', [
+        'sin(r*x)*cos(x)',
+        '(r*x)*(1-x)',
+        '(1+2)*x/4',
+        '(1+1)/4',
+        '1 - r*x*x',
+    ])
+    def test_l_equazione_arriva_com_e_scritta(self, carica, capsys,
+                                              equazione):
+        generator = carica(self._custom(x=equazione))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['maps']['m1']['x'] == equazione
+
+    def test_anche_la_seconda(self, carica, capsys):
+        generator = carica(self._custom(x='1 - r*x*x + y', y='(3/10)*x'))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['maps']['m1']['y'] == '(3/10)*x'
+
+    def test_il_resto_della_mappa_si_valuta_come_prima(self, carica):
+        stream = self._custom(x='r*x*(1-x)')
+        stream['maps']['m1']['r'] = '(7/2)'
+        generator = carica(stream)
+        assert generator.data['streams'][0]['maps']['m1']['r'] == 3.5
+
+    def test_il_brano_rende(self, carica):
+        generator = carica(self._custom(x='r*x*(1-x)'))
+        generator.data['streams'][0]['maps']['m1']['r'] = 3.5
+        prodotto, = generator.create_elements()
+        assert len(prodotto.voices[0]) > 10
+
+    def test_una_x_fuori_da_maps_non_e_un_equazione(self, carica):
+        """Il riparo vale per `maps.<nome>.x`, non per una chiave `x`
+        qualunque."""
+        stream = _stream(nota={'x': '(1+2)'})
+        assert carica(stream).data['streams'][0]['nota']['x'] == 3
+
+
 class TestICampiAEspressione:
     """Nei campi in cui un'espressione vale (`EXPRESSION_FIELDS`) il criterio
     del plan e' «nessuna riga nuova su stdout al caricamento di

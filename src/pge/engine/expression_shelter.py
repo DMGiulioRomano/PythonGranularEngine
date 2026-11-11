@@ -37,6 +37,12 @@ parentesi**:
   stesso. Un nome sbagliato (`pii`) lo dice l'interprete, coi nomi che ci
   sono, al posto dell'avviso.
 
+- le **equazioni di una mappa `type: custom`** (issue #313),
+  `maps.<nome>.x` e `maps.<nome>.y`: sono testo nel linguaggio delle
+  espressioni, scritto senza le parentesi esterne, e vanno al riparo
+  sempre. La valutazione ci vedrebbe un `(r*x)` da valutare — avviso su
+  stdout — o un `(1+2)` da riscrivere.
+
 Il resto — le espressioni di oggi, i nomi dei file, uno stream senza mappe
 che non scrive `t` — passa dalla valutazione esattamente come prima. Anche
 nei campi a espressione una costante che la valutazione sa fare (`(10/2)`,
@@ -66,6 +72,9 @@ LOAD_TIME_NAMES = frozenset({
     'abs', 'int', 'float', 'min', 'max', 'pow', 'pi', 'e'})
 
 _CAMPI = frozenset(EXPRESSION_FIELDS)
+
+# `maps.<nome>.x` e `maps.<nome>.y`: le equazioni di una mappa `custom`.
+_EQUAZIONE = re.compile(r'maps\.[^.]+\.[xy]\Z')
 
 
 class ShelteredExpression:
@@ -112,8 +121,11 @@ def _ripara(obj, nomi: frozenset, percorso=''):
             for k, v in obj.items()}
     if isinstance(obj, list):
         return [_ripara(v, nomi, None) for v in obj]
-    if isinstance(obj, str) and _da_riparare(obj, nomi, percorso in _CAMPI):
-        return ShelteredExpression(obj)
+    if isinstance(obj, str):
+        if percorso is not None and _EQUAZIONE.match(percorso):
+            return ShelteredExpression(obj)
+        if _da_riparare(obj, nomi, percorso in _CAMPI):
+            return ShelteredExpression(obj)
     return obj
 
 
