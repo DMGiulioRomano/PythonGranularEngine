@@ -124,6 +124,15 @@ class TestInsiemeEUnErrore:
         assert chiave in exc.value.hint
         assert exc.value.stream_id == 'test_stream'
 
+    def test_un_espressione_impacchettata_si_mostra_col_suo_testo(self, config):
+        """Il «Trovato» e' il testo dell'espressione, non il repr
+        dell'oggetto che la porta al parser."""
+        sorgente = ExpressionSource('(0.1 + 0.01*t)', field='grain.iot')
+        with pytest.raises(InvalidFieldValueError) as exc:
+            _controller(config, iot=sorgente, density=20)
+        assert exc.value.value == '(0.1 + 0.01*t)'
+        assert 'ExpressionSource' not in exc.value.user_message()
+
     def test_con_tutte_e_tre_le_nomina_tutte(self, config):
         with pytest.raises(InvalidFieldValueError) as exc:
             _controller(config, density=20, fill_factor=2, distribution=1)

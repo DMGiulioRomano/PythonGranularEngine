@@ -149,6 +149,11 @@ class Stream:
         self._maps = self._init_maps(params, config)
         config = replace(config, map_set=self._maps)
         self._init_stream_context(config.context)
+        # === 3.4. GRAIN.IOT CON UN ALTRO MODO DI DENSITA' (issue #311) ===
+        # Sullo YAML grezzo, prima dei tre passi qui sotto: dopo, `grain.iot`
+        # e' gia' in secondi o impacchettata come espressione, e il «Trovato»
+        # dell'errore non sarebbe piu' cio' che l'utente ha scritto.
+        DensityController.check_iot_exclusivity(params, config)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
         # Da qui in poi grain.duration e' in secondi qualunque sia l'unita'
         # dichiarata nello YAML, e con lei grain.duration_range — tranne dove

@@ -260,6 +260,31 @@ class TestInsiemeEUnErrore:
         assert chiave in exc.value.hint
         assert exc.value.stream_id == 's1'
 
+    def test_l_errore_mostra_l_espressione_come_e_scritta(self, stream):
+        """Il «Trovato» dell'errore e' il valore dello YAML, non l'oggetto
+        con cui lo Stream porta l'espressione al parser
+        (`ExpressionSource(...)`): chi legge l'errore deve ritrovare la
+        riga che ha scritto."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            stream(density=20)
+        assert exc.value.value == IOT
+        assert 'ExpressionSource' not in exc.value.user_message()
+
+    @pytest.mark.parametrize('unita, iot, durata', [
+        ('milliseconds', 100, 30),
+        ('samples', [[0, 4800], [6, 9600]], 1440),
+    ])
+    def test_l_errore_mostra_l_attesa_nell_unita_scritta(
+            self, stream, unita, iot, durata):
+        """Con `duration_unit` l'attesa scritta e' quella dello YAML (100
+        ms, 4800 campioni), non quella gia' portata in secondi (0.1,
+        0.09999999999999999) che arriva al parser."""
+        with pytest.raises(InvalidFieldValueError) as exc:
+            stream(grain={'iot': iot, 'duration': durata,
+                          'duration_unit': unita},
+                   maps=None, fill_factor=2)
+        assert exc.value.value == iot
+
     def test_grain_iot_vuota(self, stream):
         with pytest.raises(MissingFieldError) as exc:
             stream(grain={'iot': None})

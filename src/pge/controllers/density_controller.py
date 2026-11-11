@@ -17,6 +17,7 @@ from pge.strategies.strategy_registry import StrategyFactory, DENSITY_STRATEGIES
 from pge.core.stream_config import StreamConfig
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
 from pge.shared.seeding import component_rng
+from pge.expressions.expression import ExpressionSource
 from pge.shared.exceptions import InvalidFieldValueError, MissingFieldError
 from pge.shared.logger import log_high_density_warning
 
@@ -89,8 +90,10 @@ class DensityController:
         )
 
         # `grain.iot` con un'altra chiave di densita' e' un errore, e va
-        # detto prima che il selettore del gruppo scelga per priorita'.
-        self._check_iot_exclusivity(params, config)
+        # detto prima che il selettore del gruppo scelga per priorita'. Lo
+        # Stream lo chiede gia' sullo YAML grezzo (vedi il metodo): qui resta
+        # per chi costruisce il controller da se'.
+        self.check_iot_exclusivity(params, config)
 
         # Create orchestrator
         self._orchestrator = ParameterOrchestrator(config=config)
@@ -113,7 +116,7 @@ class DensityController:
         self._init_density_notice(config)
 
     @staticmethod
-    def _check_iot_exclusivity(params: dict, config) -> None:
+    def check_iot_exclusivity(params: dict, config) -> None:
         """`grain.iot` non convive con `density`, `fill_factor`,
         `distribution` (issue #311): e' un errore, non una priorita'.
 
@@ -123,6 +126,13 @@ class DensityController:
         ragione una `grain.iot:` lasciata vuota non e' «non scritta»: il
         modo e' scelto e manca il valore, e leggerla come assente farebbe
         ripartire in silenzio il default `fill_factor: 2`.
+
+        Pubblico perche' lo Stream lo chiama sullo YAML **grezzo**, prima di
+        portare `grain.iot` in secondi e di impacchettarne l'espressione: il
+        «Trovato» dell'errore e' il valore che l'utente ha scritto (`100`
+        in millisecondi, `(0.02 + 0.18*m1)`), non quello che arriva qui
+        dopo la normalizzazione (`0.1`, un `ExpressionSource`). Chi passa
+        al controller un'espressione gia' impacchettata ne vede il testo.
         """
         grain = params.get('grain') if isinstance(params, dict) else None
         if not isinstance(grain, dict) or 'iot' not in grain:
@@ -131,9 +141,12 @@ class DensityController:
         stream_id = getattr(getattr(config, 'context', None), 'stream_id', None)
         conflitti = [k for k in IOT_EXCLUSIVE_KEYS if k in params]
         if conflitti:
+            scritto = grain['iot']
+            if isinstance(scritto, ExpressionSource):
+                scritto = scritto.text
             err = InvalidFieldValueError(
                 field='grain.iot',
-                value=grain['iot'],
+                value=scritto,
                 hint=(
                     "grain.iot e' l'attesa fino al grano successivo: con lei "
                     "la densita' non si decide, emerge dagli onset, e non "
