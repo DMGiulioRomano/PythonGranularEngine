@@ -745,7 +745,11 @@ grain:
   disordine, se lo si vuole, viene dalla mappa.
 - **Sta dentro `grain:` e segue `grain.duration_unit`**, come
   `grain.duration`: con `duration_unit: milliseconds`, `iot: 100` sono 0.1 s.
-  Su un'espressione il fattore si applica al risultato.
+  Su un'espressione il fattore si applica al risultato. La regola
+  dell'unità resta quella di `grain.duration`: con un'unità diversa da
+  `seconds` `grain.duration` va scritta anche se l'unità serve solo a
+  `grain.iot` (il default 0.05 è in secondi, e senza di lei è un
+  `MissingFieldError` su `grain.duration`).
 - **Limiti: da un campione (1/48000 s) a 100 s.** Un numero o un envelope
   fuori limite è un errore al parse, come per ogni parametro. Un'espressione
   viene **tagliata** a ogni grano e scritta sul clip log: un'attesa nulla,
