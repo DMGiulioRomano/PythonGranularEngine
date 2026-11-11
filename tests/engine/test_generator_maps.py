@@ -121,6 +121,96 @@ class TestIlCaricamentoLasciaLEspressioneComE:
         assert 'impossibile valutare' in capsys.readouterr().out
 
 
+class TestICampiAEspressione:
+    """Nei campi in cui un'espressione vale (`EXPRESSION_FIELDS`) il criterio
+    del plan e' «nessuna riga nuova su stdout al caricamento di
+    un'espressione valida», anche quando l'espressione non nomina una mappa.
+
+    `(0.02 + 0.08*sqrt(0.25))` e' una costante, ma `sqrt` la valutazione al
+    caricamento non la conosce (ha `abs int float min max pow pi e`):
+    avvisava `impossibile valutare` su stdout, e poi l'interprete la
+    compilava lo stesso. Va al riparo, come un'espressione su una mappa. Una
+    costante che la valutazione sa fare resta sua, e diventa un numero: e' il
+    numero che la partitura disegna e che i bounds controllano al parse.
+    """
+
+    @pytest.mark.parametrize('campo, espressione', [
+        ('duration', '(0.02 + 0.08*sqrt(0.25))'),
+        ('duration', '(0.05 * abs(sin(1)))'),
+        ('duration', '(0.02 + clip(0.3, (1/2), 1)*0.08)'),
+        ('iot', '(0.1 + 0.05*frac(1.3))'),
+    ])
+    def test_una_costante_del_linguaggio_nuovo_non_avvisa(
+            self, carica, capsys, campo, espressione):
+        stream = _stream(grain={campo: espressione})
+        del stream['maps']
+        generator = carica(stream)
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['grain'][campo] == espressione
+        prodotto, = generator.create_elements()
+        assert prodotto.voices[0]
+
+    def test_un_nome_sbagliato_lo_dice_l_interprete_e_basta(self, carica,
+                                                            capsys):
+        """Prima: l'avviso della valutazione (`name 'pii' is not defined`)
+        e poi l'errore dell'interprete. Ora l'errore solo, che dice anche
+        quali nomi ci sono."""
+        from pge.shared.exceptions import ExpressionError
+        generator = carica(_stream(grain={'duration': '(0.02 * pii)'}))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        with pytest.raises(ExpressionError) as exc:
+            generator.create_elements()
+        assert 'pii' in exc.value.reason
+        assert exc.value.field == 'grain.duration'
+
+    @pytest.mark.parametrize('scritto, numero', [
+        ('(0.05 * abs(-1))', 0.05),
+        ('(int(3.7)/100)', 0.03),
+        ('(max(0.01*2, 0.01)*1)', None),
+    ])
+    def test_una_costante_che_la_valutazione_sa_fare_resta_sua(
+            self, carica, scritto, numero):
+        """Il riparo non si allarga alle costanti di oggi: `abs`, `int`,
+        `max` li valuta il caricamento, come prima. (`max` con la virgola il
+        caricamento non lo valuta, la #309: resta testo, come prima.)"""
+        generator = carica(_stream(grain={'duration': scritto}))
+        valore = generator.data['streams'][0]['grain']['duration']
+        if numero is None:
+            assert valore == scritto
+        else:
+            assert valore == pytest.approx(numero)
+
+    def test_fuori_dai_campi_a_espressione_l_avviso_resta(self, carica,
+                                                          capsys):
+        """Su `volume` un'espressione non vale ancora (la #313): li' l'avviso
+        della valutazione e' l'unica spiegazione di `sqrt`, e resta."""
+        stream = _stream(volume='(sqrt(4))')
+        del stream['maps']
+        generator = carica(stream)
+        assert 'impossibile valutare' in capsys.readouterr().out
+        assert generator.data['streams'][0]['volume'] == '(sqrt(4))'
+
+    def test_i_nomi_della_valutazione_sono_quelli_del_generator(self):
+        """Il riparo sa quali nomi la valutazione al caricamento conosce:
+        sono le chiavi del `safe_dict` di `_eval_math_expressions`, lette
+        qui dal sorgente. Se la #309 le cambia, questo lo dice."""
+        import ast
+        import inspect
+        import textwrap
+        from pge.engine.expression_shelter import LOAD_TIME_NAMES
+        albero = ast.parse(textwrap.dedent(
+            inspect.getsource(Generator._eval_math_expressions)))
+        dizionari = [
+            nodo.value for nodo in ast.walk(albero)
+            if isinstance(nodo, ast.Assign)
+            and any(isinstance(b, ast.Name) and b.id == 'safe_dict'
+                    for b in nodo.targets)
+            and isinstance(nodo.value, ast.Dict)]
+        assert len(dizionari) == 1, "safe_dict non e' piu' un dict letterale"
+        chiavi = {k.value for k in dizionari[0].keys}
+        assert LOAD_TIME_NAMES == frozenset(chiavi)
+
+
 class TestDalFileAiGrani:
 
     def test_il_brano_rende_e_le_durate_percorrono_il_ciclo(self, carica):
