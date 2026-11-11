@@ -1168,10 +1168,10 @@ col file. Lo stesso nome in due stream sono due mappe.
 |---|---|---|
 | `type` | il tipo di mappa (vedi sotto) | obbligatoria |
 | `r` | il parametro della mappa: un numero o un envelope | obbligatoria |
-| `clock` | quando la mappa fa un passo: `grain`, oppure i passi al secondo (numero o envelope) | `grain` |
-| `iterate` | al posto di `clock`: i passi fatti da `x0` a ogni lettura, intero ≥ 1 | — |
+| `clock` | quando la mappa fa un passo: `grain`, oppure i passi al secondo (numero o envelope), al più uno per campione | `grain` |
+| `iterate` | al posto di `clock`: i passi fatti da `x0` a ogni lettura, intero da 1 a 40 | — |
 | `x0` | lo stato iniziale, un numero | quello del tipo |
-| `transient` | i passi scartati prima del primo grano, intero ≥ 0 | 300 |
+| `transient` | i passi scartati prima del primo grano, intero da 0 a 100000 | 300 |
 
 Il **nome** di una mappa (`m1`) è fatto di lettere, cifre e `_`, e non
 comincia con una cifra. Non può essere un nome che in un'espressione vuol dire
@@ -1180,9 +1180,21 @@ già un'altra cosa: una funzione, `pi`, `e`, `t`, e nemmeno `x`, `y`, `r`.
 Un `maps:` scritto male si ferma al caricamento con un `MapConfigError` che
 nomina il punto (`maps.m1.r`) e lo stream: `maps` che non è un dizionario o è
 vuoto, un `type` che non c'è, `r` che manca o non è un numero finito, una
-chiave sconosciuta, un `clock` non positivo, `clock` e `iterate` insieme. Un
-envelope di `r` o di `clock` scritto male è l'errore di forma di ogni altro
-envelope, col suo path (`maps.m1.clock`). Vedi [[errors]].
+chiave sconosciuta, un `clock` non positivo, `clock` e `iterate` insieme, uno
+dei tre tetti superato. Un envelope di `r` o di `clock` scritto male è
+l'errore di forma di ogni altro envelope, col suo path (`maps.m1.clock`).
+Vedi [[errors]].
+
+**I tre tetti.** `iterate`, `transient` e `clock` contano dei passi, e un
+passo costa: senza tetto un numero grande scritto per sbaglio teneva fermo il
+render invece di dire che cosa non va. Sono costanti di
+`src/pge/maps/map_set.py`, leggibili senza costruire uno stream.
+
+| chiave | tetto | perché |
+|---|---|---|
+| `iterate` | 40 (`MAP_ITERATE_MAX`) | si itera a ogni lettura, cioè a ogni grano; ed è il tetto del «Banco del chirp», che però lì taglia in silenzio. Oltre non c'è niente da sentire: a `r = 4` la logistica perde un bit dello stato iniziale a ogni passo, e dopo una cinquantina di passi l'iterata dipende dagli arrotondamenti, non più da `r` |
+| `transient` | 100000 (`MAP_TRANSIENT_MAX`) | si fa una volta per mappa, e fin qui costa pochi millisecondi: più di trecento volte il default, abbastanza anche per gli attrattori che si raggiungono piano, vicino a una biforcazione |
+| `clock` | un passo per campione (`output_sr`, 48000 di default), in ogni punto se è un envelope | è la risoluzione del motore, la stessa a cui arriva una mappa a `clock: grain` con l'attesa più corta che [`grain.iot`](#grainiot--lattesa-fra-due-grani) ammette. Un passo più fitto nessun grano lo vede da solo, e costa come un passo vero |
 
 ### I tipi di mappa
 
@@ -1245,8 +1257,9 @@ tempo.
   stesso passo leggono lo stesso valore.
 - È una funzione del tempo e **non ha uno stato per voce**: tutte le voci
   leggono lo stesso valore allo stesso istante, anche con `scatter`.
-- Il clock deve essere **positivo e finito**, in ogni punto se è un envelope:
-  altrimenti è un errore al caricamento.
+- Il clock deve essere **positivo e finito**, e al più un passo per
+  campione, in ogni punto se è un envelope: altrimenti è un errore al
+  caricamento.
 
 **`iterate: n`** — il modo dell'articolo di Di Scipio (DAFx99). Sta **al posto
 di `clock`**, e non è un clock: a ogni lettura si riparte da `x0` e si fanno n
@@ -1256,6 +1269,7 @@ funzione, e a disegnare la curva è il movimento di `r`.
 - Con `r` fermo il valore è **fermo**: tutti i grani leggono lo stesso numero.
 - Con `r` a envelope è una curva nel tempo, campionata dagli onset dei grani.
   `n` è la manopola della ruvidezza: più passi, più la curva è frastagliata.
+  Va da 1 a 40 (vedi i tetti qui sopra).
 - Nessuno stato, né per voce né nel tempo. Non c'è un transitorio: `transient`
   insieme a `iterate` è un errore.
 - Se la mappa scappa non si itera oltre: il valore è `x0`.
@@ -1293,6 +1307,11 @@ parentesi**, dove stanno un numero o un envelope.
 - Non c'è `eval`: l'interprete è un modulo suo
   (`src/pge/expressions/expression.py`), e un testo che non è un'espressione
   di questo linguaggio è un errore.
+- Una catena di somme o di prodotti può essere lunga quanto si vuole. Ciò che
+  si annida — una parentesi, un segno, una potenza, una chiamata — si annida
+  al più 50 volte (`MAX_DEPTH`): oltre è un errore al caricamento
+  (`e' annidata troppo`). Un'espressione scritta a mano ne usa meno di dieci,
+  le parentesi esterne comprese.
 
 **Minimo e massimo non sono chiavi: sono la forma dell'espressione.**
 `minimo + (massimo − minimo) * m1` — il minimo è il valore del parametro
@@ -1307,9 +1326,13 @@ errore (`InvalidParameterError`), che dice dove le espressioni valgono.
 
 **Quando si valuta.** A ogni grano, non al caricamento: è la differenza dalle
 [espressioni matematiche nei valori](#9-espressioni-matematiche-nei-valori),
-che sono costanti calcolate una volta sola. Il loader lascia com'è una stringa
-fra parentesi che nomina una mappa dichiarata nello stream, o `t`, senza
-avvisi su stdout.
+che sono costanti calcolate una volta sola. Il loader lascia com'è, senza
+avvisi su stdout, una stringa fra parentesi che nomina una mappa dichiarata
+nello stream, o `t`; e, nei campi in cui un'espressione vale, anche una che
+nomina qualcosa che la valutazione al caricamento non conosce: una funzione
+del linguaggio come `sqrt`, `sin`, `clip`, o un nome sbagliato, che poi
+l'errore dell'interprete nomina. Una costante che la valutazione sa fare
+(`(10/2)`, `(0.05 * abs(-1))`) resta sua e diventa un numero, come prima.
 
 **Gli errori sono al caricamento**, in un `ExpressionError` col campo
 (`grain.duration`) e lo stream: una mappa non dichiarata, una parentesi che
@@ -2678,7 +2701,11 @@ Fa eccezione una stringa tutta fra parentesi che nomina una mappa dichiarata
 in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la
 lascia com'è e la compila il parser dei parametri, per valutarla a ogni grano.
 È un altro linguaggio, con le sue funzioni: vedi
-[Mappe ed espressioni](#mappe-ed-espressioni-maps).
+[Mappe ed espressioni](#mappe-ed-espressioni-maps). Nei campi in cui
+un'espressione vale (`grain.duration`, `grain.iot`) il loader lascia com'è
+anche una stringa che nomina un nome che questa valutazione non conosce
+(`sqrt`, `clip`): la compila l'interprete, senza l'avviso
+`impossibile valutare`.
 
 ---
 

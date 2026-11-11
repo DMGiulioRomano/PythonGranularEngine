@@ -845,7 +845,10 @@ streams:
 
 Gli altri motivi: `manca una parentesi chiusa`, `finisce a meta'`,
 `non mi aspettavo «…»`, `non capisco «…»`, `funzione sconosciuta «…»`,
-`clip vuole 3 argomenti`, `un'espressione si scrive fra parentesi`.
+`clip vuole 3 argomenti`, `un'espressione si scrive fra parentesi`,
+`e' annidata troppo` (oltre 50 livelli fra parentesi, segni, potenze e
+chiamate: il limite c'e' perche' oltre uscirebbe un `RecursionError` di
+Python, fuori da questa gerarchia).
 
 Un blocco `maps:` scritto male è un `MapConfigError`, che nomina il punto col
 suo path YAML:
@@ -859,6 +862,19 @@ suo path YAML:
   Trovato:      'tent'
   Dettaglio:    tipo sconosciuto
   Hint:         tipi disponibili: logistic
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+`iterate`, `transient` e `clock` hanno un tetto (40 passi a lettura, 100000
+passi di transitorio, un passo per campione): oltre, lo stesso
+`MapConfigError`, sul campo, col tetto nel dettaglio.
+
+```
+[ERRORE] Mappa non valida in 'maps.m1.iterate'
+  Trovato:      1000
+  Dettaglio:    al piu' 40 passi a ogni lettura: oltre, l'iterata non dipende piu' da r ma dagli arrotondamenti, e si rifa' a ogni grano
+  Hint:         da 1 a 40
   Stream:       s1
   Config:       configs/PGE_test.yml
 ```

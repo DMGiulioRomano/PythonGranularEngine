@@ -79,6 +79,13 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   - **Errori al caricamento**: `clock` e `iterate` insieme, `transient` con
     `iterate`, un clock non positivo o non finito (anche in un solo punto
     dell'envelope), `iterate` che non e' un intero positivo.
+  - **Tre tetti**, perche' contano dei passi e un passo costa: senza, un
+    numero grande scritto per sbaglio teneva fermo il render. `iterate` va da
+    1 a 40 (il tetto del banco; oltre, a `r = 4` l'iterata dipende dagli
+    arrotondamenti e non piu' da `r`), `transient` da 0 a 100000, il clock e'
+    al piu' un passo per campione (`output_sr`), in ogni punto se e' un
+    envelope. Oltre e' un `MapConfigError` sul campo. Costanti in
+    `src/pge/maps/map_set.py`: `MAP_ITERATE_MAX`, `MAP_TRANSIENT_MAX`.
 
   `MapSet.step_times(nome, fino_a)` da' gli istanti dei passi di una mappa a
   orologio. Reference: `docs/reference/yaml.md`, «Come avanza una mappa».
@@ -104,7 +111,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     (`src/pge/expressions/expression.py`): `+ - * / **`, parentesi, `sin cos
     tan abs sqrt exp log floor round sign min max pow frac clip fold wrap`,
     `pi`, `e`, i nomi delle mappe dichiarate e `t`. Precedenze di Python. Gli
-    errori sono tutti al caricamento.
+    errori sono tutti al caricamento, e una chiusura compilata non solleva:
+    una catena di somme o di prodotti e' una chiusura sola, lunga quanto si
+    vuole, e l'annidamento (parentesi, segni, potenze, chiamate) arriva al
+    piu' a 50 livelli (`MAX_DEPTH`), oltre i quali e' un `ExpressionError`
+    invece di un `RecursionError`.
   - **L'espressione e' il terzo tipo di valore di un `Parameter`**, accanto a
     numero ed envelope. Si valuta a ogni grano; un valore fuori dai bounds
     viene tagliato e scritto sul clip log (`(EXP)`), come un envelope a
@@ -118,8 +129,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     il testo) e `MapConfigError` (col path del punto, `maps.m1.r`).
   - **Al caricamento** un'espressione che nomina una mappa dichiarata non
     passa piu' dalla valutazione delle espressioni matematiche, e non stampa
-    `impossibile valutare` su stdout. `Generator._eval_math_expressions` non
-    e' cambiata.
+    `impossibile valutare` su stdout. Nei campi a espressione vale anche per
+    una che nomina qualcosa che quella valutazione non conosce
+    (`(0.02 + 0.08*sqrt(0.25))`, o un nome sbagliato, che poi l'interprete
+    nomina); una costante che sa fare (`(10/2)`) resta un numero.
+    `Generator._eval_math_expressions` non e' cambiata.
 
   Le espressioni valgono oggi su `grain.duration` (`EXPRESSION_FIELDS`):
   altrove una stringa resta un errore. Nessun breaking change: uno stream che
