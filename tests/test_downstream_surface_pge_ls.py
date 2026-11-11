@@ -303,6 +303,15 @@ FUNZIONI_ESEGUITE = (
 )
 
 
+# Il regex con cui `Generator._eval_math_expressions` riconosce
+# un'espressione, alla lettera: PGE-ls ne tiene una copia e la confronta
+# carattere per carattere (`test_math_expression_pattern_matches_engine`).
+# Con la #309 e' entrata la virgola, e la copia di la' va aggiornata insieme:
+# e' la sezione «#309» dell'issue qui sotto.
+REGEX_DELLE_ESPRESSIONI = r'\(([a-zA-Z0-9+\-*/.(), ]+)\)'
+REGEX_ISSUE_PGE_LS = 'DMGiulioRomano/PGE-ls#74'
+
+
 def _funzioni_col_nome(relpath, nome):
     """Ogni `def nome` del file, nell'ordine in cui PGE-ls le cerca: il
     primo di `ast.walk`, cioe' quello che esegue."""
@@ -547,6 +556,46 @@ class TestFunzioniEseguite:
         assert pattern, (
             "_eval_math_expressions non assegna piu' `pattern` a una stringa: "
             "il confronto del regex di PGE-ls salta (#269)")
+        # Il valore, alla lettera. Questo regex non e' un dettaglio interno:
+        # il mirror di PGE-ls (`_MATH_EXPRESSION_RE` in
+        # granular_ls/envelope_shapes.py) lo ripete carattere per carattere,
+        # e la sua parita' e' rossa finche' le due righe non coincidono. La
+        # #309 ci ha messo la virgola — `(max(3, 7))` non si valutava — e il
+        # cambio di la' e' REGEX_ISSUE_PGE_LS. Chi tocca questa riga apre
+        # prima un'issue su PGE-ls, poi aggiorna questo letterale.
+        assert pattern == [REGEX_DELLE_ESPRESSIONI], (
+            f"il regex di _eval_math_expressions e' cambiato: {pattern}. "
+            f"PGE-ls lo specchia carattere per carattere "
+            f"({REGEX_ISSUE_PGE_LS} per l'ultimo cambio): apri un'issue di "
+            f"la' e aggiorna REGEX_DELLE_ESPRESSIONI qui")
+
+    def test_le_espressioni_si_eseguono_come_le_esegue_pge_ls(self):
+        """`_load_eval_math_expressions` compila il nodo `def` da solo, coi
+        soli `math` e `re`, e lo chiama con un `self` che ha il solo metodo
+        (gli serve alla ricorsione). Qui la si esegue allo stesso modo: che
+        i nomi stiano nel namespace lo dice gia' il test parametrico, questo
+        dice che il risultato e' quello della #309 anche di la'."""
+        import math
+        funzione, = _funzioni_col_nome('engine/generator.py',
+                                       '_eval_math_expressions')
+        modulo = ast.Module(body=[funzione], type_ignores=[])
+        ast.fix_missing_locations(modulo)
+        namespace = {'math': math, 're': re}
+        exec(compile(modulo, 'generator.py', 'exec'), namespace)
+        grezza = namespace['_eval_math_expressions']
+
+        class _Portatore:
+            def _eval_math_expressions(self, obj):
+                return grezza(self, obj)
+
+        valuta = _Portatore()._eval_math_expressions
+        assert valuta('(max(3, 7))') == 7
+        assert valuta('(pow(2, 3))') == 8
+        assert valuta([[0, '(min(4, 2))'], [10, '(50/2)']]) == [
+            [0, 2], [10, 25.0]]
+        # La coda che PGE-ls riproduce (`numeric_string_value`): invariata.
+        assert valuta('50') == 50 and valuta('1.5') == 1.5
+        assert valuta('1e3') == '1e3'
 
     def test_le_chiavi_che_l_unita_del_grano_scala(self):
         """`test_le_chiavi_scalate_dall_unita` di PGE-ls pretende che le

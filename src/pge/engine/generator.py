@@ -11,10 +11,13 @@ Mantiene backward compatibility con l'API pubblica esistente.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import yaml
 import re
 import math
 import sys
+import warnings
 from typing import List, Dict, Any
 
 from pge.core.stream import Stream
@@ -22,7 +25,8 @@ from pge.rendering.ftable_manager import FtableManager
 from pge.rendering.score_writer import ScoreWriter
 from pge.controllers.window_controller import WindowController
 from pge.shared.exceptions import (
-    ConfigError, ConfigFileNotFoundError, SampleNotFoundError,
+    ConfigError, ConfigFileNotFoundError, ExpressionError,
+    SampleNotFoundError,
     config_parse_error, config_read_error,
 )
 from pge.shared.logger import get_diagnostic_logger
@@ -35,6 +39,7 @@ from pge.shared.seeding import session_seed
 from pge.engine.stream_files import (
     StreamFileOrigin, origins_by_id, resolve_stream_files,
 )
+from pge.engine.half_evaluated import find_half_evaluated
 from pge.engine.expression_shelter import (
     shelter_expressions, unshelter_expressions,
 )
@@ -140,8 +145,12 @@ class Generator:
         # Le espressioni che si valutano a ogni grano (issue #308) non sono
         # costanti da valutare qui: attraversano la valutazione al riparo, e
         # tornano stringhe per il parser dei parametri, che le compila.
+        riparato = shelter_expressions(raw_data)
+        # Un'espressione sta tutta dentro le parentesi esterne (issue #309):
+        # `(10/2)/10` si ferma qui, prima di uscire valutata a meta'.
+        self._reject_half_evaluated(riparato, importati)
         self.data = unshelter_expressions(
-            self._eval_math_expressions(shelter_expressions(raw_data)))
+            self._eval_math_expressions(riparato))
         # Seed top-level opzionale (issue #81): None se assente (il session
         # seed viene derivato in create_elements, non qui).
         self.seed = self.data.get('seed') if isinstance(self.data, dict) else None
@@ -498,21 +507,45 @@ class Generator:
     
     def _eval_math_expressions(self, obj):
         """
-        Valuta espressioni matematiche nei valori YAML.
-        
-        Riconosce pattern "(espressione)" e valuta l'espressione.
-        Supporta: operatori aritmetici, costanti (pi, e), funzioni base.
-        
+        Valuta le espressioni matematiche nei valori YAML.
+
+        Un'espressione e' cio' che sta fra parentesi: il testo fra le
+        parentesi si valuta, e il risultato prende il posto delle parentesi
+        e del loro contenuto. Ricorre dentro dizionari e liste.
+
+        Dentro le parentesi: numeri, `+ - * / // **`, altre parentesi, le
+        costanti `pi` ed `e`, le funzioni `abs int float min max pow`. Gli
+        argomenti di una funzione si separano con la virgola (issue #309).
+
         Args:
             obj: oggetto da preprocessare (dict, list, str, number)
-            
+
         Returns:
             oggetto con espressioni valutate
-            
+
         Examples:
             "(10 + 5)" → 15
+            "(10/2)" → 5.0
             "(pi * 2)" → 6.283...
             "(max(3, 7))" → 7
+            "(pow(2, 3))" → 8
+            "((10/2)/10)" → 0.5
+            "(10/2)/10" → errore al caricamento (vedi sotto)
+
+        Un intero resta un intero e una divisione da' un float: sono i tipi
+        di Python, e chi pretende un intero (`n_reps`, `num_voices`) li
+        distingue.
+
+        **L'espressione sta tutta dentro le parentesi esterne.** Questo
+        metodo sostituisce il pezzo fra parentesi e lascia il resto com'e':
+        da solo, di `(10/2)/10` farebbe la stringa `5.0/10`. Per questo
+        `load_yaml` la ferma prima, con un errore che propone
+        `((10/2)/10)`: vedi `_reject_half_evaluated`.
+
+        Cio' che fra parentesi non e' un numero resta il testo che era: un
+        nome sconosciuto (con un avviso), ma anche una coppia `(1, 2)` o il
+        nome di una funzione, che Python valuterebbe in qualcosa che non e'
+        un valore YAML.
 
         La parita' di PGE-ls estrae questo metodo dall'AST, lo esegue con i
         soli `math` e `re` nel namespace e ne confronta il `pattern` col suo
@@ -533,8 +566,9 @@ class Generator:
         # Valutazione stringhe con pattern (...)
         elif isinstance(obj, str):
             # Regex: cattura espressioni tra parentesi
-            # Supporta lettere per costanti (pi, e) e funzioni
-            pattern = r'\(([a-zA-Z0-9+\-*/.() ]+)\)'
+            # Supporta lettere per costanti (pi, e) e funzioni, e la virgola
+            # che separa gli argomenti di una funzione (issue #309)
+            pattern = r'\(([a-zA-Z0-9+\-*/.(), ]+)\)'
             
             def evaluate_match(match):
                 expr = match.group(1)
@@ -553,14 +587,21 @@ class Generator:
                     
                     # Valuta espressione in ambiente sicuro
                     result = eval(expr, {"__builtins__": {}}, safe_dict)
-                    return str(result)
-                    
+
                 except Exception as e:
                     print(
                         f"⚠️  Warning: impossibile valutare '{expr}': {e}"
                     )
                     # Ritorna espressione originale se fallisce
                     return match.group(0)
+
+                # Un'espressione vale un numero. Con la virgola `(1, 2)` e'
+                # una tupla, e `(abs)` una funzione: riscritte con `str`
+                # darebbero un testo che nello YAML non c'era.
+                if isinstance(result, bool) or not isinstance(
+                        result, (int, float)):
+                    return match.group(0)
+                return str(result)
             
             # Sostituisci tutte le espressioni
             evaluated = re.sub(pattern, evaluate_match, obj)
@@ -574,6 +615,63 @@ class Generator:
         # Altri tipi: passa through
         else:
             return obj
+
+    def _reject_half_evaluated(self, document, importati=()):
+        """Ferma un'espressione scritta per meta' fuori dalle parentesi
+        (issue #309).
+
+        `_eval_math_expressions` valuta cio' che sta fra parentesi e lascia
+        il resto: `(10/2)/10` usciva come la stringa `5.0/10`, che piu' a
+        valle era un errore di tipo senza piu' il testo scritto. La regola
+        e' quella delle espressioni per grano (#308): un'espressione sta
+        tutta dentro le parentesi esterne.
+
+        Il criterio non guarda i caratteri — `voce (1).wav` e' fatta degli
+        stessi — ma l'esito: e' un errore la stringa che, messa INTERA fra
+        parentesi, la valutazione di qui sopra trasforma in un numero. La
+        grafia che l'errore propone e' quindi una che funziona. La prova
+        passa dal metodo vero, non da una sua copia: se cambia cio' che
+        lui valuta, cambia con lui cio' che qui si rifiuta.
+
+        Sta fuori da `_eval_math_expressions` perche' PGE-ls lo esegue
+        estratto dall'AST coi soli `math` e `re` (#269): un'eccezione del
+        motore nel suo corpo, di la', sarebbe un NameError.
+
+        Raises:
+            ExpressionError: col path YAML del campo, lo stream (se la
+                stringa sta in uno stream) e il file in cui e' scritta.
+        """
+        trovata = find_half_evaluated(document, self._probe_whole_expression)
+        if trovata is None:
+            return
+        err = ExpressionError(
+            trovata.text,
+            "l'espressione sta per meta' fuori dalle parentesi: si valuta "
+            "solo cio' che sta dentro le parentesi esterne",
+            field=trovata.field,
+            hint=f"scrivila tutta fra parentesi: ({trovata.text.strip()})",
+        )
+        err.stream_id = trovata.stream_id
+        err.config_file = self.yaml_path
+        for importato in importati:
+            if importato.origin.index == trovata.stream_index:
+                err.config_file = importato.origin.path
+                err.imported_by = importato.origin
+        raise err
+
+    def _probe_whole_expression(self, text: str):
+        """`text` messo intero fra parentesi e valutato; None se non ne
+        esce un numero. Senza l'avviso `impossibile valutare`: e' una prova,
+        e una stringa che non e' un'espressione qui e' il caso normale."""
+        with contextlib.redirect_stdout(io.StringIO()), \
+                warnings.catch_warnings():
+            # `5 (2)` a Python sembra una chiamata sbagliata, e lo dice con
+            # un SyntaxWarning: qui non e' un fatto da raccontare.
+            warnings.simplefilter('ignore')
+            valore = self._eval_math_expressions(f"({text.strip()})")
+        if isinstance(valore, bool) or not isinstance(valore, (int, float)):
+            return None
+        return valore
         
     def _register_stream_windows(self, stream_data: dict) -> dict:
         """Pre-registra tutte le finestre per questo stream."""

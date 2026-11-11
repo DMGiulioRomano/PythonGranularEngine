@@ -2679,9 +2679,14 @@ deliberato: gli stream con `duration > envelope.end_time` non vanno in errore.
 
 ### 9. Espressioni matematiche nei valori
 
-Il loader YAML (`Generator._eval_math_expressions`) valuta espressioni racchiuse
-tra parentesi prima di passare il dato al parser envelope. Funzioni e costanti
-ammesse: `abs`, `int`, `float`, `min`, `max`, `pow`, `pi`, `e`.
+Il loader YAML (`Generator._eval_math_expressions`) valuta le espressioni
+racchiuse tra parentesi prima di passare il dato al parser envelope.
+
+| | |
+|---|---|
+| operatori | `+ - * / // **`, parentesi |
+| funzioni | `abs`, `int`, `float`, `min`, `max`, `pow` |
+| costanti | `pi`, `e` |
 
 Sintassi:
 
@@ -2692,10 +2697,31 @@ grain:
   duration_range: (pi/100)
 pitch:
   ratio: (2**(7/12))                 # ratio del semitono x7
+density: (max(8, 100/4))             # 25.0
 ```
 
 L'espressione è valutata a parse-time, non a run-time: il risultato è un numero
 che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
+
+- **Gli argomenti di una funzione si separano con la virgola**: `(max(3, 7))`
+  vale 7, `(pow(2, 3))` vale 8, `(min(1, 2, 3))` vale 1 (issue #309: prima la
+  virgola non era ammessa, e una funzione a due argomenti restava una
+  stringa).
+- **Un intero resta un intero**: `(2*2)` è 4 e `(10/2)` è 5.0, come in
+  Python. Conta dove il motore pretende un intero (`n_reps` di un ciclo,
+  `iterate` di una mappa).
+- **L'espressione sta tutta dentro le parentesi esterne.** Si valuta solo ciò
+  che sta fra parentesi: `((10/2)/10)` vale 0.5, mentre `(10/2)/10` e
+  `2*(3+4)` sono scritte per metà fuori, e sono un **errore al caricamento**
+  (`ExpressionError`) che nomina il campo e propone la grafia con le
+  parentesi. Prima uscivano valutate a metà, come la stringa `5.0/10`, e più
+  a valle erano un errore di tipo. È la stessa regola delle
+  [espressioni che leggono una mappa](#le-espressioni).
+- Una stringa con delle parentesi che **non** è un'espressione non è toccata
+  da questa regola: è un errore solo la stringa che, messa intera fra
+  parentesi, vale un numero. Ciò che fra parentesi non è un numero — una
+  parola, una coppia `(1, 2)` — resta il testo che era; un nome sconosciuto
+  lascia sullo stdout l'avviso `impossibile valutare`.
 
 Fa eccezione una stringa tutta fra parentesi che nomina una mappa dichiarata
 in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la

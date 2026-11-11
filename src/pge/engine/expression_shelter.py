@@ -16,10 +16,13 @@ com'e' lo stesso, ma dopo due danni:
   `(clip(m1, (1/2), 1))` uscirebbe riscritta, cioe' con un testo diverso da
   quello dello YAML negli errori e nel fingerprint.
 
-`_eval_math_expressions` non si tocca: PGE-ls ne specchia il regex carattere
-per carattere e la esegue estratta dall'AST (#269). Le espressioni si tolgono
-prima e si rimettono dopo: al loro posto passa un oggetto che non e' una
-stringa, e che la valutazione lascia attraversare.
+`_eval_math_expressions` resta un metodo che sta in piedi da solo: PGE-ls ne
+specchia il regex carattere per carattere e la esegue estratta dall'AST, coi
+soli `math` e `re` (#269). Le espressioni si tolgono prima e si rimettono
+dopo: al loro posto passa un oggetto che non e' una stringa, e che la
+valutazione lascia attraversare. (La #309 ha messo la virgola nel suo regex:
+da allora `(clip(m1, 0, 1))` gli somiglia per intero, e il riparo e' cio'
+che la tiene fuori.)
 
 Cosa va al riparo, dentro uno stream, fra le stringhe **tutte fra
 parentesi**:
@@ -56,8 +59,9 @@ _TEMPO = 't'
 
 #: I nomi che la valutazione al caricamento conosce: le chiavi del
 #: `safe_dict` di `Generator._eval_math_expressions`. Una copia, perche' quel
-#: metodo non si tocca (PGE-ls lo esegue estratto dall'AST, #269); un test la
-#: confronta col sorgente, cosi' se la #309 cambia la valutazione lo si vede.
+#: metodo non importa niente del motore (PGE-ls lo esegue estratto dall'AST,
+#: #269); un test la confronta col sorgente, cosi' se la valutazione cambia
+#: lo si vede. La #309 non le ha toccate: ha aggiunto la virgola al regex.
 LOAD_TIME_NAMES = frozenset({
     'abs', 'int', 'float', 'min', 'max', 'pow', 'pi', 'e'})
 

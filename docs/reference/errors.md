@@ -100,7 +100,9 @@ EngineError                                  (Exception)
 │   ├── InvalidWindowError                   PR4 — window name/param invalido
 │   ├── FtableError                          PR4 — incoerenza FtableManager
 │   ├── ExpressionError                      #308 — espressione che
-│   │                                        l'interprete non compila
+│   │                                        l'interprete non compila; #309 —
+│   │                                        espressione al caricamento scritta
+│   │                                        per meta' fuori dalle parentesi
 │   ├── MapConfigError                       #308 — blocco `maps:` o una sua
 │   │                                        mappa scritti male
 │   └── StreamFileError                      #290 — voce `file:` del master
@@ -849,6 +851,28 @@ Gli altri motivi: `manca una parentesi chiusa`, `finisce a meta'`,
 `e' annidata troppo` (oltre 50 livelli fra parentesi, segni, potenze e
 chiamate: il limite c'e' perche' oltre uscirebbe un `RecursionError` di
 Python, fuori da questa gerarchia).
+
+Lo stesso `ExpressionError` ferma un'**espressione matematica scritta per metà
+fuori dalle parentesi** (issue #309). Il caricamento valuta ciò che sta fra
+parentesi: `(10/2)/10` usciva come la stringa `5.0/10`, e l'errore arrivava più
+a valle, di tipo, senza più il testo scritto.
+
+```yaml
+    volume: (10/2)/10
+```
+```
+[ERRORE] Espressione non valida per 'volume'
+  Trovato:      (10/2)/10
+  Dettaglio:    l'espressione sta per meta' fuori dalle parentesi: si valuta solo cio' che sta dentro le parentesi esterne
+  Hint:         scrivila tutta fra parentesi: ((10/2)/10)
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Il campo è il path YAML dentro lo stream, fino al punto: `volume[1][0]` per il
+tempo del secondo breakpoint, `maps.m1.r`. Fuori da uno stream (`seed`) non
+c'è la riga `Stream:`. È un errore solo la stringa che, messa intera fra
+parentesi, vale un numero: `voce (1).wav` non lo è.
 
 Un blocco `maps:` scritto male è un `MapConfigError`, che nomina il punto col
 suo path YAML:

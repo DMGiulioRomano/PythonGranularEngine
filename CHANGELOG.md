@@ -642,6 +642,36 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Corretto
 
+- **Le espressioni al caricamento valutano le funzioni a più argomenti**
+  (issue #309, la settima sotto la #307). `Generator._eval_math_expressions`
+  prometteva nella docstring che `(max(3, 7))` valesse 7, ma il regex che
+  riconosce un'espressione non ammetteva la virgola: `max`, `min` e `pow` con
+  due argomenti restavano una stringa, e più a valle erano un errore di tipo.
+  Ora `(max(3, 7))` vale 7, `(pow(2, 3))` vale 8, `(min(1, 2, 3))` vale 1,
+  anche dentro un breakpoint. I tipi non cambiano: `(2*2)` è l'intero 4,
+  `(10/2)` è 5.0.
+
+  - **Un'espressione sta tutta dentro le parentesi esterne, ed è un errore
+    scriverla a metà.** `(10/2)/10` usciva valutata a metà, come la stringa
+    `5.0/10`; `2*(3+4)` come `2*7`. Ora il caricamento si ferma con un
+    `ExpressionError` che nomina il campo (`volume`, `volume[1][0]`,
+    `maps.m1.r`), lo stream e il file, e propone la grafia: `((10/2)/10)`. È
+    la regola delle espressioni che leggono una mappa (#308), ora una sola.
+    Il criterio è l'esito: è un errore la stringa che, messa intera fra
+    parentesi, vale un numero. `voce (1).wav` non lo è, e resta trattata come
+    prima. **Uno YAML che scriveva `(10/2)/10` e rendeva non esiste**: quella
+    stringa era già un errore, detto peggio.
+  - **Ciò che fra parentesi non è un numero resta il testo che era.** Con la
+    virgola `(1,2)` è una coppia per Python e sarebbe uscita riscritta
+    `(1, 2)`; `(abs)` usciva come `<built-in function abs>`.
+  - La docstring del metodo dice quello che il metodo fa, e un test ne esegue
+    gli esempi.
+  - **Il regex è superficie**: PGE-ls lo specchia carattere per carattere. Il
+    metodo resta eseguibile da solo, coi soli `math` e `re`; il controllo
+    delle espressioni a metà sta fuori (`engine/half_evaluated.py`,
+    `Generator._reject_half_evaluated`), e il letterale è pinnato in
+    `tests/test_downstream_surface_pge_ls.py`.
+
 - **`type: Cubic` è la cubica di `type: cubic`** (issue #300).
   `InterpolationStrategyFactory` legge il nome dell'interpolazione senza badare
   a maiuscole e spazi attorno, ma `Envelope` teneva il nome com'era scritto e

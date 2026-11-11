@@ -93,6 +93,16 @@ class TestIlCaricamentoLasciaLEspressioneComE:
         assert (generator.data['streams'][0]['grain']['duration']
                 == '(0.02 + (8/100)*m1)')
 
+    def test_un_espressione_con_la_virgola_resta_al_riparo(self, carica,
+                                                           capsys):
+        """Dalla #309 il regex del caricamento ammette la virgola, e
+        `(clip(m1, 0, 1))` gli somiglia: resta al riparo, non riscritta e
+        senza avvisi, perche' nomina una mappa."""
+        scritto = '(0.02 + 0.08*clip(m1, 0, (1/2)))'
+        generator = carica(_stream(grain={'duration': scritto}))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['grain']['duration'] == scritto
+
     def test_un_espressione_sul_solo_tempo_non_avvisa(self, carica, capsys):
         generator = carica(_stream(grain={'duration': '(0.02 + 0.01*t)'}))
         assert 'impossibile valutare' not in capsys.readouterr().out
@@ -166,19 +176,17 @@ class TestICampiAEspressione:
     @pytest.mark.parametrize('scritto, numero', [
         ('(0.05 * abs(-1))', 0.05),
         ('(int(3.7)/100)', 0.03),
-        ('(max(0.01*2, 0.01)*1)', None),
+        ('(max(0.01*2, 0.01)*1)', 0.02),
+        ('(max(0.02, 0.05))', 0.05),
     ])
     def test_una_costante_che_la_valutazione_sa_fare_resta_sua(
             self, carica, scritto, numero):
         """Il riparo non si allarga alle costanti di oggi: `abs`, `int`,
-        `max` li valuta il caricamento, come prima. (`max` con la virgola il
-        caricamento non lo valuta, la #309: resta testo, come prima.)"""
+        `max` li valuta il caricamento — `max` anche con la virgola, dalla
+        #309 — e ne esce un numero."""
         generator = carica(_stream(grain={'duration': scritto}))
         valore = generator.data['streams'][0]['grain']['duration']
-        if numero is None:
-            assert valore == scritto
-        else:
-            assert valore == pytest.approx(numero)
+        assert valore == pytest.approx(numero)
 
     def test_fuori_dai_campi_a_espressione_l_avviso_resta(self, carica,
                                                           capsys):
