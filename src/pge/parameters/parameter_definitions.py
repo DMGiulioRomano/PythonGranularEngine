@@ -408,6 +408,18 @@ _LOOP_PARAMS = frozenset({'loop_dur', 'loop_start', 'loop_end'})
 WRAPPING_PARAMETERS = ('pointer_position',)
 
 
+#: I parametri su cui un valore che **non e' un numero** (`nan`) va al
+#: TETTO invece che al pavimento (issue #313).
+#:
+#: Un `nan` non ha un lato: non e' ne' sotto il minimo ne' sopra il massimo,
+#: e la regola generale lo manda al limite inferiore (`violated_bound`). Su
+#: `grain.iot` il limite inferiore e' un campione di attesa, cioe' 48000
+#: grani al secondo: un'espressione che da' sempre `nan` teneva il render
+#: occupato per minuti. Al tetto, 100 s, il render finisce col primo grano.
+#: Gli infiniti restano dal loro lato, come ogni valore fuori limite.
+NAN_TO_MAX_PARAMETERS = ('grain_iot',)
+
+
 def parameter_wraps(param_name: str) -> bool:
     """True se i bounds di `param_name` riportano a capo invece di tagliare."""
     return param_name in WRAPPING_PARAMETERS

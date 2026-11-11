@@ -359,7 +359,8 @@ def violated_bound(value: float, min_val: float, max_val):
 
 
 def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
-                     min_val, max_val, is_envelope=False, source=None):
+                     min_val, max_val, is_envelope=False, source=None,
+                     suppressed=None):
     """
     Logga un warning per un valore clippato.
 
@@ -376,6 +377,10 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
             'FIX' (un numero), 'ENV' (un envelope), 'EXP' (un'espressione,
             issue #308). Se dato, prevale su `is_envelope`, che resta per chi
             chiamava con due casi soli.
+        suppressed: per un'espressione, i tagli taciuti dall'ultima riga
+            (issue #313): il suo clip log ha un limite di frequenza, e la
+            riga dice quanti ne riassume. None per numeri ed envelope, che
+            il limite non lo hanno.
     """
     logger = get_clip_logger()
 
@@ -387,6 +392,12 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
     deviation = raw_value - bound_value
 
     source_type = source or ("ENV" if is_envelope else "FIX")
+    # Un'espressione fuori limite lo e' a ogni grano: la riga e' una ogni
+    # tanto, e dice quante ne tace.
+    limite = ""
+    if suppressed is not None:
+        limite = (f" | +{suppressed} tagli taciuti" if suppressed
+                  else " | una riga ogni 5 s: i tagli che seguono si contano")
 
     logger.warning(
         f"[{stream_id}] {param_name:<20} | "
@@ -395,6 +406,7 @@ def log_clip_warning(stream_id, param_name, time, raw_value, clipped_value,
         f"{bound_type}={bound_value:>10.4f} | "
         f"Δ={deviation:>+10.6f} | "
         f"({source_type})"
+        f"{limite}"
     )
 
 

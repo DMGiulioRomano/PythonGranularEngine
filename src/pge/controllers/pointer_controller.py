@@ -22,8 +22,11 @@ from pge.shared.logger import (
     log_loop_dynamic_mode,
     log_loop_init,
 )
-from pge.expressions.expression import ExpressionSource
-from pge.shared.exceptions import InvalidFieldValueError, MissingFieldError
+from pge.expressions.expression import ExpressionSource, outer_parenthesized
+from pge.expressions.fields import EXPRESSION_REFUSALS
+from pge.shared.exceptions import (
+    ExpressionError, InvalidFieldValueError, MissingFieldError,
+)
 # Il vocabolario di loop_unit e le chiavi che interpreta stanno in un
 # modulo senza dipendenze, sorvegliato perche' resti tale: li leggono
 # PGE-ui e PGE-ls dal sorgente, al path, e gl-ls li mirrora (issue #246).
@@ -146,6 +149,19 @@ class PointerController:
         for name, param_obj in all_params.items():
             attr_name = name.replace('pointer_', '')
             setattr(self, attr_name, param_obj)
+
+        # 3a. Un'espressione su `start` (issue #313) ha il suo errore, col
+        # suggerimento: e' scritta come un valore che cambia a ogni grano, e
+        # la risposta e' un'altra chiave, non «non accetta envelope».
+        if isinstance(self.start, str) and outer_parenthesized(self.start):
+            err = ExpressionError(
+                self.start,
+                "qui un'espressione non vale: il campo vuole un numero",
+                field='pointer.start',
+                hint=EXPRESSION_REFUSALS['pointer.start'],
+            )
+            err.stream_id = self._config.context.stream_id
+            raise err
 
         # 3b. `start` e' un valore, non una curva: `calculate` lo somma alla
         # posizione (`self.start + sample_position`), e la spec lo dichiara

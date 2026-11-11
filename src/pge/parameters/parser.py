@@ -24,6 +24,7 @@ from pge.expressions.expression import (
 )
 from pge.parameters.parameter_definitions import (
     RANGE_UNIT_DEFAULT,
+    NAN_TO_MAX_PARAMETERS,
     get_parameter_definition,
     parameter_wraps,
     range_unit_is_relative,
@@ -243,6 +244,7 @@ class GranularParser:
             rng=component_rng(self.seed, self.rng_id, name),
             range_relative=is_relative,
             wraps=wraps,
+            nan_to_max=name in NAN_TO_MAX_PARAMETERS,
         )
 
     # =========================================================================
@@ -287,6 +289,26 @@ class GranularParser:
         # stringa nuda resta il caso d'errore qui sotto.
         if isinstance(raw_data, ExpressionSource):
             return self._compile_expression(raw_data)
+
+        # Caso 4: un'espressione dove non vale (issue #313). Una stringa
+        # tutta fra parentesi e' scritta come un'espressione: qui arriva
+        # nuda, cioe' da un campo in cui chi legge lo YAML non la riconosce.
+        # Lo dice col path del campo e con dove invece vale.
+        if isinstance(raw_data, str) and outer_parenthesized(raw_data):
+            from pge.expressions.fields import (
+                EXPRESSION_FIELDS, EXPRESSION_REFUSALS)
+            err = ExpressionError(
+                raw_data,
+                "qui un'espressione non vale: il campo vuole un numero o "
+                "un envelope",
+                field=field or context_info,
+                hint=EXPRESSION_REFUSALS.get(
+                    field,
+                    "un'espressione vale sul valore base di: "
+                    + ", ".join(EXPRESSION_FIELDS)),
+            )
+            err.stream_id = self.stream_id
+            raise err
 
         # Caso Errore: Tipo non supportato
         hint = "atteso numero, lista di punti, o dict envelope"

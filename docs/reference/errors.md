@@ -900,16 +900,45 @@ suo path YAML:
 
 ```yaml
     maps:
-      m1: {type: tent, r: 3.5}
+      m1: {type: lorenz, r: 3.5}
 ```
 ```
 [ERRORE] Mappa non valida in 'maps.m1.type'
-  Trovato:      'tent'
+  Trovato:      'lorenz'
   Dettaglio:    tipo sconosciuto
-  Hint:         tipi disponibili: logistic
+  Hint:         tipi disponibili: logistic, tent, sine, cubic, henon, circle, custom
   Stream:       s1
   Config:       configs/PGE_test.yml
 ```
+
+Dalla #313 lo stesso errore dice anche: `manca x, l'equazione della mappa`
+(`type: custom` senza `x:`), `x: si scrive solo con type: custom` (un tipo di
+catalogo con accanto un'equazione), `la mappa ha una variabile sola: y0 non
+entra nel passo`, `l'equazione legge y, ma la mappa non ha una seconda
+variabile`. Un'equazione che l'interprete non compila è un `ExpressionError`
+col suo path, `maps.m2.x`.
+
+Un'**espressione dove non vale** (issue #313) è un `ExpressionError` che
+nomina il campo e suggerisce che cosa scrivere al suo posto:
+
+```yaml
+    pointer:
+      speed_ratio: (m1)
+```
+```
+[ERRORE] Espressione non valida per 'pointer.speed_ratio'
+  Trovato:      (m1)
+  Dettaglio:    qui un'espressione non vale: il campo vuole un numero o un envelope
+  Hint:         la velocita' si integra nel tempo per ricavare la posizione, e un'espressione non si integra: per leggere la posizione da una mappa usa pointer.position
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+I campi col loro suggerimento sono `pointer.speed_ratio`, `pointer.start`, i
+tre di loop e `voices.num_voices` (`EXPRESSION_REFUSALS`); su ogni altro campo
+fuori da `EXPRESSION_FIELDS` — una banda `_range`, `voices.scatter`, il
+parametro di una strategia di voce — il suggerimento è l'elenco dei campi in
+cui un'espressione vale.
 
 `iterate`, `transient` e `clock` hanno un tetto (40 passi a lettura, 100000
 passi di transitorio, un passo per campione): oltre, lo stesso

@@ -37,6 +37,14 @@ from pge.shared.distribution_strategy import (
 )
 from pge.strategies.variation_registry import VariationFactory
 
+#: Ogni quanti secondi di tempo-stream il taglio di un'espressione si
+#: riscrive sul clip log (issue #313). Stesso valore e stesso motivo di
+#: MAP_ESCAPE_LOG_INTERVAL e DENSITY_NOTICE_INTERVAL: un'espressione fuori
+#: limite lo e' a ogni grano, e una riga per grano sono decine di migliaia
+#: di righe. Vale per le sole espressioni: un numero o un envelope fuori
+#: limite sono gia' un errore al parse.
+EXPRESSION_CLIP_LOG_INTERVAL = 5.0
+
 ParamInput = Union[float, int, Envelope, Expression]
 StrategyParam = Union[float, Envelope, Expression]
 
@@ -87,6 +95,7 @@ class Parameter:
         rng: Optional[random.Random] = None,
         range_relative: bool = False,
         wraps: bool = False,
+        nan_to_max: bool = False,
     ):
         self.name = name
         self.owner_id = owner_id
@@ -105,6 +114,13 @@ class Parameter:
         # True per una posizione ciclica (issue #312, WRAPPING_PARAMETERS):
         # un valore fuori dai bounds non si taglia, rientra dall'altro capo.
         self._wraps = bool(wraps)
+        # True dove un `nan` va al tetto invece che al pavimento (issue
+        # #313, NAN_TO_MAX_PARAMETERS): l'attesa fra due grani.
+        self._nan_to_max = bool(nan_to_max)
+        # Limite di frequenza del clip log di un'espressione: l'istante
+        # dell'ultima riga scritta, e i tagli taciuti da allora.
+        self._clip_logged_at = -math.inf
+        self._clip_suppressed = 0
 
         # Ancora effettiva: `range_anchor` vale solo se un range è stato
         # dichiarato. Senza range esplicito si applica il jitter implicito
@@ -228,24 +244,49 @@ class Parameter:
             # Non c'e' un capo da cui un non-finito rientri: va all'inizio
             # della banda, e questo si' lo si scrive.
             clamped = self._bounds.min_val
+        elif (value != value and self._nan_to_max
+              and self._bounds.max_val is not None):
+            # Un `nan` non ha un lato; qui la regola lo manda al tetto
+            # (NAN_TO_MAX_PARAMETERS): al pavimento un'attesa e' un campione.
+            clamped = self._bounds.max_val
         else:
             clamped = violated_bound(
                 value, self._bounds.min_val, self._bounds.max_val)[1]
 
         if clamped != value:
-            # Logga il warning usando il logger configurato
-            log_clip_warning(
-                stream_id=self.owner_id,
-                param_name=self.name,
-                time=time,
-                raw_value=value,
-                clipped_value=clamped,
-                min_val=self._bounds.min_val,
-                max_val=self._bounds.max_val,
-                source=_value_source(self._value),
-            )
+            self._log_clip(value, clamped, time)
 
         return clamped
+
+    def _log_clip(self, value: float, clamped: float, time: float) -> None:
+        """La riga di clip log di un taglio.
+
+        Per un'espressione ha un limite di frequenza, sul tempo dello stream
+        (EXPRESSION_CLIP_LOG_INTERVAL): la prima subito, poi una ogni
+        intervallo, col conto dei tagli taciuti nel frattempo. Il confronto e'
+        sulla distanza e non sull'ordine: con piu' voci e `scatter` i tempi
+        arrivano mescolati.
+        """
+        source = _value_source(self._value)
+        extra = {}
+        if source == 'EXP':
+            if abs(time - self._clip_logged_at) < EXPRESSION_CLIP_LOG_INTERVAL:
+                self._clip_suppressed += 1
+                return
+            extra['suppressed'] = self._clip_suppressed
+            self._clip_logged_at = time
+            self._clip_suppressed = 0
+        log_clip_warning(
+            stream_id=self.owner_id,
+            param_name=self.name,
+            time=time,
+            raw_value=value,
+            clipped_value=clamped,
+            min_val=self._bounds.min_val,
+            max_val=self._bounds.max_val,
+            source=source,
+            **extra,
+        )
 
     @property
     def value(self):

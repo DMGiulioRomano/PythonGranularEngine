@@ -53,6 +53,7 @@ from __future__ import annotations
 from typing import Any, Union
 
 from pge.envelopes.envelope_builder import EnvelopeBuilder
+from pge.expressions.expression import ExpressionSource
 from pge.shared.exceptions import InvalidFieldValueError
 
 # Il nome della chiave nello YAML: identita' del campo in ogni errore.
@@ -276,6 +277,12 @@ def normalize_read_direction(raw: Any) -> Union[float, dict]:
     """
     if raw is None:
         _reject(raw, _VALUE_HINT)
+
+    # Un'espressione (issue #313) arriva gia' riconosciuta, e non ha un
+    # valore da controllare qui: il suo verso si conosce grano per grano, ed
+    # e' il segno a deciderlo. La compila il parser dei parametri.
+    if isinstance(raw, ExpressionSource):
+        return raw
 
     if _is_number(raw):
         _check_direction_value(raw)

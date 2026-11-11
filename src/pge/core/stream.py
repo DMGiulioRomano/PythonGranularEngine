@@ -69,6 +69,11 @@ _GRAIN_DURATION_UNIT_LABELS = {
     'milliseconds': 'millisecondi',
 }
 
+#: I campi a espressione che seguono `grain.duration_unit`: il fattore
+#: dell'unita' si applica al RISULTATO dell'espressione. Gli altri campi di
+#: `EXPRESSION_FIELDS` non hanno un'unita' da portare.
+_UNIT_SCALED_EXPRESSION_FIELDS = ('grain.duration', 'grain.iot')
+
 _ENVELOPE_TABLE_NUM_DEPRECATO = (
     "Stream.envelope_table_num e' deprecato (issue #285) e sara' rimosso in "
     "PGE 10.0.0: il Generator non l'ha mai assegnato, e il motore non lo "
@@ -480,8 +485,10 @@ class Stream:
         return scaled_params
 
     def _wrap_grain_expressions(self, params: dict, output_sr: int) -> dict:
-        """Riconosce le espressioni nei campi del grano in cui valgono
-        (`EXPRESSION_FIELDS`) e porta loro l'unita' di misura.
+        """Riconosce le espressioni nei campi del grano che hanno un'unita'
+        di misura (`grain.duration`, `grain.iot`) e gliela porta. Gli altri
+        campi in cui un'espressione vale li riconosce
+        `_wrap_block_expressions`.
 
         `_pre_normalize_grain_params` riscala i valori grezzi di
         `grain.duration` — numeri ed envelope — ma una stringa la lascia
@@ -498,9 +505,9 @@ class Stream:
         factor = self._grain_unit_factor(grain, output_sr)
 
         wrapped = None
-        for field in EXPRESSION_FIELDS:
+        for field in _UNIT_SCALED_EXPRESSION_FIELDS:
             block, _, key = field.partition('.')
-            if block != 'grain' or not isinstance(grain.get(key), str):
+            if not isinstance(grain.get(key), str):
                 continue
             if wrapped is None:
                 wrapped = dict(grain)
@@ -515,33 +522,37 @@ class Stream:
 
     @staticmethod
     def _wrap_block_expressions(params: dict) -> dict:
-        """Riconosce le espressioni nei campi fuori da `grain:` in cui
-        valgono (`EXPRESSION_FIELDS`): oggi `pointer.position` (issue #312).
+        """Riconosce le espressioni nei campi in cui valgono
+        (`EXPRESSION_FIELDS`, issue #312 e #313) e che non hanno un'unita'
+        di misura da portare al risultato: `volume`, `pan`,
+        `pointer.position`, il valore del pitch, `density`, `fill_factor`,
+        `distribution`, `grain.read_direction`.
 
-        E' il gemello di `_wrap_grain_expressions`, senza l'unita' di
-        misura: qui non c'e' un fattore da portare al risultato — una
-        posizione nella finestra e' una frazione, e `loop_unit` non la
-        riscala. Una stringa in uno di questi campi diventa un
-        `ExpressionSource` col suo path, e la compila il parser dei
-        parametri; fuori dall'elenco una stringa resta l'errore che era.
+        E' il gemello di `_wrap_grain_expressions`. Una stringa in uno di
+        questi campi diventa un `ExpressionSource` col suo path, e la
+        compila il parser dei parametri; fuori dall'elenco una stringa resta
+        un errore, che dice dove le espressioni valgono.
 
         Come gli altri normalizzatori non muta il dict originale.
         """
         wrapped_params = None
         for field in EXPRESSION_FIELDS:
-            block, _, key = field.partition('.')
-            if block == 'grain' or not key:
+            if field in _UNIT_SCALED_EXPRESSION_FIELDS:
                 continue
-            contenuto = params.get(block)
+            block, _, key = field.rpartition('.')
+            contenuto = params.get(block) if block else params
             if not isinstance(contenuto, dict) or not isinstance(
                     contenuto.get(key), str):
                 continue
             if wrapped_params is None:
                 wrapped_params = dict(params)
+            sorgente = ExpressionSource(contenuto[key], field=field)
+            if not block:
+                wrapped_params[key] = sorgente
+                continue
             if wrapped_params[block] is contenuto:
                 wrapped_params[block] = dict(contenuto)
-            wrapped_params[block][key] = ExpressionSource(
-                contenuto[key], field=field)
+            wrapped_params[block][key] = sorgente
         return params if wrapped_params is None else wrapped_params
 
     def _init_grain_reverse(self, params: dict) -> None:

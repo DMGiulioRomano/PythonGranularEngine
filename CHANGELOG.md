@@ -10,6 +10,68 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: le altre mappe, l'equazione scritta a mano, le espressioni
+  sugli altri parametri** (issue #313, la quinta sotto la #307). Dopo la #308
+  c'erano una mappa sola, la logistica, e un parametro solo che la leggeva.
+
+  **Le mappe.** Il catalogo ne ha sei, più l'equazione scritta a mano:
+
+  | `type` | passo | `r` | intervallo di `m1` |
+  |---|---|---|---|
+  | `tent` | `r/2*min(x, 1-x)` | 2.5 – 3.999 | 0 … 1 |
+  | `sine` | `sin(r*x)` | 0 – 4 | −1 … 1 |
+  | `cubic` | `r*x*(1-x*x)` | 1.5 – 3 | −1.2 … 1.2 |
+  | `henon` | `1 - r*x*x + y`, `y: 0.3*x` | 0.8 – 1.4 | −1.3 … 1.4 |
+  | `circle` | `frac(x + r - 0.3*sin(2*pi*x))` | 0 – 1 | 0 … 1 |
+
+  ```yaml
+  maps:
+    m1: {type: henon, r: 1.4}          # due variabili: m1 e m1.y
+    m2:
+      type: custom
+      x: sin(r*x)*cos(x)
+      r: 3
+  ```
+
+  - **L'intervallo di `m1` è un dato**, non solo prosa: ogni tipo lo dichiara
+    in `MAP_KINDS` con un letterale (`value_range`, e `y_range` per la seconda
+    variabile), accanto a `x0` e `r_range`.
+  - **Due variabili**: lo stato è una coppia, e la seconda si legge in
+    un'espressione come `m1.y`. `y0` è il suo stato iniziale.
+  - **`type: custom`**: `x:` obbligatoria, `y:` opzionale, nel linguaggio delle
+    espressioni con `x`, `y`, `r`. Un tipo di catalogo con accanto un `x:` è
+    un errore. Le equazioni attraversano il caricamento come sono scritte.
+  - **La mappa che scappa** riparte dallo stato iniziale e lo scrive sul clip
+    log col suo limite di frequenza, per tutte e due le variabili e per le
+    equazioni scritte a mano; in `iterate`, dopo la fuga non si itera oltre.
+  - **La `tent` non arriva a `r = 4`**: lì in float64 collassa a zero in una
+    cinquantina di passi. Il tetto documentato è 3.999.
+  - **`sine` e `circle` usano `sin`**: fra macchine diverse i grani possono
+    divergere, e la reference lo dice (`SIN_BASED_TYPES`).
+
+  **I parametri.** Un'espressione vale sul **valore base** di ogni parametro a
+  schema: oltre a `grain.duration`, `grain.iot` e `pointer.position`, su
+  `volume`, `pan`, il valore del `pitch` in ogni unità (`pitch.semitones`,
+  `.cents`, `.quarter_tone`, `.eighth_tone`, `.ratio`, e `pitch.value` con
+  `edo`), `density`, `fill_factor`, `distribution` e `grain.read_direction`
+  (decide il segno). L'elenco è `EXPRESSION_FIELDS`.
+
+  - **Dove non vale, il motore lo dice** con un `ExpressionError` che nomina
+    il campo e suggerisce che cosa scrivere: `pointer.speed_ratio` (si integra
+    analiticamente), `pointer.start`, i tre di loop, `voices.num_voices`
+    (`EXPRESSION_REFUSALS`). Lo stesso errore, col suggerimento generico, sulle
+    bande `_range`, su `voices.scatter` e sui parametri delle strategie di
+    voce, dove una stringa fra parentesi arrivava fino al primo grano come
+    `TypeError`.
+  - **Un `nan` va al limite inferiore del parametro**, tranne su `grain.iot`,
+    dove va al tetto (100 s): al limite inferiore un'attesa è un campione,
+    cioè 48000 grani al secondo. **Cambia rispetto alla #311**, dove un `nan`
+    su `grain.iot` andava al pavimento (`NAN_TO_MAX_PARAMETERS`).
+  - **Il clip log di un'espressione ha un limite di frequenza**: una riga
+    subito, poi una ogni 5 s di stream per parametro, col conto dei tagli
+    taciuti. **Cambia rispetto alla #308**, dove era una riga per grano
+    tagliato. Numeri ed envelope restano com'erano.
+
 - **Mappe caotiche: `pointer.position`, la posizione di lettura dalla mappa**
   (issue #312, la quarta sotto la #307). La legge di moto del puntatore era
   una sola, `start + integrale di speed_ratio`. `position` è la seconda: la

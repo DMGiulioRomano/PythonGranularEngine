@@ -188,7 +188,11 @@ class TestLimiti:
         for testo, atteso in (('(0 * t)', 1.0 / DEFAULT_OUTPUT_SR),
                               ('(0 - 1)', 1.0 / DEFAULT_OUTPUT_SR),
                               ('(500 + t)', 100.0),
-                              ('(sqrt(0 - 1))', 1.0 / DEFAULT_OUTPUT_SR),
+                              # Un `nan` non ha un lato: su grain.iot va
+                              # al tetto (issue #313), dove il render
+                              # finisce; al pavimento sarebbero 48000
+                              # grani al secondo.
+                              ('(sqrt(0 - 1))', 100.0),
                               ('(1 / (0 * t))', 100.0)):
             controller = _controller(
                 config, iot=ExpressionSource(testo, field='grain.iot'))

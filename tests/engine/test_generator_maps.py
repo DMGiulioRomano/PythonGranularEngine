@@ -238,13 +238,22 @@ class TestICampiAEspressione:
 
     def test_fuori_dai_campi_a_espressione_l_avviso_resta(self, carica,
                                                           capsys):
-        """Su `volume` un'espressione non vale ancora (la #313): li' l'avviso
-        della valutazione e' l'unica spiegazione di `sqrt`, e resta."""
-        stream = _stream(volume='(sqrt(4))')
+        """Su una banda un'espressione non vale (dalla #313 vale sui valori
+        base, `volume` compreso): li' l'avviso della valutazione e' l'unica
+        spiegazione di `sqrt`, e resta."""
+        stream = _stream(volume_range='(sqrt(4))')
         del stream['maps']
         generator = carica(stream)
         assert 'impossibile valutare' in capsys.readouterr().out
-        assert generator.data['streams'][0]['volume'] == '(sqrt(4))'
+        assert generator.data['streams'][0]['volume_range'] == '(sqrt(4))'
+
+    def test_su_volume_dalla_313_non_avvisa_piu(self, carica, capsys):
+        stream = _stream(volume='(0 - sqrt(4))', grain={'duration': 0.05})
+        del stream['maps']
+        generator = carica(stream)
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        prodotto, = generator.create_elements()
+        assert prodotto.voices[0][0].volume == -2.0
 
     def test_i_nomi_della_valutazione_sono_quelli_del_generator(self):
         """Il riparo sa quali nomi la valutazione al caricamento conosce:
