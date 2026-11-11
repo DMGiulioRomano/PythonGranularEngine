@@ -10,6 +10,140 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: `grain.iot`, gli onset dalla mappa** (issue #311, la terza
+  sotto la #307). `grain.iot` e' l'attesa fino al grano successivo,
+  `onset[n+1] = onset[n] + iot`: il terzo modo di dire quando nasce un grano,
+  accanto a `density` e `fill_factor`. Un numero, un envelope, o
+  un'espressione che legge una mappa:
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: 3.5}
+  grain:
+    iot: (0.020 + 0.180*m1)
+  ```
+
+  Le attese percorrono in ciclo 169, 110, 177, 89 ms: 545 ms per quattro
+  grani, 7.3 grani/s in media. Con `grain.iot` la densita' non si decide:
+  **emerge**, e si legge a cose fatte.
+
+  - **Si sceglie per presenza della chiave.** Senza, vale tutto come prima,
+    default `fill_factor: 2` compreso. Scritta insieme a `density`,
+    `fill_factor` o `distribution` e' un **errore**, non una priorita'; scritta
+    e lasciata vuota anche.
+  - **Limiti: da un campione a 100 s.** Un numero o un envelope fuori limite
+    e' un errore al parse; un'espressione viene tagliata e scritta sul clip
+    log, cosi' un'attesa nulla, negativa o non finita non blocca il render.
+    `[DENSITY_HIGH]` continua a uscire sopra la soglia, con `mode=iot`.
+  - **Segue `grain.duration_unit`**, come `grain.duration`.
+  - **La densita' emersa e' una curva pubblicata**, `effective_density`: per
+    ogni grano della voce 0, `1 / attesa`, a gradini. Leggerla genera i grani.
+  - **Con la stessa mappa su `grain.iot` e `grain.duration`** ogni grano
+    porta il valore che ha deciso anche la sua attesa.
+  - **`Stream.density`, `fill_factor` e `distribution` sono `None`** su uno
+    stream con `grain.iot`; `Stream.iot` e' il parametro e
+    `Stream.density_mode` dice il modo (`fill_factor`, `density`, `iot`). Il
+    `repr`, la riga di fine render (`· iot`) e i commenti dello score
+    (`Inter-onset:`) leggono quello.
+  - **`scatter`** tiene la formula di sempre. Con `clock: grain` le mappe
+    delle voci sono identiche, e `scatter` non sposta niente: e' scritto in
+    reference come fatto, non come promessa.
+
+  `Stream._pre_normalize_grain_params` non e' cambiata: l'unita' di
+  `grain.iot` si applica in un passo suo. Reference: `docs/reference/yaml.md`,
+  «Densità».
+
+- **Mappe caotiche: come avanza la mappa** (issue #310, la seconda sotto la
+  #307). Dopo la #308 una mappa faceva un passo per grano e `r` era un
+  numero. Ora lo YAML dice anche quando:
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: [[0, 3.0], [12, 4.0]], clock: [[0, 2], [12, 20]]}
+    m2: {type: logistic, r: [[0, 3.0], [12, 4.0]], iterate: 7, x0: 0.1}
+  ```
+
+  - **Clock a orologio**: `clock` e' un numero di passi al secondo, o un
+    envelope. Il passo k cade dove l'integrale del clock vale k
+    (`Envelope.integrate`), il primo a `t = 0`; il valore resta fermo fino al
+    passo dopo. E' una funzione del tempo: non ha uno stato per voce, e tutte
+    le voci leggono lo stesso valore allo stesso istante. Da 2 a 20 passi/s
+    in 12 s sono 132 passi.
+  - **`iterate: n`**, il modo alla Di Scipio (DAFx99), al posto di `clock`: a
+    ogni lettura si riparte da `x0` e si fanno n passi con l'`r` di
+    quell'istante. Nessuno stato. Con `r` fermo il valore e' costante; con
+    `r` che si muove e' una curva nel tempo, campionata dagli onset.
+  - **`r` a envelope**: letto all'istante del passo, o della lettura in
+    `iterate`; vale anche con `clock: grain`. Segue il `time_mode` dello
+    stream, come il clock a envelope.
+  - **Errori al caricamento**: `clock` e `iterate` insieme, `transient` con
+    `iterate`, un clock non positivo o non finito (anche in un solo punto
+    dell'envelope), `iterate` che non e' un intero positivo.
+  - **Tre tetti**, perche' contano dei passi e un passo costa: senza, un
+    numero grande scritto per sbaglio teneva fermo il render. `iterate` va da
+    1 a 40 (il tetto del banco; oltre, a `r = 4` l'iterata dipende dagli
+    arrotondamenti e non piu' da `r`), `transient` da 0 a 100000, il clock e'
+    al piu' un passo per campione (`output_sr`), in ogni punto se e' un
+    envelope. Oltre e' un `MapConfigError` sul campo. Costanti in
+    `src/pge/maps/map_set.py`: `MAP_ITERATE_MAX`, `MAP_TRANSIENT_MAX`.
+
+  `MapSet.step_times(nome, fino_a)` da' gli istanti dei passi di una mappa a
+  orologio. Reference: `docs/reference/yaml.md`, «Come avanza una mappa».
+
+- **Mappe caotiche: `maps:` e le espressioni** (issue #308, la prima di sette
+  sotto la #307). Uno stream dichiara una mappa iterata dentro `maps:`, e
+  `grain.duration` la legge con un'espressione fra parentesi:
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: 3.5}
+  grain:
+    duration: (0.02 + 0.08*m1)
+  ```
+
+  Con `r: 3.5` le durate dei grani percorrono in ciclo 86, 60, 90, 51 ms. In
+  questa fetta c'e' la logistica, un passo per grano (`clock: grain`) e `r`
+  numero; di una mappa si scrivono `type`, `r`, e se serve `x0` (default del
+  tipo, 0.3, **indipendente dal seed**) e `transient` (i passi scartati prima
+  del primo grano, default 300).
+
+  - **L'interprete e' un modulo suo, senza `eval`**
+    (`src/pge/expressions/expression.py`): `+ - * / **`, parentesi, `sin cos
+    tan abs sqrt exp log floor round sign min max pow frac clip fold wrap`,
+    `pi`, `e`, i nomi delle mappe dichiarate e `t`. Precedenze di Python. Gli
+    errori sono tutti al caricamento, e una chiusura compilata non solleva:
+    una catena di somme o di prodotti e' una chiusura sola, lunga quanto si
+    vuole, e l'annidamento (parentesi, segni, potenze, chiamate) arriva al
+    piu' a 50 livelli (`MAX_DEPTH`), oltre i quali e' un `ExpressionError`
+    invece di un `RecursionError`.
+  - **L'espressione e' il terzo tipo di valore di un `Parameter`**, accanto a
+    numero ed envelope. Si valuta a ogni grano; un valore fuori dai bounds
+    viene tagliato e scritto sul clip log (`(EXP)`), come un envelope a
+    runtime, e un non-finito va al limite. `grain.duration_unit` si applica
+    al risultato. `grain.duration_range` sopra un'espressione resta lecito.
+  - **Lo stato della mappa e' uno per voce**: avanza una volta per grano e
+    per voce, in testa al giro della voce, e chi la legge non la muove.
+  - **Una mappa che scappa** (non finita, o oltre 1000 in modulo) riparte da
+    `x0` e lo scrive sul clip log, `[MAP_ESCAPE]`, con rate limit.
+  - **Due errori nuovi** sotto `ConfigError`: `ExpressionError` (col campo e
+    il testo) e `MapConfigError` (col path del punto, `maps.m1.r`).
+  - **Al caricamento** un'espressione che nomina una mappa dichiarata non
+    passa piu' dalla valutazione delle espressioni matematiche, e non stampa
+    `impossibile valutare` su stdout. Nei campi a espressione vale anche per
+    una che nomina qualcosa che quella valutazione non conosce
+    (`(0.02 + 0.08*sqrt(0.25))`, o un nome sbagliato, che poi l'interprete
+    nomina); una costante che sa fare (`(10/2)`) resta un numero.
+    `Generator._eval_math_expressions` non e' cambiata.
+
+  Le espressioni valgono oggi su `grain.duration` (`EXPRESSION_FIELDS`):
+  altrove una stringa resta un errore. Nessun breaking change: uno stream che
+  non scrive `maps:` ne' un'espressione da' gli stessi grani e lo stesso
+  fingerprint di prima (`tests/core/test_stream_senza_mappe_invariato.py`, su
+  un'istantanea presa prima della modifica), e `VARIATION_SEMANTICS_VERSION`
+  non si muove. Partitura ed export non disegnano un parametro scritto come
+  espressione: mostrarlo e' la #314. Reference: `docs/reference/yaml.md`,
+  «Mappe ed espressioni».
+
 - **Il registro della superficie che un altro repository legge** (issue #246),
   `tests/test_downstream_surface.py`. Elenca i moduli, i simboli e i letterali
   che PGE-ui legge del motore, e verifica che ognuno si risolva ancora dove li'

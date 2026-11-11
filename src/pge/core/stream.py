@@ -35,6 +35,9 @@ from pge.shared.exceptions import (
     MissingFieldError,
     SampleNotFoundError,
 )
+from pge.expressions.expression import ExpressionSource
+from pge.expressions.fields import EXPRESSION_FIELDS
+from pge.maps.map_set import MapSet
 from pge.parameters.parameter_definitions import range_unit_is_relative
 from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
@@ -46,7 +49,7 @@ from pge.core.stream_config import StreamConfig, StreamContext
 from pge.controllers.voice_manager import VoiceConfig
 from pge.strategies.grain_clip_strategy import GrainClipStrategyFactory
 from pge.strategies.strategie import nominal_value
-from dataclasses import fields, MISSING as dataclass_MISSING
+from dataclasses import fields, replace, MISSING as dataclass_MISSING
 
 
 # Unita' di misura ammesse per grain.duration / grain.duration_range.
@@ -137,13 +140,35 @@ class Stream:
             StreamContext.from_yaml(params, sample_dur_sec=sample_dur),
             seed=seed,
         )
+        # === 3.2. MAPPE (issue #308) ===
+        # Dopo il config, perche' gli envelope di `r` e di `clock` (issue
+        # #310) seguono la durata e il `time_mode` dello stream; prima di
+        # tutto il resto, perche' le condividono il parser dei parametri, che
+        # ci compila le espressioni, e il giro dei grani, che le muove. Il
+        # config e' congelato: le mappe ci entrano con una copia.
+        self._maps = self._init_maps(params, config)
+        config = replace(config, map_set=self._maps)
         self._init_stream_context(config.context)
+        # === 3.4. GRAIN.IOT CON UN ALTRO MODO DI DENSITA' (issue #311) ===
+        # Sullo YAML grezzo, prima dei tre passi qui sotto: dopo, `grain.iot`
+        # e' gia' in secondi o impacchettata come espressione, e il «Trovato»
+        # dell'errore non sarebbe piu' cio' che l'utente ha scritto.
+        DensityController.check_iot_exclusivity(params, config)
         # === 3.5. UNITA' DI MISURA DURATA GRANO ===
         # Da qui in poi grain.duration e' in secondi qualunque sia l'unita'
         # dichiarata nello YAML, e con lei grain.duration_range — tranne dove
         # quest'ultima e' una frazione della base (grain.duration_range_unit:
         # relative, issue #267), che adimensionale era e adimensionale resta.
         params = self._pre_normalize_grain_params(params, config.context.output_sr)
+        # === 3.55. UNITA' DELL'ATTESA (issue #311) ===
+        # grain.iot segue grain.duration_unit come grain.duration, in un
+        # passo suo (vedi _pre_normalize_grain_iot).
+        params = self._pre_normalize_grain_iot(params, config.context.output_sr)
+        # === 3.6. ESPRESSIONI (issue #308) ===
+        # Dove un'espressione vale, la stringa diventa un ExpressionSource col
+        # fattore dell'unita': una stringa non si riscala, si riscala il suo
+        # risultato.
+        params = self._wrap_grain_expressions(params, config.context.output_sr)
         # === 4. PARAMETRI SPECIALI ===
         self._init_grain_reverse(params)
         # Da qui in poi grain.read_direction, se dichiarata, e' gia' validata e
@@ -178,6 +203,10 @@ class Stream:
         # (issue #201), non un secondo campo da mantenere allineato.
         self._voices: List[List[Grain]] = []
         self.generated = False
+        # Le attese della voce 0 come sono uscite, `(tempo, attesa)`, in
+        # modalita' `grain.iot` (issue #311): da qui la densita' emersa
+        # (effective_density_curve). Le scrive generate_grains.
+        self._emerged_iot: List[tuple] = []
 
     @staticmethod
     def _required_context_fields() -> set:
@@ -389,6 +418,100 @@ class Stream:
         scaled_params['grain'] = scaled_grain
         return scaled_params
 
+    @staticmethod
+    def _init_maps(params: dict, config: StreamConfig) -> MapSet:
+        """Le mappe dichiarate in `maps:` (issue #308), o un insieme vuoto.
+
+        La chiave assente e' uno stream senza mappe. La chiave scritta e
+        lasciata vuota no: passa a `MapSet.from_yaml`, che la rifiuta.
+        """
+        stream_id = config.context.stream_id
+        if 'maps' not in params:
+            return MapSet(stream_id=stream_id)
+        return MapSet.from_yaml(
+            params['maps'],
+            stream_id=stream_id,
+            duration=config.context.duration,
+            time_mode=config.time_mode,
+            output_sr=config.context.output_sr,
+        )
+
+    @staticmethod
+    def _grain_unit_factor(grain: dict, output_sr: int) -> float:
+        """Il fattore che porta in secondi un valore scritto nell'unita' di
+        `grain.duration_unit`, gia' validata da `_pre_normalize_grain_params`.
+
+        Lo leggono i due passi che seguono quel metodo senza poterci stare
+        dentro: PGE-ls lo estrae dall'AST e lo esegue con un namespace
+        scritto a mano (#269), e un nome nuovo nel suo corpo — o una terza
+        chiave fra quelle che scala — di la' e' un rosso su ogni PR.
+        """
+        unit = grain.get('duration_unit', 'seconds')
+        if unit == 'samples':
+            return 1.0 / output_sr
+        if unit == 'milliseconds':
+            return SECONDS_PER_MILLISECOND
+        return 1.0
+
+    def _pre_normalize_grain_iot(self, params: dict, output_sr: int) -> dict:
+        """`grain.iot` segue `grain.duration_unit`, come `grain.duration`
+        (issue #311): un'attesa scritta in millisecondi o in campioni arriva
+        al parser in secondi.
+
+        Scala numeri ed envelope (solo i valori Y), con la stessa funzione
+        di `grain.duration`. Un'espressione no: e' una stringa, e il fattore
+        lo porta al suo risultato `_wrap_grain_expressions`.
+
+        Non muta il dict originale (il fingerprint della cache legge i dati
+        grezzi).
+        """
+        grain = params.get('grain')
+        if not isinstance(grain, dict) or grain.get('iot') is None:
+            return params
+        factor = self._grain_unit_factor(grain, output_sr)
+        if factor == 1.0 or isinstance(grain['iot'], str):
+            return params
+
+        scaled_grain = dict(grain)
+        scaled_grain['iot'] = scale_raw_param_values(grain['iot'], factor)
+        scaled_params = dict(params)
+        scaled_params['grain'] = scaled_grain
+        return scaled_params
+
+    def _wrap_grain_expressions(self, params: dict, output_sr: int) -> dict:
+        """Riconosce le espressioni nei campi del grano in cui valgono
+        (`EXPRESSION_FIELDS`) e porta loro l'unita' di misura.
+
+        `_pre_normalize_grain_params` riscala i valori grezzi di
+        `grain.duration` — numeri ed envelope — ma una stringa la lascia
+        com'e': di un'espressione non si puo' riscalare il testo, si riscala
+        il **risultato**. Il fattore e' lo stesso, letto dalla stessa
+        `grain.duration_unit` (`_grain_unit_factor`).
+
+        Come gli altri normalizzatori non muta il dict originale.
+        """
+        grain = params.get('grain')
+        if not isinstance(grain, dict):
+            return params
+
+        factor = self._grain_unit_factor(grain, output_sr)
+
+        wrapped = None
+        for field in EXPRESSION_FIELDS:
+            block, _, key = field.partition('.')
+            if block != 'grain' or not isinstance(grain.get(key), str):
+                continue
+            if wrapped is None:
+                wrapped = dict(grain)
+            wrapped[key] = ExpressionSource(
+                grain[key], field=field, scale=factor)
+
+        if wrapped is None:
+            return params
+        wrapped_params = dict(params)
+        wrapped_params['grain'] = wrapped
+        return wrapped_params
+
     def _init_grain_reverse(self, params: dict) -> None:
         """
         Inizializza parametri reverse del grano.
@@ -527,11 +650,34 @@ class Stream:
         # a prima. Con scatter>0 e distribution>0 i cursori divergono nel tempo.
         voice_cursors = [0.0] * max_v
 
+        # Le mappe dello stream (issue #308). Una mappa a `clock: grain` fa un
+        # passo per grano e per voce, e lo fa QUI, in testa al giro della
+        # voce: prima di ogni lettura dei parametri di quel grano — la durata
+        # si legge prima di `_create_grain` — cosi' l'ordine in cui i
+        # parametri la leggono non conta. Senza `maps:` l'insieme e' vuoto e
+        # le due chiamate non fanno niente.
+        maps = self._maps
+
+        # In modalita' `grain.iot` (issue #311) la densita' non e' dichiarata:
+        # emerge dalle attese. Quelle della voce 0 si tengono, per
+        # pubblicarla come curva a grani fatti.
+        record_iot = self._density.mode == 'iot'
+        emerged_iot: List[tuple] = []
+
         while any(c < self.duration for c in voice_cursors):
             # Voice 0 è il riferimento: definisce sync_iot e il valore di scatter
             t0 = voice_cursors[0]
+            # La voce 0 legge qui la durata del suo prossimo grano: il passo
+            # della sua mappa viene prima. Se ha gia' finito non nasce nessun
+            # grano e non c'e' nessun passo: le letture restano sul suo stato.
+            if t0 < self.duration:
+                maps.advance(0, t0)
+            else:
+                maps.select(0)
             grain_dur_0 = self.grain_duration.get_value(t0)
             sync_iot = self._density.calculate_inter_onset(t0, grain_dur_0)
+            if record_iot and t0 < self.duration:
+                emerged_iot.append((t0, sync_iot))
             scatter_val = self.scatter.get_value(t0)
 
             for voice_index in range(max_v):
@@ -539,6 +685,16 @@ class Stream:
 
                 if t >= self.duration:
                     continue
+
+                # Il giro di questa voce: la sua mappa fa il suo passo (quello
+                # della voce 0 e' gia' fatto, qui sopra), e da qui le letture
+                # sono le sue. Il passo si conta anche se `num_voices` tiene
+                # la voce spenta: la sequenza di una voce non dipende da
+                # quando viene accesa.
+                if voice_index:
+                    maps.advance(voice_index, t)
+                else:
+                    maps.select(0)
 
                 # Voice 0 condivide già grain_dur_0 (t == t0), evita doppia chiamata
                 grain_dur = grain_dur_0 if voice_index == 0 else self.grain_duration.get_value(t)
@@ -581,6 +737,7 @@ class Stream:
         # Assegna ai backing field, non alle property: il getter di .voices
         # innescherebbe ricorsivamente generate_grains (generated ancora False).
         self._voices = self._clip_strategy.apply(all_voice_grains, self)
+        self._emerged_iot = emerged_iot
         self.generated = True
 
         return self._voices
@@ -785,7 +942,25 @@ class Stream:
     
     @property
     def distribution(self):
+        """Il valore di `distribution`; None in modalita' `grain.iot` (issue
+        #311), dove non e' dichiarata e non agisce."""
         return self._density.distribution.value if hasattr(self._density.distribution, 'value') else self._density.distribution
+
+    @property
+    def iot(self):
+        """Il Parameter di `grain.iot`, l'attesa fino al grano successivo
+        (issue #311); None se lo stream usa `density` o `fill_factor`."""
+        return self._density.iot
+
+    @property
+    def density_mode(self) -> str:
+        """Da dove vengono gli onset: 'fill_factor', 'density' o 'iot'.
+
+        Con 'iot' la densita' non e' dichiarata — `density`, `fill_factor` e
+        `distribution` sono None — ed emerge dalle attese: la pubblica
+        `effective_density_curve`.
+        """
+        return self._density.mode
         
     @property
     def pointer_speed(self):
@@ -868,11 +1043,35 @@ class Stream:
 
         None in modalita' `density`: li' sarebbe la copia esatta del
         parametro `density`, gia' disegnato sotto il suo nome.
+
+        In modalita' `grain.iot` (issue #311) e' la densita' che **emerge**:
+        l'inverso dell'attesa di ogni grano della voce 0, tenuto fino al
+        grano dopo. Non e' una funzione del tempo — un'attesa letta da una
+        mappa dipende dai grani gia' nati — quindi non si campiona: si legge
+        a grani fatti, e leggerla li genera.
         """
+        if self._density.mode == 'iot':
+            return self._emerged_density_curve()
         return self._density.density_curve(
             self.duration,
             grain_duration_at=lambda t: nominal_value(self.grain_duration, t),
         )
+
+    def _emerged_density_curve(self):
+        """`1 / attesa` per ogni grano della voce 0, a gradini."""
+        self.voices  # la generazione e' lazy (issue #117)
+        punti = [[tempo, 1.0 / attesa] for tempo, attesa in self._emerged_iot]
+        if not punti:
+            return None
+        if len(punti) == 1:
+            punti.append([max(self.duration, punti[0][0]), punti[0][1]])
+        return Envelope({'type': 'step', 'points': punti})
+
+    @property
+    def map_set(self) -> MapSet:
+        """Le mappe dichiarate in `maps:` (issue #308); vuoto se non ce ne
+        sono."""
+        return self._maps
 
     @property
     def voice_manager(self):
@@ -980,7 +1179,7 @@ class Stream:
     # =========================================================================
 
     def __repr__(self) -> str:
-        mode = "fill_factor" if self.fill_factor is not None else "density"
+        mode = self.density_mode
         # NON innescare la generazione lazy: _create_streams passa {stream} al
         # diagnostic logger per ogni stream (#188) -- formattato solo se un
         # handler lo chiede, ma allora leggere .grains rigenererebbe tutto.

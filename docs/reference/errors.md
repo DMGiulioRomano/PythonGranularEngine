@@ -14,7 +14,7 @@ sources:
   - src/pge/engine/generator.py
   - src/pge/engine/stream_files.py
   - src/pge/rendering/csound_renderer.py
-last_synced_commit: c4dca94
+last_synced_commit: cc31f3c
 entry_for: [error-handling]
 ---
 
@@ -99,6 +99,10 @@ EngineError                                  (Exception)
 │   ├── InvalidRendererError                 PR4 — renderer kind sconosciuto
 │   ├── InvalidWindowError                   PR4 — window name/param invalido
 │   ├── FtableError                          PR4 — incoerenza FtableManager
+│   ├── ExpressionError                      #308 — espressione che
+│   │                                        l'interprete non compila
+│   ├── MapConfigError                       #308 — blocco `maps:` o una sua
+│   │                                        mappa scritti male
 │   └── StreamFileError                      #290 — voce `file:` del master
 │       │                                    che non si risolve
 │       ├── StreamFileKeyError               chiave non di piazzamento
@@ -815,6 +819,72 @@ anche lui. Con una voce sola (`num_voices: 1`, o un envelope che non supera 1)
 non arrivava affatto: la voce 0 non consulta la strategy, e il render finiva.
 Lì il rifiuto è nuovo, e vale lo stesso: il valore è scritto male qualunque sia
 il numero di voci che lo leggerebbero.
+
+### Mappa o espressione scritte male (issue #308)
+
+Un'espressione che nomina una mappa non dichiarata, o che l'interprete non
+compila, si ferma al caricamento con un `ExpressionError`: il campo, il testo
+com'è scritto, il motivo.
+
+```yaml
+streams:
+  - stream_id: s1
+    maps:
+      m1: {type: logistic, r: 3.5}
+    grain:
+      duration: (0.02 + 0.08*m2)
+```
+```
+[ERRORE] Espressione non valida per 'grain.duration'
+  Trovato:      (0.02 + 0.08*m2)
+  Dettaglio:    nome sconosciuto «m2»
+  Hint:         nomi disponibili: m1, t, e, pi
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Gli altri motivi: `manca una parentesi chiusa`, `finisce a meta'`,
+`non mi aspettavo «…»`, `non capisco «…»`, `funzione sconosciuta «…»`,
+`clip vuole 3 argomenti`, `un'espressione si scrive fra parentesi`,
+`e' annidata troppo` (oltre 50 livelli fra parentesi, segni, potenze e
+chiamate: il limite c'e' perche' oltre uscirebbe un `RecursionError` di
+Python, fuori da questa gerarchia).
+
+Un blocco `maps:` scritto male è un `MapConfigError`, che nomina il punto col
+suo path YAML:
+
+```yaml
+    maps:
+      m1: {type: tent, r: 3.5}
+```
+```
+[ERRORE] Mappa non valida in 'maps.m1.type'
+  Trovato:      'tent'
+  Dettaglio:    tipo sconosciuto
+  Hint:         tipi disponibili: logistic
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+`iterate`, `transient` e `clock` hanno un tetto (40 passi a lettura, 100000
+passi di transitorio, un passo per campione): oltre, lo stesso
+`MapConfigError`, sul campo, col tetto nel dettaglio.
+
+```
+[ERRORE] Mappa non valida in 'maps.m1.iterate'
+  Trovato:      1000
+  Dettaglio:    al piu' 40 passi a ogni lettura: oltre, l'iterata non dipende piu' da r ma dagli arrotondamenti, e si rifa' a ogni grano
+  Hint:         da 1 a 40
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Un'espressione su un parametro in cui non vale resta un
+`InvalidParameterError`, con l'elenco dei campi in cui vale.
+
+A runtime nessuno dei due errori si solleva: un valore dell'espressione fuori
+dai bounds viene tagliato e scritto sul clip log, e una mappa che scappa
+riparte da `x0` (`[MAP_ESCAPE]`).
 
 ### Strategia non trovata
 ```yaml

@@ -200,3 +200,29 @@ class DirectDensityStrategy(DensityStrategy):
     @property
     def name(self) -> str:
         return "density"
+
+
+class IotStrategy(DensityStrategy):
+    """Strategia: la densita' emerge dall'attesa, `density = 1 / grain.iot`
+    (issue #311).
+
+    Qui la densita' non si decide: e' l'inverso dell'attesa fra due grani,
+    letta da un numero, un envelope o un'espressione. Il DensityController
+    non passa da `calculate_density` per calcolare l'attesa — `1/(1/x)` non
+    restituisce sempre `x` — ma dalla strategy legge il nome del modo, e la
+    densita' per l'avviso sopra soglia.
+    """
+
+    def __init__(self, iot_param: Parameter, distribution_param: Parameter):
+        self._iot = iot_param
+
+    def calculate_density(self, elapsed_time: float, **context) -> float:
+        return 1.0 / self._iot.get_value(elapsed_time)
+
+    def nominal_density(self, elapsed_time: float, **context) -> float:
+        iot = nominal_value(self._iot, elapsed_time)
+        return None if not iot else 1.0 / iot
+
+    @property
+    def name(self) -> str:
+        return "iot"

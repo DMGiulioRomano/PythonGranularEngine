@@ -226,9 +226,13 @@ def _attr(name):
 # is_smart=False): il valore vero non e' un Parameter da leggere ma un
 # quoziente che il motore calcola a ogni onset. Viene pubblicato piu' sotto
 # dalla curva campionata, non da qui.
+# grain_iot (issue #311) e' l'attesa fra due grani: lo Stream non la pubblica
+# come curva sua, perche' quello che se ne guarda e' la densita' che ne
+# emerge — `effective_density`, l'inverso dell'attesa grano per grano — che
+# esce piu' sotto. Mostrare le mappe e le attese e' la 6/7 (#314).
 _SCHEMA_EXCLUDED = frozenset({
     'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
-    'effective_density'})
+    'effective_density', 'grain_iot'})
 
 
 def _curve_sources():

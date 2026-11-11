@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mappa logistica e grani</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* layout: una colonna di lettura; la manopola r resta in cima mentre scorri;
+   ogni sezione = poche righe, i comandi, il grafico, la lettura in numeri */
+:root {
+  --bg: #f3f4f6; --surface: #fbfbfc; --ink: #0d0e10; --ink-2: #4f535a; --muted: #7d828b;
+  --grid: #e2e4e8; --axis: #c2c6cd; --border: rgba(13,14,16,.10);
+  --series: #2a78d6; --ref: #9aa0a9; --wash: rgba(42,120,214,.10); --out: rgba(13,14,16,.055);
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0f11; --surface: #18191c; --ink: #eef0f3; --ink-2: #c0c4cb; --muted: #8a8f98;
+    --grid: #2a2c31; --axis: #3a3d44; --border: rgba(255,255,255,.10);
+    --series: #3987e5; --ref: #6d727b; --wash: rgba(57,135,229,.16); --out: rgba(255,255,255,.06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e0f11; --surface: #18191c; --ink: #eef0f3; --ink-2: #c0c4cb; --muted: #8a8f98;
+  --grid: #2a2c31; --axis: #3a3d44; --border: rgba(255,255,255,.10);
+  --series: #3987e5; --ref: #6d727b; --wash: rgba(57,135,229,.16); --out: rgba(255,255,255,.06);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.55; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 940px; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { padding-block: 28px 8px; }
+h1 { font-size: 28px; line-height: 1.15; font-weight: 600; margin: 0 0 8px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-size: 20px; line-height: 1.25; font-weight: 600; margin: 0; text-wrap: balance; }
+h3 { font-size: 14px; font-weight: 600; margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--ink-2); font-size: 16px; }
+a { color: var(--series); }
+code, .mono { font-family: var(--mono); font-size: .93em; }
+code { background: var(--out); padding: 1px 5px; border-radius: 4px; }
+
+.rbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--bg); border-bottom: 1px solid var(--border); }
+.rbar-in { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding-block: 10px; }
+.rmain { display: flex; align-items: center; gap: 10px; flex: 1 1 300px; min-width: 0; }
+.rmain label { font-weight: 600; white-space: nowrap; }
+.rmain input[type=range] { flex: 1 1 auto; min-width: 0; }
+.rmain output { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 5ch; text-align: right; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.chip:hover { color: var(--ink); border-color: var(--axis); }
+.chip[aria-pressed="true"] { color: var(--ink); border-color: var(--series); box-shadow: inset 0 0 0 1px var(--series); }
+
+main { display: flex; flex-direction: column; gap: 44px; padding-block: 28px 56px; }
+section { display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card h3 + .sub { color: var(--muted); font-size: 13px; }
+.sub { color: var(--muted); font-size: 13px; max-width: none; }
+.chart { position: relative; width: 100%; min-width: 0; outline: none; border-radius: 6px; }
+.chart:focus-visible { box-shadow: 0 0 0 2px var(--series); }
+.chart svg, .chart canvas { display: block; }
+.chart .over { position: absolute; inset: 0; pointer-events: none; }
+#c-bif { cursor: crosshair; touch-action: none; }
+.pair { display: grid; gap: 12px; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 720px) { .trio { grid-template-columns: minmax(0, 1fr); } }
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; }
+.ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ctl > span.lab, .ctl > label.lab { color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.ctl output { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 4ch; }
+.ctl input[type=range] { width: 130px; max-width: 40vw; }
+.ctl input[type=number], .ctl select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 3px 6px; }
+.ctl input[type=number] { width: 74px; font-family: var(--mono); }
+input[type=range] { accent-color: var(--series); }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 8px; overflow: hidden; background: var(--surface); flex-wrap: wrap; }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.seg label { padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--ink-2); border-right: 1px solid var(--border); }
+.seg label:last-child { border-right: 0; }
+.seg input:checked + label { background: var(--wash); color: var(--ink); font-weight: 500; }
+.seg input:focus-visible + label { outline: 2px solid var(--series); outline-offset: -2px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.checks input { accent-color: var(--series); }
+
+.read { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px 18px; margin: 4px 0 0; }
+.read div { display: flex; flex-direction: column; }
+.read dt { color: var(--muted); font-size: 12px; }
+.read dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 14px; }
+.note { color: var(--ink-2); }
+.key { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { display: inline-block; }
+.k-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--series); }
+.k-line { width: 18px; height: 2px; background: var(--ref); }
+.k-ser { width: 18px; height: 2px; background: var(--series); }
+.k-bar { width: 16px; height: 5px; border-radius: 2px; background: var(--series); }
+.k-ref { width: 16px; height: 5px; border-radius: 2px; background: var(--ref); }
+pre.yaml { margin: 0; font-family: var(--mono); font-size: 13px; line-height: 1.5; background: var(--out); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+.seq { font-family: var(--mono); font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; max-width: none; }
+.tablebox { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.foot { color: var(--muted); font-size: 13px; }
+
+svg text { font-family: var(--font); fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--grid); stroke-width: 1; }
+svg .axis { stroke: var(--axis); stroke-width: 1; }
+svg .alab { fill: var(--ink-2); }
+svg .ln { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg .ln.soft { opacity: .4; }
+svg .guide { fill: none; stroke: var(--ref); stroke-width: 1.5; stroke-linejoin: round; }
+svg .dot { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
+svg .dot.small { stroke-width: 1; }
+svg .bar { fill: var(--series); }
+svg .bar.ref { fill: var(--ref); }
+svg .outzone { fill: var(--out); }
+svg .xh { stroke: var(--axis); stroke-width: 1; }
+svg .hl { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+svg .mark { stroke: var(--series); stroke-width: 1; }
+svg .span { stroke: var(--series); stroke-width: 5; stroke-linecap: round; }
+svg .mlab { fill: var(--ink); font-weight: 500; }
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 13px; line-height: 1.35; box-shadow: 0 4px 14px rgba(0,0,0,.14); max-width: 240px; }
+#tip b { display: block; font-family: var(--mono); font-weight: 500; }
+#tip span { color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="top wrap">
+  <h1>Mappa logistica e grani</h1>
+  <p class="lede">Una regola di una riga, una sola manopola. Qui vedi come si comporta, cosa vuol dire farla avanzare «per grano» oppure «nel tempo», e dove cadono i suoi valori quando la colleghi a un parametro.</p>
+</header>
+
+<div class="rbar">
+  <div class="wrap rbar-in">
+    <div class="rmain">
+      <label for="r">r</label>
+      <input type="range" id="r" min="2.5" max="4" step="0.001" value="3.5">
+      <output id="r-out" for="r">3.500</output>
+    </div>
+    <div class="chips" id="chips" aria-label="Valori di r tipici">
+      <button class="chip" type="button" data-r="2.8">2.8 · fermo</button>
+      <button class="chip" type="button" data-r="3.2">3.2 · due</button>
+      <button class="chip" type="button" data-r="3.5">3.5 · quattro</button>
+      <button class="chip" type="button" data-r="3.83">3.83 · tre</button>
+      <button class="chip" type="button" data-r="3.9">3.9 · caos</button>
+      <button class="chip" type="button" data-r="4">4 · caos pieno</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <section id="regola">
+    <h2>La regola</h2>
+    <p>Parti da un numero <code>x</code> fra 0 e 1. A ogni passo lo sostituisci con <code>r · x · (1 − x)</code>. Non c'è altro: <code>r</code> è l'unica manopola e decide tutto il carattere. Muovila qui sopra.</p>
+    <div class="card">
+      <h3>Passo dopo passo</h3>
+      <p class="sub">I valori che la mappa produce uno dopo l'altro, a regime (dopo l'assestamento iniziale).</p>
+      <div class="chart" id="c-serie" tabindex="0"></div>
+      <p class="seq" id="seq"></p>
+    </div>
+    <div class="card">
+      <h3>Quali valori visita, per ogni r</h3>
+      <p class="sub">Ogni colonna è un valore di r; i punti sono i valori su cui la mappa si posa. Tocca o trascina sul grafico per scegliere r.</p>
+      <div class="chart" id="c-bif"><canvas id="cv-bif" role="img" aria-label="Diagramma di biforcazione della mappa logistica: per r sotto 3 un solo valore, poi due, quattro, e oltre 3.57 una fascia caotica con finestre regolari"></canvas><svg class="over" id="ov-bif"></svg></div>
+      <dl class="read" id="read-r"></dl>
+    </div>
+    <p class="note">La mappa <strong>non riempie</strong> tutto lo spazio fra 0 e 1: lo spazio che occupa dipende da r, ed è il tratto blu spesso sul grafico. Questo conta per il minimo e il massimo, più sotto.</p>
+  </section>
+
+  <section id="avanzare">
+    <h2>Chi fa avanzare la mappa</h2>
+    <p>La mappa di per sé non sa niente del tempo: sa solo fare «un altro passo». Bisogna decidere <em>quando</em> lo fa. Ci sono tre modi, e danno risultati diversi appena cambia la densità dei grani.</p>
+    <div class="controls">
+      <div class="ctl"><span class="lab">modo</span>
+        <span class="seg" role="radiogroup" aria-label="Modo di avanzamento">
+          <input type="radio" name="mode" id="mode-run" value="run" checked><label for="mode-run">un passo per grano</label>
+          <input type="radio" name="mode" id="mode-clock" value="clock"><label for="mode-clock">a orologio</label>
+          <input type="radio" name="mode" id="mode-terr" value="terr"><label for="mode-terr">alla Di Scipio</label>
+        </span>
+      </div>
+      <div class="ctl"><label class="lab" for="dens">densità</label><input type="range" id="dens" min="4" max="30" step="1" value="10"><output id="dens-out" for="dens">10 g/s</output></div>
+      <div class="ctl"><span class="lab">r nel tempo</span>
+        <span class="seg" role="radiogroup" aria-label="r nel tempo">
+          <input type="radio" name="rmode" id="rm-fix" value="fix" checked><label for="rm-fix">fermo</label>
+          <input type="radio" name="rmode" id="rm-ramp" value="ramp"><label for="rm-ramp">sale da 3 a 4</label>
+        </span>
+      </div>
+      <div class="ctl" id="ctl-fc" hidden><label class="lab" for="fc">orologio</label><input type="range" id="fc" min="1" max="20" step="1" value="5"><output id="fc-out" for="fc">5 passi/s</output></div>
+      <div class="ctl" id="ctl-n" hidden><label class="lab" for="nit">passi n</label><input type="range" id="nit" min="1" max="14" step="1" value="7"><output id="nit-out" for="nit">7</output></div>
+    </div>
+    <div class="card">
+      <div class="key"><span><i class="k-dot"></i>valore letto da un grano</span><span><i class="k-line"></i><span id="key-guide">ordine dei passi</span></span></div>
+      <div class="pair">
+        <div><h3 id="t-modi-a">10 grani al secondo</h3><div class="chart" id="c-modi-a" tabindex="0"></div></div>
+        <div><h3 id="t-modi-b">20 grani al secondo</h3><div class="chart" id="c-modi-b" tabindex="0"></div></div>
+      </div>
+    </div>
+    <p class="note" id="modi-nota"></p>
+  </section>
+
+  <section id="grani">
+    <h2>Cosa cambia nei grani</h2>
+    <p>Lo stesso riquadro della partitura: il tempo in orizzontale, la posizione di lettura nel buffer in verticale, e ogni grano è un trattino lungo quanto la sua durata. Scegli quali parametri legge la mappa; il modo e la densità sono quelli della sezione sopra.</p>
+    <div class="controls">
+      <div class="checks" role="group" aria-label="Parametri collegati alla mappa">
+        <label><input type="checkbox" id="on-p" checked> puntatore</label>
+        <label><input type="checkbox" id="on-d" checked> durata</label>
+        <label><input type="checkbox" id="on-o"> onset</label>
+      </div>
+    </div>
+    <pre class="yaml" id="yaml"></pre>
+    <div class="card">
+      <div class="pair">
+        <div><h3>Oggi: retta e metronomo</h3><div class="chart" id="c-part-a" tabindex="0"></div></div>
+        <div><h3>Con la mappa</h3><div class="chart" id="c-part-b" tabindex="0"></div></div>
+      </div>
+      <dl class="read" id="read-g"></dl>
+    </div>
+    <p class="note">Quando più parametri leggono la stessa mappa si muovono insieme: un grano che legge in alto nel buffer è anche lungo, e se colleghi gli onset è anche seguito da una pausa più ampia. Con gli onset sulla mappa la densità non la scrivi più: la leggi qui sopra, a cose fatte.</p>
+  </section>
+
+  <section id="minmax">
+    <h2>Minimo e massimo</h2>
+    <p>Esempio sulla durata del grano: l'espressione dà una frazione fra 0 e 1, e la frazione viene stesa fra un minimo e un massimo. Il grafico dice quanto spesso la durata cade in ogni punto dell'intervallo, per l'r scelto in alto.</p>
+    <div class="controls">
+      <div class="ctl"><label class="lab" for="expr">espressione</label>
+        <select id="expr"><option value="m1">m1</option><option value="m1**2">m1**2</option><option value="m1**0.5">m1**0.5</option><option value="1 - m1">1 - m1</option></select></div>
+      <div class="ctl"><label class="lab" for="lo">min (ms)</label><input type="number" id="lo" value="20" min="1" max="2000" step="1"></div>
+      <div class="ctl"><label class="lab" for="hi">max (ms)</label><input type="number" id="hi" value="100" min="2" max="5000" step="1"></div>
+    </div>
+    <div class="card">
+      <h3>Dove cadono le durate</h3>
+      <p class="sub">Quota dei grani per ogni fascia di durata, su 4000 passi.</p>
+      <div class="chart" id="c-isto" tabindex="0"></div>
+      <dl class="read" id="read-m"></dl>
+    </div>
+    <p class="note">Minimo e massimo dicono <strong>dove i valori possono cadere</strong>, non come riempiono lo spazio. In un ciclo di due valori usi due sole durate, qualunque intervallo tu scriva; nel caos le durate si addensano verso i bordi.</p>
+
+    <h3>Se l'espressione esce dall'intervallo</h3>
+    <p>Un'espressione come <code>1.5*m1</code> supera 1. Ci sono tre modi di riportarla dentro, e suonano diversi.</p>
+    <div class="controls">
+      <div class="ctl"><label class="lab" for="k">moltiplica per</label><input type="range" id="k" min="1" max="2.5" step="0.05" value="1.5"><output id="k-out" for="k">1.50</output></div>
+      <div class="key"><span><i class="k-line"></i>espressione così com'è</span><span><i class="k-ser"></i>dopo il bordo</span></div>
+    </div>
+    <div class="trio">
+      <div class="card"><h3>clip</h3><p class="sub">si appiattisce sul massimo</p><div class="chart" id="c-clip" tabindex="0"></div></div>
+      <div class="card"><h3>fold</h3><p class="sub">rimbalza indietro</p><div class="chart" id="c-fold" tabindex="0"></div></div>
+      <div class="card"><h3>wrap</h3><p class="sub">rientra dal minimo</p><div class="chart" id="c-wrap" tabindex="0"></div></div>
+    </div>
+  </section>
+
+  <section id="tabella">
+    <h2>I regimi in numeri</h2>
+    <div class="card"><div class="tablebox"><table id="tab"><thead><tr><th>r</th><th>comportamento</th><th>minimo</th><th>massimo</th><th>media</th><th>otto passi di fila</th></tr></thead><tbody></tbody></table></div></div>
+    <p class="foot">I grafici sono calcolati in questa pagina con le formule scritte accanto: non sono render del motore. I nomi <code>position</code> e <code>iot</code> sono provvisori. «Alla Di Scipio» applica alla logistica il modo d'uso del suo articolo del 1999: a ogni istante si riparte da x0 = 0.1 e si fanno n passi. Il seguito, con gli onset per primi e la densità come risultato: <a href="https://claude.ai/artifact/XAuWGWr3Ski9dW3tLF9N32">Onset dalla mappa</a>.</p>
+  </section>
+</main>
+<div id="tip" hidden></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const f = (r, x) => r * x * (1 - x);
+  const T = 6;
+  const S = { r: 3.5, mode: 'run', D: 10, rmode: 'fix', n: 7, fc: 5, onP: true, onD: true, onO: false, expr: 'm1', lo: 20, hi: 100, k: 1.5 };
+  const EXPR = { 'm1': m => m, 'm1**2': m => m * m, 'm1**0.5': m => Math.sqrt(m), '1 - m1': m => 1 - m };
+  const q = v => Math.round(v * 10) / 10;
+  const n3 = v => v.toFixed(3);
+
+  function settle(r, burn, x) { x = x === undefined ? 0.3 : x; for (let i = 0; i < burn; i++) x = f(r, x); return x; }
+  function orbit(r, n, x) { const o = []; for (let i = 0; i < n; i++) { x = f(r, x); o.push(x); } return o; }
+  function regime(r) {
+    const o = orbit(r, 512, settle(r, 4000));
+    let min = Infinity, max = -Infinity, sum = 0;
+    for (const v of o) { if (v < min) min = v; if (v > max) max = v; sum += v; }
+    let period = 0;
+    for (let p = 1; p <= 64 && !period; p++) {
+      let ok = true;
+      for (let i = 0; i < 128; i++) if (Math.abs(o[i + p] - o[i]) > 1e-5) { ok = false; break; }
+      if (ok) period = p;
+    }
+    return { min, max, mean: sum / o.length, period, head: o.slice(0, 8) };
+  }
+  const behave = p => p === 1 ? 'si ferma su un valore' : p > 1 ? 'ciclo di ' + p + ' valori' : 'caotico, non si ripete';
+  const rAt = t => S.rmode === 'ramp' ? 3 + Math.min(1, Math.max(0, t / T)) : S.r;
+
+  function reader() {
+    if (S.mode === 'run') { let x = settle(rAt(0), 600); return { at: t => (x = f(rAt(t), x)) }; }
+    if (S.mode === 'clock') {
+      const st = []; let x = settle(rAt(0), 600);
+      const N = Math.ceil(T * S.fc) + 2;
+      for (let j = 0; j < N; j++) { x = f(rAt(j / S.fc), x); st.push(x); }
+      return { at: t => st[Math.min(N - 1, Math.floor(t * S.fc + 1e-9))], steps: st };
+    }
+    return { at: t => { let x = 0.1; const r = rAt(t); for (let i = 0; i < S.n; i++) x = f(r, x); return x; } };
+  }
+
+  /* ---------- telaio dei grafici ---------- */
+  function plot(host, o) {
+    const w = Math.max(220, Math.floor(host.clientWidth)), h = o.h;
+    const m = Object.assign({ l: 44, r: 14, t: 22, b: 36 }, o.m || {});
+    const X = v => m.l + (v - o.xd[0]) / (o.xd[1] - o.xd[0]) * (w - m.l - m.r);
+    const Y = v => h - m.b - (v - o.yd[0]) / (o.yd[1] - o.yd[0]) * (h - m.t - m.b);
+    let s = '';
+    for (const t of o.yt) s += '<line class="grid" x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + q(Y(t)) + '" y2="' + q(Y(t)) + '"/><text x="' + (m.l - 7) + '" y="' + q(Y(t)) + '" dy="0.32em" text-anchor="end">' + (o.yf ? o.yf(t) : t) + '</text>';
+    for (const t of o.xt) s += '<text x="' + q(X(t)) + '" y="' + (h - m.b + 16) + '" text-anchor="middle">' + (o.xf ? o.xf(t) : t) + '</text>';
+    s += '<line class="axis" x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '"/>';
+    if (o.xl) s += '<text class="alab" x="' + (w - m.r) + '" y="' + (h - 4) + '" text-anchor="end">' + o.xl + '</text>';
+    if (o.yl) s += '<text class="alab" x="0" y="11">' + o.yl + '</text>';
+    return { w, h, m, X, Y, s };
+  }
+  function mount(host, p, body, pts, label, near) {
+    host.innerHTML = '<svg width="' + p.w + '" height="' + p.h + '" viewBox="0 0 ' + p.w + ' ' + p.h + '" role="img">' + p.s + body +
+      '<line class="xh" y1="' + p.m.t + '" y2="' + (p.h - p.m.b) + '" x1="-9" x2="-9"/><circle class="hl" r="6.5" cx="-9" cy="-9"/></svg>';
+    host.firstChild.setAttribute('aria-label', label);
+    host._pts = pts; host._near = near || 'x'; host._i = -1;
+    if (!host._wired) wire(host);
+  }
+  const tip = $('tip');
+  function showTip(host, i, cx, cy) {
+    const pt = host._pts[i]; if (!pt) return;
+    const svg = host.firstChild, rect = svg.getBoundingClientRect();
+    const xh = svg.querySelector('.xh'), hl = svg.querySelector('.hl');
+    if (host._near === 'x') { xh.setAttribute('x1', pt.x); xh.setAttribute('x2', pt.x); }
+    hl.setAttribute('cx', pt.x); hl.setAttribute('cy', pt.y);
+    tip.textContent = '';
+    const b = document.createElement('b'); b.textContent = pt.v; tip.appendChild(b);
+    const sp = document.createElement('span'); sp.textContent = pt.s; tip.appendChild(sp);
+    tip.hidden = false;
+    const px = cx === undefined ? rect.left + pt.x : cx, py = cy === undefined ? rect.top + pt.y : cy;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = px + 14; if (left + tw > window.innerWidth - 8) left = px - tw - 14;
+    let top = py - th - 10; if (top < 8) top = py + 16;
+    tip.style.left = Math.max(8, left) + 'px'; tip.style.top = top + 'px';
+    host._i = i;
+  }
+  function hideTip(host) {
+    tip.hidden = true;
+    const svg = host.firstChild; if (!svg || !svg.querySelector) return;
+    const xh = svg.querySelector('.xh'), hl = svg.querySelector('.hl');
+    if (xh) { xh.setAttribute('x1', -9); xh.setAttribute('x2', -9); }
+    if (hl) { hl.setAttribute('cx', -9); hl.setAttribute('cy', -9); }
+  }
+  function wire(host) {
+    host._wired = true;
+    host.addEventListener('pointermove', e => {
+      const pts = host._pts; if (!pts || !pts.length) return;
+      const rect = host.firstChild.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const d = host._near === 'x' ? Math.abs(pts[i].x - px) : Math.hypot(pts[i].x - px, (pts[i].y - py) * 1.6);
+        if (d < bd) { bd = d; best = i; }
+      }
+      showTip(host, best, e.clientX, e.clientY);
+    });
+    host.addEventListener('pointerleave', () => hideTip(host));
+    host.addEventListener('keydown', e => {
+      const pts = host._pts; if (!pts || !pts.length) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const i = Math.max(0, Math.min(pts.length - 1, (host._i < 0 ? 0 : host._i) + (e.key === 'ArrowRight' ? 1 : -1)));
+        showTip(host, i);
+      }
+    });
+    host.addEventListener('focus', () => { if (host._pts && host._pts.length && host.matches(':focus-visible')) showTip(host, Math.max(0, host._i)); });
+    host.addEventListener('blur', () => hideTip(host));
+  }
+  const poly = (cls, pts) => '<polyline class="' + cls + '" points="' + pts.map(p => q(p[0]) + ',' + q(p[1])).join(' ') + '"/>';
+
+  /* ---------- 1. serie ---------- */
+  function drawSerie() {
+    const host = $('c-serie');
+    const N = Math.max(24, Math.min(60, Math.floor((host.clientWidth - 60) / 11)));
+    const o = orbit(S.r, N, settle(S.r, 4000));
+    const xt = []; for (let i = 0; i <= N; i += 10) xt.push(i);
+    const p = plot(host, { h: 230, xd: [0, N + 1], yd: [0, 1], xt, yt: [0, 0.25, 0.5, 0.75, 1], xl: 'passo', yl: 'valore x' });
+    const xy = o.map((v, i) => [p.X(i + 1), p.Y(v)]);
+    let body = poly('ln soft', xy);
+    for (const c of xy) body += '<circle class="dot" r="4" cx="' + q(c[0]) + '" cy="' + q(c[1]) + '"/>';
+    mount(host, p, body, o.map((v, i) => ({ x: q(xy[i][0]), y: q(xy[i][1]), v: n3(v), s: 'passo ' + (i + 1) })), 'Valori successivi della mappa per r = ' + n3(S.r));
+    $('seq').textContent = 'Otto passi di fila: ' + o.slice(0, 8).map(n3).join('  ');
+  }
+
+  /* ---------- 1. biforcazione ---------- */
+  const BM = { l: 44, r: 14, t: 22, b: 36 }, BH = 300;
+  let bifW = 0;
+  const bx = (v, w) => BM.l + (v - 2.5) / 1.5 * (w - BM.l - BM.r);
+  const by = v => BH - BM.b - v * (BH - BM.t - BM.b);
+  function drawBif() {
+    const host = $('c-bif'), cv = $('cv-bif');
+    const w = Math.max(220, Math.floor(host.clientWidth)), dpr = Math.min(2, window.devicePixelRatio || 1);
+    bifW = w;
+    cv.width = w * dpr; cv.height = BH * dpr; cv.style.width = w + 'px'; cv.style.height = BH + 'px';
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, BH);
+    const cs = getComputedStyle(document.documentElement), col = n => cs.getPropertyValue(n).trim();
+    g.font = '12px ' + (cs.getPropertyValue('--font').trim() || 'sans-serif');
+    g.lineWidth = 1; g.textBaseline = 'middle';
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      g.strokeStyle = col('--grid'); g.beginPath(); g.moveTo(BM.l, Math.round(by(t)) + .5); g.lineTo(w - BM.r, Math.round(by(t)) + .5); g.stroke();
+      g.fillStyle = col('--muted'); g.textAlign = 'right'; g.fillText(String(t), BM.l - 7, by(t));
+    }
+    g.strokeStyle = col('--axis'); g.beginPath(); g.moveTo(BM.l, BH - BM.b + .5); g.lineTo(w - BM.r, BH - BM.b + .5); g.stroke();
+    g.textAlign = 'center'; g.fillStyle = col('--muted');
+    for (const t of [2.5, 3, 3.5, 4]) g.fillText(t.toFixed(1), bx(t, w), BH - BM.b + 16);
+    g.fillStyle = col('--ink-2'); g.textAlign = 'right'; g.fillText('r', w - BM.r, BH - 6);
+    g.textAlign = 'left'; g.fillText('valori visitati', 0, 9);
+    g.fillStyle = col('--ink-2'); g.globalAlpha = .3;
+    const cols = Math.floor((w - BM.l - BM.r) * dpr), px = 1 / dpr;
+    for (let c = 0; c <= cols; c++) {
+      const r = 2.5 + 1.5 * c / cols; let x = settle(r, 300);
+      const X = BM.l + c / dpr;
+      for (let i = 0; i < 140; i++) { x = f(r, x); g.fillRect(X, by(x), px, px); }
+    }
+    g.globalAlpha = 1;
+    g.fillStyle = col('--ink-2'); g.textAlign = 'center';
+    const labs = w > 560 ? [[2.75, 'un valore'], [3.22, 'due'], [3.5, 'quattro'], [3.7, 'caos'], [3.84, 'tre']] : [[2.75, 'un valore'], [3.22, 'due'], [3.72, 'caos']];
+    for (const l of labs) g.fillText(l[1], bx(l[0], w), BM.t + 2);
+  }
+  function drawMark(reg) {
+    const w = bifW, ov = $('ov-bif');
+    ov.setAttribute('width', w); ov.setAttribute('height', BH); ov.setAttribute('viewBox', '0 0 ' + w + ' ' + BH);
+    const x = q(bx(S.r, w));
+    const y1 = by(reg.max), y2 = by(reg.min);
+    ov.innerHTML = '<line class="mark" x1="' + x + '" x2="' + x + '" y1="' + (BM.t + 12) + '" y2="' + (BH - BM.b) + '"/>' +
+      '<line class="span" x1="' + x + '" x2="' + x + '" y1="' + q(y1) + '" y2="' + q(Math.max(y2, y1 + 0.01)) + '"/>';
+  }
+  function bifPointer(e, set) {
+    const rect = $('cv-bif').getBoundingClientRect();
+    const r = Math.max(2.5, Math.min(4, 2.5 + (e.clientX - rect.left - BM.l) / (bifW - BM.l - BM.r) * 1.5));
+    if (set) { setR(r); return; }
+    const reg = regime(r);
+    tip.textContent = '';
+    const b = document.createElement('b'); b.textContent = 'r = ' + n3(r); tip.appendChild(b);
+    const sp = document.createElement('span'); sp.textContent = behave(reg.period) + ' · da ' + n3(reg.min) + ' a ' + n3(reg.max); tip.appendChild(sp);
+    tip.hidden = false;
+    const tw = tip.offsetWidth; let left = e.clientX + 14; if (left + tw > window.innerWidth - 8) left = e.clientX - tw - 14;
+    tip.style.left = Math.max(8, left) + 'px'; tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 10) + 'px';
+  }
+
+  /* ---------- 2. tre modi ---------- */
+  function drawModi(hostId, d) {
+    const host = $(hostId), rd = reader();
+    const p = plot(host, { h: 172, xd: [0, T], yd: [0, 1], xt: [0, 1, 2, 3, 4, 5, 6], yt: [0, 0.5, 1], xl: 'secondi', yl: 'valore' });
+    const g = []; for (let k = 0; k < T * d; k++) { const t = k / d; g.push([t, rd.at(t)]); }
+    let body = '';
+    if (S.mode === 'run') body += poly('guide', g.map(c => [p.X(c[0]), p.Y(c[1])]));
+    else if (S.mode === 'clock') {
+      const st = rd.steps, pts = [];
+      for (let j = 0; j < st.length && j / S.fc < T; j++) { pts.push([p.X(j / S.fc), p.Y(st[j])]); pts.push([p.X(Math.min(T, (j + 1) / S.fc)), p.Y(st[j])]); }
+      body += poly('guide', pts);
+    } else {
+      const pts = [], M = Math.max(300, p.w); for (let i = 0; i <= M; i++) { const t = T * i / M; pts.push([p.X(t), p.Y(rd.at(t))]); }
+      body += poly('guide', pts);
+    }
+    const gap = (p.w - p.m.l - p.m.r) / (T * d), rad = gap >= 9 ? 4 : gap >= 5 ? 3 : 2.5;
+    const pts = [];
+    g.forEach((c, k) => {
+      const x = q(p.X(c[0])), y = q(p.Y(c[1]));
+      body += '<circle class="dot' + (rad < 4 ? ' small' : '') + '" r="' + rad + '" cx="' + x + '" cy="' + y + '"/>';
+      pts.push({ x, y, v: n3(c[1]), s: 'grano ' + (k + 1) + ' · ' + c[0].toFixed(2) + ' s' });
+    });
+    mount(host, p, body, pts, 'Valori letti dai grani a ' + d + ' grani al secondo');
+  }
+  const NOTE = {
+    run: 'La mappa non ha un orologio: fa un passo ogni volta che nasce un grano. A densità doppia percorre la stessa sequenza in metà tempo, quindi il disegno nel tempo si stringe. Non è campionata nel tempo: è contata sui grani.',
+    clock: 'La mappa fa un passo a intervalli fissi e tiene il valore fino al passo successivo. La densità non cambia il disegno nel tempo: cambia solo quanti grani leggono lo stesso valore.',
+    terr: 'Qui non c’è una sequenza che prosegue: a ogni istante si riparte da x0 e si fanno n passi con l’r di quell’istante. Il risultato è una curva nel tempo, e la densità decide solo quanto fitta la campioni. Con n piccolo è liscia, con n grande si avvicina al grafico della prima sezione.'
+  };
+
+  /* ---------- 3. partitura ---------- */
+  function grainsToday() { const g = []; for (let k = 0; k < T * S.D; k++) { const t = k / S.D; g.push({ t, p: (t / 2) % 1, d: 0.05 }); } return g; }
+  function grainsMap() {
+    const rd = reader(), g = []; let t = 0;
+    while (t < T && g.length < 3000) {
+      const m = rd.at(t);
+      g.push({ t, p: S.onP ? m : (t / 2) % 1, d: S.onD ? 0.02 + 0.08 * m : 0.05, m });
+      t += S.onO ? 0.02 + 0.18 * m : 1 / S.D;
+    }
+    return g;
+  }
+  function drawPart(hostId, g, cls, label) {
+    const host = $(hostId);
+    const p = plot(host, { h: 190, xd: [0, T], yd: [0, 1], xt: [0, 1, 2, 3, 4, 5, 6], yt: [0, 0.5, 1], xl: 'secondi', yl: 'posizione nel buffer' });
+    let body = ''; const pts = [];
+    for (const a of g) {
+      const x = q(p.X(a.t)), y = q(p.Y(a.p)), wd = Math.max(1.5, q(p.X(Math.min(T, a.t + a.d)) - p.X(a.t)));
+      body += '<rect class="bar' + cls + '" x="' + x + '" y="' + q(y - 2) + '" width="' + wd + '" height="4" rx="2" opacity=".85"/>';
+      pts.push({ x, y, v: 'posizione ' + a.p.toFixed(2), s: 'onset ' + a.t.toFixed(2) + ' s · durata ' + Math.round(a.d * 1000) + ' ms' });
+    }
+    mount(host, p, body, pts, label, 'xy');
+  }
+  function drawGrani() {
+    const today = grainsToday(), map = grainsMap();
+    drawPart('c-part-a', today, ' ref', 'Grani di oggi: posizione che avanza in linea retta, onset regolari');
+    drawPart('c-part-b', map, '', 'Grani con i parametri collegati alla mappa');
+    const ds = map.map(a => a.d * 1000);
+    const rows = [['grani in 6 s', String(map.length) + ' (oggi ' + today.length + ')'], ['densità', (map.length / T).toFixed(1) + ' g/s' + (S.onO ? ' · emersa' : ' · scritta')], ['durata', Math.round(Math.min.apply(null, ds)) + '–' + Math.round(Math.max.apply(null, ds)) + ' ms']];
+    fillRead('read-g', rows);
+    const y = [];
+    if (S.onP) y.push('pointer:', '  position: (m1)              # al posto di speed_ratio');
+    if (S.onD) y.push('grain:', '  duration: (0.02 + 0.08*m1)  # da 20 a 100 ms');
+    if (S.onO) y.push('iot: (0.02 + 0.18*m1)         # al posto di density: da 20 a 200 ms fra un grano e l’altro');
+    $('yaml').textContent = y.length ? y.join('\n') : '# nessun parametro collegato alla mappa: è lo stream di oggi';
+  }
+  function fillRead(id, rows) {
+    const dl = $(id); dl.textContent = '';
+    for (const r of rows) { const d = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = r[0]; dd.textContent = r[1]; d.appendChild(dt); d.appendChild(dd); dl.appendChild(d); }
+  }
+
+  /* ---------- 4. minimo e massimo ---------- */
+  const EDGE = {
+    clip: e => Math.min(1, Math.max(0, e)),
+    fold: e => { const t = ((e % 2) + 2) % 2; return t > 1 ? 2 - t : t; },
+    wrap: e => ((e % 1) + 1) % 1
+  };
+  function mask() { let lo = +S.lo, hi = +S.hi; if (!(lo > 0)) lo = 1; if (!(hi > lo)) hi = lo + 1; return [lo, hi]; }
+  function drawIsto() {
+    const host = $('c-isto'), ex = EXPR[S.expr], lh = mask(), lo = lh[0], hi = lh[1];
+    const o = orbit(S.r, 4000, settle(S.r, 4000)), B = 40, bins = new Array(B).fill(0);
+    let vmin = Infinity, vmax = -Infinity;
+    for (const m of o) { const u = Math.min(1, Math.max(0, ex(m))); const v = lo + (hi - lo) * u; if (v < vmin) vmin = v; if (v > vmax) vmax = v; bins[Math.min(B - 1, Math.floor(u * B))]++; }
+    const top = Math.max.apply(null, bins) / o.length * 100;
+    const ymax = top > 50 ? 100 : top > 25 ? 50 : top > 10 ? 25 : 10;
+    const xt = [0, 0.25, 0.5, 0.75, 1].map(u => lo + (hi - lo) * u);
+    const p = plot(host, { h: 220, xd: [lo, hi], yd: [0, ymax], xt, xf: v => Math.round(v), yt: [0, ymax / 2, ymax], yf: v => v + '%', xl: 'durata, ms', yl: 'quota dei grani' });
+    const slot = (p.w - p.m.l - p.m.r) / B, bw = Math.max(2, Math.min(24, slot - 2));
+    let body = ''; const pts = [];
+    bins.forEach((c, i) => {
+      if (!c) return;
+      const pc = c / o.length * 100, cx = p.m.l + slot * (i + .5), y = p.Y(pc), y0 = p.h - p.m.b, hgt = Math.max(1.5, y0 - y), rr = Math.min(4, bw / 2, hgt);
+      const x0 = q(cx - bw / 2), x1 = q(cx + bw / 2), yt = q(y0 - hgt);
+      body += '<path class="bar" d="M' + x0 + ',' + y0 + 'V' + q(yt + rr) + 'Q' + x0 + ',' + yt + ' ' + q(cx - bw / 2 + rr) + ',' + yt + 'H' + q(cx + bw / 2 - rr) + 'Q' + x1 + ',' + yt + ' ' + x1 + ',' + q(yt + rr) + 'V' + y0 + 'Z"/>';
+      const a = lo + (hi - lo) * i / B, b2 = lo + (hi - lo) * (i + 1) / B;
+      pts.push({ x: q(cx), y: yt, v: pc.toFixed(1) + '% dei grani', s: 'fra ' + a.toFixed(1) + ' e ' + b2.toFixed(1) + ' ms' });
+    });
+    mount(host, p, body, pts, 'Distribuzione delle durate fra minimo e massimo per r = ' + n3(S.r));
+    const used = bins.filter(c => c > 0).length;
+    fillRead('read-m', [['durate usate', vmin.toFixed(1) + '–' + vmax.toFixed(1) + ' ms'], ['intervallo scritto', lo + '–' + hi + ' ms'], ['fasce occupate', used + ' su ' + B], ['espressione', '(' + S.expr + ')']]);
+  }
+  function drawEdge(hostId, name) {
+    const host = $(hostId), ex = EXPR[S.expr], lh = mask(), lo = lh[0], hi = lh[1], N = 48;
+    const o = orbit(S.r, N, settle(S.r, 4000));
+    const top = lo + (hi - lo) * Math.max(1, S.k);
+    const p = plot(host, { h: 180, xd: [0, N + 1], yd: [lo, top], xt: [0, 16, 32, 48], yt: S.k > 1.12 ? [lo, hi, top] : [lo, hi], yf: v => Math.round(v), xl: 'passo', yl: 'ms', m: { l: 40, r: 10 } });
+    let body = '';
+    if (top > hi) body += '<rect class="outzone" x="' + p.m.l + '" y="' + q(p.Y(top)) + '" width="' + (p.w - p.m.l - p.m.r) + '" height="' + q(p.Y(hi) - p.Y(top)) + '"/>';
+    const raw = [], cut = [], pts = [];
+    o.forEach((m, i) => {
+      const e = S.k * ex(m), u = EDGE[name](e), x = p.X(i + 1);
+      raw.push([x, p.Y(lo + (hi - lo) * e)]); cut.push([x, p.Y(lo + (hi - lo) * u)]);
+      pts.push({ x: q(x), y: q(p.Y(lo + (hi - lo) * u)), v: (lo + (hi - lo) * u).toFixed(1) + ' ms', s: 'passo ' + (i + 1) + ' · prima del bordo ' + (lo + (hi - lo) * e).toFixed(1) + ' ms' });
+    });
+    body += poly('guide', raw) + poly('ln', cut);
+    mount(host, p, body, pts, 'Durate con bordo ' + name);
+  }
+
+  /* ---------- tabella ---------- */
+  function drawTab() {
+    const tb = $('tab').tBodies[0]; tb.textContent = '';
+    for (const r of [2.8, 3.2, 3.5, 3.56, 3.7, 3.83, 3.9, 4]) {
+      const g = regime(r), tr = document.createElement('tr');
+      const cells = [[r.toFixed(2), 1], [behave(g.period), 0], [n3(g.min), 1], [n3(g.max), 1], [n3(g.mean), 1], [g.head.map(v => v.toFixed(2)).join(' '), 1]];
+      for (const c of cells) { const td = document.createElement('td'); td.textContent = c[0]; if (c[1]) td.className = 'num'; tr.appendChild(td); }
+      tb.appendChild(tr);
+    }
+  }
+
+  /* ---------- regia ---------- */
+  function renderAll() {
+    const reg = regime(S.r);
+    $('r-out').textContent = n3(S.r);
+    document.querySelectorAll('#chips .chip').forEach(c => c.setAttribute('aria-pressed', String(Math.abs(+c.dataset.r - S.r) < 0.0005)));
+    drawSerie(); drawMark(reg);
+    fillRead('read-r', [['comportamento', behave(reg.period)], ['minimo', n3(reg.min)], ['massimo', n3(reg.max)], ['media', n3(reg.mean)]]);
+    $('dens-out').textContent = S.D + ' g/s'; $('fc-out').textContent = S.fc + ' passi/s'; $('nit-out').textContent = String(S.n); $('k-out').textContent = S.k.toFixed(2);
+    $('ctl-fc').hidden = S.mode !== 'clock'; $('ctl-n').hidden = S.mode !== 'terr';
+    $('t-modi-a').textContent = S.D + ' grani al secondo'; $('t-modi-b').textContent = (2 * S.D) + ' grani al secondo';
+    $('key-guide').textContent = S.mode === 'run' ? 'ordine dei passi' : S.mode === 'clock' ? 'la mappa, tenuta fra un passo e l’altro' : 'la curva nel tempo';
+    drawModi('c-modi-a', S.D); drawModi('c-modi-b', 2 * S.D);
+    $('modi-nota').textContent = NOTE[S.mode] + (S.mode === 'terr' && S.rmode === 'fix' ? ' Con r fermo la curva è piatta: in questo modo è il movimento di r a fare il disegno. Scegli «sale da 3 a 4».' : '');
+    drawGrani(); drawIsto(); drawEdge('c-clip', 'clip'); drawEdge('c-fold', 'fold'); drawEdge('c-wrap', 'wrap');
+  }
+  function setR(r) { S.r = Math.round(r * 1000) / 1000; $('r').value = S.r; renderAll(); }
+
+  $('r').addEventListener('input', e => setR(+e.target.value));
+  $('chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) setR(+b.dataset.r); });
+  document.querySelectorAll('input[name=mode]').forEach(i => i.addEventListener('change', e => { S.mode = e.target.value; renderAll(); }));
+  document.querySelectorAll('input[name=rmode]').forEach(i => i.addEventListener('change', e => { S.rmode = e.target.value; renderAll(); }));
+  const bind = (id, key, num) => $(id).addEventListener('input', e => { S[key] = num ? +e.target.value : e.target.value; renderAll(); });
+  bind('dens', 'D', 1); bind('fc', 'fc', 1); bind('nit', 'n', 1); bind('k', 'k', 1); bind('expr', 'expr', 0); bind('lo', 'lo', 1); bind('hi', 'hi', 1);
+  [['on-p', 'onP'], ['on-d', 'onD'], ['on-o', 'onO']].forEach(a => $(a[0]).addEventListener('change', e => { S[a[1]] = e.target.checked; renderAll(); }));
+  const bif = $('c-bif');
+  bif.addEventListener('pointerdown', e => { bif.setPointerCapture(e.pointerId); bifPointer(e, true); });
+  bif.addEventListener('pointermove', e => { if (e.buttons & 1) bifPointer(e, true); else bifPointer(e, false); });
+  bif.addEventListener('pointerleave', () => { tip.hidden = true; });
+
+  function full() { drawBif(); renderAll(); }
+  let rt = 0, lastW = 0;
+  new ResizeObserver(() => { const w = $('c-serie').clientWidth; if (w === lastW) return; lastW = w; clearTimeout(rt); rt = setTimeout(full, 60); }).observe($('c-serie'));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawBif);
+  new MutationObserver(drawBif).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawBif);
+  drawTab(); lastW = $('c-serie').clientWidth; full();
+})();
+</script>
+</body>
+</html>

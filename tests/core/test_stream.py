@@ -926,22 +926,33 @@ class TestStreamRepr:
         assert f'grains={len(flat_grains(s))}' in r
 
     def test_repr_fill_factor_mode(self, stream_factory):
-        """repr mostra mode=fill_factor se fill_factor presente."""
+        """repr mostra il modo di densita' che il controller dichiara."""
         s = stream_factory()
-        s._density.fill_factor = 2.0
+        s._density.mode = 'fill_factor'
 
         r = repr(s)
 
-        assert 'fill_factor' in r
+        assert 'mode=fill_factor' in r
 
     def test_repr_density_mode(self, stream_factory):
-        """repr mostra mode=density se fill_factor e' None."""
+        """repr mostra mode=density in modalita' density."""
         s = stream_factory()
-        s._density.fill_factor = None
+        s._density.mode = 'density'
 
         r = repr(s)
 
-        assert 'density' in r
+        assert 'mode=density' in r
+
+    def test_repr_iot_mode(self, stream_factory):
+        """repr mostra mode=iot con `grain.iot` (issue #311): prima il modo
+        era dedotto da `fill_factor is not None`, e un terzo modo sarebbe
+        uscito come `density`."""
+        s = stream_factory()
+        s._density.mode = 'iot'
+
+        r = repr(s)
+
+        assert 'mode=iot' in r
 
 
 # =============================================================================

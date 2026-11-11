@@ -16,6 +16,12 @@ import math
 from typing import Union, Optional, List, Any
 from pge.parameters.parameter import Parameter, ParamInput
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
+from pge.expressions.expression import (
+    Expression,
+    ExpressionSource,
+    compile_expression,
+    outer_parenthesized,
+)
 from pge.parameters.parameter_definitions import (
     RANGE_UNIT_DEFAULT,
     get_parameter_definition,
@@ -31,6 +37,7 @@ from pge.shared.distribution_strategy import (
 )
 from pge.shared.exceptions import (
     ConfigError,
+    ExpressionError,
     InvalidFieldValueError,
     InvalidParameterError,
     ParameterBoundError,
@@ -121,6 +128,11 @@ class GranularParser:
         # Seed effettivo del run (issue #154): deriva l'RNG per-parametro.
         # getattr difensivo: i config parziali dei test possono non averlo.
         self.seed = getattr(config, 'seed', None)
+        # Le mappe dello stream (issue #308): danno a un'espressione i nomi
+        # che puo' leggere e, a ogni grano, i loro valori. getattr difensivo
+        # come per `seed`; un config parziale dei test ha qui un Mock, e
+        # un'espressione senza mappe legge il solo tempo.
+        self._map_set = getattr(config, 'map_set', None)
 
     def parse_parameter(
         self,
@@ -238,8 +250,8 @@ class GranularParser:
         field: Optional[str] = None,
     ) -> Optional[ParamInput]:
         """
-        Analizza un input grezzo e restituisce float, Envelope o None.
-        Gestisce la logica di scaling temporale per gli Envelope.
+        Analizza un input grezzo e restituisce float, Envelope, Expression o
+        None. Gestisce la logica di scaling temporale per gli Envelope.
 
         `field` e' il path YAML dell'input, che gli errori di forma
         dell'envelope nominano (issue #211); None se il chiamante non lo sa.
@@ -264,14 +276,54 @@ class GranularParser:
             except ConfigError as err:
                 err.stream_id = self.stream_id
                 raise
+        # Caso 3: Espressione (issue #308). Arriva gia' riconosciuta: la
+        # impacchetta chi legge lo YAML, e solo per i campi in cui vale. Una
+        # stringa nuda resta il caso d'errore qui sotto.
+        if isinstance(raw_data, ExpressionSource):
+            return self._compile_expression(raw_data)
+
         # Caso Errore: Tipo non supportato
+        hint = "atteso numero, lista di punti, o dict envelope"
+        if isinstance(raw_data, str):
+            from pge.expressions.fields import EXPRESSION_FIELDS
+            hint += ("; un'espressione fra parentesi vale su: "
+                     + ", ".join(EXPRESSION_FIELDS))
         err = InvalidParameterError(
             param_name=context_info,
             value=raw_data,
-            hint="atteso numero, lista di punti, o dict envelope",
+            hint=hint,
         )
         err.stream_id = self.stream_id
         raise err
+
+    def _compile_expression(self, source: ExpressionSource) -> Expression:
+        """Compila un'espressione sui nomi che lo stream le mette a
+        disposizione: le sue mappe, e `t`.
+
+        Qui non si valida nessun valore: di un'espressione al parse si sa
+        solo che e' scritta bene. I bounds li applica il clamp del Parameter
+        a ogni grano, con la sua riga sul clip log.
+        """
+        from pge.maps.map_set import MapSet
+
+        mappe = self._map_set if isinstance(self._map_set, MapSet) else MapSet()
+        try:
+            # Prima la sintassi: una parentesi che manca e' un errore piu'
+            # preciso di «si scrive fra parentesi», e copre lo stesso testo.
+            compilata = compile_expression(
+                source.text, mappe.variables, field=source.field)
+            if not outer_parenthesized(source.text):
+                raise ExpressionError(
+                    source.text,
+                    "un'espressione si scrive fra parentesi",
+                    field=source.field,
+                    hint=f"es. ({source.text.strip()})",
+                )
+        except ExpressionError as err:
+            err.stream_id = self.stream_id
+            raise
+        return Expression(compilata, reader=mappe.environment,
+                          scale=source.scale)
 
     def _validated_anchor(self, anchor: str) -> str:
         """Valida `range_anchor` attribuendo l'errore allo stream."""
@@ -369,6 +421,11 @@ class GranularParser:
         if self.range_anchor != ANCHOR_MIN:
             return
         if mod_range is None or bounds.max_val is None:
+            return
+
+        # Di un'espressione (issue #308) al parse non si conosce nessun
+        # valore: come per i due envelope, resta il safety clamp.
+        if isinstance(value, Expression) or isinstance(mod_range, Expression):
             return
 
         value_is_env = isinstance(value, Envelope)
@@ -548,4 +605,9 @@ class GranularParser:
             
             return param
         
+        # Caso 3: Espressione (issue #308). I suoi valori nascono grano per
+        # grano: un envelope fuori bounds e' un errore al parse, lei no.
+        if isinstance(param, Expression):
+            return param
+
         raise TypeError(f"Cannot validate type {type(param)}")

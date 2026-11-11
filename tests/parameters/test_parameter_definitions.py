@@ -45,6 +45,7 @@ EXPECTED_PARAMETERS = {
     # Density & Time
     'density', 'fill_factor', 'distribution', 'effective_density',
     # Grain Properties
+    'grain_iot',
     'grain_duration', 'reverse', 'read_direction', 'grain_envelope',
     # Pitch: i bounds sono unit-driven (PitchUnit.value_bounds), non registrati qui.
     # Pointer

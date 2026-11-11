@@ -10,12 +10,14 @@ sources:
   - src/pge/core/stream.py
   - src/pge/controllers/
   - src/pge/parameters/
+  - src/pge/expressions/
+  - src/pge/maps/
   - src/pge/strategies/
   - src/pge/envelopes/
   - src/pge/shared/seeding.py
   - src/pge/shared/distribution_strategy.py
   - src/pge/rendering/numpy_window_registry.py
-last_synced_commit: f69f137
+last_synced_commit: 93d326b
 entry_for: [yaml-syntax, envelope-syntax]
 ---
 
@@ -54,6 +56,9 @@ Sezioni rilevanti in questo doc:
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`), unità
   (`_range_unit`: assoluta o frazione della base)
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [DeviationProbability](#deviation_probability-variazione-stocastica)
+- [Mappe ed espressioni](#mappe-ed-espressioni-maps) — `maps:` dichiara una
+  mappa iterata, e un parametro la legge con un'espressione
+  (`duration: (0.02 + 0.08*m1)`), valutata a ogni grano
 - [Blocco Voices (Multi-Voice)](#blocco-voices-multi-voice)
 - [Envelopes](#envelopes) — sintassi envelope completa
 
@@ -72,6 +77,7 @@ Esempi runnable: [Esempi Completi](#esempi-completi). Casi envelope: sezione [En
 - `src/pge/shared/distribution_strategy.py` — banda dei `_range`: distribuzioni e `range_anchor`
 - `src/pge/envelopes/` — sintassi envelope
 - `src/pge/engine/stream_files.py` — `file:` negli stream del master (issue #290)
+- `src/pge/maps/`, `src/pge/expressions/` — `maps:` e le espressioni che le leggono (issue #307)
 - Ultimo allineamento: vedi `last_synced_commit` in frontmatter
 
 ---
@@ -661,6 +667,9 @@ Note:
 ## Densità
 
 `density` e `fill_factor` sono mutuamente esclusivi. `fill_factor` ha priorità.
+C'è un terzo modo, [`grain.iot`](#grainiot--lattesa-fra-due-grani): l'attesa
+fra due grani scritta direttamente, con cui la densità non si decide ma
+emerge. Si sceglie per presenza della chiave, e con questi due non convive.
 
 ```yaml
 # Modalità density: grani al secondo (fisso o envelope)
@@ -712,6 +721,84 @@ risultante: non è un taglio, è la riga che il vecchio clamp non scriveva, e
 serve a riconoscere un `grain.duration` sbagliato di un ordine di grandezza
 prima che il render finisca la RAM.
 
+### `grain.iot` — l'attesa fra due grani
+
+`grain.iot` è l'attesa fino al grano successivo (inter-onset time, issue
+#311): `onset[n+1] = onset[n] + iot`. È il terzo modo di dire quando nasce un
+grano, e l'unico in cui lo si dice direttamente.
+
+```yaml
+grain:
+  iot: 0.1                         # un metronomo: 10 grani al secondo
+  iot: [[0, 0.2], [30, 0.05]]      # un accelerando
+  iot: (0.020 + 0.180*m1)          # letta da una mappa (vedi sotto)
+```
+
+- **Il modo si sceglie per presenza della chiave.** Senza `grain.iot` vale
+  tutto come prima, default `fill_factor: 2` compreso.
+- **Insieme a `density`, `fill_factor` o `distribution` è un errore**, non una
+  priorità (`InvalidFieldValueError` su `grain.iot`): dicono in un altro modo
+  la stessa cosa, e scegliere in silenzio nasconderebbe l'errore. Vale per
+  presenza: anche `distribution: 0`. Una `grain.iot:` scritta e lasciata vuota
+  è un errore anche lei (`MissingFieldError`).
+- **Niente distribuzione di Truax sopra**: l'attesa è quella scritta. Il
+  disordine, se lo si vuole, viene dalla mappa.
+- **Sta dentro `grain:` e segue `grain.duration_unit`**, come
+  `grain.duration`: con `duration_unit: milliseconds`, `iot: 100` sono 0.1 s.
+  Su un'espressione il fattore si applica al risultato. La regola
+  dell'unità resta quella di `grain.duration`: con un'unità diversa da
+  `seconds` `grain.duration` va scritta anche se l'unità serve solo a
+  `grain.iot` (il default 0.05 è in secondi, e senza di lei è un
+  `MissingFieldError` su `grain.duration`).
+- **Limiti: da un campione (1/48000 s) a 100 s.** Un numero o un envelope
+  fuori limite è un errore al parse, come per ogni parametro. Un'espressione
+  viene **tagliata** a ogni grano e scritta sul clip log: un'attesa nulla,
+  negativa o non finita non ferma il render, va a un campione (se è
+  `+inf`, a 100 s). Non è un limite musicale ma l'invariante del giro dei
+  grani: un'attesa nulla è un cursore che non avanza.
+- Sotto 0.25 ms di attesa (sopra 4000 grani/s) continua a uscire la riga
+  `[DENSITY_HIGH]`, con `mode=iot`.
+
+**La densità emerge.** Con `grain.iot` la densità non è dichiarata: la si
+legge a cose fatte. Con una mappa:
+
+```yaml
+maps:
+  m1: {type: logistic, r: 3.5}
+grain:
+  iot: (0.020 + 0.180*m1)
+```
+
+le attese percorrono in ciclo 169, 110, 177, 89 ms: 545 ms per quattro grani,
+7.3 grani/s in media, fra 5.6 e 11.2. È un anello chiuso: la mappa decide
+quanto aspettare, e l'attesa decide quando la mappa farà il passo successivo
+(`clock: grain` è contato sui grani, non sul tempo).
+
+La densità emersa è pubblicata come curva, `effective_density`, come in
+modalità `fill_factor`: in partitura e nella sessione Sonic Visualiser è
+`1 / attesa` per ogni grano della voce 0, tenuto fino al grano dopo. Non è
+una funzione del tempo — un'attesa letta da una mappa dipende dai grani già
+nati — quindi si conosce a grani fatti.
+
+**La stessa mappa su attesa e durata.** Con `iot` e `duration` che leggono la
+stessa mappa a `clock: grain`, ogni grano porta il valore che ha deciso anche
+la sua attesa: la mappa avanza una volta in testa al giro, e le due letture
+vedono lo stesso stato.
+
+**Più voci e `scatter`.** La formula è quella di sempre: l'attesa di una voce
+oltre la prima è `(1 − scatter) · attesa della voce 0 + scatter · attesa
+letta per la propria voce`. Ma le mappe delle voci partono tutte da `x0` e
+sono deterministiche: danno la **stessa sequenza**, e `scatter` — una media
+fra due attese uguali — **non sposta niente**. Le voci restano in fase, e si
+distinguono solo per gli offset di `voices:`. Dare alle voci stati iniziali
+diversi è una decisione ancora da prendere.
+
+**Chi legge la densità.** Per uno stream con `grain.iot`, `Stream.density`,
+`Stream.fill_factor` e `Stream.distribution` sono `None`; `Stream.iot` è il
+parametro, `Stream.density_mode` vale `iot`. I commenti dello score Csound
+scrivono `Inter-onset:` al posto di `Density:` e `Distribution:`, e la riga
+di fine render dice `· iot`.
+
 ---
 
 ## Volume e Pan
@@ -740,6 +827,9 @@ Bounds: `volume` ∈ [-120, 12], `pan` ∈ [-3600, 3600].
 ```yaml
 grain:
   duration: 0.05           # secondi, default 0.05
+  duration: (0.02 + 0.08*m1)   # letta da una mappa: vedi «Mappe ed espressioni»
+  iot: 0.1                 # attesa fino al grano successivo, al posto di
+                           # density / fill_factor: vedi «Densità»
   duration: [[0, 0.02], [30, 0.2]]
   duration_range: 0.01     # banda larga 0.01 s (default: ±0.005 s)
 
@@ -1045,6 +1135,236 @@ pitch:
 > base si abbina a `value:` a fianco; nelle voci è `unit: {edo: N}` (il valore
 > arriva dalla strategy). La vecchia forma annidata `edo: {divisions, value}`
 > non è più valida (`InvalidFieldValueError` con hint di migrazione).
+
+---
+
+## Mappe ed espressioni (`maps:`)
+
+Uno stream può dichiarare una **mappa iterata** e far leggere un parametro del
+grano da quella, attraverso un'**espressione** (issue #307). Una mappa è una
+regola che calcola il prossimo valore dal precedente: fra un grano e il
+successivo c'è memoria, e una manopola sola (`r`) porta dall'ordine (un
+valore, poi cicli di 2, 4, 8 valori) al disordine.
+
+```yaml
+- stream_id: s1
+  sample: x.wav
+  maps:
+    m1: {type: logistic, r: 3.5}
+  grain:
+    duration: (0.02 + 0.08*m1)
+```
+
+Con `r: 3.5` la logistica percorre quattro valori (0.827, 0.501, 0.875,
+0.383) e le durate dei grani, in ciclo, 86, 60, 90, 51 ms.
+
+`maps:` sta **dentro lo stream**, non in testa al documento: con `file:` la
+testa del file importato viene ignorata, e dentro lo stream la mappa viaggia
+col file. Lo stesso nome in due stream sono due mappe.
+
+### Le chiavi di una mappa
+
+| chiave | valore | default |
+|---|---|---|
+| `type` | il tipo di mappa (vedi sotto) | obbligatoria |
+| `r` | il parametro della mappa: un numero o un envelope | obbligatoria |
+| `clock` | quando la mappa fa un passo: `grain`, oppure i passi al secondo (numero o envelope), al più uno per campione | `grain` |
+| `iterate` | al posto di `clock`: i passi fatti da `x0` a ogni lettura, intero da 1 a 40 | — |
+| `x0` | lo stato iniziale, un numero | quello del tipo |
+| `transient` | i passi scartati prima del primo grano, intero da 0 a 100000 | 300 |
+
+Il **nome** di una mappa (`m1`) è fatto di lettere, cifre e `_`, e non
+comincia con una cifra. Non può essere un nome che in un'espressione vuol dire
+già un'altra cosa: una funzione, `pi`, `e`, `t`, e nemmeno `x`, `y`, `r`.
+
+Un `maps:` scritto male si ferma al caricamento con un `MapConfigError` che
+nomina il punto (`maps.m1.r`) e lo stream: `maps` che non è un dizionario o è
+vuoto, un `type` che non c'è, `r` che manca o non è un numero finito, una
+chiave sconosciuta, un `clock` non positivo, `clock` e `iterate` insieme, uno
+dei tre tetti superato. Un envelope di `r` o di `clock` scritto male è
+l'errore di forma di ogni altro envelope, col suo path (`maps.m1.clock`).
+Vedi [[errors]].
+
+**I tre tetti.** `iterate`, `transient` e `clock` contano dei passi, e un
+passo costa: senza tetto un numero grande scritto per sbaglio teneva fermo il
+render invece di dire che cosa non va. Sono costanti di
+`src/pge/maps/map_set.py`, leggibili senza costruire uno stream.
+
+| chiave | tetto | perché |
+|---|---|---|
+| `iterate` | 40 (`MAP_ITERATE_MAX`) | si itera a ogni lettura, cioè a ogni grano; ed è il tetto del «Banco del chirp», che però lì taglia in silenzio. Oltre non c'è niente da sentire: a `r = 4` la logistica perde un bit dello stato iniziale a ogni passo, e dopo una cinquantina di passi l'iterata dipende dagli arrotondamenti, non più da `r` |
+| `transient` | 100000 (`MAP_TRANSIENT_MAX`) | si fa una volta per mappa, e fin qui costa pochi millisecondi: più di trecento volte il default, abbastanza anche per gli attrattori che si raggiungono piano, vicino a una biforcazione |
+| `clock` | un passo per campione (`output_sr`, 48000 di default), in ogni punto se è un envelope | è la risoluzione del motore, la stessa a cui arriva una mappa a `clock: grain` con l'attesa più corta che [`grain.iot`](#grainiot--lattesa-fra-due-grani) ammette. Un passo più fitto nessun grano lo vede da solo, e costa come un passo vero |
+
+### I tipi di mappa
+
+| `type` | passo | `r` | intervallo di `m1` | `x0` |
+|---|---|---|---|---|
+| `logistic` | `r*x*(1-x)` | 2.5 – 4 | 0 … 1 | 0.3 |
+
+- L'**intervallo di `m1`** è un fatto della mappa, e chi scrive un'espressione
+  deve conoscerlo: `minimo + (massimo − minimo) * m1` vale per una mappa che
+  vive in 0…1.
+- L'intervallo di **`r`** è quello in cui la mappa è interessante e resta nel
+  suo intervallo: non è un limite imposto. Fuori (`r: 4.5`) la mappa
+  **scappa**: quando un valore non è finito, o supera 1000 in modulo, la mappa
+  riparte da `x0` e lo scrive sul clip log (`[MAP_ESCAPE]`, con un limite di
+  una riga ogni 5 s di stream).
+- **`x0` non dipende dal `seed`**: una mappa è deterministica, ed è il suo
+  punto. Lo stesso YAML dà la stessa sequenza con qualunque seed.
+- Il **transitorio** fa sì che il primo grano sia già sull'attrattore. Con un
+  transitorio diverso cambia la *fase* di un ciclo, non l'insieme dei valori.
+
+Dati dello stesso catalogo, leggibili senza costruire uno stream: `MAP_TYPES`
+e `MAP_KINDS` in `src/pge/maps/catalog.py`.
+
+### Come avanza una mappa
+
+Una mappa sa solo fare «un altro passo». Lo YAML dice quando.
+
+| scrittura | quando fa un passo | stato |
+|---|---|---|
+| `clock: grain` (default) | ogni volta che nasce un grano | uno **per voce** |
+| `clock: 8` | 8 passi al secondo, a intervalli fissi; il valore resta fermo fino al passo dopo | nessuno: è una funzione del tempo |
+| `clock: [[0, 2], [12, 20]]` | il passo k cade quando l'integrale del clock vale k | come sopra |
+| `iterate: 7` | mai: a ogni lettura si riparte da `x0` e si fanno 7 passi con l'`r` di quell'istante | nessuno |
+
+```yaml
+maps:
+  m1: {type: logistic, r: [[0, 3.0], [12, 4.0]], clock: [[0, 2], [12, 20]]}
+  m2: {type: logistic, r: [[0, 3.0], [12, 4.0]], iterate: 7, x0: 0.1}
+```
+
+**`clock: grain`** — la mappa fa **un passo per grano e per voce**: è contata
+sui grani, non sul tempo, e a densità doppia la stessa sequenza scorre in metà
+tempo.
+
+- Lo stato è **uno per voce**. Con più voci ogni voce percorre la sequenza
+  dall'inizio; con `scatter` i cursori delle voci divergono, e ognuna continua
+  a contare i suoi passi.
+- La mappa avanza in un punto solo, in testa al giro della voce, e chi la
+  legge non la muove: due parametri che leggono `m1` nello stesso grano vedono
+  lo stesso valore, in qualunque ordine.
+- Il passo si conta anche quando `voices.num_voices` tiene la voce spenta: la
+  sequenza di una voce non dipende da quando viene accesa.
+
+**Clock a orologio** — `clock` è un numero di passi al secondo, o un envelope.
+
+- Il primo passo cade a `t = 0`; il passo k dove l'integrale del clock da 0
+  vale k. `clock: 5` è un passo ogni 0.2 s; da 2 a 20 passi/s lineari in 12 s
+  sono 132 passi, radi in principio e fitti alla fine.
+- Il valore **resta fermo** fra un passo e l'altro: i grani nati dentro lo
+  stesso passo leggono lo stesso valore.
+- È una funzione del tempo e **non ha uno stato per voce**: tutte le voci
+  leggono lo stesso valore allo stesso istante, anche con `scatter`.
+- Il clock deve essere **positivo e finito**, e al più un passo per
+  campione, in ogni punto se è un envelope: altrimenti è un errore al
+  caricamento.
+
+**`iterate: n`** — il modo dell'articolo di Di Scipio (DAFx99). Sta **al posto
+di `clock`**, e non è un clock: a ogni lettura si riparte da `x0` e si fanno n
+passi con l'`r` di quell'istante. Il valore è l'n-esima iterata della stessa
+funzione, e a disegnare la curva è il movimento di `r`.
+
+- Con `r` fermo il valore è **fermo**: tutti i grani leggono lo stesso numero.
+- Con `r` a envelope è una curva nel tempo, campionata dagli onset dei grani.
+  `n` è la manopola della ruvidezza: più passi, più la curva è frastagliata.
+  Va da 1 a 40 (vedi i tetti qui sopra).
+- Nessuno stato, né per voce né nel tempo. Non c'è un transitorio: `transient`
+  insieme a `iterate` è un errore.
+- Se la mappa scappa non si itera oltre: il valore è `x0`.
+
+`clock` e `iterate` insieme sono un **errore**, non una priorità.
+
+**`r` a envelope** si legge all'istante del passo — con `clock: grain`
+l'istante del grano, con un clock a orologio l'istante in cui il passo cade —
+o della lettura, in `iterate`. Il transitorio si fa a `r(0)`. Gli envelope di
+`r` e di `clock` seguono il `time_mode` dello stream come ogni altro: con
+`time_mode: normalized` i loro tempi sono frazioni della durata.
+
+Per chi deve sapere quando una mappa a orologio fa i suoi passi senza
+generare i grani: `stream.map_set.step_times(nome, fino_a)`.
+
+### Le espressioni
+
+Un parametro che legge una mappa si scrive come un'espressione **fra
+parentesi**, dove stanno un numero o un envelope.
+
+| | |
+|---|---|
+| operatori | `+ - * / **`, parentesi |
+| funzioni | `sin cos tan abs sqrt exp log floor round sign min max pow frac clip fold wrap` |
+| costanti | `pi`, `e` |
+| nomi | le mappe dichiarate nello stream (`m1`), e `t`: i secondi dall'inizio dello stream |
+
+- Le precedenze sono quelle di Python: `-m1**2` è `-(m1**2)`, e `2**3**2` è
+  `2**(3**2)`, cioè 512.
+- `clip(v, lo, hi)` appiattisce ai bordi, `fold(v, lo, hi)` riflette
+  (`fold(1.3, 0, 1)` dà 0.7), `wrap(v, lo, hi)` riparte dall'altro capo
+  (`wrap(-0.25, 0, 1)` dà 0.75). `frac(v)` è la parte frazionaria; `round`
+  arrotonda il mezzo verso l'alto (`round(2.5)` dà 3). `min` e `max` prendono
+  quanti argomenti si vuole, le altre il loro numero esatto.
+- Non c'è `eval`: l'interprete è un modulo suo
+  (`src/pge/expressions/expression.py`), e un testo che non è un'espressione
+  di questo linguaggio è un errore.
+- Una catena di somme o di prodotti può essere lunga quanto si vuole. Ciò che
+  si annida — una parentesi, un segno, una potenza, una chiamata — si annida
+  al più 50 volte (`MAX_DEPTH`): oltre è un errore al caricamento
+  (`e' annidata troppo`). Un'espressione scritta a mano ne usa meno di dieci,
+  le parentesi esterne comprese.
+
+**Minimo e massimo non sono chiavi: sono la forma dell'espressione.**
+`minimo + (massimo − minimo) * m1` — il minimo è il valore del parametro
+quando la mappa è in fondo al suo intervallo, il massimo quando è in cima. La
+mappa non usa per forza tutta la fascia scritta: con `r: 3.2` i valori sono
+due soli.
+
+**Dove vale.** Oggi su `grain.duration` e su
+[`grain.iot`](#grainiot--lattesa-fra-due-grani) (l'elenco è
+`EXPRESSION_FIELDS` in `src/pge/expressions/fields.py`). Su un altro parametro una stringa resta un
+errore (`InvalidParameterError`), che dice dove le espressioni valgono.
+
+**Quando si valuta.** A ogni grano, non al caricamento: è la differenza dalle
+[espressioni matematiche nei valori](#9-espressioni-matematiche-nei-valori),
+che sono costanti calcolate una volta sola. Il loader lascia com'è, senza
+avvisi su stdout, una stringa fra parentesi che nomina una mappa dichiarata
+nello stream, o `t`; e, nei campi in cui un'espressione vale, anche una che
+nomina qualcosa che la valutazione al caricamento non conosce: una funzione
+del linguaggio come `sqrt`, `sin`, `clip`, o un nome sbagliato, che poi
+l'errore dell'interprete nomina. Una costante che la valutazione sa fare
+(`(10/2)`, `(0.05 * abs(-1))`) resta sua e diventa un numero, come prima.
+
+**Gli errori sono al caricamento**, in un `ExpressionError` col campo
+(`grain.duration`) e lo stream: una mappa non dichiarata, una parentesi che
+manca, una funzione col numero sbagliato di argomenti, un'espressione scritta
+senza le parentesi esterne.
+
+**I valori non si validano al caricamento.** Un envelope fuori dai bounds è un
+errore al parse; un'espressione no, perché i suoi valori nascono grano per
+grano. Un valore che esce viene **tagliato** ai limiti del parametro e scritto
+sul clip log, con `(EXP)` in fondo alla riga; un valore non finito
+(`sqrt` di un negativo, una divisione per zero) va al limite e il render
+prosegue. Per riportarlo dentro in un altro modo lo si scrive:
+`clip`, `fold`, `wrap`.
+
+**Unità.** Con `grain.duration_unit` diversa da `seconds` il fattore si
+applica al **risultato** dell'espressione: `(20 + 80*m1)` con
+`duration_unit: milliseconds` sono gli stessi grani di `(0.02 + 0.08*m1)`.
+Vale per `grain.duration` e per `grain.iot`.
+
+**`_range` sopra un'espressione** resta lecito: `grain.duration_range` è un
+tremolio casuale attorno al valore dato dalla mappa. La mappa non sostituisce
+il generatore casuale dentro la banda.
+
+**Cache.** Il fingerprint dello stream contiene `maps:` e il testo
+dell'espressione: cambiare `r`, `clock`, `iterate`, `x0`, `transient` o
+l'espressione rifà lo stem. Uno stream che non scrive queste chiavi ha i grani e il fingerprint di
+prima.
+
+**Partitura ed export.** Un parametro scritto come espressione non ha una
+curva nel tempo — il suo valore dipende dallo stato della mappa — e la
+partitura e la sessione Sonic Visualiser non lo disegnano. Nei commenti dello
+score Csound compare il testo dell'espressione.
 
 ---
 
@@ -2377,6 +2697,16 @@ pitch:
 L'espressione è valutata a parse-time, non a run-time: il risultato è un numero
 che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
 
+Fa eccezione una stringa tutta fra parentesi che nomina una mappa dichiarata
+in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la
+lascia com'è e la compila il parser dei parametri, per valutarla a ogni grano.
+È un altro linguaggio, con le sue funzioni: vedi
+[Mappe ed espressioni](#mappe-ed-espressioni-maps). Nei campi in cui
+un'espressione vale (`grain.duration`, `grain.iot`) il loader lascia com'è
+anche una stringa che nomina un nome che questa valutazione non conosce
+(`sqrt`, `clip`): la compila l'interprete, senza l'avviso
+`impossibile valutare`.
+
 ---
 
 ### 10. Casi speciali per dominio
@@ -2725,6 +3055,7 @@ un envelope dal YAML al runtime è:
 | `fill_factor` | 0.001 | 50 | 2.0 | priorità su density |
 | `distribution` | 0 | 1 | 0.0 | 0=sync, 1=async |
 | `grain_duration` | 1/48000 (1 campione) | 10 | 0.05 | secondi; `duration_unit` li porta in `samples` o `milliseconds` |
+| `grain_iot` | 1/48000 (1 campione) | 100 | — | secondi, segue `duration_unit`; l'attesa fra due grani (`grain.iot`), al posto di `density` / `fill_factor` / `distribution` |
 | `grain_duration_range` | 0 | 1 | — | secondi; con `duration_range_unit: relative` il numero è una frazione e il dominio è quello della modalità (`RELATIVE_RANGE_BOUNDS`), non quello del parametro — che i due `1` coincidano è un caso |
 | `volume` | -120 | 12 | 0.0 | dB |
 | `pan` | -3600 | 3600 | 0.0 | gradi |

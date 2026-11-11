@@ -1566,6 +1566,16 @@ class TestGrainCountLog:
                 '· fill_factor'
                 in capsys.readouterr().out.splitlines())
 
+    def test_modo_iot(self, mocks, capsys):
+        """Con `grain.iot` (issue #311) il modo lo dice lo stream: dedotto
+        da `fill_factor is not None`, il terzo modo usciva come `density`."""
+        stream = self._stream('s1', [self._grains(1)], onset=0.0,
+                              duration=2.0)
+        stream.density_mode = 'iot'
+        self._run(mocks, [stream])
+        assert ('  → s1: 1 grano (1 voce) · onset 0s · dur 2s · iot'
+                in capsys.readouterr().out.splitlines())
+
     def test_i_numeri_escono_senza_artefatti_di_float(self, mocks, capsys):
         """`0.1 + 0.2` e' `0.30000000000000004`: a schermo va `0.3`, non la
         coda binaria che il vecchio `repr` stampava cosi' com'era."""

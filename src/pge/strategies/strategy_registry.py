@@ -20,6 +20,7 @@ from pge.strategies.registry import StrategyRegistry
 DENSITY_STRATEGIES = StrategyRegistry('density', DensityStrategy, {
     'fill_factor': FillFactorStrategy,
     'density': DirectDensityStrategy,
+    'grain_iot': IotStrategy,
 })
 
 

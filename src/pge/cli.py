@@ -219,7 +219,11 @@ def _stream_timing(stream) -> str:
     niente, nemmeno su uno stream saltato dalla cache (#117). `:g` e non il
     valore cosi' com'e': `0.1 + 0.2` esce `0.3`, non `0.30000000000000004`.
     """
-    mode = "fill_factor" if stream.fill_factor is not None else "density"
+    # Il modo lo dice lo stream (`density_mode`, che dalla #311 ha un terzo
+    # valore, `iot`). Il ripiego e' per uno stream che non lo espone.
+    mode = getattr(stream, 'density_mode', None)
+    if not isinstance(mode, str):
+        mode = "fill_factor" if stream.fill_factor is not None else "density"
     return f"onset {stream.onset:g}s · dur {stream.duration:g}s · {mode}"
 
 

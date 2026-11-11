@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banco del chirp</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* layout: a sinistra il banco (mappa, espressioni, grani), a destra lo YAML di prova che resta in vista;
+   su schermo stretto lo YAML scende in fondo. In cima il trasporto, sempre a portata. */
+:root {
+  --bg: #f3f4f6; --surface: #fbfbfc; --ink: #0d0e10; --ink-2: #4f535a; --muted: #7d828b;
+  --grid: #e2e4e8; --axis: #c2c6cd; --border: rgba(13,14,16,.10);
+  --series: #2a78d6; --ref: #9aa0a9; --wash: rgba(42,120,214,.14); --out: rgba(13,14,16,.055);
+  --bad: #d03b3b;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0f11; --surface: #18191c; --ink: #eef0f3; --ink-2: #c0c4cb; --muted: #8a8f98;
+    --grid: #2a2c31; --axis: #3a3d44; --border: rgba(255,255,255,.10);
+    --series: #3987e5; --ref: #6d727b; --wash: rgba(57,135,229,.20); --out: rgba(255,255,255,.06);
+    --bad: #e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e0f11; --surface: #18191c; --ink: #eef0f3; --ink-2: #c0c4cb; --muted: #8a8f98;
+  --grid: #2a2c31; --axis: #3a3d44; --border: rgba(255,255,255,.10);
+  --series: #3987e5; --ref: #6d727b; --wash: rgba(57,135,229,.20); --out: rgba(255,255,255,.06);
+  --bad: #e66767;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.55; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1240px; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { padding-block: 28px 8px; }
+h1 { font-size: 28px; line-height: 1.15; font-weight: 600; margin: 0 0 8px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-size: 20px; line-height: 1.25; font-weight: 600; margin: 0; text-wrap: balance; }
+h3 { font-size: 14px; font-weight: 600; margin: 0; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--series); }
+.lede { color: var(--ink-2); font-size: 16px; }
+code, .mono { font-family: var(--mono); font-size: .93em; }
+code { background: var(--out); padding: 1px 5px; border-radius: 4px; }
+
+.tbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--bg); border-bottom: 1px solid var(--border); }
+.tbar-in { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 10px; }
+.btn { font: inherit; font-weight: 500; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 5px 14px; cursor: pointer; min-width: 78px; }
+.btn:hover { border-color: var(--series); }
+.tmain { display: flex; align-items: center; gap: 10px; flex: 1 1 240px; min-width: 0; }
+.tmain label { font-weight: 600; white-space: nowrap; }
+.tmain input[type=range] { flex: 1 1 auto; min-width: 0; }
+.tmain output { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 7ch; text-align: right; }
+.now { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding-block: 28px 56px; }
+@media (min-width: 1080px) { .cols { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; } .side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 66px); } }
+main { display: flex; flex-direction: column; gap: 44px; min-width: 0; }
+section { display: flex; flex-direction: column; gap: 14px; }
+.side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sub { color: var(--muted); font-size: 13px; max-width: none; }
+.chart { position: relative; width: 100%; min-width: 0; outline: none; border-radius: 6px; }
+.chart:focus-visible { box-shadow: 0 0 0 2px var(--series); }
+.chart svg, .chart canvas { display: block; }
+.chart .over { position: absolute; inset: 0; pointer-events: none; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; }
+.ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ctl > span.lab, .ctl > label.lab { color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.ctl > span.grp { font-weight: 600; min-width: 4.2ch; }
+.ctl output { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; min-width: 8ch; }
+.ctl input[type=range] { width: 140px; max-width: 36vw; }
+input[type=range], input[type=checkbox] { accent-color: var(--series); }
+input:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+select, input[type=text], textarea { font-family: var(--mono); font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; }
+select { font-family: var(--font); font-size: 14px; }
+.eq { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; align-items: center; }
+.eq label { font-family: var(--mono); font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.eq input { width: 100%; min-width: 0; }
+.err { color: var(--bad); font-size: 13px; min-height: 0; }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 8px; overflow: hidden; background: var(--surface); flex-wrap: wrap; }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.seg label { padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--ink-2); border-right: 1px solid var(--border); }
+.seg label:last-child { border-right: 0; }
+.seg input:checked + label { background: var(--wash); color: var(--ink); font-weight: 500; }
+.seg input:focus-visible + label { outline: 2px solid var(--series); outline-offset: -2px; }
+
+.read { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 18px; margin: 4px 0 0; }
+.read div { display: flex; flex-direction: column; min-width: 0; }
+.read dt { color: var(--muted); font-size: 12px; }
+.read dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 14px; overflow-wrap: anywhere; }
+.note { color: var(--ink-2); }
+.key { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { display: inline-block; }
+.k-band { width: 18px; height: 10px; background: var(--wash); border-radius: 2px; }
+.k-bar { width: 6px; height: 12px; border-radius: 2px 2px 0 0; background: var(--series); }
+.pline { font-family: var(--mono); font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; max-width: none; overflow-wrap: anywhere; }
+.pname { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.pname span { color: var(--muted); font-size: 13px; }
+textarea#yaml { width: 100%; min-height: 330px; resize: vertical; line-height: 1.5; tab-size: 2; white-space: pre; overflow: auto; }
+.state { font-size: 13px; color: var(--muted); }
+.state.bad { color: var(--bad); }
+.foot { color: var(--muted); font-size: 13px; }
+
+svg text { font-family: var(--font); fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+svg .grid { stroke: var(--grid); stroke-width: 1; }
+svg .axis { stroke: var(--axis); stroke-width: 1; }
+svg .alab { fill: var(--ink-2); }
+svg .guide { fill: none; stroke: var(--ref); stroke-width: 1.5; stroke-linejoin: round; }
+svg .dot { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
+svg .dot.small { stroke-width: 1; }
+svg .bar { fill: var(--series); }
+svg .band { fill: var(--wash); }
+svg .lim { stroke: var(--ink-2); stroke-width: 1; }
+svg .xh { stroke: var(--axis); stroke-width: 1; }
+svg .hl { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+svg .ph { stroke: var(--ink); stroke-width: 1; opacity: .6; }
+svg .cur { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
+svg .mark { stroke: var(--ink); stroke-width: 1; opacity: .6; }
+svg .mlab { fill: var(--ink-2); }
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 13px; line-height: 1.35; box-shadow: 0 4px 14px rgba(0,0,0,.14); max-width: 260px; }
+#tip b { display: block; font-family: var(--mono); font-weight: 500; }
+#tip span { color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="top wrap">
+  <h1>Banco del chirp</h1>
+  <p class="lede">Un granulatore di prova. Il buffer è un glissando di sinusoide da 200 a 1000 Hz lungo 4 secondi, e ogni grano ha una finestra Hanning: così la posizione di lettura la senti come altezza. Attesa, durata e posizione di ogni grano vengono dalla mappa attraverso un'espressione che puoi riscrivere.</p>
+</header>
+
+<div class="tbar">
+  <div class="wrap tbar-in">
+    <button class="btn" id="play" type="button">Avvia</button>
+    <div class="tmain">
+      <label for="t">tempo</label>
+      <input type="range" id="t" min="0" max="12" step="0.01" value="0">
+      <output id="t-out" for="t">0.00 s</output>
+    </div>
+    <div class="now" id="now"></div>
+    <label class="chk"><input type="checkbox" id="snd" checked> suono</label>
+    <label class="chk"><input type="checkbox" id="loop" checked> a ciclo</label>
+  </div>
+</div>
+
+<div class="wrap cols">
+<main>
+
+  <section id="mappa">
+    <h2>La mappa</h2>
+    <div class="controls">
+      <div class="ctl"><label class="lab" for="preset">tipo</label>
+        <select id="preset"></select></div>
+      <div class="ctl"><span class="lab">avanza</span>
+        <span class="seg" role="radiogroup" aria-label="Come avanza la mappa">
+          <input type="radio" name="mode" id="mo-grain" value="grain" checked><label for="mo-grain">un passo per grano</label>
+          <input type="radio" name="mode" id="mo-clock" value="clock"><label for="mo-clock">a orologio</label>
+          <input type="radio" name="mode" id="mo-terr" value="terr"><label for="mo-terr">alla Di Scipio</label>
+        </span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>L'equazione</h3>
+      <p class="sub">È il passo della mappa: il nuovo x calcolato dal vecchio. Puoi riscriverla; nel modo alla Di Scipio è l'equazione che viene iterata n volte a ogni lettura.</p>
+      <div class="eq">
+        <label for="f-x">x ←</label><input type="text" id="f-x" spellcheck="false" autocomplete="off">
+        <label for="f-y">y ←</label><input type="text" id="f-y" spellcheck="false" autocomplete="off" placeholder="vuoto: la mappa ha una variabile sola">
+      </div>
+      <p class="err" id="err-map"></p>
+    </div>
+    <div class="controls">
+      <div class="ctl"><span class="grp">r</span><label class="lab" for="r0">all'inizio</label><input type="range" id="r0" step="0.001"><output id="r0-out" for="r0"></output></div>
+      <div class="ctl"><label class="lab" for="r1">alla fine</label><input type="range" id="r1" step="0.001"><output id="r1-out" for="r1"></output></div>
+    </div>
+    <div class="controls" id="row-clock" hidden>
+      <div class="ctl"><span class="grp">clock</span><label class="lab" for="c0">all'inizio</label><input type="range" id="c0" min="0.5" max="40" step="0.5"><output id="c0-out" for="c0"></output></div>
+      <div class="ctl"><label class="lab" for="c1">alla fine</label><input type="range" id="c1" min="0.5" max="40" step="0.5"><output id="c1-out" for="c1"></output></div>
+    </div>
+    <div class="controls" id="row-n" hidden>
+      <div class="ctl"><label class="lab" for="nit">iterate n</label><input type="range" id="nit" min="1" max="20" step="1"><output id="nit-out" for="nit"></output></div>
+      <div class="ctl"><label class="lab" for="x0">x0</label><input type="range" id="x0" step="0.01"><output id="x0-out" for="x0"></output></div>
+    </div>
+    <p class="note" id="nota-m"></p>
+    <div class="card">
+      <h3>Il valore che ogni grano legge</h3>
+      <p class="sub" id="s-map"></p>
+      <div class="chart" id="c-map" tabindex="0"></div>
+    </div>
+    <div class="card">
+      <h3>I valori che la mappa visita, per ogni r</h3>
+      <p class="sub">La fascia colorata è il tratto di r attraversato; il punto è dove si trova la mappa adesso. L'asse verticale dice in che intervallo vive <code>m1</code> per questa equazione: <span class="mono" id="range-txt"></span>.</p>
+      <div class="chart" id="c-bif"><canvas id="cv-bif" role="img" aria-label="Valori visitati dalla mappa al variare di r"></canvas><svg class="over" id="ov-bif"></svg></div>
+    </div>
+  </section>
+
+  <section id="ponte">
+    <h2>Dalla mappa ai parametri: minimo e massimo</h2>
+    <p>La mappa produce numeri nel suo intervallo. Un parametro vuole numeri nella sua unità: secondi, o una posizione nel buffer. L'espressione è il ponte fra i due. Nella forma più semplice è <code>minimo + (massimo − minimo) * m1</code>: il <strong>minimo</strong> è il valore del parametro quando la mappa è in fondo al suo intervallo, il <strong>massimo</strong> quando è in cima.</p>
+    <p>I due cursori di ogni riquadro scrivono quei due numeri dentro l'espressione; se riscrivi l'espressione a mano, i cursori la seguono.</p>
+    <div class="key"><span><i class="k-band"></i>la fascia che hai scritto, dal minimo al massimo</span><span><i class="k-bar"></i>i valori che la mappa usa davvero</span></div>
+
+    <div class="card" id="p-iot">
+      <div class="pname"><h3 class="mono">grain.iot</h3><span>l'attesa fino al grano successivo</span></div>
+      <input type="text" id="e-iot" spellcheck="false" autocomplete="off" aria-label="Espressione di grain.iot">
+      <p class="err" id="err-iot"></p>
+      <div class="controls">
+        <div class="ctl"><label class="lab" for="iot-lo">minimo</label><input type="range" id="iot-lo" min="1" max="500" step="1"><output id="iot-lo-out" for="iot-lo"></output></div>
+        <div class="ctl"><label class="lab" for="iot-hi">massimo</label><input type="range" id="iot-hi" min="1" max="500" step="1"><output id="iot-hi-out" for="iot-hi"></output></div>
+      </div>
+      <div class="chart" id="c-iot" tabindex="0"></div>
+      <p class="pline" id="l-iot"></p>
+    </div>
+
+    <div class="card" id="p-dur">
+      <div class="pname"><h3 class="mono">grain.duration</h3><span>quanto dura il grano</span></div>
+      <input type="text" id="e-dur" spellcheck="false" autocomplete="off" aria-label="Espressione di grain.duration">
+      <p class="err" id="err-dur"></p>
+      <div class="controls">
+        <div class="ctl"><label class="lab" for="dur-lo">minimo</label><input type="range" id="dur-lo" min="1" max="500" step="1"><output id="dur-lo-out" for="dur-lo"></output></div>
+        <div class="ctl"><label class="lab" for="dur-hi">massimo</label><input type="range" id="dur-hi" min="1" max="500" step="1"><output id="dur-hi-out" for="dur-hi"></output></div>
+      </div>
+      <div class="chart" id="c-dur" tabindex="0"></div>
+      <p class="pline" id="l-dur"></p>
+    </div>
+
+    <div class="card" id="p-pos">
+      <div class="pname"><h3 class="mono">pointer.position</h3><span>dove il grano comincia a leggere: 0 è l'inizio del buffer (200 Hz), 1 la fine (1000 Hz)</span></div>
+      <input type="text" id="e-pos" spellcheck="false" autocomplete="off" aria-label="Espressione di pointer.position">
+      <p class="err" id="err-pos"></p>
+      <div class="controls">
+        <div class="ctl"><label class="lab" for="pos-lo">minimo</label><input type="range" id="pos-lo" min="0" max="1" step="0.01"><output id="pos-lo-out" for="pos-lo"></output></div>
+        <div class="ctl"><label class="lab" for="pos-hi">massimo</label><input type="range" id="pos-hi" min="0" max="1" step="0.01"><output id="pos-hi-out" for="pos-hi"></output></div>
+      </div>
+      <div class="chart" id="c-pos" tabindex="0"></div>
+      <p class="pline" id="l-pos"></p>
+    </div>
+  </section>
+
+  <section id="grani">
+    <h2>I grani</h2>
+    <p>Tempo in orizzontale, posizione nel buffer in verticale: più in alto vuol dire più acuto. Ogni trattino è un grano, lungo quanto la sua durata.</p>
+    <div class="card">
+      <div class="chart" id="c-part" tabindex="0"></div>
+      <dl class="read" id="read-g"></dl>
+    </div>
+    <p class="foot">Il suono è calcolato qui nella pagina, non dal motore: stesso modello (onset sommati, finestra Hanning, lettura che rientra a capo del buffer), niente di più. I nomi nello YAML sono provvisori. Le altre pagine: <a href="https://claude.ai/artifact/N8SKBGvS2ftqRmzbHW6RMk">Mappa logistica e grani</a>, <a href="https://claude.ai/artifact/XAuWGWr3Ski9dW3tLF9N32">Onset dalla mappa</a>, <a href="https://claude.ai/artifact/8qRF82k5Ze7SKxNydbDnwS">Clock e r nel tempo</a>.</p>
+  </section>
+</main>
+
+<aside class="side" aria-label="YAML di prova">
+  <h2>YAML di prova</h2>
+  <p class="sub">È collegato ai cursori nei due sensi: se lo modifichi, i cursori e i grafici si aggiornano; se muovi un cursore, si riscrive.</p>
+  <textarea id="yaml" spellcheck="false" autocomplete="off" aria-label="YAML di prova, modificabile"></textarea>
+  <p class="state" id="y-state"></p>
+  <p class="sub">Nelle espressioni: <code>m1</code> (e <code>m1.y</code> per le mappe a due variabili), <code>t</code> in secondi, <code>+ − * / **</code>, <code>sin cos abs min max sqrt exp log floor round frac</code>, <code>pi</code>. Per riportare dentro un valore che esce: <code>clip(v, lo, hi)</code>, <code>fold(v, lo, hi)</code>, <code>wrap(v, lo, hi)</code>.</p>
+</aside>
+</div>
+<div id="tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const T = 12, BUF = 4, F0 = 200, F1 = 1000;
+  const q = v => Math.round(v * 10) / 10;
+
+  /* ================= espressioni: un piccolo interprete, niente eval ================= */
+  const FN = {
+    sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs, sqrt: Math.sqrt, exp: Math.exp, log: Math.log,
+    floor: Math.floor, round: Math.round, sign: Math.sign, min: Math.min, max: Math.max, pow: Math.pow,
+    frac: v => v - Math.floor(v),
+    clip: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+    wrap: (v, lo, hi) => { const w = hi - lo; return w > 0 ? lo + ((((v - lo) % w) + w) % w) : lo; },
+    fold: (v, lo, hi) => { const w = hi - lo; if (!(w > 0)) return lo; const u = (((v - lo) % (2 * w)) + 2 * w) % (2 * w); return lo + (u > w ? 2 * w - u : u); }
+  };
+  const ARITY = { clip: 3, wrap: 3, fold: 3, pow: 2 };
+  const VARS = { x: 'x', y: 'y', r: 'r', m1: 'm1', 'm1.y': 'm1y', t: 't' };
+  const CONSTS = { pi: Math.PI, e: Math.E };
+  function compile(src) {
+    const s = String(src == null ? '' : src); if (!s.trim()) throw new Error('è vuota');
+    const tk = [], re = /\s*(?:(\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+)|([A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)?)|(\*\*|[-+*\/%^(),]))/y;
+    let i = 0;
+    while (i < s.length) {
+      if (/^\s*$/.test(s.slice(i))) break;
+      re.lastIndex = i; const m = re.exec(s);
+      if (!m) throw new Error('non capisco «' + s.slice(i).trim().slice(0, 12) + '»');
+      i = re.lastIndex;
+      if (m[1] !== undefined) tk.push({ k: 'n', v: parseFloat(m[1]) }); else if (m[2] !== undefined) tk.push({ k: 'id', v: m[2] }); else tk.push({ k: m[3] === '^' ? '**' : m[3] });
+    }
+    let p = 0;
+    const peek = () => tk[p] ? tk[p].k : null, eat = k => { if (peek() !== k) throw new Error(k === ')' ? 'manca una parentesi chiusa' : 'manca «' + k + '»'); p++; };
+    function expr() { let a = term(); for (;;) { const k = peek(); if (k === '+') { p++; const l = a, b = term(); a = e => l(e) + b(e); } else if (k === '-') { p++; const l = a, b = term(); a = e => l(e) - b(e); } else return a; } }
+    function term() { let a = unary(); for (;;) { const k = peek(); if (k === '*') { p++; const l = a, b = unary(); a = e => l(e) * b(e); } else if (k === '/') { p++; const l = a, b = unary(); a = e => l(e) / b(e); } else if (k === '%') { p++; const l = a, b = unary(); a = e => l(e) % b(e); } else return a; } }
+    function unary() { const k = peek(); if (k === '-') { p++; const a = unary(); return e => -a(e); } if (k === '+') { p++; return unary(); } return power(); }
+    function power() { const a = primary(); if (peek() === '**') { p++; const b = unary(); return e => Math.pow(a(e), b(e)); } return a; }
+    function primary() {
+      const t = tk[p]; if (!t) throw new Error('finisce a metà');
+      if (t.k === 'n') { p++; const v = t.v; return () => v; }
+      if (t.k === '(') { p++; const a = expr(); eat(')'); return a; }
+      if (t.k === 'id') {
+        p++;
+        if (peek() === '(') {
+          const fn = FN[t.v]; if (!fn) throw new Error('funzione sconosciuta «' + t.v + '»');
+          p++; const args = []; if (peek() !== ')') { args.push(expr()); while (peek() === ',') { p++; args.push(expr()); } } eat(')');
+          const need = ARITY[t.v]; if (need && args.length !== need) throw new Error(t.v + ' vuole ' + need + ' argomenti');
+          if (!args.length) throw new Error(t.v + ' vuole almeno un argomento');
+          if (args.length === 1) { const a = args[0]; return e => fn(a(e)); }
+          if (args.length === 2) { const a = args[0], b = args[1]; return e => fn(a(e), b(e)); }
+          if (args.length === 3) { const a = args[0], b = args[1], c = args[2]; return e => fn(a(e), b(e), c(e)); }
+          return e => fn.apply(null, args.map(f => f(e)));
+        }
+        if (t.v in CONSTS) { const v = CONSTS[t.v]; return () => v; }
+        if (t.v in VARS) { const key = VARS[t.v]; return e => e[key]; }
+        throw new Error('nome sconosciuto «' + t.v + '»');
+      }
+      throw new Error('non mi aspettavo «' + t.k + '»');
+    }
+    const out = expr(); if (p < tk.length) throw new Error('non mi aspettavo «' + (tk[p].v !== undefined ? tk[p].v : tk[p].k) + '»');
+    return out;
+  }
+
+  /* ================= stato ================= */
+  const PRESETS = {
+    logistic: { name: 'logistica', x: 'r*x*(1-x)', y: '', rr: [2.5, 4], r: 3.8, x0: 0.3, y0: 0 },
+    tent: { name: 'tenda', x: 'r/2*min(x, 1-x)', y: '', rr: [2.5, 3.999], r: 3.6, x0: 0.3, y0: 0 },
+    sine: { name: 'seno di Di Scipio', x: 'sin(r*x)', y: '', rr: [0, 4], r: 3, x0: 0.1, y0: 0 },
+    cubic: { name: 'cubica', x: 'r*x*(1-x*x)', y: '', rr: [1.5, 3], r: 2.7, x0: 0.3, y0: 0 },
+    henon: { name: 'Hénon (due variabili)', x: '1 - r*x*x + y', y: '0.3*x', rr: [0.8, 1.4], r: 1.4, x0: 0.1, y0: 0.1 },
+    circle: { name: 'cerchio', x: 'frac(x + r - 0.3*sin(2*pi*x))', y: '', rr: [0, 1], r: 0.42, x0: 0.2, y0: 0 }
+  };
+  const PAR = {
+    iot: { k: 1000, unit: ' ms', lim: [0.001, 2], d: 0 },
+    dur: { k: 1000, unit: ' ms', lim: [0.001, 2], d: 0 },
+    pos: { k: 1, unit: '', lim: null, d: 2 }
+  };
+  const S = {
+    base: 'logistic', fx: PRESETS.logistic.x, fy: '', r: [[0, 3.8], [T, 3.8]], mode: 'grain', c: [[0, 8], [T, 8]], n: 7, x0: 0.3, y0: 0,
+    ex: { iot: '(0.020 + 0.180*m1)', dur: '(0.020 + 0.080*m1)', pos: '(m1)' }, t: 0, playing: false, snd: true, loop: true
+  };
+  const C = {}, E = {};           /* espressioni compilate e loro errori */
+  let M = null, RANGE = [0, 1], BIND = {}, SCAN = null, yamlBad = '';
+
+  const envAt = (pts, t) => {
+    if (t <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) if (t <= pts[i][0]) { const a = pts[i - 1], b = pts[i]; return b[0] === a[0] ? b[1] : a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); }
+    return pts[pts.length - 1][1];
+  };
+  const rAt = t => envAt(S.r, t), cAt = t => Math.max(0.05, envAt(S.c, t));
+  const first = pts => pts[0][1], lastV = pts => pts[pts.length - 1][1];
+  function recompile() {
+    const src = { fx: S.fx, fy: S.fy, iot: S.ex.iot, dur: S.ex.dur, pos: S.ex.pos };
+    for (const k in src) {
+      if (k === 'fy' && !src.fy.trim()) { C.fy = null; E.fy = ''; continue; }
+      try { C[k] = compile(src[k]); E[k] = ''; } catch (e) { E[k] = e.message; if (!C[k] && k !== 'fy') C[k] = () => NaN; }
+    }
+  }
+  /* un passo della mappa, con la rete di sicurezza se scappa */
+  function stepMap(st, r, env) {
+    env.x = st.x; env.y = st.y; env.r = r;
+    let nx = C.fx(env), ny = C.fy ? C.fy(env) : st.y;
+    const out = !isFinite(nx) || !isFinite(ny) || Math.abs(nx) > 1e3 || Math.abs(ny) > 1e3;
+    if (out) { nx = S.x0; ny = S.y0; st.lost++; }
+    st.x = nx; st.y = ny; return out;
+  }
+  /* i valori visitati per ogni r: servono al grafico e a sapere in che intervallo vive m1 */
+  function scan(cols) {
+    const P = PRESETS[S.base], key = S.fx + '|' + S.fy + '|' + S.base + '|' + cols;
+    if (SCAN && SCAN.key === key) return SCAN;
+    const K = 120, v = new Float32Array((cols + 1) * K), env = {}; let lo = Infinity, hi = -Infinity;
+    for (let c = 0; c <= cols; c++) {
+      const r = P.rr[0] + (P.rr[1] - P.rr[0]) * c / cols, st = { x: P.x0, y: P.y0, lost: 0 };
+      for (let i = 0; i < 300; i++) stepMap(st, r, env);
+      for (let i = 0; i < K; i++) { stepMap(st, r, env); v[c * K + i] = st.x; if (st.x < lo) lo = st.x; if (st.x > hi) hi = st.x; }
+    }
+    if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+    let L = Math.floor(lo * 10 + 1e-9) / 10, H = Math.ceil(hi * 10 - 1e-9) / 10; if (H - L < 0.2) { L -= 0.1; H += 0.1; }
+    SCAN = { key, cols, K, v, range: [q(L), q(H)] };
+    return SCAN;
+  }
+  function build() {
+    const st = { x: S.x0, y: S.y0, lost: 0 }, env = {}, steps = [], g = [], cl = { iot: 0, dur: 0 };
+    const lastOf = (arr, t) => { let a = 0, b = arr.length - 1; while (a < b) { const m = (a + b + 1) >> 1; if (arr[m].t <= t + 1e-9) a = m; else b = m - 1; } return arr[a]; };
+    const grain = (t, x, y) => {
+      env.m1 = x; env.m1y = y; env.t = t; env.r = rAt(t); env.x = x; env.y = y;
+      let iot = C.iot(env), dur = C.dur(env), pos = C.pos(env);
+      if (!(iot >= PAR.iot.lim[0])) { iot = PAR.iot.lim[0]; cl.iot++; } else if (iot > PAR.iot.lim[1]) { iot = PAR.iot.lim[1]; cl.iot++; }
+      if (!(dur >= PAR.dur.lim[0])) { dur = PAR.dur.lim[0]; cl.dur++; } else if (dur > PAR.dur.lim[1]) { dur = PAR.dur.lim[1]; cl.dur++; }
+      pos = isFinite(pos) ? pos - Math.floor(pos) : 0;
+      g.push({ t, m: x, iot, dur, pos }); return iot;
+    };
+    let val, t = 0;
+    if (S.mode === 'terr') {
+      val = u => { const s2 = { x: S.x0, y: S.y0, lost: 0 }, r = rAt(u), e2 = {}; for (let i = 0; i < S.n; i++) if (stepMap(s2, r, e2)) break; st.lost += s2.lost; return s2; };
+      while (t < T && g.length < 6000) { const s2 = val(t); t += grain(t, s2.x, s2.y); }
+    } else {
+      for (let i = 0; i < 300; i++) stepMap(st, rAt(0), env);
+      st.lost = 0;
+      if (S.mode === 'grain') {
+        while (t < T && g.length < 6000) { stepMap(st, rAt(t), env); steps.push({ t, x: st.x, y: st.y }); t += grain(t, st.x, st.y); }
+      } else {
+        let ph = 0, next = 0; const dt = 0.001;
+        for (let u = 0; u < T; u += dt) { if (ph >= next) { stepMap(st, rAt(u), env); steps.push({ t: u, x: st.x, y: st.y }); next++; } ph += cAt(u) * dt; }
+        while (t < T && g.length < 6000) { const s2 = lastOf(steps, t); t += grain(t, s2.x, s2.y); }
+      }
+      val = u => lastOf(steps, u);
+    }
+    return { steps, g, val, cl, lost: st.lost, capped: g.length >= 6000 };
+  }
+  /* i due cursori leggono l'espressione: vale se e' una retta in m1 e non dipende da altro */
+  function affine(k) {
+    const L = RANGE[0], H = RANGE[1], f = C[k], r = first(S.r);
+    const ev = (m, y, t) => f({ m1: m, m1y: y, t, r, x: m, y });
+    const vL = ev(L, 0, 0), vH = ev(H, 0, 0), tol = 1e-9 * (1 + Math.abs(vL) + Math.abs(vH));
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i <= 200; i++) { const v = ev(L + (H - L) * i / 200, 0, 0); if (v < lo) lo = v; if (v > hi) hi = v; }
+    const lin = Math.abs(ev((L + H) / 2, 0, 0) - (vL + vH) / 2) < tol && Math.abs(ev(L + (H - L) / 4, 0, 0) - (0.75 * vL + 0.25 * vH)) < tol;
+    const alone = Math.abs(ev(L, 0.37, 3.3) - vL) < tol && Math.abs(ev(H, -0.21, 7.1) - vH) < tol;
+    return { ok: !E[k] && isFinite(vL) && isFinite(vH) && lin && alone, vL, vH, lo, hi };
+  }
+  function fmtExpr(vL, vH) {
+    const L = RANGE[0], H = RANGE[1];
+    for (let d = 3; d <= 6; d++) {
+      const B = +(((vH - vL) / (H - L)).toFixed(d)), A = +((vL - L * ((vH - vL) / (H - L))).toFixed(d));
+      if (d < 6 && (Math.abs(A + B * L - vL) > 4e-4 || Math.abs(A + B * H - vH) > 4e-4)) continue;
+      const a = Math.abs(A).toFixed(d), b = Math.abs(B).toFixed(d);
+      if (B === 0) return '(' + A.toFixed(d) + ')';
+      if (A === 0) return B === 1 ? '(m1)' : '(' + B.toFixed(d) + '*m1)';
+      return '(' + (A < 0 ? '-' : '') + a + (B < 0 ? ' - ' : ' + ') + b + '*m1)';
+    }
+  }
+
+  /* ================= YAML: nei due sensi ================= */
+  const envTxt = (pts, d) => pts.every(p => p[1] === pts[0][1]) ? String(+pts[0][1].toFixed(3)) : '[' + pts.map(p => '[' + (+p[0].toFixed(2)) + ', ' + p[1].toFixed(d) + ']').join(', ') + ']';
+  const plain = s => /^[\[\]{}*&!|>'"%@`#-]|: | #/.test(s) ? JSON.stringify(s) : s;
+  function isCustom() { const P = PRESETS[S.base]; return S.fx.trim() !== P.x || S.fy.trim() !== P.y; }
+  function toYaml() {
+    const L = ['maps:', '  m1:', '    type: ' + (isCustom() ? 'custom' : S.base)];
+    if (isCustom()) { L.push('    x: ' + plain(S.fx.trim())); if (S.fy.trim()) L.push('    y: ' + plain(S.fy.trim())); }
+    L.push('    r: ' + envTxt(S.r, 3));
+    if (S.mode === 'grain') L.push('    clock: grain'); else if (S.mode === 'clock') L.push('    clock: ' + envTxt(S.c, 1)); else L.push('    iterate: ' + S.n, '    x0: ' + S.x0);
+    L.push('grain:', '  iot: ' + plain(S.ex.iot), '  duration: ' + plain(S.ex.dur), '  envelope: hanning', 'pointer:', '  position: ' + plain(S.ex.pos));
+    return L.join('\n');
+  }
+  function readEnv(v, name) {
+    if (typeof v === 'number' && isFinite(v)) return [[0, v], [T, v]];
+    if (Array.isArray(v) && v.length && v.every(p => Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number' && typeof p[1] === 'number' && isFinite(p[0]) && isFinite(p[1]))) return v.map(p => [p[0], p[1]]).sort((a, b) => a[0] - b[0]);
+    throw new Error(name + ' vuole un numero oppure una lista di punti [[tempo, valore], ...]');
+  }
+  function fromYaml(text) {
+    if (!window.jsyaml) throw new Error('il lettore YAML non si è caricato');
+    const doc = window.jsyaml.load(text);
+    if (!doc || typeof doc !== 'object') throw new Error('il documento è vuoto');
+    const m = doc.maps && doc.maps.m1; if (!m || typeof m !== 'object') throw new Error('manca maps.m1');
+    const N = { base: S.base };
+    const ty = m.type == null ? null : String(m.type);
+    if (ty && ty !== 'custom') { if (!PRESETS[ty]) throw new Error('type sconosciuto: ' + ty + '. Valgono ' + Object.keys(PRESETS).join(', ') + ', custom'); N.base = ty; }
+    const P = PRESETS[N.base], preset = ty && ty !== 'custom';
+    N.fx = m.x != null ? String(m.x) : preset ? P.x : S.fx;
+    N.fy = m.y != null ? String(m.y) : preset ? P.y : S.fy;
+    N.r = m.r == null ? S.r : readEnv(m.r, 'r');
+    N.x0 = typeof m.x0 === 'number' ? m.x0 : N.base !== S.base ? P.x0 : S.x0;
+    N.y0 = typeof m.y0 === 'number' ? m.y0 : N.base !== S.base ? P.y0 : S.y0;
+    if (m.iterate != null) { if (!(m.iterate >= 1)) throw new Error('iterate vuole un numero intero da 1 in su'); N.mode = 'terr'; N.n = Math.min(40, Math.round(m.iterate)); N.c = S.c; }
+    else if (m.clock == null || m.clock === 'grain') { N.mode = 'grain'; N.n = S.n; N.c = S.c; }
+    else { N.mode = 'clock'; N.n = S.n; N.c = readEnv(m.clock, 'clock'); }
+    const g = doc.grain || {}, pt = doc.pointer || {};
+    if (g.iot == null) throw new Error('manca grain.iot'); if (g.duration == null) throw new Error('manca grain.duration'); if (pt.position == null) throw new Error('manca pointer.position');
+    N.ex = { iot: String(g.iot), dur: String(g.duration), pos: String(pt.position) };
+    Object.assign(S, N);
+  }
+
+  /* ================= grafici ================= */
+  function plot(host, o) {
+    const w = Math.max(220, Math.floor(host.clientWidth)), h = o.h;
+    const m = Object.assign({ l: 44, r: 14, t: 22, b: 36 }, o.m || {});
+    const X = v => m.l + (v - o.xd[0]) / (o.xd[1] - o.xd[0]) * (w - m.l - m.r);
+    const Y = v => h - m.b - (v - o.yd[0]) / (o.yd[1] - o.yd[0]) * (h - m.t - m.b);
+    let s = '';
+    for (const t of o.yt) s += '<line class="grid" x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + q(Y(t)) + '" y2="' + q(Y(t)) + '"/><text x="' + (m.l - 7) + '" y="' + q(Y(t)) + '" dy="0.32em" text-anchor="end">' + (o.yf ? o.yf(t) : t) + '</text>';
+    if (o.y2) for (const t of o.yt) s += '<text x="' + (w - m.r + 7) + '" y="' + q(Y(t)) + '" dy="0.32em">' + o.y2(t) + '</text>';
+    for (const t of o.xt) s += '<text x="' + q(X(t)) + '" y="' + (h - m.b + 16) + '" text-anchor="middle">' + (o.xf ? o.xf(t) : t) + '</text>';
+    s += '<line class="axis" x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '"/>';
+    if (o.xl) s += '<text class="alab" x="' + (w - m.r) + '" y="' + (h - 4) + '" text-anchor="end">' + o.xl + '</text>';
+    if (o.yl) s += '<text class="alab" x="0" y="11">' + o.yl + '</text>';
+    if (o.yl2) s += '<text class="alab" x="' + w + '" y="11" text-anchor="end">' + o.yl2 + '</text>';
+    return { w, h, m, X, Y, s };
+  }
+  function mount(host, p, body, pts, label, near) {
+    host.innerHTML = '<svg width="' + p.w + '" height="' + p.h + '" viewBox="0 0 ' + p.w + ' ' + p.h + '" role="img">' + p.s + body +
+      '<line class="ph" y1="' + p.m.t + '" y2="' + (p.h - p.m.b) + '" x1="-9" x2="-9"/><circle class="cur" r="5" cx="-9" cy="-9"/>' +
+      '<line class="xh" y1="' + p.m.t + '" y2="' + (p.h - p.m.b) + '" x1="-9" x2="-9"/><circle class="hl" r="6.5" cx="-9" cy="-9"/></svg>';
+    host.firstChild.setAttribute('aria-label', label);
+    host._pts = pts; host._p = p; host._near = near || 'x'; host._i = -1;
+    if (!host._wired) wire(host);
+  }
+  const tip = $('tip');
+  function showTip(host, i, cx, cy) {
+    const pt = host._pts[i]; if (!pt) return;
+    const svg = host.firstChild, rect = svg.getBoundingClientRect(), xh = svg.querySelector('.xh'), hl = svg.querySelector('.hl');
+    if (host._near === 'x') { xh.setAttribute('x1', pt.x); xh.setAttribute('x2', pt.x); }
+    hl.setAttribute('cx', pt.x); hl.setAttribute('cy', pt.y);
+    tip.textContent = '';
+    const b = document.createElement('b'); b.textContent = pt.v; tip.appendChild(b);
+    const sp = document.createElement('span'); sp.textContent = pt.s; tip.appendChild(sp);
+    tip.hidden = false;
+    const px = cx === undefined ? rect.left + pt.x : cx, py = cy === undefined ? rect.top + pt.y : cy, tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = px + 14; if (left + tw > window.innerWidth - 8) left = px - tw - 14;
+    let top = py - th - 10; if (top < 8) top = py + 16;
+    tip.style.left = Math.max(8, left) + 'px'; tip.style.top = top + 'px'; host._i = i;
+  }
+  function hideTip(host) {
+    tip.hidden = true; const svg = host.firstChild; if (!svg || !svg.querySelector) return;
+    const xh = svg.querySelector('.xh'), hl = svg.querySelector('.hl');
+    if (xh) { xh.setAttribute('x1', -9); xh.setAttribute('x2', -9); } if (hl) { hl.setAttribute('cx', -9); hl.setAttribute('cy', -9); }
+  }
+  function wire(host) {
+    host._wired = true;
+    host.addEventListener('pointermove', e => {
+      const pts = host._pts; if (!pts || !pts.length) return;
+      const rect = host.firstChild.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < pts.length; i++) { const d = host._near === 'x' ? Math.abs(pts[i].x - px) : Math.hypot(pts[i].x - px, (pts[i].y - py) * 1.6); if (d < bd) { bd = d; best = i; } }
+      showTip(host, best, e.clientX, e.clientY);
+    });
+    host.addEventListener('pointerleave', () => hideTip(host));
+    host.addEventListener('keydown', e => {
+      const pts = host._pts; if (!pts || !pts.length) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); showTip(host, Math.max(0, Math.min(pts.length - 1, (host._i < 0 ? 0 : host._i) + (e.key === 'ArrowRight' ? 1 : -1)))); }
+    });
+    host.addEventListener('focus', () => { if (host._pts && host._pts.length && host.matches(':focus-visible')) showTip(host, Math.max(0, host._i)); });
+    host.addEventListener('blur', () => hideTip(host));
+  }
+  const poly = (cls, pts) => '<polyline class="' + cls + '" points="' + pts.map(p => q(p[0]) + ',' + q(p[1])).join(' ') + '"/>';
+  const XT = [0, 2, 4, 6, 8, 10, 12];
+  const n2 = v => String(+v.toFixed(2)), n3 = v => v.toFixed(3);
+  const hz = p => Math.round(F0 + (F1 - F0) * p);
+  function fillRead(id, rows) {
+    const dl = $(id); dl.textContent = '';
+    for (const r of rows) { const d = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = r[0]; dd.textContent = r[1]; d.appendChild(dt); d.appendChild(dd); dl.appendChild(d); }
+  }
+  const MAX_MARKS = 3000;
+  const MAPSUB = {
+    grain: 'Un punto a ogni grano: la mappa fa un passo quando nasce un grano, e decide quanto manca al prossimo.',
+    clock: 'La linea è la mappa, che avanza col suo clock; i punti sono i valori trovati dai grani ai loro onset.',
+    terr: 'La linea è la mappa calcolata da capo a ogni istante (n iterate da x0); i punti sono i valori letti dai grani.'
+  };
+  function drawMap() {
+    const host = $('c-map'), L = RANGE[0], H = RANGE[1];
+    $('s-map').textContent = MAPSUB[S.mode];
+    const p = plot(host, { h: 210, xd: [0, T], yd: [L, H], xt: XT, yt: [L, (L + H) / 2, H], yf: n2, xl: 'secondi', yl: 'm1' });
+    const line = [];
+    if (S.mode === 'terr') { const W = Math.max(300, p.w); for (let i = 0; i <= W; i++) { const t = T * i / W; line.push([p.X(t), p.Y(M.val(t).x)]); } }
+    else M.steps.forEach((a, k) => { const y = p.Y(a.x); line.push([p.X(a.t), y], [p.X(k + 1 < M.steps.length ? M.steps[k + 1].t : T), y]); });
+    const g = M.g.slice(0, MAX_MARKS), rad = g.length <= 80 ? 4 : g.length <= 220 ? 3 : 2.5, pts = [];
+    let body = poly('guide', line);
+    g.forEach((a, k) => { const x = q(p.X(a.t)), y = q(p.Y(Math.max(L, Math.min(H, a.m)))); body += '<circle class="dot' + (rad < 4 ? ' small' : '') + '" r="' + rad + '" cx="' + x + '" cy="' + y + '"/>'; pts.push({ x, y, v: 'm1 = ' + n3(a.m), s: 'grano ' + (k + 1) + ' · ' + a.t.toFixed(2) + ' s · r ' + rAt(a.t).toFixed(3) }); });
+    mount(host, p, body, pts, 'Valore della mappa letto da ogni grano');
+  }
+  const BM = { l: 44, r: 14, t: 22, b: 36 }, BH = 260;
+  let bifW = 0;
+  const bx = v => { const rr = PRESETS[S.base].rr; return BM.l + (v - rr[0]) / (rr[1] - rr[0]) * (bifW - BM.l - BM.r); };
+  const by = v => BH - BM.b - (v - RANGE[0]) / (RANGE[1] - RANGE[0]) * (BH - BM.t - BM.b);
+  function drawBif() {
+    const host = $('c-bif'), cv = $('cv-bif'), rr = PRESETS[S.base].rr;
+    const w = Math.max(220, Math.floor(host.clientWidth)), dpr = Math.min(2, window.devicePixelRatio || 1);
+    bifW = w; const cols = Math.floor((w - BM.l - BM.r) * dpr), sc = scan(cols);
+    RANGE = sc.range;
+    cv.width = w * dpr; cv.height = BH * dpr; cv.style.width = w + 'px'; cv.style.height = BH + 'px';
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, BH);
+    const cs = getComputedStyle(document.documentElement), col = n => cs.getPropertyValue(n).trim();
+    g.font = '12px ' + (cs.getPropertyValue('--font').trim() || 'sans-serif'); g.lineWidth = 1; g.textBaseline = 'middle';
+    for (const t of [RANGE[0], (RANGE[0] + RANGE[1]) / 2, RANGE[1]]) {
+      g.strokeStyle = col('--grid'); g.beginPath(); g.moveTo(BM.l, Math.round(by(t)) + .5); g.lineTo(w - BM.r, Math.round(by(t)) + .5); g.stroke();
+      g.fillStyle = col('--muted'); g.textAlign = 'right'; g.fillText(n2(t), BM.l - 7, by(t));
+    }
+    g.strokeStyle = col('--axis'); g.beginPath(); g.moveTo(BM.l, BH - BM.b + .5); g.lineTo(w - BM.r, BH - BM.b + .5); g.stroke();
+    g.textAlign = 'center'; g.fillStyle = col('--muted');
+    for (let i = 0; i <= 3; i++) { const t = rr[0] + (rr[1] - rr[0]) * i / 3; g.fillText(n2(t), bx(t), BH - BM.b + 16); }
+    g.fillStyle = col('--ink-2'); g.textAlign = 'right'; g.fillText('r', w - BM.r, BH - 6); g.textAlign = 'left'; g.fillText('m1', 0, 9);
+    g.globalAlpha = .3; const px = 1 / dpr;
+    for (let c = 0; c <= sc.cols; c++) { const X = BM.l + c / dpr; for (let i = 0; i < sc.K; i++) g.fillRect(X, by(sc.v[c * sc.K + i]), px, px); }
+    g.globalAlpha = 1;
+  }
+  function drawBand() {
+    const ov = $('ov-bif'), a = Math.min(first(S.r), lastV(S.r)), b = Math.max(first(S.r), lastV(S.r));
+    ov.setAttribute('width', bifW); ov.setAttribute('height', BH); ov.setAttribute('viewBox', '0 0 ' + bifW + ' ' + BH);
+    ov.innerHTML = '<rect class="band" x="' + q(bx(a)) + '" y="' + BM.t + '" width="' + Math.max(2, q(bx(b) - bx(a))) + '" height="' + (BH - BM.t - BM.b) + '"/>' +
+      '<line class="mark" id="bm-l" x1="-9" x2="-9" y1="' + BM.t + '" y2="' + (BH - BM.b) + '"/><circle class="cur" id="bm-d" r="5" cx="-9" cy="-9"/>';
+  }
+  /* un riquadro per parametro: la fascia scritta e i valori usati */
+  function drawStrip(k) {
+    const host = $('c-' + k), P = PAR[k], b = BIND[k], vals = M.g.map(a => a[k] * P.k);
+    let dom, xt, band = [b.lo * P.k, b.hi * P.k];
+    if (!isFinite(band[0]) || !isFinite(band[1])) band = [0, 0];
+    if (k === 'pos') { dom = [0, 1]; xt = [0, 0.25, 0.5, 0.75, 1]; }
+    else { const top = Math.max(band[1], Math.max.apply(null, vals)), mx = [500, 1000, 2000].find(v => v >= top) || 2000; dom = [0, mx]; xt = [0, mx / 4, mx / 2, mx * 3 / 4, mx]; }
+    const p = plot(host, { h: 118, xd: dom, yd: [0, 1], xt, yt: [], xl: k === 'pos' ? 'posizione nel buffer' : 'millisecondi', m: { t: 10, l: 14 } });
+    const B = 60, bins = new Array(B).fill(0); let top = 0;
+    for (const v of vals) { const i = Math.min(B - 1, Math.max(0, Math.floor((v - dom[0]) / (dom[1] - dom[0]) * B))); bins[i]++; }
+    for (const c of bins) if (c > top) top = c;
+    const a0 = Math.max(dom[0], Math.min(dom[1], band[0])), a1 = Math.max(dom[0], Math.min(dom[1], band[1]));
+    let body = '<rect class="band" x="' + q(p.X(a0)) + '" y="' + p.m.t + '" width="' + Math.max(2, q(p.X(a1) - p.X(a0))) + '" height="' + (p.h - p.m.t - p.m.b) + '"/>';
+    const slot = (p.w - p.m.l - p.m.r) / B, bw = Math.max(2, Math.min(24, slot - 2)), pts = [], y0 = p.h - p.m.b;
+    bins.forEach((c, i) => {
+      if (!c) return;
+      const cx = p.m.l + slot * (i + .5), hgt = Math.max(2, (p.h - p.m.t - p.m.b - 6) * c / top), rr = Math.min(3, bw / 2, hgt), x0 = q(cx - bw / 2), x1 = q(cx + bw / 2), yt = q(y0 - hgt);
+      body += '<path class="bar" d="M' + x0 + ',' + y0 + 'V' + q(yt + rr) + 'Q' + x0 + ',' + yt + ' ' + q(x0 + rr) + ',' + yt + 'H' + q(x1 - rr) + 'Q' + x1 + ',' + yt + ' ' + x1 + ',' + q(yt + rr) + 'V' + y0 + 'Z"/>';
+      const lo = dom[0] + (dom[1] - dom[0]) * i / B, hi = dom[0] + (dom[1] - dom[0]) * (i + 1) / B;
+      pts.push({ x: q(cx), y: yt, v: (c / vals.length * 100).toFixed(1) + '% dei grani', s: k === 'pos' ? 'fra ' + lo.toFixed(2) + ' e ' + hi.toFixed(2) + ' · ' + hz(lo) + '–' + hz(hi) + ' Hz' : 'fra ' + Math.round(lo) + ' e ' + Math.round(hi) + ' ms' });
+    });
+    mount(host, p, body, pts, 'Valori usati e fascia scritta per ' + k);
+    const f = v => k === 'pos' ? v.toFixed(2) : String(Math.round(v)), u = P.unit;
+    const mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), dist = new Set(vals.map(v => v.toFixed(k === 'pos' ? 3 : 1))).size;
+    let s = 'scritto: da ' + f(band[0]) + ' a ' + f(band[1]) + u + (k === 'pos' ? ' (' + hz(Math.max(0, Math.min(1, band[0]))) + '–' + hz(Math.max(0, Math.min(1, band[1]))) + ' Hz)' : '');
+    s += ' · usato: da ' + f(mn) + ' a ' + f(mx) + u + (k === 'pos' ? ' (' + hz(mn) + '–' + hz(mx) + ' Hz)' : '') + ' · ' + (dist > 50 ? 'più di 50' : dist) + ' valori diversi';
+    if (k !== 'pos' && M.cl[k]) s += ' · ' + M.cl[k] + ' fuori dai limiti del motore (1 ms – 2 s), tagliati';
+    if (k === 'pos' && (band[0] < 0 || band[1] > 1)) s += ' · quello che esce da 0–1 rientra dall’altro capo del buffer';
+    $('l-' + k).textContent = s;
+  }
+  function drawScore() {
+    const host = $('c-part'), g = M.g.slice(0, MAX_MARKS);
+    const p = plot(host, { h: 260, xd: [0, T], yd: [0, 1], xt: XT, yt: [0, 0.25, 0.5, 0.75, 1], y2: v => hz(v), xl: 'secondi', yl: 'posizione nel buffer', yl2: 'Hz', m: { r: 44 } });
+    let body = ''; const pts = [];
+    for (const a of g) {
+      const x = q(p.X(a.t)), y = q(p.Y(a.pos)), wd = Math.max(1.5, q(p.X(Math.min(T, a.t + a.dur)) - p.X(a.t)));
+      body += '<rect class="bar" x="' + x + '" y="' + q(y - 2) + '" width="' + wd + '" height="4" rx="2" opacity=".85"/>';
+      pts.push({ x, y, v: 'posizione ' + a.pos.toFixed(2) + ' · ' + hz(a.pos) + ' Hz', s: 'onset ' + a.t.toFixed(2) + ' s · durata ' + Math.round(a.dur * 1000) + ' ms · poi ' + Math.round(a.iot * 1000) + ' ms di attesa' });
+    }
+    mount(host, p, body, pts, 'Grani nel piano tempo e posizione nel buffer', 'xy');
+    let si = 0, sd = 0; for (const a of M.g) { si += a.iot; sd += a.dur; }
+    const rows = [['grani in 12 secondi', M.g.length + (M.capped ? ' (fermato qui: troppi)' : '')], ['densità media', (M.g.length / si).toFixed(1) + ' grani/s'], ['sovrapposizione media', (sd / si).toFixed(2) + ' grani insieme']];
+    if (M.lost) rows.push(['la mappa è scappata', M.lost + ' volte: riparte da x0']);
+    fillRead('read-g', rows);
+  }
+
+  /* ================= cursore del tempo e suono ================= */
+  function setT(t) {
+    S.t = Math.min(T, Math.max(0, t));
+    $('t').value = S.t; $('t-out').textContent = S.t.toFixed(2) + ' s';
+    const r = rAt(S.t), x = M.val(S.t).x;
+    $('now').textContent = 'r ' + r.toFixed(3) + ' · m1 ' + n3(x);
+    for (const id of ['c-map', 'c-part']) {
+      const host = $(id), p = host._p, svg = host.firstChild; if (!p || !svg) continue;
+      const X = q(p.X(S.t)), ph = svg.querySelector('.ph'), cur = svg.querySelector('.cur');
+      ph.setAttribute('x1', X); ph.setAttribute('x2', X);
+      if (id === 'c-map') { cur.setAttribute('cx', X); cur.setAttribute('cy', q(p.Y(Math.max(RANGE[0], Math.min(RANGE[1], x))))); }
+    }
+    const l = $('bm-l'), d = $('bm-d');
+    if (l) { const X = q(bx(r)); l.setAttribute('x1', X); l.setAttribute('x2', X); d.setAttribute('cx', X); d.setAttribute('cy', q(by(Math.max(RANGE[0], Math.min(RANGE[1], x))))); }
+  }
+  let raf = 0, t0 = 0;
+  function tick(now) {
+    let t = (now - t0) / 1000;
+    if (t >= T) { if (!S.loop) { setT(T); stop(); return; } t0 += T * 1000; t -= T; setT(t); if (S.snd) audioStart(t); }
+    else setT(t);
+    pump(); raf = requestAnimationFrame(tick);
+  }
+  function play() {
+    if (S.t >= T - 0.01) setT(0);
+    S.playing = true; $('play').textContent = 'Pausa'; t0 = performance.now() - S.t * 1000;
+    if (S.snd) audioStart(S.t);
+    raf = requestAnimationFrame(tick);
+  }
+  function stop() { S.playing = false; $('play').textContent = 'Avvia'; cancelAnimationFrame(raf); audioStop(); }
+
+  let actx = null, master = null, chirp = null, aIdx = 0, aBase = 0;
+  const HANN = new Float32Array(128); for (let i = 0; i < 128; i++) HANN[i] = 0.4 * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / 127));
+  function mkChirp() {
+    const sr = actx.sampleRate, n = Math.floor(BUF * sr), b = actx.createBuffer(1, n, sr), d = b.getChannelData(0), k = (F1 - F0) / (2 * BUF);
+    for (let i = 0; i < n; i++) { const t = i / sr; d[i] = Math.sin(2 * Math.PI * (F0 * t + k * t * t)); }
+    return b;
+  }
+  function audioStop() { if (master) { try { master.disconnect(); } catch (e) {} master = null; } }
+  function audioStart(from) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      chirp = chirp || mkChirp();
+      audioStop(); master = actx.createGain(); master.gain.value = 0.5;
+      const comp = actx.createDynamicsCompressor(); master.connect(comp); comp.connect(actx.destination);
+      aBase = actx.currentTime + 0.06 - from;
+      aIdx = 0; while (aIdx < M.g.length && M.g[aIdx].t < from) aIdx++;
+      pump();
+    } catch (e) { S.snd = false; $('snd').checked = false; master = null; }
+  }
+  function pump() {
+    if (!master) return;
+    const g = M.g, until = S.t + 0.4;
+    while (aIdx < g.length && g[aIdx].t < until) {
+      const a = g[aIdx++], at = aBase + a.t; if (at < actx.currentTime + 0.003) continue;
+      const src = actx.createBufferSource(), gn = actx.createGain();
+      src.buffer = chirp; src.loop = true; gn.gain.value = 0;
+      gn.gain.setValueCurveAtTime(HANN, at, a.dur);
+      src.connect(gn); gn.connect(master); src.start(at, a.pos * BUF, a.dur); src.stop(at + a.dur + 0.02);
+    }
+  }
+
+  /* ================= regia: lo stato comanda, il resto segue ================= */
+  const NOTA = {
+    grain: 'La mappa fa un passo ogni volta che nasce un grano, ed è lei a decidere quanto manca al prossimo: il clock non si scrive.',
+    clock: 'La mappa cammina col suo clock, in passi al secondo, qualunque cosa facciano i grani. Ogni grano prende il valore che trova.',
+    terr: 'Nessuna memoria: a ogni grano si riparte da x0 e si itera l’equazione n volte con l’r di quell’istante. È il movimento di r a fare il disegno.'
+  };
+  const NAMES = { fx: 'equazione x', fy: 'equazione y', iot: 'grain.iot', dur: 'grain.duration', pos: 'pointer.position' };
+  function syncUI() {
+    const act = document.activeElement, P = PRESETS[S.base], set = (id, v) => { const el = $(id); if (el !== act) el.value = v; };
+    set('preset', isCustom() ? S.base + '*' : S.base);
+    const opt = $('preset').querySelector('option[data-custom]'); opt.hidden = !isCustom(); opt.value = S.base + '*'; opt.textContent = P.name + ', modificata';
+    if (isCustom()) $('preset').value = S.base + '*';
+    set('f-x', S.fx); set('f-y', S.fy);
+    $('err-map').textContent = E.fx ? 'x: ' + E.fx : E.fy ? 'y: ' + E.fy : '';
+    document.querySelectorAll('input[name=mode]').forEach(i => { i.checked = i.value === S.mode; });
+    for (const id of ['r0', 'r1']) { $(id).min = P.rr[0]; $(id).max = P.rr[1]; }
+    set('r0', first(S.r)); set('r1', lastV(S.r)); $('r0-out').textContent = first(S.r).toFixed(3); $('r1-out').textContent = lastV(S.r).toFixed(3);
+    set('c0', first(S.c)); set('c1', lastV(S.c)); $('c0-out').textContent = first(S.c) + ' passi/s'; $('c1-out').textContent = lastV(S.c) + ' passi/s';
+    set('nit', S.n); $('nit-out').textContent = String(S.n);
+    $('x0').min = RANGE[0]; $('x0').max = RANGE[1]; set('x0', S.x0); $('x0-out').textContent = (+S.x0).toFixed(2);
+    $('row-clock').hidden = S.mode !== 'clock'; $('row-n').hidden = S.mode !== 'terr';
+    $('nota-m').textContent = NOTA[S.mode] + (S.mode === 'terr' && first(S.r) === lastV(S.r) ? ' Con r fermo il valore è fermo e i grani sono tutti uguali: fai muovere r.' : '');
+    $('range-txt').textContent = 'da ' + n2(RANGE[0]) + ' a ' + n2(RANGE[1]);
+    for (const k of ['iot', 'dur', 'pos']) {
+      const b = BIND[k], P2 = PAR[k], lo = $(k + '-lo'), hi = $(k + '-hi');
+      set('e-' + k, S.ex[k]);
+      $('err-' + k).textContent = E[k] ? E[k] : b.ok ? '' : 'Non è una retta in m1: i due cursori non possono riscriverla, vale il testo.';
+      lo.disabled = hi.disabled = !b.ok;
+      if (lo !== act) lo.value = b.vL * P2.k; if (hi !== act) hi.value = b.vH * P2.k;
+      const f = v => isFinite(v) ? (P2.d ? v.toFixed(P2.d) : String(Math.round(v))) + P2.unit : '—';
+      $(k + '-lo-out').textContent = f(b.vL * P2.k); $(k + '-hi-out').textContent = f(b.vH * P2.k);
+    }
+  }
+  function update(origin) {
+    recompile();
+    drawBif();
+    BIND = { iot: affine('iot'), dur: affine('dur'), pos: affine('pos') };
+    M = build();
+    syncUI();
+    drawMap(); drawBand(); drawStrip('iot'); drawStrip('dur'); drawStrip('pos'); drawScore();
+    if (origin !== 'yaml') { $('yaml').value = toYaml(); yamlBad = ''; }
+    const st = $('y-state'), wrong = ['fx', 'fy', 'iot', 'dur', 'pos'].find(k => E[k]);
+    st.textContent = yamlBad ? 'Non letto: ' + yamlBad + '. Vale ancora l’ultima versione buona.' : wrong ? 'Letto, ma ' + NAMES[wrong] + ' non si capisce: ' + E[wrong] + '.' : window.jsyaml ? 'In linea con i cursori.' : 'Il lettore YAML non si è caricato: qui puoi solo leggere.';
+    st.className = 'state' + (yamlBad || wrong ? ' bad' : '');
+    setT(S.t);
+    if (S.playing && S.snd) audioStart(S.t);
+  }
+  function setPreset(key) {
+    const keep = {}; for (const k of ['iot', 'dur', 'pos']) if (BIND[k] && BIND[k].ok) keep[k] = [BIND[k].vL, BIND[k].vH];
+    const P = PRESETS[key]; S.base = key; S.fx = P.x; S.fy = P.y; S.r = [[0, P.r], [T, P.r]]; S.x0 = P.x0; S.y0 = P.y0;
+    recompile(); SCAN = null; drawBif();
+    for (const k in keep) S.ex[k] = fmtExpr(keep[k][0], keep[k][1]);     /* stessa fascia, riscritta per il nuovo intervallo di m1 */
+    update('ui');
+  }
+  const debounce = (fn, ms) => { let h = 0; return () => { clearTimeout(h); h = setTimeout(fn, ms); }; };
+
+  const sel = $('preset');
+  for (const k in PRESETS) { const o = document.createElement('option'); o.value = k; o.textContent = PRESETS[k].name; sel.appendChild(o); }
+  { const o = document.createElement('option'); o.setAttribute('data-custom', ''); o.hidden = true; sel.appendChild(o); }
+  sel.addEventListener('change', e => { const k = e.target.value.replace('*', ''); if (PRESETS[k]) setPreset(k); });
+  document.querySelectorAll('input[name=mode]').forEach(i => i.addEventListener('change', e => { S.mode = e.target.value; update('ui'); }));
+  const typed = debounce(() => { S.fx = $('f-x').value; S.fy = $('f-y').value; for (const k of ['iot', 'dur', 'pos']) S.ex[k] = $('e-' + k).value; update('ui'); }, 180);
+  for (const id of ['f-x', 'f-y', 'e-iot', 'e-dur', 'e-pos']) $(id).addEventListener('input', typed);
+  $('r0').addEventListener('input', e => { S.r = [[0, +e.target.value], [T, lastV(S.r)]]; update('ui'); });
+  $('r1').addEventListener('input', e => { S.r = [[0, first(S.r)], [T, +e.target.value]]; update('ui'); });
+  $('c0').addEventListener('input', e => { S.c = [[0, +e.target.value], [T, lastV(S.c)]]; update('ui'); });
+  $('c1').addEventListener('input', e => { S.c = [[0, first(S.c)], [T, +e.target.value]]; update('ui'); });
+  $('nit').addEventListener('input', e => { S.n = +e.target.value; update('ui'); });
+  $('x0').addEventListener('input', e => { S.x0 = +e.target.value; update('ui'); });
+  for (const k of ['iot', 'dur', 'pos']) for (const end of ['lo', 'hi']) $(k + '-' + end).addEventListener('input', () => {
+    S.ex[k] = fmtExpr(+$(k + '-lo').value / PAR[k].k, +$(k + '-hi').value / PAR[k].k); update('ui');
+  });
+  $('yaml').addEventListener('input', debounce(() => { try { fromYaml($('yaml').value); yamlBad = ''; } catch (e) { yamlBad = (e.message || String(e)).split('\n')[0]; } update('yaml'); }, 260));
+  $('play').addEventListener('click', () => { if (S.playing) stop(); else play(); });
+  $('t').addEventListener('input', e => { setT(+e.target.value); if (S.playing) { t0 = performance.now() - S.t * 1000; if (S.snd) audioStart(S.t); } });
+  $('snd').addEventListener('change', e => { S.snd = e.target.checked; if (S.playing) { if (S.snd) audioStart(S.t); else audioStop(); } });
+  $('loop').addEventListener('change', e => { S.loop = e.target.checked; });
+
+  let rt = 0, lastW = 0;
+  new ResizeObserver(() => { const w = $('c-map').clientWidth; if (w === lastW) return; lastW = w; clearTimeout(rt); rt = setTimeout(() => update('ui'), 60); }).observe($('c-map'));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawBif);
+  new MutationObserver(drawBif).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawBif);
+  window.__banco = { compile };
+  lastW = $('c-map').clientWidth; update('ui');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,652 @@
+"""
+map_set.py
+
+Le mappe di uno stream (issue #307): il blocco `maps:`, lo stato, chi le
+muove e chi le legge.
+
+    maps:
+      m1: {type: logistic, r: 3.5}
+
+`MapSet` e' l'insieme delle mappe dichiarate da uno stream. Fa tre cose:
+
+- **le costruisce** dallo YAML (`from_yaml`), rifiutando un blocco scritto
+  male con un `MapConfigError` che dice dove e cosa;
+- **le muove** in un punto solo (`advance`), chiamato dallo Stream in testa al
+  giro di ogni voce: una mappa a `clock: grain` fa un passo per grano e per
+  voce, e ha percio' **uno stato per voce**. Con piu' voci e `scatter` i
+  cursori divergono e le chiamate arrivano fuori ordine: uno stato condiviso
+  verrebbe iterato in ordine mescolato;
+- **le fa leggere** (`value`, `environment`) senza muoverle: l'ordine in cui i
+  parametri di un grano leggono la stessa mappa non conta, e due parametri
+  che la leggono vedono lo stesso valore.
+
+Lo stato iniziale e' `x0` (default del tipo) dopo un transitorio di
+`transient` passi scartati (default 300, come nel banco): il primo grano e'
+gia' sull'attrattore.
+
+Una mappa sa solo fare «un altro passo»: quando, lo dice lo YAML (issue #310).
+
+| scrittura             | quando fa un passo                         | stato        |
+|-----------------------|--------------------------------------------|--------------|
+| `clock: grain`        | ogni volta che nasce un grano              | uno per voce |
+| `clock: 8`            | 8 passi al secondo; il valore resta fermo  | nessuno: e'  |
+|                       | fino al passo dopo                         | una funzione |
+| `clock: [[0, 2], ..]` | il passo k cade dove l'integrale del clock | del tempo    |
+|                       | vale k                                     |              |
+| `iterate: 7`          | mai: a ogni lettura si riparte da `x0` e   | nessuno      |
+|                       | si fanno 7 passi con l'`r` di quell'istante|              |
+
+`r` puo' essere un envelope: si legge all'istante del passo (o della lettura,
+in `iterate`), e segue il `time_mode` dello stream come ogni altro envelope.
+
+Tre chiavi hanno un tetto, perche' contano dei passi e un passo costa: senza,
+un numero grande scritto per sbaglio teneva fermo il render invece di dire
+che cosa non va. `iterate` al piu' `MAP_ITERATE_MAX` (i passi a ogni
+lettura), `transient` al piu' `MAP_TRANSIENT_MAX` (una volta per mappa), il
+clock al piu' un passo per campione (`output_sr`).
+"""
+from __future__ import annotations
+
+import math
+import re
+from array import array
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Optional, Tuple, Union
+
+from pge.envelopes.envelope import Envelope, create_scaled_envelope
+from pge.expressions.expression import CONSTANTS, FUNCTIONS
+from pge.maps.catalog import MAP_KINDS, MAP_TYPES, MapKind
+from pge.shared.constants import DEFAULT_OUTPUT_SR
+from pge.shared.exceptions import ConfigError, MapConfigError
+from pge.shared.logger import log_map_escape_warning
+
+#: Le chiavi di una mappa, come letterale (vedi MAP_TYPES).
+MAP_KEYS = ('type', 'r', 'clock', 'iterate', 'x0', 'transient')
+
+#: `clock: grain`: un passo ogni volta che nasce un grano. E' il default.
+MAP_CLOCK_GRAIN = 'grain'
+
+#: I tre modi di avanzare (issue #310): per grano, a orologio, iterata.
+MAP_MODE_GRAIN = 'grain'
+MAP_MODE_CLOCK = 'clock'
+MAP_MODE_ITERATE = 'iterate'
+
+#: Passi scartati prima del primo grano, quando `transient` non e' scritto.
+MAP_TRANSIENT_DEFAULT = 300
+
+#: Il transitorio piu' lungo che si puo' scrivere. Si fa una volta per mappa,
+#: e fin qui costa pochi millisecondi; e' piu' di trecento volte il default,
+#: abbastanza per gli attrattori che si raggiungono piano (vicino a una
+#: biforcazione). Oltre non c'e' un attrattore che lo chieda: c'e' un numero
+#: scritto per sbaglio, che teneva fermo il caricamento per minuti.
+MAP_TRANSIENT_MAX = 100_000
+
+#: I passi piu' numerosi che `iterate` puo' fare a ogni lettura. E' il tetto
+#: del «Banco del chirp», che pero' li' taglia in silenzio, e non e' solo un
+#: limite di costo (si itera a ogni grano): a r = 4 la logistica perde un bit
+#: dello stato iniziale a ogni passo, e dopo una cinquantina di passi
+#: l'iterata non dipende piu' da r ma dagli arrotondamenti del float64.
+MAP_ITERATE_MAX = 40
+
+#: Oltre questo modulo (o su un non-finito) la mappa e' scappata: riparte da
+#: `x0`. E' la soglia del banco.
+MAP_ESCAPE_LIMIT = 1e3
+
+#: Ogni quanti secondi di tempo-stream la fuga si riscrive sul clip log.
+#: Stesso valore e stesso motivo di DENSITY_NOTICE_INTERVAL: una mappa che
+#: scappa lo fa a ogni manciata di grani.
+MAP_ESCAPE_LOG_INTERVAL = 5.0
+
+#: Il nome con cui un'espressione legge il tempo (secondi dall'inizio dello
+#: stream).
+TIME_NAME = 't'
+
+#: Nomi che una mappa non puo' prendere: in un'espressione sono gia' una
+#: funzione, una costante o il tempo, e `x`, `y`, `r` sono le variabili
+#: dell'equazione di una mappa.
+RESERVED_MAP_NAMES = (
+    frozenset(FUNCTIONS) | frozenset(CONSTANTS)
+    | frozenset({TIME_NAME, 'x', 'y', 'r'}))
+
+_NOME = re.compile(r'[A-Za-z_][A-Za-z_0-9]*\Z')
+_ASSENTE = object()
+
+
+def _numero(valore) -> bool:
+    return isinstance(valore, (int, float)) and not isinstance(valore, bool)
+
+
+@dataclass(frozen=True)
+class MapDefinition:
+    """Una mappa come lo YAML la dichiara, gia' validata.
+
+    `r` e `clock` sono un numero o un `Envelope` gia' costruito sui tempi
+    dello stream. `mode` dice quale dei tre modi di avanzare vale: `clock` ha
+    un valore solo nel modo a orologio, `iterate` solo nel suo.
+    """
+    name: str
+    kind: MapKind
+    r: Union[float, Envelope]
+    x0: float
+    transient: int
+    mode: str = MAP_MODE_GRAIN
+    clock: Union[float, Envelope, None] = None
+    iterate: Optional[int] = None
+
+    def r_at(self, time: float) -> float:
+        """`r` a un istante: quello del passo, o della lettura."""
+        if isinstance(self.r, Envelope):
+            return self.r.evaluate(time)
+        return self.r
+
+
+# =============================================================================
+# PARSE
+# =============================================================================
+
+_CLOCK_HINT = (f"`{MAP_CLOCK_GRAIN}` (un passo per grano), oppure i passi al "
+               "secondo: un numero positivo o un envelope, al piu' uno per "
+               "campione")
+
+
+def _finito(valore, campo: str) -> float:
+    if not _numero(valore):
+        raise MapConfigError(campo, "atteso un numero", value=valore)
+    if not math.isfinite(valore):
+        raise MapConfigError(campo, "atteso un numero finito", value=valore)
+    return float(valore)
+
+
+def _envelope(grezzo, campo: str, duration, time_mode: str) -> Envelope:
+    """Un envelope dichiarato dentro una mappa, sui tempi dello stream."""
+    return create_scaled_envelope(
+        grezzo, duration if duration is not None else 1.0, time_mode,
+        field=campo)
+
+
+def _r(grezzo, campo: str, duration, time_mode: str):
+    if isinstance(grezzo, (list, dict)):
+        envelope = _envelope(grezzo, campo, duration, time_mode)
+        for _, y in envelope.breakpoints:
+            if not math.isfinite(y):
+                raise MapConfigError(
+                    campo, "atteso un envelope di numeri finiti", value=y)
+        return envelope
+    return _finito(grezzo, campo)
+
+
+def _oltre_un_passo_per_campione(clock: float, output_sr: int, campo: str,
+                                 dove: str = ""):
+    """Il tetto del clock: un passo per campione, la risoluzione del motore.
+
+    E' lo stesso tetto a cui arriva, a ogni grano, una mappa a
+    `clock: grain` con l'attesa piu' corta che `grain.iot` ammette. Un passo
+    piu' fitto nessun grano lo vede da solo, e costa come un passo vero: un
+    `clock: 1e9` scritto per sbaglio teneva fermo il render.
+    """
+    if clock > output_sr:
+        raise MapConfigError(
+            campo, f"il clock e' al piu' un passo per campione: {output_sr} "
+            f"passi al secondo{dove}", value=clock, hint=_CLOCK_HINT)
+
+
+def _clock(grezzo, campo: str, duration, time_mode: str, output_sr: int):
+    """`(modo, clock)`: `grain`, oppure i passi al secondo."""
+    if grezzo == MAP_CLOCK_GRAIN and isinstance(grezzo, str):
+        return MAP_MODE_GRAIN, None
+    if isinstance(grezzo, (list, dict)):
+        envelope = _envelope(grezzo, campo, duration, time_mode)
+        for _, y in envelope.breakpoints:
+            if not (math.isfinite(y) and y > 0):
+                raise MapConfigError(
+                    campo, "il clock dev'essere positivo e finito in ogni "
+                    "punto dell'envelope", value=y, hint=_CLOCK_HINT)
+            _oltre_un_passo_per_campione(
+                y, output_sr, campo, dove=" in ogni punto dell'envelope")
+        return MAP_MODE_CLOCK, envelope
+    if _numero(grezzo):
+        if not (math.isfinite(grezzo) and grezzo > 0):
+            raise MapConfigError(
+                campo, "il clock dev'essere positivo e finito", value=grezzo,
+                hint=_CLOCK_HINT)
+        _oltre_un_passo_per_campione(grezzo, output_sr, campo)
+        return MAP_MODE_CLOCK, float(grezzo)
+    raise MapConfigError(
+        campo, "clock non riconosciuto", value=grezzo, hint=_CLOCK_HINT)
+
+
+def _definizione(nome, grezza, duration, time_mode: str,
+                 output_sr: int) -> MapDefinition:
+    campo = f"maps.{nome}"
+    if not isinstance(nome, str) or not _NOME.match(nome):
+        raise MapConfigError(
+            campo, "il nome di una mappa e' fatto di lettere, cifre e `_`, "
+            "e non comincia con una cifra", value=nome)
+    if nome in RESERVED_MAP_NAMES:
+        raise MapConfigError(
+            campo, "nome riservato: in un'espressione vuol dire gia' "
+            "un'altra cosa", value=nome,
+            hint=f"riservati: {', '.join(sorted(RESERVED_MAP_NAMES))}")
+    if not isinstance(grezza, dict):
+        raise MapConfigError(
+            campo, "una mappa e' un dizionario (type, r, ...)", value=grezza)
+
+    for chiave in grezza:
+        if chiave not in MAP_KEYS:
+            raise MapConfigError(
+                f"{campo}.{chiave}", "chiave sconosciuta",
+                hint=f"chiavi di una mappa: {', '.join(MAP_KEYS)}")
+
+    tipo = grezza.get('type')
+    if tipo is None:
+        raise MapConfigError(
+            f"{campo}.type", "manca il tipo della mappa",
+            hint=f"tipi disponibili: {', '.join(MAP_TYPES)}")
+    if not isinstance(tipo, str) or tipo not in MAP_KINDS:
+        raise MapConfigError(
+            f"{campo}.type", "tipo sconosciuto", value=tipo,
+            hint=f"tipi disponibili: {', '.join(MAP_TYPES)}")
+    kind = MAP_KINDS[tipo]
+
+    if grezza.get('r') is None:
+        basso, alto = kind.r_range
+        raise MapConfigError(
+            f"{campo}.r", "manca r, il parametro della mappa",
+            hint=f"per {tipo}: da {basso:g} a {alto:g}")
+    r = _r(grezza['r'], f"{campo}.r", duration, time_mode)
+
+    x0 = kind.x0
+    if 'x0' in grezza:
+        x0 = _finito(grezza['x0'], f"{campo}.x0")
+
+    # `iterate` sta al posto di `clock`, e non e' un clock: insieme dicono
+    # due cose diverse su quando la mappa si muove. Un errore, non una
+    # priorita'.
+    if 'iterate' in grezza:
+        if 'clock' in grezza:
+            raise MapConfigError(
+                campo, "clock e iterate insieme: una mappa o avanza con un "
+                "clock, o si rilegge da x0 a ogni lettura (iterate)",
+                hint="tieni una delle due chiavi")
+        n = grezza['iterate']
+        if not isinstance(n, int) or isinstance(n, bool) or n < 1:
+            raise MapConfigError(
+                f"{campo}.iterate",
+                "atteso un intero positivo: i passi fatti da x0 a ogni "
+                "lettura", value=n)
+        if n > MAP_ITERATE_MAX:
+            raise MapConfigError(
+                f"{campo}.iterate",
+                f"al piu' {MAP_ITERATE_MAX} passi a ogni lettura: oltre, "
+                "l'iterata non dipende piu' da r ma dagli arrotondamenti, e "
+                "si rifa' a ogni grano", value=n,
+                hint=f"da 1 a {MAP_ITERATE_MAX}")
+        if 'transient' in grezza:
+            raise MapConfigError(
+                f"{campo}.transient",
+                "con iterate non c'e' un transitorio: a ogni lettura si "
+                "riparte da x0", value=grezza['transient'],
+                hint="togli transient, oppure usa clock al posto di iterate")
+        return MapDefinition(name=nome, kind=kind, r=r, x0=x0, transient=0,
+                             mode=MAP_MODE_ITERATE, iterate=n)
+
+    mode, clock = _clock(grezza.get('clock', MAP_CLOCK_GRAIN),
+                         f"{campo}.clock", duration, time_mode, output_sr)
+
+    transient = grezza.get('transient', MAP_TRANSIENT_DEFAULT)
+    if (not isinstance(transient, int) or isinstance(transient, bool)
+            or transient < 0):
+        raise MapConfigError(
+            f"{campo}.transient",
+            "atteso un intero non negativo: i passi scartati prima del "
+            "primo grano", value=transient)
+    if transient > MAP_TRANSIENT_MAX:
+        raise MapConfigError(
+            f"{campo}.transient",
+            f"al piu' {MAP_TRANSIENT_MAX} passi scartati: bastano per ogni "
+            "attrattore, anche per quelli che si raggiungono piano",
+            value=transient, hint=f"da 0 a {MAP_TRANSIENT_MAX}")
+
+    return MapDefinition(name=nome, kind=kind, r=r, x0=x0,
+                         transient=transient, mode=mode, clock=clock)
+
+
+def parse_maps(raw, duration: Optional[float] = None,
+               time_mode: str = 'absolute',
+               output_sr: Optional[int] = None) -> Tuple[MapDefinition, ...]:
+    """Il blocco `maps:` in definizioni validate, nell'ordine dello YAML.
+
+    `duration` e `time_mode` sono quelli dello stream: servono agli envelope
+    di `r` e di `clock`, che seguono il `time_mode` come ogni altro.
+    `output_sr` da' il tetto del clock, un passo per campione; None e' il
+    sample rate di default del motore.
+
+    Raises:
+        MapConfigError, o il ConfigError di un envelope malformato: senza
+        stream, che aggiunge `MapSet.from_yaml`.
+    """
+    if not isinstance(raw, dict):
+        raise MapConfigError(
+            'maps', "maps e' un dizionario: nome della mappa -> mappa",
+            value=raw, hint="es. maps: {m1: {type: logistic, r: 3.5}}")
+    if not raw:
+        raise MapConfigError(
+            'maps', "nessuna mappa dichiarata",
+            hint="es. maps: {m1: {type: logistic, r: 3.5}}; "
+                 "se non servono, togli la chiave")
+    sr = DEFAULT_OUTPUT_SR if output_sr is None else output_sr
+    return tuple(_definizione(nome, grezza, duration, time_mode, sr)
+                 for nome, grezza in raw.items())
+
+
+# =============================================================================
+# STATO
+# =============================================================================
+
+def _scappata(x: float) -> bool:
+    return not math.isfinite(x) or abs(x) > MAP_ESCAPE_LIMIT
+
+
+class _Map:
+    """Cio' che i tre modi di avanzare hanno in comune: il passo con la rete
+    per la mappa che scappa, e lo stato dopo il transitorio."""
+
+    #: True se la mappa va mossa in testa al giro di una voce.
+    per_grano = False
+
+    def __init__(self, definition: MapDefinition, stream_id: str):
+        self._definition = definition
+        self._stream_id = stream_id
+        self._step = definition.kind.step
+        self._initial: Optional[float] = None
+        self._escape_logged_at = -math.inf
+        self._escape_logged = False
+
+    def _passo(self, x: float, r: float, time: Optional[float]) -> float:
+        """Un passo. Se la mappa scappa riparte da `x0`, e lo scrive (non
+        durante il transitorio, `time` None: e' un fatto di prima del primo
+        grano, e se continua lo dira' il primo passo vero)."""
+        x = self._step(x, r)
+        if _scappata(x):
+            x = self._definition.x0
+            if time is not None:
+                self._segnala_fuga(time, r)
+        return x
+
+    def _stato_iniziale(self) -> float:
+        """`x0` dopo il transitorio, fatto a `r(0)`. Calcolato una volta: e'
+        lo stesso per ogni voce, perche' la mappa e' deterministica."""
+        if self._initial is None:
+            d = self._definition
+            x, r = d.x0, d.r_at(0.0)
+            for _ in range(d.transient):
+                x = self._passo(x, r, None)
+            self._initial = x
+        return self._initial
+
+    def _segnala_fuga(self, time: float, r: float) -> None:
+        if abs(time - self._escape_logged_at) < MAP_ESCAPE_LOG_INTERVAL:
+            return
+        self._escape_logged_at = time
+        is_first = not self._escape_logged
+        self._escape_logged = True
+        log_map_escape_warning(
+            stream_id=self._stream_id,
+            map_name=self._definition.name,
+            elapsed_time=time,
+            r=r,
+            x0=self._definition.x0,
+            interval=MAP_ESCAPE_LOG_INTERVAL,
+            is_first=is_first,
+        )
+
+    def advance(self, voice: int, time: float) -> None:
+        """Il giro di una voce comincia. Solo `clock: grain` si muove."""
+
+    def value(self, voice: int, time: float) -> float:
+        raise NotImplementedError
+
+    def step_times(self, until: float) -> Optional[List[float]]:
+        """Gli istanti dei passi in [0, until), o None se la mappa non ha
+        passi nel tempo."""
+        return None
+
+
+class _GrainClockMap(_Map):
+    """`clock: grain`: un passo per grano, uno stato per voce."""
+
+    per_grano = True
+
+    def __init__(self, definition: MapDefinition, stream_id: str):
+        super().__init__(definition, stream_id)
+        self._states: Dict[int, float] = {}
+
+    def advance(self, voice: int, time: float) -> None:
+        x = self._states.get(voice)
+        if x is None:
+            x = self._stato_iniziale()
+        self._states[voice] = self._passo(
+            x, self._definition.r_at(time), time)
+
+    def value(self, voice: int, time: float) -> float:
+        x = self._states.get(voice)
+        return self._stato_iniziale() if x is None else x
+
+
+#: Tolleranza sul conto dei passi: a un istante che e' esattamente quello di
+#: un passo, l'integrale del clock puo' cadere un soffio sotto l'intero.
+_CLOCK_EPSILON = 1e-9
+
+
+class _TimeClockMap(_Map):
+    """`clock:` numero o envelope: una funzione del tempo.
+
+    Il passo k cade all'istante t_k in cui l'integrale del clock vale k (il
+    primo, k = 0, a t = 0), e si fa con `r(t_k)`. Fra un passo e l'altro il
+    valore resta fermo. Non c'e' uno stato per voce: i passi si calcolano in
+    ordine, una volta, e si tengono; una lettura a un tempo qualunque — anche
+    che torna indietro, come succede con piu' voci e `scatter` — cerca il suo
+    passo fra quelli gia' fatti.
+    """
+
+    def __init__(self, definition: MapDefinition, stream_id: str):
+        super().__init__(definition, stream_id)
+        self._clock = definition.clock
+        self._costante = not isinstance(self._clock, Envelope)
+        # In `array('d')`: otto byte a passo invece di una trentina. Al tetto
+        # del clock, un passo per campione, uno stream lungo ne fa milioni.
+        self._times = array('d')
+        self._values = array('d')
+        if not self._costante:
+            self._minimo = min(y for _, y in self._clock.breakpoints)
+
+    def _integrale(self, time: float) -> float:
+        if time <= 0:
+            return 0.0
+        if self._costante:
+            return self._clock * time
+        return self._clock.integrate(0.0, time)
+
+    def _tempo_del_passo(self, k: int) -> float:
+        """L'istante in cui l'integrale del clock vale k."""
+        if k == 0:
+            return 0.0
+        if self._costante:
+            return k / self._clock
+        # L'integrale di un clock positivo cresce: si cerca dopo il passo
+        # precedente, con Newton (la derivata e' il clock) tenuto dentro una
+        # forchetta, cosi' una cubica che esce dai suoi breakpoint non lo
+        # manda fuori strada.
+        lo = self._times[k - 1]
+        hi = lo + 1.0 / self._minimo
+        for _ in range(64):
+            if self._integrale(hi) >= k:
+                break
+            hi = lo + 2.0 * (hi - lo)
+        t = min(hi, lo + (k - self._integrale(lo))
+                / max(self._clock.evaluate(lo), self._minimo))
+        for _ in range(80):
+            scarto = self._integrale(t) - k
+            if abs(scarto) < 1e-11:
+                break
+            if scarto > 0:
+                hi = t
+            else:
+                lo = t
+            passo = self._clock.evaluate(t)
+            nuovo = t - scarto / passo if passo > 0 else lo
+            if not lo < nuovo < hi:
+                nuovo = 0.5 * (lo + hi)
+            if hi - lo < 1e-13:
+                break
+            t = nuovo
+        return t
+
+    def _fino_a(self, k: int) -> None:
+        d = self._definition
+        while len(self._values) <= k:
+            j = len(self._values)
+            t = self._tempo_del_passo(j)
+            x = self._values[j - 1] if j else self._stato_iniziale()
+            self._times.append(t)
+            self._values.append(self._passo(x, d.r_at(t), t))
+
+    def value(self, voice: int, time: float) -> float:
+        k = int(math.floor(self._integrale(time) + _CLOCK_EPSILON))
+        self._fino_a(k)
+        return self._values[k]
+
+    def step_times(self, until: float) -> List[float]:
+        k = 0
+        while True:
+            self._fino_a(k)
+            if self._times[k] >= until - _CLOCK_EPSILON:
+                return list(self._times[:k])
+            k += 1
+
+
+class _IteratedMap(_Map):
+    """`iterate: n`, il modo alla Di Scipio: nessuno stato.
+
+    A ogni lettura si riparte da `x0` e si fanno n passi con l'`r` di
+    quell'istante: il valore e' l'n-esima iterata della stessa funzione, e a
+    disegnare la curva e' il movimento di `r`. Con `r` fermo il valore e'
+    fermo. Dopo una fuga non si itera oltre: il valore e' `x0`.
+    """
+
+    def __init__(self, definition: MapDefinition, stream_id: str):
+        super().__init__(definition, stream_id)
+        self._last_time: Optional[float] = None
+        self._last_value = 0.0
+
+    def value(self, voice: int, time: float) -> float:
+        # Piu' parametri dello stesso grano la leggono allo stesso istante.
+        if time == self._last_time:
+            return self._last_value
+        d = self._definition
+        r = d.r_at(time)
+        x = d.x0
+        for _ in range(d.iterate):
+            x = self._step(x, r)
+            if _scappata(x):
+                x = d.x0
+                self._segnala_fuga(time, r)
+                break
+        self._last_time, self._last_value = time, x
+        return x
+
+
+_MODI = {
+    MAP_MODE_GRAIN: _GrainClockMap,
+    MAP_MODE_CLOCK: _TimeClockMap,
+    MAP_MODE_ITERATE: _IteratedMap,
+}
+
+
+class MapSet:
+    """Le mappe dichiarate da uno stream. Vuoto se lo stream non ne ha."""
+
+    def __init__(self, definitions: Iterable[MapDefinition] = (),
+                 stream_id: str = 'unknown'):
+        self.definitions: Tuple[MapDefinition, ...] = tuple(definitions)
+        self.stream_id = stream_id
+        self._maps = {
+            d.name: _MODI[d.mode](d, stream_id) for d in self.definitions}
+        self._per_grano = tuple(
+            m for m in self._maps.values() if m.per_grano)
+        self._voice = 0
+
+    @classmethod
+    def from_yaml(cls, raw, stream_id: Optional[str] = None,
+                  duration: Optional[float] = None,
+                  time_mode: str = 'absolute',
+                  output_sr: Optional[int] = None) -> 'MapSet':
+        """Costruisce l'insieme dal valore della chiave `maps:`.
+
+        La chiave assente non passa di qui: e' `MapSet()`. Una chiave scritta
+        e lasciata vuota si' — ed e' un errore, perche' una riga che qualcuno
+        ha scritto e nessuno legge e' il default piu' muto possibile.
+
+        `duration` e `time_mode` sono quelli dello stream, per gli envelope
+        di `r` e di `clock` (issue #310); `output_sr` e' il suo sample rate,
+        che da' il tetto del clock.
+
+        Raises:
+            MapConfigError: col path YAML del punto, e lo stream se e' dato.
+            ConfigError: un envelope malformato, con lo stesso contesto.
+        """
+        try:
+            definizioni = parse_maps(raw, duration=duration,
+                                     time_mode=time_mode,
+                                     output_sr=output_sr)
+        except ConfigError as err:
+            err.stream_id = stream_id
+            raise
+        return cls(definizioni, stream_id=stream_id or 'unknown')
+
+    @property
+    def names(self) -> Tuple[str, ...]:
+        """I nomi delle mappe, nell'ordine dello YAML."""
+        return tuple(self._maps)
+
+    @property
+    def variables(self) -> Tuple[str, ...]:
+        """I nomi che un'espressione di questo stream puo' leggere."""
+        return self.names + (TIME_NAME,)
+
+    def __len__(self) -> int:
+        return len(self._maps)
+
+    # -- chi le muove ---------------------------------------------------------
+
+    def advance(self, voice: int, time: float) -> None:
+        """Il giro di una voce comincia: le sue mappe a `clock: grain` fanno
+        un passo, e da qui le letture sono le sue."""
+        self._voice = voice
+        for mappa in self._per_grano:
+            mappa.advance(voice, time)
+
+    def select(self, voice: int) -> None:
+        """Da qui le letture sono di questa voce, senza muovere niente."""
+        self._voice = voice
+
+    # -- chi le legge ---------------------------------------------------------
+
+    def value(self, name: str, time: float) -> float:
+        """Il valore di una mappa per la voce di turno. Non la muove."""
+        return self._maps[name].value(self._voice, time)
+
+    def step_times(self, name: str, until: float) -> Optional[List[float]]:
+        """Gli istanti in [0, until) in cui una mappa a orologio fa un passo.
+
+        None per una mappa che non ha passi nel tempo: a `clock: grain`
+        dipendono dai grani, in `iterate` non ci sono.
+        """
+        return self._maps[name].step_times(until)
+
+    def environment(self, names: Iterable[str], time: float) -> Dict[str, float]:
+        """L'ambiente di un'espressione: i soli nomi che legge."""
+        return {
+            name: time if name == TIME_NAME else self.value(name, time)
+            for name in names
+        }
