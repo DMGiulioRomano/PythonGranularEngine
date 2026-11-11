@@ -38,17 +38,25 @@ Una mappa sa solo fare «un altro passo»: quando, lo dice lo YAML (issue #310).
 
 `r` puo' essere un envelope: si legge all'istante del passo (o della lettura,
 in `iterate`), e segue il `time_mode` dello stream come ogni altro envelope.
+
+Tre chiavi hanno un tetto, perche' contano dei passi e un passo costa: senza,
+un numero grande scritto per sbaglio teneva fermo il render invece di dire
+che cosa non va. `iterate` al piu' `MAP_ITERATE_MAX` (i passi a ogni
+lettura), `transient` al piu' `MAP_TRANSIENT_MAX` (una volta per mappa), il
+clock al piu' un passo per campione (`output_sr`).
 """
 from __future__ import annotations
 
 import math
 import re
+from array import array
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
 from pge.expressions.expression import CONSTANTS, FUNCTIONS
 from pge.maps.catalog import MAP_KINDS, MAP_TYPES, MapKind
+from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.shared.exceptions import ConfigError, MapConfigError
 from pge.shared.logger import log_map_escape_warning
 
@@ -65,6 +73,20 @@ MAP_MODE_ITERATE = 'iterate'
 
 #: Passi scartati prima del primo grano, quando `transient` non e' scritto.
 MAP_TRANSIENT_DEFAULT = 300
+
+#: Il transitorio piu' lungo che si puo' scrivere. Si fa una volta per mappa,
+#: e fin qui costa pochi millisecondi; e' piu' di trecento volte il default,
+#: abbastanza per gli attrattori che si raggiungono piano (vicino a una
+#: biforcazione). Oltre non c'e' un attrattore che lo chieda: c'e' un numero
+#: scritto per sbaglio, che teneva fermo il caricamento per minuti.
+MAP_TRANSIENT_MAX = 100_000
+
+#: I passi piu' numerosi che `iterate` puo' fare a ogni lettura. E' il tetto
+#: del «Banco del chirp», che pero' li' taglia in silenzio, e non e' solo un
+#: limite di costo (si itera a ogni grano): a r = 4 la logistica perde un bit
+#: dello stato iniziale a ogni passo, e dopo una cinquantina di passi
+#: l'iterata non dipende piu' da r ma dagli arrotondamenti del float64.
+MAP_ITERATE_MAX = 40
 
 #: Oltre questo modulo (o su un non-finito) la mappa e' scappata: riparte da
 #: `x0`. E' la soglia del banco.
@@ -123,7 +145,8 @@ class MapDefinition:
 # =============================================================================
 
 _CLOCK_HINT = (f"`{MAP_CLOCK_GRAIN}` (un passo per grano), oppure i passi al "
-               "secondo: un numero positivo o un envelope")
+               "secondo: un numero positivo o un envelope, al piu' uno per "
+               "campione")
 
 
 def _finito(valore, campo: str) -> float:
@@ -152,7 +175,22 @@ def _r(grezzo, campo: str, duration, time_mode: str):
     return _finito(grezzo, campo)
 
 
-def _clock(grezzo, campo: str, duration, time_mode: str):
+def _oltre_un_passo_per_campione(clock: float, output_sr: int, campo: str,
+                                 dove: str = ""):
+    """Il tetto del clock: un passo per campione, la risoluzione del motore.
+
+    E' lo stesso tetto a cui arriva, a ogni grano, una mappa a
+    `clock: grain` con l'attesa piu' corta che `grain.iot` ammette. Un passo
+    piu' fitto nessun grano lo vede da solo, e costa come un passo vero: un
+    `clock: 1e9` scritto per sbaglio teneva fermo il render.
+    """
+    if clock > output_sr:
+        raise MapConfigError(
+            campo, f"il clock e' al piu' un passo per campione: {output_sr} "
+            f"passi al secondo{dove}", value=clock, hint=_CLOCK_HINT)
+
+
+def _clock(grezzo, campo: str, duration, time_mode: str, output_sr: int):
     """`(modo, clock)`: `grain`, oppure i passi al secondo."""
     if grezzo == MAP_CLOCK_GRAIN and isinstance(grezzo, str):
         return MAP_MODE_GRAIN, None
@@ -163,18 +201,22 @@ def _clock(grezzo, campo: str, duration, time_mode: str):
                 raise MapConfigError(
                     campo, "il clock dev'essere positivo e finito in ogni "
                     "punto dell'envelope", value=y, hint=_CLOCK_HINT)
+            _oltre_un_passo_per_campione(
+                y, output_sr, campo, dove=" in ogni punto dell'envelope")
         return MAP_MODE_CLOCK, envelope
     if _numero(grezzo):
         if not (math.isfinite(grezzo) and grezzo > 0):
             raise MapConfigError(
                 campo, "il clock dev'essere positivo e finito", value=grezzo,
                 hint=_CLOCK_HINT)
+        _oltre_un_passo_per_campione(grezzo, output_sr, campo)
         return MAP_MODE_CLOCK, float(grezzo)
     raise MapConfigError(
         campo, "clock non riconosciuto", value=grezzo, hint=_CLOCK_HINT)
 
 
-def _definizione(nome, grezza, duration, time_mode: str) -> MapDefinition:
+def _definizione(nome, grezza, duration, time_mode: str,
+                 output_sr: int) -> MapDefinition:
     campo = f"maps.{nome}"
     if not isinstance(nome, str) or not _NOME.match(nome):
         raise MapConfigError(
@@ -232,6 +274,13 @@ def _definizione(nome, grezza, duration, time_mode: str) -> MapDefinition:
                 f"{campo}.iterate",
                 "atteso un intero positivo: i passi fatti da x0 a ogni "
                 "lettura", value=n)
+        if n > MAP_ITERATE_MAX:
+            raise MapConfigError(
+                f"{campo}.iterate",
+                f"al piu' {MAP_ITERATE_MAX} passi a ogni lettura: oltre, "
+                "l'iterata non dipende piu' da r ma dagli arrotondamenti, e "
+                "si rifa' a ogni grano", value=n,
+                hint=f"da 1 a {MAP_ITERATE_MAX}")
         if 'transient' in grezza:
             raise MapConfigError(
                 f"{campo}.transient",
@@ -242,7 +291,7 @@ def _definizione(nome, grezza, duration, time_mode: str) -> MapDefinition:
                              mode=MAP_MODE_ITERATE, iterate=n)
 
     mode, clock = _clock(grezza.get('clock', MAP_CLOCK_GRAIN),
-                         f"{campo}.clock", duration, time_mode)
+                         f"{campo}.clock", duration, time_mode, output_sr)
 
     transient = grezza.get('transient', MAP_TRANSIENT_DEFAULT)
     if (not isinstance(transient, int) or isinstance(transient, bool)
@@ -251,17 +300,26 @@ def _definizione(nome, grezza, duration, time_mode: str) -> MapDefinition:
             f"{campo}.transient",
             "atteso un intero non negativo: i passi scartati prima del "
             "primo grano", value=transient)
+    if transient > MAP_TRANSIENT_MAX:
+        raise MapConfigError(
+            f"{campo}.transient",
+            f"al piu' {MAP_TRANSIENT_MAX} passi scartati: bastano per ogni "
+            "attrattore, anche per quelli che si raggiungono piano",
+            value=transient, hint=f"da 0 a {MAP_TRANSIENT_MAX}")
 
     return MapDefinition(name=nome, kind=kind, r=r, x0=x0,
                          transient=transient, mode=mode, clock=clock)
 
 
 def parse_maps(raw, duration: Optional[float] = None,
-               time_mode: str = 'absolute') -> Tuple[MapDefinition, ...]:
+               time_mode: str = 'absolute',
+               output_sr: Optional[int] = None) -> Tuple[MapDefinition, ...]:
     """Il blocco `maps:` in definizioni validate, nell'ordine dello YAML.
 
     `duration` e `time_mode` sono quelli dello stream: servono agli envelope
     di `r` e di `clock`, che seguono il `time_mode` come ogni altro.
+    `output_sr` da' il tetto del clock, un passo per campione; None e' il
+    sample rate di default del motore.
 
     Raises:
         MapConfigError, o il ConfigError di un envelope malformato: senza
@@ -276,7 +334,8 @@ def parse_maps(raw, duration: Optional[float] = None,
             'maps', "nessuna mappa dichiarata",
             hint="es. maps: {m1: {type: logistic, r: 3.5}}; "
                  "se non servono, togli la chiave")
-    return tuple(_definizione(nome, grezza, duration, time_mode)
+    sr = DEFAULT_OUTPUT_SR if output_sr is None else output_sr
+    return tuple(_definizione(nome, grezza, duration, time_mode, sr)
                  for nome, grezza in raw.items())
 
 
@@ -394,8 +453,10 @@ class _TimeClockMap(_Map):
         super().__init__(definition, stream_id)
         self._clock = definition.clock
         self._costante = not isinstance(self._clock, Envelope)
-        self._times: List[float] = []
-        self._values: List[float] = []
+        # In `array('d')`: otto byte a passo invece di una trentina. Al tetto
+        # del clock, un passo per campione, uno stream lungo ne fa milioni.
+        self._times = array('d')
+        self._values = array('d')
         if not self._costante:
             self._minimo = min(y for _, y in self._clock.breakpoints)
 
@@ -518,7 +579,8 @@ class MapSet:
     @classmethod
     def from_yaml(cls, raw, stream_id: Optional[str] = None,
                   duration: Optional[float] = None,
-                  time_mode: str = 'absolute') -> 'MapSet':
+                  time_mode: str = 'absolute',
+                  output_sr: Optional[int] = None) -> 'MapSet':
         """Costruisce l'insieme dal valore della chiave `maps:`.
 
         La chiave assente non passa di qui: e' `MapSet()`. Una chiave scritta
@@ -526,7 +588,8 @@ class MapSet:
         ha scritto e nessuno legge e' il default piu' muto possibile.
 
         `duration` e `time_mode` sono quelli dello stream, per gli envelope
-        di `r` e di `clock` (issue #310).
+        di `r` e di `clock` (issue #310); `output_sr` e' il suo sample rate,
+        che da' il tetto del clock.
 
         Raises:
             MapConfigError: col path YAML del punto, e lo stream se e' dato.
@@ -534,7 +597,8 @@ class MapSet:
         """
         try:
             definizioni = parse_maps(raw, duration=duration,
-                                     time_mode=time_mode)
+                                     time_mode=time_mode,
+                                     output_sr=output_sr)
         except ConfigError as err:
             err.stream_id = stream_id
             raise

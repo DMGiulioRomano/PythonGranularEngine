@@ -237,6 +237,25 @@ class TestErrori:
         assert f'maps.m1.{chiave}' in exc.value.user_message()
         assert exc.value.stream_id == 's1'
 
+    @pytest.mark.parametrize('output_sr', [None, 44100, 96000])
+    def test_il_clock_arriva_fino_a_un_passo_per_campione(self, output_sr):
+        """Il tetto e' la risoluzione del motore, un passo per campione:
+        lo stesso a cui arriva una mappa a `clock: grain` con l'attesa piu'
+        corta (`grain.iot`, un campione). Senza tetto `clock: 1e9` faceva un
+        miliardo di passi al secondo di stream, e il render non finiva."""
+        from pge.shared.constants import DEFAULT_OUTPUT_SR
+        sr = output_sr or DEFAULT_OUTPUT_SR
+        MapSet.from_yaml({'m1': {'type': 'logistic', 'r': 3.7, 'clock': sr}},
+                         output_sr=output_sr)
+        for clock in (sr * 1.001, [[0, 2], [1, sr + 1]], 1e9):
+            with pytest.raises(MapConfigError) as exc:
+                MapSet.from_yaml(
+                    {'m1': {'type': 'logistic', 'r': 3.7, 'clock': clock}},
+                    stream_id='s1', output_sr=output_sr)
+            assert exc.value.field == 'maps.m1.clock'
+            assert str(sr) in exc.value.reason
+            assert exc.value.stream_id == 's1'
+
     def test_i_passi_si_chiedono_solo_a_un_clock_a_orologio(self):
         """Una mappa a `clock: grain` non ha passi nel tempo: dipendono dai
         grani."""

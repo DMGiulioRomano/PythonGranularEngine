@@ -433,6 +433,7 @@ class Stream:
             stream_id=stream_id,
             duration=config.context.duration,
             time_mode=config.time_mode,
+            output_sr=config.context.output_sr,
         )
 
     @staticmethod

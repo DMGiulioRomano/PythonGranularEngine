@@ -17,6 +17,7 @@ from pge.maps.map_set import (
     MAP_ESCAPE_LOG_INTERVAL,
     MAP_KEYS,
     MAP_TRANSIENT_DEFAULT,
+    MAP_TRANSIENT_MAX,
     MapSet,
 )
 from pge.shared.exceptions import ConfigError, MapConfigError
@@ -290,6 +291,24 @@ class TestErrori:
         esplicito = _mappe(clock='grain', transient=0)
         esplicito.advance(0, 0.0)
         assert esplicito.value('m1', 0.0) == _dopo(1)
+
+    def test_il_transitorio_ha_un_tetto(self):
+        """Il transitorio si fa una volta per mappa, e fino al tetto costa
+        pochi millisecondi: e' piu' di trecento volte il default, abbastanza
+        per gli attrattori che si raggiungono piano (vicino a una
+        biforcazione). Senza tetto un `transient: 1000000000` teneva fermo
+        il caricamento per minuti."""
+        mappe = _mappe(transient=MAP_TRANSIENT_MAX)
+        assert mappe.value('m1', 0.0) == _dopo(MAP_TRANSIENT_MAX)
+        with pytest.raises(MapConfigError) as exc:
+            MapSet.from_yaml(
+                {'m1': {'type': 'logistic', 'r': 3.7,
+                        'transient': MAP_TRANSIENT_MAX + 1}},
+                stream_id='s1')
+        assert exc.value.field == 'maps.m1.transient'
+        assert str(MAP_TRANSIENT_MAX) in exc.value.reason
+        assert exc.value.stream_id == 's1'
+        assert MAP_TRANSIENT_MAX >= 300 * MAP_TRANSIENT_DEFAULT
 
     @pytest.mark.parametrize('clock', ['tempo', None, True])
     def test_un_clock_che_non_e_un_clock(self, clock):

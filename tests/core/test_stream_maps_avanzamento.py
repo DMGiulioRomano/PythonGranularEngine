@@ -208,6 +208,25 @@ class TestErrori:
             stream({'m1': {'type': 'logistic', 'r': 3.5, 'clock': clock}})
         assert exc.value.field == 'maps.m1.clock'
 
+    def test_il_tetto_del_clock_e_il_sample_rate_dello_stream(self, stream):
+        """Un passo per campione al piu': il tetto lo da' l'`output_sr` del
+        contesto dello stream, come il pavimento di `grain.iot`."""
+        from unittest.mock import patch
+        from pge.core.stream_config import StreamContext
+        stream({'m1': {'type': 'logistic', 'r': 3.5, 'clock': 48000}})
+        with pytest.raises(MapConfigError) as exc:
+            stream({'m1': {'type': 'logistic', 'r': 3.5, 'clock': 48001}})
+        assert exc.value.field == 'maps.m1.clock'
+        assert exc.value.stream_id == 's1'
+        originale = StreamContext.from_yaml.__func__
+
+        def a_96k(cls, *args, **kwargs):
+            contesto = originale(cls, *args, **kwargs)
+            object.__setattr__(contesto, 'output_sr', 96000)
+            return contesto
+        with patch.object(StreamContext, 'from_yaml', classmethod(a_96k)):
+            stream({'m1': {'type': 'logistic', 'r': 3.5, 'clock': 96000}})
+
     def test_un_envelope_di_r_malformato_nomina_campo_e_stream(self, stream):
         with pytest.raises(ConfigError) as exc:
             stream({'m1': {'type': 'logistic', 'r': [[0, 3.0], [1, 'x']]}})
