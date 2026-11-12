@@ -126,7 +126,7 @@ MAP_KINDS: Dict[str, MapKind] = {
     ),
     # Il tetto di `r` sta sotto 4 apposta: a r = 4 la pendenza e' 2, ogni
     # passo raddoppia e toglie un bit, e in float64 la mappa collassa a zero
-    # in una cinquantina di passi (misurato: 50), per sempre.
+    # in una cinquantina di passi (misurato: 54 da x0 = 0.3), per sempre.
     'tent': MapKind(
         name='tent',
         step=_tent,
