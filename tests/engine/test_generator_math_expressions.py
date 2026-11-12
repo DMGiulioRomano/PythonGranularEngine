@@ -314,3 +314,46 @@ class TestGiaUnNumero:
         with pytest.raises(ExpressionError) as exc:
             carica(_stream(pan=scritto))
         assert f'({scritto})' in exc.value.hint
+
+
+# =============================================================================
+# UN TESTO NON E' UN'ESPRESSIONE A META'
+# =============================================================================
+
+class TestICampiDiTesto:
+    """La regola delle parentesi esterne vale dove il motore legge un
+    numero. Un titolo, un id, il nome di un file sono testo: `title: 11 -
+    (2026)` su `main` si caricava, e l'errore della #309 lo fermava
+    proponendo di scriverlo `(11 - (2026))`, cioe' di farne il numero
+    -2015."""
+
+    @pytest.mark.parametrize('testa', [
+        {'composition': {'title': '11 - (2026)'}},
+        {'composition': {'title': '(1) - (2)'}},
+        {'title': '(2026) - 11'},
+        {'note': ['3 * (2 + 1)']},
+    ])
+    def test_fuori_dagli_stream_cio_che_il_motore_non_legge(self, carica,
+                                                           testa):
+        generator = carica(_stream(), **testa)
+        assert generator.data['streams'][0]['stream_id'] == 's1'
+
+    def test_l_id_di_uno_stream(self, carica):
+        generator = carica(_stream(stream_id='1-(2)'))
+        assert generator.data['streams'][0]['stream_id'] == '1-2'
+
+    def test_il_nome_di_un_file(self, carica):
+        generator = carica(_stream(sample='(1)-(2)'))
+        assert isinstance(generator.data['streams'][0]['sample'], str)
+
+    def test_il_seed_resta_sorvegliato(self, carica):
+        with pytest.raises(ExpressionError) as exc:
+            carica(_stream(), seed='(1000)+441')
+        assert exc.value.field == 'seed'
+
+    def test_i_parametri_di_uno_stream_restano_sorvegliati(self, carica):
+        with pytest.raises(ExpressionError) as exc:
+            carica(_stream(stream_id='1-(2)', sample='(1)-(2)',
+                           volume='(10/2)/10'))
+        assert exc.value.field == 'volume'
+        assert exc.value.stream_id == '1-(2)'

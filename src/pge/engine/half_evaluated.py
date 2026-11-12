@@ -18,12 +18,26 @@ conosce ne' il regex ne' le funzioni ammesse, e non ne tiene una copia.
 
 Le espressioni che leggono una mappa non passano di qui: attraversano il
 caricamento al riparo (`expression_shelter`), dove non sono stringhe.
+
+Si guarda dove il motore legge un numero. Un testo non e' un'espressione a
+meta', nemmeno se ha la stessa forma: `title: 11 - (2026)` si caricava, e
+l'errore gli proponeva di diventare il numero -2015. Fuori dagli stream il
+motore legge solo le chiavi di `ENGINE_TOP_LEVEL_KEYS`; dentro uno stream
+sono testo per definizione quelle di `STREAM_TEXT_KEYS`.
 """
 from __future__ import annotations
 
 from typing import Callable, NamedTuple, Optional
 
 from pge.expressions.expression import outer_parenthesized
+
+
+#: Le chiavi in testa al documento che il motore legge, oltre a `streams`.
+#: Tutto il resto (`composition`, `title`, appunti) e' di chi scrive lo YAML.
+ENGINE_TOP_LEVEL_KEYS = ('seed',)
+
+#: Le chiavi di uno stream che sono testo: un'identita' e il nome di un file.
+STREAM_TEXT_KEYS = ('stream_id', 'sample')
 
 
 class HalfEvaluated(NamedTuple):
@@ -65,6 +79,14 @@ def _cerca(obj, percorso: str, probe) -> Optional[tuple]:
     return None
 
 
+def _senza_testo(stream):
+    """Lo stream senza le chiavi che sono testo (`STREAM_TEXT_KEYS`)."""
+    if not isinstance(stream, dict):
+        return stream
+    return {chiave: valore for chiave, valore in stream.items()
+            if chiave not in STREAM_TEXT_KEYS}
+
+
 def find_half_evaluated(
     document, probe: Callable[[str], Optional[float]],
 ) -> Optional[HalfEvaluated]:
@@ -81,13 +103,15 @@ def find_half_evaluated(
     for chiave, valore in document.items():
         if chiave == 'streams' and isinstance(valore, list):
             for indice, stream in enumerate(valore):
-                trovata = _cerca(stream, '', probe)
+                trovata = _cerca(_senza_testo(stream), '', probe)
                 if trovata is not None:
                     stream_id = (stream.get('stream_id')
                                  if isinstance(stream, dict) else None)
                     return HalfEvaluated(
                         trovata[0], trovata[1], indice,
                         None if stream_id is None else str(stream_id))
+            continue
+        if chiave not in ENGINE_TOP_LEVEL_KEYS:
             continue
         trovata = _cerca(valore, str(chiave), probe)
         if trovata is not None:

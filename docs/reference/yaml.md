@@ -2953,6 +2953,9 @@ che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
   parentesi, vale un numero. Ciò che fra parentesi non è un numero — una
   parola, una coppia `(1, 2)` — resta il testo che era; un nome sconosciuto
   lascia sullo stdout l'avviso `impossibile valutare`.
+- La regola vale dove il motore legge un numero: fuori dagli stream solo su
+  `seed` (un titolo in `composition:` è testo: `title: 11 - (2026)` non è un
+  errore), e dentro uno stream non su `stream_id` e `sample`.
 
 Fa eccezione una stringa tutta fra parentesi che nomina una mappa dichiarata
 in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la

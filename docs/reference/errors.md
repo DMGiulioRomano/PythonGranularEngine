@@ -874,6 +874,8 @@ tempo del secondo breakpoint, `maps.m1.r`. Fuori da uno stream (`seed`) non
 c'è la riga `Stream:`. È un errore solo la stringa che, messa intera fra
 parentesi, vale un numero: `voce (1).wav` non lo è. E non lo è quella che il
 caricamento valuta già in un numero così com'è scritta: `-(90/2)` vale −45.0.
+Il controllo guarda dove il motore legge un numero: fuori dagli stream solo
+`seed`, e dentro uno stream non `stream_id` e `sample`, che sono testo.
 
 `pointer.position` (issue #312) è una seconda legge di moto del puntatore, e
 con la prima non convive: scritta insieme a `speed_ratio` o a `start` è un

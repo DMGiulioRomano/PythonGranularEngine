@@ -823,6 +823,9 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     `-(pi)` rendevano — sostituite le parentesi resta il testo `-45.0`, che è
     un numero — e non sono valutate a metà: non sono un errore. Lo è ancora
     `-(pi)*2`, che restava un testo.
+  - **La regola vale dove il motore legge un numero.** Fuori dagli stream
+    solo su `seed`: un `title: 11 - (2026)` in `composition:` è testo, e si
+    carica come prima. Dentro uno stream non riguarda `stream_id` e `sample`.
   - **Ciò che fra parentesi non è un numero resta il testo che era.** Con la
     virgola `(1,2)` è una coppia per Python e sarebbe uscita riscritta
     `(1, 2)`; `(abs)` usciva come `<built-in function abs>`.
