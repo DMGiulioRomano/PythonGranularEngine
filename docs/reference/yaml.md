@@ -781,7 +781,10 @@ La densità emersa è pubblicata come curva, `effective_density`, come in
 modalità `fill_factor`: in partitura e nella sessione Sonic Visualiser è
 `1 / attesa` per ogni grano della voce 0, tenuto fino al grano dopo. Non è
 una funzione del tempo — un'attesa letta da una mappa dipende dai grani già
-nati — quindi si conosce a grani fatti.
+nati — quindi si conosce a grani fatti. Accanto c'è la curva dell'attesa
+stessa, `grain_iot` (issue #314): quella dichiarata se `grain.iot` è un
+envelope, i valori realizzati se è un'espressione, con l'escursione vera in
+legenda (`iot`, `89–177ms`).
 
 **La stessa mappa su attesa e durata.** Con `iot` e `duration` che leggono la
 stessa mappa a `clock: grain`, ogni grano porta il valore che ha deciso anche
@@ -793,8 +796,9 @@ oltre la prima è `(1 − scatter) · attesa della voce 0 + scatter · attesa
 letta per la propria voce`. Ma le mappe delle voci partono tutte da `x0` e
 sono deterministiche: danno la **stessa sequenza**, e `scatter` — una media
 fra due attese uguali — **non sposta niente**. Le voci restano in fase, e si
-distinguono solo per gli offset di `voices:`. Dare alle voci stati iniziali
-diversi è una decisione ancora da prendere.
+distinguono solo per gli offset di `voices:`. È una scelta: dare alle voci
+stati iniziali diversi resta fuori dalle mappe caotiche della #307 (vedi
+[[mappe-caotiche]], «Trade-off»).
 
 **Chi legge la densità.** Per uno stream con `grain.iot`, `Stream.density`,
 `Stream.fill_factor` e `Stream.distribution` sono `None`; `Stream.iot` è il
@@ -1123,8 +1127,9 @@ posizioni: a 0.513 e a 0.799 della finestra di loop.
   percorre la sua sequenza di posizioni.
 
 In partitura i grani stanno alle posizioni lette. Un `position` a envelope è
-la curva `pointer_position`; la curva `pointer_speed` non c'è, perché la
-velocità non è dichiarata.
+la curva `pointer_position`, e così i valori realizzati di un `position` a
+espressione (vedi [Partitura ed export](#le-espressioni)); la curva
+`pointer_speed` non c'è, perché la velocità non è dichiarata.
 
 Bounds: `pointer_position` ∈ [0, 1), a capo (`WRAPPING_PARAMETERS` in
 `parameter_definitions.py`: l'unico parametro i cui bounds non tagliano).
@@ -1223,6 +1228,10 @@ valore, poi cicli di 2, 4, 8 valori) al disordine.
 
 Con `r: 3.5` la logistica percorre quattro valori (0.827, 0.501, 0.875,
 0.383) e le durate dei grani, in ciclo, 86, 60, 90, 51 ms.
+
+Per il modello — cosa fa una mappa, perché un'espressione e non una chiave
+`min`/`max`, che cosa resta fuori — vedi [[mappe-caotiche]]; per aggiungere un
+tipo di mappa al catalogo, [[add-map]].
 
 `maps:` sta **dentro lo stream**, non in testa al documento: con `file:` la
 testa del file importato viene ignorata, e dentro lo stream la mappa viaggia
@@ -1543,9 +1552,39 @@ l'espressione rifà lo stem. Uno stream che non scrive queste chiavi ha i grani 
 prima.
 
 **Partitura ed export.** Un parametro scritto come espressione non ha una
-curva nel tempo — il suo valore dipende dallo stato della mappa — e la
-partitura e la sessione Sonic Visualiser non lo disegnano. Nei commenti dello
-score Csound compare il testo dell'espressione.
+curva nota in anticipo: il suo valore dipende dallo stato della mappa, e
+esiste solo nei grani generati. La partitura e la sessione Sonic Visualiser ne
+mostrano i **valori realizzati** (issue #314):
+
+- **i valori realizzati di ogni parametro a espressione**, sotto il nome del
+  parametro (`grain_duration`, `volume`, `pan`, `pitch`, `pointer_position`,
+  `grain_iot`, `density`…): il valore che il parametro ha dato a ogni grano
+  della **voce 0**, a gradini — tenuto fino al grano dopo. È il valore che il
+  grano ha avuto: tagliato ai limiti se usciva, e con la banda `_range` se
+  c'è. In legenda, sotto il nome, l'**escursione vera** (`grain dur`,
+  `50.6–90.0ms`): scritto 20–100 ms, usato 51–90;
+- **il valore di ogni mappa**, `map__<nome>` (`map__m1`, e `map__m1.y` per la
+  seconda variabile): a gradini per i modi a clock — un gradino per grano
+  della voce 0 con `clock: grain`, un gradino per passo con un clock a
+  orologio — e una curva continua per `iterate`. In legenda il nome della
+  mappa e la sua escursione;
+- **la densità che emerge**, `effective_density`: con `grain.iot`, e anche in
+  modalità `fill_factor` quando `fill_factor` o la durata del grano sono
+  un'espressione (lì `fill_factor / durata` non si può campionare). Con
+  `grain.iot` c'è anche la curva dell'attesa, `grain_iot`.
+
+Sono curve come le altre: `--plot-envelopes map` seleziona tutte le mappe,
+`--plot-envelopes pan` i valori realizzati del pan; il preset `--bw` dà loro
+un tratto proprio; nella sessione Sonic Visualiser sono layer con lo stesso
+nome e nello stesso ordine. Un'espressione o una mappa che dà un valore solo
+è una costante, e si vede con `--show-static`. Non hanno breakpoint annotati:
+sono un punto per grano, non punti di controllo.
+
+**Leggerle genera i grani** (la generazione è lazy), una volta: disegnare la
+partitura non cambia il render e non pesca di nuovo da un generatore casuale.
+Uno stream senza `maps:` e senza espressioni ha le curve di prima, nello
+stesso ordine. Nei commenti dello score Csound compare il testo
+dell'espressione.
 
 ---
 

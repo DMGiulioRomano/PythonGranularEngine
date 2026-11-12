@@ -10,6 +10,49 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: la partitura e gli export mostrano le mappe, e la
+  documentazione** (issue #314, la sesta sotto la #307; con questa la #307 è
+  completa). Le fette precedenti garantivano solo che partitura ed export non
+  cadessero su un'espressione. Un parametro scritto come espressione non ha
+  una curva nota in anticipo: i suoi valori esistono solo nei grani generati,
+  e ora si vedono.
+
+  - **I valori realizzati.** Per ogni parametro scritto come espressione la
+    partitura disegna, sotto il nome del parametro, il valore che ha dato a
+    ogni grano della voce 0, a gradini. In legenda il nome e, sotto,
+    l'**escursione vera**: `grain dur`, `50.6–90.0ms` — scritto 20–100 ms,
+    usato 51–90.
+  - **Il valore della mappa è una curva**, `map__<nome>` (e `map__m1.y` per la
+    seconda variabile): a gradini per i modi a clock — un gradino per grano
+    con `clock: grain`, un gradino per passo con un clock a orologio —
+    continua per `iterate`. `--plot-envelopes map` le seleziona tutte.
+  - **La densità emersa** (`effective_density`) c'è anche in modalità
+    `fill_factor` quando `fill_factor` o la durata sono un'espressione, e con
+    `grain.iot` le sta accanto la curva dell'attesa, **`grain_iot`**: nella
+    #311 dell'attesa si pubblicava la sola densità.
+  - **La sessione Sonic Visualiser porta le stesse curve**, con gli stessi
+    nomi e nello stesso ordine.
+  - **`ParameterCurve` ha un caso per il valore a espressione**
+    (`kind == 'expression'`, con l'espressione nel payload): nella #308 era
+    classificata `absent`. È l'unico posto in cui la si riconosce, e un test
+    lo tiene fermo leggendo l'AST di chi le curve le legge. I valori li dà lo
+    Stream: `Stream.realized_curve(expression)` e `Stream.map_curves()`
+    restituiscono una `RealizedCurve` (`src/pge/envelopes/realized_curve.py`),
+    un `Envelope` che dice di sé di essere letto a cose fatte (`realized`) e
+    la propria escursione (`excursion`).
+  - **Leggerle genera i grani, una volta**: disegnare la partitura non cambia
+    il render. Uno stream senza `maps:` e senza espressioni ha le stesse
+    curve, nello stesso ordine, di prima
+    (`tests/rendering/test_score_mappe.py`, su un'istantanea presa prima del
+    codice).
+  - Tre nomi nuovi fra le curve, con colore e tratto B&W: `map`, `grain_iot`
+    e (dalla #312) `pointer_position`. Sono nomi validi per
+    `--plot-envelopes`.
+  - **Documentazione**: `docs/explanation/mappe-caotiche.md` spiega il modello
+    (cosa fa una mappa, i tre modi di avanzare, minimo e massimo come forma
+    dell'espressione, la densità che emerge), `docs/how-to/add-map.md` come si
+    aggiunge un tipo di mappa al catalogo. Il plan è in `docs/plans/done/`.
+
 - **Mappe caotiche: le altre mappe, l'equazione scritta a mano, le espressioni
   sugli altri parametri** (issue #313, la quinta sotto la #307). Dopo la #308
   c'erano una mappa sola, la logistica, e un parametro solo che la leggeva.
