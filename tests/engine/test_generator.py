@@ -662,21 +662,18 @@ class TestEvalMathExpressions:
         result = gen._eval_math_expressions('(pi * 2)')
         assert abs(result - math.pi * 2) < 1e-10
 
-    def test_eval_max_function_not_supported(self, gen):
-        """Funzioni con virgola (max, min) non sono matchate dal regex.
+    def test_eval_max_function(self, gen):
+        """Le funzioni a piu' argomenti si valutano (issue #309).
 
-        Il pattern regex non include ',' nel charset, quindi espressioni
-        come (max(3, 7)) passano invariate. Questo e' il comportamento
-        atteso del codice di produzione.
+        Prima il regex non aveva la virgola nella classe di caratteri, e
+        `(max(3, 7))` restava la stringa che era: questo test fissava quel
+        difetto come comportamento atteso.
         """
-        result = gen._eval_math_expressions('(max(3, 7))')
-        # La virgola non e' nel charset del regex -> nessun match -> stringa invariata
-        assert result == '(max(3, 7))'
+        assert gen._eval_math_expressions('(max(3, 7))') == 7
 
-    def test_eval_min_function_not_supported(self, gen):
-        """min con virgola non matchato dal regex (come max)."""
-        result = gen._eval_math_expressions('(min(3, 7))')
-        assert result == '(min(3, 7))'
+    def test_eval_min_function(self, gen):
+        """min con la virgola, come max (issue #309)."""
+        assert gen._eval_math_expressions('(min(3, 7))') == 3
 
     def test_eval_abs_function(self, gen):
         """abs con argomento negativo: il '-' e' nel charset del regex."""
@@ -685,10 +682,9 @@ class TestEvalMathExpressions:
         # Quindi (abs(-5)) dovrebbe matchare
         assert result == 5
 
-    def test_eval_pow_function_not_supported(self, gen):
-        """pow con virgola non matchato dal regex."""
-        result = gen._eval_math_expressions('(pow(2, 10))')
-        assert result == '(pow(2, 10))'
+    def test_eval_pow_function(self, gen):
+        """pow con la virgola (issue #309)."""
+        assert gen._eval_math_expressions('(pow(2, 10))') == 1024
 
     def test_eval_nested_dict(self, gen):
         """Valuta ricorsivamente nei dizionari."""
@@ -1379,15 +1375,14 @@ class TestParametrized:
         else:
             assert result == expected
 
-    @pytest.mark.parametrize("expr", [
-        '(max(1, 2))',
-        '(min(1, 2))',
-        '(pow(2, 8))',
+    @pytest.mark.parametrize("expr, atteso", [
+        ('(max(1, 2))', 2),
+        ('(min(1, 2))', 1),
+        ('(pow(2, 8))', 256),
     ])
-    def test_eval_comma_expressions_not_matched(self, gen, expr):
-        """Espressioni con virgola non sono matchate dal regex."""
-        result = gen._eval_math_expressions(expr)
-        assert result == expr  # Stringa invariata
+    def test_eval_comma_expressions(self, gen, expr, atteso):
+        """Le espressioni con la virgola si valutano (issue #309)."""
+        assert gen._eval_math_expressions(expr) == atteso
 
     @pytest.mark.parametrize("passthrough", [
         42, 3.14, None, True, False, 'plain_text', 'audio.wav',

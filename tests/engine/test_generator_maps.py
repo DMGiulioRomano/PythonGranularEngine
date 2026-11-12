@@ -93,6 +93,16 @@ class TestIlCaricamentoLasciaLEspressioneComE:
         assert (generator.data['streams'][0]['grain']['duration']
                 == '(0.02 + (8/100)*m1)')
 
+    def test_un_espressione_con_la_virgola_resta_al_riparo(self, carica,
+                                                           capsys):
+        """Dalla #309 il regex del caricamento ammette la virgola, e
+        `(clip(m1, 0, 1))` gli somiglia: resta al riparo, non riscritta e
+        senza avvisi, perche' nomina una mappa."""
+        scritto = '(0.02 + 0.08*clip(m1, 0, (1/2)))'
+        generator = carica(_stream(grain={'duration': scritto}))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['grain']['duration'] == scritto
+
     def test_un_espressione_sul_solo_tempo_non_avvisa(self, carica, capsys):
         generator = carica(_stream(grain={'duration': '(0.02 + 0.01*t)'}))
         assert 'impossibile valutare' not in capsys.readouterr().out
@@ -119,6 +129,54 @@ class TestIlCaricamentoLasciaLEspressioneComE:
         generator = carica(stream)
         assert generator.data['streams'][0]['nota'] == '(boh + 1)'
         assert 'impossibile valutare' in capsys.readouterr().out
+
+
+class TestLeEquazioniDiUnaMappaCustom:
+    """`maps.<nome>.x` e `.y` di una mappa `type: custom` (issue #313) sono
+    equazioni nel linguaggio delle espressioni, e si scrivono senza le
+    parentesi esterne. La valutazione al caricamento non le deve toccare:
+    ci vedrebbe un `(r*x)` da valutare (avviso su stdout) o un `(1+2)` da
+    riscrivere (un testo diverso da quello dello YAML)."""
+
+    def _custom(self, **equazioni):
+        return _stream(maps={'m1': {'type': 'custom', 'r': 3, **equazioni}},
+                       grain={'duration': '(0.03 + 0.01*m1)'})
+
+    @pytest.mark.parametrize('equazione', [
+        'sin(r*x)*cos(x)',
+        '(r*x)*(1-x)',
+        '(1+2)*x/4',
+        '(1+1)/4',
+        '1 - r*x*x',
+    ])
+    def test_l_equazione_arriva_com_e_scritta(self, carica, capsys,
+                                              equazione):
+        generator = carica(self._custom(x=equazione))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['maps']['m1']['x'] == equazione
+
+    def test_anche_la_seconda(self, carica, capsys):
+        generator = carica(self._custom(x='1 - r*x*x + y', y='(3/10)*x'))
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        assert generator.data['streams'][0]['maps']['m1']['y'] == '(3/10)*x'
+
+    def test_il_resto_della_mappa_si_valuta_come_prima(self, carica):
+        stream = self._custom(x='r*x*(1-x)')
+        stream['maps']['m1']['r'] = '(7/2)'
+        generator = carica(stream)
+        assert generator.data['streams'][0]['maps']['m1']['r'] == 3.5
+
+    def test_il_brano_rende(self, carica):
+        generator = carica(self._custom(x='r*x*(1-x)'))
+        generator.data['streams'][0]['maps']['m1']['r'] = 3.5
+        prodotto, = generator.create_elements()
+        assert len(prodotto.voices[0]) > 10
+
+    def test_una_x_fuori_da_maps_non_e_un_equazione(self, carica):
+        """Il riparo vale per `maps.<nome>.x`, non per una chiave `x`
+        qualunque."""
+        stream = _stream(nota={'x': '(1+2)'})
+        assert carica(stream).data['streams'][0]['nota']['x'] == 3
 
 
 class TestICampiAEspressione:
@@ -166,29 +224,36 @@ class TestICampiAEspressione:
     @pytest.mark.parametrize('scritto, numero', [
         ('(0.05 * abs(-1))', 0.05),
         ('(int(3.7)/100)', 0.03),
-        ('(max(0.01*2, 0.01)*1)', None),
+        ('(max(0.01*2, 0.01)*1)', 0.02),
+        ('(max(0.02, 0.05))', 0.05),
     ])
     def test_una_costante_che_la_valutazione_sa_fare_resta_sua(
             self, carica, scritto, numero):
         """Il riparo non si allarga alle costanti di oggi: `abs`, `int`,
-        `max` li valuta il caricamento, come prima. (`max` con la virgola il
-        caricamento non lo valuta, la #309: resta testo, come prima.)"""
+        `max` li valuta il caricamento — `max` anche con la virgola, dalla
+        #309 — e ne esce un numero."""
         generator = carica(_stream(grain={'duration': scritto}))
         valore = generator.data['streams'][0]['grain']['duration']
-        if numero is None:
-            assert valore == scritto
-        else:
-            assert valore == pytest.approx(numero)
+        assert valore == pytest.approx(numero)
 
     def test_fuori_dai_campi_a_espressione_l_avviso_resta(self, carica,
                                                           capsys):
-        """Su `volume` un'espressione non vale ancora (la #313): li' l'avviso
-        della valutazione e' l'unica spiegazione di `sqrt`, e resta."""
-        stream = _stream(volume='(sqrt(4))')
+        """Su una banda un'espressione non vale (dalla #313 vale sui valori
+        base, `volume` compreso): li' l'avviso della valutazione e' l'unica
+        spiegazione di `sqrt`, e resta."""
+        stream = _stream(volume_range='(sqrt(4))')
         del stream['maps']
         generator = carica(stream)
         assert 'impossibile valutare' in capsys.readouterr().out
-        assert generator.data['streams'][0]['volume'] == '(sqrt(4))'
+        assert generator.data['streams'][0]['volume_range'] == '(sqrt(4))'
+
+    def test_su_volume_dalla_313_non_avvisa_piu(self, carica, capsys):
+        stream = _stream(volume='(0 - sqrt(4))', grain={'duration': 0.05})
+        del stream['maps']
+        generator = carica(stream)
+        assert 'impossibile valutare' not in capsys.readouterr().out
+        prodotto, = generator.create_elements()
+        assert prodotto.voices[0][0].volume == -2.0
 
     def test_i_nomi_della_valutazione_sono_quelli_del_generator(self):
         """Il riparo sa quali nomi la valutazione al caricamento conosce:

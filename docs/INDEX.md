@@ -19,6 +19,7 @@
 | [contratto-stdout](explanation/contratto-stdout.md) | stable | logging, stdout, protocollo, pge-ui, strategie |
 | [costo-rendering](explanation/costo-rendering.md) | stable | rendering, performance, grains, numpy |
 | [library-vs-cli](explanation/library-vs-cli.md) | stable | api, cli, architecture, refactor |
+| [mappe-caotiche](explanation/mappe-caotiche.md) | stable | maps, expressions, chaos, grain, pointer, density |
 | [multi-voice](explanation/multi-voice.md) | stable | voices, strategy, dmx-1000, granular |
 | [parameter-curve](explanation/parameter-curve.md) | stable | parameters, envelopes, architecture, refactor |
 | [score-visualizer-layout](explanation/score-visualizer-layout.md) | stable | rendering, visualizer, architecture, refactor, matplotlib |
@@ -31,6 +32,7 @@
 | Slug | Status | Tags |
 |------|--------|------|
 | [add-error-class](how-to/add-error-class.md) | stable | errors, exceptions, extension |
+| [add-map](how-to/add-map.md) | stable | maps, chaos, extension |
 | [add-parameter](how-to/add-parameter.md) | stable | parameters, schema, extension |
 | [add-renderer](how-to/add-renderer.md) | stable | renderer, ocp, extension |
 | [add-variation-strategy](how-to/add-variation-strategy.md) | stable | strategy, variation, extension |
@@ -47,6 +49,7 @@
 | Task | Doc |
 |------|-----|
 | add-error-class | add-error-class |
+| add-map | add-map |
 | add-parameter | add-parameter |
 | add-renderer | add-renderer |
 | add-variation-strategy | add-variation-strategy |
@@ -55,11 +58,13 @@
 | build-flags | cli |
 | capire la divisione API/CLI | library-vs-cli |
 | capire perché voices ha un controller e la generazione no | stream-decomposition |
+| chaotic-maps | mappe-caotiche |
 | cli-flags | cli |
 | decidere se spostare codice fuori da Stream | stream-decomposition |
 | envelope-syntax | yaml |
 | error-handling | errors |
 | export-sonic-visualiser | sonic-visualiser |
+| expressions | mappe-caotiche |
 | integrare PGE in un altro progetto | use-as-library |
 | make-parameter-envelope-aware | make-parameter-envelope-aware |
 | reaper-workflow | reaper |

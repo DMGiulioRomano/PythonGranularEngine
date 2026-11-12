@@ -16,10 +16,13 @@ com'e' lo stesso, ma dopo due danni:
   `(clip(m1, (1/2), 1))` uscirebbe riscritta, cioe' con un testo diverso da
   quello dello YAML negli errori e nel fingerprint.
 
-`_eval_math_expressions` non si tocca: PGE-ls ne specchia il regex carattere
-per carattere e la esegue estratta dall'AST (#269). Le espressioni si tolgono
-prima e si rimettono dopo: al loro posto passa un oggetto che non e' una
-stringa, e che la valutazione lascia attraversare.
+`_eval_math_expressions` resta un metodo che sta in piedi da solo: PGE-ls ne
+specchia il regex carattere per carattere e la esegue estratta dall'AST, coi
+soli `math` e `re` (#269). Le espressioni si tolgono prima e si rimettono
+dopo: al loro posto passa un oggetto che non e' una stringa, e che la
+valutazione lascia attraversare. (La #309 ha messo la virgola nel suo regex:
+da allora `(clip(m1, 0, 1))` gli somiglia per intero, e il riparo e' cio'
+che la tiene fuori.)
 
 Cosa va al riparo, dentro uno stream, fra le stringhe **tutte fra
 parentesi**:
@@ -33,6 +36,12 @@ parentesi**:
   `impossibile valutare` su stdout, e poi l'interprete la compilava lo
   stesso. Un nome sbagliato (`pii`) lo dice l'interprete, coi nomi che ci
   sono, al posto dell'avviso.
+
+- le **equazioni di una mappa `type: custom`** (issue #313),
+  `maps.<nome>.x` e `maps.<nome>.y`: sono testo nel linguaggio delle
+  espressioni, scritto senza le parentesi esterne, e vanno al riparo
+  sempre. La valutazione ci vedrebbe un `(r*x)` da valutare — avviso su
+  stdout — o un `(1+2)` da riscrivere.
 
 Il resto — le espressioni di oggi, i nomi dei file, uno stream senza mappe
 che non scrive `t` — passa dalla valutazione esattamente come prima. Anche
@@ -56,12 +65,16 @@ _TEMPO = 't'
 
 #: I nomi che la valutazione al caricamento conosce: le chiavi del
 #: `safe_dict` di `Generator._eval_math_expressions`. Una copia, perche' quel
-#: metodo non si tocca (PGE-ls lo esegue estratto dall'AST, #269); un test la
-#: confronta col sorgente, cosi' se la #309 cambia la valutazione lo si vede.
+#: metodo non importa niente del motore (PGE-ls lo esegue estratto dall'AST,
+#: #269); un test la confronta col sorgente, cosi' se la valutazione cambia
+#: lo si vede. La #309 non le ha toccate: ha aggiunto la virgola al regex.
 LOAD_TIME_NAMES = frozenset({
     'abs', 'int', 'float', 'min', 'max', 'pow', 'pi', 'e'})
 
 _CAMPI = frozenset(EXPRESSION_FIELDS)
+
+# `maps.<nome>.x` e `maps.<nome>.y`: le equazioni di una mappa `custom`.
+_EQUAZIONE = re.compile(r'maps\.[^.]+\.[xy]\Z')
 
 
 class ShelteredExpression:
@@ -108,8 +121,11 @@ def _ripara(obj, nomi: frozenset, percorso=''):
             for k, v in obj.items()}
     if isinstance(obj, list):
         return [_ripara(v, nomi, None) for v in obj]
-    if isinstance(obj, str) and _da_riparare(obj, nomi, percorso in _CAMPI):
-        return ShelteredExpression(obj)
+    if isinstance(obj, str):
+        if percorso is not None and _EQUAZIONE.match(percorso):
+            return ShelteredExpression(obj)
+        if _da_riparare(obj, nomi, percorso in _CAMPI):
+            return ShelteredExpression(obj)
     return obj
 
 

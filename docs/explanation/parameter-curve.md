@@ -9,6 +9,7 @@ sources:
   - src/pge/controllers/voice_manager.py
   - src/pge/shared/probability_gate.py
   - src/pge/rendering/envelope_extractor.py
+  - src/pge/envelopes/realized_curve.py
   - src/pge/shared/logger.py
 last_synced_commit: e479944
 ---
@@ -71,9 +72,10 @@ tempo?".** È un value object piccolo, con due campi:
 
 - `kind` — `varying` (curva davvero variabile), `constant` (valore fisso, o
   `Envelope` con tutti i breakpoint uguali), `absent` (la faccia non esiste:
-  nessun range dichiarato, gate `NeverGate`);
+  nessun range dichiarato, gate `NeverGate`), `expression` (il valore è
+  un'espressione: vedi sotto);
 - il payload — l'`Envelope` quando `varying`, il valore numerico quando
-  `constant`, niente quando `absent`.
+  `constant`, l'`Expression` quando `expression`, niente quando `absent`.
 
 La classificazione avviene **una volta sola**, dentro il parametro che possiede
 il dato. Chi legge non chiede più "sei un Envelope?" né "i tuoi breakpoint sono
@@ -82,6 +84,34 @@ tutti uguali?": chiede una `ParameterCurve` e la trova già classificata.
 `Parameter` espone le sue tre facce come `ParameterCurve`. Le due che non
 avevano accessore pubblico (`_mod_range`, `_probability_gate`) lo hanno
 acquistato in questa forma; il valore base continua a passare da `value`.
+
+### Il valore a espressione
+
+Dalle mappe caotiche (issue #307, vedi [[mappe-caotiche]]) il valore di un
+parametro ha un terzo tipo: un'espressione, valutata a ogni grano
+(`grain.duration: (0.02 + 0.08*m1)`). È un valore dichiarato, ma **non ha una
+curva nota in anticipo**: può dipendere dallo stato di una mappa, che non è
+una funzione del tempo. Non ha breakpoint da disegnare né un valore da
+appiattire.
+
+Ha quindi il suo caso, `expression` (issue #314), con l'espressione nel
+payload. È l'**unico posto in cui la si riconosce**, per la stessa ragione
+per cui la costante travestita ha qui la sua casa: chi legge le curve chiede
+`kind`, non il tipo del valore. Un test legge l'AST di `envelope_extractor`,
+`sv_exporter` e `score_visualizer` e rifiuta che nominino `Expression`.
+
+I valori non stanno in `ParameterCurve`, che non genera grani: stanno nello
+Stream, che li ha tenuti generandoli. Chi trova `kind == expression` chiede
+`stream.realized_curve(curve.expression)` e riceve una `RealizedCurve` — un
+`Envelope` a gradini col valore che il parametro ha dato a ogni grano della
+voce 0. È una curva **letta a cose fatte**, e lo dice di sé (`realized`,
+`excursion`): chi disegna non ne annota i breakpoint, che sono uno per grano,
+e mette in legenda l'escursione vera. Le curve delle mappe
+(`stream.map_curves()`) e la densità emersa sono dello stesso tipo.
+
+Per un valore *trovato* invece che dato — il pitch espone il suo valore, non
+un `Parameter` — `ParameterCurve.is_expression(raw)` risponde alla stessa
+domanda senza spostarla altrove.
 
 ### Cosa resta fuori da `ParameterCurve`
 

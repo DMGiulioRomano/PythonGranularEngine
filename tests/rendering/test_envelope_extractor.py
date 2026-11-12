@@ -657,14 +657,14 @@ class TestSchemaExclusion:
         potuto risolvere. `pointer_start` non e' una curva e non puo' esserlo:
         is_smart=False, e il pointer lo somma come scalare (issue #199).
 
-        Il quinto, `grain_iot` (issue #311), e' l'attesa fra due grani: di
-        lei si pubblica la densita' che ne emerge, `effective_density`, dalla
-        stessa riga dedicata.
+        `grain_iot` (issue #311) ne faceva parte finche' dell'attesa fra
+        due grani si pubblicava solo la densita' che ne emerge. Dalla #314
+        e' una curva come le altre, e non e' piu' esclusa.
         """
         from pge.rendering.envelope_extractor import _SCHEMA_EXCLUDED
         assert _SCHEMA_EXCLUDED == frozenset({
             'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
-            'effective_density', 'grain_iot'})
+            'effective_density'})
 
 
 class TestEnvelopeFilter:
@@ -932,6 +932,16 @@ class TestPublishedSurfaceResolves:
         """Un ventaglio che copre i gruppi esclusivi: density contro
         fill_factor, loop_end contro loop_dur, reverse contro read_direction,
         pointer e voci espliciti."""
+        # Con `grain.iot` la densita' emerge dai grani, e leggerne la curva
+        # li genera: lo stream F ha i riferimenti alle tabelle che il
+        # Generator gli assegnerebbe.
+        con_iot = build_stream(
+            stream_id='F',
+            grain={'duration': 0.05, 'envelope': 'hanning',
+                   'iot': [[0, 0.1], [1.0, 0.05]]},
+        )
+        con_iot.sample_table_num = 1
+        con_iot.window_table_map = {'hanning': 2}
         return [
             build_stream(
                 stream_id='A',
@@ -965,16 +975,29 @@ class TestPublishedSurfaceResolves:
                        'read_direction': [[0, 1], [1.0, -1]]},
                 deviation_probability={'read_direction': 40},
             ),
+            # L'altra legge di moto del puntatore (issue #312): con
+            # `position` la velocita' non e' dichiarata, e viceversa.
+            build_stream(
+                stream_id='E',
+                density=10,
+                pointer={'position': [[0, 0.0], [1.0, 1.0]],
+                         'loop_start': 0.1, 'loop_dur': 0.5},
+            ),
+            # Il terzo modo di densita' (issue #311): dalla #314 l'attesa
+            # fra due grani e' una curva pubblicata, `grain_iot`.
+            con_iot,
         ]
 
     def _pubblicate_e_vive(self, build_stream):
         from pge.rendering.envelope_extractor import (
-            _curve_sources, VoiceOffsetSource)
+            _curve_sources, CurveSource)
 
         pubblicate, vive = set(), set()
         for stream in self._configurazioni(build_stream):
             for source in _curve_sources():
-                if isinstance(source, VoiceOffsetSource):
+                # Le righe che non sono la faccia di un parametro (le curve
+                # per-voce, le mappe) non si leggono per nome.
+                if not isinstance(source, CurveSource):
                     continue
                 pubblicate.add(source.key)
                 if source.resolve(stream) is not None:
@@ -1011,11 +1034,11 @@ class TestReadDirectionIsPlottable:
 
     def test_chiavi_read_direction_hanno_un_colore(self):
         from pge.rendering.envelope_extractor import (
-            ENVELOPE_COLORS, _curve_sources, VoiceOffsetSource)
+            ENVELOPE_COLORS, _curve_sources, CurveSource)
 
         pubblicate = {
             source.key for source in _curve_sources()
-            if not isinstance(source, VoiceOffsetSource)
+            if isinstance(source, CurveSource)
             and source.key.startswith('read_direction')
         }
         assert pubblicate == {'read_direction', 'read_direction_prob'}

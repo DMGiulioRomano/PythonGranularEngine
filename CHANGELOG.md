@@ -10,6 +10,172 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
 
 ### Aggiunto
 
+- **Mappe caotiche: la partitura e gli export mostrano le mappe, e la
+  documentazione** (issue #314, la sesta sotto la #307; con questa la #307 è
+  completa). Le fette precedenti garantivano solo che partitura ed export non
+  cadessero su un'espressione. Un parametro scritto come espressione non ha
+  una curva nota in anticipo: i suoi valori esistono solo nei grani generati,
+  e ora si vedono.
+
+  - **I valori realizzati.** Per ogni parametro scritto come espressione la
+    partitura disegna, sotto il nome del parametro, il valore che ha dato a
+    ogni grano della voce 0, a gradini. In legenda il nome e, sotto,
+    l'**escursione vera**: `grain dur`, `50.6–90.0ms` — scritto 20–100 ms,
+    usato 51–90.
+  - **Il valore della mappa è una curva**, `map__<nome>` (e `map__m1.y` per la
+    seconda variabile): a gradini per i modi a clock — un gradino per grano
+    con `clock: grain`, un gradino per passo con un clock a orologio —
+    continua per `iterate`. `--plot-envelopes map` le seleziona tutte.
+  - **La densità emersa** (`effective_density`) c'è anche in modalità
+    `fill_factor` quando `fill_factor` o la durata sono un'espressione, e con
+    `grain.iot` le sta accanto la curva dell'attesa, **`grain_iot`**: nella
+    #311 dell'attesa si pubblicava la sola densità.
+  - **La sessione Sonic Visualiser porta le stesse curve**, con gli stessi
+    nomi e nello stesso ordine.
+  - **`ParameterCurve` ha un caso per il valore a espressione**
+    (`kind == 'expression'`, con l'espressione nel payload): nella #308 era
+    classificata `absent`. È l'unico posto in cui la si riconosce, e un test
+    lo tiene fermo leggendo l'AST di chi le curve le legge. I valori li dà lo
+    Stream: `Stream.realized_curve(expression)` e `Stream.map_curves()`
+    restituiscono una `RealizedCurve` (`src/pge/envelopes/realized_curve.py`),
+    un `Envelope` che dice di sé di essere letto a cose fatte (`realized`) e
+    la propria escursione (`excursion`).
+  - **Leggerle genera i grani, una volta**: disegnare la partitura non cambia
+    il render. Uno stream senza `maps:` e senza espressioni ha le stesse
+    curve, nello stesso ordine, di prima
+    (`tests/rendering/test_score_mappe.py`, su un'istantanea presa prima del
+    codice).
+  - Tre nomi nuovi fra le curve, con colore e tratto B&W: `map`, `grain_iot`
+    e (dalla #312) `pointer_position`. Sono nomi validi per
+    `--plot-envelopes`.
+  - **Documentazione**: `docs/explanation/mappe-caotiche.md` spiega il modello
+    (cosa fa una mappa, i tre modi di avanzare, minimo e massimo come forma
+    dell'espressione, la densità che emerge), `docs/how-to/add-map.md` come si
+    aggiunge un tipo di mappa al catalogo. Il plan è in `docs/plans/done/`.
+
+- **Mappe caotiche: le altre mappe, l'equazione scritta a mano, le espressioni
+  sugli altri parametri** (issue #313, la quinta sotto la #307). Dopo la #308
+  c'erano una mappa sola, la logistica, e un parametro solo che la leggeva.
+
+  **Le mappe.** Il catalogo ne ha sei, più l'equazione scritta a mano:
+
+  | `type` | passo | `r` | intervallo di `m1` |
+  |---|---|---|---|
+  | `tent` | `r/2*min(x, 1-x)` | 2.5 – 3.999 | 0 … 1 |
+  | `sine` | `sin(r*x)` | 0 – 4 | −1 … 1 |
+  | `cubic` | `r*x*(1-x*x)` | 1.5 – 3 | −1.2 … 1.2 |
+  | `henon` | `1 - r*x*x + y`, `y: 0.3*x` | 0.8 – 1.4 | −1.3 … 1.4 |
+  | `circle` | `frac(x + r - 0.3*sin(2*pi*x))` | 0 – 1 | 0 … 1 |
+
+  ```yaml
+  maps:
+    m1: {type: henon, r: 1.4}          # due variabili: m1 e m1.y
+    m2:
+      type: custom
+      x: sin(r*x)*cos(x)
+      r: 3
+  ```
+
+  - **L'intervallo di `m1` è un dato**, non solo prosa: ogni tipo lo dichiara
+    in `MAP_KINDS` con un letterale (`value_range`, e `y_range` per la seconda
+    variabile), accanto a `x0` e `r_range`.
+  - **Due variabili**: lo stato è una coppia, e la seconda si legge in
+    un'espressione come `m1.y`. `y0` è il suo stato iniziale.
+  - **`type: custom`**: `x:` obbligatoria, `y:` opzionale, nel linguaggio delle
+    espressioni con `x`, `y`, `r`. Un tipo di catalogo con accanto un `x:` è
+    un errore. Le equazioni attraversano il caricamento come sono scritte.
+  - **La mappa che scappa** riparte dallo stato iniziale e lo scrive sul clip
+    log col suo limite di frequenza, per tutte e due le variabili e per le
+    equazioni scritte a mano; in `iterate`, dopo la fuga non si itera oltre.
+  - **La `tent` non arriva a `r = 4`**: lì in float64 collassa a zero in una
+    cinquantina di passi. Il tetto documentato è 3.999.
+  - **`sine` e `circle` usano `sin`**: fra macchine diverse i grani possono
+    divergere, e la reference lo dice (`SIN_BASED_TYPES`).
+
+  **I parametri.** Un'espressione vale sul **valore base** di ogni parametro a
+  schema: oltre a `grain.duration`, `grain.iot` e `pointer.position`, su
+  `volume`, `pan`, il valore del `pitch` in ogni unità (`pitch.semitones`,
+  `.cents`, `.quarter_tone`, `.eighth_tone`, `.ratio`, e `pitch.value` con
+  `edo`), `density`, `fill_factor`, `distribution` e `grain.read_direction`
+  (decide il segno). L'elenco è `EXPRESSION_FIELDS`.
+
+  - **Dove non vale, il motore lo dice** con un `ExpressionError` che nomina
+    il campo e suggerisce che cosa scrivere: `pointer.speed_ratio` (si integra
+    analiticamente), `pointer.start`, i tre di loop, `voices.num_voices`
+    (`EXPRESSION_REFUSALS`). Lo stesso errore, col suggerimento generico, sulle
+    bande `_range`, su `voices.scatter` e sui parametri delle strategie di
+    voce, dove una stringa fra parentesi arrivava fino al primo grano come
+    `TypeError`.
+  - **`deviation_probability` resta esclusa, con lo stesso errore.** Un
+    `(m1*100)`, globale o per chiave, è un `ExpressionError` sul campo
+    (`deviation_probability.volume`) col suggerimento degli altri esclusi,
+    non più l'`InvalidParameterError` «Formato non valido» di un altro tipo.
+    Una stringa non fra parentesi resta l'`InvalidParameterError` di prima.
+  - **Una stringa che non è un'espressione resta l'errore di prima**, anche
+    nei campi nuovi dell'elenco: `density: not_a_number` è ancora un
+    `InvalidParameterError` («Formato non valido»), `grain.read_direction:
+    reverse` ancora l'`InvalidFieldValueError` del verso. È letta come
+    un'espressione la stringa tutta fra parentesi, o quella che senza
+    parentesi l'interprete compila (`volume: -30 + 20*m1`, a cui l'errore
+    propone le parentesi). Su `grain.duration` e `grain.iot` non cambia
+    niente rispetto alla #308.
+  - **Un `nan` va al limite inferiore del parametro**, tranne su `grain.iot`,
+    dove va al tetto (100 s): al limite inferiore un'attesa è un campione,
+    cioè 48000 grani al secondo. **Cambia rispetto alla #311**, dove un `nan`
+    su `grain.iot` andava al pavimento (`NAN_TO_MAX_PARAMETERS`).
+  - **Il clip log di un'espressione ha un limite di frequenza**: una riga
+    subito, poi una ogni 5 s di stream per parametro, col conto dei tagli
+    taciuti. **Cambia rispetto alla #308**, dove era una riga per grano
+    tagliato. Numeri ed envelope restano com'erano.
+
+- **Mappe caotiche: `pointer.position`, la posizione di lettura dalla mappa**
+  (issue #312, la quarta sotto la #307). La legge di moto del puntatore era
+  una sola, `start + integrale di speed_ratio`. `position` è la seconda: la
+  posizione scritta, da 0 a 1 **della finestra attiva** — la finestra di loop
+  se c'è, altrimenti il file intero.
+
+  ```yaml
+  maps:
+    m1: {type: logistic, r: 3.2}
+  pointer:
+    position: (m1)
+    loop_start: 0.2
+    loop_dur: 0.1
+    loop_unit: normalized
+  ```
+
+  I grani leggono da due sole posizioni, a 0.513 e a 0.799 della finestra.
+
+  - **Un numero, un envelope o un'espressione**, come `grain.iot`: un envelope
+    è uno scrub dichiarato della finestra.
+  - **Al posto di `speed_ratio` e `start`.** Scritte insieme sono un
+    **errore**, non una priorità, e per presenza della chiave; una
+    `position:` vuota anche. Senza `position` il puntatore è quello di prima,
+    bit per bit (`tests/core/test_stream_puntatore_invariato.py`, su
+    un'istantanea presa prima della prima riga).
+  - **Fuori da 0–1 rientra a capo**, con lo stesso wrap del confinamento al
+    loop: non è un errore al caricamento e non scrive sul clip log. Un valore
+    non finito dato da un'espressione va all'inizio della finestra, con una
+    riga di clip log; scritto nello YAML (`position: .nan`, un punto `.inf`
+    in un envelope) è un `ParameterBoundError` al caricamento, come su ogni
+    altro parametro.
+  - **La finestra vale da subito ed è il vincolo**: anche mobile, la
+    posizione resta dentro la finestra di quell'istante. `offset_range` e gli
+    offset di pointer delle voci si sommano come prima. `loop_unit` non
+    riscala `position`.
+  - **Il verso `auto` vale «avanti»**: con `position` non c'è una velocità
+    dichiarata di cui seguire il segno. Il verso si dichiara con
+    `grain.read_direction`.
+  - **`WRAPPING_PARAMETERS`** (`parameter_definitions.py`): il dato che dice
+    quali bounds non tagliano ma riportano a capo. È una tupla letterale,
+    oggi col solo `pointer_position`, leggibile da chi specchia i bounds; non
+    è un settimo campo di `ParameterBounds`, i cui sei campi la parità di
+    PGE-ui confronta uno per uno.
+  - In partitura i grani stanno alle posizioni lette; un `position` a
+    envelope è la curva `pointer_position`, e `pointer_speed` non si
+    pubblica. `Stream.pointer_position` è il Parameter, `Stream.pointer_speed`
+    vale `None` con `position`.
+
 - **Mappe caotiche: `grain.iot`, gli onset dalla mappa** (issue #311, la terza
   sotto la #307). `grain.iot` e' l'attesa fino al grano successivo,
   `onset[n+1] = onset[n] + iot`: il terzo modo di dire quando nasce un grano,
@@ -641,6 +807,43 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
   lì diventa stantio solo il rimando all'avviso del motore.
 
 ### Corretto
+
+- **Le espressioni al caricamento valutano le funzioni a più argomenti**
+  (issue #309, la settima sotto la #307). `Generator._eval_math_expressions`
+  prometteva nella docstring che `(max(3, 7))` valesse 7, ma il regex che
+  riconosce un'espressione non ammetteva la virgola: `max`, `min` e `pow` con
+  due argomenti restavano una stringa, e più a valle erano un errore di tipo.
+  Ora `(max(3, 7))` vale 7, `(pow(2, 3))` vale 8, `(min(1, 2, 3))` vale 1,
+  anche dentro un breakpoint. I tipi non cambiano: `(2*2)` è l'intero 4,
+  `(10/2)` è 5.0.
+
+  - **Un'espressione sta tutta dentro le parentesi esterne, ed è un errore
+    scriverla a metà.** `(10/2)/10` usciva valutata a metà, come la stringa
+    `5.0/10`; `2*(3+4)` come `2*7`. Ora il caricamento si ferma con un
+    `ExpressionError` che nomina il campo (`volume`, `volume[1][0]`,
+    `maps.m1.r`), lo stream e il file, e propone la grafia: `((10/2)/10)`. È
+    la regola delle espressioni che leggono una mappa (#308), ora una sola.
+    Il criterio è l'esito: è un errore la stringa che, messa intera fra
+    parentesi, vale un numero. `voce (1).wav` non lo è, e resta trattata come
+    prima. **Uno YAML che scriveva `(10/2)/10` e rendeva non esiste**: quella
+    stringa era già un errore, detto peggio.
+  - **Il segno davanti alle parentesi vale come prima.** `pan: -(90/2)` e
+    `-(pi)` rendevano — sostituite le parentesi resta il testo `-45.0`, che è
+    un numero — e non sono valutate a metà: non sono un errore. Lo è ancora
+    `-(pi)*2`, che restava un testo.
+  - **La regola vale dove il motore legge un numero.** Fuori dagli stream
+    solo su `seed`: un `title: 11 - (2026)` in `composition:` è testo, e si
+    carica come prima. Dentro uno stream non riguarda `stream_id` e `sample`.
+  - **Ciò che fra parentesi non è un numero resta il testo che era.** Con la
+    virgola `(1,2)` è una coppia per Python e sarebbe uscita riscritta
+    `(1, 2)`; `(abs)` usciva come `<built-in function abs>`.
+  - La docstring del metodo dice quello che il metodo fa, e un test ne esegue
+    gli esempi.
+  - **Il regex è superficie**: PGE-ls lo specchia carattere per carattere. Il
+    metodo resta eseguibile da solo, coi soli `math` e `re`; il controllo
+    delle espressioni a metà sta fuori (`engine/half_evaluated.py`,
+    `Generator._reject_half_evaluated`), e il letterale è pinnato in
+    `tests/test_downstream_surface_pge_ls.py`.
 
 - **`type: Cubic` è la cubica di `type: cubic`** (issue #300).
   `InterpolationStrategyFactory` legge il nome dell'interpolazione senza badare

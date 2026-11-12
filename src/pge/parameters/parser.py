@@ -24,7 +24,9 @@ from pge.expressions.expression import (
 )
 from pge.parameters.parameter_definitions import (
     RANGE_UNIT_DEFAULT,
+    NAN_TO_MAX_PARAMETERS,
     get_parameter_definition,
+    parameter_wraps,
     range_unit_is_relative,
     relative_band_width,
     relative_range_bounds,
@@ -192,7 +194,13 @@ class GranularParser:
 
 
         # 3. VALIDAZIONE E CLIPPING (NUOVO!)
-        validated_value = self._validate_and_clip(
+        # Un parametro che rientra a capo (WRAPPING_PARAMETERS, issue #312)
+        # non ha un «fuori bounds» da rifiutare al parse: 1.25 e' 0.25, e lo
+        # dice il Parameter a ogni grano.
+        wraps = parameter_wraps(name)
+        if wraps:
+            self._reject_non_finite(clean_value, bounds, name)
+        validated_value = clean_value if wraps else self._validate_and_clip(
             clean_value,
             bounds.min_val,
             bounds.max_val,
@@ -237,6 +245,8 @@ class GranularParser:
             range_anchor=self.range_anchor,
             rng=component_rng(self.seed, self.rng_id, name),
             range_relative=is_relative,
+            wraps=wraps,
+            nan_to_max=name in NAN_TO_MAX_PARAMETERS,
         )
 
     # =========================================================================
@@ -281,6 +291,26 @@ class GranularParser:
         # stringa nuda resta il caso d'errore qui sotto.
         if isinstance(raw_data, ExpressionSource):
             return self._compile_expression(raw_data)
+
+        # Caso 4: un'espressione dove non vale (issue #313). Una stringa
+        # tutta fra parentesi e' scritta come un'espressione: qui arriva
+        # nuda, cioe' da un campo in cui chi legge lo YAML non la riconosce.
+        # Lo dice col path del campo e con dove invece vale.
+        if isinstance(raw_data, str) and outer_parenthesized(raw_data):
+            from pge.expressions.fields import (
+                EXPRESSION_FIELDS, EXPRESSION_REFUSALS)
+            err = ExpressionError(
+                raw_data,
+                "qui un'espressione non vale: il campo vuole un numero o "
+                "un envelope",
+                field=field or context_info,
+                hint=EXPRESSION_REFUSALS.get(
+                    field,
+                    "un'espressione vale sul valore base di: "
+                    + ", ".join(EXPRESSION_FIELDS)),
+            )
+            err.stream_id = self.stream_id
+            raise err
 
         # Caso Errore: Tipo non supportato
         hint = "atteso numero, lista di punti, o dict envelope"
@@ -465,6 +495,48 @@ class GranularParser:
             min_bound=bounds.min_val,
             max_bound=bounds.max_val,
         )
+        err.stream_id = self.stream_id
+        raise err
+
+    def _reject_non_finite(self, param: Optional[ParamInput], bounds: Any,
+                           param_name: str) -> None:
+        """Il solo «fuori bounds» di un parametro che rientra a capo: un
+        valore non finito scritto nello YAML, come numero o come punto di un
+        envelope.
+
+        Rientrare a capo vale per i valori finiti: `nan` e `inf` non hanno
+        un capo da cui rientrare. Su ogni altro parametro li ferma
+        `_validate_and_clip`, che qui non passa; senza questo controllo
+        arrivavano al clamp del Parameter, una riga di clip log per grano.
+        Un'espressione non passa di qui: i suoi valori si conoscono grano
+        per grano, e hanno il loro limite sul clip log.
+
+        In modo permissivo non solleva, come `_validate_and_clip`: resta il
+        clamp del Parameter.
+        """
+        from pge.shared.logger import CLIP_LOG_CONFIG
+
+        if CLIP_LOG_CONFIG.get('validation_mode', 'strict') != 'strict':
+            return
+        hint = ("atteso un valore finito: una posizione rientra a capo "
+                "fuori dai bounds, ma nan e inf non hanno un capo da cui "
+                "rientrare")
+        if isinstance(param, Envelope):
+            non_finiti = [(t, y) for t, y in param.breakpoints
+                          if not math.isfinite(y)]
+            if not non_finiti:
+                return
+            err = ParameterBoundError(
+                param_name=param_name, value_type='value',
+                min_bound=bounds.min_val, max_bound=bounds.max_val,
+                violations=non_finiti, hint=hint)
+        elif isinstance(param, (int, float)) and not math.isfinite(param):
+            err = ParameterBoundError(
+                param_name=param_name, value_type='value',
+                min_bound=bounds.min_val, max_bound=bounds.max_val,
+                value=float(param), hint=hint)
+        else:
+            return
         err.stream_id = self.stream_id
         raise err
 

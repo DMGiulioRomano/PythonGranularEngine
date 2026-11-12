@@ -2,8 +2,9 @@
 La mappa logistica (issue #308, mappe caotiche 1/7): il catalogo e i cicli
 noti.
 
-I numeri sono quelli del plan (docs/plans/2026-11-10-001-feat-mappe-caotiche-
-plan.md, «Numeri di riferimento per i test»): al crescere di `r` la mappa va
+I numeri sono quelli del plan
+(docs/plans/done/2026-11-10-001-feat-mappe-caotiche-plan.md, «Numeri di
+riferimento per i test»): al crescere di `r` la mappa va
 da un valore solo a cicli di 2, 4 valori, e dentro il caos ha una finestra di
 periodo 3.
 """
@@ -30,8 +31,10 @@ def _ciclo(valori, cifre=3):
 
 class TestCatalogo:
 
-    def test_in_questa_fetta_c_e_la_logistica(self):
-        assert MAP_TYPES == ('logistic',)
+    def test_la_logistica_e_la_prima_del_catalogo(self):
+        """Nella #308 era l'unica; le altre cinque sono arrivate con la
+        #313 (tests/maps/test_catalog.py)."""
+        assert MAP_TYPES[0] == 'logistic'
         assert set(MAP_KINDS) == set(MAP_TYPES)
 
     def test_il_passo_e_r_x_uno_meno_x(self):

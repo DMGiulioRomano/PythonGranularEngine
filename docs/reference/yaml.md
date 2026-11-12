@@ -56,6 +56,9 @@ Sezioni rilevanti in questo doc:
   larghezza, forma (`distribution_mode`), ancora (`range_anchor`), unità
   (`_range_unit`: assoluta o frazione della base)
 - [Blocco Grain](#blocco-grain), [Pointer](#blocco-pointer), [Pitch](#blocco-pitch), [DeviationProbability](#deviation_probability-variazione-stocastica)
+- [`pointer.position`](#pointerposition--la-posizione-dichiarata) — la
+  posizione di lettura scritta, da 0 a 1 della finestra attiva, al posto di
+  `speed_ratio` e `start`
 - [Mappe ed espressioni](#mappe-ed-espressioni-maps) — `maps:` dichiara una
   mappa iterata, e un parametro la legge con un'espressione
   (`duration: (0.02 + 0.08*m1)`), valutata a ogni grano
@@ -778,7 +781,10 @@ La densità emersa è pubblicata come curva, `effective_density`, come in
 modalità `fill_factor`: in partitura e nella sessione Sonic Visualiser è
 `1 / attesa` per ogni grano della voce 0, tenuto fino al grano dopo. Non è
 una funzione del tempo — un'attesa letta da una mappa dipende dai grani già
-nati — quindi si conosce a grani fatti.
+nati — quindi si conosce a grani fatti. Accanto c'è la curva dell'attesa
+stessa, `grain_iot` (issue #314): quella dichiarata se `grain.iot` è un
+envelope, i valori realizzati se è un'espressione, con l'escursione vera in
+legenda (`iot`, `89–177ms`).
 
 **La stessa mappa su attesa e durata.** Con `iot` e `duration` che leggono la
 stessa mappa a `clock: grain`, ogni grano porta il valore che ha deciso anche
@@ -790,8 +796,9 @@ oltre la prima è `(1 − scatter) · attesa della voce 0 + scatter · attesa
 letta per la propria voce`. Ma le mappe delle voci partono tutte da `x0` e
 sono deterministiche: danno la **stessa sequenza**, e `scatter` — una media
 fra due attese uguali — **non sposta niente**. Le voci restano in fase, e si
-distinguono solo per gli offset di `voices:`. Dare alle voci stati iniziali
-diversi è una decisione ancora da prendere.
+distinguono solo per gli offset di `voices:`. È una scelta: dare alle voci
+stati iniziali diversi resta fuori dalle mappe caotiche della #307 (vedi
+[[mappe-caotiche]], «Trade-off»).
 
 **Chi legge la densità.** Per uno stream con `grain.iot`, `Stream.density`,
 `Stream.fill_factor` e `Stream.distribution` sono `None`; `Stream.iot` è il
@@ -1063,6 +1070,73 @@ anche senza nessun loop dichiarato. Le due chiavi parlano di assi diversi (vedi
 
 Bounds: `pointer_speed_ratio` ∈ [-100, 100], `pointer_deviation` ∈ [-1, 1].
 
+### `pointer.position` — la posizione dichiarata
+
+`start` e `speed_ratio` sono una legge di moto: una partenza, più l'integrale
+di una velocità. `position` è la seconda (issue #312): la posizione di lettura
+**scritta**, grano per grano.
+
+```yaml
+maps:
+  m1: {type: logistic, r: 3.2}
+pointer:
+  position: (m1)          # dove leggere, da 0 a 1 della finestra attiva
+  loop_start: 0.2
+  loop_dur: 0.1
+  loop_unit: normalized
+```
+
+Con `r: 3.2` la logistica ha due valori, e i grani leggono da due sole
+posizioni: a 0.513 e a 0.799 della finestra di loop.
+
+- **Da 0 a 1 della finestra attiva**: la finestra di loop se c'è, altrimenti
+  il file intero. `position: 0.5` senza loop è la metà del file; con
+  `loop_start: 0.4`, `loop_end: 0.9` è 0.65 s. È sempre una frazione,
+  qualunque sia `loop_unit`: quella dice in che unità sono scritti i bordi
+  della finestra, non la posizione.
+- **Un numero, un envelope o un'espressione.** Un numero è una lettura ferma;
+  un envelope è uno scrub dichiarato (`[[0, 0], [10, 1]]` attraversa la
+  finestra in dieci secondi) e segue il `time_mode` dello stream;
+  un'[espressione](#le-espressioni) legge una mappa.
+- **Al posto di `speed_ratio` e `start`**: scritte insieme a `position` sono
+  un **errore** (`InvalidFieldValueError` su `pointer.position`), non una
+  priorità, e vale per presenza della chiave — anche `start: 0`. Una
+  `position:` lasciata vuota è un errore anche lei (`MissingFieldError`).
+  Senza `position` il puntatore è quello di sempre, bit per bit.
+- **Fuori da 0–1 rientra a capo**, non si taglia: `1.25` è `0.25`, `-0.25` è
+  `0.75`, e un envelope da 0 a 3 ripassa la finestra tre volte. È lo stesso
+  wrap del [confinamento al loop](#confinamento-al-loop), quindi non è un
+  errore al caricamento e non scrive niente sul clip log. Un valore **non
+  finito** dato da un'espressione (`sqrt` di un negativo, una divisione per
+  zero) va all'inizio della finestra, e quello sì è una riga di clip log.
+  Scritto nello YAML — `position: .nan`, o un punto `.inf` in un envelope —
+  è un errore al caricamento (`ParameterBoundError`), come su ogni altro
+  parametro: rientra a capo ciò che è finito.
+- **La finestra vale da subito.** Con `speed_ratio` il puntatore entra nel
+  loop quando ci arriva; con `position` non c'è un viaggio, e il primo grano
+  è già dentro. La finestra può muoversi (`loop_start` e `loop_dur` a
+  envelope): la posizione resta dentro la finestra di quell'istante. È il
+  **vincolo** del puntatore.
+- **`offset_range` e gli offset di pointer delle voci si sommano come
+  prima**: la deviazione per grano è una frazione della finestra attiva, e il
+  tutto resta confinato dentro la finestra.
+- **Il verso `auto` vale «avanti».** Senza `grain.reverse` né
+  `grain.read_direction` il verso del grano segue il segno di `speed_ratio`;
+  con `position` una velocità dichiarata non c'è, e il grano si legge in
+  avanti anche quando la posizione scende. Il verso si dichiara con
+  [`grain.read_direction`](#grainread_direction--il-verso-di-lettura-del-grano)
+  (o `grain.reverse`).
+- **Più voci.** Con una mappa a `clock: grain` ogni voce ha il suo stato e
+  percorre la sua sequenza di posizioni.
+
+In partitura i grani stanno alle posizioni lette. Un `position` a envelope è
+la curva `pointer_position`, e così i valori realizzati di un `position` a
+espressione (vedi [Partitura ed export](#le-espressioni)); la curva
+`pointer_speed` non c'è, perché la velocità non è dichiarata.
+
+Bounds: `pointer_position` ∈ [0, 1), a capo (`WRAPPING_PARAMETERS` in
+`parameter_definitions.py`: l'unico parametro i cui bounds non tagliano).
+
 ### Confinamento al loop
 
 Con un loop attivo, la posizione finale di ogni grano — base + `offset_range` +
@@ -1158,6 +1232,10 @@ valore, poi cicli di 2, 4, 8 valori) al disordine.
 Con `r: 3.5` la logistica percorre quattro valori (0.827, 0.501, 0.875,
 0.383) e le durate dei grani, in ciclo, 86, 60, 90, 51 ms.
 
+Per il modello — cosa fa una mappa, perché un'espressione e non una chiave
+`min`/`max`, che cosa resta fuori — vedi [[mappe-caotiche]]; per aggiungere un
+tipo di mappa al catalogo, [[add-map]].
+
 `maps:` sta **dentro lo stream**, non in testa al documento: con `file:` la
 testa del file importato viene ignorata, e dentro lo stream la mappa viaggia
 col file. Lo stesso nome in due stream sono due mappe.
@@ -1171,7 +1249,9 @@ col file. Lo stesso nome in due stream sono due mappe.
 | `clock` | quando la mappa fa un passo: `grain`, oppure i passi al secondo (numero o envelope), al più uno per campione | `grain` |
 | `iterate` | al posto di `clock`: i passi fatti da `x0` a ogni lettura, intero da 1 a 40 | — |
 | `x0` | lo stato iniziale, un numero | quello del tipo |
+| `y0` | lo stato iniziale della seconda variabile, per le mappe che ne hanno due | quello del tipo |
 | `transient` | i passi scartati prima del primo grano, intero da 0 a 100000 | 300 |
+| `x`, `y` | le equazioni di una mappa [`type: custom`](#type-custom--lequazione-scritta-a-mano) | — |
 
 Il **nome** di una mappa (`m1`) è fatto di lettere, cifre e `_`, e non
 comincia con una cifra. Non può essere un nome che in un'espressione vuol dire
@@ -1180,7 +1260,8 @@ già un'altra cosa: una funzione, `pi`, `e`, `t`, e nemmeno `x`, `y`, `r`.
 Un `maps:` scritto male si ferma al caricamento con un `MapConfigError` che
 nomina il punto (`maps.m1.r`) e lo stream: `maps` che non è un dizionario o è
 vuoto, un `type` che non c'è, `r` che manca o non è un numero finito, una
-chiave sconosciuta, un `clock` non positivo, `clock` e `iterate` insieme, uno
+chiave sconosciuta, un `x:` accanto a un tipo di catalogo, un `y0` su una
+mappa a una variabile, un `clock` non positivo, `clock` e `iterate` insieme, uno
 dei tre tetti superato. Un envelope di `r` o di `clock` scritto male è
 l'errore di forma di ogni altro envelope, col suo path (`maps.m1.clock`).
 Vedi [[errors]].
@@ -1201,10 +1282,33 @@ render invece di dire che cosa non va. Sono costanti di
 | `type` | passo | `r` | intervallo di `m1` | `x0` |
 |---|---|---|---|---|
 | `logistic` | `r*x*(1-x)` | 2.5 – 4 | 0 … 1 | 0.3 |
+| `tent` | `r/2*min(x, 1-x)` | 2.5 – 3.999 | 0 … 1 | 0.3 |
+| `sine` (Di Scipio 1999) | `sin(r*x)` | 0 – 4 | −1 … 1 | 0.1 |
+| `cubic` | `r*x*(1-x*x)` | 1.5 – 3 | −1.2 … 1.2 | 0.3 |
+| `henon` | `x: 1 - r*x*x + y`, `y: 0.3*x` | 0.8 – 1.4 | −1.3 … 1.4 (`m1.y`: −0.39 … 0.42) | 0.1, 0.1 |
+| `circle` | `frac(x + r - 0.3*sin(2*pi*x))` | 0 – 1 | 0 … 1 | 0.2 |
+| `custom` | `x:` (e `y:`) scritte nello YAML | libero | dipende dall'equazione | 0.1, 0.1 |
 
 - L'**intervallo di `m1`** è un fatto della mappa, e chi scrive un'espressione
   deve conoscerlo: `minimo + (massimo − minimo) * m1` vale per una mappa che
-  vive in 0…1.
+  vive in 0…1. La stessa fascia 20–200 ms è `(0.020 + 0.180*m1)` sulla
+  logistica e `(0.110 + 0.090*m1)` sul seno di Di Scipio, che vive fra −1 e 1.
+- **Le mappe a due variabili** (`henon`, e una `custom` con `y:`) hanno uno
+  stato `(x, y)`: i due aggiornamenti usano la coppia di prima, e la seconda
+  variabile si legge in un'espressione come **`m1.y`**. Vale nei tre modi di
+  avanzare. `m1.y` su una mappa a una variabile è un errore
+  (`nome sconosciuto`).
+- **La `tent` non arriva a `r = 4`**: lì la pendenza è 2, ogni passo raddoppia
+  e toglie un bit, e in float64 la mappa collassa a zero in una cinquantina di
+  passi, per sempre. Il tetto documentato è 3.999.
+- **`sine` e `circle` passano da `sin`**, e fra macchine diverse i grani
+  possono divergere. Le mappe fatte di sole somme e prodotti (`logistic`,
+  `tent`, `cubic`, `henon`) sono identiche bit per bit ovunque; `sin` dipende
+  dall'ultimo bit della libreria matematica, e una differenza di 10⁻¹² diventa
+  di ordine 1 in una cinquantina di passi. Lo stesso YAML sulla stessa
+  macchina dà sempre gli stessi grani; fra macOS e Linux, con queste due, non è
+  garantito (`SIN_BASED_TYPES` nel catalogo). Vale anche per una `custom` che
+  usa `sin`, `cos`, `exp`, `log`.
 - L'intervallo di **`r`** è quello in cui la mappa è interessante e resta nel
   suo intervallo: non è un limite imposto. Fuori (`r: 4.5`) la mappa
   **scappa**: quando un valore non è finito, o supera 1000 in modulo, la mappa
@@ -1216,7 +1320,44 @@ render invece di dire che cosa non va. Sono costanti di
   transitorio diverso cambia la *fase* di un ciclo, non l'insieme dei valori.
 
 Dati dello stesso catalogo, leggibili senza costruire uno stream: `MAP_TYPES`
-e `MAP_KINDS` in `src/pge/maps/catalog.py`.
+e `MAP_KINDS` in `src/pge/maps/catalog.py`. Ogni voce di `MAP_KINDS` dichiara
+con dei letterali `x0`, `r_range`, `value_range` (l'intervallo di `m1`) e, per
+le mappe a due variabili, `y0` e `y_range`: un editor li legge dal sorgente.
+
+#### `type: custom` — l'equazione scritta a mano
+
+```yaml
+maps:
+  m2:
+    type: custom
+    x: sin(r*x)*cos(x)
+    r: 3
+  m3:
+    type: custom
+    x: 1 - r*x*x + y        # Hénon, scritta a mano
+    y: 0.3*x
+    r: 1.4
+```
+
+- **`x:` è obbligatoria, `y:` opzionale.** Con `y:` la mappa ha due variabili,
+  e `m3.y` si legge nelle espressioni.
+- Le equazioni sono scritte nel **linguaggio delle
+  [espressioni](#le-espressioni)**, con le variabili `x`, `y`, `r` (lo stato
+  di prima e il parametro) e le stesse funzioni e costanti. Non leggono le
+  altre mappe né `t`. Qui le parentesi esterne non servono: la chiave dice
+  già che è un'equazione.
+- **Un tipo di catalogo con accanto un `x:` (o un `y:`) è un errore**: non si
+  capirebbe quale delle due equazioni vale.
+- `r` serve solo se un'equazione lo legge; `x0` e `y0` valgono 0.1 se non
+  sono scritti (non zero: per molte equazioni zero è un punto fisso). `y0`
+  su una mappa a una variabile è un errore, e così un'`x:` che legge `y`
+  senza una `y:`.
+- Un'equazione scritta male è un `ExpressionError` col suo path
+  (`maps.m2.x`); una chiave che manca o è di troppo un `MapConfigError`.
+- Un'equazione scritta a mano **scappa** più facilmente di una di catalogo:
+  la rete è la stessa (riparte da `x0`, `y0`; `[MAP_ESCAPE]` sul clip log).
+- Il caricamento lascia le equazioni come sono scritte: non le valuta e non
+  avvisa.
 
 ### Come avanza una mappa
 
@@ -1295,7 +1436,7 @@ parentesi**, dove stanno un numero o un envelope.
 | operatori | `+ - * / **`, parentesi |
 | funzioni | `sin cos tan abs sqrt exp log floor round sign min max pow frac clip fold wrap` |
 | costanti | `pi`, `e` |
-| nomi | le mappe dichiarate nello stream (`m1`), e `t`: i secondi dall'inizio dello stream |
+| nomi | le mappe dichiarate nello stream (`m1`), la seconda variabile di quelle che ne hanno due (`m1.y`), e `t`: i secondi dall'inizio dello stream |
 
 - Le precedenze sono quelle di Python: `-m1**2` è `-(m1**2)`, e `2**3**2` è
   `2**(3**2)`, cioè 512.
@@ -1319,19 +1460,68 @@ quando la mappa è in fondo al suo intervallo, il massimo quando è in cima. La
 mappa non usa per forza tutta la fascia scritta: con `r: 3.2` i valori sono
 due soli.
 
-**Dove vale.** Oggi su `grain.duration` e su
-[`grain.iot`](#grainiot--lattesa-fra-due-grani) (l'elenco è
-`EXPRESSION_FIELDS` in `src/pge/expressions/fields.py`). Su un altro parametro una stringa resta un
-errore (`InvalidParameterError`), che dice dove le espressioni valgono.
+**Dove vale.** Sul **valore base** di ogni parametro a schema (l'elenco è
+`EXPRESSION_FIELDS` in `src/pge/expressions/fields.py`, una tupla letterale):
+
+| | |
+|---|---|
+| uscita | `volume`, `pan` |
+| grano | `grain.duration`, [`grain.iot`](#grainiot--lattesa-fra-due-grani), `grain.read_direction` |
+| puntatore | [`pointer.position`](#pointerposition--la-posizione-dichiarata) |
+| pitch | il valore, in ogni unità: `pitch.semitones`, `pitch.cents`, `pitch.quarter_tone`, `pitch.eighth_tone`, `pitch.ratio`, e `pitch.value` con `edo: N` |
+| densità | `density`, `fill_factor`, `distribution` |
+
+```yaml
+maps:
+  m1: {type: henon, r: 1.4}
+volume: (-18 + 4*m1)
+pan: (100*m1.y)
+pitch:
+  semitones: (12*m1)
+```
+
+Su `grain.read_direction` decide il **segno**: sotto zero il grano si legge
+all'indietro, altrimenti in avanti (`(sign(m1 - 0.5))`). Su `density` e
+`fill_factor` la densità cambia a ogni grano, e non è più una curva
+dichiarata.
+
+**Dove non vale**, il motore lo dice con un `ExpressionError` che nomina il
+campo e suggerisce che cosa scrivere (`EXPRESSION_REFUSALS`, nello stesso
+modulo):
+
+| campo | perché, e che cosa scrivere |
+|---|---|
+| `pointer.speed_ratio` | la velocità si integra nel tempo per ricavare la posizione, e un'espressione non si integra: per leggere la posizione da una mappa c'è `pointer.position` |
+| `pointer.start` | è la posizione di partenza, un numero: per una posizione che cambia a ogni grano c'è `pointer.position` |
+| `pointer.loop_start`, `loop_end`, `loop_dur` | i bordi della finestra sono numeri o envelope: la finestra è il vincolo del puntatore, e la mappa muove la posizione al suo interno |
+| `voices.num_voices` | il numero di voci si decide prima dei grani (è il picco del suo envelope): un numero o un envelope |
+
+Lo stesso errore, col suggerimento generico, su ogni altro campo fuori
+dall'elenco: le bande `_range`, `pitch.range`, `pointer.offset_range`,
+`voices.scatter`, i parametri delle strategie di voce, e
+`deviation_probability` (globale o per chiave: il campo è
+`deviation_probability.volume`), dove il dettaglio dice che il campo vuole una
+probabilità (0-100) o un envelope.
+
+**Una stringa che non è un'espressione** resta l'errore di prima, anche nei
+campi in cui un'espressione vale: `density: not_a_number` è un
+`InvalidParameterError` («Formato non valido», con che cosa il campo vuole), e
+`grain.read_direction: reverse` l'`InvalidFieldValueError` che spiega i due
+versi. È scritta come un'espressione la stringa che sta tutta fra parentesi —
+e se dentro è sbagliata lo dice l'interprete, con un `ExpressionError` — e
+quella che senza parentesi l'interprete compila (`volume: -30 + 20*m1`): lì
+l'`ExpressionError` propone le parentesi. Su `grain.duration` e `grain.iot`
+ogni stringa è letta come un'espressione, come dalla #308.
 
 **Quando si valuta.** A ogni grano, non al caricamento: è la differenza dalle
 [espressioni matematiche nei valori](#9-espressioni-matematiche-nei-valori),
 che sono costanti calcolate una volta sola. Il loader lascia com'è, senza
 avvisi su stdout, una stringa fra parentesi che nomina una mappa dichiarata
-nello stream, o `t`; e, nei campi in cui un'espressione vale, anche una che
-nomina qualcosa che la valutazione al caricamento non conosce: una funzione
-del linguaggio come `sqrt`, `sin`, `clip`, o un nome sbagliato, che poi
-l'errore dell'interprete nomina. Una costante che la valutazione sa fare
+nello stream, o `t`; le equazioni `x:` e `y:` di una mappa `custom`; e, nei
+campi in cui un'espressione vale, anche una che nomina qualcosa che la
+valutazione al caricamento non conosce: una funzione del linguaggio come
+`sqrt`, `sin`, `clip`, o un nome sbagliato, che poi l'errore dell'interprete
+nomina. Una costante che la valutazione sa fare
 (`(10/2)`, `(0.05 * abs(-1))`) resta sua e diventa un numero, come prima.
 
 **Gli errori sono al caricamento**, in un `ExpressionError` col campo
@@ -1342,18 +1532,32 @@ senza le parentesi esterne.
 **I valori non si validano al caricamento.** Un envelope fuori dai bounds è un
 errore al parse; un'espressione no, perché i suoi valori nascono grano per
 grano. Un valore che esce viene **tagliato** ai limiti del parametro e scritto
-sul clip log, con `(EXP)` in fondo alla riga; un valore non finito
-(`sqrt` di un negativo, una divisione per zero) va al limite e il render
-prosegue. Per riportarlo dentro in un altro modo lo si scrive:
-`clip`, `fold`, `wrap`.
+sul clip log, con `(EXP)` in fondo alla riga. Per riportarlo dentro in un
+altro modo lo si scrive: `clip`, `fold`, `wrap`. (`pointer.position` non si
+taglia: rientra a capo della finestra.)
+
+- **Un valore infinito va dal suo lato**: `+inf` al massimo, `−inf` al minimo.
+- **Un valore che non è un numero** (`nan`: `sqrt` di un negativo, `0/0`) non
+  ha un lato, e va al **limite inferiore** del parametro: sul volume è
+  silenzio (−120 dB), sulla durata un campione. Unica eccezione
+  **`grain.iot`**, dove va al **tetto**, 100 s: al limite inferiore un'attesa è
+  un campione, cioè 48000 grani al secondo, e un'espressione sempre `nan`
+  teneva il render occupato per minuti. Al tetto il render finisce col primo
+  grano (`NAN_TO_MAX_PARAMETERS` in `parameter_definitions.py`).
+- **Il clip log di un'espressione ha un limite di frequenza**: una riga subito,
+  poi una ogni 5 s di stream per parametro, col conto dei tagli taciuti nel
+  frattempo (`+312 tagli taciuti`). Un'espressione fuori limite lo è a ogni
+  grano, e una riga per grano sono decine di migliaia di righe. Il limite
+  vale per le sole espressioni (`EXPRESSION_CLIP_LOG_INTERVAL`).
 
 **Unità.** Con `grain.duration_unit` diversa da `seconds` il fattore si
 applica al **risultato** dell'espressione: `(20 + 80*m1)` con
 `duration_unit: milliseconds` sono gli stessi grani di `(0.02 + 0.08*m1)`.
 Vale per `grain.duration` e per `grain.iot`.
 
-**`_range` sopra un'espressione** resta lecito: `grain.duration_range` è un
-tremolio casuale attorno al valore dato dalla mappa. La mappa non sostituisce
+**`_range` sopra un'espressione** resta lecito: `grain.duration_range`,
+`volume_range`, `pan_range`, `pitch.range` sono un tremolio casuale attorno al
+valore dato dalla mappa. La mappa non sostituisce
 il generatore casuale dentro la banda.
 
 **Cache.** Il fingerprint dello stream contiene `maps:` e il testo
@@ -1362,9 +1566,39 @@ l'espressione rifà lo stem. Uno stream che non scrive queste chiavi ha i grani 
 prima.
 
 **Partitura ed export.** Un parametro scritto come espressione non ha una
-curva nel tempo — il suo valore dipende dallo stato della mappa — e la
-partitura e la sessione Sonic Visualiser non lo disegnano. Nei commenti dello
-score Csound compare il testo dell'espressione.
+curva nota in anticipo: il suo valore dipende dallo stato della mappa, e
+esiste solo nei grani generati. La partitura e la sessione Sonic Visualiser ne
+mostrano i **valori realizzati** (issue #314):
+
+- **i valori realizzati di ogni parametro a espressione**, sotto il nome del
+  parametro (`grain_duration`, `volume`, `pan`, `pitch`, `pointer_position`,
+  `grain_iot`, `density`…): il valore che il parametro ha dato a ogni grano
+  della **voce 0**, a gradini — tenuto fino al grano dopo. È il valore che il
+  grano ha avuto: tagliato ai limiti se usciva, e con la banda `_range` se
+  c'è. In legenda, sotto il nome, l'**escursione vera** (`grain dur`,
+  `50.6–90.0ms`): scritto 20–100 ms, usato 51–90;
+- **il valore di ogni mappa**, `map__<nome>` (`map__m1`, e `map__m1.y` per la
+  seconda variabile): a gradini per i modi a clock — un gradino per grano
+  della voce 0 con `clock: grain`, un gradino per passo con un clock a
+  orologio — e una curva continua per `iterate`. In legenda il nome della
+  mappa e la sua escursione;
+- **la densità che emerge**, `effective_density`: con `grain.iot`, e anche in
+  modalità `fill_factor` quando `fill_factor` o la durata del grano sono
+  un'espressione (lì `fill_factor / durata` non si può campionare). Con
+  `grain.iot` c'è anche la curva dell'attesa, `grain_iot`.
+
+Sono curve come le altre: `--plot-envelopes map` seleziona tutte le mappe,
+`--plot-envelopes pan` i valori realizzati del pan; il preset `--bw` dà loro
+un tratto proprio; nella sessione Sonic Visualiser sono layer con lo stesso
+nome e nello stesso ordine. Un'espressione o una mappa che dà un valore solo
+è una costante, e si vede con `--show-static`. Non hanno breakpoint annotati:
+sono un punto per grano, non punti di controllo.
+
+**Leggerle genera i grani** (la generazione è lazy), una volta: disegnare la
+partitura non cambia il render e non pesca di nuovo da un generatore casuale.
+Uno stream senza `maps:` e senza espressioni ha le curve di prima, nello
+stesso ordine. Nei commenti dello score Csound compare il testo
+dell'espressione.
 
 ---
 
@@ -2679,9 +2913,14 @@ deliberato: gli stream con `duration > envelope.end_time` non vanno in errore.
 
 ### 9. Espressioni matematiche nei valori
 
-Il loader YAML (`Generator._eval_math_expressions`) valuta espressioni racchiuse
-tra parentesi prima di passare il dato al parser envelope. Funzioni e costanti
-ammesse: `abs`, `int`, `float`, `min`, `max`, `pow`, `pi`, `e`.
+Il loader YAML (`Generator._eval_math_expressions`) valuta le espressioni
+racchiuse tra parentesi prima di passare il dato al parser envelope.
+
+| | |
+|---|---|
+| operatori | `+ - * / // **`, parentesi |
+| funzioni | `abs`, `int`, `float`, `min`, `max`, `pow` |
+| costanti | `pi`, `e` |
 
 Sintassi:
 
@@ -2692,17 +2931,44 @@ grain:
   duration_range: (pi/100)
 pitch:
   ratio: (2**(7/12))                 # ratio del semitono x7
+density: (max(8, 100/4))             # 25.0
 ```
 
 L'espressione è valutata a parse-time, non a run-time: il risultato è un numero
 che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
+
+- **Gli argomenti di una funzione si separano con la virgola**: `(max(3, 7))`
+  vale 7, `(pow(2, 3))` vale 8, `(min(1, 2, 3))` vale 1 (issue #309: prima la
+  virgola non era ammessa, e una funzione a due argomenti restava una
+  stringa).
+- **Un intero resta un intero**: `(2*2)` è 4 e `(10/2)` è 5.0, come in
+  Python. Conta dove il motore pretende un intero (`n_reps` di un ciclo,
+  `iterate` di una mappa).
+- **L'espressione sta tutta dentro le parentesi esterne.** Si valuta solo ciò
+  che sta fra parentesi: `((10/2)/10)` vale 0.5, mentre `(10/2)/10` e
+  `2*(3+4)` sono scritte per metà fuori, e sono un **errore al caricamento**
+  (`ExpressionError`) che nomina il campo e propone la grafia con le
+  parentesi. Prima uscivano valutate a metà, come la stringa `5.0/10`, e più
+  a valle erano un errore di tipo. È la stessa regola delle
+  [espressioni che leggono una mappa](#le-espressioni). Non è scritta per
+  metà fuori ciò che il loader valuta già per intero: `-(90/2)` vale −45.0 e
+  `-(pi)` vale −π, come prima (sostituite le parentesi resta un numero).
+- Una stringa con delle parentesi che **non** è un'espressione non è toccata
+  da questa regola: è un errore solo la stringa che, messa intera fra
+  parentesi, vale un numero. Ciò che fra parentesi non è un numero — una
+  parola, una coppia `(1, 2)` — resta il testo che era; un nome sconosciuto
+  lascia sullo stdout l'avviso `impossibile valutare`.
+- La regola vale dove il motore legge un numero: fuori dagli stream solo su
+  `seed` (un titolo in `composition:` è testo: `title: 11 - (2026)` non è un
+  errore), e dentro uno stream non su `stream_id` e `sample`.
 
 Fa eccezione una stringa tutta fra parentesi che nomina una mappa dichiarata
 in `maps:` dello stesso stream, o `t`: quella non è una costante, il loader la
 lascia com'è e la compila il parser dei parametri, per valutarla a ogni grano.
 È un altro linguaggio, con le sue funzioni: vedi
 [Mappe ed espressioni](#mappe-ed-espressioni-maps). Nei campi in cui
-un'espressione vale (`grain.duration`, `grain.iot`) il loader lascia com'è
+un'espressione vale (`volume`, `pan`, `grain.duration`, `pointer.position`…:
+l'elenco è `EXPRESSION_FIELDS`) il loader lascia com'è
 anche una stringa che nomina un nome che questa valutazione non conosce
 (`sqrt`, `clip`): la compila l'interprete, senza l'avviso
 `impossibile valutare`.
@@ -3063,6 +3329,7 @@ un envelope dal YAML al runtime è:
 | `pitch_semitones` | -36 | 36 | 0 | ±3 ottave |
 | `read_direction` | -1 | +1 | — | solo `-1` e `+1`; assente = modalità `auto` |
 | `pointer_speed_ratio` | -100 | 100 | 1.0 | negativo = indietro |
+| `pointer_position` | 0 | 1 | — | frazione della finestra attiva (`pointer.position`), al posto di `speed_ratio` e `start`; fuori da 0–1 **rientra a capo**, non si taglia |
 | `pointer_deviation` | -1 | 1 | 0.0 | offset per-grano |
 | `loop_start` | 0 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |
 | `loop_end` | 0 | sample_dur | — | secondi; `loop_unit: normalized` li scrive come frazione |

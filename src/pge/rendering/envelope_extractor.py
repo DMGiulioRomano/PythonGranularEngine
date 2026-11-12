@@ -51,6 +51,7 @@ ENVELOPE_COLORS = {
     # === POINTER ===
     'pointer_start': '#8dd3c7',   # celeste
     'pointer_speed': '#a65628',   # marrone
+    'pointer_position': '#1b9e77',  # verde acqua scuro (l'altra legge di moto)
     'pointer_deviation': '#fb8072',  # salmone
     'pointer_deviation_prob': '#fdb462',  # arancione chiaro
     'loop_dur': '#bebada',        # lavanda
@@ -63,6 +64,12 @@ ENVELOPE_COLORS = {
     'fill_factor': '#f781bf',     # rosa
     'distribution': '#999999',    # grigio
     'effective_density': '#ffed6f',  # giallo
+    'grain_iot': '#d95f02',       # arancio bruciato (l'attesa fra due grani)
+
+    # === MAPPE (issue #314) ===
+    # Il valore di una mappa: una curva per mappa, `map__<nome>`, che
+    # risolve qui sul nome base.
+    'map': '#7570b3',             # indaco
 
     # === VOICES ===
     'num_voices': '#e377c2',      # magenta
@@ -147,6 +154,10 @@ ENVELOPE_STYLES = {
     # === POINTER ===
     'pointer_start': (_SHORTDASH, 1.1),
     'pointer_speed': (_SHORTDASH, 1.7),
+    # L'altra legge di moto del puntatore (issue #312): con `position` la
+    # velocita' non c'e', quindi le due non stanno mai nella stessa corsia.
+    # Stesso pattern della famiglia, uno spessore suo.
+    'pointer_position': (_SHORTDASH, 1.4),
     'pointer_deviation': (_DASHDASH, 1.1),
     'pointer_deviation_prob': (_DASHDASH, 0.6),
     'loop_dur': (_SPARSEDOT, 1.3),
@@ -160,6 +171,13 @@ ENVELOPE_STYLES = {
     # Derivata dalla densita': stesso pattern, tratto piu' leggero.
     'effective_density': (_LONGDASH, 0.7),
     'distribution': (_DASHDASH, 1.7),
+    # L'attesa e' l'inverso della densita': stesso pattern, uno spessore suo.
+    'grain_iot': (_LONGDASH, 1.4),
+
+    # === MAPPE ===
+    # Non e' un parametro ma cio' che i parametri leggono: un pattern che
+    # nessun parametro usa a questo spessore.
+    'map': (_SPARSEDOT, 1.9),
 
     # === VOICES ===
     'num_voices': (_DASH, 1.8),
@@ -171,11 +189,36 @@ ENVELOPE_STYLES = {
 }
 
 
+#: Il nome base delle curve delle mappe (issue #314): `map__m1`, `map__m1.y`.
+MAP_CURVE_BASE = 'map'
+_MAP_CURVE_PREFIX = MAP_CURVE_BASE + '__'
+
+
+def map_curve_key(name):
+    """La chiave con cui esce la curva di una mappa: `m1` -> `map__m1`,
+    `m1.y` -> `map__m1.y`."""
+    return _MAP_CURVE_PREFIX + name
+
+
+def map_curve_name(key):
+    """Il nome della mappa di una chiave `map__<nome>`, o None se la chiave
+    non e' quella di una mappa."""
+    if key.startswith(_MAP_CURVE_PREFIX):
+        return key[len(_MAP_CURVE_PREFIX):]
+    return None
+
+
 def base_param_name(key):
     """Nome base di una chiave envelope: strippa il suffisso per-voce '__vN'
     (issue #90). 'voice_pitch_offset__v2' -> 'voice_pitch_offset'; chiavi senza
     suffisso restano invariate. Serve a risolvere colore/range/filtro delle
-    curve per-voce sul parametro base."""
+    curve per-voce sul parametro base.
+
+    Le curve delle mappe (issue #314) hanno un nome base solo, `map`:
+    'map__m1' e 'map__m1.y' -> 'map'. Viene prima del suffisso per-voce: una
+    mappa puo' chiamarsi `v2`."""
+    if key.startswith(_MAP_CURVE_PREFIX):
+        return MAP_CURVE_BASE
     return re.sub(r'__v\d+$', '', key)
 
 
@@ -190,6 +233,14 @@ class CurveSource:
     key: str
     resolve: Callable
     face: str = 'value'
+
+
+@dataclass(frozen=True)
+class MapCurveSource:
+    """Riga di sorgente diversa: le curve delle mappe (issue #314) non sono
+    la faccia di un parametro. Le pubblica lo Stream, una per mappa
+    dichiarata, a cose fatte (`Stream.map_curves`)."""
+    pass
 
 
 @dataclass(frozen=True)
@@ -226,13 +277,13 @@ def _attr(name):
 # is_smart=False): il valore vero non e' un Parameter da leggere ma un
 # quoziente che il motore calcola a ogni onset. Viene pubblicato piu' sotto
 # dalla curva campionata, non da qui.
-# grain_iot (issue #311) e' l'attesa fra due grani: lo Stream non la pubblica
-# come curva sua, perche' quello che se ne guarda e' la densita' che ne
-# emerge — `effective_density`, l'inverso dell'attesa grano per grano — che
-# esce piu' sotto. Mostrare le mappe e le attese e' la 6/7 (#314).
+# grain_iot (issue #311) NON e' escluso: dalla #314 l'attesa fra due grani e'
+# una curva come le altre — quella dichiarata se e' un envelope, i valori
+# realizzati se e' un'espressione — accanto alla densita' che ne emerge
+# (`effective_density`).
 _SCHEMA_EXCLUDED = frozenset({
     'pointer_deviation', 'pointer_speed_ratio', 'pointer_start',
-    'effective_density', 'grain_iot'})
+    'effective_density'})
 
 
 def _curve_sources():
@@ -283,12 +334,18 @@ def _curve_sources():
     sources.append(CurveSource(
         'pointer_deviation_prob', _attr('pointer_deviation'), 'probability'))
 
+    # Le mappe (issue #314): dopo i parametri, che le leggono, e prima delle
+    # curve per-voce, che restano in coda. Uno stream senza `maps:` non ne
+    # ha, e l'ordine delle sue curve e' quello di prima.
+    sources.append(MapCurveSource())
+
     sources.append(VoiceOffsetSource())
     return sources
 
 
 def _readable(obj):
-    """Cio' che puo' essere una curva: un Parameter, un Envelope o un numero.
+    """Cio' che puo' essere una curva: un Parameter, un Envelope, un numero
+    o un'espressione.
 
     Tutto il resto — stringhe (grain_envelope), None dei gruppi esclusivi,
     attributi che non esistono — non lo e'.
@@ -302,8 +359,14 @@ def _readable(obj):
     """
     from pge.envelopes.envelope import Envelope
     from pge.parameters.parameter import Parameter
+    from pge.parameters.parameter_curve import ParameterCurve
 
     if isinstance(obj, (Parameter, Envelope, numbers.Real)):
+        return obj
+    # Un valore grezzo puo' essere anche un'espressione (issue #314): il
+    # pitch espone il suo valore, non un Parameter. Riconoscerla non e' di
+    # qui: lo dice ParameterCurve, che e' l'unico posto in cui si guarda.
+    if ParameterCurve.is_expression(obj):
         return obj
     return None
 
@@ -391,6 +454,23 @@ def _voice_curves(stream):
     ]
 
 
+def _map_curves(stream):
+    """Le curve delle mappe dello stream, `[(chiave, curva), ...]`."""
+    curves = getattr(stream, 'map_curves', None)
+    if not callable(curves):
+        return []
+    return [(map_curve_key(name), curve) for name, curve in curves()]
+
+
+def _realized(stream, curve):
+    """I valori realizzati di una faccia classificata EXPRESSION: la curva
+    che lo Stream ha tenuto generando i grani, o None se non ne ha."""
+    realized = getattr(stream, 'realized_curve', None)
+    if not callable(realized):
+        return None
+    return realized(curve.expression)
+
+
 def get_stream_envelopes(stream, show_static=False, show_voice_offsets=False,
                          envelope_filter=None):
     """
@@ -412,7 +492,16 @@ def get_stream_envelopes(stream, show_static=False, show_voice_offsets=False,
         dict: {nome_parametro: Envelope}
     """
     from pge.envelopes.envelope import Envelope
-    from pge.parameters.parameter_curve import VARYING, CONSTANT
+    from pge.parameters.parameter_curve import VARYING, CONSTANT, EXPRESSION
+
+    def publish(key, realized):
+        """Una curva letta a cose fatte (issue #314): se i suoi valori sono
+        uno solo e' una costante, e la governa `show_static` come le
+        altre."""
+        if realized is None:
+            return
+        if not realized.is_constant or show_static:
+            envelopes[key] = realized
 
     def flatten(value):
         """La costante diventa una curva piatta sull'estensione dello stream.
@@ -428,10 +517,18 @@ def get_stream_envelopes(stream, show_static=False, show_voice_offsets=False,
             if show_voice_offsets:
                 envelopes.update(_voice_curves(stream))
             continue
+        if isinstance(source, MapCurveSource):
+            for key, curve in _map_curves(stream):
+                publish(key, curve)
+            continue
 
         curve = _curve_of(source, stream)
         if curve.kind == VARYING:
             envelopes[source.key] = curve.envelope
+        elif curve.kind == EXPRESSION:
+            # Un parametro scritto come espressione non ha una curva nota in
+            # anticipo: i suoi valori sono quelli che ha dato ai grani.
+            publish(source.key, _realized(stream, curve))
         elif curve.kind == CONSTANT and show_static:
             envelopes[source.key] = flatten(curve.value)
 

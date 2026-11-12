@@ -177,6 +177,12 @@ class PitchController:
     # CALCOLO
     # =========================================================================
 
+    @property
+    def parameter(self):
+        """Il Parameter del valore del pitch, nell'unita' attiva: quello di
+        cui chi legge le curve chiede le facce (issue #314)."""
+        return self._active_param
+
     def calculate(
         self,
         elapsed_time: float,

@@ -227,3 +227,50 @@ class TestParameterFaces:
         param = self._param(-6.0)
         param.set_probability_gate(RandomGate(80.0))
         assert param.probability_curve.value == 80.0
+
+
+# =============================================================================
+# IL VALORE A ESPRESSIONE (issue #314)
+# =============================================================================
+
+class TestIlValoreAEspressione:
+    """Dalla #308 un'espressione era classificata `absent`: non ha
+    breakpoint da disegnare, e mostrarla era rimandato. Dalla #314 ha il suo
+    caso, cosi' chi legge le curve lo trova gia' riconosciuto."""
+
+    def _espressione(self, testo='(0.02 + 0.08*t)'):
+        from pge.expressions.expression import Expression, compile_expression
+        return Expression(compile_expression(testo, ('t',)),
+                          reader=lambda nomi, tempo: {'t': tempo})
+
+    def test_ha_un_caso_suo(self):
+        from pge.parameters.parameter_curve import EXPRESSION
+        espressione = self._espressione()
+        curva = ParameterCurve.classify(espressione)
+        assert curva.kind == EXPRESSION == 'expression'
+        assert curva.expression is espressione
+        assert curva.envelope is None and curva.value is None
+
+    def test_i_casi_di_prima_non_portano_un_espressione(self):
+        from pge.envelopes.envelope import Envelope
+        for grezzo in (None, 3.5, Envelope([[0, 1], [1, 2]]),
+                       Envelope([[0, 1], [1, 1]])):
+            assert ParameterCurve.classify(grezzo).expression is None
+
+    def test_la_faccia_valore_di_un_parametro(self):
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+        parametro = Parameter('grain_duration', self._espressione(),
+                              GRANULAR_PARAMETERS['grain_duration'])
+        assert parametro.value_curve.kind == 'expression'
+        assert parametro.range_curve.kind == 'absent'
+
+    def test_chi_campiona_il_valore_nominale_non_ha_un_numero(self):
+        """`nominal_value` legge una curva o una costante: di
+        un'espressione non c'e' un valore senza generare i grani."""
+        from pge.parameters.parameter import Parameter
+        from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
+        from pge.strategies.strategie import nominal_value
+        parametro = Parameter('grain_duration', self._espressione(),
+                              GRANULAR_PARAMETERS['grain_duration'])
+        assert nominal_value(parametro, 0.5) is None

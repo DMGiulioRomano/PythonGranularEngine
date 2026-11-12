@@ -131,6 +131,7 @@ ENVELOPE_RANGES = {
     # === POINTER ===
     'pointer_start': (0.0, 1.0),         # normalizzato
     'pointer_speed': (-4.0, 16.0),
+    'pointer_position': (0.0, 1.0),      # frazione della finestra attiva
     'pointer_deviation': (0.0, 1.0),     # normalizzato
     'pointer_deviation_prob': (0, 100),
     'loop_dur': (0.001, 10.0),           # secondi
@@ -142,6 +143,10 @@ ENVELOPE_RANGES = {
     'fill_factor': (0.1, 20),
     'distribution': (0, 1),
     'effective_density': (1, 200),
+    'grain_iot': (1.0 / DEFAULT_OUTPUT_SR, 1.0),  # secondi (min 1 campione)
+
+    # === MAPPE ===
+    'map': (-1.5, 1.5),                  # il valore di una mappa del catalogo
 
     # === VOICES ===
     'num_voices': (1, 20),

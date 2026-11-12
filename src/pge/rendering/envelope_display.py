@@ -149,6 +149,7 @@ def normalize(param_name, value, ranges, *, pan_range):
 ENVELOPE_UNITS = {
     'volume': 'dB',
     'grain_duration': 'ms',
+    'grain_iot': 'ms',
     'pan': '°',
     # pitch: il simbolo (st/c/qt/et/edoN/x) viene dall'unita' attiva dello
     # stream, non da qui — vedi il parametro pitch_unit di value_label.
@@ -165,6 +166,7 @@ ENVELOPE_UNITS = {
 # scritto nello YAML, cambia come lo si stampa.
 ENVELOPE_MULTIPLIERS = {
     'grain_duration': 1000,  # secondi -> millisecondi
+    'grain_iot': 1000,       # secondi -> millisecondi
 }
 
 
@@ -195,3 +197,29 @@ def value_label(param_name, value, pitch_unit=None):
     if abs(display_value) >= 10:
         return f"{display_value:.1f}{unit}"
     return f"{display_value:.2f}{unit}"
+
+
+def _digits(display_value):
+    """Le cifre decrescono con la grandezza, come in `value_label`."""
+    if abs(display_value) >= 100:
+        return f"{display_value:.0f}"
+    if abs(display_value) >= 10:
+        return f"{display_value:.1f}"
+    return f"{display_value:.2f}"
+
+
+def excursion_label(param_name, low, high, pitch_unit=None):
+    """L'escursione vera di una curva letta a cose fatte, per la legenda:
+    `51.4–90.0ms` (issue #314).
+
+    Di un parametro scritto come espressione la fascia scritta non e' quella
+    usata, e il minimo e il massimo realizzati sono il dato che la legenda
+    aggiunge al nome. Stessa regola di `value_label` per unita' e cifre, con
+    l'unita' scritta una volta sola.
+    """
+    base = base_param_name(param_name)
+    unit = ENVELOPE_UNITS.get(base, '')
+    if base == 'pitch' and pitch_unit is not None:
+        unit = pitch_unit.symbol
+    scale = ENVELOPE_MULTIPLIERS.get(base, 1)
+    return f"{_digits(low * scale)}–{_digits(high * scale)}{unit}"

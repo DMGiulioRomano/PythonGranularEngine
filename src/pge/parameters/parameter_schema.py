@@ -173,6 +173,17 @@ POINTER_PARAMETER_SCHEMA: List[ParameterSpec] = [
         yaml_path='speed_ratio',
         default=1.0
     ),
+    # La seconda legge di moto del puntatore (issue #312): la posizione nella
+    # finestra attiva, da 0 a 1, al posto di `start + integrale di
+    # speed_ratio`. Si sceglie per PRESENZA della chiave: senza, il puntatore
+    # e' quello di sempre. Scritta insieme a `speed_ratio` o a `start` e' un
+    # ERRORE, sollevato dal PointerController prima che l'orchestratore
+    # arrivi qui (dicono due cose diverse su come il puntatore si muove).
+    ParameterSpec(
+        name='pointer_position',
+        yaml_path='position',
+        default=None,  # None = chiave non dichiarata
+    ),
     ParameterSpec(
         name='pointer_deviation',   
         yaml_path='_dummy_fixed_zero_',   

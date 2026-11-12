@@ -100,7 +100,9 @@ EngineError                                  (Exception)
 │   ├── InvalidWindowError                   PR4 — window name/param invalido
 │   ├── FtableError                          PR4 — incoerenza FtableManager
 │   ├── ExpressionError                      #308 — espressione che
-│   │                                        l'interprete non compila
+│   │                                        l'interprete non compila; #309 —
+│   │                                        espressione al caricamento scritta
+│   │                                        per meta' fuori dalle parentesi
 │   ├── MapConfigError                       #308 — blocco `maps:` o una sua
 │   │                                        mappa scritti male
 │   └── StreamFileError                      #290 — voce `file:` del master
@@ -850,21 +852,97 @@ Gli altri motivi: `manca una parentesi chiusa`, `finisce a meta'`,
 chiamate: il limite c'e' perche' oltre uscirebbe un `RecursionError` di
 Python, fuori da questa gerarchia).
 
+Lo stesso `ExpressionError` ferma un'**espressione matematica scritta per metà
+fuori dalle parentesi** (issue #309). Il caricamento valuta ciò che sta fra
+parentesi: `(10/2)/10` usciva come la stringa `5.0/10`, e l'errore arrivava più
+a valle, di tipo, senza più il testo scritto.
+
+```yaml
+    volume: (10/2)/10
+```
+```
+[ERRORE] Espressione non valida per 'volume'
+  Trovato:      (10/2)/10
+  Dettaglio:    l'espressione sta per meta' fuori dalle parentesi: si valuta solo cio' che sta dentro le parentesi esterne
+  Hint:         scrivila tutta fra parentesi: ((10/2)/10)
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Il campo è il path YAML dentro lo stream, fino al punto: `volume[1][0]` per il
+tempo del secondo breakpoint, `maps.m1.r`. Fuori da uno stream (`seed`) non
+c'è la riga `Stream:`. È un errore solo la stringa che, messa intera fra
+parentesi, vale un numero: `voce (1).wav` non lo è. E non lo è quella che il
+caricamento valuta già in un numero così com'è scritta: `-(90/2)` vale −45.0.
+Il controllo guarda dove il motore legge un numero: fuori dagli stream solo
+`seed`, e dentro uno stream non `stream_id` e `sample`, che sono testo.
+
+`pointer.position` (issue #312) è una seconda legge di moto del puntatore, e
+con la prima non convive: scritta insieme a `speed_ratio` o a `start` è un
+`InvalidFieldValueError` sul campo, col valore com'è scritto.
+
+```yaml
+    pointer:
+      position: (m1)
+      speed_ratio: 2
+```
+```
+[ERRORE] Valore invalido per 'pointer.position'
+  Trovato:      '(m1)'
+  Hint:         pointer.position e' la posizione di lettura nella finestra attiva, da 0 a 1: prende il posto della partenza e della velocita', e non puo' stare insieme a speed_ratio.
+  Tieni pointer.position, oppure speed_ratio (con start), non entrambe. La finestra di loop e offset_range valgono con tutte e due.
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+Una `position:` lasciata vuota è un `MissingFieldError`. Un valore fuori da
+0–1 non è un errore: rientra a capo della finestra.
+
 Un blocco `maps:` scritto male è un `MapConfigError`, che nomina il punto col
 suo path YAML:
 
 ```yaml
     maps:
-      m1: {type: tent, r: 3.5}
+      m1: {type: lorenz, r: 3.5}
 ```
 ```
 [ERRORE] Mappa non valida in 'maps.m1.type'
-  Trovato:      'tent'
+  Trovato:      'lorenz'
   Dettaglio:    tipo sconosciuto
-  Hint:         tipi disponibili: logistic
+  Hint:         tipi disponibili: logistic, tent, sine, cubic, henon, circle, custom
   Stream:       s1
   Config:       configs/PGE_test.yml
 ```
+
+Dalla #313 lo stesso errore dice anche: `manca x, l'equazione della mappa`
+(`type: custom` senza `x:`), `x: si scrive solo con type: custom` (un tipo di
+catalogo con accanto un'equazione), `la mappa ha una variabile sola: y0 non
+entra nel passo`, `l'equazione legge y, ma la mappa non ha una seconda
+variabile`. Un'equazione che l'interprete non compila è un `ExpressionError`
+col suo path, `maps.m2.x`.
+
+Un'**espressione dove non vale** (issue #313) è un `ExpressionError` che
+nomina il campo e suggerisce che cosa scrivere al suo posto:
+
+```yaml
+    pointer:
+      speed_ratio: (m1)
+```
+```
+[ERRORE] Espressione non valida per 'pointer.speed_ratio'
+  Trovato:      (m1)
+  Dettaglio:    qui un'espressione non vale: il campo vuole un numero o un envelope
+  Hint:         la velocita' si integra nel tempo per ricavare la posizione, e un'espressione non si integra: per leggere la posizione da una mappa usa pointer.position
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+I campi col loro suggerimento sono `pointer.speed_ratio`, `pointer.start`, i
+tre di loop e `voices.num_voices` (`EXPRESSION_REFUSALS`); su ogni altro campo
+fuori da `EXPRESSION_FIELDS` — una banda `_range`, `voices.scatter`, il
+parametro di una strategia di voce, `deviation_probability` e le sue chiavi
+(`deviation_probability.volume`) — il suggerimento è l'elenco dei campi in
+cui un'espressione vale.
 
 `iterate`, `transient` e `clock` hanno un tetto (40 passi a lettura, 100000
 passi di transitorio, un passo per campione): oltre, lo stesso
@@ -879,8 +957,26 @@ passi di transitorio, un passo per campione): oltre, lo stesso
   Config:       configs/PGE_test.yml
 ```
 
-Un'espressione su un parametro in cui non vale resta un
-`InvalidParameterError`, con l'elenco dei campi in cui vale.
+Una stringa che **non** è scritta come un'espressione resta un
+`InvalidParameterError` anche nei campi in cui un'espressione vale, con che
+cosa il campo vuole e l'elenco dei campi in cui un'espressione vale:
+
+```yaml
+    density: not_a_number
+```
+```
+[ERRORE] Formato non valido per 'density.value'
+  Trovato:      'not_a_number'
+  Hint:         atteso numero, lista di punti, o dict envelope; un'espressione fra parentesi vale su: grain.duration, grain.iot, pointer.position, volume, pan, pitch.semitones, pitch.cents, pitch.quarter_tone, pitch.eighth_tone, pitch.ratio, pitch.value, density, fill_factor, distribution, grain.read_direction
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+È scritta come un'espressione la stringa tutta fra parentesi, e quella che
+senza parentesi l'interprete compila (`-30 + 20*m1`, a cui l'`ExpressionError`
+propone le parentesi). Su `grain.read_direction` una parola (`reverse`) resta
+l'`InvalidFieldValueError` del verso. Fanno eccezione `grain.duration` e
+`grain.iot`, dove ogni stringa è letta come un'espressione (#308).
 
 A runtime nessuno dei due errori si solleva: un valore dell'espressione fuori
 dai bounds viene tagliato e scritto sul clip log, e una mappa che scappa

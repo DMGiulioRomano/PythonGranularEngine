@@ -1189,6 +1189,11 @@ class ExpressionError(ConfigError):
     e non al primo grano. `field` e' il path YAML del campo, quando chi
     compila lo conosce; lo stream lo aggiunge chi lo conosce, come per ogni
     altro `ConfigError`.
+
+    E' anche l'errore di un'espressione matematica del caricamento scritta
+    per meta' fuori dalle parentesi (issue #309): `(10/2)/10`, che il
+    caricamento valutava a meta'. La regola e' la stessa — un'espressione
+    sta tutta dentro le parentesi esterne — e la dice lo stesso tipo.
     """
 
     def __init__(self, expression, reason: str, field: str | None = None,

@@ -238,9 +238,13 @@ Vincoli tra flag e comportamento nelle combinazioni non valide:
   Non tutti i nomi sono parametri scrivibili nello YAML: `effective_density`
   è **derivato**, la densità reale in grani/secondo della voce 0
   (`fill_factor(t) / grain_duration(t)`), campionata da
-  `DensityController.density_curve`. Appare solo in modalità `fill_factor`:
-  in modalità `density` sarebbe la copia della curva `density`, già disegnata
-  sotto il suo nome.
+  `DensityController.density_curve`. Appare in modalità `fill_factor` e con
+  `grain.iot`, dove è la densità che emerge dai grani; in modalità `density`
+  sarebbe la copia della curva `density`, già disegnata sotto il suo nome.
+  `map` è il nome di **tutte le curve delle mappe** (`map__m1`, `map__m1.y`:
+  il valore di ogni mappa dichiarata in `maps:`), e `grain_iot` la curva
+  dell'attesa fra due grani. Il nome di un parametro seleziona anche i suoi
+  valori realizzati, quando è scritto come espressione (issue #314).
 - **`--magnify` / `--magnify-at`** hanno effetto solo insieme a
   `--visualize` (come `--show-static`); la validazione di `--magnify-at`
   avviene comunque (SPEC malformato → exit 1 anche senza `--visualize`). Le

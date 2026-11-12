@@ -197,14 +197,19 @@ class TestFuoriBounds:
         with patch('pge.parameters.parameter.log_clip_warning') as log:
             grani = s.voices[0]
         assert all(g.duration == 1.0 / DEFAULT_OUTPUT_SR for g in grani)
-        assert log.call_count == len(grani)
+        # Una riga subito e poi una ogni 5 s di stream (issue #313): lo
+        # stream dura 4 s, quindi una. Il conto dei tagli taciuti lo porta
+        # la riga dopo, che qui non arriva.
+        assert len(grani) > 10
+        assert log.call_count == 1
+        assert log.call_args.kwargs['suppressed'] == 0
 
     def test_un_non_finito_va_al_limite_e_il_render_finisce(self, stream):
         s = stream(grain={'duration': '(sqrt(0 - 1) + m1)'}, density=5)
         with patch('pge.parameters.parameter.log_clip_warning') as log:
             grani = s.voices[0]
         assert grani and all(np.isfinite(g.duration) for g in grani)
-        assert log.call_count == len(grani)
+        assert log.call_count == 1
 
     def test_dentro_i_bounds_non_si_scrive_niente(self, stream):
         s = stream()
@@ -303,16 +308,17 @@ class TestErrori:
         assert exc.value.field == 'maps'
 
     @pytest.mark.parametrize('extra', [
-        {'volume': '(-6 * m1)'},
-        {'pan': '(m1)'},
-        {'density': '(10 + 10*m1)'},
         {'grain': {'duration': 0.05, 'duration_range': '(0.01*m1)'}},
         {'pointer': {'speed_ratio': '(m1)'}},
     ])
     def test_altrove_un_espressione_resta_un_errore(self, stream, extra):
-        """In questa fetta le espressioni valgono su `grain.duration`: gli
-        altri parametri arrivano con la 5/7 (#313), coi loro test."""
-        with pytest.raises(InvalidParameterError) as exc:
+        """Nella #308 le espressioni valevano su `grain.duration` soltanto,
+        e qui c'erano anche `volume`, `pan` e `density`: dalla #313 su
+        quelli valgono (tests/parameters/test_expression_fields.py). Dove
+        non valgono l'errore e' un `ExpressionError` che dice dove
+        valgono."""
+        with pytest.raises(ExpressionError) as exc:
             stream(**extra)
         assert exc.value.stream_id == 's1'
-        assert 'grain.duration' in exc.value.hint
+        assert 'grain.duration' in exc.value.hint or \
+            'pointer.position' in exc.value.hint

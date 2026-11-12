@@ -203,7 +203,6 @@ class TestUnAttesaImpossibile:
     @pytest.mark.parametrize('iot', [
         '(0 * m1)',              # nulla
         '(m1 - 5)',              # negativa
-        '(sqrt(m1 - 5))',        # NaN
         '(0 - 1 / (0 * m1))',    # -infinito
     ])
     def test_tagliata_a_un_campione(self, stream, iot):
@@ -216,9 +215,25 @@ class TestUnAttesaImpossibile:
             grani = s.voices[0]
         assert len(grani) == pytest.approx(durata * DEFAULT_OUTPUT_SR, abs=2)
         assert _attese(grani)[0] == pytest.approx(1.0 / DEFAULT_OUTPUT_SR)
-        assert clip.call_count >= len(grani)
+        # Il clip log di un'espressione ha un limite di frequenza (issue
+        # #313): una riga subito, poi una ogni 5 s di stream. Qui lo stream
+        # dura 5 ms: una riga, che dice di essere la prima.
+        assert clip.call_count == 1
         assert clip.call_args.kwargs['param_name'] == 'grain_iot'
         assert clip.call_args.kwargs['source'] == 'EXP'
+        assert clip.call_args.kwargs['suppressed'] == 0
+
+    def test_un_attesa_che_non_e_un_numero_va_al_tetto(self, stream):
+        """Un `nan` non e' ne' sotto il minimo ne' sopra il massimo. Prima
+        andava al pavimento, un campione: 48000 grani al secondo. Dalla
+        #313 su `grain.iot` va al tetto, 100 s, e il render finisce col
+        primo grano."""
+        s = stream(grain={'iot': '(sqrt(m1 - 5))'}, duration=2.0)
+        with patch('pge.parameters.parameter.log_clip_warning') as clip:
+            grani = s.voices[0]
+        assert len(grani) == 1
+        assert clip.call_count == 1
+        assert clip.call_args.kwargs['clipped_value'] == 100.0
 
     def test_un_attesa_infinita_va_al_tetto(self, stream):
         s = stream(grain={'iot': '(1 / (0 * m1))'}, duration=2.0)

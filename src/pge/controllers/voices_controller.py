@@ -28,12 +28,15 @@ from typing import Optional
 from pge.controllers.voice_manager import VoiceManager
 from pge.core.stream_config import StreamConfig
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
+from pge.expressions.expression import outer_parenthesized
+from pge.expressions.fields import EXPRESSION_FIELDS
 from pge.parameters.parameter import Parameter
 from pge.parameters.parameter_definitions import GRANULAR_PARAMETERS
 from pge.parameters.parser import GranularParser
 from pge.parameters.pitch_unit import make_pitch_unit
 from pge.shared.exceptions import (
     ConfigError,
+    ExpressionError,
     InvalidFieldValueError,
     InvalidStrategyConfigError,
 )
@@ -70,6 +73,19 @@ def _parse_strategy_kwarg(value, duration: float, stream_time_mode: str = 'absol
     lasciarlo passare voleva dire uno Stream che si costruisce e un TypeError
     nudo al primo grano, quando `resolve_param` fa `float()` su una lista.
     """
+    # Un'espressione (issue #313) qui non vale: il parametro di una
+    # strategia di voce e' un numero, un nome o un envelope. Una stringa
+    # tutta fra parentesi e' scritta come un'espressione, e passata oltre
+    # com'e' diventava un TypeError nudo al primo grano.
+    if isinstance(value, str) and outer_parenthesized(value):
+        raise ExpressionError(
+            value,
+            "qui un'espressione non vale: il parametro di una strategia di "
+            "voce e' un numero o un envelope",
+            field=field,
+            hint="un'espressione vale sul valore base di: "
+                 + ", ".join(EXPRESSION_FIELDS),
+        )
     if isinstance(value, (str, int, float)):
         return value
     if Envelope.is_envelope_like(value):

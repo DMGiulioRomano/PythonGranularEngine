@@ -578,6 +578,23 @@ class TestFormeChiamate:
                     f"ENGINE_PARAM_MAP di PGE-ui dice, per chiave della UI, "
                     f"quale di questi quattro leggere")
 
+    def test_i_bounds_hanno_sei_campi_e_non_uno_di_piu(self):
+        """La parita' di PGE-ui (`test-bounds-parity.js`, «stessi sei
+        campi») confronta ogni record del registro importato col record che
+        il suo bridge legge dall'AST, campo per campo. Un settimo campo su
+        `ParameterBounds` il parser AST non lo conosce, i due record
+        smettono di coincidere e la sua CI e' rossa su OGNI pull request
+        aperta. Misurato con la #312, che il rientro a capo di
+        `pointer.position` l'aveva messo li': ora sta in
+        `WRAPPING_PARAMETERS`. Un fatto nuovo su un parametro va in un
+        registro suo; se un settimo campo serve davvero, prima si apre
+        un'issue su PGE-ui."""
+        import dataclasses
+        from pge.parameters.parameter_definitions import ParameterBounds
+        campi = [f.name for f in dataclasses.fields(ParameterBounds)]
+        assert campi == ['min_val', 'max_val', 'min_range', 'max_range',
+                         'default_jitter', 'variation_mode'], campi
+
     def test_il_tetto_di_edo_si_chiede_cosi(self):
         """`EdoUnit(...).value_bounds().max_val`, la catena che l'oracolo
         percorre per i bounds del pitch."""

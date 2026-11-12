@@ -49,7 +49,7 @@ EXPECTED_PARAMETERS = {
     'grain_duration', 'reverse', 'read_direction', 'grain_envelope',
     # Pitch: i bounds sono unit-driven (PitchUnit.value_bounds), non registrati qui.
     # Pointer
-    'pointer_speed_ratio', 'pointer_deviation',
+    'pointer_speed_ratio', 'pointer_deviation', 'pointer_position',
     'loop_dur', 'loop_start', 'loop_end',
     # Output
     'volume', 'pan',
@@ -207,7 +207,13 @@ class TestParameterBoundsFields:
     """Verifica la struttura dei campi del dataclass."""
 
     def test_field_count(self):
-        """ParameterBounds ha esattamente 6 campi."""
+        """ParameterBounds ha esattamente 6 campi.
+
+        Non e' un numero qualunque: la parita' di PGE-ui confronta questi
+        sei campi uno per uno fra la sua lettura dall'AST e il registro
+        importato, e un settimo la rende rossa su ogni sua PR (misurato con
+        la #312). Un fatto in piu' su un parametro va in un registro suo,
+        come WRAPPING_PARAMETERS."""
         assert len(fields(ParameterBounds)) == 6
 
     def test_field_names(self):

@@ -54,14 +54,37 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
-from pge.expressions.expression import CONSTANTS, FUNCTIONS
-from pge.maps.catalog import MAP_KINDS, MAP_TYPES, MapKind
+from pge.expressions.expression import (
+    CONSTANTS, FUNCTIONS, compile_expression,
+)
+from pge.maps.catalog import MAP_KINDS, MAP_TYPE_CUSTOM, MAP_TYPES, MapKind
 from pge.shared.constants import DEFAULT_OUTPUT_SR
 from pge.shared.exceptions import ConfigError, MapConfigError
 from pge.shared.logger import log_map_escape_warning
 
-#: Le chiavi di una mappa, come letterale (vedi MAP_TYPES).
-MAP_KEYS = ('type', 'r', 'clock', 'iterate', 'x0', 'transient')
+#: Le chiavi di una mappa, come letterale (vedi MAP_TYPES). `x` e `y` sono le
+#: equazioni di una mappa `type: custom`, `y0` lo stato iniziale della
+#: seconda variabile di una mappa che ne ha due (issue #313).
+MAP_KEYS = ('type', 'r', 'clock', 'iterate', 'x0', 'transient',
+            'y0', 'x', 'y')
+
+#: Le variabili che l'equazione di una mappa `custom` puo' leggere: lo stato
+#: e il parametro. Sono i nomi riservati che una mappa non puo' prendere.
+MAP_EQUATION_VARIABLES = ('x', 'y', 'r')
+
+#: Lo stato iniziale di una mappa `custom` quando lo YAML non lo scrive. Non
+#: zero: per molte equazioni (`r*x*(1-x)`, `sin(r*x)`) zero e' un punto
+#: fisso, e la mappa non partirebbe.
+MAP_CUSTOM_X0 = 0.1
+MAP_CUSTOM_Y0 = 0.1
+
+#: Il suffisso con cui un'espressione legge la seconda variabile: `m1.y`.
+MAP_SECOND_VARIABLE = 'y'
+
+#: Quanti punti prende la curva di una mappa in `iterate`, quando la si
+#: campiona per disegnarla (issue #314): il suo valore e' una funzione del
+#: tempo, senza passi da cui leggerla.
+MAP_CURVE_SAMPLES = 500
 
 #: `clock: grain`: un passo ogni volta che nasce un grano. E' il default.
 MAP_CLOCK_GRAIN = 'grain'
@@ -132,6 +155,15 @@ class MapDefinition:
     mode: str = MAP_MODE_GRAIN
     clock: Union[float, Envelope, None] = None
     iterate: Optional[int] = None
+    #: lo stato iniziale della seconda variabile (issue #313); 0 per una
+    #: mappa che ne ha una sola, dove non entra nel passo.
+    y0: float = 0.0
+
+    @property
+    def two_variables(self) -> bool:
+        """True se la mappa ha una seconda variabile, leggibile come
+        `<nome>.y`."""
+        return self.kind.variables == 2
 
     def r_at(self, time: float) -> float:
         """`r` a un istante: quello del passo, o della lettura."""
@@ -215,6 +247,71 @@ def _clock(grezzo, campo: str, duration, time_mode: str, output_sr: int):
         campo, "clock non riconosciuto", value=grezzo, hint=_CLOCK_HINT)
 
 
+def _equazione(grezza, campo: str):
+    """Un'equazione di una mappa `custom`, compilata: `env -> float`.
+
+    Il linguaggio e' quello delle espressioni, con le variabili `x`, `y`,
+    `r`. Qui il testo e' il valore di una chiave che vuol dire «equazione»,
+    quindi le parentesi esterne non servono: `x: sin(r*x)*cos(x)`.
+
+    Raises:
+        MapConfigError: se non e' un testo (o un numero, l'equazione
+            costante).
+        ExpressionError: se il testo non e' un'espressione del linguaggio;
+            col path `maps.<nome>.x`.
+    """
+    if _numero(grezza):
+        grezza = repr(float(grezza))
+    if not isinstance(grezza, str):
+        raise MapConfigError(
+            campo, "un'equazione e' un testo, nel linguaggio delle "
+            "espressioni, con le variabili x, y, r", value=grezza,
+            hint="es. x: sin(r*x)*cos(x)")
+    return compile_expression(grezza, MAP_EQUATION_VARIABLES, field=campo)
+
+
+def _custom_kind(grezza: dict, campo: str):
+    """`(kind, legge_r)` di una mappa `type: custom` (issue #313): il passo
+    e' quello che lo YAML scrive in `x:` (obbligatoria) e `y:` (opzionale).
+    """
+    if grezza.get('x') is None:
+        raise MapConfigError(
+            f"{campo}.x", "manca x, l'equazione della mappa",
+            hint="con type: custom il passo si scrive: x: sin(r*x)*cos(x). "
+                 "Variabili: x, y, r")
+    fx = _equazione(grezza['x'], f"{campo}.x")
+    fy = (_equazione(grezza['y'], f"{campo}.y")
+          if grezza.get('y') is not None else None)
+    if 'y' in grezza and fy is None:
+        raise MapConfigError(
+            f"{campo}.y", "y e' scritta ma vuota",
+            hint="scrivi l'equazione della seconda variabile, o togli la "
+                 "chiave")
+    letti = set(fx.names) | set(fy.names if fy else ())
+
+    if fy is None:
+        if 'y' in fx.names:
+            raise MapConfigError(
+                f"{campo}.x", "l'equazione legge y, ma la mappa non ha una "
+                "seconda variabile", value=grezza['x'],
+                hint="aggiungi l'equazione y: (es. y: 0.3*x), o togli y "
+                     "da x:")
+
+        def step(x, r):
+            return fx({'x': x, 'y': 0.0, 'r': r})
+        kind = MapKind(name=MAP_TYPE_CUSTOM, step=step, x0=MAP_CUSTOM_X0,
+                       r_range=None, value_range=None)
+    else:
+        def step_xy(x, y, r):
+            # I due aggiornamenti usano la coppia di prima.
+            env = {'x': x, 'y': y, 'r': r}
+            return fx(env), fy(env)
+        kind = MapKind(name=MAP_TYPE_CUSTOM, step=None, x0=MAP_CUSTOM_X0,
+                       r_range=None, value_range=None, variables=2,
+                       step_xy=step_xy, y0=MAP_CUSTOM_Y0)
+    return kind, 'r' in letti
+
+
 def _definizione(nome, grezza, duration, time_mode: str,
                  output_sr: int) -> MapDefinition:
     campo = f"maps.{nome}"
@@ -237,27 +334,57 @@ def _definizione(nome, grezza, duration, time_mode: str,
                 f"{campo}.{chiave}", "chiave sconosciuta",
                 hint=f"chiavi di una mappa: {', '.join(MAP_KEYS)}")
 
+    disponibili = ', '.join(MAP_TYPES + (MAP_TYPE_CUSTOM,))
     tipo = grezza.get('type')
     if tipo is None:
         raise MapConfigError(
             f"{campo}.type", "manca il tipo della mappa",
-            hint=f"tipi disponibili: {', '.join(MAP_TYPES)}")
-    if not isinstance(tipo, str) or tipo not in MAP_KINDS:
+            hint=f"tipi disponibili: {disponibili}")
+    if tipo == MAP_TYPE_CUSTOM and isinstance(tipo, str):
+        kind, legge_r = _custom_kind(grezza, campo)
+    elif not isinstance(tipo, str) or tipo not in MAP_KINDS:
         raise MapConfigError(
             f"{campo}.type", "tipo sconosciuto", value=tipo,
-            hint=f"tipi disponibili: {', '.join(MAP_TYPES)}")
-    kind = MAP_KINDS[tipo]
+            hint=f"tipi disponibili: {disponibili}")
+    else:
+        kind, legge_r = MAP_KINDS[tipo], True
+        # Un tipo di catalogo ha gia' la sua equazione: con accanto un `x:`
+        # non si capirebbe quale delle due vale.
+        for chiave in ('x', 'y'):
+            if chiave in grezza:
+                raise MapConfigError(
+                    f"{campo}.{chiave}",
+                    f"{chiave}: si scrive solo con type: {MAP_TYPE_CUSTOM}: "
+                    f"{tipo} ha gia' la sua equazione, e non si capirebbe "
+                    "quale delle due vale", value=grezza[chiave],
+                    hint=f"togli {chiave}:, oppure scrivi type: "
+                         f"{MAP_TYPE_CUSTOM}")
 
     if grezza.get('r') is None:
-        basso, alto = kind.r_range
-        raise MapConfigError(
-            f"{campo}.r", "manca r, il parametro della mappa",
-            hint=f"per {tipo}: da {basso:g} a {alto:g}")
-    r = _r(grezza['r'], f"{campo}.r", duration, time_mode)
+        if legge_r:
+            hint = ("l'equazione lo legge: scrivi r, un numero o un envelope"
+                    if kind.r_range is None else
+                    f"per {tipo}: da {kind.r_range[0]:g} a "
+                    f"{kind.r_range[1]:g}")
+            raise MapConfigError(
+                f"{campo}.r", "manca r, il parametro della mappa", hint=hint)
+        # Un'equazione che non legge `r` non ne ha bisogno.
+        r = 0.0
+    else:
+        r = _r(grezza['r'], f"{campo}.r", duration, time_mode)
 
     x0 = kind.x0
     if 'x0' in grezza:
         x0 = _finito(grezza['x0'], f"{campo}.x0")
+
+    y0 = kind.y0
+    if 'y0' in grezza:
+        if kind.variables != 2:
+            raise MapConfigError(
+                f"{campo}.y0", "la mappa ha una variabile sola: y0 non "
+                "entra nel passo", value=grezza['y0'],
+                hint="togli y0; lo stato iniziale e' x0")
+        y0 = _finito(grezza['y0'], f"{campo}.y0")
 
     # `iterate` sta al posto di `clock`, e non e' un clock: insieme dicono
     # due cose diverse su quando la mappa si muove. Un errore, non una
@@ -288,7 +415,7 @@ def _definizione(nome, grezza, duration, time_mode: str,
                 "riparte da x0", value=grezza['transient'],
                 hint="togli transient, oppure usa clock al posto di iterate")
         return MapDefinition(name=nome, kind=kind, r=r, x0=x0, transient=0,
-                             mode=MAP_MODE_ITERATE, iterate=n)
+                             mode=MAP_MODE_ITERATE, iterate=n, y0=y0)
 
     mode, clock = _clock(grezza.get('clock', MAP_CLOCK_GRAIN),
                          f"{campo}.clock", duration, time_mode, output_sr)
@@ -308,7 +435,7 @@ def _definizione(nome, grezza, duration, time_mode: str,
             value=transient, hint=f"da 0 a {MAP_TRANSIENT_MAX}")
 
     return MapDefinition(name=nome, kind=kind, r=r, x0=x0,
-                         transient=transient, mode=mode, clock=clock)
+                         transient=transient, mode=mode, clock=clock, y0=y0)
 
 
 def parse_maps(raw, duration: Optional[float] = None,
@@ -349,7 +476,12 @@ def _scappata(x: float) -> bool:
 
 class _Map:
     """Cio' che i tre modi di avanzare hanno in comune: il passo con la rete
-    per la mappa che scappa, e lo stato dopo il transitorio."""
+    per la mappa che scappa, e lo stato dopo il transitorio.
+
+    Lo stato e' una coppia `(x, y)` (issue #313): una mappa a una variabile
+    porta una `y` che il suo passo non tocca, e ha lo stesso giro di una che
+    ne ha due.
+    """
 
     #: True se la mappa va mossa in testa al giro di una voce.
     per_grano = False
@@ -357,31 +489,35 @@ class _Map:
     def __init__(self, definition: MapDefinition, stream_id: str):
         self._definition = definition
         self._stream_id = stream_id
-        self._step = definition.kind.step
-        self._initial: Optional[float] = None
+        self._advance = definition.kind.advance
+        self._start: Tuple[float, float] = (definition.x0, definition.y0)
+        self._initial: Optional[Tuple[float, float]] = None
         self._escape_logged_at = -math.inf
         self._escape_logged = False
 
-    def _passo(self, x: float, r: float, time: Optional[float]) -> float:
-        """Un passo. Se la mappa scappa riparte da `x0`, e lo scrive (non
-        durante il transitorio, `time` None: e' un fatto di prima del primo
-        grano, e se continua lo dira' il primo passo vero)."""
-        x = self._step(x, r)
-        if _scappata(x):
-            x = self._definition.x0
+    def _passo(self, stato: Tuple[float, float], r: float,
+               time: Optional[float]) -> Tuple[float, float]:
+        """Un passo. Se la mappa scappa — una delle due variabili — riparte
+        dallo stato iniziale, e lo scrive (non durante il transitorio,
+        `time` None: e' un fatto di prima del primo grano, e se continua lo
+        dira' il primo passo vero)."""
+        x, y = self._advance(stato[0], stato[1], r)
+        if _scappata(x) or _scappata(y):
             if time is not None:
                 self._segnala_fuga(time, r)
-        return x
+            return self._start
+        return x, y
 
-    def _stato_iniziale(self) -> float:
-        """`x0` dopo il transitorio, fatto a `r(0)`. Calcolato una volta: e'
-        lo stesso per ogni voce, perche' la mappa e' deterministica."""
+    def _stato_iniziale(self) -> Tuple[float, float]:
+        """Lo stato iniziale dopo il transitorio, fatto a `r(0)`. Calcolato
+        una volta: e' lo stesso per ogni voce, perche' la mappa e'
+        deterministica."""
         if self._initial is None:
             d = self._definition
-            x, r = d.x0, d.r_at(0.0)
+            stato, r = self._start, d.r_at(0.0)
             for _ in range(d.transient):
-                x = self._passo(x, r, None)
-            self._initial = x
+                stato = self._passo(stato, r, None)
+            self._initial = stato
         return self._initial
 
     def _segnala_fuga(self, time: float, r: float) -> None:
@@ -403,8 +539,21 @@ class _Map:
     def advance(self, voice: int, time: float) -> None:
         """Il giro di una voce comincia. Solo `clock: grain` si muove."""
 
-    def value(self, voice: int, time: float) -> float:
+    def state(self, voice: int, time: float) -> Tuple[float, float]:
+        """La coppia `(x, y)` che la voce legge a quell'istante."""
         raise NotImplementedError
+
+    def value(self, voice: int, time: float) -> float:
+        return self.state(voice, time)[0]
+
+    def trace(self, until: float) -> Optional[Tuple[str, list]]:
+        """La mappa come funzione del tempo in [0, until], per chi la
+        disegna (issue #314): `(interpolazione, [(t, x, y), ...])`.
+
+        None se la mappa non e' una funzione del tempo: a `clock: grain`
+        dipende dai grani, e la sua traccia la tiene chi li genera.
+        """
+        return None
 
     def step_times(self, until: float) -> Optional[List[float]]:
         """Gli istanti dei passi in [0, until), o None se la mappa non ha
@@ -419,18 +568,18 @@ class _GrainClockMap(_Map):
 
     def __init__(self, definition: MapDefinition, stream_id: str):
         super().__init__(definition, stream_id)
-        self._states: Dict[int, float] = {}
+        self._states: Dict[int, Tuple[float, float]] = {}
 
     def advance(self, voice: int, time: float) -> None:
-        x = self._states.get(voice)
-        if x is None:
-            x = self._stato_iniziale()
+        stato = self._states.get(voice)
+        if stato is None:
+            stato = self._stato_iniziale()
         self._states[voice] = self._passo(
-            x, self._definition.r_at(time), time)
+            stato, self._definition.r_at(time), time)
 
-    def value(self, voice: int, time: float) -> float:
-        x = self._states.get(voice)
-        return self._stato_iniziale() if x is None else x
+    def state(self, voice: int, time: float) -> Tuple[float, float]:
+        stato = self._states.get(voice)
+        return self._stato_iniziale() if stato is None else stato
 
 
 #: Tolleranza sul conto dei passi: a un istante che e' esattamente quello di
@@ -455,8 +604,10 @@ class _TimeClockMap(_Map):
         self._costante = not isinstance(self._clock, Envelope)
         # In `array('d')`: otto byte a passo invece di una trentina. Al tetto
         # del clock, un passo per campione, uno stream lungo ne fa milioni.
+        # La seconda variabile si tiene solo per le mappe che ne hanno una.
         self._times = array('d')
         self._values = array('d')
+        self._values_y = array('d') if definition.two_variables else None
         if not self._costante:
             self._minimo = min(y for _, y in self._clock.breakpoints)
 
@@ -502,14 +653,26 @@ class _TimeClockMap(_Map):
             t = nuovo
         return t
 
+    def _stato_al_passo(self, k: int) -> Tuple[float, float]:
+        y = self._values_y[k] if self._values_y is not None else 0.0
+        return self._values[k], y
+
     def _fino_a(self, k: int) -> None:
         d = self._definition
         while len(self._values) <= k:
             j = len(self._values)
             t = self._tempo_del_passo(j)
-            x = self._values[j - 1] if j else self._stato_iniziale()
+            stato = self._stato_al_passo(j - 1) if j else self._stato_iniziale()
+            x, y = self._passo(stato, d.r_at(t), t)
             self._times.append(t)
-            self._values.append(self._passo(x, d.r_at(t), t))
+            self._values.append(x)
+            if self._values_y is not None:
+                self._values_y.append(y)
+
+    def state(self, voice: int, time: float) -> Tuple[float, float]:
+        k = int(math.floor(self._integrale(time) + _CLOCK_EPSILON))
+        self._fino_a(k)
+        return self._stato_al_passo(k)
 
     def value(self, voice: int, time: float) -> float:
         k = int(math.floor(self._integrale(time) + _CLOCK_EPSILON))
@@ -524,6 +687,12 @@ class _TimeClockMap(_Map):
                 return list(self._times[:k])
             k += 1
 
+    def trace(self, until: float) -> Tuple[str, list]:
+        """Un gradino per passo, all'istante in cui il passo cade."""
+        tempi = self.step_times(until)
+        return 'step', [(t,) + self._stato_al_passo(k)
+                        for k, t in enumerate(tempi)]
+
 
 class _IteratedMap(_Map):
     """`iterate: n`, il modo alla Di Scipio: nessuno stato.
@@ -537,23 +706,39 @@ class _IteratedMap(_Map):
     def __init__(self, definition: MapDefinition, stream_id: str):
         super().__init__(definition, stream_id)
         self._last_time: Optional[float] = None
-        self._last_value = 0.0
+        self._last_state: Tuple[float, float] = self._start
 
-    def value(self, voice: int, time: float) -> float:
-        # Piu' parametri dello stesso grano la leggono allo stesso istante.
-        if time == self._last_time:
-            return self._last_value
+    def _itera(self, time: float, segnala: bool) -> Tuple[float, float]:
         d = self._definition
         r = d.r_at(time)
-        x = d.x0
+        stato = self._start
         for _ in range(d.iterate):
-            x = self._step(x, r)
-            if _scappata(x):
-                x = d.x0
-                self._segnala_fuga(time, r)
-                break
-        self._last_time, self._last_value = time, x
-        return x
+            x, y = self._advance(stato[0], stato[1], r)
+            if _scappata(x) or _scappata(y):
+                if segnala:
+                    self._segnala_fuga(time, r)
+                return self._start
+            stato = (x, y)
+        return stato
+
+    def state(self, voice: int, time: float) -> Tuple[float, float]:
+        # Piu' parametri dello stesso grano la leggono allo stesso istante.
+        if time == self._last_time:
+            return self._last_state
+        stato = self._itera(time, segnala=True)
+        self._last_time, self._last_state = time, stato
+        return stato
+
+    def trace(self, until: float) -> Tuple[str, list]:
+        """Una curva continua, campionata: il valore e' una funzione del
+        tempo. Senza scrivere sul clip log: una fuga l'ha gia' detta chi ha
+        letto la mappa per i grani, e disegnarla non e' un fatto nuovo."""
+        passi = MAP_CURVE_SAMPLES - 1
+        punti = []
+        for n in range(MAP_CURVE_SAMPLES):
+            t = until * n / passi
+            punti.append((t,) + self._itera(t, segnala=False))
+        return 'linear', punti
 
 
 _MODI = {
@@ -611,8 +796,15 @@ class MapSet:
 
     @property
     def variables(self) -> Tuple[str, ...]:
-        """I nomi che un'espressione di questo stream puo' leggere."""
-        return self.names + (TIME_NAME,)
+        """I nomi che un'espressione di questo stream puo' leggere: le
+        mappe, la seconda variabile di quelle che ne hanno due (`m1.y`,
+        issue #313), e `t`."""
+        nomi = []
+        for d in self.definitions:
+            nomi.append(d.name)
+            if d.two_variables:
+                nomi.append(f"{d.name}.{MAP_SECOND_VARIABLE}")
+        return tuple(nomi) + (TIME_NAME,)
 
     def __len__(self) -> int:
         return len(self._maps)
@@ -644,9 +836,31 @@ class MapSet:
         """
         return self._maps[name].step_times(until)
 
+    def state(self, name: str, time: float) -> Tuple[float, float]:
+        """La coppia `(x, y)` di una mappa per la voce di turno. Per una
+        mappa a una variabile `y` non vuol dire niente."""
+        return self._maps[name].state(self._voice, time)
+
+    def trace(self, name: str, until: float) -> Optional[Tuple[str, list]]:
+        """Una mappa come funzione del tempo in [0, until], per chi la
+        disegna (issue #314): `(interpolazione, [(t, x, y), ...])` — a
+        gradini per un clock a orologio, continua per `iterate`.
+
+        None per una mappa a `clock: grain`: non e' una funzione del tempo,
+        e la sua traccia e' quella dei grani.
+        """
+        return self._maps[name].trace(until)
+
     def environment(self, names: Iterable[str], time: float) -> Dict[str, float]:
         """L'ambiente di un'espressione: i soli nomi che legge."""
-        return {
-            name: time if name == TIME_NAME else self.value(name, time)
-            for name in names
-        }
+        ambiente = {}
+        for name in names:
+            if name == TIME_NAME:
+                ambiente[name] = time
+                continue
+            mappa, _, seconda = name.partition('.')
+            if seconda:
+                ambiente[name] = self.state(mappa, time)[1]
+            else:
+                ambiente[name] = self.value(mappa, time)
+        return ambiente

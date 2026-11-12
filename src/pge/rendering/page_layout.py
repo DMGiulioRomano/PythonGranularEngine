@@ -18,7 +18,9 @@ from math import ceil
 
 import numpy as np
 
-from pge.rendering.envelope_extractor import base_param_name
+from pge.rendering.envelope_extractor import (
+    base_param_name, map_curve_name,
+)
 
 
 def active_streams(streams, t_start, t_end):
@@ -222,8 +224,11 @@ def envelope_lanes(streams_with_envelopes):
         # Le curve per-voce '__vN' collassano a una sola voce per parametro
         # base: N tracce, una etichetta. La colonna e' stretta, e ripetere lo
         # stesso nome non aggiunge niente.
+        #
+        # Le mappe no (issue #314): `map__m1` e `map__m2` sono due cose
+        # diverse, e in legenda ognuna ha la sua voce, col suo nome.
         env_types = tuple(sorted(
-            dict.fromkeys(base_param_name(k) for k in envelopes)))
+            dict.fromkeys(legend_key(k) for k in envelopes)))
 
         lanes.append(EnvelopeLane(
             stream=stream, stream_id=stream.stream_id,
@@ -241,6 +246,14 @@ def envelope_lanes(streams_with_envelopes):
     return lanes, legend_entries
 
 
+def legend_key(key):
+    """La voce di legenda di una curva: il nome base, tranne che per le
+    mappe, dove e' la chiave intera (una voce per mappa)."""
+    if map_curve_name(key) is not None:
+        return key
+    return base_param_name(key)
+
+
 # Nomi corti per la legenda: la colonna e' larga circa il 6% della pagina, e i
 # nomi lunghi sforavano nel plot (issue #96). Solo i nomi lunghi; gli altri
 # perdono solo gli underscore.
@@ -248,12 +261,14 @@ LEGEND_SHORT_NAMES = {
     'pointer_deviation': 'ptr dev',
     'pointer_speed': 'ptr spd',
     'pointer_start': 'ptr start',
+    'pointer_position': 'ptr pos',
     'grain_duration': 'grain dur',
     'num_voices': 'voices',
     'voice_pitch_offset': 'v pitch off',
     'voice_pointer_offset': 'v ptr off',
     'voice_pointer_range': 'v ptr rng',
     'effective_density': 'eff density',
+    'grain_iot': 'iot',
     'distribution': 'distrib',
     'fill_factor': 'fill',
     # Override compatto: 'grain dur rng' (13) sforerebbe la colonna (issue #141)
@@ -274,6 +289,10 @@ def legend_display_name(param_name):
     """
     if param_name in LEGEND_SHORT_NAMES:
         return LEGEND_SHORT_NAMES[param_name]
+    # Una mappa (issue #314) si chiama come nello YAML: `map__m1` -> `m1`.
+    mappa = map_curve_name(param_name)
+    if mappa is not None:
+        return mappa
     for suffix, mark in (('_prob', '%'), ('_range', 'rng')):
         if param_name.endswith(suffix):
             base = param_name[:-len(suffix)]

@@ -702,7 +702,8 @@ class TestNumVoicesEnvelope:
         prep = lambda st: setattr(
             st, '_density',
             type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0),
-                       'mode': 'density'})()
+                       'mode': 'density', 'iot': None, 'density': None,
+                       'fill_factor': None, 'distribution_param': None})()
         )
         prep(s)
         s.sample_table_num = 1
@@ -715,7 +716,8 @@ class TestNumVoicesEnvelope:
         """Con Envelope 1→4, la voce 3 riceve meno grani della voce 0."""
         s = _build_stream({'num_voices': [[0, 1], [5, 4]]})
         s._density = type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0),
-                       'mode': 'density'})()
+                       'mode': 'density', 'iot': None, 'density': None,
+                       'fill_factor': None, 'distribution_param': None})()
         s.sample_table_num = 1
         s.window_table_map = {'hanning': 2}
         s.generate_grains()
@@ -738,7 +740,8 @@ class TestNumVoicesEnvelope:
         """
         s = _build_stream({'num_voices': [[0, 2.9], [10, 2.1]]})
         s._density = type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0),
-                       'mode': 'density'})()
+                       'mode': 'density', 'iot': None, 'density': None,
+                       'fill_factor': None, 'distribution_param': None})()
         s.sample_table_num = 1
         s.window_table_map = {'hanning': 2}
         s.generate_grains()
@@ -987,7 +990,8 @@ class TestVoicesPitchUnitJunction:
     def _grain_ratio_for_voice(self, voices_params, voice_index):
         s = _build_stream(voices_params)
         s._density = type('D', (), {'calculate_inter_onset': staticmethod(lambda t, d: 1.0),
-                       'mode': 'density'})()
+                       'mode': 'density', 'iot': None, 'density': None,
+                       'fill_factor': None, 'distribution_param': None})()
         s.sample_table_num = 1
         s.window_table_map = {'hanning': 2}
         s.generate_grains()

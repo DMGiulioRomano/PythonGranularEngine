@@ -8,8 +8,11 @@ from typing import Optional, Any, Union
 from pge.shared.probability_gate import *
 from enum import Enum
 from pge.envelopes.envelope import Envelope, create_scaled_envelope
+from pge.expressions.expression import outer_parenthesized
+from pge.expressions.fields import EXPRESSION_FIELDS
 from pge.shared.exceptions import (
     EngineError,
+    ExpressionError,
     InvalidFieldValueError,
     InvalidParameterError,
 )
@@ -25,6 +28,25 @@ _ENVELOPE_HINT = (
     "dict {points: [...]}, BP group o formato compatto. Questo corpo non si "
     "costruisce come envelope."
 )
+
+
+def _reject_expression(raw_value: Any, field: str) -> None:
+    """Un'espressione in `deviation_probability` non vale (issue #313): la
+    chiave non e' in `EXPRESSION_FIELDS`, come le bande `_range` e
+    `voices.scatter`, e ha il loro stesso errore.
+
+    E' un'espressione la stringa tutta fra parentesi; il resto e' una stringa
+    nel posto sbagliato, e resta l'`InvalidParameterError` di prima.
+    """
+    if isinstance(raw_value, str) and outer_parenthesized(raw_value):
+        raise ExpressionError(
+            raw_value,
+            "qui un'espressione non vale: il campo vuole una probabilita' "
+            "(0-100) o un envelope",
+            field=field,
+            hint="un'espressione vale sul valore base di: "
+                 + ", ".join(EXPRESSION_FIELDS),
+        )
 
 
 class DeviationProbabilityMode(Enum):
@@ -63,6 +85,8 @@ class GateFactory:
         elif isinstance(deviation_probability, dict):
             return DeviationProbabilityMode.SPECIFIC
         else:
+            _reject_expression(deviation_probability,
+                               DEVIATION_PROBABILITY_FIELD)
             raise InvalidParameterError(
                 param_name="deviation_probability",
                 value=deviation_probability,
@@ -228,6 +252,7 @@ class GateFactory:
             )
 
         # Tipo completamente sbagliato
+        _reject_expression(raw_value, GateFactory._field_name(param_key))
         raise InvalidParameterError(
             param_name="deviation_probability",
             value=raw_value,

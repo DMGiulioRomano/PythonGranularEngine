@@ -1,7 +1,7 @@
 ---
 title: "feat(yaml): mappe caotiche — onset, durata e posizione dei grani letti da una mappa"
 type: feat
-status: active
+status: done
 date: 2026-11-10
 issue: 307
 ---
@@ -363,7 +363,7 @@ implementata (`.claude/rules/cross-repo-impact.md`). In sintesi:
   [Clock e r nel tempo](https://claude.ai/artifact/8qRF82k5Ze7SKxNydbDnwS),
   [Banco del chirp](https://claude.ai/artifact/HCRgdxeuruWANe2vsNwNQV).
   Le stesse quattro pagine stanno nel repo, apribili dal disco con un doppio
-  click: [mappe-caotiche-pagine/](mappe-caotiche-pagine/) (`mappa-logistica.html`,
+  click: [mappe-caotiche-pagine/](../mappe-caotiche-pagine/) (`mappa-logistica.html`,
   `onset-dalla-mappa.html`, `clock-e-r-nel-tempo.html`, `banco-del-chirp.html`).
   Il banco carica js-yaml da cdnjs e tutte i font da Google Fonts: senza rete
   i font ripiegano su quelli di sistema, il banco non legge lo YAML.
