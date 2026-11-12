@@ -81,6 +81,11 @@ MAP_CUSTOM_Y0 = 0.1
 #: Il suffisso con cui un'espressione legge la seconda variabile: `m1.y`.
 MAP_SECOND_VARIABLE = 'y'
 
+#: Quanti punti prende la curva di una mappa in `iterate`, quando la si
+#: campiona per disegnarla (issue #314): il suo valore e' una funzione del
+#: tempo, senza passi da cui leggerla.
+MAP_CURVE_SAMPLES = 500
+
 #: `clock: grain`: un passo ogni volta che nasce un grano. E' il default.
 MAP_CLOCK_GRAIN = 'grain'
 
@@ -541,6 +546,15 @@ class _Map:
     def value(self, voice: int, time: float) -> float:
         return self.state(voice, time)[0]
 
+    def trace(self, until: float) -> Optional[Tuple[str, list]]:
+        """La mappa come funzione del tempo in [0, until], per chi la
+        disegna (issue #314): `(interpolazione, [(t, x, y), ...])`.
+
+        None se la mappa non e' una funzione del tempo: a `clock: grain`
+        dipende dai grani, e la sua traccia la tiene chi li genera.
+        """
+        return None
+
     def step_times(self, until: float) -> Optional[List[float]]:
         """Gli istanti dei passi in [0, until), o None se la mappa non ha
         passi nel tempo."""
@@ -673,6 +687,12 @@ class _TimeClockMap(_Map):
                 return list(self._times[:k])
             k += 1
 
+    def trace(self, until: float) -> Tuple[str, list]:
+        """Un gradino per passo, all'istante in cui il passo cade."""
+        tempi = self.step_times(until)
+        return 'step', [(t,) + self._stato_al_passo(k)
+                        for k, t in enumerate(tempi)]
+
 
 class _IteratedMap(_Map):
     """`iterate: n`, il modo alla Di Scipio: nessuno stato.
@@ -688,22 +708,37 @@ class _IteratedMap(_Map):
         self._last_time: Optional[float] = None
         self._last_state: Tuple[float, float] = self._start
 
-    def state(self, voice: int, time: float) -> Tuple[float, float]:
-        # Piu' parametri dello stesso grano la leggono allo stesso istante.
-        if time == self._last_time:
-            return self._last_state
+    def _itera(self, time: float, segnala: bool) -> Tuple[float, float]:
         d = self._definition
         r = d.r_at(time)
         stato = self._start
         for _ in range(d.iterate):
             x, y = self._advance(stato[0], stato[1], r)
             if _scappata(x) or _scappata(y):
-                stato = self._start
-                self._segnala_fuga(time, r)
-                break
+                if segnala:
+                    self._segnala_fuga(time, r)
+                return self._start
             stato = (x, y)
+        return stato
+
+    def state(self, voice: int, time: float) -> Tuple[float, float]:
+        # Piu' parametri dello stesso grano la leggono allo stesso istante.
+        if time == self._last_time:
+            return self._last_state
+        stato = self._itera(time, segnala=True)
         self._last_time, self._last_state = time, stato
         return stato
+
+    def trace(self, until: float) -> Tuple[str, list]:
+        """Una curva continua, campionata: il valore e' una funzione del
+        tempo. Senza scrivere sul clip log: una fuga l'ha gia' detta chi ha
+        letto la mappa per i grani, e disegnarla non e' un fatto nuovo."""
+        passi = MAP_CURVE_SAMPLES - 1
+        punti = []
+        for n in range(MAP_CURVE_SAMPLES):
+            t = until * n / passi
+            punti.append((t,) + self._itera(t, segnala=False))
+        return 'linear', punti
 
 
 _MODI = {
@@ -805,6 +840,16 @@ class MapSet:
         """La coppia `(x, y)` di una mappa per la voce di turno. Per una
         mappa a una variabile `y` non vuol dire niente."""
         return self._maps[name].state(self._voice, time)
+
+    def trace(self, name: str, until: float) -> Optional[Tuple[str, list]]:
+        """Una mappa come funzione del tempo in [0, until], per chi la
+        disegna (issue #314): `(interpolazione, [(t, x, y), ...])` — a
+        gradini per un clock a orologio, continua per `iterate`.
+
+        None per una mappa a `clock: grain`: non e' una funzione del tempo,
+        e la sua traccia e' quella dei grani.
+        """
+        return self._maps[name].trace(until)
 
     def environment(self, names: Iterable[str], time: float) -> Dict[str, float]:
         """L'ambiente di un'espressione: i soli nomi che legge."""

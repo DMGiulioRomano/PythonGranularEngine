@@ -686,7 +686,9 @@ class ScoreVisualizer:
                 # nella colonna sinistra della riga envelope dello stream.
                 if legend_entries:
                     ax_legend = fig.add_subplot(gs[grain_row + 1, 0])
-                    self._draw_envelope_legend(ax_legend, legend_entries)
+                    self._draw_envelope_legend(
+                        ax_legend, legend_entries,
+                        excursions=self._legend_excursions(stream))
         # =========================================================================
         # LENTE DI INGRANDIMENTO (magnify)
         # =========================================================================
@@ -1455,9 +1457,13 @@ class ScoreVisualizer:
                     linestyle=linestyle, alpha=0.8, label=param_name)
             
             # === ANNOTAZIONE BREAKPOINT ===
-            self._annotate_breakpoints(ax, envelope, param_name, color,
-                                    stream_start, y_base, y_height,
-                                    page_start, page_end)
+            # Una curva letta a cose fatte (issue #314) non ha breakpoint
+            # scritti da qualcuno: sono uno per grano, e annotarli uno per
+            # uno coprirebbe la corsia. La sua escursione sta in legenda.
+            if not getattr(envelope, 'realized', False):
+                self._annotate_breakpoints(ax, envelope, param_name, color,
+                                        stream_start, y_base, y_height,
+                                        page_start, page_end)
             
             drawn[param_name] = envelope
 
@@ -1642,14 +1648,38 @@ class ScoreVisualizer:
         Delega a rendering.page_layout.legend_display_name."""
         return page_layout.legend_display_name(param_name)
 
-    def _draw_envelope_legend(self, ax, legend_entries):
+    def _legend_excursions(self, stream):
+        """L'escursione vera delle curve lette a cose fatte, per la legenda
+        (issue #314): `{voce di legenda: "51.4–90.0ms"}`.
+
+        Di un parametro scritto come espressione la fascia scritta non e'
+        quella usata: il minimo e il massimo realizzati sono il dato da
+        leggere accanto al nome. Le curve dichiarate non ne hanno una qui: i
+        loro valori stanno sui breakpoint.
+        """
+        pitch_unit = stream.pitch_unit
+        excursions = {}
+        for key, envelope in self._get_stream_envelopes(stream).items():
+            if not getattr(envelope, 'realized', False):
+                continue
+            low, high = envelope.excursion
+            excursions[page_layout.legend_key(key)] = (
+                envelope_display.excursion_label(
+                    key, low, high, pitch_unit=pitch_unit))
+        return excursions
+
+    def _draw_envelope_legend(self, ax, legend_entries, excursions=None):
         """
         Disegna la legenda degli envelope nel subplot dedicato.
 
         legend_entries: list[(param_name, y, stream_id)] gia' posizionati
         per-lane da _compute_env_legend_layout (issue #91), allineati alle
         curve nelle corsie.
+
+        excursions: `{param_name: testo}` delle curve lette a cose fatte
+        (issue #314): il nome e, sulla riga sotto, l'escursione vera.
         """
+        excursions = excursions or {}
         ax.axis('off')
         colors = self.config['envelope_colors']
 
@@ -1680,7 +1710,12 @@ class ScoreVisualizer:
                     linestyle=linestyle, linewidth=key_width)
             # clip_on=True: anche un nome inatteso non sfora mai nel plot,
             # viene tagliato al bordo della colonna legenda (issue #96).
-            ax.text(0.4, y, self._legend_display_name(param_name),
+            name = self._legend_display_name(param_name)
+            if param_name in excursions:
+                # Due righe: la colonna e' stretta, e il nome con accanto
+                # l'escursione verrebbe tagliato al bordo.
+                name = f"{name}\n{excursions[param_name]}"
+            ax.text(0.4, y, name,
                     fontsize=self._fs(self.config['label_fontsize'] - 2),
                     verticalalignment='center',
                     color=color,

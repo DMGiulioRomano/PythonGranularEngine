@@ -18,7 +18,7 @@ import soundfile as sf
 import yaml
 
 from pge import api
-from pge.parameters.parameter_curve import ABSENT, ParameterCurve
+from pge.parameters.parameter_curve import EXPRESSION, ParameterCurve
 from pge.rendering.envelope_extractor import get_stream_envelopes
 
 SAMPLE = 'tono.wav'
@@ -50,30 +50,45 @@ def brano(tmp_path):
 
 class TestLeCurve:
 
-    def test_un_espressione_non_ha_una_curva(self, brano):
+    def test_un_espressione_ha_il_suo_caso(self, brano):
+        """Nella #308 era classificata `absent`, e mostrarla era rimandato
+        alla #314: ora ha un caso suo, con l'espressione nel payload."""
         generator, _, _ = brano
         stream, = generator.streams
         curva = stream.grain_duration.value_curve
-        assert curva.kind == ABSENT
-        assert ParameterCurve.classify(stream.grain_duration.value).kind == ABSENT
+        assert curva.kind == EXPRESSION
+        assert curva.expression is stream.grain_duration.value
+        assert ParameterCurve.classify(
+            stream.grain_duration.value).kind == EXPRESSION
 
-    def test_l_estrattore_la_salta_senza_dirla_illeggibile(self, brano):
+    def test_l_estrattore_pubblica_i_valori_realizzati(self, brano):
+        """Nella #308 l'estrattore la saltava. Ora la curva c'e': i valori
+        che la durata ha avuto, grano per grano, e la mappa che li ha dati."""
         generator, _, _ = brano
         stream, = generator.streams
         with patch('pge.shared.logger.log_unreadable_curve_warning') as avviso:
             curve = get_stream_envelopes(stream, show_static=True,
                                          show_voice_offsets=True)
-        assert 'grain_duration' not in curve
+        assert 'grain_duration' in curve and 'map__m1' in curve
+        assert {round(v * 1000) for _, v in
+                curve['grain_duration'].breakpoints} == {86, 60, 90, 51}
         assert 'volume' in curve, "le altre curve dello stream ci sono"
         assert avviso.call_count == 0
 
-    def test_la_densita_effettiva_non_si_campiona_su_un_espressione(self, brano):
+    def test_la_densita_effettiva_emerge_dai_grani(self, brano):
         """In modalita' `fill_factor` la densita' vera e'
         fill_factor / grain_duration: con la durata presa da una mappa non
-        e' una funzione del tempo, e la curva non c'e' (non e' un errore)."""
+        e' una funzione del tempo e non si puo' campionare. Nella #308 la
+        curva non c'era; dalla #314 e' quella che emerge dai grani, come con
+        `grain.iot`: l'inverso dell'attesa di ogni grano della voce 0."""
         generator, _, _ = brano
         stream, = generator.streams
-        assert stream.effective_density_curve is None
+        curva = stream.effective_density_curve
+        assert curva is not None and curva.type == 'step'
+        onset = [g.onset for g in stream.voices[0]]
+        attese = [b - a for a, b in zip(onset, onset[1:])]
+        assert [1 / v for _, v in curva.breakpoints][:len(attese)] == \
+            pytest.approx(attese)
 
     def test_il_repr_del_parametro_dice_l_espressione(self, brano):
         generator, _, _ = brano

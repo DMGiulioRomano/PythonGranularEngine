@@ -143,6 +143,10 @@ ENVELOPE_RANGES = {
     'fill_factor': (0.1, 20),
     'distribution': (0, 1),
     'effective_density': (1, 200),
+    'grain_iot': (1.0 / DEFAULT_OUTPUT_SR, 1.0),  # secondi (min 1 campione)
+
+    # === MAPPE ===
+    'map': (-1.5, 1.5),                  # il valore di una mappa del catalogo
 
     # === VOICES ===
     'num_voices': (1, 20),

@@ -121,6 +121,12 @@ class Parameter:
         # dell'ultima riga scritta, e i tagli taciuti da allora.
         self._clip_logged_at = -math.inf
         self._clip_suppressed = 0
+        # L'ultimo valore dato da un parametro a espressione (issue #314): di
+        # un'espressione non c'e' una curva da leggere, e chi genera i grani
+        # tiene da qui i valori realizzati. Solo per le espressioni: un
+        # numero o un envelope la loro curva ce l'hanno.
+        self._traced = isinstance(value, Expression)
+        self.last_value: Optional[float] = None
 
         # Ancora effettiva: `range_anchor` vale solo se un range è stato
         # dichiarato. Senza range esplicito si applica il jitter implicito
@@ -170,7 +176,7 @@ class Parameter:
         # 2. Check Probabilità (Gate)
         # Se il gate è chiuso, restituisci subito il base value (clippato)
         if not self._probability_gate.should_apply(time):
-            return self._clamp(base_val, time)
+            return self._remember(self._clamp(base_val, time))
 
         # 3. Calcola il Range di variazione (Modulation Depth)
 
@@ -181,7 +187,13 @@ class Parameter:
             self._distribution
         )
         # 5. Safety Clamp e Ritorno
-        return self._clamp(final_val, time)
+        return self._remember(self._clamp(final_val, time))
+
+    def _remember(self, value: float) -> float:
+        """Tiene l'ultimo valore dato, se il parametro e' un'espressione."""
+        if self._traced:
+            self.last_value = value
+        return value
 
     # =========================================================================
     # HELPERS

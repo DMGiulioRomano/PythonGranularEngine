@@ -61,9 +61,20 @@ class TestLaCurvaArrivaAChiLaLegge:
         generator, _, _ = brano
         stream, = generator.streams
         curve = get_stream_envelopes(stream, show_static=True)
-        for nome in ('density', 'fill_factor', 'distribution', 'grain_iot',
-                     'grain_duration'):
+        for nome in ('density', 'fill_factor', 'distribution'):
             assert nome not in curve
+
+    def test_l_attesa_e_la_durata_hanno_la_loro_curva(self, brano):
+        """Nella #311 dell'attesa si pubblicava solo la densita' emersa.
+        Dalla #314 `grain_iot` e `grain_duration` sono curve anche loro: i
+        valori che hanno avuto, grano per grano."""
+        generator, _, _ = brano
+        stream, = generator.streams
+        curve = get_stream_envelopes(stream)
+        assert {round(v * 1000) for _, v in
+                curve['grain_iot'].breakpoints} == {169, 110, 177, 89}
+        assert {round(v * 1000) for _, v in
+                curve['grain_duration'].breakpoints} == {86, 60, 90, 51}
 
     def test_il_filtro_la_seleziona_per_nome(self, brano):
         generator, _, _ = brano

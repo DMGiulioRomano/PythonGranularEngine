@@ -37,7 +37,10 @@ from pge.shared.exceptions import (
 )
 from pge.expressions.expression import ExpressionSource
 from pge.expressions.fields import EXPRESSION_FIELDS
-from pge.maps.map_set import MapSet
+from pge.maps.map_set import MAP_MODE_GRAIN, MapSet
+from pge.envelopes.realized_curve import RealizedCurve
+from pge.parameters.parameter import Parameter
+from pge.parameters.parameter_curve import EXPRESSION
 from pge.parameters.parameter_definitions import range_unit_is_relative
 from pge.parameters.parameter_schema import STREAM_PARAMETER_SCHEMA
 from pge.parameters.parameter_orchestrator import ParameterOrchestrator
@@ -213,6 +216,17 @@ class Stream:
         # modalita' `grain.iot` (issue #311): da qui la densita' emersa
         # (effective_density_curve). Le scrive generate_grains.
         self._emerged_iot: List[tuple] = []
+        # Cio' che i grani della voce 0 hanno avuto (issue #314): i valori
+        # dei parametri scritti come espressione e lo stato delle mappe a
+        # `clock: grain`. Una riga per grano, `(tempo, valori, stati)`. Le
+        # scrive generate_grains; le leggono realized_curve e map_curves.
+        self._realized: List[tuple] = []
+        # A che cosa corrispondono le colonne di quelle righe: gli id delle
+        # espressioni dei parametri, e i nomi delle mappe a `clock: grain`.
+        self._realized_keys: tuple = ([], [])
+        # Le curve costruite da quelle righe, una volta: chi le legge (la
+        # partitura, piu' volte per pagina) ritrova lo stesso oggetto.
+        self._curve_cache: dict = {}
 
     @staticmethod
     def _required_context_fields() -> set:
@@ -704,8 +718,17 @@ class Stream:
         # In modalita' `grain.iot` (issue #311) la densita' non e' dichiarata:
         # emerge dalle attese. Quelle della voce 0 si tengono, per
         # pubblicarla come curva a grani fatti.
-        record_iot = self._density.mode == 'iot'
+        record_iot = self._density_emerges()
         emerged_iot: List[tuple] = []
+
+        # I valori realizzati (issue #314). Un parametro scritto come
+        # espressione non ha una curva nota in anticipo: i suoi valori
+        # esistono solo qui, e della voce 0 si tengono. Con loro lo stato
+        # delle mappe a `clock: grain`, che non sono funzioni del tempo.
+        traced = self._traced_parameters()
+        grain_maps = [d.name for d in maps.definitions
+                      if d.mode == MAP_MODE_GRAIN]
+        realized: List[tuple] = []
 
         while any(c < self.duration for c in voice_cursors):
             # Voice 0 è il riferimento: definisce sync_iot e il valore di scatter
@@ -765,6 +788,14 @@ class Stream:
                     grain = self._create_grain(t, grain_dur, voice_config,
                                                voice_gain=voice_gain)
                     all_voice_grains[voice_index].append(grain)
+                    # La voce 0 e' la prima del giro: qui l'ultimo valore
+                    # dato da ogni parametro e' quello di QUESTO grano, e le
+                    # letture delle mappe sono le sue.
+                    if voice_index == 0 and (traced or grain_maps):
+                        realized.append((
+                            grain, t,
+                            [p.last_value for p in traced],
+                            [maps.state(nome, t) for nome in grain_maps]))
 
                 # IOT di questa voce: blend tra sync_iot (condiviso) e indep_iot
                 if voice_index == 0 or scatter_val == 0.0:
@@ -781,10 +812,48 @@ class Stream:
         # innescherebbe ricorsivamente generate_grains (generated ancora False).
         self._voices = self._clip_strategy.apply(all_voice_grains, self)
         self._emerged_iot = emerged_iot
+        self._curve_cache = {}
+        # Un valore per ogni grano che c'e': quelli che la clip strategy ha
+        # tolto in coda non lasciano un punto sulla curva.
+        rimasti = {id(g) for g in self._voices[0]} if self._voices else set()
+        self._realized = [riga for riga in realized if id(riga[0]) in rimasti]
+        self._realized_keys = (
+            [id(p.value) for p in traced], list(grain_maps))
         self.generated = True
 
         return self._voices
     
+    def _traced_parameters(self) -> List[Parameter]:
+        """I Parameter dello stream il cui valore e' un'espressione (issue
+        #314): quelli di cui tenere i valori dati ai grani.
+
+        Il riconoscimento non e' di qui: lo chiede a `ParameterCurve`, come
+        chi legge le curve.
+        """
+        candidati = [
+            self.volume, self.pan, self.grain_duration, self.read_direction,
+            self._pitch.parameter, self.pointer_position,
+            self._density.iot, self._density.density,
+            self._density.fill_factor,
+            self._density.distribution_param,
+        ]
+        return [p for p in candidati
+                if isinstance(p, Parameter)
+                and p.value_curve.kind == EXPRESSION]
+
+    def _density_emerges(self) -> bool:
+        """True se la densita' non e' una funzione del tempo ma emerge dai
+        grani: con `grain.iot` (issue #311), e in modalita' `fill_factor`
+        quando `fill_factor` o la durata del grano sono un'espressione
+        (issue #314) — li' `fill_factor / durata` non si puo' campionare."""
+        if self._density.mode == 'iot':
+            return True
+        if self._density.mode != 'fill_factor':
+            return False
+        return any(
+            isinstance(p, Parameter) and p.value_curve.kind == EXPRESSION
+            for p in (self._density.fill_factor, self.grain_duration))
+
     def _check_generator_references(self) -> None:
         """I riferimenti alle tabelle ci sono, o un errore dice quali mancano.
 
@@ -1065,6 +1134,13 @@ class Stream:
         return self._pitch.unit
 
     @property
+    def grain_iot(self):
+        """Il Parameter di `grain.iot` sotto il suo nome di schema: e' cosi'
+        che il catalogo delle curve lo cerca (issue #314). Lo stesso di
+        `iot`."""
+        return self._density.iot
+
+    @property
     def pitch_value(self):
         """Espone il valore base del pitch (Envelope o scalare) per ScoreVisualizer,
         indipendentemente dall'unità (semitoni/cents/quarti/ottavi/edo/ratio)."""
@@ -1107,7 +1183,7 @@ class Stream:
         mappa dipende dai grani gia' nati — quindi non si campiona: si legge
         a grani fatti, e leggerla li genera.
         """
-        if self._density.mode == 'iot':
+        if self._density_emerges():
             return self._emerged_density_curve()
         return self._density.density_curve(
             self.duration,
@@ -1115,14 +1191,92 @@ class Stream:
         )
 
     def _emerged_density_curve(self):
-        """`1 / attesa` per ogni grano della voce 0, a gradini."""
+        """`1 / attesa` per ogni grano della voce 0, a gradini.
+
+        E' una curva letta a cose fatte (`RealizedCurve`, issue #314), come
+        i valori realizzati dei parametri: ha un punto per grano, e chi la
+        disegna non ne annota i breakpoint uno per uno.
+        """
         self.voices  # la generazione e' lazy (issue #117)
-        punti = [[tempo, 1.0 / attesa] for tempo, attesa in self._emerged_iot]
-        if not punti:
+        if 'density' not in self._curve_cache:
+            punti = [(tempo, 1.0 / attesa)
+                     for tempo, attesa in self._emerged_iot]
+            self._curve_cache['density'] = (
+                RealizedCurve(punti, until=self.duration) if punti else None)
+        return self._curve_cache['density']
+
+    def realized_curve(self, expression):
+        """I valori che un parametro scritto come espressione ha dato ai
+        grani della voce 0, come curva a gradini (issue #314); None se
+        quell'espressione non e' di un parametro di questo stream, o se non
+        e' nato nessun grano.
+
+        Un'espressione non ha una curva nota in anticipo: puo' dipendere
+        dallo stato di una mappa, che non e' una funzione del tempo. I suoi
+        valori esistono solo nei grani, quindi leggerla li genera (la
+        generazione e' lazy, issue #117) — e poi non costa piu' niente, ne'
+        pesca di nuovo da un generatore casuale.
+
+        I tempi sono relativi allo stream, come per ogni altra curva.
+        """
+        self.voices
+        chiavi, _ = self._realized_keys
+        if id(expression) not in chiavi:
             return None
-        if len(punti) == 1:
-            punti.append([max(self.duration, punti[0][0]), punti[0][1]])
-        return Envelope({'type': 'step', 'points': punti})
+        chiave = ('expression', id(expression))
+        if chiave not in self._curve_cache:
+            colonna = chiavi.index(id(expression))
+            punti = [(t, valori[colonna])
+                     for _, t, valori, _ in self._realized
+                     if valori[colonna] is not None]
+            self._curve_cache[chiave] = (
+                RealizedCurve(punti, until=self.duration) if punti else None)
+        return self._curve_cache[chiave]
+
+    def map_curves(self) -> List[tuple]:
+        """Il valore delle mappe dello stream come curve (issue #314):
+        `[(nome, RealizedCurve), ...]`, nell'ordine dello YAML, con
+        `<nome>.y` subito dopo `<nome>` per le mappe a due variabili.
+
+        - `clock: grain`: lo stato della voce 0 a ogni suo grano, a gradini;
+        - clock a orologio: un gradino per passo, all'istante in cui cade;
+        - `iterate`: una curva continua, campionata nel tempo.
+
+        Come `realized_curve`, leggerle genera i grani.
+        """
+        # Senza mappe non c'e' niente da leggere, e non si generano i grani
+        # per saperlo: chi guarda le curve di uno stream senza `maps:` lo
+        # trova com'era.
+        if not self._maps.definitions:
+            return []
+        self.voices
+        if 'maps' in self._curve_cache:
+            return list(self._curve_cache['maps'])
+        _, per_grano = self._realized_keys
+        curve = []
+        for definizione in self._maps.definitions:
+            nome = definizione.name
+            traccia = self._maps.trace(nome, self.duration)
+            if traccia is None:
+                if nome not in per_grano:
+                    continue
+                colonna = per_grano.index(nome)
+                interp = 'step'
+                punti = [(t,) + stati[colonna]
+                         for _, t, _, stati in self._realized]
+            else:
+                interp, punti = traccia
+            if not punti:
+                continue
+            curve.append((nome, RealizedCurve(
+                [(t, x) for t, x, _ in punti], interp=interp,
+                until=self.duration)))
+            if definizione.two_variables:
+                curve.append((f"{nome}.y", RealizedCurve(
+                    [(t, y) for t, _, y in punti], interp=interp,
+                    until=self.duration)))
+        self._curve_cache['maps'] = curve
+        return list(curve)
 
     @property
     def map_set(self) -> MapSet:

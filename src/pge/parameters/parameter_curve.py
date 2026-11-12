@@ -17,6 +17,10 @@ from pge.expressions.expression import Expression
 VARYING = 'varying'
 CONSTANT = 'constant'
 ABSENT = 'absent'
+#: Il valore e' un'espressione (issue #314): dichiarato, ma senza una curva
+#: nota in anticipo. I suoi valori esistono solo nei grani generati, e chi
+#: li vuole li chiede a chi i grani li ha fatti.
+EXPRESSION = 'expression'
 
 
 def _not_a_number(raw) -> TypeError:
@@ -28,15 +32,22 @@ def _not_a_number(raw) -> TypeError:
 
 @dataclass(frozen=True)
 class ParameterCurve:
-    """Classificazione di una faccia di Parameter: curva, costante o assente."""
+    """Classificazione di una faccia di Parameter: curva, costante, assente
+    o espressione."""
 
     kind: str
     envelope: Optional[Envelope] = None
     value: Optional[float] = None
+    #: l'`Expression`, quando `kind` e' EXPRESSION: e' la chiave con cui chi
+    #: ha generato i grani ritrova i valori che ha dato (issue #314).
+    expression: Optional[Expression] = None
 
     @classmethod
     def classify(cls, raw) -> 'ParameterCurve':
         """Classifica un valore grezzo (Envelope, numero, Expression o None).
+
+        Un'espressione ha il suo caso, EXPRESSION, con l'oggetto in
+        `expression`.
 
         "Numero" e' cio' che `float()` sa leggere — chi espone `__float__` —
         non cio' che eredita da `float`. Un `isinstance(raw, (int, float))`
@@ -60,10 +71,11 @@ class ParameterCurve:
             # Un'espressione (issue #308) e' un valore dichiarato, ma non e'
             # una curva: puo' dipendere dallo stato di una mappa, che non e'
             # una funzione del tempo, quindi non ha breakpoint da disegnare
-            # ne' un valore da appiattire. Assente, e non un TypeError: chi
-            # legge le curve salta la riga senza avvisare, perche' non c'e'
-            # niente di illeggibile. Mostrarla e' la 6/7 (#314).
-            return cls(kind=ABSENT)
+            # ne' un valore da appiattire. Ha il suo caso (issue #314), ed e'
+            # l'unico posto in cui la si riconosce: chi legge le curve chiede
+            # `kind`, non il tipo del valore, e i valori li chiede a chi ha
+            # generato i grani.
+            return cls(kind=EXPRESSION, expression=raw)
         if isinstance(raw, Envelope):
             values = [bp[1] for bp in raw.breakpoints]
             if len(set(values)) == 1:
@@ -81,6 +93,16 @@ class ParameterCurve:
             # chiamante tollerante non si trova a catturare la formulazione di
             # numpy senza sapere di che parametro parla.
             raise _not_a_number(raw) from exc
+
+    @staticmethod
+    def is_expression(raw) -> bool:
+        """True se `raw` e' un valore che `classify` legge come EXPRESSION.
+
+        Per chi ha in mano un valore *trovato* — l'attributo di uno stream —
+        e deve decidere se e' leggibile prima di classificarlo: la domanda
+        sul tipo resta qui, in un posto solo (issue #314).
+        """
+        return isinstance(raw, Expression)
 
     @classmethod
     def from_gate(cls, gate) -> 'ParameterCurve':
