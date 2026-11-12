@@ -547,3 +547,49 @@ class TestUnaStringaCheNonEUnEspressione:
             stream(volume=scritto)
         assert dice in exc.value.reason
         assert exc.value.field == 'volume'
+
+
+# =============================================================================
+# 7. DEVIATION_PROBABILITY: ESCLUSA, CON L'ERRORE DEGLI ALTRI ESCLUSI
+# =============================================================================
+
+class TestDeviationProbabilityRifiutaComeGliAltri:
+    """`deviation_probability` non e' nell'elenco dei campi a espressione
+    (decisione 12 della PR #316), come le bande `_range` e `voices.scatter`.
+    Su quelli un'espressione e' un `ExpressionError` che dice «qui
+    un'espressione non vale» e dove vale; qui era il vecchio
+    `InvalidParameterError` «Formato non valido», di un altro tipo e con un
+    altro testo. Ora e' lo stesso errore, col path della chiave."""
+
+    @pytest.mark.parametrize('extra, campo', [
+        ({'deviation_probability': '(m1*100)'}, 'deviation_probability'),
+        ({'deviation_probability': {'volume': '(m1*100)'},
+          'volume_range': 6}, 'deviation_probability.volume'),
+        ({'deviation_probability': {'pan': '(50)'}, 'pan_range': 10},
+         'deviation_probability.pan'),
+    ])
+    def test_un_espressione_e_l_errore_degli_esclusi(self, stream, extra,
+                                                     campo):
+        with pytest.raises(ExpressionError) as exc:
+            stream(**extra)
+        err = exc.value
+        assert err.field == campo
+        assert err.stream_id == 's1'
+        assert 'non vale' in err.reason
+        assert 'probabilita' in err.reason
+        assert 'volume' in err.hint and 'pointer.position' in err.hint
+        assert 'deviation_probability' not in err.hint
+
+    @pytest.mark.parametrize('scritto', ['boh', 'molto'])
+    def test_una_stringa_che_non_e_un_espressione_resta_com_era(
+            self, stream, scritto):
+        from pge.shared.exceptions import InvalidParameterError
+        with pytest.raises(InvalidParameterError):
+            stream(deviation_probability=scritto)
+        with pytest.raises(InvalidParameterError):
+            stream(deviation_probability={'volume': scritto}, volume_range=6)
+
+    def test_numeri_ed_envelope_valgono_come_prima(self, stream):
+        assert stream(deviation_probability=50, volume_range=6).voices[0]
+        assert stream(deviation_probability={'volume': [[0, 0], [2, 100]]},
+                      volume_range=6).voices[0]

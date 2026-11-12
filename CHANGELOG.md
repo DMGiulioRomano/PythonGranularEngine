@@ -106,6 +106,11 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     bande `_range`, su `voices.scatter` e sui parametri delle strategie di
     voce, dove una stringa fra parentesi arrivava fino al primo grano come
     `TypeError`.
+  - **`deviation_probability` resta esclusa, con lo stesso errore.** Un
+    `(m1*100)`, globale o per chiave, è un `ExpressionError` sul campo
+    (`deviation_probability.volume`) col suggerimento degli altri esclusi,
+    non più l'`InvalidParameterError` «Formato non valido» di un altro tipo.
+    Una stringa non fra parentesi resta l'`InvalidParameterError` di prima.
   - **Una stringa che non è un'espressione resta l'errore di prima**, anche
     nei campi nuovi dell'elenco: `density: not_a_number` è ancora un
     `InvalidParameterError` («Formato non valido»), `grain.read_direction:

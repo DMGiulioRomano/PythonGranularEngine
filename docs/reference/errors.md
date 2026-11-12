@@ -940,7 +940,8 @@ nomina il campo e suggerisce che cosa scrivere al suo posto:
 I campi col loro suggerimento sono `pointer.speed_ratio`, `pointer.start`, i
 tre di loop e `voices.num_voices` (`EXPRESSION_REFUSALS`); su ogni altro campo
 fuori da `EXPRESSION_FIELDS` — una banda `_range`, `voices.scatter`, il
-parametro di una strategia di voce — il suggerimento è l'elenco dei campi in
+parametro di una strategia di voce, `deviation_probability` e le sue chiavi
+(`deviation_probability.volume`) — il suggerimento è l'elenco dei campi in
 cui un'espressione vale.
 
 `iterate`, `transient` e `clock` hanno un tetto (40 passi a lettura, 100000

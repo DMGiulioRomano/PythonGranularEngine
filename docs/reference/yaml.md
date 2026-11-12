@@ -1498,8 +1498,10 @@ modulo):
 
 Lo stesso errore, col suggerimento generico, su ogni altro campo fuori
 dall'elenco: le bande `_range`, `pitch.range`, `pointer.offset_range`,
-`voices.scatter`, i parametri delle strategie di voce. Su
-`deviation_probability` resta l'errore di sempre.
+`voices.scatter`, i parametri delle strategie di voce, e
+`deviation_probability` (globale o per chiave: il campo è
+`deviation_probability.volume`), dove il dettaglio dice che il campo vuole una
+probabilità (0-100) o un envelope.
 
 **Una stringa che non è un'espressione** resta l'errore di prima, anche nei
 campi in cui un'espressione vale: `density: not_a_number` è un
