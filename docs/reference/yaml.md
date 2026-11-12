@@ -1107,8 +1107,11 @@ posizioni: a 0.513 e a 0.799 della finestra di loop.
   `0.75`, e un envelope da 0 a 3 ripassa la finestra tre volte. È lo stesso
   wrap del [confinamento al loop](#confinamento-al-loop), quindi non è un
   errore al caricamento e non scrive niente sul clip log. Un valore **non
-  finito** (`sqrt` di un negativo, una divisione per zero) va all'inizio
-  della finestra, e quello sì è una riga di clip log.
+  finito** dato da un'espressione (`sqrt` di un negativo, una divisione per
+  zero) va all'inizio della finestra, e quello sì è una riga di clip log.
+  Scritto nello YAML — `position: .nan`, o un punto `.inf` in un envelope —
+  è un errore al caricamento (`ParameterBoundError`), come su ogni altro
+  parametro: rientra a capo ciò che è finito.
 - **La finestra vale da subito.** Con `speed_ratio` il puntatore entra nel
   loop quando ci arriva; con `position` non c'è un viaggio, e il primo grano
   è già dentro. La finestra può muoversi (`loop_start` e `loop_dur` a

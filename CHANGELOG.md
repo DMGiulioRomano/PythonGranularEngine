@@ -150,7 +150,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     un'istantanea presa prima della prima riga).
   - **Fuori da 0–1 rientra a capo**, con lo stesso wrap del confinamento al
     loop: non è un errore al caricamento e non scrive sul clip log. Un valore
-    non finito va all'inizio della finestra, con una riga di clip log.
+    non finito dato da un'espressione va all'inizio della finestra, con una
+    riga di clip log; scritto nello YAML (`position: .nan`, un punto `.inf`
+    in un envelope) è un `ParameterBoundError` al caricamento, come su ogni
+    altro parametro.
   - **La finestra vale da subito ed è il vincolo**: anche mobile, la
     posizione resta dentro la finestra di quell'istante. `offset_range` e gli
     offset di pointer delle voci si sommano come prima. `loop_unit` non

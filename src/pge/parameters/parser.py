@@ -198,6 +198,8 @@ class GranularParser:
         # non ha un «fuori bounds» da rifiutare al parse: 1.25 e' 0.25, e lo
         # dice il Parameter a ogni grano.
         wraps = parameter_wraps(name)
+        if wraps:
+            self._reject_non_finite(clean_value, bounds, name)
         validated_value = clean_value if wraps else self._validate_and_clip(
             clean_value,
             bounds.min_val,
@@ -493,6 +495,48 @@ class GranularParser:
             min_bound=bounds.min_val,
             max_bound=bounds.max_val,
         )
+        err.stream_id = self.stream_id
+        raise err
+
+    def _reject_non_finite(self, param: Optional[ParamInput], bounds: Any,
+                           param_name: str) -> None:
+        """Il solo «fuori bounds» di un parametro che rientra a capo: un
+        valore non finito scritto nello YAML, come numero o come punto di un
+        envelope.
+
+        Rientrare a capo vale per i valori finiti: `nan` e `inf` non hanno
+        un capo da cui rientrare. Su ogni altro parametro li ferma
+        `_validate_and_clip`, che qui non passa; senza questo controllo
+        arrivavano al clamp del Parameter, una riga di clip log per grano.
+        Un'espressione non passa di qui: i suoi valori si conoscono grano
+        per grano, e hanno il loro limite sul clip log.
+
+        In modo permissivo non solleva, come `_validate_and_clip`: resta il
+        clamp del Parameter.
+        """
+        from pge.shared.logger import CLIP_LOG_CONFIG
+
+        if CLIP_LOG_CONFIG.get('validation_mode', 'strict') != 'strict':
+            return
+        hint = ("atteso un valore finito: una posizione rientra a capo "
+                "fuori dai bounds, ma nan e inf non hanno un capo da cui "
+                "rientrare")
+        if isinstance(param, Envelope):
+            non_finiti = [(t, y) for t, y in param.breakpoints
+                          if not math.isfinite(y)]
+            if not non_finiti:
+                return
+            err = ParameterBoundError(
+                param_name=param_name, value_type='value',
+                min_bound=bounds.min_val, max_bound=bounds.max_val,
+                violations=non_finiti, hint=hint)
+        elif isinstance(param, (int, float)) and not math.isfinite(param):
+            err = ParameterBoundError(
+                param_name=param_name, value_type='value',
+                min_bound=bounds.min_val, max_bound=bounds.max_val,
+                value=float(param), hint=hint)
+        else:
+            return
         err.stream_id = self.stream_id
         raise err
 

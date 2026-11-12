@@ -401,3 +401,40 @@ class TestNonFinito:
         assert riga['param_name'] == 'pointer_position'
         assert riga['source'] == 'EXP'
         assert riga['clipped_value'] == 0.0
+
+
+class TestNonFinitoScrittoNelloYaml:
+    """Un'espressione puo' dare un non-finito a un grano qualunque, e li'
+    c'e' il clip log. Un numero o un envelope no: `position: .nan` e' un
+    non-finito scritto, per sempre, e su ogni altro parametro e' un
+    `ParameterBoundError` al caricamento. Qui passava — il rientro a capo
+    salta la validazione dei bounds — e ogni grano scriveva la sua riga sul
+    clip log, senza il limite di frequenza delle espressioni."""
+
+    @pytest.mark.parametrize('scritto', [
+        float('nan'), float('inf'), float('-inf')])
+    def test_un_numero_non_finito_e_un_errore_al_caricamento(
+            self, stream, scritto):
+        from pge.shared.exceptions import ParameterBoundError
+        with pytest.raises(ParameterBoundError) as exc:
+            stream({'position': scritto})
+        err = exc.value
+        assert err.param_name == 'pointer_position'
+        assert err.stream_id == 's1'
+        assert 'finito' in err.hint
+
+    def test_un_envelope_con_un_punto_non_finito(self, stream):
+        """L'errore nomina il punto non finito, non quelli che rientrano a
+        capo: 1.25 resta una posizione valida."""
+        from pge.shared.exceptions import ParameterBoundError
+        with pytest.raises(ParameterBoundError) as exc:
+            stream({'position': [[0, 1.25], [1, float('nan')], [2, -0.5]]})
+        err = exc.value
+        assert err.param_name == 'pointer_position'
+        assert [t for t, _ in err.violations] == [1.0]
+
+    def test_fuori_da_zero_uno_ma_finito_resta_valido(self, stream):
+        s = stream({'position': [[0, 1.25], [2, -0.5]]})
+        with patch('pge.parameters.parameter.log_clip_warning') as clip:
+            assert _posizioni(s)
+        assert clip.call_count == 0
