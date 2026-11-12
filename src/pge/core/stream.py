@@ -31,11 +31,14 @@ from pge.shared.constants import SECONDS_PER_MILLISECOND
 from pge.shared.utils import get_sample_duration
 from pge.shared.exceptions import (
     EngineRuntimeError,
+    ExpressionError,
     InvalidFieldValueError,
     MissingFieldError,
     SampleNotFoundError,
 )
-from pge.expressions.expression import ExpressionSource
+from pge.expressions.expression import (
+    ExpressionSource, compile_expression, outer_parenthesized,
+)
 from pge.expressions.fields import EXPRESSION_FIELDS
 from pge.maps.map_set import MAP_MODE_GRAIN, MapSet
 from pge.envelopes.realized_curve import RealizedCurve
@@ -534,8 +537,7 @@ class Stream:
         wrapped_params['grain'] = wrapped
         return wrapped_params
 
-    @staticmethod
-    def _wrap_block_expressions(params: dict) -> dict:
+    def _wrap_block_expressions(self, params: dict) -> dict:
         """Riconosce le espressioni nei campi in cui valgono
         (`EXPRESSION_FIELDS`, issue #312 e #313) e che non hanno un'unita'
         di misura da portare al risultato: `volume`, `pan`,
@@ -546,6 +548,11 @@ class Stream:
         questi campi diventa un `ExpressionSource` col suo path, e la
         compila il parser dei parametri; fuori dall'elenco una stringa resta
         un errore, che dice dove le espressioni valgono.
+
+        Non ogni stringa: solo quella scritta come un'espressione
+        (`_written_as_expression`). `density: not_a_number` e
+        `grain.read_direction: reverse` non lo sono, e tengono l'errore che
+        avevano prima che il loro campo entrasse nell'elenco.
 
         Come gli altri normalizzatori non muta il dict originale.
         """
@@ -558,6 +565,8 @@ class Stream:
             if not isinstance(contenuto, dict) or not isinstance(
                     contenuto.get(key), str):
                 continue
+            if not self._written_as_expression(contenuto[key]):
+                continue
             if wrapped_params is None:
                 wrapped_params = dict(params)
             sorgente = ExpressionSource(contenuto[key], field=field)
@@ -568,6 +577,25 @@ class Stream:
                 wrapped_params[block] = dict(contenuto)
             wrapped_params[block][key] = sorgente
         return params if wrapped_params is None else wrapped_params
+
+    def _written_as_expression(self, text: str) -> bool:
+        """True se una stringa, in un campo in cui un'espressione vale, e'
+        scritta come un'espressione.
+
+        Lo e' cio' che sta tutto fra parentesi — e se dentro e' sbagliato lo
+        dice l'interprete — e cio' che senza parentesi l'interprete compila
+        (`-30 + 20*m1`): li' l'errore propone le parentesi. Una parola
+        (`forte`, `reverse`) non e' ne' l'una ne' l'altra: e' una stringa
+        dove ci vuole un numero, e ha l'errore di una stringa. Il criterio
+        e' l'esito, come per le espressioni del caricamento (#309).
+        """
+        if outer_parenthesized(text):
+            return True
+        try:
+            compile_expression(text, self._maps.variables)
+        except ExpressionError:
+            return False
+        return True
 
     def _init_grain_reverse(self, params: dict) -> None:
         """

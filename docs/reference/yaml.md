@@ -1496,8 +1496,17 @@ modulo):
 Lo stesso errore, col suggerimento generico, su ogni altro campo fuori
 dall'elenco: le bande `_range`, `pitch.range`, `pointer.offset_range`,
 `voices.scatter`, i parametri delle strategie di voce. Su
-`deviation_probability` resta l'errore di sempre. Una stringa che non è fra
-parentesi resta l'`InvalidParameterError` di prima.
+`deviation_probability` resta l'errore di sempre.
+
+**Una stringa che non è un'espressione** resta l'errore di prima, anche nei
+campi in cui un'espressione vale: `density: not_a_number` è un
+`InvalidParameterError` («Formato non valido», con che cosa il campo vuole), e
+`grain.read_direction: reverse` l'`InvalidFieldValueError` che spiega i due
+versi. È scritta come un'espressione la stringa che sta tutta fra parentesi —
+e se dentro è sbagliata lo dice l'interprete, con un `ExpressionError` — e
+quella che senza parentesi l'interprete compila (`volume: -30 + 20*m1`): lì
+l'`ExpressionError` propone le parentesi. Su `grain.duration` e `grain.iot`
+ogni stringa è letta come un'espressione, come dalla #308.
 
 **Quando si valuta.** A ogni grano, non al caricamento: è la differenza dalle
 [espressioni matematiche nei valori](#9-espressioni-matematiche-nei-valori),

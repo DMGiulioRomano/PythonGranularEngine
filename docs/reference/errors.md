@@ -953,8 +953,26 @@ passi di transitorio, un passo per campione): oltre, lo stesso
   Config:       configs/PGE_test.yml
 ```
 
-Un'espressione su un parametro in cui non vale resta un
-`InvalidParameterError`, con l'elenco dei campi in cui vale.
+Una stringa che **non** è scritta come un'espressione resta un
+`InvalidParameterError` anche nei campi in cui un'espressione vale, con che
+cosa il campo vuole e l'elenco dei campi in cui un'espressione vale:
+
+```yaml
+    density: not_a_number
+```
+```
+[ERRORE] Formato non valido per 'density.value'
+  Trovato:      'not_a_number'
+  Hint:         atteso numero, lista di punti, o dict envelope; un'espressione fra parentesi vale su: grain.duration, grain.iot, pointer.position, volume, pan, pitch.semitones, pitch.cents, pitch.quarter_tone, pitch.eighth_tone, pitch.ratio, pitch.value, density, fill_factor, distribution, grain.read_direction
+  Stream:       s1
+  Config:       configs/PGE_test.yml
+```
+
+È scritta come un'espressione la stringa tutta fra parentesi, e quella che
+senza parentesi l'interprete compila (`-30 + 20*m1`, a cui l'`ExpressionError`
+propone le parentesi). Su `grain.read_direction` una parola (`reverse`) resta
+l'`InvalidFieldValueError` del verso. Fanno eccezione `grain.duration` e
+`grain.iot`, dove ogni stringa è letta come un'espressione (#308).
 
 A runtime nessuno dei due errori si solleva: un valore dell'espressione fuori
 dai bounds viene tagliato e scritto sul clip log, e una mappa che scappa

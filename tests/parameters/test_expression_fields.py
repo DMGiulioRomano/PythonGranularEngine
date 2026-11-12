@@ -469,3 +469,81 @@ class TestDoveNonVale:
             stream(volume='-30 + 20*m1')
         assert exc.value.field == 'volume'
         assert '(-30 + 20*m1)' in exc.value.hint
+
+
+# =============================================================================
+# 6. UNA STRINGA CHE NON E' UN'ESPRESSIONE
+# =============================================================================
+
+class TestUnaStringaCheNonEUnEspressione:
+    """Nei campi in cui un'espressione vale, una stringa non e' per forza
+    un'espressione. `density: not_a_number` su `main` era un
+    `InvalidParameterError` («Formato non valido», col suggerimento su che
+    cosa il campo vuole), e `grain.read_direction: reverse` un
+    `InvalidFieldValueError` che spiega i due versi. Con l'elenco allargato
+    dalla #313 erano diventate tutte e due «nome sconosciuto», l'errore di
+    un linguaggio che chi ha scritto quella riga non stava usando — e il
+    test e2e `test_e2e_invalid_parameter_format` era rosso.
+
+    Il criterio e' quello della #309, l'esito: e' un'espressione cio' che
+    sta fra parentesi, o che senza parentesi l'interprete compila (e allora
+    l'errore propone le parentesi). Il resto e' una stringa nel posto
+    sbagliato, e ha l'errore di prima.
+    """
+
+    @pytest.mark.parametrize('extra, nome', [
+        ({'density': 'not_a_number'}, 'density'),
+        ({'volume': 'forte'}, 'volume'),
+        ({'pan': 'sinistra'}, 'pan'),
+        ({'distribution': 'boh'}, 'distribution'),
+        ({'fill_factor': 'boh', 'density': None}, 'fill_factor'),
+        ({'pitch': {'semitones': 'boh'}}, 'pitch_semitones'),
+        ({'pitch': {'ratio': 'boh'}}, 'pitch_ratio'),
+        ({'pointer': {'position': 'boh'}}, 'pointer_position'),
+        # Una mappa che non c'e', senza parentesi: non compila, e non e'
+        # scritta come un'espressione.
+        ({'volume': '-30 + 20*m2'}, 'volume'),
+    ])
+    def test_resta_il_formato_non_valido_di_prima(self, stream, extra, nome):
+        from pge.shared.exceptions import InvalidParameterError
+        with pytest.raises(InvalidParameterError) as exc:
+            stream(**extra)
+        err = exc.value
+        assert err.param_name == f'{nome}.value'
+        assert err.stream_id == 's1'
+        assert 'Formato non valido' in err.user_message()
+        # Dice che cosa il campo vuole, e che un'espressione va fra
+        # parentesi.
+        assert 'atteso numero' in err.hint
+        assert 'fra parentesi' in err.hint
+
+    @pytest.mark.parametrize('scritto', ['auto', 'reverse', 'forward'])
+    def test_il_verso_scritto_a_parole_resta_l_errore_del_verso(
+            self, stream, scritto):
+        from pge.shared.exceptions import InvalidFieldValueError
+        with pytest.raises(InvalidFieldValueError) as exc:
+            stream(grain={'read_direction': scritto})
+        assert exc.value.field == 'grain.read_direction'
+        assert exc.value.stream_id == 's1'
+
+    @pytest.mark.parametrize('scritto', ['-30 + 20*m1', 'm1', '10/2', 't'])
+    def test_senza_parentesi_ma_compila_propone_le_parentesi(
+            self, stream, scritto):
+        """Questo non cambia: chi ha scritto un'espressione e ha dimenticato
+        le parentesi lo sente dire."""
+        with pytest.raises(ExpressionError) as exc:
+            stream(volume=scritto)
+        assert 'fra parentesi' in exc.value.reason
+        assert f'({scritto})' in exc.value.hint
+
+    @pytest.mark.parametrize('scritto, dice', [
+        ('(forte)', 'nome sconosciuto «forte»'),
+        ('(-30 + 20*m2)', 'nome sconosciuto «m2»'),
+        ('(-30 + * m1)', 'non mi aspettavo «*»'),
+    ])
+    def test_fra_parentesi_e_un_espressione_e_l_errore_e_il_suo(
+            self, stream, scritto, dice):
+        with pytest.raises(ExpressionError) as exc:
+            stream(volume=scritto)
+        assert dice in exc.value.reason
+        assert exc.value.field == 'volume'

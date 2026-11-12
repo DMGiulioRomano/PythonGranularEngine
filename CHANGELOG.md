@@ -106,6 +106,14 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     bande `_range`, su `voices.scatter` e sui parametri delle strategie di
     voce, dove una stringa fra parentesi arrivava fino al primo grano come
     `TypeError`.
+  - **Una stringa che non è un'espressione resta l'errore di prima**, anche
+    nei campi nuovi dell'elenco: `density: not_a_number` è ancora un
+    `InvalidParameterError` («Formato non valido»), `grain.read_direction:
+    reverse` ancora l'`InvalidFieldValueError` del verso. È letta come
+    un'espressione la stringa tutta fra parentesi, o quella che senza
+    parentesi l'interprete compila (`volume: -30 + 20*m1`, a cui l'errore
+    propone le parentesi). Su `grain.duration` e `grain.iot` non cambia
+    niente rispetto alla #308.
   - **Un `nan` va al limite inferiore del parametro**, tranne su `grain.iot`,
     dove va al tetto (100 s): al limite inferiore un'attesa è un campione,
     cioè 48000 grani al secondo. **Cambia rispetto alla #311**, dove un `nan`
