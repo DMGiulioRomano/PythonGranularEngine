@@ -2945,7 +2945,9 @@ che diventa parte del breakpoint. Non è quindi modulabile dinamicamente.
   (`ExpressionError`) che nomina il campo e propone la grafia con le
   parentesi. Prima uscivano valutate a metà, come la stringa `5.0/10`, e più
   a valle erano un errore di tipo. È la stessa regola delle
-  [espressioni che leggono una mappa](#le-espressioni).
+  [espressioni che leggono una mappa](#le-espressioni). Non è scritta per
+  metà fuori ciò che il loader valuta già per intero: `-(90/2)` vale −45.0 e
+  `-(pi)` vale −π, come prima (sostituite le parentesi resta un numero).
 - Una stringa con delle parentesi che **non** è un'espressione non è toccata
   da questa regola: è un errore solo la stringa che, messa intera fra
   parentesi, vale un numero. Ciò che fra parentesi non è un numero — una

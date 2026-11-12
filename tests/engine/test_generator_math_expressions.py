@@ -13,6 +13,7 @@ Qui i due fatti, misurati sul metodo e sul caricamento di un file vero.
 """
 import ast
 import inspect
+import math
 import re
 import textwrap
 
@@ -277,3 +278,39 @@ class TestLaDocstring:
                    and any(getattr(t, 'id', None) == 'pattern'
                            for t in n.targets)]
         assert pattern == [r'\(([a-zA-Z0-9+\-*/.(), ]+)\)']
+
+
+# =============================================================================
+# CIO' CHE IL CARICAMENTO VALUTAVA GIA' PER INTERO NON E' «A META'»
+# =============================================================================
+
+class TestGiaUnNumero:
+    """`pan: -(90/2)` su `main` rendeva: il caricamento sostituiva `(90/2)`,
+    ne usciva il testo `-45.0`, e quello e' un numero. Non e' un'espressione
+    valutata a meta' — non resta niente da valutare — e la regola delle
+    parentesi esterne (issue #309) e' nata per le stringhe che a valle
+    erano gia' un errore, non per uno YAML che funzionava."""
+
+    @pytest.mark.parametrize('scritto, atteso', [
+        ('-(90/2)', -45.0),
+        ('-(pi)', -math.pi),
+        ('+(10/4)', 2.5),
+        (' -(3) ', -3),
+    ])
+    def test_il_segno_davanti_alle_parentesi_vale_come_prima(
+            self, carica, scritto, atteso):
+        generator = carica(_stream(pan=scritto))
+        valore = generator.data['streams'][0]['pan']
+        assert isinstance(valore, (int, float))
+        assert valore == pytest.approx(atteso)
+
+    def test_dentro_un_envelope(self, carica):
+        generator = carica(_stream(pan=[[0, '-(90/2)'], [1, 0]]))
+        assert generator.data['streams'][0]['pan'][0][1] == -45.0
+
+    @pytest.mark.parametrize('scritto', ['-(pi)*2', '-(10/2)/10', '2*(3+4)'])
+    def test_cio_che_restava_un_testo_e_ancora_un_errore(self, carica,
+                                                        scritto):
+        with pytest.raises(ExpressionError) as exc:
+            carica(_stream(pan=scritto))
+        assert f'({scritto})' in exc.value.hint

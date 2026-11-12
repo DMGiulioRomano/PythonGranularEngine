@@ -819,6 +819,10 @@ Versioning semantico: [SemVer](https://semver.org/lang/it/).
     parentesi, vale un numero. `voce (1).wav` non lo è, e resta trattata come
     prima. **Uno YAML che scriveva `(10/2)/10` e rendeva non esiste**: quella
     stringa era già un errore, detto peggio.
+  - **Il segno davanti alle parentesi vale come prima.** `pan: -(90/2)` e
+    `-(pi)` rendevano — sostituite le parentesi resta il testo `-45.0`, che è
+    un numero — e non sono valutate a metà: non sono un errore. Lo è ancora
+    `-(pi)*2`, che restava un testo.
   - **Ciò che fra parentesi non è un numero resta il testo che era.** Con la
     virgola `(1,2)` è una coppia per Python e sarebbe uscita riscritta
     `(1, 2)`; `(abs)` usciva come `<built-in function abs>`.

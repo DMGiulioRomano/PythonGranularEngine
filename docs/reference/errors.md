@@ -872,7 +872,8 @@ a valle, di tipo, senza più il testo scritto.
 Il campo è il path YAML dentro lo stream, fino al punto: `volume[1][0]` per il
 tempo del secondo breakpoint, `maps.m1.r`. Fuori da uno stream (`seed`) non
 c'è la riga `Stream:`. È un errore solo la stringa che, messa intera fra
-parentesi, vale un numero: `voce (1).wav` non lo è.
+parentesi, vale un numero: `voce (1).wav` non lo è. E non lo è quella che il
+caricamento valuta già in un numero così com'è scritta: `-(90/2)` vale −45.0.
 
 `pointer.position` (issue #312) è una seconda legge di moto del puntatore, e
 con la prima non convive: scritta insieme a `speed_ratio` o a `start` è un

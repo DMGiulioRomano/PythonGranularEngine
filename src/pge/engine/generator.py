@@ -662,16 +662,26 @@ class Generator:
     def _probe_whole_expression(self, text: str):
         """`text` messo intero fra parentesi e valutato; None se non ne
         esce un numero. Senza l'avviso `impossibile valutare`: e' una prova,
-        e una stringa che non e' un'espressione qui e' il caso normale."""
+        e una stringa che non e' un'espressione qui e' il caso normale.
+
+        None anche per cio' che il caricamento valuta gia' per intero cosi'
+        com'e' scritto: di `-(90/2)` resta il testo `-45.0`, che e' un
+        numero, e non c'e' una meta' rimasta fuori. Quello YAML rendeva
+        prima della #309, e la regola e' per cio' che a valle era un errore.
+        """
+        def numero(valore):
+            return (isinstance(valore, (int, float))
+                    and not isinstance(valore, bool))
+
         with contextlib.redirect_stdout(io.StringIO()), \
                 warnings.catch_warnings():
             # `5 (2)` a Python sembra una chiamata sbagliata, e lo dice con
             # un SyntaxWarning: qui non e' un fatto da raccontare.
             warnings.simplefilter('ignore')
+            if numero(self._eval_math_expressions(text)):
+                return None
             valore = self._eval_math_expressions(f"({text.strip()})")
-        if isinstance(valore, bool) or not isinstance(valore, (int, float)):
-            return None
-        return valore
+        return valore if numero(valore) else None
         
     def _register_stream_windows(self, stream_data: dict) -> dict:
         """Pre-registra tutte le finestre per questo stream."""
